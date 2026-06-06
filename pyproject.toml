@@ -1,0 +1,54 @@
+[project]
+name = "codegraph-brain"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.13.4",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=2.1.0",
+    "ruff>=0.15.16",
+]
+
+[tool.ruff]
+# Target Python 3.12+
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+# Enable many plugins: 
+# E/W (pycodestyle), F (Pyflakes), I (isort), B (bugbear), UP (pyupgrade), 
+# SIM (flake8-simplicity), ARG (flake8-unused-arguments)
+select = ["E", "F", "I", "B", "UP", "SIM", "ARG", "C4"]
+ignore = []
+
+[tool.ruff.lint.isort]
+known-first-party = ["cgis"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+# Strict mode is mandatory for a graph engine
+strict = true
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+# Critical: Pydantic needs this plugin to understand its own magic
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = "pydantic.*"
+ignore_missing_imports = true

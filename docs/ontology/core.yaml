@@ -1,0 +1,39 @@
+version: "0.1.1"
+description: "Core Code Graph Ontology"
+
+classes:
+  CodeEntity:
+    description: "Base class for all code elements"
+    subclasses: [CodeFile, CodeModule, CodeSymbol]
+  
+  CodeSymbol:
+    description: "A named entity in the code"
+    subclasses: [Function, Method, Class, Variable, Import, Export]
+    belongs_to: CodeEntity
+
+  Function:
+    description: "Executable block of code"
+    belongs_to: CodeSymbol
+
+  DomainConcept:
+    description: "High-level semantic domain"
+    subclasses: [Auth, Billing, UserManagement]
+
+relations:
+  CALLS:
+    domain: "Structural/Behavioral"
+    source: "Function"
+    target: "Function"
+    confidence_min: 0.7
+  
+  IMPORTS:
+    domain: "Structural"
+    source: "CodeModule"
+    target: "CodeModule"
+    confidence_min: 1.0
+
+  BELONGS_TO_DOMAIN:
+    domain: "Semantic"
+    source: "CodeEntity"
+    target: "DomainConcept"
+    confidence_min: 0.5
