@@ -1,8 +1,8 @@
 """Implements Python Extractor."""
 
+import tree_sitter_python as tspython
+from tree_sitter import Language, Parser
 from tree_sitter import Node as BaseNode
-from tree_sitter import Parser
-from tree_sitter_language_pack import get_language
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.extractors.base import BaseExtractor
@@ -16,14 +16,15 @@ class PythonExtractor(BaseExtractor):
     LANG: str = "python"
 
     def __init__(self) -> None:
-        self._language = get_language(self.LANG)
+        self._language = Language(tspython.language())
 
     def parse(self, code: str, file_path: str) -> tuple[list[Node], list[Edge]]:
         """
         Extracts structural nodes and edged (Functions, Classes).
         """
         code_bytes = code.encode("utf8")
-        parser = Parser(self._language)
+        parser = Parser()
+        parser.language = self._language
         tree = parser.parse(code_bytes)
         root_node: BaseNode = tree.root_node
 
@@ -53,7 +54,7 @@ class PythonExtractor(BaseExtractor):
         node_name = self._extract_node_name(name, code_bytes)
         prefix = self._get_class_prefix(node, code_bytes)
         full_name = f"{prefix}.{node_name}" if prefix else node_name
-        return f"{file_path}:{full_name}:{node.start_point.row + 1}"
+        return f"{file_path}:{full_name}"
 
     def _walk(
         self,
@@ -162,10 +163,11 @@ class PythonExtractor(BaseExtractor):
             curr = curr.parent
         return False
 
-    def _extract_node_name(self, name_node: BaseNode | None, code_bytes: bytes) -> str:
+    def _extract_node_name(self, node: BaseNode | None, code_bytes: bytes) -> str:
         """Extract node name from name node using byte slicing."""
-        if name_node:
-            return code_bytes[name_node.start_byte : name_node.end_byte].decode("utf8")
+        if node:
+            start, end = node.start_byte, node.end_byte
+            return code_bytes[start:end].decode("utf8")
         return "unknown"
 
     def _get_identifier(self, node: BaseNode, code_bytes: bytes) -> str:
