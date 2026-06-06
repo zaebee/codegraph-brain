@@ -179,7 +179,7 @@ class PythonExtractor(BaseExtractor):
             return code_bytes[start:end].decode("utf8", errors="replace")
         if node.type == "parenthesized_expression":
             for child in node.children:
-                if child.type not in ("(", ")"):
+                if child.type not in ("(", ")", "comment"):
                     return self._get_identifier(child, code_bytes)
         if node.type in ("attribute", "call", "subscript"):
             return self._extract_nested_name(node, code_bytes)
@@ -193,7 +193,11 @@ class PythonExtractor(BaseExtractor):
             if obj_node and attr_node:
                 obj_id = self._get_identifier(obj_node, code_bytes)
                 attr_id = self._get_identifier(attr_node, code_bytes)
-                return f"{obj_id}.{attr_id}"
+                return (
+                    f"{obj_id}.{attr_id}"
+                    if obj_id != "unknown" and attr_id != "unknown"
+                    else "unknown"
+                )
             if attr_node:
                 return self._get_identifier(attr_node, code_bytes)
         elif node.type == "call":
