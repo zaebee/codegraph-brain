@@ -126,6 +126,10 @@ class PythonExtractor(BaseExtractor):
         """Extract name from AST node using byte slicing."""
         if node.type == "identifier":
             return code_bytes[node.start_byte : node.end_byte].decode("utf8")
+        if node.type == "parenthesized_expression":
+            for child in node.children:
+                if child.type not in ("(", ")"):
+                    return self._get_identifier(child, code_bytes)
         if node.type in ("attribute", "call", "subscript"):
             return self._extract_nested_name(node, code_bytes)
         for child in node.children:
@@ -164,6 +168,8 @@ class PythonExtractor(BaseExtractor):
         func_node = node.child_by_field_name("function")
         if func_node:
             call_name = self._get_identifier(func_node, code_bytes)
+            if call_name == "unknown":
+                return
             target_id = f"raw_call:{call_name}"
 
             edges.append(
