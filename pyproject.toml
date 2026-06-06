@@ -6,9 +6,8 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.13.4",
-    "tree-sitter>=0.20.1",
     "tree-sitter-language-pack>=1.8.1",
-    "types-tree-sitter>=0.20.1.20240311",
+    "tree-sitter-python>=0.25.0",
 ]
 
 [dependency-groups]
@@ -16,6 +15,7 @@ dev = [
     "ipdb>=0.13.13",
     "mypy>=2.1.0",
     "pytest>=9.0.3",
+    "pytest-cov>=7.1.0",
     "ruff>=0.15.16",
 ]
 

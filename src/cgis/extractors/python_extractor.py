@@ -1,6 +1,7 @@
 """Implements Python Extractor."""
 
-from tree_sitter import Node as BaseNode, Parser
+from tree_sitter import Node as BaseNode
+from tree_sitter import Parser
 from tree_sitter_language_pack import get_language
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
@@ -15,7 +16,7 @@ class PythonExtractor(BaseExtractor):
     def __init__(self) -> None:
         self._language = get_language("python")
         self._parser = Parser()
-        self._parser.set_language(self._language)
+        self._parser.language = self._language
 
     def parse(self, code: str, file_path: str) -> tuple[list[Node], list[Edge]]:
         """
@@ -74,6 +75,21 @@ class PythonExtractor(BaseExtractor):
             )
             self._find_calls(node, code_bytes, file_path, func_id, edges)
 
+        elif node.type == "class_definition":
+            class_name = self._get_identifier(node, code_bytes)
+            class_id = f"{file_path}:{class_name}:{node.start_point[0]}"
+            nodes.append(
+                Node(
+                    id=class_id,
+                    type=NodeType.CLASS,
+                    name=class_name,
+                    file_path=file_path,
+                    start_line=node.start_point[0] + 1,
+                    end_line=node.end_point[0] + 1,
+                    language="python",
+                )
+            )
+
         # Recurse
         for child in node.children:
             self._walk(child, code_bytes, file_path, nodes, edges)
@@ -86,7 +102,10 @@ class PythonExtractor(BaseExtractor):
             obj_node = node.child_by_field_name("object")
             attr_node = node.child_by_field_name("attribute")
             if obj_node and attr_node:
-                return f"{self._get_identifier(obj_node, code_bytes)}.{self._get_identifier(attr_node, code_bytes)}"
+                return (
+                    f"{self._get_identifier(obj_node, code_bytes)}"
+                    f".{self._get_identifier(attr_node, code_bytes)}"
+                )
             if attr_node:
                 return self._get_identifier(attr_node, code_bytes)
         if node.type == "call":

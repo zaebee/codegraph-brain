@@ -19,7 +19,7 @@ def test_valid_node_creation() -> None:
     )
     assert node.id == "src.auth.service.login"
     assert node.type == NodeType.FUNCTION
-    assert node.confidence_score == 1.0
+    assert node.confidence_score == pytest.approx(1.0)
 
 
 def test_invalid_confidence_score() -> None:
