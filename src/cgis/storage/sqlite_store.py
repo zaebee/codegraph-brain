@@ -15,6 +15,7 @@ class SQLiteStore:
     def __init__(self, db_path: str) -> None:
         self.db_path = db_path
         self._conn: sqlite3.Connection | None = None
+        self._error_message = "Database not connected."
 
     def connect(self) -> None:
         """Establishes connection and initializes database schema."""
@@ -70,8 +71,7 @@ class SQLiteStore:
     def save_graph(self, nodes: list[Node], edges: list[Edge], overwrite: bool = False) -> None:
         """Persists all nodes and edges inside a single transaction."""
         if not self._conn:
-            msg = "Database not connected."
-            raise RuntimeError(msg)
+            raise RuntimeError(self._error_message)
 
         # Insert Nodes
         node_query = """
@@ -127,8 +127,7 @@ class SQLiteStore:
 
     def get_node(self, node_id: str) -> Node | None:
         if not self._conn:
-            msg = "Database not connected."
-            raise RuntimeError(msg)
+            raise RuntimeError(self._error_message)
         cursor = self._conn.execute("SELECT * FROM nodes WHERE id = ?", (node_id,))
         row = cursor.fetchone()
         if not row:
@@ -137,8 +136,7 @@ class SQLiteStore:
 
     def get_nodes(self, node_ids: list[str]) -> list[Node]:
         if not self._conn:
-            msg = "Database not connected."
-            raise RuntimeError(msg)
+            raise RuntimeError(self._error_message)
         if not node_ids:
             return []
         # SQLite has a limit on the number of host parameters (usually 999)
@@ -154,15 +152,13 @@ class SQLiteStore:
 
     def get_outgoing_edges(self, node_id: str) -> list[Edge]:
         if not self._conn:
-            msg = "Database not connected."
-            raise RuntimeError(msg)
+            raise RuntimeError(self._error_message)
         cursor = self._conn.execute("SELECT * FROM edges WHERE source = ?", (node_id,))
         return [self._row_to_edge(row) for row in cursor.fetchall()]
 
     def get_incoming_edges(self, node_id: str) -> list[Edge]:
         if not self._conn:
-            msg = "Database not connected."
-            raise RuntimeError(msg)
+            raise RuntimeError(self._error_message)
         cursor = self._conn.execute("SELECT * FROM edges WHERE target = ?", (node_id,))
         return [self._row_to_edge(row) for row in cursor.fetchall()]
 
