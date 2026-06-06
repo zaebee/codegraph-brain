@@ -61,7 +61,7 @@ select = [
     # flake8-bandit
     # "S",      # flake8-bandit
     # flake8-boolean-trap
-    "FBT",    # flake8-boolean-trap
+    # "FBT",    # flake8-boolean-trap
     # flake8-builtins
     "A",      # flake8-builtins
     # flake8-errmsg
