@@ -1,5 +1,7 @@
 """Implements ResolverEngine class."""
 
+import os
+
 from cgis.core.models import Edge, Node, NodeType
 
 
@@ -12,7 +14,6 @@ class ResolverEngine:
     def __init__(self, nodes: list[Node], edges: list[Edge]) -> None:
         self.nodes = {n.id: n for n in nodes}
         self.edges = edges
-        self.num_parts = 3
 
         # Indices for fast lookup
         # name -> list of FQNs
@@ -31,18 +32,15 @@ class ResolverEngine:
             if node.type in (NodeType.FUNCTION, NodeType.CLASS):
                 # We use the name as a key for direct calls, allowing multiple candidates
                 self._global_symbols.setdefault(node.name, []).append(node.id)
-                self._file_global_symbols[(node.file_path, node.name)] = node.id
+                self._file_global_symbols[(os.path.normpath(node.file_path), node.name)] = node.id
 
             # Index methods within classes
             if node.type == NodeType.METHOD:
                 # Logic: extract class FQN from method FQN
                 # Expected format: "file_path:class_name:method_name"
-                parts = node.id.split(":")
-                if len(parts) >= self.num_parts:
-                    class_fqn = ":".join(parts[:-1])
-                    if class_fqn not in self._class_methods:
-                        self._class_methods[class_fqn] = {}
-                    self._class_methods[class_fqn][node.name] = node.id
+                class_fqn, sep, _ = node.id.rpartition(":")
+                if sep:
+                    self._class_methods.setdefault(class_fqn, {})[node.name] = node.id
 
     def resolve(self) -> list[Edge]:
         """
@@ -89,11 +87,9 @@ class ResolverEngine:
     def _resolve_self_call(self, source_fqn: str, method_name: str) -> str | None:
         """Attempts to find a method on the class that owns the source node."""
         # source_fqn format: "file:class:method"
-        parts = source_fqn.split(":")
-        if len(parts) < self.num_parts:
+        class_fqn, sep, _ = source_fqn.rpartition(":")
+        if not sep:
             return None
-
-        class_fqn = ":".join(parts[:-1])
         return self._class_methods.get(class_fqn, {}).get(method_name)
 
     def _resolve_global_call(
@@ -109,7 +105,7 @@ class ResolverEngine:
         source_node = self.nodes.get(source_fqn)
         file_path = source_node.file_path if source_node else edge_file_path
         if file_path:
-            same_file_candidate = self._file_global_symbols.get((file_path, name))
+            same_file_candidate = self._file_global_symbols.get((os.path.normpath(file_path), name))
             if same_file_candidate:
                 return same_file_candidate
         return None
