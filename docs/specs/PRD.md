@@ -3,23 +3,23 @@
 **Status:** Draft v0.1  
 
 #### 🎯 1.1 Problem Statement
-Современные LLM-агенты и RAG-системы страдают от "фрагментации контекста". При запросе "как работает процесс оплаты?", векторный поиск выдает куски кода, но не может восстановить **цепочку вызовов (call chain)** или **влияние изменений (impact analysis)**. Разработчику или агенту приходится "гадать" по кускам текста, вместо того чтобы следовать по графу.
+Modern LLM agents and RAG systems suffer from "context fragmentation." When asked "how does the payment process work?", vector search retrieves disconnected code snippets but fails to reconstruct the **call chain** or perform **impact analysis**. Developers and agents are forced to "guess" based on text fragments instead of navigating a deterministic graph.
 
 #### 💎 1.2 Value Proposition
-Создание **детерминированного слоя знаний** о коде, который превращает текст в вычислимую модель архитектуры. 
-*   **Для агентов:** Переход от "поиска по тексту" к "навигации по графу".
-*   **Для DeepWiki:** Автоматическая генерация документации, основанной на реальных связях, а не на комментариях.
-*   **Для разработчика:** Инструмент мгновенного анализа влияния (Impact Analysis).
+Establishing a **deterministic knowledge layer** for code that transforms source text into a computable architectural model.
+*   **For Agents:** Transition from "keyword-based search" to "graph-based navigation."
+*   **For DeepWiki:** Automated documentation generation based on actual symbol relationships rather than potentially outdated comments.
+*   **For Developers:** Real-time impact analysis tools for safer refactoring.
 
 #### 🚀 1.3 Target Audience
-1.  **AI Agents (Primary):** Автономные кодеры, которым нужен контекст "выше и ниже" текущей функции.
-2.  **Knowledge Engineers:** Создатели графов знаний для сложных монорепозиториев.
-3.  **DevOps/SRE:** Анализ цепочек вызовов от API-эндпоинта до БД.
+1.  **AI Agents (Primary):** Autonomous coders requiring precise "upward and downward" context of a given function.
+2.  **Knowledge Engineers:** Architects building knowledge graphs for complex monorepositories.
+3.  **DevOps/SRE:** Engineers analyzing call chains from API endpoints down to database schemas.
 
 #### 🛠️ 1.4 Key High-Level Features
-*   **Multi-layer Extraction:** От синтаксиса (AST) до семантики (Domain).
-*   **Deterministic Resolution:** Связи `CALLS` и `IMPORTS` должны быть подтвержденными, а не вероятностными.
-*   **Hybrid Retrieval:** Сочетание векторного поиска (для "fuzzy" запросов) и графового обхода (для "structural" запросов).
+*   **Multi-layer Extraction:** From raw syntax (AST) to high-level semantics (DomainConcepts).
+*   **Deterministic Resolution:** `CALLS` and `IMPORTS` relations must be verified through symbol resolution, not probabilistic estimation.
+*   **Hybrid Retrieval:** Combining vector search (for "fuzzy" intent) with graph traversal (for "structural" accuracy).
 
 ---
 
@@ -27,19 +27,19 @@
 **Focus:** User Interaction & System Capabilities
 
 #### 🔄 2.1 Functional Capabilities
-*   **FC-1: Ingestion Pipeline:** Система должна уметь сканировать репозиторий и строить граф без участия человека.
-*   **FC-2: Structural Querying:** Возможность ответить на вопросы: *"Кто вызывает эту функцию?"*, *"Какие модули импортирует этот класс?"*.
-*   **FC-3: Flow Reconstruction:** Возможность построить путь от `API Endpoint -> Service -> Repository -> DB Table`.
-*   **FC-4: Semantic Uplift:** Автоматическое присвоение "доменов" (например, `Auth`, `Billing`) на основе анализа имен и связей.
-*   **FC-5: Impact Analysis:** Ответ на вопрос: *"Если я изменю сигнатуру этой функции, что сломается в системе?"*.
+*   **FC-1: Ingestion Pipeline:** The system must autonomously scan repositories and construct the graph without human intervention.
+*   **FC-2: Structural Querying:** Ability to answer structural questions: *"Who calls this function?"*, *"Which modules are imported by this class?"*.
+*   **FC-3: Flow Reconstruction:** Capability to trace execution paths from `API Endpoint -> Service -> Repository -> DB Table`.
+*   **FC-4: Semantic Uplift:** Automated assignment of `DomainConcepts` (e.g., `Auth`, `Billing`) based on naming conventions and relationship patterns.
+*   **FC-5: Impact Analysis:** Answering the critical question: *"If I change this function signature, what parts of the system will break?"*.
 
 #### 👤 2.2 User Stories (Agent Perspective)
 *   *As an AI Agent, I want to see the full call stack of a function so that I don't introduce breaking changes.*
 *   *As an AI Agent, I want to know which domain a piece of code belongs to, so I can fetch relevant architectural rules.*
 
 #### 📊 2.3 Accuracy Requirements
-*   **Structural Integrity:** Связи `CALLS` и `DECLARES` должны иметь точность $>95\%$ (на базе AST).
-*   **Semantic Confidence:** Связи семантического слоя (L2) должны сопровождаться `confidence_score` (для фильтрации галлюцинаций).
+*   **Structural Integrity:** `CALLS` and `DECLARES` relations must achieve $>95\%$ accuracy (validated against AST).
+*   **Semantic Confidence:** Semantic layer (L2) relations must include a `confidence_score` to differentiate between facts and heuristic inferences.
 
 ---
 
@@ -47,24 +47,22 @@
 **Focus:** Implementation & Architecture
 
 #### 🏗️ 3.1 High-Level Architecture
-*(Здесь мы опираемся на твои наброски)*
-1.  **Extraction Layer:** Tree-sitter (Python/TS/Go) $\to$ Raw AST.
-2.  **Resolution Layer (The Hard Part):** Symbol Table $\to$ Linkage (склейка вызовов с определениями).
+1.  **Extraction Layer:** Tree-sitter integration (Python/TS/Go) $\to$ Raw AST extraction.
+2.  **Resolution Layer (Core):** Symbol Table management $\to$ Symbol Linkage (binding calls to their respective declarations).
 3.  **Storage Layer:** 
-    *   *L1 (Structural):* SQLite/DuckDB (для быстрых табличных запросов).
-    *   *L2 (Graph):* Neo4j или NetworkX (для обходов графа).
-4.  **Semantic Layer:** LLM-based enrichment (offline job).
-5.  **Access Layer:** FastAPI (Graph Query Engine).
+    *   *L1 (Structural):* SQLite/DuckDB for high-performance relational queries.
+    *   *L2 (Graph):* Neo4j or NetworkX for complex graph traversals.
+4.  **Semantic Layer:** LLM-based enrichment for domain mapping (background process).
+5.  **Access Layer:** FastAPI-powered Graph Query Engine.
 
 #### 🧬 3.2 Data Schema (Ontology)
-*   **Nodes:** `{id, type, name, file, range, metadata, ontology_class}`
-*   **Edges:** `{source, target, type, weight, confidence, context}`
+*   **Nodes (`CodeEntity`):** `{id (FQN), type (NodeType), name, file, range, metadata, ontology_class}`
+*   **Edges:** `{source, target, type (EdgeType), weight, confidence, context}`
 
 #### ⚠️ 3.3 Critical Technical Risks
-*   **Risk 1: Symbol Resolution (Dynamic languages):** В Python легко вызвать функцию, имя которой определяется в рантайме. 
-    *   *Mitigation:* Использование эвристик + маркировка связей как `uncertain`.
-*   **Risk 2: Scalability:** Граф огромного монорепозитория может раздуться.
-    *   *Mitigation:* Использование графовых индексов и партиционирование по модулям/доменам.
+*   **Risk 1: Symbol Resolution in Dynamic Languages:** Python allows runtime function resolution (e.g., `getattr`).
+    *   *Mitigation:* Use heuristics combined with tagging these edges as `uncertain`.
+*   **Risk 2: Scalability:** Graphs for large monorepos can grow exponentially.
+    *   *Mitigation:* Implementing graph indexing and partitioning by module/domain boundaries.
 
 ---
-
