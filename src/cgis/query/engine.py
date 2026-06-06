@@ -1,6 +1,7 @@
 """Implement query engine for code graph."""
 
 from collections import deque
+
 from cgis.core.models import Edge, Node
 from cgis.storage.sqlite_store import SQLiteStore
 

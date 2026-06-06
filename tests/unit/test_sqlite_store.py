@@ -15,6 +15,19 @@ def temp_store() -> SQLiteStore:
     return store
 
 
+def _seed_data() -> tuple[list[Node], list[Edge]]:
+    nodes = [
+        Node(id="A", type=NodeType.FUNCTION, name="A", file_path="f.py", start_line=1, end_line=2),
+        Node(id="B", type=NodeType.FUNCTION, name="B", file_path="f.py", start_line=3, end_line=4),
+        Node(id="C", type=NodeType.FUNCTION, name="C", file_path="f.py", start_line=5, end_line=6),
+    ]
+    edges = [
+        Edge(id="A->B", source="A", target="B", type=EdgeType.CALLS),
+        Edge(id="B->C", source="B", target="C", type=EdgeType.CALLS),
+    ]
+    return nodes, edges
+
+
 def test_save_and_load_graph(temp_store: SQLiteStore) -> None:
     """Check that edges and nodes save and load without corruption."""
     node = Node(
@@ -47,15 +60,7 @@ def test_query_engine_impact_analysis(temp_store: SQLiteStore) -> None:
     Check Impact Analysis (trace to up stack).
     If C changes -> this affect to B -> affect to A.
     """
-    nodes = [
-        Node(id="A", type=NodeType.FUNCTION, name="A", file_path="f.py", start_line=1, end_line=2),
-        Node(id="B", type=NodeType.FUNCTION, name="B", file_path="f.py", start_line=3, end_line=4),
-        Node(id="C", type=NodeType.FUNCTION, name="C", file_path="f.py", start_line=5, end_line=6),
-    ]
-    edges = [
-        Edge(id="A->B", source="A", target="B", type=EdgeType.CALLS),
-        Edge(id="B->C", source="B", target="C", type=EdgeType.CALLS),
-    ]
+    nodes, edges = _seed_data()
     temp_store.save_graph(nodes, edges)
 
     query_engine = QueryEngine(temp_store)
@@ -76,15 +81,7 @@ def test_query_engine_flow_tracing(temp_store: SQLiteStore) -> None:
     Check Flow Tracing (Trace chain of calls down).
     A calls B, who calls C.
     """
-    nodes = [
-        Node(id="A", type=NodeType.FUNCTION, name="A", file_path="f.py", start_line=1, end_line=2),
-        Node(id="B", type=NodeType.FUNCTION, name="B", file_path="f.py", start_line=3, end_line=4),
-        Node(id="C", type=NodeType.FUNCTION, name="C", file_path="f.py", start_line=5, end_line=6),
-    ]
-    edges = [
-        Edge(id="A->B", source="A", target="B", type=EdgeType.CALLS),
-        Edge(id="B->C", source="B", target="C", type=EdgeType.CALLS),
-    ]
+    nodes, edges = _seed_data()
     temp_store.save_graph(nodes, edges)
 
     query_engine = QueryEngine(temp_store)
