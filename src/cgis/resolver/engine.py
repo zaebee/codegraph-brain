@@ -26,7 +26,7 @@ class ResolverEngine:
         """Phase 1: Indexing all nodes for fast resolution."""
         for node in self.nodes.values():
             # Index global functions/symbols
-            if node.type in (NodeType.FUNCTION, NodeType.METHOD):
+            if node.type == NodeType.FUNCTION:
                 # We use the name as a key for direct calls
                 self._global_symbols[node.name] = node.id
 
@@ -36,7 +36,7 @@ class ResolverEngine:
                 # Expected format: "file_path:class_name:method_name"
                 parts = node.id.split(":")
                 if len(parts) >= self.num_parts:
-                    class_fqn = f"{parts[0]}:{parts[1]}"
+                    class_fqn = ":".join(parts[:-1])
                     if class_fqn not in self._class_methods:
                         self._class_methods[class_fqn] = {}
                     self._class_methods[class_fqn][node.name] = node.id
@@ -54,13 +54,13 @@ class ResolverEngine:
                 continue
 
             # Extract the name after 'raw_call:'
-            raw_name = edge.target.replace("raw_call:", "")
+            raw_name = edge.target.removeprefix("raw_call:")
 
             new_target: str | None = None
 
             # Case 1: Handle 'self.method_name'
             if raw_name.startswith("self."):
-                method_name = raw_name.replace("self.", "")
+                method_name = raw_name.removeprefix("self.")
                 new_target = self._resolve_self_call(edge.source, method_name)
 
             # Case 2: Handle direct global call 'func_name'
@@ -95,7 +95,7 @@ class ResolverEngine:
         if len(parts) < self.num_parts:
             return None
 
-        class_fqn = f"{parts[0]}:{parts[1]}"
+        class_fqn = ":".join(parts[:-1])
         return self._class_methods.get(class_fqn, {}).get(method_name)
 
     def _resolve_global_call(self, name: str) -> str | None:
