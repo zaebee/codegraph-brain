@@ -163,6 +163,30 @@ class SQLiteStore:
         cursor = self._conn.execute("SELECT * FROM edges WHERE target = ?", (node_id,))
         return [self._row_to_edge(row) for row in cursor.fetchall()]
 
+    def get_outgoing_edges_batch(self, node_ids: list[str]) -> list[Edge]:
+        """Fetch all outgoing edges for a set of nodes in one query per chunk."""
+        return self._get_edges_batch(node_ids, column="source")
+
+    def get_incoming_edges_batch(self, node_ids: list[str]) -> list[Edge]:
+        """Fetch all incoming edges for a set of nodes in one query per chunk."""
+        return self._get_edges_batch(node_ids, column="target")
+
+    def _get_edges_batch(self, node_ids: list[str], column: str) -> list[Edge]:
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        if not node_ids:
+            return []
+        unique_ids = list(set(node_ids))
+        chunk_size = 999
+        edges: list[Edge] = []
+        for i in range(0, len(unique_ids), chunk_size):
+            chunk = unique_ids[i : i + chunk_size]
+            placeholders = ", ".join(["?"] * len(chunk))
+            query = f"SELECT * FROM edges WHERE {column} IN ({placeholders})"
+            cursor = self._conn.execute(query, chunk)
+            edges.extend(self._row_to_edge(row) for row in cursor.fetchall())
+        return edges
+
     def _row_to_node(self, row: sqlite3.Row) -> Node:
         return Node(
             id=row["id"],
