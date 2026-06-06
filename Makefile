@@ -9,3 +9,6 @@ lint:
 # 3. Type check (The most important one!)
 type-check:
 	uv run mypy src
+
+pytest:
+	uv run pytest
