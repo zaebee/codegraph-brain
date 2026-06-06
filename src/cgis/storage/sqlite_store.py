@@ -32,6 +32,13 @@ class SQLiteStore:
             self._conn.close()
             self._conn = None
 
+    def __enter__(self) -> "SQLiteStore":
+        self.connect()
+        return self
+
+    def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
+        self.disconnect()
+
     def _create_schema(self) -> None:
         schema = """
         CREATE TABLE IF NOT EXISTS nodes (
@@ -172,6 +179,9 @@ class SQLiteStore:
         return self._get_edges_batch(node_ids, column="target")
 
     def _get_edges_batch(self, node_ids: list[str], column: str) -> list[Edge]:
+        if column not in ("source", "target"):
+            msg = f"Invalid column: {column!r}. Must be 'source' or 'target'."
+            raise ValueError(msg)
         if not self._conn:
             raise RuntimeError(self._error_message)
         if not node_ids:
@@ -197,9 +207,9 @@ class SQLiteStore:
             end_line=row["end_line"],
             language=row["language"],
             ontology_class=row["ontology_class"],
-            domains=json.loads(row["domains"]) if row["domains"] else [],
+            domains=json.loads(row["domains"]) or [] if row["domains"] else [],
             confidence_score=row["confidence_score"],
-            metadata=json.loads(row["metadata"]) if row["metadata"] else {},
+            metadata=json.loads(row["metadata"]) or {} if row["metadata"] else {},
         )
 
     def _row_to_edge(self, row: sqlite3.Row) -> Edge:
