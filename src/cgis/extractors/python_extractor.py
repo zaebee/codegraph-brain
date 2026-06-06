@@ -13,15 +13,17 @@ class PythonExtractor(BaseExtractor):
     A concrete extractor for Python source code using tree-sitter.
     """
 
+    LANG: str = "python"
+
     def __init__(self) -> None:
-        self._language = get_language("python")
+        self._language = get_language(self.LANG)
 
     def parse(self, code: str, file_path: str) -> tuple[list[Node], list[Edge]]:
         """
         Extracts structural nodes and edged (Functions, Classes).
         """
-        parser = Parser(self._language)
         code_bytes = code.encode("utf8")
+        parser = Parser(self._language)
         tree = parser.parse(code_bytes)
         root_node: BaseNode = tree.root_node
 
@@ -32,23 +34,26 @@ class PythonExtractor(BaseExtractor):
 
         return nodes, edges
 
-    def _get_func_id(self, node: BaseNode, code_bytes: bytes, file_path: str) -> str:
-        """Generate a fully qualified function/method ID including class context if applicable."""
-        name_node = node.child_by_field_name("name")
-        func_name = self._extract_node_name(name_node, code_bytes)
-        class_name = None
+    def _get_class_prefix(self, node: BaseNode, code_bytes: bytes) -> str | None:
+        """Traverse up to find all containing class names, returning them joined by dots."""
+        class_parts = []
         curr = node.parent
         while curr:
             if curr.type == "class_definition":
                 c_name_node = curr.child_by_field_name("name")
-                class_name = self._extract_node_name(c_name_node, code_bytes)
-                break
-            if curr.type in ("function_definition", "async_function_definition"):
+                class_parts.append(self._extract_node_name(c_name_node, code_bytes))
+            elif curr.type in ("function_definition", "async_function_definition"):
                 break
             curr = curr.parent
-        if class_name:
-            return f"{file_path}:{class_name}.{func_name}:{node.start_point.row + 1}"
-        return f"{file_path}:{func_name}:{node.start_point.row + 1}"
+        return ".".join(reversed(class_parts)) if class_parts else None
+
+    def _get_id(self, node: BaseNode, code_bytes: bytes, file_path: str) -> str:
+        """Generate a fully qualified function/method ID including class context if applicable."""
+        name = node.child_by_field_name("name")
+        node_name = self._extract_node_name(name, code_bytes)
+        prefix = self._get_class_prefix(node, code_bytes)
+        full_name = f"{prefix}.{node_name}" if prefix else node_name
+        return f"{file_path}:{full_name}:{node.start_point.row + 1}"
 
     def _walk(
         self,
@@ -62,13 +67,13 @@ class PythonExtractor(BaseExtractor):
         """
         Recursive AST walker that extracts nodes and edges in a single pass.
         """
-        next_func_id = current_func_id
+        next_id = current_func_id
         if node.type in ("function_definition", "async_function_definition"):
             self._process_function_node(node, code_bytes, file_path, nodes)
-            next_func_id = self._get_func_id(node, code_bytes, file_path)
+            next_id = self._get_id(node, code_bytes, file_path)
         elif node.type == "class_definition":
             self._process_class_node(node, code_bytes, file_path, nodes)
-            next_func_id = None
+            next_id = None
         elif node.type == "call" and current_func_id:
             self._process_call_node(node, code_bytes, file_path, current_func_id, edges)
 
@@ -83,20 +88,20 @@ class PythonExtractor(BaseExtractor):
         nodes: list[Node],
     ) -> None:
         """Process function or method definition node."""
-        name_node = node.child_by_field_name("name")
-        func_name = self._extract_node_name(name_node, code_bytes)
-        func_id = self._get_func_id(node, code_bytes, file_path)
+        name = node.child_by_field_name("name")
+        node_id = self._get_id(node, code_bytes, file_path)
+        node_name = self._extract_node_name(name, code_bytes)
         node_type = NodeType.METHOD if self._is_method(node) else NodeType.FUNCTION
 
         nodes.append(
             Node(
-                id=func_id,
+                id=node_id,
                 type=node_type,
-                name=func_name,
+                name=node_name,
                 file_path=file_path,
                 start_line=node.start_point.row + 1,
                 end_line=node.end_point.row + 1,
-                language="python",
+                language=self.LANG,
             )
         )
 
@@ -104,19 +109,19 @@ class PythonExtractor(BaseExtractor):
         self, node: BaseNode, code_bytes: bytes, file_path: str, nodes: list[Node]
     ) -> None:
         """Process class definition node."""
-        name_node = node.child_by_field_name("name")
-        class_name = self._extract_node_name(name_node, code_bytes)
-        class_id = f"{file_path}:{class_name}:{node.start_point.row + 1}"
+        name = node.child_by_field_name("name")
+        node_id = self._get_id(node, code_bytes, file_path)
+        node_name = self._extract_node_name(name, code_bytes)
 
         nodes.append(
             Node(
-                id=class_id,
+                id=node_id,
                 type=NodeType.CLASS,
-                name=class_name,
+                name=node_name,
                 file_path=file_path,
                 start_line=node.start_point.row + 1,
                 end_line=node.end_point.row + 1,
-                language="python",
+                language=self.LANG,
             )
         )
 
