@@ -1,6 +1,5 @@
 """Implements Pipeline to orcestrate code traversal."""
 
-import logging
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -11,7 +10,6 @@ from cgis.core.models import Edge, Node
 from cgis.extractors.base import BaseExtractor
 from cgis.resolver.engine import ResolverEngine
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = structlog.getLogger(__name__)
 
 
@@ -24,7 +22,7 @@ class IngestionPipeline:
         """
         self._extractors = extractors
 
-    def run(self, repo_path: str) -> tuple[list[Node], list[Edge]]:
+    def run(self, repo_path: str) -> tuple[list[Node], list[Edge], list[Edge]]:
         """
         The main pipeline execution: Walk -> Extract -> Resolve.
         """
@@ -51,7 +49,7 @@ class IngestionPipeline:
 
                     full_path = Path(root) / file
                     try:
-                        with Path.open(full_path, encoding="utf-8") as f:
+                        with full_path.open(encoding="utf-8") as f:
                             code = f.read()
 
                         nodes, edges = extractor.parse(code, str(full_path))
@@ -70,9 +68,9 @@ class IngestionPipeline:
             resolver = ResolverEngine(all_nodes, all_edges)
             resolved_edges = resolver.resolve()
             progress.update(resolve_task, advance=1)
-            logger.info("Resolution complete. Resolved edges.", edges=len(edges))
+            logger.info("Resolution complete. Resolved edges.", edges=len(resolved_edges))
 
-        return all_nodes, resolved_edges
+        return all_nodes, all_edges, resolved_edges
 
     def _get_extractor(self, filename: str) -> BaseExtractor | None:
         for ext, extractor in self._extractors.items():

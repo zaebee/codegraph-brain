@@ -54,7 +54,7 @@ def ingest(
     console.print(f"[bold blue]🚀 Starting ingestion for:[/bold blue] {path}")
 
     try:
-        nodes, edges = pipeline.run(path)
+        nodes, raw_edges, resolved_edges = pipeline.run(path)
 
         if not nodes:
             console.print(
@@ -67,10 +67,10 @@ def ingest(
             "metadata": {
                 "source_path": path,
                 "node_count": len(nodes),
-                "edge_count": len(edges),
+                "edge_count": len(resolved_edges),
             },
             "nodes": [n.model_dump() for n in nodes],
-            "edges": [e.model_dump() for e in edges],
+            "edges": [e.model_dump() for e in resolved_edges],
         }
 
         with Path(output).open("w", encoding="utf-8") as f:
@@ -81,8 +81,8 @@ def ingest(
         table.add_column("Value", style="magenta")
 
         table.add_row("Nodes extracted", str(len(nodes)))
-        table.add_row("Edges extracted (raw)", str(len(edges)))
-        table.add_row("Edges resolved (clean)", str(len(edges)))
+        table.add_row("Edges extracted (raw)", str(len(raw_edges)))
+        table.add_row("Edges resolved (clean)", str(len(resolved_edges)))
 
         console.print(table)
         console.print("[bold green]✅ Success![/bold green] Graph data ready.")
