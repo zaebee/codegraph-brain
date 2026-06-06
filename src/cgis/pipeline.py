@@ -46,7 +46,7 @@ class IngestionPipeline:
             # Task 1: Extraction
             extract_task = progress.add_task(description="Extracting code entities...", total=None)
 
-            for root, dirs, files in Path(repo_path).walk():
+            for root, dirs, files in path.walk():
                 # Skip hidden directories and common dependency/cache folders
                 dirs[:] = [d for d in dirs if not d.startswith(".") and d not in self._excluded]
                 for file in files:
@@ -54,7 +54,7 @@ class IngestionPipeline:
                     if not extractor:
                         continue
 
-                    full_path = Path(root) / file
+                    full_path = root / file
                     try:
                         with full_path.open(encoding="utf-8") as f:
                             code = f.read()
