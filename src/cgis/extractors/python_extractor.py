@@ -20,8 +20,7 @@ class PythonExtractor(BaseExtractor):
         """
         Extracts structural nodes and edged (Functions, Classes).
         """
-        parser = Parser()
-        parser.language = self._language
+        parser = Parser(self._language)
         code_bytes = code.encode("utf8")
         tree = parser.parse(code_bytes)
         root_node: BaseNode = tree.root_node
@@ -52,7 +51,7 @@ class PythonExtractor(BaseExtractor):
                 if name_node
                 else "unknown"
             )
-            func_id = f"{file_path}:{func_name}:{node.start_point[0] + 1}"
+            func_id = f"{file_path}:{func_name}:{node.start_point.row + 1}"
             # Determine if this is a method or a regular function
             is_method = False
             curr = node.parent
@@ -72,8 +71,8 @@ class PythonExtractor(BaseExtractor):
                     type=node_type,
                     name=func_name,
                     file_path=file_path,
-                    start_line=node.start_point[0] + 1,
-                    end_line=node.end_point[0] + 1,
+                    start_line=node.start_point.row + 1,
+                    end_line=node.end_point.row + 1,
                     language="python",
                 )
             )
@@ -86,15 +85,15 @@ class PythonExtractor(BaseExtractor):
                 if name_node
                 else "unknown"
             )
-            class_id = f"{file_path}:{class_name}:{node.start_point[0] + 1}"
+            class_id = f"{file_path}:{class_name}:{node.start_point.row + 1}"
             nodes.append(
                 Node(
                     id=class_id,
                     type=NodeType.CLASS,
                     name=class_name,
                     file_path=file_path,
-                    start_line=node.start_point[0] + 1,
-                    end_line=node.end_point[0] + 1,
+                    start_line=node.start_point.row + 1,
+                    end_line=node.end_point.row + 1,
                     language="python",
                 )
             )
@@ -107,6 +106,15 @@ class PythonExtractor(BaseExtractor):
         """Extract name from AST node using byte slicing."""
         if node.type == "identifier":
             return code_bytes[node.start_byte : node.end_byte].decode("utf8")
+        if node.type in ("attribute", "call", "subscript"):
+            return self._extract_nested_name(node, code_bytes)
+        for child in node.children:
+            if child.type == "identifier":
+                return code_bytes[child.start_byte : child.end_byte].decode("utf8")
+        return "unknown"
+
+    def _extract_nested_name(self, node: BaseNode, code_bytes: bytes) -> str:
+        """Extract nested identifier from attribute/call/subscript nodes."""
         if node.type == "attribute":
             obj_node = node.child_by_field_name("object")
             attr_node = node.child_by_field_name("attribute")
@@ -117,17 +125,14 @@ class PythonExtractor(BaseExtractor):
                 )
             if attr_node:
                 return self._get_identifier(attr_node, code_bytes)
-        if node.type == "call":
+        elif node.type == "call":
             func_node = node.child_by_field_name("function")
             if func_node:
                 return self._get_identifier(func_node, code_bytes)
-        if node.type == "subscript":
+        elif node.type == "subscript":
             value_node = node.child_by_field_name("value")
             if value_node:
                 return self._get_identifier(value_node, code_bytes)
-        for child in node.children:
-            if child.type == "identifier":
-                return code_bytes[child.start_byte : child.end_byte].decode("utf8")
         return "unknown"
 
     def _find_calls(
@@ -151,7 +156,7 @@ class PythonExtractor(BaseExtractor):
                         confidence=0.5,
                         context=f"Call to {call_name}",
                         file_path=file_path,
-                        line_number=node.start_point[0] + 1,
+                        line_number=node.start_point.row + 1,
                     )
                 )
 

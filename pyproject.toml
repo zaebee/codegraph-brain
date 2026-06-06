@@ -44,7 +44,7 @@ select = [
     # isort
     "I",      # isort
     # mccabe
-    # "C90",    # mccabe
+    "C90",    # mccabe
     # pep8-naming
     "N",      # pep8-naming
     # flake8-comprehensions
@@ -86,7 +86,7 @@ select = [
     # Pylint
     "PLC",    # pylint convention
     "PLE",    # pylint error
-    # "PLR",    # pylint refactor
+    "PLR",    # pylint refactor
     "PLW",    # pylint warning
     # tryceratops
     "TRY",    # tryceratops
