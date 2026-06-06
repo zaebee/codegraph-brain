@@ -65,7 +65,7 @@ class SQLiteStore:
             self._conn.executescript(schema)
             self._conn.commit()
 
-    def save_graph(self, nodes: list[Node], edges: list[Edge]) -> None:
+    def save_graph(self, nodes: list[Node], edges: list[Edge], overwrite: bool = False) -> None:
         """Persists all nodes and edges inside a single transaction."""
         if not self._conn:
             msg = "Database not connected."
@@ -73,7 +73,7 @@ class SQLiteStore:
 
         # Insert Nodes
         node_query = """
-        INSERT INTO nodes (
+        INSERT OR REPLACE INTO nodes (
             id, type, name, file_path, start_line, end_line, language,
             ontology_class, domains, confidence_score, metadata
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -97,7 +97,7 @@ class SQLiteStore:
 
         # Insert Edges
         edge_query = """
-        INSERT INTO edges (
+        INSERT OR REPLACE INTO edges (
             id, source, target, type, weight, confidence, context, file_path, line_number
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
@@ -116,15 +116,16 @@ class SQLiteStore:
             for e in edges
         ]
         with self._conn:
-            # Clear old data to prevent duplication on re-ingestion
-            self._conn.execute("DELETE FROM nodes")
-            self._conn.execute("DELETE FROM edges")
+            if overwrite:
+                self._conn.execute("DELETE FROM nodes")
+                self._conn.execute("DELETE FROM edges")
             self._conn.executemany(edge_query, edge_rows)
             self._conn.executemany(node_query, node_rows)
 
     def get_node(self, node_id: str) -> Node | None:
         if not self._conn:
-            return None
+            msg = "Database not connected."
+            raise RuntimeError(msg)
         cursor = self._conn.execute("SELECT * FROM nodes WHERE id = ?", (node_id,))
         row = cursor.fetchone()
         if not row:
@@ -133,13 +134,15 @@ class SQLiteStore:
 
     def get_outgoing_edges(self, node_id: str) -> list[Edge]:
         if not self._conn:
-            return []
+            msg = "Database not connected."
+            raise RuntimeError(msg)
         cursor = self._conn.execute("SELECT * FROM edges WHERE source = ?", (node_id,))
         return [self._row_to_edge(row) for row in cursor.fetchall()]
 
     def get_incoming_edges(self, node_id: str) -> list[Edge]:
         if not self._conn:
-            return []
+            msg = "Database not connected."
+            raise RuntimeError(msg)
         cursor = self._conn.execute("SELECT * FROM edges WHERE target = ?", (node_id,))
         return [self._row_to_edge(row) for row in cursor.fetchall()]
 

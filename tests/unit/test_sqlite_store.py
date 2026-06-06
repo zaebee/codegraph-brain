@@ -12,7 +12,8 @@ def temp_store() -> SQLiteStore:
     """Create temp clean DB in memory for each case."""
     store = SQLiteStore(":memory:")
     store.connect()
-    return store
+    yield store
+    store.disconnect()
 
 
 def _seed_data() -> tuple[list[Node], list[Edge]]:
