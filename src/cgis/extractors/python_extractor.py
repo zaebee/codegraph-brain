@@ -22,9 +22,10 @@ class PythonExtractor(BaseExtractor):
         """
         Extracts structural nodes and edged (Functions, Classes).
         """
-        code_bytes = code.encode("utf8")
         parser = Parser()
         parser.language = self._language
+
+        code_bytes = code.encode("utf8")
         tree = parser.parse(code_bytes)
         root_node: BaseNode = tree.root_node
 
