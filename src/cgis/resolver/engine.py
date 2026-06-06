@@ -28,7 +28,7 @@ class ResolverEngine:
         """Phase 1: Indexing all nodes for fast resolution."""
         for node in self.nodes.values():
             # Index global functions/symbols
-            if node.type == NodeType.FUNCTION:
+            if node.type in (NodeType.FUNCTION, NodeType.CLASS):
                 # We use the name as a key for direct calls, allowing multiple candidates
                 self._global_symbols.setdefault(node.name, []).append(node.id)
                 self._file_global_symbols[(node.file_path, node.name)] = node.id

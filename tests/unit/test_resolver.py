@@ -98,3 +98,44 @@ def test_resolver_resolves_self_call() -> None:
     assert target_edge.target == "app.service:UserService:method_b"
     expected = 0.5
     assert target_edge.confidence > expected
+
+
+def test_resolver_resolves_class_instantiation() -> None:
+    """Check: If resolver is able to resolve class instantiation calls."""
+    nodes = [
+        Node(
+            id="app.main:func_a",
+            type=NodeType.FUNCTION,
+            name="func_a",
+            file_path="main.py",
+            start_line=1,
+            end_line=5,
+            language="python",
+        ),
+        Node(
+            id="app.models:User",
+            type=NodeType.CLASS,
+            name="User",
+            file_path="models.py",
+            start_line=10,
+            end_line=20,
+            language="python",
+        ),
+    ]
+
+    edges = [
+        Edge(
+            id="edge_instantiate",
+            source="app.main:func_a",
+            target="raw_call:User",
+            type=EdgeType.CALLS,
+            confidence=0.5,
+        )
+    ]
+
+    resolver = ResolverEngine(nodes, edges)
+    resolved_edges = resolver.resolve()
+
+    target_edge = next(e for e in resolved_edges if e.id == "edge_instantiate")
+    assert target_edge.target == "app.models:User"
+    assert target_edge.confidence > 0.5
