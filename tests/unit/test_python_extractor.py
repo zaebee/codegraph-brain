@@ -72,7 +72,7 @@ class MyClass:
     assert "method_a" in call_edge.source  # Source - method_a
 
     # 2. Check call via attribute: self.method_b()
-    attr_call_edge = next(e for e in edges if e.target == "raw_call:method_b")
+    attr_call_edge = next(e for e in edges if e.target == "raw_call:self.method_b")
     assert attr_call_edge.type == EdgeType.CALLS
     assert "method_a" in attr_call_edge.source
 

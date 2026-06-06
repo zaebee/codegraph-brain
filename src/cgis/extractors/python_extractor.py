@@ -46,9 +46,13 @@ class PythonExtractor(BaseExtractor):
         """
         # Identify Nodes (Example: Function Definitions)
         if node.type == "function_definition":
-            func_name = self._get_identifier(node, code_bytes)
-            func_id = f"{file_path}:{func_name}:{node.start_point[0]}"
-
+            name_node = node.child_by_field_name("name")
+            func_name = (
+                code_bytes[name_node.start_byte : name_node.end_byte].decode("utf8")
+                if name_node
+                else "unknown"
+            )
+            func_id = f"{file_path}:{func_name}:{node.start_point[0] + 1}"
             # Determine if this is a method or a regular function
             is_method = False
             curr = node.parent
