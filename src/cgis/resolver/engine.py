@@ -12,10 +12,11 @@ class ResolverEngine:
     def __init__(self, nodes: list[Node], edges: list[Edge]) -> None:
         self.nodes = {n.id: n for n in nodes}
         self.edges = edges
-        self.num_parts = 3
+        self.num_parts = 2
 
         # Indices for fast lookup
         self._global_symbols: dict[str, list[str]] = {}  # name -> list of FQNs
+        self._file_global_symbols: dict[tuple[str, str], str] = {}  # (file_path, name) -> FQN
         self._class_methods: dict[
             str, dict[str, str]
         ] = {}  # class_fqn -> {method_name -> method_fqn}
@@ -29,6 +30,7 @@ class ResolverEngine:
             if node.type == NodeType.FUNCTION:
                 # We use the name as a key for direct calls, allowing multiple candidates
                 self._global_symbols.setdefault(node.name, []).append(node.id)
+                self._file_global_symbols[(node.file_path, node.name)] = node.id
 
             # Index methods within classes
             if node.type == NodeType.METHOD:
@@ -108,8 +110,7 @@ class ResolverEngine:
         # Try to disambiguate by matching the source file path
         source_node = self.nodes.get(source_fqn)
         if source_node:
-            for candidate_id in candidates:
-                candidate_node = self.nodes.get(candidate_id)
-                if candidate_node and candidate_node.file_path == source_node.file_path:
-                    return candidate_id
+            same_file_candidate = self._file_global_symbols.get((source_node.file_path, name))
+            if same_file_candidate:
+                return same_file_candidate
         return candidates[0]
