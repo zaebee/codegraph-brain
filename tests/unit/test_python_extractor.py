@@ -89,4 +89,5 @@ def outer():
 
     call_edge = next(e for e in edges if e.target == "raw_call:call_me")
 
-    assert "inner" in call_edge.source or "outer" in call_edge.source
+    assert "inner" in call_edge.source
+    assert "outer" not in call_edge.source

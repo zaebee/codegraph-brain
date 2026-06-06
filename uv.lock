@@ -70,6 +70,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "pydantic" },
+    { name = "tree-sitter" },
     { name = "tree-sitter-language-pack" },
     { name = "tree-sitter-python" },
 ]
@@ -86,6 +87,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "pydantic", specifier = ">=2.13.4" },
+    { name = "tree-sitter", specifier = ">=0.25.2" },
     { name = "tree-sitter-language-pack", specifier = ">=1.8.1" },
     { name = "tree-sitter-python", specifier = ">=0.25.0" },
 ]

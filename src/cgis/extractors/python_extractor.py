@@ -80,8 +80,13 @@ class PythonExtractor(BaseExtractor):
             self._find_calls(node, code_bytes, file_path, func_id, edges)
 
         elif node.type == "class_definition":
-            class_name = self._get_identifier(node, code_bytes)
-            class_id = f"{file_path}:{class_name}:{node.start_point[0]}"
+            name_node = node.child_by_field_name("name")
+            class_name = (
+                code_bytes[name_node.start_byte : name_node.end_byte].decode("utf8")
+                if name_node
+                else "unknown"
+            )
+            class_id = f"{file_path}:{class_name}:{node.start_point[0] + 1}"
             nodes.append(
                 Node(
                     id=class_id,
