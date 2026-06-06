@@ -45,6 +45,7 @@ def top_level():
     # Check method
     method_node = next(n for n in nodes if n.name == "get_user")
     assert method_node.type == NodeType.METHOD
+    assert method_node.id == "test.py:UserService.get_user"
 
     # Check function
     func_node = next(n for n in nodes if n.name == "top_level")
@@ -69,12 +70,12 @@ class MyClass:
     # 1. Check direct call function: target_func()
     call_edge = next(e for e in edges if e.target == "raw_call:target_func")
     assert call_edge.type == EdgeType.CALLS
-    assert "method_a" in call_edge.source  # Source - method_a
+    assert call_edge.source == "test.py:MyClass.method_a"
 
     # 2. Check call via attribute: self.method_b()
     attr_call_edge = next(e for e in edges if e.target == "raw_call:self.method_b")
     assert attr_call_edge.type == EdgeType.CALLS
-    assert "method_a" in attr_call_edge.source
+    assert attr_call_edge.source == "test.py:MyClass.method_a"
 
 
 def test_nested_function_isolation(extractor: PythonExtractor) -> None:
@@ -89,5 +90,17 @@ def outer():
 
     call_edge = next(e for e in edges if e.target == "raw_call:call_me")
 
-    assert "inner" in call_edge.source
-    assert "outer" not in call_edge.source
+    assert call_edge.source == "test.py:outer.inner"
+
+
+def test_extract_async_function(extractor: PythonExtractor) -> None:
+    """Verify that async functions are correctly extracted as FUNCTION nodes."""
+    code = """
+async def fetch_data():
+    await print("done")
+"""
+    nodes, edges = extractor.parse(code, "test.py")
+    func_node = next(n for n in nodes if n.name == "fetch_data")
+    assert func_node.type == NodeType.FUNCTION
+    assert len(edges) == 1
+    assert edges[0].target == "raw_call:print"
