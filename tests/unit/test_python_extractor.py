@@ -45,6 +45,7 @@ def top_level():
     # Check method
     method_node = next(n for n in nodes if n.name == "get_user")
     assert method_node.type == NodeType.METHOD
+    assert method_node.id == "test.py:UserService.get_user:3"
 
     # Check function
     func_node = next(n for n in nodes if n.name == "top_level")

@@ -85,7 +85,7 @@ class PythonExtractor(BaseExtractor):
         """Process function or method definition node."""
         name_node = node.child_by_field_name("name")
         func_name = self._extract_node_name(name_node, code_bytes)
-        func_id = f"{file_path}:{func_name}:{node.start_point.row + 1}"
+        func_id = self._get_func_id(node, code_bytes, file_path)
         node_type = NodeType.METHOD if self._is_method(node) else NodeType.FUNCTION
 
         nodes.append(
