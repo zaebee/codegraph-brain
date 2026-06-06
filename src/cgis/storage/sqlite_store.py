@@ -18,6 +18,8 @@ class SQLiteStore:
 
     def connect(self) -> None:
         """Establishes connection and initializes database schema."""
+        if self._conn is not None:
+            return
         self._conn = sqlite3.connect(self.db_path)
         self._conn.row_factory = sqlite3.Row
         # Enable WAL mode for better write-ahead performance
@@ -139,10 +141,16 @@ class SQLiteStore:
             raise RuntimeError(msg)
         if not node_ids:
             return []
-        placeholders = ", ".join(["?"] * len(node_ids))
-        query = f"SELECT * FROM nodes WHERE id IN ({placeholders})"
-        cursor = self._conn.execute(query, node_ids)
-        return [self._row_to_node(row) for row in cursor.fetchall()]
+        # SQLite has a limit on the number of host parameters (usually 999)
+        chunk_size = 999
+        nodes = []
+        for i in range(0, len(node_ids), chunk_size):
+            chunk = node_ids[i : i + chunk_size]
+            placeholders = ", ".join(["?"] * len(chunk))
+            query = f"SELECT * FROM nodes WHERE id IN ({placeholders})"
+            cursor = self._conn.execute(query, chunk)
+            nodes.extend([self._row_to_node(row) for row in cursor.fetchall()])
+        return nodes
 
     def get_outgoing_edges(self, node_id: str) -> list[Edge]:
         if not self._conn:

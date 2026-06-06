@@ -1,5 +1,7 @@
 """Unit test cases for sqlite storage."""
 
+from collections.abc import Generator
+
 import pytest
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
@@ -8,7 +10,7 @@ from cgis.storage.sqlite_store import SQLiteStore
 
 
 @pytest.fixture
-def temp_store() -> SQLiteStore:
+def temp_store() -> Generator[SQLiteStore, None, None]:
     """Create temp clean DB in memory for each case."""
     store = SQLiteStore(":memory:")
     store.connect()

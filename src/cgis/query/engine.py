@@ -30,6 +30,7 @@ class QueryEngine:
             return [], []
 
         visited_nodes[target_node_id] = start_node
+        discovered_ids = {target_node_id}
         queue = deque([(target_node_id, 0)])
 
         while queue:
@@ -44,11 +45,14 @@ class QueryEngine:
 
                 source_id = edge.source
                 if source_id not in visited_nodes:
-                    # TODO: resolve the N+1 query problem using `get_nodes`
-                    source_node = self.store.get_node(source_id)
-                    if source_node:
-                        visited_nodes[source_id] = source_node
-                        queue.append((source_id, depth + 1))
+                    discovered_ids.add(source_id)
+                    queue.append((source_id, depth + 1))
+
+        # Batch fetch all discovered nodes that aren't already in visited_nodes
+        missing_ids = list(discovered_ids - set(visited_nodes.keys()))
+        if missing_ids:
+            for node in self.store.get_nodes(missing_ids):
+                visited_nodes[node.id] = node
 
         return list(visited_nodes.values()), list(visited_edges.values())
 
@@ -67,6 +71,7 @@ class QueryEngine:
             return [], []
 
         visited_nodes[start_node_id] = start_node
+        discovered_ids = {start_node_id}
         queue = deque([(start_node_id, 0)])
 
         while queue:
@@ -81,10 +86,12 @@ class QueryEngine:
 
                 target_id = edge.target
                 if target_id not in visited_nodes:
-                    # TODO: resolve the N+1 query problem using `get_nodes`
-                    target_node = self.store.get_node(target_id)
-                    if target_node:
-                        visited_nodes[target_id] = target_node
-                        queue.append((target_id, depth + 1))
+                    discovered_ids.add(target_id)
+                    queue.append((target_id, depth + 1))
+
+        missing_ids = list(discovered_ids - set(visited_nodes.keys()))
+        if missing_ids:
+            for node in self.store.get_nodes(missing_ids):
+                visited_nodes[node.id] = node
 
         return list(visited_nodes.values()), list(visited_edges.values())
