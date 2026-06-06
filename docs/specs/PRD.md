@@ -56,7 +56,7 @@ Establishing a **deterministic knowledge layer** for code that transforms source
 5.  **Access Layer:** FastAPI-powered Graph Query Engine.
 
 #### 🧬 3.2 Data Schema (Ontology)
-*   **Nodes (`CodeEntity`):** `{id (FQN), type (NodeType), name, file, range, metadata, ontology_class}`
+*   **Nodes (<code>Node</code>):** <code>{id (FQN), type (NodeType), name, file_path, start_line, end_line, language, metadata, ontology_class, domains, confidence_score}</code>
 *   **Edges:** `{source, target, type (EdgeType), weight, confidence, context}`
 
 #### ⚠️ 3.3 Critical Technical Risks

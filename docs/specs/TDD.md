@@ -37,7 +37,7 @@ Symbol relationships cannot be resolved in a single AST traversal. A three-phase
 2.  **Action:** Analyze `import` and `from ... import ...` statements.
 3.  **Local Namespace Map (LNM) Construction:**
     *   Given `from src.auth.manager import login as auth_login` in `src/api/handler.py`.
-    *   **LNM for this file:** `{"auth_login": "src.auth.manager.login", "manager": "src.auth.manager"}`.
+    *   **LNM for this file:** <code>{"auth_login": "src.auth.manager.login"}</code>.
 4.  **Outcome:** A collection of `FileContext` objects.
 
 ### Phase 3: The Linking Pass (Edge Creation)

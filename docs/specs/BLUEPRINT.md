@@ -18,7 +18,7 @@ A file-specific dictionary mapping local identifiers to global FQNs.
 
 ### C. Scope Stack — "The Navigator"
 Dynamic memory utilized during the traversal of a specific file. It tracks the current hierarchical "depth."
-*   **Stack Item:** `{ type: (CLASS|FUNC|MODULE), fqn: string, local_vars: List[string] }`
+*   **Stack Item:** <code>{ type: (CLASS|FUNCTION|METHOD|MODULE), fqn: string, local_vars: List[string] }</code>
 *   *Example stack within a method:*
     1. `[Module: project.app]`
     2. `[Class: AppService]`
