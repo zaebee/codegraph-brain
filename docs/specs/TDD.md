@@ -11,7 +11,7 @@ To eliminate ambiguity, every node in the graph must possess a unique **FQN**.
 *   **Incorrect:** `id: "save"`
 *   **Correct:** `id: "project.auth.services.UserService.save"`
 
-**FQN Formula:** `[Package/Module Path] . [Class Hierarchy] . [Symbol Name]`
+**FQN Formula:** <code>[Package/Module Path].[Class Hierarchy].[Symbol Name]</code>
 
 ---
 
@@ -48,7 +48,7 @@ Symbol relationships cannot be resolved in a single AST traversal. A three-phase
 3.  **Resolution Algorithm:**
     When a call to `target_name` is detected:
     *   **Step 1 (Local):** Check the current file's `LNM`. Is `auth_login` present? $\to$ `FQN = src.auth.manager.login`.
-    *   **Step 2 (Scope):** If not in `LNM`, check the current `Scope` (is the call within a class method? If so, search for `self.target_name` within that class).
+    *   **Step 2 (Scope):** If not in <code>LNM</code>, check the current <code>Scope</code> (is the call within a class method? If so, search for <code>target_name</code> as a member of that class).
     *   **Step 3 (Global):** If not resolved locally, search the `Global Symbol Table` for global functions.
     *   **Step 4 (Match):** If an `FQN` is found in the `SymbolTable` $\to$ **Create Edge**. If not $\to$ **Create "Unresolved Call"** (critical for debugging and agent awareness).
 

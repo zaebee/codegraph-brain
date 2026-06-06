@@ -57,7 +57,7 @@ Establishing a **deterministic knowledge layer** for code that transforms source
 
 #### 🧬 3.2 Data Schema (Ontology)
 *   **Nodes (<code>Node</code>):** <code>{id (FQN), type (NodeType), name, file_path, start_line, end_line, language, metadata, ontology_class, domains, confidence_score}</code>
-*   **Edges:** `{source, target, type (EdgeType), weight, confidence, context}`
+*   **Edges (<code>Edge</code>):** <code>{id, source, target, type (EdgeType), weight, confidence, context}</code>
 
 #### ⚠️ 3.3 Critical Technical Risks
 *   **Risk 1: Symbol Resolution in Dynamic Languages:** Python allows runtime function resolution (e.g., `getattr`).
