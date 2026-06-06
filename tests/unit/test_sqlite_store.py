@@ -153,6 +153,26 @@ def test_flow_graph_diamond_no_duplicate_visits(temp_store: SQLiteStore) -> None
     assert len(flow_edges) == 4
 
 
+def test_impact_graph_external_node(temp_store: SQLiteStore) -> None:
+    """Impact analysis from a node not in the nodes table must still find callers.
+
+    Unresolved symbols (e.g. raw_call:print) have CALLS edges but no node entry.
+    The traversal should return the callers, not an empty result.
+    """
+    nodes = [_make_node("A")]
+    edges = [_make_edge("A", "Ext")]
+    temp_store.save_graph(nodes, edges)
+
+    query_engine = QueryEngine(temp_store)
+    impact_nodes, impact_edges = query_engine.get_impact_graph("Ext", max_depth=3)
+
+    impact_ids = {n.id for n in impact_nodes}
+    assert "A" in impact_ids
+    assert "Ext" not in impact_ids  # not in nodes table — silently skipped by get_nodes
+    assert len(impact_edges) == 1
+    assert impact_edges[0].source == "A"
+
+
 def test_impact_graph_diamond_no_duplicate_visits(temp_store: SQLiteStore) -> None:
     """Diamond A->B->D, A->C->D: impact from D reaches A exactly once."""
     nodes = [_make_node(n) for n in ("A", "B", "C", "D")]

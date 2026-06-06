@@ -54,10 +54,6 @@ class QueryEngine:
         Level-by-level BFS. Fetches edges for the entire frontier in one
         batch query per level — O(depth) DB roundtrips instead of O(nodes).
         """
-        start_node = self.store.get_node(start_id)
-        if not start_node:
-            return [], []
-
         discovered_ids: set[str] = {start_id}
         visited_edges: dict[str, Edge] = {}
         current_frontier = [start_id]
