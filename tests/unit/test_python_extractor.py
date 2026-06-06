@@ -91,3 +91,16 @@ def outer():
 
     assert "inner" in call_edge.source
     assert "outer" not in call_edge.source
+
+
+def test_extract_async_function(extractor: PythonExtractor) -> None:
+    """Verify that async functions are correctly extracted as FUNCTION nodes."""
+    code = """
+async def fetch_data():
+    await print("done")
+"""
+    nodes, edges = extractor.parse(code, "test.py")
+    func_node = next(n for n in nodes if n.name == "fetch_data")
+    assert func_node.type == NodeType.FUNCTION
+    assert len(edges) == 1
+    assert edges[0].target == "raw_call:print"

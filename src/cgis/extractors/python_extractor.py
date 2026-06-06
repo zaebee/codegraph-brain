@@ -32,6 +32,24 @@ class PythonExtractor(BaseExtractor):
 
         return nodes, edges
 
+    def _get_func_id(self, node: BaseNode, code_bytes: bytes, file_path: str) -> str:
+        """Generate a fully qualified function/method ID including class context if applicable."""
+        name_node = node.child_by_field_name("name")
+        func_name = self._extract_node_name(name_node, code_bytes)
+        class_name = None
+        curr = node.parent
+        while curr:
+            if curr.type == "class_definition":
+                c_name_node = curr.child_by_field_name("name")
+                class_name = self._extract_node_name(c_name_node, code_bytes)
+                break
+            if curr.type in ("function_definition", "async_function_definition"):
+                break
+            curr = curr.parent
+        if class_name:
+            return f"{file_path}:{class_name}.{func_name}:{node.start_point.row + 1}"
+        return f"{file_path}:{func_name}:{node.start_point.row + 1}"
+
     def _walk(
         self,
         node: BaseNode,
@@ -46,10 +64,8 @@ class PythonExtractor(BaseExtractor):
         """
         next_func_id = current_func_id
         if node.type in ("function_definition", "async_function_definition"):
-            self._process_function_node(node, code_bytes, file_path, nodes, edges)
-            name_node = node.child_by_field_name("name")
-            func_name = self._extract_node_name(name_node, code_bytes)
-            next_func_id = f"{file_path}:{func_name}:{node.start_point.row + 1}"
+            self._process_function_node(node, code_bytes, file_path, nodes)
+            next_func_id = self._get_func_id(node, code_bytes, file_path)
         elif node.type == "class_definition":
             self._process_class_node(node, code_bytes, file_path, nodes)
             next_func_id = None
@@ -65,7 +81,6 @@ class PythonExtractor(BaseExtractor):
         code_bytes: bytes,
         file_path: str,
         nodes: list[Node],
-        _edges: list[Edge],
     ) -> None:
         """Process function or method definition node."""
         name_node = node.child_by_field_name("name")
@@ -104,6 +119,32 @@ class PythonExtractor(BaseExtractor):
                 language="python",
             )
         )
+
+    def _process_call_node(
+        self, node: BaseNode, code_bytes: bytes, file_path: str, source_id: str, edges: list[Edge]
+    ) -> None:
+        """
+        Finds call expressions node.
+        """
+        func_node = node.child_by_field_name("function")
+        if func_node:
+            call_name = self._get_identifier(func_node, code_bytes)
+            if call_name == "unknown":
+                return
+            target_id = f"raw_call:{call_name}"
+
+            edges.append(
+                Edge(
+                    id=f"{file_path}:edge_{node.start_byte}_{node.end_byte}",
+                    source=source_id,
+                    target=target_id,
+                    type=EdgeType.CALLS,
+                    confidence=0.5,
+                    context=f"Call to {call_name}",
+                    file_path=file_path,
+                    line_number=node.start_point.row + 1,
+                )
+            )
 
     def _is_method(self, node: BaseNode) -> bool:
         """Check if a function node is a method (defined inside a class)."""
@@ -158,29 +199,3 @@ class PythonExtractor(BaseExtractor):
             if value_node:
                 return self._get_identifier(value_node, code_bytes)
         return "unknown"
-
-    def _process_call_node(
-        self, node: BaseNode, code_bytes: bytes, file_path: str, source_id: str, edges: list[Edge]
-    ) -> None:
-        """
-        Finds call expressions node.
-        """
-        func_node = node.child_by_field_name("function")
-        if func_node:
-            call_name = self._get_identifier(func_node, code_bytes)
-            if call_name == "unknown":
-                return
-            target_id = f"raw_call:{call_name}"
-
-            edges.append(
-                Edge(
-                    id=f"{file_path}:edge_{node.start_byte}_{node.end_byte}",
-                    source=source_id,
-                    target=target_id,
-                    type=EdgeType.CALLS,
-                    confidence=0.5,
-                    context=f"Call to {call_name}",
-                    file_path=file_path,
-                    line_number=node.start_point.row + 1,
-                )
-            )
