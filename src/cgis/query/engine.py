@@ -1,5 +1,6 @@
 """Implement query engine for code graph."""
 
+from collections import deque
 from cgis.core.models import Edge, Node
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -28,10 +29,10 @@ class QueryEngine:
             return [], []
 
         visited_nodes[target_node_id] = start_node
-        queue = [(target_node_id, 0)]
+        queue = deque([(target_node_id, 0)])
 
         while queue:
-            current_id, depth = queue.pop(0)
+            current_id, depth = queue.popleft()
             if depth >= max_depth:
                 continue
 
@@ -64,10 +65,10 @@ class QueryEngine:
             return [], []
 
         visited_nodes[start_node_id] = start_node
-        queue = [(start_node_id, 0)]
+        queue = deque([(start_node_id, 0)])
 
         while queue:
-            current_id, depth = queue.pop(0)
+            current_id, depth = queue.popleft()
             if depth >= max_depth:
                 continue
 

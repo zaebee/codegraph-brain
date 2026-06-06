@@ -19,6 +19,7 @@ class SQLiteStore:
     def connect(self) -> None:
         """Establishes connection and initializes database schema."""
         self._conn = sqlite3.connect(self.db_path)
+        self._conn.row_factory = sqlite3.Row
         # Enable WAL mode for better write-ahead performance
         self._conn.execute("PRAGMA journal_mode=WAL;")
         self._create_schema()
@@ -70,10 +71,6 @@ class SQLiteStore:
             msg = "Database not connected."
             raise RuntimeError(msg)
 
-        # Clear old data to prevent duplication on re-ingestion
-        self._conn.execute("DELETE FROM nodes")
-        self._conn.execute("DELETE FROM edges")
-
         # Insert Nodes
         node_query = """
         INSERT INTO nodes (
@@ -97,7 +94,6 @@ class SQLiteStore:
             )
             for n in nodes
         ]
-        self._conn.executemany(node_query, node_rows)
 
         # Insert Edges
         edge_query = """
@@ -119,8 +115,12 @@ class SQLiteStore:
             )
             for e in edges
         ]
-        self._conn.executemany(edge_query, edge_rows)
-        self._conn.commit()
+        with self._conn:
+            # Clear old data to prevent duplication on re-ingestion
+            self._conn.execute("DELETE FROM nodes")
+            self._conn.execute("DELETE FROM edges")
+            self._conn.executemany(edge_query, edge_rows)
+            self._conn.executemany(node_query, node_rows)
 
     def get_node(self, node_id: str) -> Node | None:
         if not self._conn:
@@ -145,28 +145,28 @@ class SQLiteStore:
 
     def _row_to_node(self, row: sqlite3.Row) -> Node:
         return Node(
-            id=row[0],
-            type=NodeType(row[1]),
-            name=row[2],
-            file_path=row[3],
-            start_line=row[4],
-            end_line=row[5],
-            language=row[6],
-            ontology_class=row[7],
-            domains=json.loads(row[8]) if row[8] else [],
-            confidence_score=row[9],
-            metadata=json.loads(row[10]) if row[10] else {},
+            id=row["id"],
+            type=NodeType(row["type"]),
+            name=row["name"],
+            file_path=row["file_path"],
+            start_line=row["start_line"],
+            end_line=row["end_line"],
+            language=row["language"],
+            ontology_class=row["ontology_class"],
+            domains=json.loads(row["domains"]) if row["domains"] else [],
+            confidence_score=row["confidence_score"],
+            metadata=json.loads(row["metadata"]) if row["metadata"] else {},
         )
 
     def _row_to_edge(self, row: sqlite3.Row) -> Edge:
         return Edge(
-            id=row[0],
-            source=row[1],
-            target=row[2],
-            type=EdgeType(row[3]),
-            weight=row[4],
-            confidence=row[5],
-            context=row[6],
-            file_path=row[7],
-            line_number=row[8],
+            id=row["id"],
+            source=row["source"],
+            target=row["target"],
+            type=EdgeType(row["type"]),
+            weight=row["weight"],
+            confidence=row["confidence"],
+            context=row["context"],
+            file_path=row["file_path"],
+            line_number=row["line_number"],
         )
