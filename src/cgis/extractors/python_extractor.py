@@ -15,15 +15,15 @@ class PythonExtractor(BaseExtractor):
 
     def __init__(self) -> None:
         self._language = get_language("python")
-        self._parser = Parser()
-        self._parser.language = self._language
 
     def parse(self, code: str, file_path: str) -> tuple[list[Node], list[Edge]]:
         """
         Extracts structural nodes and edged (Functions, Classes).
         """
+        parser = Parser()
+        parser.language = self._language
         code_bytes = code.encode("utf8")
-        tree = self._parser.parse(code_bytes)
+        tree = parser.parse(code_bytes)
         root_node: BaseNode = tree.root_node
 
         nodes: list[Node] = []
@@ -121,6 +121,10 @@ class PythonExtractor(BaseExtractor):
             func_node = node.child_by_field_name("function")
             if func_node:
                 return self._get_identifier(func_node, code_bytes)
+        if node.type == "subscript":
+            value_node = node.child_by_field_name("value")
+            if value_node:
+                return self._get_identifier(value_node, code_bytes)
         for child in node.children:
             if child.type == "identifier":
                 return code_bytes[child.start_byte : child.end_byte].decode("utf8")
