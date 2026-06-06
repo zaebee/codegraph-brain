@@ -16,17 +16,17 @@ class PythonExtractor(BaseExtractor):
     LANG: str = "python"
 
     def __init__(self) -> None:
-        self._language = Language(tspython.language())
+        language = Language(tspython.language())
+        self._parser = Parser()
+        self._parser.language = language
 
     def parse(self, code: str, file_path: str) -> tuple[list[Node], list[Edge]]:
         """
         Extracts structural nodes and edged (Functions, Classes).
         """
-        parser = Parser()
-        parser.language = self._language
 
         code_bytes = code.encode("utf8")
-        tree = parser.parse(code_bytes)
+        tree = self._parser.parse(code_bytes)
         root_node: BaseNode = tree.root_node
 
         nodes: list[Node] = []
@@ -165,13 +165,6 @@ class PythonExtractor(BaseExtractor):
             curr = curr.parent
         return False
 
-    def _extract_node_name(self, node: BaseNode | None, code_bytes: bytes) -> str:
-        """Extract node name from name node using byte slicing."""
-        if node:
-            start, end = node.start_byte, node.end_byte
-            return code_bytes[start:end].decode("utf8", errors="replace")
-        return "unknown"
-
     def _get_identifier(self, node: BaseNode, code_bytes: bytes) -> str:
         """Extract name from AST node using byte slicing."""
         if node.type == "identifier":
@@ -185,22 +178,31 @@ class PythonExtractor(BaseExtractor):
             return self._extract_nested_name(node, code_bytes)
         return "unknown"
 
+    def _extract_node_name(self, node: BaseNode | None, code_bytes: bytes) -> str:
+        """Extract node name from name node using byte slicing."""
+        if node:
+            start, end = node.start_byte, node.end_byte
+            return code_bytes[start:end].decode("utf8", errors="replace")
+        return "unknown"
+
+    def _extract_object_attr_name(self, node: BaseNode, code_bytes: bytes) -> str:
+        """Extract identifier from object/attribute nodes."""
+        obj_node = node.child_by_field_name("object")
+        attr_node = node.child_by_field_name("attribute")
+        if obj_node and attr_node:
+            obj_id = self._get_identifier(obj_node, code_bytes)
+            attr_id = self._get_identifier(attr_node, code_bytes)
+            defined = obj_id != "unknown" and attr_id != "unknown"
+            return f"{obj_id}.{attr_id}" if defined else "unknown"
+        if attr_node:
+            return self._get_identifier(attr_node, code_bytes)
+        return "unknown"
+
     def _extract_nested_name(self, node: BaseNode, code_bytes: bytes) -> str:
         """Extract nested identifier from attribute/call/subscript nodes."""
         if node.type == "attribute":
-            obj_node = node.child_by_field_name("object")
-            attr_node = node.child_by_field_name("attribute")
-            if obj_node and attr_node:
-                obj_id = self._get_identifier(obj_node, code_bytes)
-                attr_id = self._get_identifier(attr_node, code_bytes)
-                return (
-                    f"{obj_id}.{attr_id}"
-                    if obj_id != "unknown" and attr_id != "unknown"
-                    else "unknown"
-                )
-            if attr_node:
-                return self._get_identifier(attr_node, code_bytes)
-        elif node.type == "call":
+            return self._extract_object_attr_name(node, code_bytes)
+        if node.type == "call":
             func_node = node.child_by_field_name("function")
             if func_node:
                 return self._get_identifier(func_node, code_bytes)
