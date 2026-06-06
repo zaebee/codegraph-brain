@@ -86,7 +86,7 @@ select = [
     # Pylint
     "PLC",    # pylint convention
     "PLE",    # pylint error
-    "PLR",    # pylint refactor
+    # "PLR",    # pylint refactor
     "PLW",    # pylint warning
     # tryceratops
     "TRY",    # tryceratops

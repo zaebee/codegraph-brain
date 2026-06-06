@@ -39,68 +39,88 @@ class PythonExtractor(BaseExtractor):
         file_path: str,
         nodes: list[Node],
         edges: list[Edge],
+        current_func_id: str | None = None,
     ) -> None:
         """
-        Recursive AST walker.
+        Recursive AST walker that extracts nodes and edges in a single pass.
         """
-        # Identify Nodes (Example: Function Definitions)
+        next_func_id = current_func_id
         if node.type in ("function_definition", "async_function_definition"):
+            self._process_function_node(node, code_bytes, file_path, nodes, edges)
             name_node = node.child_by_field_name("name")
-            func_name = (
-                code_bytes[name_node.start_byte : name_node.end_byte].decode("utf8")
-                if name_node
-                else "unknown"
-            )
-            func_id = f"{file_path}:{func_name}:{node.start_point.row + 1}"
-            # Determine if this is a method or a regular function
-            is_method = False
-            curr = node.parent
-            while curr:
-                if curr.type == "class_definition":
-                    is_method = True
-                    break
-                if curr.type in ("function_definition", "async_function_definition"):
-                    break
-                curr = curr.parent
-
-            node_type = NodeType.METHOD if is_method else NodeType.FUNCTION
-
-            nodes.append(
-                Node(
-                    id=func_id,
-                    type=node_type,
-                    name=func_name,
-                    file_path=file_path,
-                    start_line=node.start_point.row + 1,
-                    end_line=node.end_point.row + 1,
-                    language="python",
-                )
-            )
-            self._find_calls(node, code_bytes, file_path, func_id, edges)
-
+            func_name = self._extract_node_name(name_node, code_bytes)
+            next_func_id = f"{file_path}:{func_name}:{node.start_point.row + 1}"
         elif node.type == "class_definition":
-            name_node = node.child_by_field_name("name")
-            class_name = (
-                code_bytes[name_node.start_byte : name_node.end_byte].decode("utf8")
-                if name_node
-                else "unknown"
-            )
-            class_id = f"{file_path}:{class_name}:{node.start_point.row + 1}"
-            nodes.append(
-                Node(
-                    id=class_id,
-                    type=NodeType.CLASS,
-                    name=class_name,
-                    file_path=file_path,
-                    start_line=node.start_point.row + 1,
-                    end_line=node.end_point.row + 1,
-                    language="python",
-                )
-            )
+            self._process_class_node(node, code_bytes, file_path, nodes)
+            next_func_id = None
+        elif node.type == "call" and current_func_id:
+            self._process_call_node(node, code_bytes, file_path, current_func_id, edges)
 
-        # Recurse
         for child in node.children:
-            self._walk(child, code_bytes, file_path, nodes, edges)
+            self._walk(child, code_bytes, file_path, nodes, edges, next_func_id)
+
+    def _process_function_node(
+        self,
+        node: BaseNode,
+        code_bytes: bytes,
+        file_path: str,
+        nodes: list[Node],
+        _edges: list[Edge],
+    ) -> None:
+        """Process function or method definition node."""
+        name_node = node.child_by_field_name("name")
+        func_name = self._extract_node_name(name_node, code_bytes)
+        func_id = f"{file_path}:{func_name}:{node.start_point.row + 1}"
+        node_type = NodeType.METHOD if self._is_method(node) else NodeType.FUNCTION
+
+        nodes.append(
+            Node(
+                id=func_id,
+                type=node_type,
+                name=func_name,
+                file_path=file_path,
+                start_line=node.start_point.row + 1,
+                end_line=node.end_point.row + 1,
+                language="python",
+            )
+        )
+
+    def _process_class_node(
+        self, node: BaseNode, code_bytes: bytes, file_path: str, nodes: list[Node]
+    ) -> None:
+        """Process class definition node."""
+        name_node = node.child_by_field_name("name")
+        class_name = self._extract_node_name(name_node, code_bytes)
+        class_id = f"{file_path}:{class_name}:{node.start_point.row + 1}"
+
+        nodes.append(
+            Node(
+                id=class_id,
+                type=NodeType.CLASS,
+                name=class_name,
+                file_path=file_path,
+                start_line=node.start_point.row + 1,
+                end_line=node.end_point.row + 1,
+                language="python",
+            )
+        )
+
+    def _is_method(self, node: BaseNode) -> bool:
+        """Check if a function node is a method (defined inside a class)."""
+        curr = node.parent
+        while curr:
+            if curr.type == "class_definition":
+                return True
+            if curr.type in ("function_definition", "async_function_definition"):
+                return False
+            curr = curr.parent
+        return False
+
+    def _extract_node_name(self, name_node: BaseNode | None, code_bytes: bytes) -> str:
+        """Extract node name from name node using byte slicing."""
+        if name_node:
+            return code_bytes[name_node.start_byte : name_node.end_byte].decode("utf8")
+        return "unknown"
 
     def _get_identifier(self, node: BaseNode, code_bytes: bytes) -> str:
         """Extract name from AST node using byte slicing."""
@@ -135,35 +155,26 @@ class PythonExtractor(BaseExtractor):
                 return self._get_identifier(value_node, code_bytes)
         return "unknown"
 
-    def _find_calls(
+    def _process_call_node(
         self, node: BaseNode, code_bytes: bytes, file_path: str, source_id: str, edges: list[Edge]
     ) -> None:
         """
-        Finds call expressions and creates 'raw' edges.
+        Finds call expressions node.
         """
-        if node.type == "call":
-            func_node = node.child_by_field_name("function")
-            if func_node:
-                call_name = self._get_identifier(func_node, code_bytes)
-                target_id = f"raw_call:{call_name}"
+        func_node = node.child_by_field_name("function")
+        if func_node:
+            call_name = self._get_identifier(func_node, code_bytes)
+            target_id = f"raw_call:{call_name}"
 
-                edges.append(
-                    Edge(
-                        id=f"{file_path}:edge_{node.start_byte}_{node.end_byte}",
-                        source=source_id,
-                        target=target_id,
-                        type=EdgeType.CALLS,
-                        confidence=0.5,
-                        context=f"Call to {call_name}",
-                        file_path=file_path,
-                        line_number=node.start_point.row + 1,
-                    )
+            edges.append(
+                Edge(
+                    id=f"{file_path}:edge_{node.start_byte}_{node.end_byte}",
+                    source=source_id,
+                    target=target_id,
+                    type=EdgeType.CALLS,
+                    confidence=0.5,
+                    context=f"Call to {call_name}",
+                    file_path=file_path,
+                    line_number=node.start_point.row + 1,
                 )
-
-        for child in node.children:
-            if child.type not in (
-                "function_definition",
-                "async_function_definition",
-                "class_definition",
-            ):
-                self._find_calls(child, code_bytes, file_path, source_id, edges)
+            )

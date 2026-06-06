@@ -78,7 +78,7 @@ class MyClass:
 
 
 def test_nested_function_isolation(extractor: PythonExtractor) -> None:
-    """ "Check that calls inside inner function doesnt belong outer."""
+    """Check that calls inside inner function don't belong to outer."""
     code = """
 def outer():
     def inner():
