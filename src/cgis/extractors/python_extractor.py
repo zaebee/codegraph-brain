@@ -44,15 +44,28 @@ class PythonExtractor(BaseExtractor):
         """
         Recursive AST walker.
         """
-        # 1. Identify Nodes (Example: Function Definitions)
+        # Identify Nodes (Example: Function Definitions)
         if node.type == "function_definition":
             func_name = self._get_identifier(node, code_bytes)
             func_id = f"{file_path}:{func_name}:{node.start_point[0]}"
 
+            # Determine if this is a method or a regular function
+            is_method = False
+            curr = node.parent
+            while curr:
+                if curr.type == "class_definition":
+                    is_method = True
+                    break
+                if curr.type == "function_definition":
+                    break
+                curr = curr.parent
+
+            node_type = NodeType.METHOD if is_method else NodeType.FUNCTION
+
             nodes.append(
                 Node(
                     id=func_id,
-                    type=NodeType.FUNCTION,
+                    type=node_type,
                     name=func_name,
                     file_path=file_path,
                     start_line=node.start_point[0],
@@ -60,15 +73,20 @@ class PythonExtractor(BaseExtractor):
                     language="python",
                 )
             )
-
             self._find_calls(node, code_bytes, file_path, func_id, edges)
 
-        # 3. Recurse
+        # Recurse
         for child in node.children:
             self._walk(child, code_bytes, file_path, nodes, edges)
 
     def _get_identifier(self, node: BaseNode, code_bytes: bytes) -> str:
         """Extract name from AST node using byte slicing."""
+        if node.type == "identifier":
+            return code_bytes[node.start_byte : node.end_byte].decode("utf8")
+        if node.type == "attribute":
+            attr_node = node.child_by_field_name("attribute")
+            if attr_node:
+                return code_bytes[attr_node.start_byte : attr_node.end_byte].decode("utf8")
         for child in node.children:
             if child.type == "identifier":
                 return code_bytes[child.start_byte : child.end_byte].decode("utf8")
@@ -88,14 +106,17 @@ class PythonExtractor(BaseExtractor):
 
                 edges.append(
                     Edge(
-                        id=f"edge_{node.start_byte}",
+                        id=f"{file_path}:edge_{node.start_byte}",
                         source=source_id,
                         target=target_id,
                         type=EdgeType.CALLS,
                         confidence=0.5,
                         context=f"Call to {call_name}",
+                        file_path=file_path,
+                        line_number=node.start_point[0],
                     )
                 )
 
         for child in node.children:
-            self._find_calls(child, code_bytes, file_path, source_id, edges)
+            if child.type not in ("function_definition", "class_definition"):
+                self._find_calls(child, code_bytes, file_path, source_id, edges)
