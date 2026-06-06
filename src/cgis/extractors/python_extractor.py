@@ -69,8 +69,7 @@ class PythonExtractor(BaseExtractor):
         """
         next_id = current_func_id
         if node.type in ("function_definition", "async_function_definition"):
-            self._process_function_node(node, code_bytes, file_path, nodes)
-            next_id = self._get_id(node, code_bytes, file_path)
+            next_id = self._process_function_node(node, code_bytes, file_path, nodes)
         elif node.type == "class_definition":
             self._process_class_node(node, code_bytes, file_path, nodes)
             next_id = None
@@ -86,11 +85,11 @@ class PythonExtractor(BaseExtractor):
         code_bytes: bytes,
         file_path: str,
         nodes: list[Node],
-    ) -> None:
+    ) -> str:
         """Process function or method definition node."""
-        name = node.child_by_field_name("name")
+        child = node.child_by_field_name("name")
         node_id = self._get_id(node, code_bytes, file_path)
-        node_name = self._extract_node_name(name, code_bytes)
+        node_name = self._extract_node_name(child, code_bytes)
         node_type = NodeType.METHOD if self._is_method(node) else NodeType.FUNCTION
 
         nodes.append(
@@ -104,19 +103,21 @@ class PythonExtractor(BaseExtractor):
                 language=self.LANG,
             )
         )
+        return node_id
 
     def _process_class_node(
         self, node: BaseNode, code_bytes: bytes, file_path: str, nodes: list[Node]
     ) -> None:
         """Process class definition node."""
-        name = node.child_by_field_name("name")
+        child = node.child_by_field_name("name")
         node_id = self._get_id(node, code_bytes, file_path)
-        node_name = self._extract_node_name(name, code_bytes)
+        node_name = self._extract_node_name(child, code_bytes)
+        node_type = NodeType.CLASS
 
         nodes.append(
             Node(
                 id=node_id,
-                type=NodeType.CLASS,
+                type=node_type,
                 name=node_name,
                 file_path=file_path,
                 start_line=node.start_point.row + 1,
@@ -131,19 +132,20 @@ class PythonExtractor(BaseExtractor):
         """
         Finds call expressions node.
         """
-        func_node = node.child_by_field_name("function")
-        if func_node:
-            call_name = self._get_identifier(func_node, code_bytes)
+        child = node.child_by_field_name("function")
+        edge_id = f"{file_path}:edge_{node.start_byte}_{node.end_byte}"
+        if child:
+            call_name = self._get_identifier(child, code_bytes)
             if call_name == "unknown":
                 return
             target_id = f"raw_call:{call_name}"
 
             edges.append(
                 Edge(
-                    id=f"{file_path}:edge_{node.start_byte}_{node.end_byte}",
+                    id=edge_id,
+                    type=EdgeType.CALLS,
                     source=source_id,
                     target=target_id,
-                    type=EdgeType.CALLS,
                     confidence=0.5,
                     context=f"Call to {call_name}",
                     file_path=file_path,
@@ -172,7 +174,8 @@ class PythonExtractor(BaseExtractor):
     def _get_identifier(self, node: BaseNode, code_bytes: bytes) -> str:
         """Extract name from AST node using byte slicing."""
         if node.type == "identifier":
-            return code_bytes[node.start_byte : node.end_byte].decode("utf8")
+            start, end = node.start_byte, node.end_byte
+            return code_bytes[start:end].decode("utf8", errors="replace")
         if node.type == "parenthesized_expression":
             for child in node.children:
                 if child.type not in ("(", ")"):
@@ -187,10 +190,9 @@ class PythonExtractor(BaseExtractor):
             obj_node = node.child_by_field_name("object")
             attr_node = node.child_by_field_name("attribute")
             if obj_node and attr_node:
-                return (
-                    f"{self._get_identifier(obj_node, code_bytes)}"
-                    f".{self._get_identifier(attr_node, code_bytes)}"
-                )
+                obj_id = self._get_identifier(obj_node, code_bytes)
+                attr_id = self._get_identifier(attr_node, code_bytes)
+                return f"{obj_id}.{attr_id}"
             if attr_node:
                 return self._get_identifier(attr_node, code_bytes)
         elif node.type == "call":
