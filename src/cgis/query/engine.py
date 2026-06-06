@@ -44,7 +44,7 @@ class QueryEngine:
                     visited_edges[edge.id] = edge
 
                 source_id = edge.source
-                if source_id not in visited_nodes:
+                if source_id not in discovered_ids:
                     discovered_ids.add(source_id)
                     queue.append((source_id, depth + 1))
 
@@ -85,7 +85,7 @@ class QueryEngine:
                     visited_edges[edge.id] = edge
 
                 target_id = edge.target
-                if target_id not in visited_nodes:
+                if target_id not in discovered_ids:
                     discovered_ids.add(target_id)
                     queue.append((target_id, depth + 1))
 
