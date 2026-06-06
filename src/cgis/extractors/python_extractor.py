@@ -78,7 +78,7 @@ class PythonExtractor(BaseExtractor):
             self._process_call_node(node, code_bytes, file_path, current_func_id, edges)
 
         for child in node.children:
-            self._walk(child, code_bytes, file_path, nodes, edges, next_func_id)
+            self._walk(child, code_bytes, file_path, nodes, edges, next_id)
 
     def _process_function_node(
         self,
@@ -178,9 +178,6 @@ class PythonExtractor(BaseExtractor):
                     return self._get_identifier(child, code_bytes)
         if node.type in ("attribute", "call", "subscript"):
             return self._extract_nested_name(node, code_bytes)
-        for child in node.children:
-            if child.type == "identifier":
-                return code_bytes[child.start_byte : child.end_byte].decode("utf8")
         return "unknown"
 
     def _extract_nested_name(self, node: BaseNode, code_bytes: bytes) -> str:
