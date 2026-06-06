@@ -21,7 +21,7 @@ class SQLiteStore:
         """Establishes connection and initializes database schema."""
         if self._conn is not None:
             return
-        self._conn = sqlite3.connect(self.db_path)
+        self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         # Enable WAL mode for better write-ahead performance
         self._conn.execute("PRAGMA journal_mode=WAL;")
@@ -139,11 +139,12 @@ class SQLiteStore:
             raise RuntimeError(self._error_message)
         if not node_ids:
             return []
+        unique_ids = list(set(node_ids))
         # SQLite has a limit on the number of host parameters (usually 999)
         chunk_size = 999
         nodes = []
-        for i in range(0, len(node_ids), chunk_size):
-            chunk = node_ids[i : i + chunk_size]
+        for i in range(0, len(unique_ids), chunk_size):
+            chunk = unique_ids[i : i + chunk_size]
             placeholders = ", ".join(["?"] * len(chunk))
             query = f"SELECT * FROM nodes WHERE id IN ({placeholders})"
             cursor = self._conn.execute(query, chunk)
