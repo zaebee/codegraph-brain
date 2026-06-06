@@ -6,12 +6,16 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.13.4",
+    "tree-sitter>=0.25.2",
+    "tree-sitter-python>=0.25.0",
 ]
 
 [dependency-groups]
 dev = [
+    "ipdb>=0.13.13",
     "mypy>=2.1.0",
     "pytest>=9.0.3",
+    "pytest-cov>=7.1.0",
     "ruff>=0.15.16",
 ]
 
@@ -24,7 +28,72 @@ line-length = 100
 # Enable many plugins: 
 # E/W (pycodestyle), F (Pyflakes), I (isort), B (bugbear), UP (pyupgrade), 
 # SIM (flake8-simplicity), ARG (flake8-unused-arguments)
-select = ["E", "F", "I", "B", "UP", "SIM", "ARG", "C4"]
+select = [
+    # pycodestyle
+    "E",      # Error
+    "W",      # Warning
+    # Pyflakes
+    "F",      # pyflakes
+    # pyupgrade
+    "UP",     # pyupgrade
+    # flake8-bugbear
+    "B",      # flake8-bugbear
+    # flake8-simplify
+    "SIM",    # flake8-simplify
+    # isort
+    "I",      # isort
+    # mccabe
+    "C90",    # mccabe
+    # pep8-naming
+    "N",      # pep8-naming
+    # flake8-comprehensions
+    "C4",     # flake8-comprehensions
+    # flake8-annotations
+    "ANN",    # flake8-annotations
+    # flake8-async
+    "ASYNC",  # flake8-async
+    # flake8-bandit
+    # "S",      # flake8-bandit
+    # flake8-boolean-trap
+    "FBT",    # flake8-boolean-trap
+    # flake8-builtins
+    "A",      # flake8-builtins
+    # flake8-errmsg
+    "EM",     # flake8-errmsg
+    # flake8-implicit-str-concat
+    "ISC",    # flake8-implicit-str-concat
+    # flake8-logging-format
+    "G",      # flake8-logging-format
+    # flake8-pie
+    "PIE",    # flake8-pie
+    # flake8-pytest-style
+    "PT",     # flake8-pytest-style
+    # flake8-quotes
+    "Q",      # flake8-quotes
+    # flake8-raise
+    "RSE",    # flake8-raise
+    # flake8-return
+    "RET",    # flake8-return
+    # flake8-self
+    "SLF",    # flake8-self
+    # flake8-type-checking
+    "TCH",    # flake8-type-checking
+    # flake8-unused-arguments
+    "ARG",    # flake8-unused-arguments
+    # flake8-use-pathlib
+    "PTH",    # flake8-use-pathlib
+    # Pylint
+    "PLC",    # pylint convention
+    "PLE",    # pylint error
+    # "PLR",    # pylint refactor
+    "PLW",    # pylint warning
+    # tryceratops
+    "TRY",    # tryceratops
+    # Perflint
+    "PERF",   # perflint
+    # Ruff-specific rules
+    "RUF",    # Ruff-specific rules
+]
 ignore = []
 
 [tool.ruff.lint.isort]

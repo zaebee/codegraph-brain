@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 
 
-def test_valid_node_creation():
+def test_valid_node_creation() -> None:
     """Verify that a standard function node is created correctly."""
     node = Node(
         id="src.auth.service.login",
@@ -19,12 +19,12 @@ def test_valid_node_creation():
     )
     assert node.id == "src.auth.service.login"
     assert node.type == NodeType.FUNCTION
-    assert node.confidence_score == 1.0
+    assert node.confidence_score == pytest.approx(1.0)
 
 
-def test_invalid_confidence_score():
+def test_invalid_confidence_score() -> None:
     """Verify that Pydantic catches confidence scores out of bounds."""
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Input should be less than or equal to 1"):
         Node(
             id="bad.node",
             type=NodeType.FUNCTION,
@@ -32,11 +32,11 @@ def test_invalid_confidence_score():
             file_path="err.py",
             start_line=1,
             end_line=2,
-            confidence_score=1.5,  # Should fail (max 1.0)
+            confidence_score=1.5,
         )
 
 
-def test_edge_creation():
+def test_edge_creation() -> None:
     """Verify that an edge correctly links two FQNs."""
     edge = Edge(
         id="edge_1",
@@ -48,7 +48,7 @@ def test_edge_creation():
     assert edge.type == EdgeType.CALLS
 
 
-def test_immutability():
+def test_immutability() -> None:
     """Verify that nodes are frozen (cannot be changed after creation)."""
     node = Node(
         id="immut.node",
@@ -59,5 +59,4 @@ def test_immutability():
         end_line=2,
     )
     with pytest.raises(ValidationError):
-        # type: ignore (mypy would catch this, but we test runtime too)
-        node.name = "new_name"
+        node.name = "new_name"  # type: ignore
