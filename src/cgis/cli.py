@@ -73,7 +73,9 @@ def ingest(
             "edges": [e.model_dump() for e in resolved_edges],
         }
 
-        with Path(output).open("w", encoding="utf-8") as f:
+        output_path = Path(output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with output_path.open("w", encoding="utf-8") as f:
             json.dump(graph_data, f, indent=2)
 
         table = Table(title="Ingestion Summary")

@@ -21,6 +21,7 @@ class IngestionPipeline:
                         e.g., {".py": PythonExtractor()}
         """
         self._extractors = extractors
+        self._excluded = {"venv", ".venv", "__pycache__", "node_modules", "build", "dist"}
 
     def run(self, repo_path: str) -> tuple[list[Node], list[Edge], list[Edge]]:
         """
@@ -29,9 +30,13 @@ class IngestionPipeline:
         all_nodes: list[Node] = []
         all_edges: list[Edge] = []
 
-        if not Path(repo_path).exists():
+        path = Path(repo_path)
+        if not path.exists():
             msg = f"Path not found: {repo_path}"
             raise FileNotFoundError(msg)
+        if not path.is_dir():
+            msg = f"Path is not a directory: {repo_path}"
+            raise NotADirectoryError(msg)
 
         with Progress(
             SpinnerColumn(),
@@ -41,7 +46,9 @@ class IngestionPipeline:
             # Task 1: Extraction
             extract_task = progress.add_task(description="Extracting code entities...", total=None)
 
-            for root, _, files in Path(repo_path).walk():
+            for root, dirs, files in Path(repo_path).walk():
+                # Skip hidden directories and common dependency/cache folders
+                dirs[:] = [d for d in dirs if not d.startswith(".") and d not in self._excluded]
                 for file in files:
                     extractor = self._get_extractor(file)
                     if not extractor:
@@ -54,7 +61,9 @@ class IngestionPipeline:
 
                         nodes, edges = extractor.parse(code, str(full_path))
                         if nodes:
-                            logger.info("Parsed nodes from file", nodes=len(nodes), file=file)
+                            logger.info(
+                                "Parsed nodes from file", nodes=len(nodes), full_path=str(full_path)
+                            )
                         all_nodes.extend(nodes)
                         all_edges.extend(edges)
                     except Exception as e:
