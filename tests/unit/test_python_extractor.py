@@ -11,7 +11,7 @@ def extractor() -> PythonExtractor:
     return PythonExtractor()
 
 
-def test_extract_simple_function(extractor) -> None:
+def test_extract_simple_function(extractor: PythonExtractor) -> None:
     code = """
 def hello():
     print("world")
@@ -27,7 +27,7 @@ def hello():
     assert edges[0].target == "raw_call:print"
 
 
-def test_extract_class_and_method(extractor) -> None:
+def test_extract_class_and_method(extractor: PythonExtractor) -> None:
     code = """
 class UserService:
     def get_user(self):
@@ -36,7 +36,7 @@ class UserService:
 def top_level():
     pass
 """
-    nodes, edges = extractor.parse(code, "test.py")
+    nodes, _edges = extractor.parse(code, "test.py")
 
     # Check class
     class_node = next(n for n in nodes if n.name == "UserService")
@@ -51,7 +51,7 @@ def top_level():
     assert func_node.type == NodeType.FUNCTION
 
 
-def test_extract_call_and_attribute(extractor) -> None:
+def test_extract_call_and_attribute(extractor: PythonExtractor) -> None:
     code = """
 def target_func():
     pass
@@ -64,7 +64,7 @@ class MyClass:
     def method_b(self):
         pass
 """
-    nodes, edges = extractor.parse(code, "test.py")
+    _nodes, edges = extractor.parse(code, "test.py")
 
     # 1. Check direct call function: target_func()
     call_edge = next(e for e in edges if e.target == "raw_call:target_func")
@@ -77,7 +77,7 @@ class MyClass:
     assert "method_a" in attr_call_edge.source
 
 
-def test_nested_function_isolation(extractor) -> None:
+def test_nested_function_isolation(extractor: PythonExtractor) -> None:
     """ "Check that calls inside inner function doesnt belong outer."""
     code = """
 def outer():
@@ -85,7 +85,7 @@ def outer():
         call_me()
     inner()
 """
-    nodes, edges = extractor.parse(code, "test.py")
+    _nodes, edges = extractor.parse(code, "test.py")
 
     call_edge = next(e for e in edges if e.target == "raw_call:call_me")
 

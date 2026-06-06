@@ -24,7 +24,7 @@ def test_valid_node_creation() -> None:
 
 def test_invalid_confidence_score() -> None:
     """Verify that Pydantic catches confidence scores out of bounds."""
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Input should be less than or equal to 1"):
         Node(
             id="bad.node",
             type=NodeType.FUNCTION,
@@ -32,7 +32,7 @@ def test_invalid_confidence_score() -> None:
             file_path="err.py",
             start_line=1,
             end_line=2,
-            confidence_score=1.5,  # Should fail (max 1.0)
+            confidence_score=1.5,
         )
 
 

@@ -25,4 +25,3 @@ class BaseExtractor(ABC):
         Returns:
             A tuple containing (list_of_nodes, list_of_edges).
         """
-        pass
