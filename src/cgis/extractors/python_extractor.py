@@ -35,24 +35,23 @@ class PythonExtractor(BaseExtractor):
 
         return nodes, edges
 
-    def _get_class_prefix(self, node: BaseNode, code_bytes: bytes) -> str | None:
-        """Traverse up to find all containing class names, returning them joined by dots."""
-        class_parts = []
+    def _get_fqn_prefix(self, node: BaseNode, code_bytes: bytes) -> str | None:
+        """Traverse up to find class and function names, returning them joined by dots."""
+        parts = []
         curr = node.parent
+        extract_types = ("class_definition", "function_definition", "async_function_definition")
         while curr:
-            if curr.type == "class_definition":
-                c_name_node = curr.child_by_field_name("name")
-                class_parts.append(self._extract_node_name(c_name_node, code_bytes))
-            elif curr.type in ("function_definition", "async_function_definition"):
-                break
+            if curr.type in extract_types:
+                name_node = curr.child_by_field_name("name")
+                parts.append(self._extract_node_name(name_node, code_bytes))
             curr = curr.parent
-        return ".".join(reversed(class_parts)) if class_parts else None
+        return ".".join(reversed(parts)) if parts else None
 
     def _get_id(self, node: BaseNode, code_bytes: bytes, file_path: str) -> str:
-        """Generate a fully qualified function/method ID including class context if applicable."""
+        """Generate a fully qualified function/method ID including class/function context."""
         name = node.child_by_field_name("name")
         node_name = self._extract_node_name(name, code_bytes)
-        prefix = self._get_class_prefix(node, code_bytes)
+        prefix = self._get_fqn_prefix(node, code_bytes)
         full_name = f"{prefix}.{node_name}" if prefix else node_name
         return f"{file_path}:{full_name}"
 
@@ -167,7 +166,7 @@ class PythonExtractor(BaseExtractor):
         """Extract node name from name node using byte slicing."""
         if node:
             start, end = node.start_byte, node.end_byte
-            return code_bytes[start:end].decode("utf8")
+            return code_bytes[start:end].decode("utf8", errors="replace")
         return "unknown"
 
     def _get_identifier(self, node: BaseNode, code_bytes: bytes) -> str:

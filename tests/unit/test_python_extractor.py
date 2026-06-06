@@ -70,12 +70,12 @@ class MyClass:
     # 1. Check direct call function: target_func()
     call_edge = next(e for e in edges if e.target == "raw_call:target_func")
     assert call_edge.type == EdgeType.CALLS
-    assert "method_a" in call_edge.source  # Source - method_a
+    assert call_edge.source == "test.py:MyClass.method_a"
 
     # 2. Check call via attribute: self.method_b()
     attr_call_edge = next(e for e in edges if e.target == "raw_call:self.method_b")
     assert attr_call_edge.type == EdgeType.CALLS
-    assert "method_a" in attr_call_edge.source
+    assert attr_call_edge.source == "test.py:MyClass.method_a"
 
 
 def test_nested_function_isolation(extractor: PythonExtractor) -> None:
@@ -90,8 +90,7 @@ def outer():
 
     call_edge = next(e for e in edges if e.target == "raw_call:call_me")
 
-    assert "inner" in call_edge.source
-    assert "outer" not in call_edge.source
+    assert call_edge.source == "test.py:outer.inner"
 
 
 def test_extract_async_function(extractor: PythonExtractor) -> None:
