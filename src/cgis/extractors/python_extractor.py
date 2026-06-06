@@ -16,9 +16,7 @@ class PythonExtractor(BaseExtractor):
     LANG: str = "python"
 
     def __init__(self) -> None:
-        language = Language(tspython.language())
-        self._parser = Parser()
-        self._parser.language = language
+        self._parser = Parser(Language(tspython.language()))
 
     def parse(self, code: str, file_path: str) -> tuple[list[Node], list[Edge]]:
         """
