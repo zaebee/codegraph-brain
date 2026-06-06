@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+from pathlib import Path
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 
@@ -21,10 +22,12 @@ class SQLiteStore:
         """Establishes connection and initializes database schema."""
         if self._conn is not None:
             return
+        if self.db_path != ":memory:":
+            Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
-        # Enable WAL mode for better write-ahead performance
         self._conn.execute("PRAGMA journal_mode=WAL;")
+        self._conn.execute("PRAGMA busy_timeout=5000;")
         self._create_schema()
 
     def disconnect(self) -> None:
