@@ -60,7 +60,7 @@ class PythonExtractor(BaseExtractor):
                 if curr.type == "class_definition":
                     is_method = True
                     break
-                if curr.type == "function_definition":
+                if curr.type in ("function_definition", "async_function_definition"):
                     break
                 curr = curr.parent
 
@@ -156,5 +156,9 @@ class PythonExtractor(BaseExtractor):
                 )
 
         for child in node.children:
-            if child.type not in ("function_definition", "class_definition"):
+            if child.type not in (
+                "function_definition",
+                "async_function_definition",
+                "class_definition",
+            ):
                 self._find_calls(child, code_bytes, file_path, source_id, edges)
