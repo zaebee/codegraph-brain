@@ -15,7 +15,7 @@ class ResolverEngine:
         self.num_parts = 3
 
         # Indices for fast lookup
-        self._global_symbols: dict[str, str] = {}  # name -> FQN
+        self._global_symbols: dict[str, list[str]] = {}  # name -> list of FQNs
         self._class_methods: dict[
             str, dict[str, str]
         ] = {}  # class_fqn -> {method_name -> method_fqn}
@@ -27,8 +27,8 @@ class ResolverEngine:
         for node in self.nodes.values():
             # Index global functions/symbols
             if node.type == NodeType.FUNCTION:
-                # We use the name as a key for direct calls
-                self._global_symbols[node.name] = node.id
+                # We use the name as a key for direct calls, allowing multiple candidates
+                self._global_symbols.setdefault(node.name, []).append(node.id)
 
             # Index methods within classes
             if node.type == NodeType.METHOD:
@@ -65,7 +65,7 @@ class ResolverEngine:
 
             # Case 2: Handle direct global call 'func_name'
             else:
-                new_target = self._resolve_global_call(raw_name)
+                new_target = self._resolve_global_call(raw_name, edge.source)
 
             if new_target and new_target in self.nodes:
                 # Create a new resolved edge with higher confidence
@@ -98,6 +98,18 @@ class ResolverEngine:
         class_fqn = ":".join(parts[:-1])
         return self._class_methods.get(class_fqn, {}).get(method_name)
 
-    def _resolve_global_call(self, name: str) -> str | None:
-        """Attempts to find a global function by name."""
-        return self._global_symbols.get(name)
+    def _resolve_global_call(self, name: str, source_fqn: str) -> str | None:
+        """Attempts to find a global function by name, preferring the same file context."""
+        candidates = self._global_symbols.get(name, [])
+        if not candidates:
+            return None
+        if len(candidates) == 1:
+            return candidates[0]
+        # Try to disambiguate by matching the source file path
+        source_node = self.nodes.get(source_fqn)
+        if source_node:
+            for candidate_id in candidates:
+                candidate_node = self.nodes.get(candidate_id)
+                if candidate_node and candidate_node.file_path == source_node.file_path:
+                    return candidate_id
+        return candidates[0]
