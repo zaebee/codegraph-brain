@@ -12,7 +12,7 @@ class ResolverEngine:
     def __init__(self, nodes: list[Node], edges: list[Edge]) -> None:
         self.nodes = {n.id: n for n in nodes}
         self.edges = edges
-        self.num_parts = 2
+        self.num_parts = 3
 
         # Indices for fast lookup
         self._global_symbols: dict[str, list[str]] = {}  # name -> list of FQNs
@@ -113,4 +113,4 @@ class ResolverEngine:
             same_file_candidate = self._file_global_symbols.get((source_node.file_path, name))
             if same_file_candidate:
                 return same_file_candidate
-        return candidates[0]
+        return None
