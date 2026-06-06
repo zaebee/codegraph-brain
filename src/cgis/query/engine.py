@@ -44,6 +44,7 @@ class QueryEngine:
 
                 source_id = edge.source
                 if source_id not in visited_nodes:
+                    # TODO: resolve the N+1 query problem using `get_nodes`
                     source_node = self.store.get_node(source_id)
                     if source_node:
                         visited_nodes[source_id] = source_node
@@ -80,6 +81,7 @@ class QueryEngine:
 
                 target_id = edge.target
                 if target_id not in visited_nodes:
+                    # TODO: resolve the N+1 query problem using `get_nodes`
                     target_node = self.store.get_node(target_id)
                     if target_node:
                         visited_nodes[target_id] = target_node

@@ -98,7 +98,8 @@ class SQLiteStore:
         # Insert Edges
         edge_query = """
         INSERT OR REPLACE INTO edges (
-            id, source, target, type, weight, confidence, context, file_path, line_number
+            id, source, target, type, weight, confidence,
+            context, file_path, line_number
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         edge_rows = [
@@ -131,6 +132,17 @@ class SQLiteStore:
         if not row:
             return None
         return self._row_to_node(row)
+
+    def get_nodes(self, node_ids: list[str]) -> list[Node]:
+        if not self._conn:
+            msg = "Database not connected."
+            raise RuntimeError(msg)
+        if not node_ids:
+            return []
+        placeholders = ", ".join(["?"] * len(node_ids))
+        query = f"SELECT * FROM nodes WHERE id IN ({placeholders})"
+        cursor = self._conn.execute(query, node_ids)
+        return [self._row_to_node(row) for row in cursor.fetchall()]
 
     def get_outgoing_edges(self, node_id: str) -> list[Edge]:
         if not self._conn:
