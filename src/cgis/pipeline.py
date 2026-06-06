@@ -1,6 +1,5 @@
 """Implements Pipeline to orcestrate code traversal."""
 
-import logging
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -11,7 +10,6 @@ from cgis.core.models import Edge, Node
 from cgis.extractors.base import BaseExtractor
 from cgis.resolver.engine import ResolverEngine
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = structlog.getLogger(__name__)
 
 
@@ -23,17 +21,22 @@ class IngestionPipeline:
                         e.g., {".py": PythonExtractor()}
         """
         self._extractors = extractors
+        self._excluded = {"venv", ".venv", "__pycache__", "node_modules", "build", "dist"}
 
-    def run(self, repo_path: str) -> tuple[list[Node], list[Edge]]:
+    def run(self, repo_path: str) -> tuple[list[Node], list[Edge], list[Edge]]:
         """
         The main pipeline execution: Walk -> Extract -> Resolve.
         """
         all_nodes: list[Node] = []
         all_edges: list[Edge] = []
 
-        if not Path(repo_path).exists():
+        path = Path(repo_path)
+        if not path.exists():
             msg = f"Path not found: {repo_path}"
             raise FileNotFoundError(msg)
+        if not path.is_dir():
+            msg = f"Path is not a directory: {repo_path}"
+            raise NotADirectoryError(msg)
 
         with Progress(
             SpinnerColumn(),
@@ -43,20 +46,24 @@ class IngestionPipeline:
             # Task 1: Extraction
             extract_task = progress.add_task(description="Extracting code entities...", total=None)
 
-            for root, _, files in Path(repo_path).walk():
+            for root, dirs, files in path.walk():
+                # Skip hidden directories and common dependency/cache folders
+                dirs[:] = [d for d in dirs if not d.startswith(".") and d not in self._excluded]
                 for file in files:
                     extractor = self._get_extractor(file)
                     if not extractor:
                         continue
 
-                    full_path = Path(root) / file
+                    full_path = root / file
                     try:
-                        with Path.open(full_path, encoding="utf-8") as f:
+                        with full_path.open(encoding="utf-8") as f:
                             code = f.read()
 
                         nodes, edges = extractor.parse(code, str(full_path))
                         if nodes:
-                            logger.info("Parsed nodes from file", nodes=len(nodes), file=file)
+                            logger.info(
+                                "Parsed nodes from file", nodes=len(nodes), full_path=str(full_path)
+                            )
                         all_nodes.extend(nodes)
                         all_edges.extend(edges)
                     except Exception as e:
@@ -70,9 +77,9 @@ class IngestionPipeline:
             resolver = ResolverEngine(all_nodes, all_edges)
             resolved_edges = resolver.resolve()
             progress.update(resolve_task, advance=1)
-            logger.info("Resolution complete. Resolved edges.", edges=len(edges))
+            logger.info("Resolution complete. Resolved edges.", edges=len(resolved_edges))
 
-        return all_nodes, resolved_edges
+        return all_nodes, all_edges, resolved_edges
 
     def _get_extractor(self, filename: str) -> BaseExtractor | None:
         for ext, extractor in self._extractors.items():
