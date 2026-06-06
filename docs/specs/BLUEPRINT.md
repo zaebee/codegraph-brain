@@ -2,100 +2,99 @@
 
 ## 1. 🧠 Memory Model (Data Structures)
 
-Чтобы машина знала, "кто есть кто", ей нужны три типа памяти.
+To establish "who is who," the engine utilizes three types of memory structures.
 
-### A. Global Symbol Table (GST) — "Вселенная"
-Это глобальный реестр всех объявленных сущностей.
-*   **Key:** `FQN` (Fully Qualified Name), например: `project.core.auth.UserService`
-*   **Value:** `NodeID` (ссылка на узел в графе) + `Metadata` (тип, файл, координаты).
-*   *Цель:* Дать быстрый ответ на вопрос: "Существует ли в проекте вообще такой объект?"
+### A. Global Symbol Table (GST) — "The Universe"
+A global registry of all declared entities within the project.
+*   **Key:** `FQN` (Fully Qualified Name), e.g., `project.core.auth.UserService`
+*   **Value:** `NodeID` (Graph reference) + `Metadata` (Type, File Path, Source Coordinates).
+*   *Purpose:* Provide immediate verification of an entity's existence project-wide.
 
-### B. Local Namespace Map (LNM) — "Переводчик"
-Для каждого файла создается свой словарь "локальных имен" $\to$ "глобальных FQN".
-*   **Key:** `local_name` (например, `auth_user`)
-*   **Value:** `FQN` (например, `project.core.auth.User`)
-*   *Цель:* Решить проблему алиасов (`import x as y`) и импортов.
+### B. Local Namespace Map (LNM) — "The Translator"
+A file-specific dictionary mapping local identifiers to global FQNs.
+*   **Key:** `local_name` (e.g., `auth_user`)
+*   **Value:** `FQN` (e.g., `project.core.auth.User`)
+*   *Purpose:* Resolve alias complexity (e.g., `import x as y`) and standard imports.
 
-### C. Scope Stack — "Навигатор"
-Это динамическая память, которая живет только во время обхода конкретного файла. Она хранит текущий путь "глубины".
-*   **Stack Item:** `{ type: (CLASS|FUNC|MODULE), fqn: string, local_vars: List[string] }`
-*   *Пример стека внутри метода:* 
+### C. Scope Stack — "The Navigator"
+Dynamic memory utilized during the traversal of a specific file. It tracks the current hierarchical "depth."
+*   **Stack Item:** <code>{ type: (CLASS|FUNCTION|METHOD|MODULE), fqn: string, local_vars: List[string] }</code>
+*   *Example stack within a method:*
     1. `[Module: project.app]`
     2. `[Class: AppService]`
-    3. `[Method: run_task]` $\leftarrow$ *Current*
+    3. `[Method: run_task]` $\leftarrow$ *Current Scope*
 
 ---
 
 ## 2. 🔄 The Three-Pass Pipeline (Workflow)
 
-Машина работает в три этапа. Мы не можем соединить связи, пока не проиндексируем всё.
+The engine operates in three distinct phases. Relationship linking cannot occur until indexing is complete.
 
 ### Pass 1: Discovery (The Indexer)
-**Задача:** Наполнить `GST`.
-1. Идем по всем файлам.
-2. Для каждого `class_definition` и `function_definition` вычисляем их FQN (на основе пути файла и иерархии).
-3. Записываем в `GST`.
-4. *Результат:* Мы знаем, что в мире существуют `A`, `B` и `C`.
+**Goal:** Populate the `GST`.
+1. Iterate through all source files.
+2. For every `class_definition` and `function_definition`, compute their unique `FQN` based on file path and nesting hierarchy.
+3. Register these in the `GST`.
+4. *Outcome:* A comprehensive index of all available entities (`A`, `B`, `C`).
 
 ### Pass 2: Translation (The Mapper)
-**Задача:** Наполнить `LNM` для каждого файла.
-1. Идем по файлам.
-2. Ищем узлы `import_statement` и `import_from`.
-3. Для каждого импорта в `LNM` текущего файла записываем: `local_name` $\to$ `target_FQN`.
-4. *Результат:* Мы знаем, что в файле `main.py` имя `auth` на самом деле означает `project.core.auth`.
+**Goal:** Populate the `LNM` for each individual file.
+1. Iterate through source files.
+2. Identify `import_statement` and `import_from` nodes.
+3. For each import, record the mapping in the file's `LNM`: `local_name` $\to$ `target_FQN`.
+4. *Outcome:* In `main.py`, the engine knows that the name `auth` refers to `project.core.auth`.
 
-### Pass 3: Linking (The Resolver) — "Сердце"
-**Задача:** Найти `Call` и создать `Edge`.
-1. Идем по файлам.
-2. Для каждого файла создаем пустой `Scope Stack`.
-3. Начинаем обход AST. При входе в `class` или `def` — `push` в стек. При выходе — `pop`.
-4. При встрече узла `Call(name)` запускаем **Resolution Logic**.
+### Pass 3: Linking (The Resolver) — "The Core"
+**Goal:** Identify `Call` nodes and establish `Edge` relations.
+1. Iterate through source files.
+2. Initialize an empty `Scope Stack` for each file.
+3. Traverse the AST; `push` to the stack upon entering a `class` or `def`, and `pop` upon exiting.
+4. When a `Call(name)` node is encountered, execute the **Resolution Logic**.
 
 ---
 
 ## 3. ⚡ Resolution Logic (The Decision Tree)
 
-Когда мы нашли вызов `target_name`, машина должна принять решение.
+Upon encountering a call to `target_name`, the engine executes the following decision process.
 
-**Вход:** `target_name` (напр. `get_user`), `current_file_context`, `current_scope_stack`.
+**Inputs:** `target_name` (e.g., `get_user`), `current_file_context`, `current_scope_stack`.
 
-### Шаг 1: Проверка на "Квалифицированный вызов" (Qualified Call)
-*Если в коде написано `math.sqrt()` или `self.do_work()`:*
-1. Разделяем на `prefix` (`math` или `self`) и `name` (`sqrt` или `do_work`).
-2. **Если `prefix == 'self'`:**
-   - Берем из стека `current_scope`. Если мы в методе класса `X`, то `Target_FQN = X.do_work`.
-3. **Если `prefix` — это что-то другое (напр. `math`):**
-   - Ищем `prefix` в `LNM` текущего файла.
-   - Если нашли: `prefix_fqn = LNM[prefix]`.
+### Step 1: Qualified Call Check
+*Applies if the code uses `math.sqrt()` or `self.do_work()`:*
+1. Split into `prefix` (`math` or `self`) and `name` (`sqrt` or `do_work`).
+2. **If `prefix == 'self'`:**
+   - Retrieve `current_scope` from stack. If inside class `X`, then `Target_FQN = X.do_work`.
+3. **If `prefix` is any other identifier (e.g., `math`):**
+   - Lookup `prefix` in the current file's `LNM`.
+   - If found: `prefix_fqn = LNM[prefix]`.
    - `Target_FQN = prefix_fqn + "." + name`.
-4. **Если не нашли в `LNM`:**
-   - Помечаем как `Unresolved_Qualified_Call`.
+4. **If not found in `LNM`:**
+   - Tag as `Unresolved_Qualified_Call`.
 
-### Шаг 2: Проверка на "Локальный/Глобальный вызов" (Unqualified Call)
-*Если в коде написано просто `get_user()`:*
-1. **Проверка LNM:** Есть ли `get_user` в `LNM` текущего файла? (Это импорт).
-   - Да $\to$ `Target_FQN = LNM['get_user']`.
-2. **Проверка Scope:** Есть ли `get_user` в `local_vars` текущего уровня стека? (Это переменная или вложенная функция).
-   - Да $\to$ `Target_FQN = current_scope.fqn + ".get_user"`.
-3. **Проверка Class Members:** Если мы внутри класса `X`, есть ли у `X` метод `get_user`?
-   - Да $\to$ `Target_FQN = X.get_user`.
-4. **Проверка Global:** Есть ли `get_user` в `GST` как глобальная функция?
-   - Да $\to$ `Target_FQN = GST['get_user']`.
+### Step 2: Unqualified Call Check (Local/Global)
+*Applies if the code uses a simple `get_user()` call:*
+1. **LNM Check:** Is `get_user` defined in the file's `LNM`? (Indicates an import).
+   - If yes $\to$ `Target_FQN = LNM['get_user']`.
+2. **Scope Check:** Is `get_user` present in `local_vars` at the current stack level? (Indicates a local variable or nested function).
+   - If yes $\to$ `Target_FQN = current_scope.fqn + ".get_user"`.
+3. **Class Member Check:** If inside class `X`, does `X` have a method named `get_user`?
+   - If yes $\to$ `Target_FQN = X.get_user`.
+4. **Global Check:** Is `get_user` registered in the `GST` as a global function?
+   - If yes $\to$ `Target_FQN = GST['get_user']`.
 
-### Шаг 3: Финализация
-*   Если `Target_FQN` найден в `GST` $\to$ **Создаем Edge (CALLS) с confidence=1.0**.
-*   Если не найден $\to$ **Создаем Edge (UNKNOWN_CALL) с confidence=0.1**.
+### Step 3: Finalization
+*   If `Target_FQN` is successfully resolved in the `GST` $\to$ **Create Edge (CALLS) with confidence=1.0**.
+*   If not found $\to$ **Create Edge (UNKNOWN_CALL) with confidence=0.1**.
 
 ---
 
 ## 4. 🧪 The "Self-Parsing" Test (The Ultimate Validation)
 
-Чтобы проверить машину, мы подаем ей на вход её собственный код.
+To validate the engine, we feed it its own source code as input.
 
-**Ожидаемый результат:**
-1. `GST` должна содержать FQN всех модулей резолвера.
-2. `LNM` должна правильно разрешить `import tree_sitter`.
-3. `Linking Pass` должен найти связь: `ResolutionEngine.resolve_call` $\to$ `CALLS` $\to$ `AST_Node.name`.
+**Expected Outcome:**
+1. `GST` must contain FQNs for all resolution engine modules.
+2. `LNM` must correctly resolve `import tree_sitter`.
+3. The `Linking Pass` must identify the relationship: `ResolutionEngine.resolve_call` $\to$ `CALLS` $\to$ `AST_Node.name`.
 
-**Если граф самопостроения совпадает со структурой папок и файлов — машина работает идеально.**
-
+**If the generated self-graph matches the actual directory and file structure, the engine is functioning perfectly.**
