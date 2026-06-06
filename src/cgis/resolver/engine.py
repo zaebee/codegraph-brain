@@ -15,11 +15,12 @@ class ResolverEngine:
         self.num_parts = 3
 
         # Indices for fast lookup
-        self._global_symbols: dict[str, list[str]] = {}  # name -> list of FQNs
-        self._file_global_symbols: dict[tuple[str, str], str] = {}  # (file_path, name) -> FQN
-        self._class_methods: dict[
-            str, dict[str, str]
-        ] = {}  # class_fqn -> {method_name -> method_fqn}
+        # name -> list of FQNs
+        self._global_symbols: dict[str, list[str]] = {}
+        # (file_path, name) -> FQN
+        self._file_global_symbols: dict[tuple[str, str], str] = {}
+        # class_fqn -> {method_name -> method_fqn}
+        self._class_methods: dict[str, dict[str, str]] = {}
 
         self._build_indices()
 
@@ -67,21 +68,16 @@ class ResolverEngine:
 
             # Case 2: Handle direct global call 'func_name'
             else:
-                new_target = self._resolve_global_call(raw_name, edge.source)
+                new_target = self._resolve_global_call(raw_name, edge.source, edge.file_path)
 
-            if new_target and new_target in self.nodes:
+            if new_target:
                 # Create a new resolved edge with higher confidence
                 resolved_edges.append(
-                    Edge(
-                        id=edge.id,
-                        source=edge.source,
-                        target=new_target,
-                        type=edge.type,
-                        weight=edge.weight,
-                        confidence=min(edge.confidence + 0.5, 1.0),  # Boost confidence
-                        context=edge.context,
-                        file_path=edge.file_path,
-                        line_number=edge.line_number,
+                    edge.model_copy(
+                        update={
+                            "target": new_target,
+                            "confidence": min(edge.confidence + 0.5, 1.0),
+                        }
                     )
                 )
             else:
@@ -100,7 +96,9 @@ class ResolverEngine:
         class_fqn = ":".join(parts[:-1])
         return self._class_methods.get(class_fqn, {}).get(method_name)
 
-    def _resolve_global_call(self, name: str, source_fqn: str) -> str | None:
+    def _resolve_global_call(
+        self, name: str, source_fqn: str, edge_file_path: str | None = None
+    ) -> str | None:
         """Attempts to find a global function by name, preferring the same file context."""
         candidates = self._global_symbols.get(name, [])
         if not candidates:
@@ -109,8 +107,9 @@ class ResolverEngine:
             return candidates[0]
         # Try to disambiguate by matching the source file path
         source_node = self.nodes.get(source_fqn)
-        if source_node:
-            same_file_candidate = self._file_global_symbols.get((source_node.file_path, name))
+        file_path = source_node.file_path if source_node else edge_file_path
+        if file_path:
+            same_file_candidate = self._file_global_symbols.get((file_path, name))
             if same_file_candidate:
                 return same_file_candidate
         return None
