@@ -1,7 +1,6 @@
 """Implements Python Extractor."""
 
-from tree_sitter import Parser
-from tree_sitter.binding import Node as BaseNode
+from tree_sitter import Node as BaseNode, Parser
 from tree_sitter_language_pack import get_language
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
@@ -68,8 +67,8 @@ class PythonExtractor(BaseExtractor):
                     type=node_type,
                     name=func_name,
                     file_path=file_path,
-                    start_line=node.start_point[0],
-                    end_line=node.end_point[0],
+                    start_line=node.start_point[0] + 1,
+                    end_line=node.end_point[0] + 1,
                     language="python",
                 )
             )
@@ -84,9 +83,16 @@ class PythonExtractor(BaseExtractor):
         if node.type == "identifier":
             return code_bytes[node.start_byte : node.end_byte].decode("utf8")
         if node.type == "attribute":
+            obj_node = node.child_by_field_name("object")
             attr_node = node.child_by_field_name("attribute")
+            if obj_node and attr_node:
+                return f"{self._get_identifier(obj_node, code_bytes)}.{self._get_identifier(attr_node, code_bytes)}"
             if attr_node:
-                return code_bytes[attr_node.start_byte : attr_node.end_byte].decode("utf8")
+                return self._get_identifier(attr_node, code_bytes)
+        if node.type == "call":
+            func_node = node.child_by_field_name("function")
+            if func_node:
+                return self._get_identifier(func_node, code_bytes)
         for child in node.children:
             if child.type == "identifier":
                 return code_bytes[child.start_byte : child.end_byte].decode("utf8")
@@ -113,7 +119,7 @@ class PythonExtractor(BaseExtractor):
                         confidence=0.5,
                         context=f"Call to {call_name}",
                         file_path=file_path,
-                        line_number=node.start_point[0],
+                        line_number=node.start_point[0] + 1,
                     )
                 )
 
