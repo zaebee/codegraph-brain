@@ -45,7 +45,7 @@ class PythonExtractor(BaseExtractor):
         Recursive AST walker.
         """
         # Identify Nodes (Example: Function Definitions)
-        if node.type == "function_definition":
+        if node.type in ("function_definition", "async_function_definition"):
             name_node = node.child_by_field_name("name")
             func_name = (
                 code_bytes[name_node.start_byte : name_node.end_byte].decode("utf8")
@@ -144,7 +144,7 @@ class PythonExtractor(BaseExtractor):
 
                 edges.append(
                     Edge(
-                        id=f"{file_path}:edge_{node.start_byte}",
+                        id=f"{file_path}:edge_{node.start_byte}_{node.end_byte}",
                         source=source_id,
                         target=target_id,
                         type=EdgeType.CALLS,
