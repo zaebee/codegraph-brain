@@ -162,7 +162,7 @@ def test_no_phantom_bleed(
 def test_no_external_library_nodes(
     graph_data: tuple[SQLiteStore, list[Node], list[Edge]],
 ) -> None:
-    """External library symbols appear only as virtual nodes (namespace=EXTERNAL, file_path=EXTERNAL).
+    """External library symbols appear only as virtual nodes (namespace=EXTERNAL).
 
     They must not be mistaken for internal source nodes — no real source location.
     """

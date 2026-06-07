@@ -1,6 +1,6 @@
 """Unit test cases for mermaid queries."""
 
-from cgis.core.models import Edge, EdgeType, Node, NodeType
+from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
 from cgis.query.mermaid import MermaidCompiler
 
 
@@ -60,10 +60,18 @@ def test_compile_default_node_styling() -> None:
     assert ":::defaultNode" in mermaid_code
 
 
-def test_compile_raw_call_node_styled_as_unresolved() -> None:
-    """Nodes with a raw_call: ID are styled as unresolvedNode even when in the nodes list."""
-    nodes = [_make_node("raw_call:print")]
-    mermaid_code = MermaidCompiler().compile(nodes, [])
+def test_compile_unresolved_internal_virtual_node_styled_as_unresolved() -> None:
+    """Virtual INTERNAL nodes (file_path=EXTERNAL, namespace=INTERNAL) render as unresolvedNode."""
+    node = Node(
+        id="self.unknown_method",
+        type=NodeType.FUNCTION,
+        name="unknown_method",
+        file_path="EXTERNAL",
+        start_line=0,
+        end_line=0,
+        namespace=NodeNamespace.INTERNAL,
+    )
+    mermaid_code = MermaidCompiler().compile([node], [])
     assert ":::unresolvedNode" in mermaid_code
 
 

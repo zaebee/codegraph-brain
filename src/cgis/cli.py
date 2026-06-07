@@ -138,8 +138,8 @@ def _filter_internal(
     edges: list[Edge],
 ) -> tuple[list[Node], list[Edge]]:
     """Keep only INTERNAL nodes and edges between them."""
-    internal_ids = {n.id for n in nodes if n.namespace == NodeNamespace.INTERNAL}
-    filtered_nodes = [n for n in nodes if n.id in internal_ids]
+    filtered_nodes = [n for n in nodes if n.namespace == NodeNamespace.INTERNAL]
+    internal_ids = {n.id for n in filtered_nodes}
     filtered_edges = [e for e in edges if e.source in internal_ids and e.target in internal_ids]
     return filtered_nodes, filtered_edges
 

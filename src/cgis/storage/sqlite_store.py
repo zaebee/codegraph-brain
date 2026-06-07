@@ -103,7 +103,7 @@ class SQLiteStore:
         """Apply incremental schema migrations for existing databases."""
         if not self._conn:
             return
-        cols = {row[1] for row in self._conn.execute("PRAGMA table_info(nodes)").fetchall()}
+        cols = {row["name"] for row in self._conn.execute("PRAGMA table_info(nodes)").fetchall()}
         if "namespace" not in cols:
             self._conn.execute(
                 "ALTER TABLE nodes ADD COLUMN namespace TEXT NOT NULL DEFAULT 'INTERNAL'"

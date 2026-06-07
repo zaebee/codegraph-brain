@@ -7,6 +7,7 @@ import sys
 from cgis.core.models import Edge, Node, NodeNamespace, NodeType
 
 _VIRTUAL_FILE_PATH = "EXTERNAL"
+_BUILTINS: frozenset[str] = frozenset(dir(builtins))
 
 
 class ResolverEngine:
@@ -71,7 +72,7 @@ class ResolverEngine:
         root = fqn.split(".", maxsplit=1)[0]
         if root in self._internal_roots:
             return NodeNamespace.INTERNAL
-        if root in sys.stdlib_module_names or root in dir(builtins):
+        if root in sys.stdlib_module_names or root in _BUILTINS:
             return NodeNamespace.STDLIB
         return NodeNamespace.EXTERNAL
 

@@ -52,7 +52,7 @@ class MermaidCompiler:
             return ":::stdlibNode"
         if node.namespace == NodeNamespace.EXTERNAL:
             return ":::externalNode"
-        if node.id.startswith(_RAW_CALL_PREFIX):
+        if node.file_path == "EXTERNAL" and node.namespace == NodeNamespace.INTERNAL:
             return ":::unresolvedNode"
         if node.type == NodeType.CLASS:
             return ":::classNode"
