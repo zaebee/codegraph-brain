@@ -10,10 +10,7 @@ _RAW_CALL_PREFIX = "raw_call:"
 def _escape(text: str) -> str:
     """Escape special characters that break Mermaid double-quoted node labels."""
     return (
-        text.replace("\\", "\\\\")
-        .replace('"', "#quot;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
+        text.replace("\\", "\\\\").replace('"', "#quot;").replace("<", "&lt;").replace(">", "&gt;")
     )
 
 
