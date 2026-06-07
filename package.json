@@ -7,7 +7,8 @@
     "dagre": "^0.8.5",
     "html-to-image": "^1.11.11",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "react-error-boundary": "^6.1.2"
   },
   "scripts": {
     "dev": "vite",
