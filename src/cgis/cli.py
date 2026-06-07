@@ -187,7 +187,7 @@ def trace(
     Trace execution flow starting from a specific code entity downwards.
     """
     path = Path(db)
-    if not path.exists():
+    if not path.is_file():
         console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
         raise typer.Exit(code=1)
 
@@ -268,7 +268,7 @@ def impact(
     Analyze transitive upstream impact (callers) of changing a specific code entity.
     """
     path = Path(db)
-    if not path.exists():
+    if not path.is_file():
         console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
         raise typer.Exit(code=1)
 
@@ -309,7 +309,7 @@ def validate(
     Exits with code 1 if the unresolved ratio exceeds the threshold.
     """
     path = Path(db)
-    if not path.exists():
+    if not path.is_file():
         console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
         raise typer.Exit(code=1)
 
