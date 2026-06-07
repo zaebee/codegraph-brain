@@ -120,6 +120,7 @@ function App() {
   const graphRef = useRef(null);
   const wrapperRef = useRef(null);
   const enrichedRef = useRef(null);
+  const flowCacheRef = useRef(new Map());
   const searchInputRef = useRef(null);
   const { fitView } = useReactFlow();
 
@@ -129,6 +130,10 @@ function App() {
     }, 200);
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  useEffect(() => {
+    flowCacheRef.current.clear();
+  }, [depth]);
 
   const getEnriched = useCallback(() => {
     if (!enrichedRef.current && graphRef.current) {
@@ -334,7 +339,15 @@ function App() {
     (event, node) => {
       if (node.type === "group") return;
       const enriched = getEnriched();
-      const flow = buildExecutionFlow(enriched, node.id, depth, "both");
+
+      const cacheKey = `${node.id}:${depth}`;
+      let flow;
+      if (flowCacheRef.current.has(cacheKey)) {
+        flow = flowCacheRef.current.get(cacheKey);
+      } else {
+        flow = buildExecutionFlow(enriched, node.id, depth, "both");
+        flowCacheRef.current.set(cacheKey, flow);
+      }
 
       const flowNodes = flow.nodes.map((n) => {
         const isRoot = n.id === node.id;
