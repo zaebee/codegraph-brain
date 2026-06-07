@@ -314,6 +314,52 @@ class SQLiteStore:
         cursor = self._conn.execute("SELECT * FROM nodes WHERE file_path = ?", (file_path,))
         return [self._row_to_node(row) for row in cursor.fetchall()]
 
+    def get_structural_subgraph(
+        self, target_id: str, max_depth: int = 5
+    ) -> tuple[list[Node], list[Edge]]:
+        """Return the structural hierarchy rooted at target_id via a single recursive CTE.
+
+        Traverses only CONTAINS and DECLARES edges. One DB round-trip regardless of depth.
+        """
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        self._conn.execute("PRAGMA recursive_triggers = ON")
+        nodes_rows = self._conn.execute(
+            """
+            WITH RECURSIVE tree(id, depth) AS (
+                SELECT id, 0 FROM nodes WHERE id = ?
+                UNION ALL
+                SELECT e.target, t.depth + 1
+                FROM edges e
+                JOIN tree t ON e.source = t.id
+                WHERE e.type IN ('CONTAINS', 'DECLARES') AND t.depth < ?
+            )
+            SELECT DISTINCT n.*
+            FROM nodes n
+            JOIN tree t ON n.id = t.id
+            """,
+            (target_id, max_depth),
+        ).fetchall()
+        if not nodes_rows:
+            return [], []
+        nodes = [self._row_to_node(row) for row in nodes_rows]
+        node_ids = [n.id for n in nodes]
+        chunk_size = 999
+        edges: list[Edge] = []
+        for i in range(0, len(node_ids), chunk_size):
+            chunk = node_ids[i : i + chunk_size]
+            ph = ",".join("?" * len(chunk))
+            rows = self._conn.execute(
+                f"""
+                SELECT * FROM edges
+                WHERE type IN ('CONTAINS', 'DECLARES')
+                  AND source IN ({ph}) AND target IN ({ph})
+                """,
+                chunk + chunk,
+            ).fetchall()
+            edges.extend(self._row_to_edge(row) for row in rows)
+        return nodes, edges
+
     def get_edge_stats(self) -> EdgeStats:
         """Return resolution statistics for all edges in the graph."""
         if not self._conn:

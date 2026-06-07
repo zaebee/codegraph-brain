@@ -23,8 +23,9 @@ def hello():
     assert func_node.type == NodeType.FUNCTION
     assert func_node.file_path == "test.py"
 
-    assert len(edges) == 1
-    assert edges[0].target == "raw_call:print"
+    call_edges = [e for e in edges if e.type == EdgeType.CALLS]
+    assert len(call_edges) == 1
+    assert call_edges[0].target == "raw_call:print"
 
 
 def test_extract_class_and_method(extractor: PythonExtractor) -> None:
@@ -102,8 +103,9 @@ async def fetch_data():
     nodes, edges = extractor.parse(code, "test.py")
     func_node = next(n for n in nodes if n.name == "fetch_data")
     assert func_node.type == NodeType.FUNCTION
-    assert len(edges) == 1
-    assert edges[0].target == "raw_call:print"
+    call_edges = [e for e in edges if e.type == EdgeType.CALLS]
+    assert len(call_edges) == 1
+    assert call_edges[0].target == "raw_call:print"
 
 
 # --- Import extraction tests ---

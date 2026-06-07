@@ -147,9 +147,11 @@ class PythonExtractor(BaseExtractor):
 
         next_func_node = current_func_node
         if node.type in ("function_definition", "async_function_definition"):
-            next_func_node = self._process_function_node(node, code_bytes, file_path, nodes)
+            next_func_node = self._process_function_node(
+                node, code_bytes, file_path, nodes, edges, module_fqn or ""
+            )
         elif node.type == "class_definition":
-            self._process_class_node(node, code_bytes, file_path, nodes)
+            self._process_class_node(node, code_bytes, file_path, nodes, edges, module_fqn or "")
             next_func_node = None
         elif node.type == "call" and current_func_node:
             self._process_call_node(node, code_bytes, file_path, current_func_node.id, edges)
@@ -341,6 +343,8 @@ class PythonExtractor(BaseExtractor):
         code_bytes: bytes,
         file_path: str,
         nodes: list[Node],
+        edges: list[Edge],
+        module_fqn: str,
     ) -> Node:
         """Process function or method definition node."""
         child = node.child_by_field_name("name")
@@ -358,26 +362,58 @@ class PythonExtractor(BaseExtractor):
             language=self.LANG,
         )
         nodes.append(func_node)
+
+        parts = node_id.rsplit(".", maxsplit=1)
+        parent_fqn = parts[0] if len(parts) > 1 else module_fqn
+        edge_type = EdgeType.DECLARES if node_type == NodeType.METHOD else EdgeType.CONTAINS
+        edges.append(
+            Edge(
+                id=f"{parent_fqn}:structural:{node_id}",
+                type=edge_type,
+                source=parent_fqn,
+                target=node_id,
+                confidence=1.0,
+                file_path=file_path,
+            )
+        )
         return func_node
 
     def _process_class_node(
-        self, node: BaseNode, code_bytes: bytes, file_path: str, nodes: list[Node]
+        self,
+        node: BaseNode,
+        code_bytes: bytes,
+        file_path: str,
+        nodes: list[Node],
+        edges: list[Edge],
+        module_fqn: str,
     ) -> None:
         """Process class definition node."""
         child = node.child_by_field_name("name")
         node_id = self._get_id(node, code_bytes, file_path)
         node_name = self._extract_node_name(child, code_bytes)
-        node_type = NodeType.CLASS
 
         nodes.append(
             Node(
                 id=node_id,
-                type=node_type,
+                type=NodeType.CLASS,
                 name=node_name,
                 file_path=file_path,
                 start_line=node.start_point.row + 1,
                 end_line=node.end_point.row + 1,
                 language=self.LANG,
+            )
+        )
+
+        parts = node_id.rsplit(".", maxsplit=1)
+        parent_fqn = parts[0] if len(parts) > 1 else module_fqn
+        edges.append(
+            Edge(
+                id=f"{parent_fqn}:structural:{node_id}",
+                type=EdgeType.CONTAINS,
+                source=parent_fqn,
+                target=node_id,
+                confidence=1.0,
+                file_path=file_path,
             )
         )
 

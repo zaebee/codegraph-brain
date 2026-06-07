@@ -43,6 +43,16 @@ class QueryEngine:
             max_depth,
         )
 
+    def get_structural_graph(
+        self, target_id: str, max_depth: int = 5
+    ) -> tuple[list[Node], list[Edge]]:
+        """
+        Structural hierarchy rooted at target_id (FILE → CLASS → METHOD).
+        Traverses only CONTAINS and DECLARES edges — no call-graph noise.
+        Delegates to a single recursive CTE query in the store.
+        """
+        return self.store.get_structural_subgraph(target_id, max_depth)
+
     def _bfs_traverse(
         self,
         start_id: str,

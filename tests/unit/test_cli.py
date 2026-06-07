@@ -7,6 +7,7 @@ from typer.testing import CliRunner
 from cgis.cli import app
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.extractors.python_extractor import file_path_to_module_fqn
+from cgis.query.engine import QueryEngine
 from cgis.storage.sqlite_store import SQLiteStore
 
 runner = CliRunner()
@@ -371,6 +372,96 @@ def test_validate_fails_when_ratio_exceeds_threshold(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "exceeds threshold" in result.output
+
+
+# --- structure command tests ---
+
+
+def test_structure_missing_db_exits_with_error(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["structure", "some.module", "--db", str(tmp_path / "no.db")])
+    assert result.exit_code == 1
+    assert "Database not found" in result.output
+
+
+def test_structure_unknown_fqn_exits_with_error(tmp_path: Path) -> None:
+    (tmp_path / "mod.py").write_text("def fn(): pass\n", encoding="utf-8")
+    db = str(tmp_path / "g.db")
+    runner.invoke(app, ["ingest", str(tmp_path), "--output", db])
+    result = runner.invoke(app, ["structure", "totally.unknown.fqn", "--db", db])
+    assert result.exit_code == 1
+    assert "not found" in result.output
+
+
+def test_structure_text_shows_class_and_methods(tmp_path: Path) -> None:
+    """structure command renders CLASS and its METHOD children."""
+    (tmp_path / "svc.py").write_text(
+        "class Service:\n    def start(self): pass\n    def stop(self): pass\n",
+        encoding="utf-8",
+    )
+    db = str(tmp_path / "g.db")
+    runner.invoke(app, ["ingest", str(tmp_path), "--output", db])
+    result = runner.invoke(app, ["structure", "svc.Service", "--db", db])
+    assert result.exit_code == 0
+    assert "Service" in result.output
+    assert "start" in result.output
+    assert "stop" in result.output
+
+
+def test_structure_strict_no_calls_edges(tmp_path: Path) -> None:
+    """CALLS edges must not appear in structural output."""
+    (tmp_path / "svc.py").write_text(
+        "class A:\n    def run(self):\n        print('hi')\n",
+        encoding="utf-8",
+    )
+    db = str(tmp_path / "g.db")
+    runner.invoke(app, ["ingest", str(tmp_path), "--output", db])
+
+    with SQLiteStore(db) as store:
+        nodes, edges = QueryEngine(store).get_structural_graph("svc.A")
+
+    assert all(e.type in (EdgeType.CONTAINS, EdgeType.DECLARES) for e in edges)
+    node_ids = {n.id for n in nodes}
+    assert "svc.A.run" in node_ids
+    assert not any("print" in n.id for n in nodes)
+
+
+def test_structure_file_path_accepted(tmp_path: Path) -> None:
+    """Relative .py path is normalized to FQN automatically."""
+    (tmp_path / "mod.py").write_text("class X:\n    def y(self): pass\n", encoding="utf-8")
+    db = str(tmp_path / "g.db")
+    runner.invoke(app, ["ingest", str(tmp_path), "--output", db])
+    # "mod.py" ends with .py → normalised to FQN "mod" which IS in the graph
+    result = runner.invoke(app, ["structure", "mod.py", "--db", db])
+    assert result.exit_code == 0
+    assert "mod" in result.output
+
+
+def test_structure_extractor_emits_contains_for_top_level_function(tmp_path: Path) -> None:
+    """Top-level functions emit a CONTAINS edge from the file node."""
+    (tmp_path / "util.py").write_text("def helper(): pass\n", encoding="utf-8")
+    db = str(tmp_path / "g.db")
+    runner.invoke(app, ["ingest", str(tmp_path), "--output", db])
+
+    with SQLiteStore(db) as store:
+        nodes, edges = QueryEngine(store).get_structural_graph("util")
+
+    node_ids = {n.id for n in nodes}
+    assert "util.helper" in node_ids
+    contains = [e for e in edges if e.type == EdgeType.CONTAINS]
+    assert any(e.source == "util" and e.target == "util.helper" for e in contains)
+
+
+def test_structure_extractor_emits_declares_for_method(tmp_path: Path) -> None:
+    """Methods emit a DECLARES edge from the class node."""
+    (tmp_path / "svc.py").write_text("class A:\n    def run(self): pass\n", encoding="utf-8")
+    db = str(tmp_path / "g.db")
+    runner.invoke(app, ["ingest", str(tmp_path), "--output", db])
+
+    with SQLiteStore(db) as store:
+        _nodes, edges = QueryEngine(store).get_structural_graph("svc.A")
+
+    declares = [e for e in edges if e.type == EdgeType.DECLARES]
+    assert any(e.source == "svc.A" and e.target == "svc.A.run" for e in declares)
 
 
 def test_validate_shows_top_unresolved(tmp_path: Path) -> None:
