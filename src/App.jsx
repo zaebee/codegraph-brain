@@ -111,6 +111,7 @@ function App() {
   const [allNodes, setAllNodes] = useState([]);
   const [allEdges, setAllEdges] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [flowRootId, setFlowRootId] = useState(null);
@@ -121,6 +122,13 @@ function App() {
   const enrichedRef = useRef(null);
   const searchInputRef = useRef(null);
   const { fitView } = useReactFlow();
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const getEnriched = useCallback(() => {
     if (!enrichedRef.current && graphRef.current) {
@@ -394,10 +402,10 @@ function App() {
     setHoveredNode(null);
   }, []);
 
-  const displayedNodes = searchQuery
+  const displayedNodes = debouncedQuery
     ? nodes.map(n => {
         if (n.type === "group") return n;
-        const q = searchQuery.toLowerCase();
+        const q = debouncedQuery.toLowerCase();
         const match =
           (n.data?.label || "").toLowerCase().includes(q) ||
           (n.data?.subtitle || "").toLowerCase().includes(q) ||
@@ -407,7 +415,7 @@ function App() {
           style: {
             ...n.style,
             opacity: match ? 1 : 0.15,
-            boxShadow: match && searchQuery
+            boxShadow: match && debouncedQuery
               ? "0 0 12px rgba(79, 195, 247, 0.6)"
               : n.style?.boxShadow || "0 2px 8px rgba(0,0,0,0.3)"
           }
