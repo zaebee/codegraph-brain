@@ -82,7 +82,7 @@ def ingest(
                 json.dump(graph_data, f, indent=2)
         else:
             with SQLiteStore(output) as store:
-                store.save_graph(nodes, resolved_edges)
+                store.save_graph(nodes, resolved_edges, overwrite=True)
 
         table = Table(title="Ingestion Summary")
         table.add_column("Metric", style="cyan")
