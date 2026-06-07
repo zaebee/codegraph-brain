@@ -13,7 +13,11 @@ _ONTOLOGY_PATH = Path(__file__).parents[2] / "docs" / "ontology" / "core.yaml"
 
 @lru_cache(maxsize=1)
 def _load_ontology() -> dict[str, Any]:
-    return yaml.safe_load(_ONTOLOGY_PATH.read_text(encoding="utf-8"))  # type: ignore[no-any-return]
+    data = yaml.safe_load(_ONTOLOGY_PATH.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        msg = f"Expected a dictionary from {_ONTOLOGY_PATH}, got {type(data)}"
+        raise TypeError(msg)
+    return data
 
 
 def _yaml_node_types(ontology: dict[str, Any]) -> set[str]:
