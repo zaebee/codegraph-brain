@@ -416,7 +416,10 @@ class PythonExtractor(BaseExtractor):
         if not func_call_node:
             return
         class_name = self._get_identifier(func_call_node, code_bytes)
-        if class_name == "unknown":
+        # Skip method-call results (dotted names like `obj.method()`): we can't infer
+        # the return type statically, and recording the call-expression as a type would
+        # cause the resolver to produce wrong targets (e.g., `cli.obj.method.attr`).
+        if class_name == "unknown" or "." in class_name:
             return
         if import_map and class_name in import_map:
             fqn = import_map[class_name]

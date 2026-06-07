@@ -535,3 +535,37 @@ def main():
     assert any(
         e.source == "app.main.main" and e.target == "rich.console.Console.print" for e in result
     )
+
+
+def test_method_call_result_not_captured_as_local_type() -> None:
+    """Method-call results must not be recorded as local types.
+
+    `result = obj.method(...)` cannot have its return type inferred statically.
+    Recording `obj.method` as a type leads to spurious targets like
+    `module.obj.method.attr` being classified as INTERNAL.
+    """
+    code = """
+class Store:
+    def get_item(self):
+        pass
+
+def process(store: Store):
+    item = store.get_item()   # result of method call — type unknown
+    item.render()             # must stay UNKNOWN, not resolve to Store.get_item.render
+"""
+    nodes, edges = PythonExtractor().parse(code, "app/service.py")
+    # item should have no local_type recorded
+    func_node = next(n for n in nodes if n.id == "app.service.process")
+    local_types = func_node.metadata.get("local_types", {})
+    assert "item" not in local_types, (
+        f"item should have no type (method-call result), got: {local_types.get('item')}"
+    )
+    # item.render() must stay unresolved, not spuriously INTERNAL
+    resolver = ResolverEngine(nodes, edges)
+    result, virtual_nodes = resolver.resolve()
+    item_render = next((e for e in result if "item.render" in e.target), None)
+    if item_render:
+        vnode = next((n for n in virtual_nodes if n.id == item_render.target), None)
+        assert vnode is None or vnode.namespace.value != "INTERNAL", (
+            f"item.render should not be INTERNAL, got namespace={vnode and vnode.namespace}"
+        )
