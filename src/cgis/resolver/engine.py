@@ -73,7 +73,7 @@ class ResolverEngine:
             val.split(".", maxsplit=1)[0]
             for import_map in self._file_imports.values()
             for val in import_map.values()
-            if val
+            if val and not val.startswith(".")
         }
 
     def _add_node_to_suffix_map(self, node_id: str) -> None:
