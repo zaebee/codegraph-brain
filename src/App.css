@@ -277,3 +277,80 @@ body {
 .react-flow__background {
   background-color: #0d1117 !important;
 }
+
+/* Search input */
+.search-input {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #c9d1d9;
+  padding: 5px 10px;
+  font-size: 12px;
+  width: 160px;
+  outline: none;
+}
+
+.search-input:focus {
+  border-color: #4fc3f7;
+}
+
+.search-input::placeholder {
+  color: #484f58;
+}
+
+/* Legend panel */
+.legend-panel {
+  pointer-events: none;
+}
+
+.legend {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.legend-label {
+  font-size: 11px;
+  color: #8b949e;
+}
+
+/* Error boundary */
+.error-boundary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: #0d1117;
+  color: #c9d1d9;
+  gap: 16px;
+}
+
+.error-boundary h2 {
+  font-size: 18px;
+  color: #f44336;
+}
+
+.error-boundary p {
+  font-size: 13px;
+  color: #8b949e;
+  max-width: 400px;
+  text-align: center;
+}

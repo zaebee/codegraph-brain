@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { Component, useEffect, useState, useCallback, useRef } from "react";
 import { ReactFlow, Background, Controls, MiniMap, Panel } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { toPng, toSvg } from "html-to-image";
@@ -11,6 +11,32 @@ import { groupByClass } from "./grouping";
 import { buildExecutionFlow } from "./flow";
 import GroupNode from "./GroupNode";
 
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="error-boundary">
+          <h2>Something went wrong</h2>
+          <p>{this.state.error?.message}</p>
+          <button className="btn btn-back" onClick={() => this.setState({ hasError: false })}>
+            Try again
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const NODE_COLORS = {
   FUNCTION: { bg: "#1e3a5f", border: "#4fc3f7", text: "#b3e5fc" },
   CLASS:    { bg: "#1b5e20", border: "#66bb6a", text: "#c8e6c9" },
@@ -19,6 +45,13 @@ const NODE_COLORS = {
   GROUP:    { bg: "#263238", border: "#546e7a", text: "#b0bec5" },
   DEFAULT:  { bg: "#37474f", border: "#78909c", text: "#cfd8dc" }
 };
+
+const LEGEND_ITEMS = [
+  { type: "FUNCTION", label: "Function", color: NODE_COLORS.FUNCTION.border },
+  { type: "CLASS", label: "Class", color: NODE_COLORS.CLASS.border },
+  { type: "METHOD", label: "Method", color: NODE_COLORS.METHOD.border },
+  { type: "EXTERNAL", label: "External", color: NODE_COLORS.EXTERNAL.border }
+];
 
 const FLOW_NODE_COLORS = {
   ROOT:     { bg: "#4a148c", border: "#f44336", text: "#ffcdd2" },
@@ -58,7 +91,15 @@ function addExternalNodes(graphData) {
   };
 }
 
-export default function App() {
+export default function AppWrapper() {
+  return (
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
+  );
+}
+
+function App() {
   const [nodes, setNodes] = useState([]);
   const [edges, setEdges] = useState([]);
   const [viewMode, setViewMode] = useState("full");
@@ -69,6 +110,7 @@ export default function App() {
   const [allNodes, setAllNodes] = useState([]);
   const [allEdges, setAllEdges] = useState([]);
   const [needsFit, setNeedsFit] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
   const graphRef = useRef(graph);
   const wrapperRef = useRef(null);
   const enrichedRef = useRef(null);
@@ -295,10 +337,25 @@ export default function App() {
     setHoveredNode(null);
   }, []);
 
+  const displayedNodes = searchQuery
+    ? nodes.map(n => {
+        if (n.type === "group") return n;
+        const q = searchQuery.toLowerCase();
+        const match =
+          (n.data?.label || "").toLowerCase().includes(q) ||
+          (n.data?.subtitle || "").toLowerCase().includes(q) ||
+          (n.data?.file || "").toLowerCase().includes(q);
+        return {
+          ...n,
+          style: { ...n.style, opacity: match ? 1 : 0.15 }
+        };
+      })
+    : nodes;
+
   return (
     <div className="app-root" ref={wrapperRef}>
       <ReactFlow
-        nodes={nodes}
+        nodes={displayedNodes}
         edges={edges}
         nodeTypes={nodeTypes}
         onNodeClick={onNodeClick}
@@ -354,6 +411,13 @@ export default function App() {
 
             {viewMode === "full" && (
               <>
+                <input
+                  type="text"
+                  placeholder="Search nodes..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="search-input"
+                />
                 <button
                   className={`btn btn-toggle ${showExternal ? "active" : ""}`}
                   onClick={() => setShowExternal(prev => !prev)}
@@ -390,6 +454,19 @@ export default function App() {
               <div className="tooltip-type">{hoveredNode.data?.subtitle}</div>
               <div className="tooltip-file">{hoveredNode.data?.file}</div>
               <div className="tooltip-lines">lines {hoveredNode.data?.lines}</div>
+            </div>
+          </Panel>
+        )}
+
+        {viewMode === "full" && (
+          <Panel position="bottom-right" className="legend-panel">
+            <div className="legend">
+              {LEGEND_ITEMS.map(item => (
+                <div key={item.type} className="legend-item">
+                  <span className="legend-dot" style={{ background: item.color }} />
+                  <span className="legend-label">{item.label}</span>
+                </div>
+              ))}
             </div>
           </Panel>
         )}
