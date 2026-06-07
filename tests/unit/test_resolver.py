@@ -434,3 +434,218 @@ def test_resolver_wildcard_import_call_stays_unresolved() -> None:
     target_edge = next(e for e in result if e.id == "e1")
     assert target_edge.target == "mystery_func"
     assert any(n.id == "mystery_func" for n in virtual_nodes)
+
+
+# ============================================================================
+# Test suite: Local Type Propagation & Instance Method Resolution (Issue #12)
+# ============================================================================
+
+
+def _func_node_with_local_types(
+    func_fqn: str, file_path: str, local_types: dict[str, str] | None = None
+) -> Node:
+    """Helper: build a FUNCTION node with optional local_types metadata."""
+    module_path = file_path.replace("/", ".").removesuffix(".py")
+    full_fqn = f"{module_path}.{func_fqn}"
+    metadata = {}
+    if local_types:
+        metadata["local_types"] = local_types
+    return Node(
+        id=full_fqn,
+        type=NodeType.FUNCTION,
+        name=func_fqn.rsplit(".", maxsplit=1)[-1],
+        file_path=file_path,
+        start_line=1,
+        end_line=10,
+        language="python",
+        metadata=metadata,
+    )
+
+
+def test_local_type_resolution_assignment() -> None:
+    """Assignment: eng = Engine() → eng.execute() resolves to src.mod.Engine.execute."""
+    code = """
+import src.mod
+
+class Engine:
+    def execute(self):
+        pass
+
+def main():
+    eng = Engine()
+    eng.execute()  # Should resolve to src.mod.Engine.execute
+"""
+    nodes, edges = PythonExtractor().parse(code, "src/mod.py")
+    resolver = ResolverEngine(nodes, edges)
+    result, _ = resolver.resolve()
+    assert any(e.source == "src.mod.main" and e.target == "src.mod.Engine.execute" for e in result)
+
+
+def test_local_type_resolution_param_annotation() -> None:
+    """Test 2: Parameter Annotation - def run(store: SQLiteStore) → store.get_nodes() resolves."""
+    code = """
+class SQLiteStore:
+    def get_nodes(self):
+        pass
+
+def run(store: SQLiteStore):
+    store.get_nodes()  # Should resolve to SQLiteStore.get_nodes
+"""
+    nodes, edges = PythonExtractor().parse(code, "cgis/storage/sqlite_store.py")
+    resolver = ResolverEngine(nodes, edges)
+    result, _ = resolver.resolve()
+    assert any(
+        e.source == "cgis.storage.sqlite_store.run"
+        and e.target == "cgis.storage.sqlite_store.SQLiteStore.get_nodes"
+        for e in result
+    )
+
+
+def test_local_type_resolution_union_type() -> None:
+    """Test 3: Union Type Parsing - def f(node: Node | None) → node.method() resolves."""
+    code = """
+class Node:
+    def model_dump(self):
+        pass
+
+def process(node: Node | None):
+    node.model_dump()  # Should resolve to Node.model_dump
+"""
+    nodes, edges = PythonExtractor().parse(code, "cgis/core/models.py")
+    resolver = ResolverEngine(nodes, edges)
+    result, _ = resolver.resolve()
+    assert any(
+        e.source == "cgis.core.models.process" and e.target == "cgis.core.models.Node.model_dump"
+        for e in result
+    )
+
+
+def test_local_type_resolution_external_dep() -> None:
+    """External dep: console = Console() → console.print() resolves to rich.console.Console.print."""  # noqa: E501
+    code = """
+from rich.console import Console
+
+def main():
+    console = Console()
+    console.print()  # Should resolve to rich.console.Console.print
+"""
+    nodes, edges = PythonExtractor().parse(code, "app/main.py")
+    resolver = ResolverEngine(nodes, edges)
+    result, _ = resolver.resolve()
+    assert any(
+        e.source == "app.main.main" and e.target == "rich.console.Console.print" for e in result
+    )
+
+
+def test_method_call_result_not_captured_as_local_type() -> None:
+    """Method-call results must not be recorded as local types.
+
+    `result = obj.method(...)` cannot have its return type inferred statically.
+    Recording `obj.method` as a type leads to spurious targets like
+    `module.obj.method.attr` being classified as INTERNAL.
+    """
+    code = """
+class Store:
+    def get_item(self):
+        pass
+
+def process(store: Store):
+    item = store.get_item()   # result of method call — type unknown
+    item.render()             # must stay UNKNOWN, not resolve to Store.get_item.render
+"""
+    nodes, edges = PythonExtractor().parse(code, "app/service.py")
+    # item should have no local_type recorded
+    func_node = next(n for n in nodes if n.id == "app.service.process")
+    local_types = func_node.metadata.get("local_types", {})
+    assert "item" not in local_types, (
+        f"item should have no type (method-call result), got: {local_types.get('item')}"
+    )
+    # item.render() must stay unresolved, not spuriously INTERNAL
+    resolver = ResolverEngine(nodes, edges)
+    result, virtual_nodes = resolver.resolve()
+    item_render = next((e for e in result if "item.render" in e.target), None)
+    if item_render:
+        vnode = next((n for n in virtual_nodes if n.id == item_render.target), None)
+        assert vnode is None or vnode.namespace.value != "INTERNAL", (
+            f"item.render should not be INTERNAL, got namespace={vnode and vnode.namespace}"
+        )
+
+
+def test_local_type_resolution_typing_optional_annotation() -> None:
+    """typing.Optional[X] (module-prefixed wrapper) must extract X, not 'typing.Optional'."""
+    code = """
+import typing
+
+class SQLiteStore:
+    def save(self):
+        pass
+
+def run(store: typing.Optional[SQLiteStore]):
+    store.save()
+"""
+    nodes, _edges = PythonExtractor().parse(code, "cgis/storage/sqlite_store.py")
+    func_node = next(n for n in nodes if n.id == "cgis.storage.sqlite_store.run")
+    local_types = func_node.metadata.get("local_types", {})
+    assert local_types.get("store", "").endswith("SQLiteStore"), (
+        f"Expected type ending in 'SQLiteStore', got {local_types.get('store')!r}"
+    )
+
+
+def test_local_type_resolution_nested_generic_annotation() -> None:
+    """Optional[list[Node]] must not produce a malformed type string."""
+    code = """
+class Node:
+    def dump(self):
+        pass
+
+def run(nodes: Optional[list[Node]]):
+    pass
+"""
+    nodes, _edges = PythonExtractor().parse(code, "app/service.py")
+    func_node = next(n for n in nodes if n.id == "app.service.run")
+    local_types = func_node.metadata.get("local_types", {})
+    # Inner type is "list[Node]" — after cleaning should be "list", not "list[Node" (malformed)
+    stored = local_types.get("nodes", "")
+    assert "[" not in stored, f"Malformed type string in local_types: {stored!r}"
+
+
+def test_local_type_resolution_optional_annotation() -> None:
+    """Optional[X] param annotations must record X as the type, not Optional."""
+    code = """
+class SQLiteStore:
+    def save(self):
+        pass
+
+def run(store: Optional[SQLiteStore]):
+    store.save()
+"""
+    nodes, edges = PythonExtractor().parse(code, "cgis/storage/sqlite_store.py")
+    func_node = next(n for n in nodes if n.id == "cgis.storage.sqlite_store.run")
+    local_types = func_node.metadata.get("local_types", {})
+    assert local_types.get("store", "").endswith("SQLiteStore"), (
+        f"Expected type ending in 'SQLiteStore', got {local_types.get('store')!r}"
+    )
+
+    resolver = ResolverEngine(nodes, edges)
+    result, _ = resolver.resolve()
+    assert any(
+        e.source == "cgis.storage.sqlite_store.run"
+        and e.target == "cgis.storage.sqlite_store.SQLiteStore.save"
+        for e in result
+    )
+
+
+def test_local_type_resolution_module_prefixed_constructor() -> None:
+    """module.ClassName() constructors should record the resolved FQN via import_map."""
+    code = """
+from app import models
+
+def create():
+    store = models.Store()
+    store.save()
+"""
+    nodes, _edges = PythonExtractor().parse(code, "app/service.py")
+    func_node = next(n for n in nodes if n.id == "app.service.create")
+    local_types = func_node.metadata.get("local_types", {})
+    assert "store" in local_types, f"Expected 'store' in local_types, got {local_types}"
+    assert local_types["store"] == "app.models.Store"
