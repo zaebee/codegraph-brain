@@ -35,7 +35,7 @@ class ResolverEngine:
             # Index FILE-level import maps
             if node.type == NodeType.FILE:
                 normalized = os.path.normpath(node.file_path)
-                self._file_imports[normalized] = node.metadata.get("import_map", {})
+                self._file_imports[normalized] = node.metadata.get("import_map") or {}
 
             # Index global functions/symbols
             if node.type in (NodeType.FUNCTION, NodeType.CLASS):
@@ -130,11 +130,12 @@ class ResolverEngine:
     ) -> str | None:
         """Resolve a global call using import map, then global symbol index."""
         source_node = self.nodes.get(source_fqn)
-        file_path = (
-            os.path.normpath(source_node.file_path)
-            if source_node
-            else (os.path.normpath(edge_file_path) if edge_file_path else None)
-        )
+        if source_node:
+            file_path: str | None = os.path.normpath(source_node.file_path)
+        elif edge_file_path:
+            file_path = os.path.normpath(edge_file_path)
+        else:
+            file_path = None
 
         # 1. Check file-level import map (highest priority — explicit import wins)
         if file_path:

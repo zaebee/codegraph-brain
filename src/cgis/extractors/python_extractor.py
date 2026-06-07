@@ -213,7 +213,7 @@ class PythonExtractor(BaseExtractor):
         raw_module_str = ""
         for sub in node.children:
             if sub.type == "import_prefix":
-                leading_dots = sum(1 for c in sub.children if c.type == ".")
+                leading_dots = sub.end_byte - sub.start_byte
             elif sub.type == "dotted_name":
                 raw_module_str = code_bytes[sub.start_byte : sub.end_byte].decode("utf-8")
         return leading_dots, raw_module_str
