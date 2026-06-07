@@ -5,7 +5,6 @@ All logging goes to stderr via structlog.
 """
 
 import sys
-from contextlib import redirect_stdout
 from pathlib import Path
 
 import structlog
@@ -37,7 +36,7 @@ def cgis_ingest(project_path: str, db_path: str = _DEFAULT_DB) -> str:
     """
     pipeline = IngestionPipeline(_EXTRACTORS)
     try:
-        with SQLiteStore(db_path) as store, redirect_stdout(sys.stderr):
+        with SQLiteStore(db_path) as store:
             nodes, _raw, resolved = pipeline.run(project_path, store=store)
     except (FileNotFoundError, NotADirectoryError) as exc:
         return f"❌ {exc}"
@@ -63,7 +62,7 @@ def cgis_trace_flow(fqn: str, db_path: str = _DEFAULT_DB, depth: int = 3) -> str
     try:
         with SQLiteStore(db_path) as store:
             nodes, edges = QueryEngine(store).get_flow_graph(fqn, max_depth=depth)
-    except RuntimeError as exc:
+    except Exception as exc:
         return f"❌ {exc}"
 
     if not nodes:
@@ -85,7 +84,7 @@ def cgis_analyze_impact(fqn: str, db_path: str = _DEFAULT_DB, depth: int = 3) ->
     try:
         with SQLiteStore(db_path) as store:
             nodes, edges = QueryEngine(store).get_impact_graph(fqn, max_depth=depth)
-    except RuntimeError as exc:
+    except Exception as exc:
         return f"❌ {exc}"
 
     if not nodes:
@@ -107,7 +106,7 @@ def cgis_get_structure(fqn: str, db_path: str = _DEFAULT_DB, depth: int = 2) -> 
     try:
         with SQLiteStore(db_path) as store:
             nodes, edges = QueryEngine(store).get_flow_graph(fqn, max_depth=depth)
-    except RuntimeError as exc:
+    except Exception as exc:
         return f"❌ {exc}"
 
     if not nodes:
