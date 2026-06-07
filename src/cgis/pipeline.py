@@ -76,12 +76,17 @@ class IngestionPipeline:
                         continue
 
                     full_path = root / file
-                    full_path_str = str(full_path)
+                    full_path_str = full_path.as_posix()
                     found_file_paths.add(full_path_str)
 
                     self._process_file(
-                        full_path, full_path_str, extractor, store,
-                        all_nodes, all_edges, changed_files,
+                        full_path,
+                        full_path_str,
+                        extractor,
+                        store,
+                        all_nodes,
+                        all_edges,
+                        changed_files,
                     )
 
                     progress.update(extract_task, advance=1)
@@ -139,28 +144,28 @@ class IngestionPipeline:
         changed_files: dict[str, str],
         found_file_paths: set[str],
     ) -> None:
-        """Persist only changed files and clean up stale ones."""
+        """Persist only changed files and clean up stale ones in one transaction."""
         nodes_by_file: dict[str, list[Node]] = {}
         for node in all_nodes:
-            nodes_by_file.setdefault(node.file_path, []).append(node)
+            if node.file_path in changed_files:
+                nodes_by_file.setdefault(node.file_path, []).append(node)
 
+        # Map source node → file so structural edges (file_path=None) can be assigned
+        source_to_file: dict[str, str] = {
+            node.id: node.file_path for node in all_nodes if node.file_path in changed_files
+        }
         edges_by_file: dict[str, list[Edge]] = {}
         for edge in resolved_edges:
-            if edge.file_path:
-                edges_by_file.setdefault(edge.file_path, []).append(edge)
+            file_path = edge.file_path or source_to_file.get(edge.source)
+            if file_path and file_path in changed_files:
+                edges_by_file.setdefault(file_path, []).append(edge)
 
-        for file_path, file_hash in changed_files.items():
-            store.delete_file_data(file_path)
-            store.save_graph(
-                nodes_by_file.get(file_path, []),
-                edges_by_file.get(file_path, []),
-            )
-            store.upsert_file_hash(file_path, file_hash)
+        stale_files = store.get_all_tracked_files() - found_file_paths
+        store.save_incremental_batch(nodes_by_file, edges_by_file, changed_files, stale_files)
+
+        for file_path in changed_files:
             logger.info("Re-ingested changed file", file_path=file_path)
-
-        # Remove stale files (tracked but no longer on disk)
-        for stale_path in store.get_all_tracked_files() - found_file_paths:
-            store.delete_file_data(stale_path)
+        for stale_path in stale_files:
             logger.info("Removed stale file from graph", file_path=stale_path)
 
     def _get_extractor(self, filename: str) -> BaseExtractor | None:

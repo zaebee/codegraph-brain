@@ -85,62 +85,61 @@ class SQLiteStore:
             self._conn.executescript(schema)
             self._conn.commit()
 
-    def save_graph(self, nodes: list[Node], edges: list[Edge], overwrite: bool = False) -> None:
-        """Persists all nodes and edges inside a single transaction."""
-        if not self._conn:
-            raise RuntimeError(self._error_message)
-
-        # Insert Nodes
-        node_query = """
+    _NODE_INSERT = """
         INSERT OR REPLACE INTO nodes (
             id, type, name, file_path, start_line, end_line, language,
             ontology_class, domains, confidence_score, metadata
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
-        node_rows = [
-            (
-                n.id,
-                n.type.value,
-                n.name,
-                n.file_path,
-                n.start_line,
-                n.end_line,
-                n.language,
-                n.ontology_class,
-                json.dumps(n.domains),
-                n.confidence_score,
-                json.dumps(n.metadata),
-            )
-            for n in nodes
-        ]
-
-        # Insert Edges
-        edge_query = """
+    _EDGE_INSERT = """
         INSERT OR REPLACE INTO edges (
             id, source, target, type, weight, confidence,
             context, file_path, line_number
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
-        edge_rows = [
-            (
-                e.id,
-                e.source,
-                e.target,
-                e.type.value,
-                e.weight,
-                e.confidence,
-                e.context,
-                e.file_path,
-                e.line_number,
-            )
-            for e in edges
-        ]
+
+    def _node_to_row(
+        self, n: Node
+    ) -> tuple[str, str, str, str, int, int, str, str | None, str, float, str]:
+        return (
+            n.id,
+            n.type.value,
+            n.name,
+            n.file_path,
+            n.start_line,
+            n.end_line,
+            n.language,
+            n.ontology_class,
+            json.dumps(n.domains),
+            n.confidence_score,
+            json.dumps(n.metadata),
+        )
+
+    def _edge_to_row(
+        self, e: Edge
+    ) -> tuple[str, str, str, str, float, float, str | None, str | None, int | None]:
+        return (
+            e.id,
+            e.source,
+            e.target,
+            e.type.value,
+            e.weight,
+            e.confidence,
+            e.context,
+            e.file_path,
+            e.line_number,
+        )
+
+    def save_graph(self, nodes: list[Node], edges: list[Edge], overwrite: bool = False) -> None:
+        """Persists all nodes and edges inside a single transaction."""
+        if not self._conn:
+            raise RuntimeError(self._error_message)
         with self._conn:
             if overwrite:
                 self._conn.execute("DELETE FROM nodes")
                 self._conn.execute("DELETE FROM edges")
-            self._conn.executemany(edge_query, edge_rows)
-            self._conn.executemany(node_query, node_rows)
+            self._conn.executemany(self._EDGE_INSERT, [self._edge_to_row(e) for e in edges])
+            self._conn.executemany(self._NODE_INSERT, [self._node_to_row(n) for n in nodes])
 
     def get_node(self, node_id: str) -> Node | None:
         if not self._conn:
@@ -232,9 +231,44 @@ class SQLiteStore:
         if not self._conn:
             raise RuntimeError(self._error_message)
         with self._conn:
-            self._conn.execute("DELETE FROM nodes WHERE file_path = ?", (file_path,))
+            # By source (handles structural edges with file_path=None) and by file_path
+            self._conn.execute(
+                "DELETE FROM edges WHERE source IN (SELECT id FROM nodes WHERE file_path = ?)",
+                (file_path,),
+            )
             self._conn.execute("DELETE FROM edges WHERE file_path = ?", (file_path,))
+            self._conn.execute("DELETE FROM nodes WHERE file_path = ?", (file_path,))
             self._conn.execute("DELETE FROM files_state WHERE file_path = ?", (file_path,))
+
+    def save_incremental_batch(
+        self,
+        nodes_by_file: dict[str, list[Node]],
+        edges_by_file: dict[str, list[Edge]],
+        file_hashes: dict[str, str],
+        stale_files: set[str],
+    ) -> None:
+        """Atomically delete changed/stale files and insert new data in one transaction."""
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        all_changed = set(file_hashes) | stale_files
+        with self._conn:
+            for file_path in all_changed:
+                self._conn.execute(
+                    "DELETE FROM edges WHERE source IN (SELECT id FROM nodes WHERE file_path = ?)",
+                    (file_path,),
+                )
+                self._conn.execute("DELETE FROM edges WHERE file_path = ?", (file_path,))
+                self._conn.execute("DELETE FROM nodes WHERE file_path = ?", (file_path,))
+                self._conn.execute("DELETE FROM files_state WHERE file_path = ?", (file_path,))
+            for nodes in nodes_by_file.values():
+                self._conn.executemany(self._NODE_INSERT, [self._node_to_row(n) for n in nodes])
+            for edges in edges_by_file.values():
+                self._conn.executemany(self._EDGE_INSERT, [self._edge_to_row(e) for e in edges])
+            for file_path, hash_val in file_hashes.items():
+                self._conn.execute(
+                    "INSERT OR REPLACE INTO files_state (file_path, hash) VALUES (?, ?)",
+                    (file_path, hash_val),
+                )
 
     def get_nodes_by_file(self, file_path: str) -> list[Node]:
         """Return all nodes belonging to a specific file."""

@@ -188,13 +188,32 @@ def test_file_hash_roundtrip(temp_store: SQLiteStore) -> None:
 def test_delete_file_data_removes_nodes_edges_and_hash(temp_store: SQLiteStore) -> None:
     """delete_file_data removes nodes, edges and the files_state entry for that file."""
     nodes = [
-        Node(id="mod.func_a", type=NodeType.FUNCTION, name="func_a",
-             file_path="mod.py", start_line=1, end_line=2),
-        Node(id="mod.func_b", type=NodeType.FUNCTION, name="func_b",
-             file_path="mod.py", start_line=3, end_line=4),
+        Node(
+            id="mod.func_a",
+            type=NodeType.FUNCTION,
+            name="func_a",
+            file_path="mod.py",
+            start_line=1,
+            end_line=2,
+        ),
+        Node(
+            id="mod.func_b",
+            type=NodeType.FUNCTION,
+            name="func_b",
+            file_path="mod.py",
+            start_line=3,
+            end_line=4,
+        ),
     ]
-    edges = [Edge(id="e1", source="mod.func_a", target="mod.func_b",
-                  type=EdgeType.CALLS, file_path="mod.py")]
+    edges = [
+        Edge(
+            id="e1",
+            source="mod.func_a",
+            target="mod.func_b",
+            type=EdgeType.CALLS,
+            file_path="mod.py",
+        )
+    ]
     temp_store.save_graph(nodes, edges)
     temp_store.upsert_file_hash("mod.py", "abc")
 
@@ -206,13 +225,92 @@ def test_delete_file_data_removes_nodes_edges_and_hash(temp_store: SQLiteStore) 
     assert temp_store.get_file_hash("mod.py") is None
 
 
+def test_delete_file_data_removes_edges_without_file_path(temp_store: SQLiteStore) -> None:
+    """delete_file_data also removes structural edges whose source belongs to the deleted file."""
+    nodes = [
+        Node(
+            id="mod.func",
+            type=NodeType.FUNCTION,
+            name="func",
+            file_path="mod.py",
+            start_line=1,
+            end_line=2,
+        ),
+    ]
+    # Edge with file_path=None — simulates a future structural edge
+    edges = [
+        Edge(
+            id="struct_e1",
+            source="mod.func",
+            target="other.func",
+            type=EdgeType.CALLS,
+            file_path=None,
+        )
+    ]
+    temp_store.save_graph(nodes, edges)
+    temp_store.upsert_file_hash("mod.py", "abc")
+
+    temp_store.delete_file_data("mod.py")
+
+    assert temp_store.get_node("mod.func") is None
+    assert temp_store.get_outgoing_edges("mod.func") == []
+    assert temp_store.get_file_hash("mod.py") is None
+
+
+def test_save_incremental_batch_single_transaction(temp_store: SQLiteStore) -> None:
+    """save_incremental_batch persists nodes, edges, hashes and removes stale files atomically."""
+    # Pre-seed stale file
+    stale_node = Node(
+        id="old.fn", type=NodeType.FUNCTION, name="fn", file_path="old.py", start_line=1, end_line=2
+    )
+    temp_store.save_graph([stale_node], [])
+    temp_store.upsert_file_hash("old.py", "stale_hash")
+
+    new_node = Node(
+        id="new.func",
+        type=NodeType.FUNCTION,
+        name="func",
+        file_path="new.py",
+        start_line=1,
+        end_line=2,
+    )
+    new_edge = Edge(
+        id="e1", source="new.func", target="raw_call:print", type=EdgeType.CALLS, file_path="new.py"
+    )
+
+    temp_store.save_incremental_batch(
+        nodes_by_file={"new.py": [new_node]},
+        edges_by_file={"new.py": [new_edge]},
+        file_hashes={"new.py": "new_hash"},
+        stale_files={"old.py"},
+    )
+
+    assert temp_store.get_node("new.func") is not None
+    assert temp_store.get_file_hash("new.py") == "new_hash"
+    assert temp_store.get_node("old.fn") is None
+    assert temp_store.get_file_hash("old.py") is None
+    assert len(temp_store.get_outgoing_edges("new.func")) == 1
+
+
 def test_get_nodes_by_file(temp_store: SQLiteStore) -> None:
     """get_nodes_by_file returns only nodes for the requested file."""
     nodes = [
-        Node(id="a.func", type=NodeType.FUNCTION, name="func",
-             file_path="a.py", start_line=1, end_line=2),
-        Node(id="b.func", type=NodeType.FUNCTION, name="func",
-             file_path="b.py", start_line=1, end_line=2),
+        Node(
+            id="a.func",
+            type=NodeType.FUNCTION,
+            name="func",
+            file_path="a.py",
+            start_line=1,
+            end_line=2,
+        ),
+        Node(
+            id="b.func",
+            type=NodeType.FUNCTION,
+            name="func",
+            file_path="b.py",
+            start_line=1,
+            end_line=2,
+        ),
     ]
     temp_store.save_graph(nodes, [])
 
