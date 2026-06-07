@@ -27,13 +27,13 @@ class MermaidCompiler:
     def _normalize_id(self, fqn: str) -> str:
         """Deterministically hashes any complex FQN into a Mermaid-safe alphanumeric ID."""
         hasher = hashlib.md5(fqn.encode("utf-8"), usedforsecurity=False)
-        return f"n_{hasher.hexdigest()[:8]}"
+        return f"n_{hasher.hexdigest()}"
 
     def _get_node_label(self, node: Node) -> str:
         """Formats the visible text inside a node (Name + file name + line range)."""
         filename = Path(node.file_path).name
         label = f"{node.name} ({filename}:{node.start_line})"
-        return label.replace('"', '\\"')
+        return label.replace("\\", "\\\\").replace('"', '\\"')
 
     def _get_style_class(self, node_type: NodeType, is_unresolved: bool) -> str:
         if is_unresolved:
@@ -68,14 +68,16 @@ class MermaidCompiler:
             source_safe = id_map.get(edge.source)
             if not source_safe:
                 source_safe = self._normalize_id(edge.source)
-                clean_source = edge.source.replace('"', '\\"')
+                clean_source = edge.source.replace("\\", "\\\\").replace('"', '\\"')
                 lines.append(f'    {source_safe}["{clean_source}"]:::defaultNode')
                 id_map[edge.source] = source_safe
 
             target_safe = id_map.get(edge.target)
             if not target_safe:
                 target_safe = self._normalize_id(edge.target)
-                clean_target = edge.target.replace("raw_call:", "").replace('"', '\\"')
+                clean_target = (
+                    edge.target.replace("raw_call:", "").replace("\\", "\\\\").replace('"', '\\"')
+                )
                 lines.append(f'    {target_safe}["{clean_target}"]:::unresolvedNode')
                 id_map[edge.target] = target_safe
 
