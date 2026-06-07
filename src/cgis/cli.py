@@ -129,6 +129,9 @@ def build_trace_tree(
 
         branch = current_tree.add(label)
 
+        if not target_node:
+            continue
+
         if target_id in path_visited:
             branch.add("[bold red]↻ Cycle detected[/bold red]")
             continue
@@ -199,6 +202,9 @@ def build_impact_tree(
             label = f"[bold red]Unknown Caller[/bold red] [dim]{source_id}[/dim]"
 
         branch = current_tree.add(label)
+
+        if not source_node:
+            continue
 
         if source_id in path_visited:
             branch.add("[bold red]↻ Cycle detected[/bold red]")
