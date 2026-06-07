@@ -168,9 +168,11 @@ class IngestionPipeline:
         for node in all_nodes:
             if node.file_path in changed_files:
                 nodes_by_file.setdefault(node.file_path, []).append(node)
-        # Virtual nodes (EXTERNAL/STDLIB) are always re-persisted since they're derived
+        # Virtual nodes (EXTERNAL/STDLIB) are always re-persisted since they're derived;
+        # mark the virtual path as changed so stale virtual nodes get purged first.
         if virtual_nodes:
             nodes_by_file.setdefault(_VIRTUAL_FILE_PATH, []).extend(virtual_nodes)
+            changed_files[_VIRTUAL_FILE_PATH] = ""
 
         # Map source node → file so structural edges (file_path=None) can be assigned
         source_to_file: dict[str, str] = {

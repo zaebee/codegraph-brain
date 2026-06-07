@@ -1,5 +1,6 @@
 """Implements ResolverEngine class."""
 
+import builtins
 import os
 import sys
 
@@ -29,6 +30,8 @@ class ResolverEngine:
         self._file_imports: dict[str, dict[str, str]] = {}
         # suffix_fqn -> [full_node_ids]  (handles src/ layout prefix mismatch)
         self._suffix_map: dict[str, list[str]] = {}
+        # top-level root segments of all internal nodes (for classify)
+        self._internal_roots: set[str] = set()
 
         self._build_indices()
 
@@ -56,15 +59,19 @@ class ResolverEngine:
             # Build suffix map for src/-layout prefix normalization:
             # "src.cgis.pipeline.X" → suffix "cgis.pipeline.X" also points to the node
             parts = node.id.split(".")
+            self._internal_roots.add(parts[0])
             for i in range(1, len(parts)):
                 suffix = ".".join(parts[i:])
                 self._suffix_map.setdefault(suffix, []).append(node.id)
 
-    @staticmethod
-    def _classify_fqn(fqn: str) -> NodeNamespace:
-        """Classify an unresolved FQN as STDLIB or EXTERNAL based on its root module."""
+    def _classify_fqn(self, fqn: str) -> NodeNamespace:
+        """Classify an FQN as STDLIB, INTERNAL, or EXTERNAL."""
+        if fqn.startswith((".", "self.")):
+            return NodeNamespace.INTERNAL
         root = fqn.split(".", maxsplit=1)[0]
-        if root in sys.stdlib_module_names:
+        if root in self._internal_roots:
+            return NodeNamespace.INTERNAL
+        if root in sys.stdlib_module_names or root in dir(builtins):
             return NodeNamespace.STDLIB
         return NodeNamespace.EXTERNAL
 
@@ -116,19 +123,22 @@ class ResolverEngine:
                     )
                 )
             else:
-                # Create a virtual node for this external/stdlib symbol
-                virtual_fqn = raw_name
-                if virtual_fqn not in self.nodes and virtual_fqn not in virtual_nodes:
-                    ns = self._classify_fqn(virtual_fqn)
-                    virtual_nodes[virtual_fqn] = self._make_virtual_node(virtual_fqn, ns)
                 resolved_edges.append(
                     edge.model_copy(
                         update={
-                            "target": virtual_fqn,
+                            "target": raw_name,
                             "confidence": 0.8,
                         }
                     )
                 )
+
+        # Create virtual nodes for any edge target not already in internal nodes
+        # (covers both unresolved calls and resolved-but-external targets like json.dumps)
+        for edge in resolved_edges:
+            target = edge.target
+            if target not in self.nodes and target not in virtual_nodes:
+                ns = self._classify_fqn(target)
+                virtual_nodes[target] = self._make_virtual_node(target, ns)
 
         return resolved_edges, list(virtual_nodes.values())
 
