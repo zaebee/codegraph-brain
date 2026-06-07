@@ -17,6 +17,10 @@ from cgis.query.mermaid import MermaidCompiler
 from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 
 
+_DEFAULT_DB = "graph.db"
+_DEFAULT_DB_HELP = "Path to the SQLite database"
+
+
 class OutputFormat(StrEnum):
     TEXT = "text"
     MERMAID = "mermaid"
@@ -173,7 +177,7 @@ def build_trace_tree(
 @app.command()
 def trace(
     start: str = typer.Argument(..., help="FQN of the starting node to trace flow from"),
-    db: str = typer.Option("graph.db", "--db", "-d", help="Path to the SQLite database"),
+    db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
     depth: int = typer.Option(5, "--depth", help="Maximum traversal depth"),
     output_format: OutputFormat = typer.Option(
         OutputFormat.TEXT, "--format", "-f", help="Output format: text or mermaid"
@@ -254,7 +258,7 @@ def build_impact_tree(
 @app.command()
 def impact(
     target: str = typer.Argument(..., help="FQN of the target entity to analyze"),
-    db: str = typer.Option("graph.db", "--db", "-d", help="Path to the SQLite database"),
+    db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
     depth: int = typer.Option(5, "--depth", help="Maximum traversal depth"),
     output_format: OutputFormat = typer.Option(
         OutputFormat.TEXT, "--format", "-f", help="Output format: text or mermaid"
@@ -293,7 +297,7 @@ def impact(
 
 @app.command()
 def validate(
-    db: str = typer.Option("graph.db", "--db", "-d", help="Path to the SQLite database"),
+    db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
     threshold: float = typer.Option(
         0.30, "--threshold", "-t", min=0.0, max=1.0,
         help="Max allowed unresolved ratio (default 0.30 = 30%)",
