@@ -364,10 +364,11 @@ def validate(
     table.add_row("Internal (resolved)", f"{stats.resolved} ({_pct(stats.resolved)})")
     table.add_row("Stdlib calls", f"{stats.stdlib} ({_pct(stats.stdlib)})")
     table.add_row("External calls", f"{stats.external} ({_pct(stats.external)})")
-    table.add_row(
-        "Unresolved (raw)",
-        f"[yellow]{stats.unresolved} ({_pct(stats.unresolved)})[/yellow]",
-    )
+    if stats.unresolved:
+        table.add_row(
+            "Unresolved (raw)",
+            f"[bold red]{stats.unresolved} ({_pct(stats.unresolved)})[/bold red]",
+        )
     console.print(table)
 
     if stats.top_unresolved:
