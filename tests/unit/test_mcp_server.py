@@ -98,6 +98,27 @@ def test_cgis_get_structure_returns_mermaid(repo_with_calls: tuple[Path, Path]) 
     assert "```mermaid" in result
 
 
+def test_cgis_trace_flow_missing_db_returns_error(tmp_path: Path) -> None:
+    result = cgis_trace_flow("any.fqn", str(tmp_path / "missing.db"))
+
+    assert "❌" in result
+    assert "cgis_ingest" in result
+
+
+def test_cgis_analyze_impact_missing_db_returns_error(tmp_path: Path) -> None:
+    result = cgis_analyze_impact("any.fqn", str(tmp_path / "missing.db"))
+
+    assert "❌" in result
+    assert "cgis_ingest" in result
+
+
+def test_cgis_get_structure_missing_db_returns_error(tmp_path: Path) -> None:
+    result = cgis_get_structure("any.fqn", str(tmp_path / "missing.db"))
+
+    assert "❌" in result
+    assert "cgis_ingest" in result
+
+
 def test_cgis_ingest_overwrites_on_repeat_call(tmp_path: Path) -> None:
     """Calling ingest twice must not duplicate nodes."""
     (tmp_path / "mod.py").write_text("def fn(): pass\n", encoding="utf-8")

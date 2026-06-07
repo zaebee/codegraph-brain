@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import structlog
+from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from cgis.core.models import Edge, Node
@@ -69,6 +70,7 @@ class IngestionPipeline:
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             transient=True,
+            console=Console(stderr=True),
         ) as progress:
             # Task 1: Extraction
             extract_task = progress.add_task(description="Extracting code entities...", total=None)
