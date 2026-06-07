@@ -11,8 +11,7 @@
     "dagre": "^0.8.5",
     "html-to-image": "^1.11.11",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7",
-    "web-vitals": "^2.1.4"
+    "react-dom": "^19.2.7"
   },
   "scripts": {
     "dev": "vite",
@@ -21,24 +20,6 @@
     "test": "vitest",
     "test:run": "vitest run",
     "preview": "vite preview"
-  },
-  "eslintConfig": {
-    "extends": [
-      "react-app",
-      "react-app/jest"
-    ]
-  },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^6.0.2",
