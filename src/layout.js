@@ -1,10 +1,6 @@
 import dagre from "dagre";
 
-import { NODE_WIDTH, NODE_HEIGHT } from "./constants";
-
-const GROUP_PADDING = 40;
-const GROUP_HEADER = 50;
-const GROUP_SPACING = 30;
+import { NODE_WIDTH, NODE_HEIGHT, GROUP_PADDING, GROUP_HEADER, GROUP_SPACING } from "./constants";
 
 export function layoutGraph(nodes, edges) {
   const groupNodes = nodes.filter(n => n.type === "group");
