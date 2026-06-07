@@ -1,5 +1,6 @@
 """Unit test cases for pipeline."""
 
+import os
 from pathlib import Path
 
 import pytest
@@ -113,9 +114,53 @@ def test_incremental_removes_stale_file(pipeline: IngestionPipeline, tmp_path: P
 
     with SQLiteStore(db_path) as store:
         pipeline.run(str(tmp_path), store=store)
-        remaining = {n.name for n in store.get_nodes_by_file(str(py_file))}
+        rel_path = py_file.relative_to(tmp_path).as_posix()
+        remaining = {n.name for n in store.get_nodes_by_file(rel_path)}
 
     assert remaining == set()
+
+
+def test_absolute_and_relative_path_produce_identical_fqns(
+    pipeline: IngestionPipeline, tmp_path: Path
+) -> None:
+    """Passing the same directory as a relative or absolute path must yield identical node IDs."""
+    (tmp_path / "mod.py").write_text("def func(): pass\n", encoding="utf-8")
+
+    nodes_abs, _, _ = pipeline.run(str(tmp_path))
+
+    rel_path = os.path.relpath(str(tmp_path))
+    nodes_rel, _, _ = pipeline.run(rel_path)
+
+    assert {n.id for n in nodes_abs} == {n.id for n in nodes_rel}
+
+
+def test_file_paths_stored_as_relative(pipeline: IngestionPipeline, tmp_path: Path) -> None:
+    """Nodes and edges must store paths relative to workspace_root, never absolute."""
+    (tmp_path / "mod.py").write_text("def func(): pass\n", encoding="utf-8")
+
+    nodes, _, _ = pipeline.run(str(tmp_path))
+
+    for node in nodes:
+        assert not Path(node.file_path).is_absolute(), (
+            f"Node {node.id!r} has absolute file_path: {node.file_path}"
+        )
+
+
+def test_symlink_outside_workspace_is_skipped(pipeline: IngestionPipeline, tmp_path: Path) -> None:
+    """A symlink whose resolved target lies outside workspace_root must be skipped."""
+    outside = tmp_path.parent / "external_symlink_target.py"
+    outside.write_text("def external_func(): pass\n", encoding="utf-8")
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "local.py").write_text("def local_func(): pass\n", encoding="utf-8")
+    (workspace / "outside_link.py").symlink_to(outside)
+
+    nodes, _, _ = pipeline.run(str(workspace))
+
+    names = {n.name for n in nodes}
+    assert "local_func" in names
+    assert "external_func" not in names
 
 
 def test_pipeline_logs_and_skips_unparseable_file(

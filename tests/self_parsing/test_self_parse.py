@@ -32,8 +32,12 @@ def _fqn(relative: str, *parts: str) -> str:
 
     Returns:
         Fully-qualified node id as stored in the graph.
+
+    After path canonicalization (Issue #33), the pipeline stores paths
+    relative to workspace_root (= SRC_DIR when ingesting SRC_DIR directly).
+    So ``_fqn("pipeline.py", "IngestionPipeline")`` → ``"pipeline.IngestionPipeline"``.
     """
-    module = file_path_to_module_fqn((SRC_DIR / relative).as_posix())
+    module = file_path_to_module_fqn(relative)
     return ".".join([module, *parts]) if parts else module
 
 
@@ -145,12 +149,12 @@ def test_get_impact_graph_calls_bfs(
 def test_no_phantom_bleed(
     graph_data: tuple[SQLiteStore, list[Node], list[Edge]],
 ) -> None:
-    """No node may have a file_path outside the ingested src/cgis/ subtree."""
+    """All node file_paths must be relative (no absolute paths from the host machine)."""
     _, nodes, _ = graph_data
-    src_prefix = SRC_DIR.as_posix()
     for node in nodes:
-        assert node.file_path.startswith(src_prefix), (
-            f"Node {node.id!r} came from outside SRC_DIR: {node.file_path}"
+        assert not Path(node.file_path).is_absolute(), (
+            f"Node {node.id!r} has absolute file_path — path canonicalization failed: "
+            f"{node.file_path}"
         )
 
 
@@ -193,8 +197,8 @@ def test_file_coverage(
         # Skip files that have no function/class definitions
         if not any(kw in source for kw in ("def ", "class ")):
             continue
-        abs_path = py_file.as_posix()
-        assert abs_path in files_with_nodes, (
+        rel_path = py_file.relative_to(SRC_DIR).as_posix()
+        assert rel_path in files_with_nodes, (
             f"{py_file.relative_to(SRC_DIR.parent.parent)} has definitions "
             f"but produced no nodes in the graph"
         )

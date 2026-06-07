@@ -60,6 +60,11 @@ class IngestionPipeline:
             msg = f"Path is not a directory: {repo_path}"
             raise NotADirectoryError(msg)
 
+        # Canonical workspace root: resolve symlinks + relative dots so that
+        # both `cgis ingest ./src` and `cgis ingest /abs/path/src` produce
+        # identical file_paths and FQNs in the database.
+        workspace_root = path.resolve()
+
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -68,7 +73,7 @@ class IngestionPipeline:
             # Task 1: Extraction
             extract_task = progress.add_task(description="Extracting code entities...", total=None)
 
-            for root, dirs, files in path.walk():
+            for root, dirs, files in workspace_root.walk():
                 dirs[:] = [d for d in dirs if not d.startswith(".") and d not in self._excluded]
                 for file in files:
                     extractor = self._get_extractor(file)
@@ -76,12 +81,18 @@ class IngestionPipeline:
                         continue
 
                     full_path = root / file
-                    full_path_str = full_path.as_posix()
-                    found_file_paths.add(full_path_str)
+                    try:
+                        # Resolve symlinks before relativising so that a link
+                        # pointing outside the workspace is caught and skipped.
+                        rel_path_str = full_path.resolve().relative_to(workspace_root).as_posix()
+                    except ValueError:
+                        logger.warning("File outside workspace root, skipping", file=str(full_path))
+                        continue
+                    found_file_paths.add(rel_path_str)
 
                     self._process_file(
                         full_path,
-                        full_path_str,
+                        rel_path_str,
                         extractor,
                         store,
                         all_nodes,

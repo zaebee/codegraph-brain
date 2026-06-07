@@ -105,7 +105,7 @@ def test_full_workflow_ingest_trace_impact(tmp_path: Path) -> None:
     assert ingest_result.exit_code == 0
     assert db_file.exists()
 
-    expected_fqn = f"{file_path_to_module_fqn(str(py_file))}.assist"
+    expected_fqn = f"{file_path_to_module_fqn(py_file.relative_to(tmp_path).as_posix())}.assist"
 
     trace_result = runner.invoke(app, ["trace", expected_fqn, "--db", str(db_file)])
     assert trace_result.exit_code == 0
@@ -126,7 +126,13 @@ def test_trace_renders_callees_in_tree(tmp_path: Path) -> None:
 
     py_file = tmp_path / "funcs.py"
     result = runner.invoke(
-        app, ["trace", f"{file_path_to_module_fqn(str(py_file))}.caller", "--db", str(db_file)]
+        app,
+        [
+            "trace",
+            f"{file_path_to_module_fqn(py_file.relative_to(tmp_path).as_posix())}.caller",
+            "--db",
+            str(db_file),
+        ],
     )
 
     assert result.exit_code == 0
@@ -141,7 +147,13 @@ def test_trace_shows_unresolved_external_call(tmp_path: Path) -> None:
 
     py_file = tmp_path / "mod.py"
     result = runner.invoke(
-        app, ["trace", f"{file_path_to_module_fqn(str(py_file))}.greet", "--db", str(db_file)]
+        app,
+        [
+            "trace",
+            f"{file_path_to_module_fqn(py_file.relative_to(tmp_path).as_posix())}.greet",
+            "--db",
+            str(db_file),
+        ],
     )
 
     assert result.exit_code == 0
@@ -156,7 +168,7 @@ def test_trace_detects_cycle(tmp_path: Path) -> None:
     runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
 
     py_file = tmp_path / "cycle.py"
-    fqn = f"{file_path_to_module_fqn(str(py_file))}.func_a"
+    fqn = f"{file_path_to_module_fqn(py_file.relative_to(tmp_path).as_posix())}.func_a"
     result = runner.invoke(app, ["trace", fqn, "--db", str(db_file), "--depth", "5"])
 
     assert result.exit_code == 0
@@ -172,7 +184,13 @@ def test_impact_renders_callers_in_tree(tmp_path: Path) -> None:
 
     py_file = tmp_path / "funcs.py"
     result = runner.invoke(
-        app, ["impact", f"{file_path_to_module_fqn(str(py_file))}.callee", "--db", str(db_file)]
+        app,
+        [
+            "impact",
+            f"{file_path_to_module_fqn(py_file.relative_to(tmp_path).as_posix())}.callee",
+            "--db",
+            str(db_file),
+        ],
     )
 
     assert result.exit_code == 0
@@ -217,7 +235,7 @@ def test_trace_stops_at_max_depth(tmp_path: Path) -> None:
     runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
 
     py_file = tmp_path / "chain.py"
-    fqn = f"{file_path_to_module_fqn(str(py_file))}.root_fn"
+    fqn = f"{file_path_to_module_fqn(py_file.relative_to(tmp_path).as_posix())}.root_fn"
     result = runner.invoke(app, ["trace", fqn, "--db", str(db_file), "--depth", "1"])
 
     # Rich may wrap long FQN strings across lines — join without separator to recover names
@@ -239,7 +257,7 @@ def test_impact_stops_at_max_depth(tmp_path: Path) -> None:
     runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
 
     py_file = tmp_path / "chain.py"
-    fqn = f"{file_path_to_module_fqn(str(py_file))}.leaf_fn"
+    fqn = f"{file_path_to_module_fqn(py_file.relative_to(tmp_path).as_posix())}.leaf_fn"
     result = runner.invoke(app, ["impact", fqn, "--db", str(db_file), "--depth", "1"])
 
     flat = "".join(result.output.split())
@@ -256,7 +274,7 @@ def test_impact_detects_cycle(tmp_path: Path) -> None:
     runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
 
     py_file = tmp_path / "cycle.py"
-    fqn = f"{file_path_to_module_fqn(str(py_file))}.func_b"
+    fqn = f"{file_path_to_module_fqn(py_file.relative_to(tmp_path).as_posix())}.func_b"
     result = runner.invoke(app, ["impact", fqn, "--db", str(db_file), "--depth", "5"])
 
     assert result.exit_code == 0
@@ -271,7 +289,7 @@ def test_trace_mermaid_format_outputs_diagram(tmp_path: Path) -> None:
     runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
 
     py_file = tmp_path / "funcs.py"
-    fqn = f"{file_path_to_module_fqn(str(py_file))}.caller"
+    fqn = f"{file_path_to_module_fqn(py_file.relative_to(tmp_path).as_posix())}.caller"
     result = runner.invoke(app, ["trace", fqn, "--db", str(db_file), "--format", "mermaid"])
 
     assert result.exit_code == 0
@@ -287,7 +305,7 @@ def test_impact_mermaid_format_outputs_diagram(tmp_path: Path) -> None:
     runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
 
     py_file = tmp_path / "funcs.py"
-    fqn = f"{file_path_to_module_fqn(str(py_file))}.callee"
+    fqn = f"{file_path_to_module_fqn(py_file.relative_to(tmp_path).as_posix())}.callee"
     result = runner.invoke(app, ["impact", fqn, "--db", str(db_file), "--format", "mermaid"])
 
     assert result.exit_code == 0
