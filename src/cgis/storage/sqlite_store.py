@@ -13,9 +13,11 @@ RAW_CALL_PREFIX = "raw_call:"
 @dataclass
 class EdgeStats:
     total: int
-    resolved: int
-    unresolved: int
-    unresolved_ratio: float
+    resolved: int  # edges whose target is an INTERNAL node
+    stdlib: int  # edges whose target is a STDLIB virtual node
+    external: int  # edges whose target is an EXTERNAL virtual node
+    unresolved: int  # edges with raw_call: target (always 0 post-resolver)
+    unresolved_ratio: float  # unresolved / total
     top_unresolved: list[tuple[str, int]] = field(default_factory=list)
 
 
@@ -308,15 +310,25 @@ class SQLiteStore:
         if not self._conn:
             raise RuntimeError(self._error_message)
         row = self._conn.execute(
-            "SELECT COUNT(*) AS total, COUNT(CASE WHEN target GLOB ? THEN 1 END) AS unresolved"
-            " FROM edges",
+            """
+            SELECT
+                COUNT(*) AS total,
+                COUNT(CASE WHEN n.namespace = 'INTERNAL' THEN 1 END) AS resolved,
+                COUNT(CASE WHEN n.namespace = 'STDLIB'   THEN 1 END) AS stdlib,
+                COUNT(CASE WHEN n.namespace = 'EXTERNAL' THEN 1 END) AS external,
+                COUNT(CASE WHEN e.target GLOB ?           THEN 1 END) AS unresolved
+            FROM edges e
+            LEFT JOIN nodes n ON e.target = n.id
+            """,
             (f"{RAW_CALL_PREFIX}*",),
         ).fetchone()
         if row is None:
-            return EdgeStats(0, 0, 0, 0.0)
+            return EdgeStats(0, 0, 0, 0, 0, 0.0)
         total: int = row["total"]
+        resolved: int = row["resolved"]
+        stdlib: int = row["stdlib"]
+        external: int = row["external"]
         unresolved: int = row["unresolved"]
-        resolved = total - unresolved
         ratio = unresolved / total if total else 0.0
         rows = self._conn.execute(
             """SELECT target, COUNT(*) AS cnt FROM edges
@@ -327,6 +339,8 @@ class SQLiteStore:
         return EdgeStats(
             total=total,
             resolved=resolved,
+            stdlib=stdlib,
+            external=external,
             unresolved=unresolved,
             unresolved_ratio=ratio,
             top_unresolved=top,

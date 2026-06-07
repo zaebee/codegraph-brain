@@ -351,7 +351,9 @@ def validate(
         console.print(f"[bold red]❌ Error reading database:[/bold red] {e}")
         raise typer.Exit(code=1) from e
 
-    resolved_pct = (1.0 - stats.unresolved_ratio) * 100
+    def _pct(n: int) -> str:
+        return f"{n / stats.total * 100:.1f}%" if stats.total else "0.0%"
+
     unresolved_pct = stats.unresolved_ratio * 100
 
     table = Table(title="Graph Integrity Report")
@@ -359,10 +361,12 @@ def validate(
     table.add_column("Value", style="magenta", justify="right")
 
     table.add_row("Total edges", str(stats.total))
-    table.add_row("Resolved edges", f"{stats.resolved} ({resolved_pct:.1f}%)")
+    table.add_row("Internal (resolved)", f"{stats.resolved} ({_pct(stats.resolved)})")
+    table.add_row("Stdlib calls", f"{stats.stdlib} ({_pct(stats.stdlib)})")
+    table.add_row("External calls", f"{stats.external} ({_pct(stats.external)})")
     table.add_row(
-        "Unresolved edges",
-        f"[yellow]{stats.unresolved} ({unresolved_pct:.1f}%)[/yellow]",
+        "Unresolved (raw)",
+        f"[yellow]{stats.unresolved} ({_pct(stats.unresolved)})[/yellow]",
     )
     console.print(table)
 
@@ -384,9 +388,10 @@ def validate(
         )
         raise typer.Exit(code=1)
 
+    internal_pct = stats.resolved / stats.total * 100 if stats.total else 0.0
     console.print(
-        f"\n[bold green]✅ Resolution ratio {resolved_pct:.1f}% "
-        f"is above threshold {100 - threshold_pct:.1f}%[/bold green]"
+        f"\n[bold green]✅ Internal {internal_pct:.1f}% — "
+        f"unresolved {unresolved_pct:.1f}% below threshold {threshold_pct:.1f}%[/bold green]"
     )
 
 
