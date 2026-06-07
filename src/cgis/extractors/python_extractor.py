@@ -142,15 +142,7 @@ class PythonExtractor(BaseExtractor):
         Recursive AST walker that extracts nodes and edges in a single pass.
         """
         if node.type in ("import_statement", "import_from_statement"):
-            if import_map is not None and module_fqn is not None:
-                if node.type == "import_statement":
-                    self._process_import_statement(
-                        node, code_bytes, module_fqn, file_path, import_map, edges
-                    )
-                else:
-                    self._process_import_from_statement(
-                        node, code_bytes, module_fqn, file_path, import_map, edges
-                    )
+            self._handle_import_node(node, code_bytes, file_path, import_map, module_fqn, edges)
             return  # never recurse into import nodes
 
         next_func_node = current_func_node
@@ -185,6 +177,26 @@ class PythonExtractor(BaseExtractor):
                 import_map=import_map,
                 module_fqn=module_fqn,
                 local_types_acc=local_types_acc,
+            )
+
+    def _handle_import_node(
+        self,
+        node: BaseNode,
+        code_bytes: bytes,
+        file_path: str,
+        import_map: dict[str, str] | None,
+        module_fqn: str | None,
+        edges: list[Edge],
+    ) -> None:
+        if import_map is None or module_fqn is None:
+            return
+        if node.type == "import_statement":
+            self._process_import_statement(
+                node, code_bytes, module_fqn, file_path, import_map, edges
+            )
+        else:
+            self._process_import_from_statement(
+                node, code_bytes, module_fqn, file_path, import_map, edges
             )
 
     def _process_import_statement(
@@ -396,6 +408,22 @@ class PythonExtractor(BaseExtractor):
                 )
             )
 
+    def _resolve_type_fqn(
+        self,
+        type_name: str,
+        import_map: dict[str, str] | None,
+        file_path: str,
+    ) -> str:
+        """Resolve a type name (possibly module-prefixed) to a FQN."""
+        if import_map:
+            if type_name in import_map:
+                return import_map[type_name]
+            if "." in type_name:
+                module_part, _, rest = type_name.partition(".")
+                if module_part in import_map:
+                    return f"{import_map[module_part]}.{rest}"
+        return f"{file_path_to_module_fqn(file_path)}.{type_name}"
+
     def _collect_assignment_type(
         self,
         node: BaseNode,
@@ -416,16 +444,17 @@ class PythonExtractor(BaseExtractor):
         if not func_call_node:
             return
         class_name = self._get_identifier(func_call_node, code_bytes)
-        # Skip method-call results (dotted names like `obj.method()`): we can't infer
-        # the return type statically, and recording the call-expression as a type would
-        # cause the resolver to produce wrong targets (e.g., `cli.obj.method.attr`).
-        if class_name == "unknown" or "." in class_name:
+        if class_name == "unknown":
             return
-        if import_map and class_name in import_map:
-            fqn = import_map[class_name]
-        else:
-            fqn = f"{file_path_to_module_fqn(func_node.file_path)}.{class_name}"
-        acc.setdefault(func_node.id, {})[var_name] = fqn
+        if "." in class_name:
+            # Module-qualified constructor (e.g. models.Store()): keep only if prefix
+            # is a known import alias. Otherwise it's a method-call result — skip.
+            module_part, _, _ = class_name.partition(".")
+            if not import_map or module_part not in import_map:
+                return
+        acc.setdefault(func_node.id, {})[var_name] = self._resolve_type_fqn(
+            class_name, import_map, func_node.file_path
+        )
 
     def _collect_param_type(
         self,
@@ -452,11 +481,11 @@ class PythonExtractor(BaseExtractor):
         clean_type = self._clean_python_type_string(raw_type)
         if not clean_type:
             return
-        if import_map and clean_type in import_map:
-            fqn = import_map[clean_type]
-        else:
-            fqn = f"{file_path_to_module_fqn(func_node.file_path)}.{clean_type}"
-        acc.setdefault(func_node.id, {})[var_name] = fqn
+        acc.setdefault(func_node.id, {})[var_name] = self._resolve_type_fqn(
+            clean_type, import_map, func_node.file_path
+        )
+
+    _GENERIC_WRAPPERS: frozenset[str] = frozenset({"Optional", "Union"})
 
     def _clean_python_type_string(self, type_str: str) -> str:
         """
@@ -465,14 +494,19 @@ class PythonExtractor(BaseExtractor):
         Examples:
             "SQLiteStore | None" -> "SQLiteStore"
             "Optional[SQLiteStore]" -> "SQLiteStore"
+            "Union[SQLiteStore, None]" -> "SQLiteStore"
             "list[Node]" -> "list"
         """
-        # Handle union types (PEP 604)
+        # Handle union types (PEP 604): "A | None" -> "A"
         if " | " in type_str:
             type_str = type_str.split(" | ", maxsplit=1)[0]
-        # Handle list types and similar generic types
+        # Handle generic wrappers: Optional[X] -> X, Union[X, Y] -> X, list[X] -> list
         if "[" in type_str:
-            type_str = type_str.split("[")[0]
+            outer, _, inner = type_str.partition("[")
+            if outer.strip() in self._GENERIC_WRAPPERS:
+                type_str = inner.rstrip("]").split(",")[0]
+            else:
+                type_str = outer
         return type_str.strip()
 
     def _is_method(self, node: BaseNode) -> bool:

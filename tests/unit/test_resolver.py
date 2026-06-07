@@ -569,3 +569,45 @@ def process(store: Store):
         assert vnode is None or vnode.namespace.value != "INTERNAL", (
             f"item.render should not be INTERNAL, got namespace={vnode and vnode.namespace}"
         )
+
+
+def test_local_type_resolution_optional_annotation() -> None:
+    """Optional[X] param annotations must record X as the type, not Optional."""
+    code = """
+class SQLiteStore:
+    def save(self):
+        pass
+
+def run(store: Optional[SQLiteStore]):
+    store.save()
+"""
+    nodes, edges = PythonExtractor().parse(code, "cgis/storage/sqlite_store.py")
+    func_node = next(n for n in nodes if n.id == "cgis.storage.sqlite_store.run")
+    local_types = func_node.metadata.get("local_types", {})
+    assert local_types.get("store", "").endswith("SQLiteStore"), (
+        f"Expected type ending in 'SQLiteStore', got {local_types.get('store')!r}"
+    )
+
+    resolver = ResolverEngine(nodes, edges)
+    result, _ = resolver.resolve()
+    assert any(
+        e.source == "cgis.storage.sqlite_store.run"
+        and e.target == "cgis.storage.sqlite_store.SQLiteStore.save"
+        for e in result
+    )
+
+
+def test_local_type_resolution_module_prefixed_constructor() -> None:
+    """module.ClassName() constructors should record the resolved FQN via import_map."""
+    code = """
+from app import models
+
+def create():
+    store = models.Store()
+    store.save()
+"""
+    nodes, _edges = PythonExtractor().parse(code, "app/service.py")
+    func_node = next(n for n in nodes if n.id == "app.service.create")
+    local_types = func_node.metadata.get("local_types", {})
+    assert "store" in local_types, f"Expected 'store' in local_types, got {local_types}"
+    assert local_types["store"] == "app.models.Store"

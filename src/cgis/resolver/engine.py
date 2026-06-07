@@ -223,7 +223,7 @@ class ResolverEngine:
         if "." not in name:
             return None
         var_name, method_name = name.split(".", maxsplit=1)
-        local_types: dict[str, str] = source_node.metadata.get("local_types", {})
+        local_types: dict[str, str] = source_node.metadata.get("local_types") or {}
         class_fqn = local_types.get(var_name)
         if not class_fqn:
             return None
