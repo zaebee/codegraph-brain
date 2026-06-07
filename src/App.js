@@ -83,6 +83,7 @@ export default function App() {
     if (!el) return;
     toPng(el, {
       backgroundColor: "#0d1117",
+      pixelRatio: 2,
       filter: (node) =>
         !node?.classList?.contains("react-flow__minimap") &&
         !node?.classList?.contains("react-flow__controls") &&
