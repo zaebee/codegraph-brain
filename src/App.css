@@ -178,6 +178,11 @@ body {
 }
 
 /* Tooltip */
+.tooltip-follow {
+  z-index: 1000;
+  max-width: 300px;
+}
+
 .tooltip-panel {
   pointer-events: none;
 }

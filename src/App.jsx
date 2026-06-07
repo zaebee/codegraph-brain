@@ -112,6 +112,7 @@ function App() {
   const [allEdges, setAllEdges] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const graphRef = useRef(graph);
   const wrapperRef = useRef(null);
   const enrichedRef = useRef(null);
@@ -394,7 +395,7 @@ function App() {
     : nodes;
 
   return (
-    <div className="app-root" ref={wrapperRef}>
+    <div className="app-root" ref={wrapperRef} onMouseMove={(e) => setMousePos({ x: e.clientX, y: e.clientY })}>
       <ReactFlow
         nodes={displayedNodes}
         edges={edges}
@@ -524,14 +525,22 @@ function App() {
         )}
 
         {hoveredNode && (
-          <Panel position="bottom-left" className="tooltip-panel">
+          <div
+            className="tooltip-follow"
+            style={{
+              position: 'fixed',
+              left: mousePos.x + 12,
+              top: mousePos.y + 12,
+              pointerEvents: 'none'
+            }}
+          >
             <div className="node-tooltip">
               <div className="tooltip-name">{hoveredNode.data?.label}</div>
               <div className="tooltip-type">{hoveredNode.data?.subtitle}</div>
               <div className="tooltip-file">{hoveredNode.data?.file}</div>
               <div className="tooltip-lines">lines {hoveredNode.data?.lines}</div>
             </div>
-          </Panel>
+          </div>
         )}
 
         {viewMode === "full" && (
