@@ -1,6 +1,7 @@
 """Unit test cases for Resolver."""
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
+from cgis.extractors.python_extractor import PythonExtractor
 from cgis.resolver.engine import ResolverEngine
 
 
@@ -10,7 +11,7 @@ def _file_node(file_path: str, import_map: dict[str, str]) -> Node:
     return Node(
         id=fqn,
         type=NodeType.FILE,
-        name=file_path.split("/")[-1],
+        name=file_path.rsplit("/", maxsplit=1)[-1],
         file_path=file_path,
         start_line=1,
         end_line=10,
@@ -251,11 +252,12 @@ def test_resolver_resolves_class_instantiation() -> None:
 
 # --- Import Graph Linking (Issue #13) tests ---
 
+
 def _func_node(fqn: str, file_path: str) -> Node:
     return Node(
         id=fqn,
         type=NodeType.FUNCTION,
-        name=fqn.split(".")[-1],
+        name=fqn.rsplit(".", maxsplit=1)[-1],
         file_path=file_path,
         start_line=1,
         end_line=5,
@@ -331,8 +333,6 @@ def test_resolver_module_prefixed_call_resolves() -> None:
 
 def test_resolver_imports_edge_emitted() -> None:
     """FILE node with import_map is built during extraction (structural IMPORTS edge)."""
-    from cgis.extractors.python_extractor import PythonExtractor
-
     extractor = PythonExtractor()
     code = "from cgis.pipeline import IngestionPipeline\n"
     _, edges = extractor.parse(code, "service.py")

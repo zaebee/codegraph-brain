@@ -134,21 +134,19 @@ def test_extract_aliased_import(extractor: PythonExtractor) -> None:
 
 
 def test_extract_from_import_direct(extractor: PythonExtractor) -> None:
-    """`from cgis.pipeline import IngestionPipeline` → {"IngestionPipeline": "cgis.pipeline.IngestionPipeline"}."""
-    nodes, edges = extractor.parse(
-        "from cgis.pipeline import IngestionPipeline\n", "mod.py"
-    )
+    """`from cgis.pipeline import IngestionPipeline` populates import_map correctly."""
+    nodes, edges = extractor.parse("from cgis.pipeline import IngestionPipeline\n", "mod.py")
     file_node = next(n for n in nodes if n.type == NodeType.FILE)
-    assert file_node.metadata["import_map"]["IngestionPipeline"] == "cgis.pipeline.IngestionPipeline"
+    assert (
+        file_node.metadata["import_map"]["IngestionPipeline"] == "cgis.pipeline.IngestionPipeline"
+    )
     imports_edge = next(e for e in edges if e.type == EdgeType.IMPORTS)
     assert imports_edge.target == "cgis.pipeline"
 
 
 def test_extract_from_import_aliased(extractor: PythonExtractor) -> None:
-    """`from cgis.pipeline import IngestionPipeline as IP` → {"IP": "cgis.pipeline.IngestionPipeline"}."""
-    nodes, _ = extractor.parse(
-        "from cgis.pipeline import IngestionPipeline as IP\n", "mod.py"
-    )
+    """`import X as Y` alias stored under alias key in import_map."""
+    nodes, _ = extractor.parse("from cgis.pipeline import IngestionPipeline as IP\n", "mod.py")
     file_node = next(n for n in nodes if n.type == NodeType.FILE)
     assert file_node.metadata["import_map"]["IP"] == "cgis.pipeline.IngestionPipeline"
 
@@ -163,19 +161,15 @@ def test_extract_from_import_multiple_names(extractor: PythonExtractor) -> None:
 
 
 def test_extract_relative_import_one_dot(extractor: PythonExtractor) -> None:
-    """`from . import base` in src.cgis.extractors.python_extractor → {"base": "src.cgis.extractors.base"}."""
-    nodes, _ = extractor.parse(
-        "from . import base\n", "src/cgis/extractors/python_extractor.py"
-    )
+    """`from . import base` resolves to sibling module in import_map."""
+    nodes, _ = extractor.parse("from . import base\n", "src/cgis/extractors/python_extractor.py")
     file_node = next(n for n in nodes if n.type == NodeType.FILE)
     assert file_node.metadata["import_map"]["base"] == "src.cgis.extractors.base"
 
 
 def test_extract_relative_import_two_dots(extractor: PythonExtractor) -> None:
     """`from ..core import models` in src.cgis.extractors.x → {"models": "src.cgis.core.models"}."""
-    nodes, _ = extractor.parse(
-        "from ..core import models\n", "src/cgis/extractors/x.py"
-    )
+    nodes, _ = extractor.parse("from ..core import models\n", "src/cgis/extractors/x.py")
     file_node = next(n for n in nodes if n.type == NodeType.FILE)
     assert file_node.metadata["import_map"]["models"] == "src.cgis.core.models"
 

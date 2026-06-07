@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from cgis.core.models import NodeType
 from cgis.extractors.python_extractor import PythonExtractor
 from cgis.pipeline import IngestionPipeline
 from cgis.storage.sqlite_store import SQLiteStore
@@ -16,8 +17,6 @@ def pipeline() -> IngestionPipeline:
 
 
 def test_pipeline_extracts_function(pipeline: IngestionPipeline, tmp_path: Path) -> None:
-    from cgis.core.models import NodeType
-
     (tmp_path / "calc.py").write_text("def calc_sum(a, b):\n    return a + b\n", encoding="utf-8")
 
     nodes, raw_edges, _resolved = pipeline.run(str(tmp_path))
@@ -44,8 +43,6 @@ def test_pipeline_raises_for_file_instead_of_dir(
 
 
 def test_pipeline_skips_unknown_extensions(pipeline: IngestionPipeline, tmp_path: Path) -> None:
-    from cgis.core.models import NodeType
-
     (tmp_path / "notes.txt").write_text("some text", encoding="utf-8")
     (tmp_path / "script.py").write_text("def fn(): pass", encoding="utf-8")
 
@@ -177,7 +174,6 @@ def test_pipeline_logs_and_skips_unparseable_file(
 
     nodes, _, _ = pipeline.run(str(tmp_path))
 
-    from cgis.core.models import NodeType
     func_nodes = [n for n in nodes if n.type == NodeType.FUNCTION]
     assert len(func_nodes) == 1
     assert func_nodes[0].name == "fine"

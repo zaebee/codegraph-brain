@@ -70,13 +70,20 @@ class PythonExtractor(BaseExtractor):
         import_map: dict[str, str] = {}
         module_fqn = file_path_to_module_fqn(file_path)
 
-        self._walk(root_node, code_bytes, file_path, nodes, edges,
-                   import_map=import_map, module_fqn=module_fqn)
+        self._walk(
+            root_node,
+            code_bytes,
+            file_path,
+            nodes,
+            edges,
+            import_map=import_map,
+            module_fqn=module_fqn,
+        )
 
         file_node = Node(
             id=module_fqn,
             type=NodeType.FILE,
-            name=file_path.split("/")[-1].split("\\")[-1],
+            name=file_path.rsplit("/", maxsplit=1)[-1].rsplit("\\", maxsplit=1)[-1],
             file_path=file_path,
             start_line=1,
             end_line=root_node.end_point.row + 1,
@@ -144,8 +151,16 @@ class PythonExtractor(BaseExtractor):
             self._process_call_node(node, code_bytes, file_path, current_func_id, edges)
 
         for child in node.children:
-            self._walk(child, code_bytes, file_path, nodes, edges, next_id,
-                       import_map=import_map, module_fqn=module_fqn)
+            self._walk(
+                child,
+                code_bytes,
+                file_path,
+                nodes,
+                edges,
+                next_id,
+                import_map=import_map,
+                module_fqn=module_fqn,
+            )
 
     def _process_import_statement(
         self,
@@ -159,32 +174,68 @@ class PythonExtractor(BaseExtractor):
         """Handle `import X` and `import X as Y` statements."""
         for child in node.children:
             if child.type == "dotted_name":
-                module_str = code_bytes[child.start_byte:child.end_byte].decode("utf-8")
+                module_str = code_bytes[child.start_byte : child.end_byte].decode("utf-8")
                 local_name = module_str.split(".")[0]
                 import_map[local_name] = module_str
-                edges.append(Edge(
-                    id=f"{module_fqn}:imports:{module_str}",
-                    type=EdgeType.IMPORTS,
-                    source=module_fqn,
-                    target=module_str,
-                    confidence=1.0,
-                    file_path=file_path,
-                ))
-            elif child.type == "aliased_import":
-                name_node = child.child_by_field_name("name")
-                alias_node = child.child_by_field_name("alias")
-                if name_node and alias_node:
-                    module_str = code_bytes[name_node.start_byte:name_node.end_byte].decode("utf-8")
-                    alias = code_bytes[alias_node.start_byte:alias_node.end_byte].decode("utf-8")
-                    import_map[alias] = module_str
-                    edges.append(Edge(
+                edges.append(
+                    Edge(
                         id=f"{module_fqn}:imports:{module_str}",
                         type=EdgeType.IMPORTS,
                         source=module_fqn,
                         target=module_str,
                         confidence=1.0,
                         file_path=file_path,
-                    ))
+                    )
+                )
+            elif child.type == "aliased_import":
+                name_node = child.child_by_field_name("name")
+                alias_node = child.child_by_field_name("alias")
+                if name_node and alias_node:
+                    module_str = code_bytes[name_node.start_byte : name_node.end_byte].decode(
+                        "utf-8"
+                    )
+                    alias = code_bytes[alias_node.start_byte : alias_node.end_byte].decode("utf-8")
+                    import_map[alias] = module_str
+                    edges.append(
+                        Edge(
+                            id=f"{module_fqn}:imports:{module_str}",
+                            type=EdgeType.IMPORTS,
+                            source=module_fqn,
+                            target=module_str,
+                            confidence=1.0,
+                            file_path=file_path,
+                        )
+                    )
+
+    def _parse_relative_import(self, node: BaseNode, code_bytes: bytes) -> tuple[int, str]:
+        """Return (leading_dots, raw_module_str) from a relative_import node."""
+        leading_dots = 0
+        raw_module_str = ""
+        for sub in node.children:
+            if sub.type == "import_prefix":
+                leading_dots = sum(1 for c in sub.children if c.type == ".")
+            elif sub.type == "dotted_name":
+                raw_module_str = code_bytes[sub.start_byte : sub.end_byte].decode("utf-8")
+        return leading_dots, raw_module_str
+
+    def _collect_imported_symbols(
+        self, children: list[BaseNode], code_bytes: bytes
+    ) -> list[tuple[str, str]]:
+        """Collect (local_name, qualified_symbol) pairs from a list of sibling nodes."""
+        symbols: list[tuple[str, str]] = []
+        for child in children:
+            if child.type in ("dotted_name", "identifier"):
+                sym = code_bytes[child.start_byte : child.end_byte].decode("utf-8")
+                symbols.append((sym.split(".")[-1], sym))
+            elif child.type == "aliased_import":
+                name_node = child.child_by_field_name("name")
+                alias_node = child.child_by_field_name("alias")
+                if name_node and alias_node:
+                    sym = code_bytes[name_node.start_byte : name_node.end_byte].decode("utf-8")
+                    alias = code_bytes[alias_node.start_byte : alias_node.end_byte].decode("utf-8")
+                    symbols.append((alias, sym))
+            # wildcard_import → skip
+        return symbols
 
     def _process_import_from_statement(
         self,
@@ -199,31 +250,23 @@ class PythonExtractor(BaseExtractor):
         leading_dots = 0
         raw_module_str = ""
         past_import_kw = False
-        symbols: list[tuple[str, str]] = []  # (local_name, qualified_symbol)
+        import_symbol_node: BaseNode | None = None
 
         for child in node.children:
             if child.type == "relative_import":
-                for sub in child.children:
-                    if sub.type == "import_prefix":
-                        leading_dots = sum(1 for c in sub.children if c.type == ".")
-                    elif sub.type == "dotted_name":
-                        raw_module_str = code_bytes[sub.start_byte:sub.end_byte].decode("utf-8")
+                leading_dots, raw_module_str = self._parse_relative_import(child, code_bytes)
             elif child.type == "dotted_name" and not past_import_kw:
-                raw_module_str = code_bytes[child.start_byte:child.end_byte].decode("utf-8")
+                raw_module_str = code_bytes[child.start_byte : child.end_byte].decode("utf-8")
             elif child.type == "import":
                 past_import_kw = True
-            elif past_import_kw:
-                if child.type in ("dotted_name", "identifier"):
-                    sym = code_bytes[child.start_byte:child.end_byte].decode("utf-8")
-                    symbols.append((sym.split(".")[-1], sym))
-                elif child.type == "aliased_import":
-                    name_node = child.child_by_field_name("name")
-                    alias_node = child.child_by_field_name("alias")
-                    if name_node and alias_node:
-                        sym = code_bytes[name_node.start_byte:name_node.end_byte].decode("utf-8")
-                        alias = code_bytes[alias_node.start_byte:alias_node.end_byte].decode("utf-8")
-                        symbols.append((alias, sym))
-                # wildcard_import → skip
+                import_symbol_node = child
+            # imported symbols are siblings after the 'import' keyword — collected below
+
+        # Collect all sibling nodes that come after the 'import' keyword
+        symbols: list[tuple[str, str]] = []
+        if import_symbol_node is not None:
+            idx = node.children.index(import_symbol_node)
+            symbols = self._collect_imported_symbols(node.children[idx + 1 :], code_bytes)
 
         base_module = (
             _resolve_relative_module(module_fqn, leading_dots, raw_module_str)
@@ -235,14 +278,16 @@ class PythonExtractor(BaseExtractor):
             import_map[local_name] = f"{base_module}.{sym}" if base_module else sym
 
         if base_module:
-            edges.append(Edge(
-                id=f"{module_fqn}:imports:{base_module}",
-                type=EdgeType.IMPORTS,
-                source=module_fqn,
-                target=base_module,
-                confidence=1.0,
-                file_path=file_path,
-            ))
+            edges.append(
+                Edge(
+                    id=f"{module_fqn}:imports:{base_module}",
+                    type=EdgeType.IMPORTS,
+                    source=module_fqn,
+                    target=base_module,
+                    confidence=1.0,
+                    file_path=file_path,
+                )
+            )
 
     def _process_function_node(
         self,
