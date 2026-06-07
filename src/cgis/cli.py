@@ -81,10 +81,8 @@ def ingest(
             with output_path.open("w", encoding="utf-8") as f:
                 json.dump(graph_data, f, indent=2)
         else:
-            store = SQLiteStore(output)
-            store.connect()
-            store.save_graph(nodes, resolved_edges)
-            store.disconnect()
+            with SQLiteStore(output) as store:
+                store.save_graph(nodes, resolved_edges)
 
         table = Table(title="Ingestion Summary")
         table.add_column("Metric", style="cyan")
@@ -115,9 +113,10 @@ def build_trace_tree(
         return
 
     outgoing = store.get_outgoing_edges(current_id)
+    nodes_map = {n.id: n for n in store.get_nodes([e.target for e in outgoing])}
     for edge in outgoing:
         target_id = edge.target
-        target_node = store.get_node(target_id)
+        target_node = nodes_map.get(target_id)
 
         if target_node:
             label = (
@@ -153,27 +152,23 @@ def trace(
         console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
         raise typer.Exit(code=1)
 
-    store = SQLiteStore(db)
-    store.connect()
+    with SQLiteStore(db) as store:
+        start_node = store.get_node(start)
+        if not start_node:
+            console.print(f"[bold red]❌ Start entity not found in graph:[/bold red] {start}")
+            raise typer.Exit(code=1)
 
-    start_node = store.get_node(start)
-    if not start_node:
-        console.print(f"[bold red]❌ Start entity not found in graph:[/bold red] {start}")
-        store.disconnect()
-        raise typer.Exit(code=1)
+        console.print(f"[bold blue]🔍 Tracing execution flow starting from:[/bold blue] {start}\n")
 
-    console.print(f"[bold blue]🔍 Tracing execution flow starting from:[/bold blue] {start}\n")
+        root_label = (
+            f"[bold cyan]{start_node.type.value}[/bold cyan] "
+            f"[yellow]{start_node.id}[/yellow] "
+            f"[dim]({start_node.file_path}:{start_node.start_line})[/dim]"
+        )
+        tree = Tree(root_label)
 
-    root_label = (
-        f"[bold cyan]{start_node.type.value}[/bold cyan] "
-        f"[yellow]{start_node.id}[/yellow] "
-        f"[dim]({start_node.file_path}:{start_node.start_line})[/dim]"
-    )
-    tree = Tree(root_label)
-
-    build_trace_tree(store, start, tree, {start}, depth, 0)
-    console.print(tree)
-    store.disconnect()
+        build_trace_tree(store, start, tree, {start}, depth, 0)
+        console.print(tree)
 
 
 def build_impact_tree(
@@ -189,9 +184,10 @@ def build_impact_tree(
         return
 
     incoming = store.get_incoming_edges(current_id)
+    nodes_map = {n.id: n for n in store.get_nodes([e.source for e in incoming])}
     for edge in incoming:
         source_id = edge.source
-        source_node = store.get_node(source_id)
+        source_node = nodes_map.get(source_id)
 
         if source_node:
             label = (
@@ -227,27 +223,25 @@ def impact(
         console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
         raise typer.Exit(code=1)
 
-    store = SQLiteStore(db)
-    store.connect()
+    with SQLiteStore(db) as store:
+        target_node = store.get_node(target)
+        if not target_node:
+            console.print(f"[bold red]❌ Target entity not found in graph:[/bold red] {target}")
+            raise typer.Exit(code=1)
 
-    target_node = store.get_node(target)
-    if not target_node:
-        console.print(f"[bold red]❌ Target entity not found in graph:[/bold red] {target}")
-        store.disconnect()
-        raise typer.Exit(code=1)
+        console.print(
+            f"[bold blue]🔍 Analyzing transitive upstream callers of:[/bold blue] {target}\n"
+        )
 
-    console.print(f"[bold blue]🔍 Analyzing transitive upstream callers of:[/bold blue] {target}\n")
+        root_label = (
+            f"[bold cyan]{target_node.type.value}[/bold cyan] "
+            f"[yellow]{target_node.id}[/yellow] "
+            f"[dim]({target_node.file_path}:{target_node.start_line})[/dim]"
+        )
+        tree = Tree(root_label)
 
-    root_label = (
-        f"[bold cyan]{target_node.type.value}[/bold cyan] "
-        f"[yellow]{target_node.id}[/yellow] "
-        f"[dim]({target_node.file_path}:{target_node.start_line})[/dim]"
-    )
-    tree = Tree(root_label)
-
-    build_impact_tree(store, target, tree, {target}, depth, 0)
-    console.print(tree)
-    store.disconnect()
+        build_impact_tree(store, target, tree, {target}, depth, 0)
+        console.print(tree)
 
 
 if __name__ == "__main__":  # pragma: no cover
