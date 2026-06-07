@@ -66,8 +66,23 @@ class ResolverEngine:
                 suffix = ".".join(parts[i:])
                 self._suffix_map.setdefault(suffix, []).append(node.id)
 
+        # Build known external roots from import maps so that truly
+        # unknown symbols (not in any import_map) can be distinguished.
+        self._external_roots: set[str] = {
+            val.split(".", maxsplit=1)[0]
+            for import_map in self._file_imports.values()
+            for val in import_map.values()
+            if val
+        }
+        for import_map in self._file_imports.values():
+            self._external_roots.update(import_map.keys())
+
     def _classify_fqn(self, fqn: str) -> NodeNamespace:
-        """Classify an FQN as STDLIB, INTERNAL, or EXTERNAL."""
+        """Classify an FQN as STDLIB, INTERNAL, EXTERNAL, or UNKNOWN.
+
+        UNKNOWN means the root segment was not found in internal roots,
+        stdlib/builtins, or any known import-map external root.
+        """
         if fqn.startswith((".", "self.")):
             return NodeNamespace.INTERNAL
         root = fqn.split(".", maxsplit=1)[0]
@@ -75,7 +90,9 @@ class ResolverEngine:
             return NodeNamespace.INTERNAL
         if root in sys.stdlib_module_names or root in _BUILTINS:
             return NodeNamespace.STDLIB
-        return NodeNamespace.EXTERNAL
+        if root in self._external_roots:
+            return NodeNamespace.EXTERNAL
+        return NodeNamespace.UNKNOWN
 
     def _make_virtual_node(self, fqn: str, namespace: NodeNamespace) -> Node:
         """Create a placeholder node for an external/stdlib symbol."""

@@ -52,6 +52,8 @@ class MermaidCompiler:
             return ":::stdlibNode"
         if node.namespace == NodeNamespace.EXTERNAL:
             return ":::externalNode"
+        if node.namespace == NodeNamespace.UNKNOWN:
+            return ":::unresolvedNode"
         if node.file_path == VIRTUAL_FILE_PATH and node.namespace == NodeNamespace.INTERNAL:
             return ":::unresolvedNode"
         if node.type == NodeType.CLASS:

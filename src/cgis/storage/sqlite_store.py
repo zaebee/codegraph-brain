@@ -17,7 +17,7 @@ class EdgeStats:
     stdlib: int  # edges whose target is a STDLIB virtual node
     external: int  # edges whose target is an EXTERNAL virtual node
     unresolved: int  # edges with raw_call: target (always 0 post-resolver)
-    unresolved_ratio: float  # unresolved / total
+    unresolved_ratio: float  # (unresolved + unknown) / total
     top_unresolved: list[tuple[str, int]] = field(default_factory=list)
 
 
@@ -323,7 +323,7 @@ class SQLiteStore:
                 COUNT(CASE WHEN n.namespace = 'INTERNAL' THEN 1 END) AS resolved,
                 COUNT(CASE WHEN n.namespace = 'STDLIB'   THEN 1 END) AS stdlib,
                 COUNT(CASE WHEN n.namespace = 'EXTERNAL' THEN 1 END) AS external,
-                COUNT(CASE WHEN e.target GLOB ?           THEN 1 END) AS unresolved
+                COUNT(CASE WHEN n.namespace = 'UNKNOWN' OR e.target GLOB ? THEN 1 END) AS unresolved
             FROM edges e
             LEFT JOIN nodes n ON e.target = n.id
             """,
