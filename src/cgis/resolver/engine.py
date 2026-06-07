@@ -18,8 +18,8 @@ class ResolverEngine:
         # Indices for fast lookup
         # name -> list of FQNs
         self._global_symbols: dict[str, list[str]] = {}
-        # (file_path, name) -> FQN
-        self._file_global_symbols: dict[tuple[str, str], str] = {}
+        # (file_path, name) -> list of FQNs (list handles conditional redefinitions)
+        self._file_global_symbols: dict[tuple[str, str], list[str]] = {}
         # class_fqn -> {method_name -> method_fqn}
         self._class_methods: dict[str, dict[str, str]] = {}
 
@@ -32,7 +32,9 @@ class ResolverEngine:
             if node.type in (NodeType.FUNCTION, NodeType.CLASS):
                 # We use the name as a key for direct calls, allowing multiple candidates
                 self._global_symbols.setdefault(node.name, []).append(node.id)
-                self._file_global_symbols[(os.path.normpath(node.file_path), node.name)] = node.id
+                self._file_global_symbols.setdefault(
+                    (os.path.normpath(node.file_path), node.name), []
+                ).append(node.id)
 
             # Index methods within classes
             if node.type == NodeType.METHOD:
@@ -104,7 +106,9 @@ class ResolverEngine:
         source_node = self.nodes.get(source_fqn)
         file_path = source_node.file_path if source_node else edge_file_path
         if file_path:
-            same_file_candidate = self._file_global_symbols.get((os.path.normpath(file_path), name))
-            if same_file_candidate:
-                return same_file_candidate
+            same_file_candidates = self._file_global_symbols.get(
+                (os.path.normpath(file_path), name), []
+            )
+            if len(same_file_candidates) == 1:
+                return same_file_candidates[0]
         return None
