@@ -446,8 +446,8 @@ function App() {
         minZoom={0.1}
         maxZoom={2}
       >
-        <Background gap={20} size={1} />
-        <Controls showInteractive={false} />
+        <Background gap={20} size={1} style={{ backgroundColor: "#0d1117" }} />
+        <Controls showInteractive={false} style={{ border: "1px solid #30363d", borderRadius: 8 }} />
         <MiniMap
           nodeColor={(n) => {
             if (viewMode === "flow") {
