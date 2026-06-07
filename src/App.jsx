@@ -184,7 +184,7 @@ function App() {
           minHeight: 40,
           opacity: n.type === "EXTERNAL" ? 0.6 : 1
         },
-        class: extractClass(n)
+        class: extractGroupKey(n)
       };
     });
 
@@ -472,7 +472,7 @@ function App() {
   );
 }
 
-function extractClass(node) {
+function extractGroupKey(node) {
   if (node.type === "EXTERNAL") return null;
   if (node.file_path) return node.file_path;
   return null;
