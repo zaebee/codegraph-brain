@@ -1,7 +1,8 @@
-import { Component, useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { ReactFlow, Background, Controls, MiniMap, Panel, useReactFlow } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { toPng, toSvg } from "html-to-image";
+import { ErrorBoundary } from "react-error-boundary";
 import "./App.css";
 
 // graph.json loaded via fetch()
@@ -11,31 +12,18 @@ import { groupByFile, extractGroupKey } from "./grouping";
 import { buildExecutionFlow } from "./flow";
 import GroupNode from "./GroupNode";
 import { NODE_WIDTH } from "./constants";
+import { filterValidEdges } from "./utils";
 
-class ErrorBoundary extends Component {
-  constructor(props) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-
-  static getDerivedStateFromError(error) {
-    return { hasError: true, error };
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="error-boundary">
-          <h2>Something went wrong</h2>
-          <p>{this.state.error?.message}</p>
-          <button className="btn btn-back" onClick={() => this.setState({ hasError: false })}>
-            Try again
-          </button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
+function ErrorFallback({ error, resetErrorBoundary }) {
+  return (
+    <div className="error-boundary">
+      <h2>Something went wrong</h2>
+      <p>{error?.message}</p>
+      <button className="btn btn-back" onClick={resetErrorBoundary}>
+        Try again
+      </button>
+    </div>
+  );
 }
 
 const NODE_COLORS = {
@@ -94,7 +82,7 @@ function addExternalNodes(graphData) {
 
 export default function AppWrapper() {
   return (
-    <ErrorBoundary>
+    <ErrorBoundary FallbackComponent={ErrorFallback}>
       <App />
     </ErrorBoundary>
   );
@@ -222,10 +210,7 @@ function App() {
       };
     });
 
-    const nodeIds = new Set(enriched.nodes.map(n => n.id));
-    const validEdges = enriched.edges.filter(e => {
-      return nodeIds.has(e.source) && nodeIds.has(e.target);
-    });
+    const validEdges = filterValidEdges(enriched.nodes, enriched.edges);
 
     const baseEdges = validEdges.map((e, i) => {
       const targetNode = enriched.nodes.find(n => n.id === e.target);
