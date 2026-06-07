@@ -125,6 +125,22 @@ class ResolverEngine:
                 return candidate
         return None
 
+    def _resolve_via_import_map(self, name: str, file_path: str) -> str | None:
+        """Look up name in the file's import map (direct and module-prefixed calls)."""
+        file_import_map = self._file_imports.get(file_path, {})
+
+        if name in file_import_map:
+            target_fqn = file_import_map[name]
+            return self._map_to_node_fqn(target_fqn) or target_fqn
+
+        first_part = name.split(".", maxsplit=1)[0]
+        if first_part in file_import_map and "." in name:
+            rest = name[len(first_part) + 1 :]
+            target_fqn = f"{file_import_map[first_part]}.{rest}"
+            return self._map_to_node_fqn(target_fqn) or target_fqn
+
+        return None
+
     def _resolve_global_call(
         self, name: str, source_fqn: str, edge_file_path: str | None = None
     ) -> str | None:
@@ -137,31 +153,18 @@ class ResolverEngine:
         else:
             file_path = None
 
-        # 1. Check file-level import map (highest priority — explicit import wins)
         if file_path:
-            file_import_map = self._file_imports.get(file_path, {})
+            result = self._resolve_via_import_map(name, file_path)
+            if result:
+                return result
 
-            # Direct import: `from X import func` → `func()`
-            if name in file_import_map:
-                target_fqn = file_import_map[name]
-                return self._map_to_node_fqn(target_fqn) or target_fqn
-
-            # Module-prefixed call: `import mod` → `mod.func()`
-            first_part = name.split(".", maxsplit=1)[0]
-            if first_part in file_import_map and "." in name:
-                rest = name[len(first_part) + 1 :]
-                resolved_mod = file_import_map[first_part]
-                target_fqn = f"{resolved_mod}.{rest}"
-                return self._map_to_node_fqn(target_fqn) or target_fqn
-
-        # 2. Global symbol index (same-file preference for disambiguation)
         candidates = self._global_symbols.get(name, [])
         if not candidates:
             return None
         if len(candidates) == 1:
             return candidates[0]
         if file_path:
-            same_file_candidates = self._file_global_symbols.get((file_path, name), [])
-            if len(same_file_candidates) == 1:
-                return same_file_candidates[0]
+            same_file = self._file_global_symbols.get((file_path, name), [])
+            if len(same_file) == 1:
+                return same_file[0]
         return None
