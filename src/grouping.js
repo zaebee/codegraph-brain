@@ -34,8 +34,7 @@ export function groupByClass(nodes, edges) {
     if (n.class) {
       return {
         ...n,
-        parentNode: `file:${n.class}`,
-        extent: "parent"
+        groupId: `file:${n.class}`
       };
     }
     return n;

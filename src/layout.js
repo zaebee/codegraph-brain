@@ -4,18 +4,22 @@ const NODE_WIDTH = 160;
 const NODE_HEIGHT = 50;
 const GROUP_PADDING = 40;
 const GROUP_HEADER = 50;
-const GROUP_SPACING = 40;
+const GROUP_SPACING = 30;
 
 export function layoutGraph(nodes, edges) {
-  const leafNodes = nodes.filter(n => n.type !== "group");
+  const groupNodes = nodes.filter(n => n.type === "group");
+  const classNodes = nodes.filter(n => n.type === "CLASS");
+  const leafNodes = nodes.filter(n =>
+    n.type !== "group" && n.type !== "CLASS"
+  );
 
-  const childrenByParent = new Map();
-  leafNodes.forEach((node) => {
-    if (node.parentNode) {
-      if (!childrenByParent.has(node.parentNode)) {
-        childrenByParent.set(node.parentNode, []);
+  const childrenByGroup = new Map();
+  nodes.forEach((node) => {
+    if (node.groupId) {
+      if (!childrenByGroup.has(node.groupId)) {
+        childrenByGroup.set(node.groupId, []);
       }
-      childrenByParent.get(node.parentNode).push(node.id);
+      childrenByGroup.get(node.groupId).push(node.id);
     }
   });
 
@@ -53,14 +57,18 @@ export function layoutGraph(nodes, edges) {
     }
   });
 
-  const groupBounds = new Map();
+  const groupBoxes = [];
 
-  childrenByParent.forEach((childIds, groupId) => {
-    if (childIds.length === 0) return;
+  childrenByGroup.forEach((childIds, groupId) => {
+    const leafChildIds = childIds.filter(id =>
+      !classNodes.some(cn => cn.id === id)
+    );
+
+    if (leafChildIds.length === 0) return;
 
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
 
-    childIds.forEach((childId) => {
+    leafChildIds.forEach((childId) => {
       const pos = positioned.get(childId);
       if (!pos) return;
       minX = Math.min(minX, pos.x);
@@ -71,65 +79,104 @@ export function layoutGraph(nodes, edges) {
 
     if (minX === Infinity) return;
 
-    groupBounds.set(groupId, { minX, maxX, minY, maxY, childIds });
+    const width = maxX - minX + GROUP_PADDING * 2;
+    const height = maxY - minY + GROUP_PADDING * 2 + GROUP_HEADER;
+
+    groupBoxes.push({
+      groupId,
+      childIds,
+      leafChildIds,
+      origX: minX - GROUP_PADDING,
+      origY: minY - GROUP_PADDING - GROUP_HEADER,
+      width,
+      height
+    });
   });
 
-  const sortedGroups = [...groupBounds.entries()].sort(
-    (a, b) => a[1].minY - b[1].minY
-  );
+  groupBoxes.sort((a, b) => a.origY - b.origY);
+
+  const placed = [];
+  const groupOffsets = new Map();
+
+  for (const box of groupBoxes) {
+    let y = box.origY;
+
+    for (const p of placed) {
+      const horizOverlap =
+        box.origX < p.x + p.width && box.origX + box.width > p.x;
+      const vertOverlap = y < p.y + p.height && y + box.height > p.y;
+
+      if (horizOverlap && vertOverlap) {
+        y = p.y + p.height + GROUP_SPACING;
+      }
+    }
+
+    const dy = y - box.origY;
+    groupOffsets.set(box.groupId, { dx: 0, dy });
+
+    placed.push({
+      x: box.origX,
+      y,
+      width: box.width,
+      height: box.height
+    });
+  }
 
   const groupPositions = new Map();
-  let currentY = 0;
 
-  sortedGroups.forEach(([groupId, bounds]) => {
-    const groupWidth = bounds.maxX - bounds.minX + GROUP_PADDING * 2;
-    const childHeight = bounds.maxY - bounds.minY;
-    const groupHeight = childHeight + GROUP_PADDING * 2 + GROUP_HEADER;
+  groupBoxes.forEach((box) => {
+    const offset = groupOffsets.get(box.groupId) || { dx: 0, dy: 0 };
+    const groupX = box.origX + offset.dx;
+    const groupY = box.origY + offset.dy;
 
-    const groupX = bounds.minX - GROUP_PADDING;
-    const groupY = currentY;
-
-    groupPositions.set(groupId, {
+    groupPositions.set(box.groupId, {
       x: groupX,
       y: groupY,
-      width: groupWidth,
-      height: groupHeight
+      width: box.width,
+      height: box.height
     });
 
-    positioned.set(groupId, { x: groupX, y: groupY });
-
-    const contentStartY = groupY + GROUP_HEADER + GROUP_PADDING;
-    const childOffsetY = contentStartY - bounds.minY;
-
-    bounds.childIds.forEach((childId) => {
+    box.leafChildIds.forEach((childId) => {
       const pos = positioned.get(childId);
       if (!pos) return;
       positioned.set(childId, {
-        x: pos.x - groupX,
-        y: pos.y + childOffsetY
+        x: pos.x,
+        y: pos.y + offset.dy
       });
     });
 
-    currentY += groupHeight + GROUP_SPACING;
+    const classChildIds = box.childIds.filter(id =>
+      classNodes.some(cn => cn.id === id)
+    );
+
+    classChildIds.forEach((classId) => {
+      positioned.set(classId, {
+        x: groupX + box.width / 2 - NODE_WIDTH / 2,
+        y: groupY + GROUP_HEADER / 2 - NODE_HEIGHT / 2
+      });
+    });
   });
 
   return nodes.map((node) => {
-    const pos = positioned.get(node.id) || { x: 0, y: 0 };
-
-    const result = {
-      ...node,
-      position: pos
-    };
+    let pos = positioned.get(node.id) || { x: 0, y: 0 };
 
     if (node.type === "group" && groupPositions.has(node.id)) {
       const gp = groupPositions.get(node.id);
-      result.style = {
-        ...result.style,
-        width: gp.width,
-        height: gp.height
+      pos = { x: gp.x, y: gp.y };
+      return {
+        ...node,
+        position: pos,
+        style: {
+          ...node.style,
+          width: gp.width,
+          height: gp.height
+        }
       };
     }
 
-    return result;
+    return {
+      ...node,
+      position: pos
+    };
   });
 }

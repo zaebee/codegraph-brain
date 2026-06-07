@@ -161,7 +161,7 @@ export default function App() {
         if (n.data?.nodeType === "EXTERNAL") return false;
         if (n.type === "group") {
           return allNodes.some(
-            c => c.parentNode === n.id && !externalNodeIds.has(c.id)
+            c => c.groupId === n.id && !externalNodeIds.has(c.id)
           );
         }
         return true;
