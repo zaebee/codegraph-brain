@@ -97,6 +97,33 @@ body {
   text-align: center;
 }
 
+.depth-presets {
+  display: flex;
+  gap: 4px;
+}
+
+.btn-preset {
+  background: #1a1a2e;
+  border: 1px solid #333;
+  color: #78909c;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-preset:hover {
+  background: #263238;
+  color: #b0bec5;
+}
+
+.btn-preset.active {
+  background: #1e3a5f;
+  border-color: #4fc3f7;
+  color: #b3e5fc;
+}
+
 /* Back button */
 .btn {
   border: none;

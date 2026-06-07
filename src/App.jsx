@@ -414,6 +414,26 @@ function App() {
                     aria-valuenow={depth}
                   />
                   <span className="depth-value">{depth}</span>
+                  <div className="depth-presets">
+                    <button 
+                      className={`btn btn-preset ${depth === 1 ? 'active' : ''}`}
+                      onClick={() => setDepth(1)}
+                    >
+                      1: Immediate
+                    </button>
+                    <button 
+                      className={`btn btn-preset ${depth === 2 ? 'active' : ''}`}
+                      onClick={() => setDepth(2)}
+                    >
+                      2: Near
+                    </button>
+                    <button 
+                      className={`btn btn-preset ${depth === 3 ? 'active' : ''}`}
+                      onClick={() => setDepth(3)}
+                    >
+                      3: Call tree
+                    </button>
+                  </div>
                 </div>
                 <button className="btn btn-export" onClick={() => fitView({ padding: 0.15 })} aria-label="Zoom to fit">
                   ⊞ Fit
