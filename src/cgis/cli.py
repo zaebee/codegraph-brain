@@ -10,12 +10,12 @@ from rich.table import Table
 from rich.tree import Tree
 
 from cgis import __app_name__, __version__
+from cgis.core.models import Edge, Node, NodeNamespace
 from cgis.extractors.python_extractor import PythonExtractor
 from cgis.pipeline import IngestionPipeline
 from cgis.query.engine import QueryEngine
 from cgis.query.mermaid import MermaidCompiler
 from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
-
 
 _DEFAULT_DB = "graph.db"
 _DEFAULT_DB_HELP = "Path to the SQLite database"
@@ -133,6 +133,17 @@ def ingest(
         raise typer.Exit(code=1) from e
 
 
+def _filter_internal(
+    nodes: list[Node],
+    edges: list[Edge],
+) -> tuple[list[Node], list[Edge]]:
+    """Keep only INTERNAL nodes and edges between them."""
+    internal_ids = {n.id for n in nodes if n.namespace == NodeNamespace.INTERNAL}
+    filtered_nodes = [n for n in nodes if n.id in internal_ids]
+    filtered_edges = [e for e in edges if e.source in internal_ids and e.target in internal_ids]
+    return filtered_nodes, filtered_edges
+
+
 def build_trace_tree(
     store: SQLiteStore,
     current_id: str,
@@ -182,6 +193,9 @@ def trace(
     output_format: OutputFormat = typer.Option(
         OutputFormat.TEXT, "--format", "-f", help="Output format: text or mermaid"
     ),
+    internal_only: bool = typer.Option(
+        False, "--internal-only", help="Exclude stdlib and external nodes from output"
+    ),
 ) -> None:
     """
     Trace execution flow starting from a specific code entity downwards.
@@ -199,6 +213,8 @@ def trace(
 
         if output_format == OutputFormat.MERMAID:
             nodes, edges = QueryEngine(store).get_flow_graph(start, max_depth=depth)
+            if internal_only:
+                nodes, edges = _filter_internal(nodes, edges)
             typer.echo(MermaidCompiler().compile(nodes, edges))
         else:
             console.print(
@@ -263,6 +279,9 @@ def impact(
     output_format: OutputFormat = typer.Option(
         OutputFormat.TEXT, "--format", "-f", help="Output format: text or mermaid"
     ),
+    internal_only: bool = typer.Option(
+        False, "--internal-only", help="Exclude stdlib and external nodes from output"
+    ),
 ) -> None:
     """
     Analyze transitive upstream impact (callers) of changing a specific code entity.
@@ -280,6 +299,8 @@ def impact(
 
         if output_format == OutputFormat.MERMAID:
             nodes, edges = QueryEngine(store).get_impact_graph(target, max_depth=depth)
+            if internal_only:
+                nodes, edges = _filter_internal(nodes, edges)
             typer.echo(MermaidCompiler().compile(nodes, edges))
         else:
             console.print(
@@ -299,7 +320,11 @@ def impact(
 def validate(
     db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
     threshold: float = typer.Option(
-        0.30, "--threshold", "-t", min=0.0, max=1.0,
+        0.30,
+        "--threshold",
+        "-t",
+        min=0.0,
+        max=1.0,
         help="Max allowed unresolved ratio (default 0.30 = 30%)",
     ),
 ) -> None:

@@ -11,7 +11,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from cgis.core.models import Edge, Node
 from cgis.extractors.base import BaseExtractor
-from cgis.resolver.engine import ResolverEngine
+from cgis.resolver.engine import _VIRTUAL_FILE_PATH, ResolverEngine
 
 if TYPE_CHECKING:
     from cgis.storage.sqlite_store import SQLiteStore
@@ -108,13 +108,18 @@ class IngestionPipeline:
             resolve_task = progress.add_task(description="Resolving semantic links...", total=None)
             logger.info("Starting resolution phase...")
             resolver = ResolverEngine(all_nodes, all_edges)
-            resolved_edges = resolver.resolve()
+            resolved_edges, virtual_nodes = resolver.resolve()
+            all_nodes.extend(virtual_nodes)
             progress.update(resolve_task, advance=1)
-            logger.info("Resolution complete. Resolved edges.", edges=len(resolved_edges))
+            logger.info(
+                "Resolution complete.",
+                edges=len(resolved_edges),
+                virtual_nodes=len(virtual_nodes),
+            )
 
         if store is not None:
             self._persist_incremental(
-                store, all_nodes, resolved_edges, changed_files, found_file_paths
+                store, all_nodes, resolved_edges, changed_files, found_file_paths, virtual_nodes
             )
 
         return all_nodes, all_edges, resolved_edges
@@ -156,12 +161,16 @@ class IngestionPipeline:
         resolved_edges: list[Edge],
         changed_files: dict[str, str],
         found_file_paths: set[str],
+        virtual_nodes: list[Node] | None = None,
     ) -> None:
         """Persist only changed files and clean up stale ones in one transaction."""
         nodes_by_file: dict[str, list[Node]] = {}
         for node in all_nodes:
             if node.file_path in changed_files:
                 nodes_by_file.setdefault(node.file_path, []).append(node)
+        # Virtual nodes (EXTERNAL/STDLIB) are always re-persisted since they're derived
+        if virtual_nodes:
+            nodes_by_file.setdefault(_VIRTUAL_FILE_PATH, []).extend(virtual_nodes)
 
         # Map source node → file so structural edges (file_path=None) can be assigned
         source_to_file: dict[str, str] = {

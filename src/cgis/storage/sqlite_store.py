@@ -5,7 +5,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from cgis.core.models import Edge, EdgeType, Node, NodeType
+from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
 
 RAW_CALL_PREFIX = "raw_call:"
 
@@ -67,7 +67,8 @@ class SQLiteStore:
             ontology_class TEXT,
             domains TEXT,
             confidence_score REAL NOT NULL,
-            metadata TEXT
+            metadata TEXT,
+            namespace TEXT NOT NULL DEFAULT 'INTERNAL'
         );
 
         CREATE TABLE IF NOT EXISTS edges (
@@ -96,12 +97,24 @@ class SQLiteStore:
         if self._conn:
             self._conn.executescript(schema)
             self._conn.commit()
+            self._migrate()
+
+    def _migrate(self) -> None:
+        """Apply incremental schema migrations for existing databases."""
+        if not self._conn:
+            return
+        cols = {row[1] for row in self._conn.execute("PRAGMA table_info(nodes)").fetchall()}
+        if "namespace" not in cols:
+            self._conn.execute(
+                "ALTER TABLE nodes ADD COLUMN namespace TEXT NOT NULL DEFAULT 'INTERNAL'"
+            )
+            self._conn.commit()
 
     _NODE_INSERT = """
         INSERT OR REPLACE INTO nodes (
             id, type, name, file_path, start_line, end_line, language,
-            ontology_class, domains, confidence_score, metadata
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ontology_class, domains, confidence_score, metadata, namespace
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
     _EDGE_INSERT = """
         INSERT OR REPLACE INTO edges (
@@ -112,7 +125,7 @@ class SQLiteStore:
 
     def _node_to_row(
         self, n: Node
-    ) -> tuple[str, str, str, str, int, int, str, str | None, str, float, str]:
+    ) -> tuple[str, str, str, str, int, int, str, str | None, str, float, str, str]:
         return (
             n.id,
             n.type.value,
@@ -125,6 +138,7 @@ class SQLiteStore:
             json.dumps(n.domains),
             n.confidence_score,
             json.dumps(n.metadata),
+            n.namespace.value,
         )
 
     def _edge_to_row(
@@ -338,6 +352,9 @@ class SQLiteStore:
             domains=json.loads(row["domains"]) or [] if row["domains"] else [],
             confidence_score=row["confidence_score"],
             metadata=json.loads(row["metadata"]) or {} if row["metadata"] else {},
+            namespace=NodeNamespace(row["namespace"])
+            if row["namespace"]
+            else NodeNamespace.INTERNAL,
         )
 
     def _row_to_edge(self, row: sqlite3.Row) -> Edge:

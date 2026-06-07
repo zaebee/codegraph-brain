@@ -55,7 +55,7 @@ def test_resolver_resolves_direct_call() -> None:
 
     # 2. ACTION: Run Resolver
     resolver = ResolverEngine(nodes, edges)
-    resolved_edges = resolver.resolve()
+    resolved_edges, _ = resolver.resolve()
 
     # 3. ASSERT: Check, that target is "clean"
     target_edge = next(e for e in resolved_edges if e.id == "edge_1")
@@ -107,7 +107,7 @@ def test_resolver_resolves_self_call() -> None:
     ]
 
     resolver = ResolverEngine(nodes, edges)
-    resolved_edges = resolver.resolve()
+    resolved_edges, _ = resolver.resolve()
 
     target_edge = next(e for e in resolved_edges if e.id == "edge_self")
     assert target_edge.target == "app.service.UserService.method_b"
@@ -155,7 +155,7 @@ def test_resolver_same_file_preferred_over_cross_file() -> None:
     ]
 
     resolver = ResolverEngine(nodes, edges)
-    resolved = resolver.resolve()
+    resolved, _ = resolver.resolve()
 
     target_edge = next(e for e in resolved if e.id == "edge_1")
     assert target_edge.target == "app.main.helper"
@@ -201,12 +201,11 @@ def test_resolver_leaves_ambiguous_same_file_duplicate_unresolved() -> None:
     ]
 
     resolver = ResolverEngine(nodes, edges)
-    resolved = resolver.resolve()
+    resolved, _ = resolver.resolve()
 
     target_edge = next(e for e in resolved if e.id == "edge_1")
-    assert target_edge.target.startswith("raw_call:"), (
-        "Ambiguous same-file duplicate must stay unresolved"
-    )
+    # Ambiguous: resolver must not pick either candidate (creates virtual node instead)
+    assert target_edge.target not in ("app.mod.execute_v1", "app.mod.execute_v2")
 
 
 def test_resolver_resolves_class_instantiation() -> None:
@@ -243,7 +242,7 @@ def test_resolver_resolves_class_instantiation() -> None:
     ]
 
     resolver = ResolverEngine(nodes, edges)
-    resolved_edges = resolver.resolve()
+    resolved_edges, _ = resolver.resolve()
 
     target_edge = next(e for e in resolved_edges if e.id == "edge_instantiate")
     assert target_edge.target == "app.models.User"
@@ -282,7 +281,7 @@ def test_resolver_direct_import_resolves_call() -> None:
         )
     ]
     resolver = ResolverEngine(nodes, edges)
-    result = resolver.resolve()
+    result, _ = resolver.resolve()
     assert next(e for e in result if e.id == "e1").target == "src.utils.helper"
 
 
@@ -304,7 +303,7 @@ def test_resolver_aliased_import_resolves_call() -> None:
         )
     ]
     resolver = ResolverEngine(nodes, edges)
-    result = resolver.resolve()
+    result, _ = resolver.resolve()
     assert next(e for e in result if e.id == "e1").target == "src.utils.helper"
 
 
@@ -325,7 +324,7 @@ def test_resolver_module_prefixed_call_resolves() -> None:
         )
     ]
     resolver = ResolverEngine(nodes, edges)
-    result = resolver.resolve()
+    result, _ = resolver.resolve()
     edge = next(e for e in result if e.id == "e1")
     assert edge.target == "json.dumps"
     assert not edge.target.startswith("raw_call:")
@@ -366,7 +365,7 @@ def test_resolver_src_layout_normalization() -> None:
         )
     ]
     resolver = ResolverEngine(nodes, edges)
-    result = resolver.resolve()
+    result, _ = resolver.resolve()
     assert next(e for e in result if e.id == "e1").target == "src.cgis.pipeline.IngestionPipeline"
 
 
@@ -409,7 +408,7 @@ def test_resolver_suffix_map_takes_priority_over_strip() -> None:
         )
     ]
     resolver = ResolverEngine(nodes, edges)
-    result = resolver.resolve()
+    result, _ = resolver.resolve()
     assert next(e for e in result if e.id == "e1").target == "src.a.b.c"
 
 
@@ -430,5 +429,8 @@ def test_resolver_wildcard_import_call_stays_unresolved() -> None:
         )
     ]
     resolver = ResolverEngine(nodes, edges)
-    result = resolver.resolve()
-    assert next(e for e in result if e.id == "e1").target.startswith("raw_call:")
+    result, virtual_nodes = resolver.resolve()
+    # Wildcard import → can't resolve → virtual EXTERNAL node created
+    target_edge = next(e for e in result if e.id == "e1")
+    assert target_edge.target == "mystery_func"
+    assert any(n.id == "mystery_func" for n in virtual_nodes)

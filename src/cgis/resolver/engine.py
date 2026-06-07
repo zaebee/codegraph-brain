@@ -1,8 +1,11 @@
 """Implements ResolverEngine class."""
 
 import os
+import sys
 
-from cgis.core.models import Edge, Node, NodeType
+from cgis.core.models import Edge, Node, NodeNamespace, NodeType
+
+_VIRTUAL_FILE_PATH = "EXTERNAL"
 
 
 class ResolverEngine:
@@ -57,12 +60,37 @@ class ResolverEngine:
                 suffix = ".".join(parts[i:])
                 self._suffix_map.setdefault(suffix, []).append(node.id)
 
-    def resolve(self) -> list[Edge]:
+    @staticmethod
+    def _classify_fqn(fqn: str) -> NodeNamespace:
+        """Classify an unresolved FQN as STDLIB or EXTERNAL based on its root module."""
+        root = fqn.split(".", maxsplit=1)[0]
+        if root in sys.stdlib_module_names:
+            return NodeNamespace.STDLIB
+        return NodeNamespace.EXTERNAL
+
+    def _make_virtual_node(self, fqn: str, namespace: NodeNamespace) -> Node:
+        """Create a placeholder node for an external/stdlib symbol."""
+        return Node(
+            id=fqn,
+            type=NodeType.FUNCTION,
+            name=fqn.rsplit(".", maxsplit=1)[-1],
+            file_path=_VIRTUAL_FILE_PATH,
+            start_line=0,
+            end_line=0,
+            namespace=namespace,
+            confidence_score=0.8,
+        )
+
+    def resolve(self) -> tuple[list[Edge], list[Node]]:
         """
         Phase 3: The Linking Pass.
-        Iterates through edges and resolves raw_call targets.
+        Resolves raw_call targets to FQNs. Remaining unresolved calls become
+        virtual nodes classified as STDLIB or EXTERNAL.
+
+        Returns (resolved_edges, virtual_nodes).
         """
         resolved_edges: list[Edge] = []
+        virtual_nodes: dict[str, Node] = {}
 
         for edge in self.edges:
             if not edge.target.startswith("raw_call:"):
@@ -70,7 +98,6 @@ class ResolverEngine:
                 continue
 
             raw_name = edge.target.removeprefix("raw_call:")
-
             new_target: str | None = None
 
             if raw_name.startswith("self."):
@@ -89,9 +116,21 @@ class ResolverEngine:
                     )
                 )
             else:
-                resolved_edges.append(edge)
+                # Create a virtual node for this external/stdlib symbol
+                virtual_fqn = raw_name
+                if virtual_fqn not in self.nodes and virtual_fqn not in virtual_nodes:
+                    ns = self._classify_fqn(virtual_fqn)
+                    virtual_nodes[virtual_fqn] = self._make_virtual_node(virtual_fqn, ns)
+                resolved_edges.append(
+                    edge.model_copy(
+                        update={
+                            "target": virtual_fqn,
+                            "confidence": 0.8,
+                        }
+                    )
+                )
 
-        return resolved_edges
+        return resolved_edges, list(virtual_nodes.values())
 
     def _resolve_self_call(self, source_fqn: str, method_name: str) -> str | None:
         """Attempts to find a method on the class that owns the source node."""
