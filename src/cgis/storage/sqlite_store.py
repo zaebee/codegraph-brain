@@ -16,9 +16,11 @@ class EdgeStats:
     resolved: int  # edges whose target is an INTERNAL node
     stdlib: int  # edges whose target is a STDLIB virtual node
     external: int  # edges whose target is an EXTERNAL virtual node
-    unresolved: int  # edges with raw_call: target (always 0 post-resolver)
+    unresolved: (
+        int  # edges whose target is UNKNOWN or raw_call: (post-resolver only UNKNOWN matters)
+    )
     unresolved_ratio: float  # (unresolved + unknown) / total
-    top_unresolved: list[tuple[str, int]] = field(default_factory=list)
+    top_unresolved: list[tuple[str, int]] = field(default_factory=list)  # top UNKNOWN targets
 
 
 class SQLiteStore:
@@ -338,9 +340,15 @@ class SQLiteStore:
         unresolved: int = row["unresolved"]
         ratio = unresolved / total if total else 0.0
         rows = self._conn.execute(
-            """SELECT target, COUNT(*) AS cnt FROM edges
-               WHERE target GLOB ? GROUP BY target ORDER BY cnt DESC LIMIT 10""",
-            (f"{RAW_CALL_PREFIX}*",),
+            """
+            SELECT e.target, COUNT(*) AS cnt
+            FROM edges e
+            LEFT JOIN nodes n ON e.target = n.id
+            WHERE n.namespace = 'UNKNOWN' OR n.id IS NULL
+            GROUP BY e.target
+            ORDER BY cnt DESC
+            LIMIT 10
+            """,
         ).fetchall()
         top = [(r["target"], int(r["cnt"])) for r in rows]
         return EdgeStats(
