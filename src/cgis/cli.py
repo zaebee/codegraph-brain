@@ -14,7 +14,7 @@ from cgis.extractors.python_extractor import PythonExtractor
 from cgis.pipeline import IngestionPipeline
 from cgis.query.engine import QueryEngine
 from cgis.query.mermaid import MermaidCompiler
-from cgis.storage.sqlite_store import _RAW_CALL_PREFIX, SQLiteStore
+from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 
 
 class OutputFormat(StrEnum):
@@ -295,7 +295,8 @@ def impact(
 def validate(
     db: str = typer.Option("graph.db", "--db", "-d", help="Path to the SQLite database"),
     threshold: float = typer.Option(
-        0.30, "--threshold", "-t", help="Max allowed unresolved ratio (default 0.30 = 30%)"
+        0.30, "--threshold", "-t", min=0.0, max=1.0,
+        help="Max allowed unresolved ratio (default 0.30 = 30%)",
     ),
 ) -> None:
     """
@@ -308,8 +309,12 @@ def validate(
         console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
         raise typer.Exit(code=1)
 
-    with SQLiteStore(db) as store:
-        stats = store.get_edge_stats()
+    try:
+        with SQLiteStore(db) as store:
+            stats = store.get_edge_stats()
+    except Exception as e:
+        console.print(f"[bold red]❌ Error reading database:[/bold red] {e}")
+        raise typer.Exit(code=1) from e
 
     resolved_pct = (1.0 - stats.unresolved_ratio) * 100
     unresolved_pct = stats.unresolved_ratio * 100
@@ -332,7 +337,7 @@ def validate(
         top_table.add_column("target", style="dim")
         top_table.add_column("count", justify="right", style="yellow")
         for target, count in stats.top_unresolved:
-            name = target.removeprefix(_RAW_CALL_PREFIX)
+            name = target.removeprefix(RAW_CALL_PREFIX)
             top_table.add_row(name, str(count))
         console.print(top_table)
 

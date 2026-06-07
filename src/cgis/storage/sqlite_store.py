@@ -7,7 +7,7 @@ from pathlib import Path
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 
-_RAW_CALL_PREFIX = "raw_call:"
+RAW_CALL_PREFIX = "raw_call:"
 
 
 @dataclass
@@ -293,16 +293,18 @@ class SQLiteStore:
         """Return resolution statistics for all edges in the graph."""
         if not self._conn:
             raise RuntimeError(self._error_message)
-        total: int = self._conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
-        unresolved: int = self._conn.execute(
-            "SELECT COUNT(*) FROM edges WHERE target LIKE ?", (f"{_RAW_CALL_PREFIX}%",)
-        ).fetchone()[0]
+        row = self._conn.execute(
+            "SELECT COUNT(*), COUNT(CASE WHEN target LIKE ? THEN 1 END) FROM edges",
+            (f"{RAW_CALL_PREFIX}%",),
+        ).fetchone()
+        total: int = row[0]
+        unresolved: int = row[1]
         resolved = total - unresolved
         ratio = unresolved / total if total else 0.0
         rows = self._conn.execute(
             """SELECT target, COUNT(*) AS cnt FROM edges
                WHERE target LIKE ? GROUP BY target ORDER BY cnt DESC LIMIT 10""",
-            (f"{_RAW_CALL_PREFIX}%",),
+            (f"{RAW_CALL_PREFIX}%",),
         ).fetchall()
         top = [(row["target"], int(row["cnt"])) for row in rows]
         return EdgeStats(
