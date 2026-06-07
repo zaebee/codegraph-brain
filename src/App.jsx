@@ -114,6 +114,7 @@ function App() {
   const graphRef = useRef(graph);
   const wrapperRef = useRef(null);
   const enrichedRef = useRef(null);
+  const searchInputRef = useRef(null);
   const { fitView } = useReactFlow();
 
   const getEnriched = useCallback(() => {
@@ -266,6 +267,34 @@ function App() {
     }
     fitView({ padding: 0.15 });
   }, [showExternal, allNodes, allEdges, viewMode]);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (document.activeElement.tagName === 'INPUT') return;
+      
+      switch (e.key) {
+        case 'Escape':
+          if (viewMode === 'flow') {
+            buildFullGraph();
+          }
+          break;
+        case 'f':
+        case 'F':
+          e.preventDefault();
+          fitView({ padding: 0.15 });
+          break;
+        case '/':
+          e.preventDefault();
+          searchInputRef.current?.focus();
+          break;
+        default:
+          break;
+      }
+    };
+    
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [viewMode, fitView, buildFullGraph]);
 
   const onNodeClick = useCallback(
     (event, node) => {
@@ -444,8 +473,9 @@ function App() {
             {viewMode === "full" && (
               <>
                 <input
+                  ref={searchInputRef}
                   type="text"
-                  placeholder="Search nodes..."
+                  placeholder="Search nodes... (press / to focus)"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="search-input"
