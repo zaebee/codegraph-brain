@@ -19,6 +19,8 @@ from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 
 _DEFAULT_DB = "graph.db"
 _DEFAULT_DB_HELP = "Path to the SQLite database"
+_DEPTH_HELP = "Maximum traversal depth"
+_FORMAT_HELP = "Output format: text or mermaid"
 
 
 class OutputFormat(StrEnum):
@@ -189,9 +191,9 @@ def build_trace_tree(
 def trace(
     start: str = typer.Argument(..., help="FQN of the starting node to trace flow from"),
     db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
-    depth: int = typer.Option(5, "--depth", help="Maximum traversal depth"),
+    depth: int = typer.Option(5, "--depth", help=_DEPTH_HELP),
     output_format: OutputFormat = typer.Option(
-        OutputFormat.TEXT, "--format", "-f", help="Output format: text or mermaid"
+        OutputFormat.TEXT, "--format", "-f", help=_FORMAT_HELP
     ),
     internal_only: bool = typer.Option(
         False, "--internal-only", help="Exclude stdlib and external nodes from output"
@@ -278,9 +280,9 @@ def build_impact_tree(
 def impact(
     target: str = typer.Argument(..., help="FQN of the target entity to analyze"),
     db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
-    depth: int = typer.Option(5, "--depth", help="Maximum traversal depth"),
+    depth: int = typer.Option(5, "--depth", help=_DEPTH_HELP),
     output_format: OutputFormat = typer.Option(
-        OutputFormat.TEXT, "--format", "-f", help="Output format: text or mermaid"
+        OutputFormat.TEXT, "--format", "-f", help=_FORMAT_HELP
     ),
     internal_only: bool = typer.Option(
         False, "--internal-only", help="Exclude stdlib and external nodes from output"
@@ -400,9 +402,9 @@ def validate(
 def structure(
     target: str = typer.Argument(..., help="FQN or file path of the module/class to inspect"),
     db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
-    depth: int = typer.Option(3, "--depth", help="Maximum traversal depth"),
+    depth: int = typer.Option(3, "--depth", help=_DEPTH_HELP),
     output_format: OutputFormat = typer.Option(
-        OutputFormat.TEXT, "--format", "-f", help="Output format: text or mermaid"
+        OutputFormat.TEXT, "--format", "-f", help=_FORMAT_HELP
     ),
 ) -> None:
     """
@@ -418,7 +420,7 @@ def structure(
 
     # Normalize file path → FQN
     if "/" in target or "\\" in target or target.endswith(".py"):
-        normalized = target.replace("\\", "/").lstrip("./")
+        normalized = target.replace("\\", "/").removeprefix("./")
         target = file_path_to_module_fqn(normalized)
         console.print(f"[dim]→ FQN: {target}[/dim]")
 

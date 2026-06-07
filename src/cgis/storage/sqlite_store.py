@@ -343,21 +343,24 @@ class SQLiteStore:
         if not nodes_rows:
             return [], []
         nodes = [self._row_to_node(row) for row in nodes_rows]
-        node_ids = [n.id for n in nodes]
-        chunk_size = 999
-        edges: list[Edge] = []
-        for i in range(0, len(node_ids), chunk_size):
-            chunk = node_ids[i : i + chunk_size]
-            ph = ",".join("?" * len(chunk))
-            rows = self._conn.execute(
-                f"""
-                SELECT * FROM edges
-                WHERE type IN ('CONTAINS', 'DECLARES')
-                  AND source IN ({ph}) AND target IN ({ph})
-                """,
-                chunk + chunk,
-            ).fetchall()
-            edges.extend(self._row_to_edge(row) for row in rows)
+        edges_rows = self._conn.execute(
+            """
+            WITH RECURSIVE tree(id, depth) AS (
+                SELECT id, 0 FROM nodes WHERE id = ?
+                UNION ALL
+                SELECT e.target, t.depth + 1
+                FROM edges e
+                JOIN tree t ON e.source = t.id
+                WHERE e.type IN ('CONTAINS', 'DECLARES') AND t.depth < ?
+            )
+            SELECT DISTINCT e.*
+            FROM edges e
+            JOIN tree t ON e.source = t.id
+            WHERE e.type IN ('CONTAINS', 'DECLARES') AND t.depth < ?
+            """,
+            (target_id, max_depth, max_depth),
+        ).fetchall()
+        edges = [self._row_to_edge(row) for row in edges_rows]
         return nodes, edges
 
     def get_edge_stats(self) -> EdgeStats:
