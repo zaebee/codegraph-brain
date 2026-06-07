@@ -79,31 +79,25 @@ export default function App() {
   }, []);
 
   const exportPng = useCallback(() => {
-    const el = wrapperRef.current;
+    const el = wrapperRef.current?.querySelector(".react-flow__viewport");
     if (!el) return;
     toPng(el, {
       backgroundColor: "#0d1117",
-      pixelRatio: 2,
+      pixelRatio: 1.5,
       filter: (node) =>
         !node?.classList?.contains("react-flow__minimap") &&
-        !node?.classList?.contains("react-flow__controls") &&
-        !node?.classList?.contains("control-panel") &&
-        !node?.classList?.contains("stats-panel") &&
-        !node?.classList?.contains("tooltip-panel")
+        !node?.classList?.contains("react-flow__controls")
     }).then((dataUrl) => downloadImage(dataUrl, "graph.png"));
   }, [downloadImage]);
 
   const exportSvg = useCallback(() => {
-    const el = wrapperRef.current;
+    const el = wrapperRef.current?.querySelector(".react-flow__viewport");
     if (!el) return;
     toSvg(el, {
       backgroundColor: "#0d1117",
       filter: (node) =>
         !node?.classList?.contains("react-flow__minimap") &&
-        !node?.classList?.contains("react-flow__controls") &&
-        !node?.classList?.contains("control-panel") &&
-        !node?.classList?.contains("stats-panel") &&
-        !node?.classList?.contains("tooltip-panel")
+        !node?.classList?.contains("react-flow__controls")
     }).then((dataUrl) => downloadImage(dataUrl, "graph.svg"));
   }, [downloadImage]);
 
