@@ -26,14 +26,14 @@
 
 ## 🔵 UX
 
-- [ ] Клавиатурные шорткаты (Esc = back, F = fit view, / = search focus)
-- [ ] Cursor-following tooltip вместо фиксированного bottom-left — `src/App.jsx:450-459`
-- [ ] "Zoom to Fit" кнопка в панели управления
-- [ ] Loading indicator при layout computation (синхронный на main thread)
-- [ ] Search highlighting — border/glow на matching nodes — `src/App.jsx:340-353`
-- [ ] Depth presets ("Immediate callers" = 1, "Call tree" = 3)
-- [ ] Back-to-root навигация в flow view — сейчас только "Back" кнопка
-- [ ] ARIA labels на интерактивных элементах
+- [x] Клавиатурные шорткаты (Esc = back, F = fit view, / = search focus)
+- [x] Cursor-following tooltip вместо фиксированного bottom-left — `src/App.jsx:450-459`
+- [x] "Zoom to Fit" кнопка в панели управления
+- [x] Loading indicator при layout computation (синхронный на main thread)
+- [x] Search highlighting — border/glow на matching nodes — `src/App.jsx:340-353`
+- [x] Depth presets ("Immediate callers" = 1, "Call tree" = 3)
+- [x] Back-to-root навигация в flow view — сейчас только "Back" кнопка
+- [x] ARIA labels на интерактивных элементах
 
 ## ⚪ Tooling
 
