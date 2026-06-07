@@ -1,0 +1,200 @@
+"""Self-parsing validation: ingest src/cgis/ and assert the resulting graph.
+
+This is the canonical correctness test for the full pipeline
+(Extract → Resolve → Store → Query). It feeds the engine its own source code
+and checks that the graph matches the actual structure.  Any breaking change
+to FQN format, resolver logic, or storage will surface here before unit tests
+can catch it.
+
+Expected FQNs are built dynamically with ``file_path_to_module_fqn`` so the
+suite stays correct regardless of the absolute checkout path.
+"""
+
+from collections.abc import Generator
+from pathlib import Path
+
+import pytest
+
+from cgis.core.models import Edge, Node
+from cgis.extractors.python_extractor import PythonExtractor, file_path_to_module_fqn
+from cgis.pipeline import IngestionPipeline
+from cgis.storage.sqlite_store import SQLiteStore
+
+SRC_DIR = Path(__file__).parent.parent.parent / "src" / "cgis"
+
+
+def _fqn(relative: str, *parts: str) -> str:
+    """Build the expected FQN for a symbol inside SRC_DIR.
+
+    Args:
+        relative: path relative to SRC_DIR, e.g. ``"pipeline.py"``
+        *parts:   symbol names, e.g. ``"IngestionPipeline"``, ``"run"``
+
+    Returns:
+        Fully-qualified node id as stored in the graph.
+    """
+    module = file_path_to_module_fqn((SRC_DIR / relative).as_posix())
+    return ".".join([module, *parts]) if parts else module
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def graph_data(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Generator[tuple[SQLiteStore, list[Node], list[Edge]], None, None]:
+    """Run the full pipeline once on src/cgis/ and share the result."""
+    db_path = str(tmp_path_factory.mktemp("self_parse") / "graph.db")
+    pipeline = IngestionPipeline({".py": PythonExtractor()})
+    with SQLiteStore(db_path) as store:
+        nodes, _, resolved_edges = pipeline.run(str(SRC_DIR), store=store)
+        yield store, nodes, resolved_edges
+
+
+# ---------------------------------------------------------------------------
+# 1. Node existence — known FQNs must be present in the store
+# ---------------------------------------------------------------------------
+
+# fmt: off
+EXPECTED_NODES = [
+    # pipeline
+    _fqn("pipeline.py",                    "IngestionPipeline"),
+    _fqn("pipeline.py",                    "IngestionPipeline", "run"),
+    _fqn("pipeline.py",                    "IngestionPipeline", "_persist_incremental"),
+    # query engine
+    _fqn("query/engine.py",                "QueryEngine"),
+    _fqn("query/engine.py",                "QueryEngine", "get_flow_graph"),
+    _fqn("query/engine.py",                "QueryEngine", "get_impact_graph"),
+    _fqn("query/engine.py",                "QueryEngine", "_bfs_traverse"),
+    # storage
+    _fqn("storage/sqlite_store.py",        "SQLiteStore"),
+    _fqn("storage/sqlite_store.py",        "SQLiteStore", "save_graph"),
+    _fqn("storage/sqlite_store.py",        "SQLiteStore", "save_incremental_batch"),
+    # resolver
+    _fqn("resolver/engine.py",             "ResolverEngine"),
+    _fqn("resolver/engine.py",             "ResolverEngine", "resolve"),
+    # extractor
+    _fqn("extractors/python_extractor.py", "PythonExtractor"),
+    _fqn("extractors/python_extractor.py", "PythonExtractor", "parse"),
+    _fqn("extractors/python_extractor.py", "file_path_to_module_fqn"),
+]
+# fmt: on
+
+
+@pytest.mark.parametrize("fqn", EXPECTED_NODES)
+def test_known_node_exists(
+    graph_data: tuple[SQLiteStore, list[Node], list[Edge]], fqn: str
+) -> None:
+    """Every known symbol must appear as a node in the graph."""
+    store, _, _ = graph_data
+    assert store.get_node(fqn) is not None, f"Missing node: {fqn}"
+
+
+# ---------------------------------------------------------------------------
+# 2. Edge existence — known CALLS relationships must be resolved
+# ---------------------------------------------------------------------------
+
+
+def test_pipeline_run_calls_resolver(
+    graph_data: tuple[SQLiteStore, list[Node], list[Edge]],
+) -> None:
+    """IngestionPipeline.run must have a resolved CALLS edge to ResolverEngine."""
+    store, _, _ = graph_data
+    run_fqn = _fqn("pipeline.py", "IngestionPipeline", "run")
+    resolver_fqn = _fqn("resolver/engine.py", "ResolverEngine")
+    targets = {e.target for e in store.get_outgoing_edges(run_fqn)}
+    assert resolver_fqn in targets, (
+        f"IngestionPipeline.run does not have a resolved call to ResolverEngine.\n"
+        f"Outgoing targets: {sorted(t for t in targets if not t.startswith('raw_call:'))}"
+    )
+
+
+def test_get_flow_graph_calls_bfs(
+    graph_data: tuple[SQLiteStore, list[Node], list[Edge]],
+) -> None:
+    """QueryEngine.get_flow_graph must have a resolved CALLS edge to _bfs_traverse."""
+    store, _, _ = graph_data
+    flow_fqn = _fqn("query/engine.py", "QueryEngine", "get_flow_graph")
+    bfs_fqn = _fqn("query/engine.py", "QueryEngine", "_bfs_traverse")
+    targets = {e.target for e in store.get_outgoing_edges(flow_fqn)}
+    assert bfs_fqn in targets, (
+        f"QueryEngine.get_flow_graph does not call _bfs_traverse.\n"
+        f"Outgoing targets: {sorted(t for t in targets if not t.startswith('raw_call:'))}"
+    )
+
+
+def test_get_impact_graph_calls_bfs(
+    graph_data: tuple[SQLiteStore, list[Node], list[Edge]],
+) -> None:
+    """QueryEngine.get_impact_graph must also resolve to _bfs_traverse."""
+    store, _, _ = graph_data
+    impact_fqn = _fqn("query/engine.py", "QueryEngine", "get_impact_graph")
+    bfs_fqn = _fqn("query/engine.py", "QueryEngine", "_bfs_traverse")
+    targets = {e.target for e in store.get_outgoing_edges(impact_fqn)}
+    assert bfs_fqn in targets
+
+
+# ---------------------------------------------------------------------------
+# 3. No phantom bleed — all nodes must come from files under SRC_DIR
+# ---------------------------------------------------------------------------
+
+
+def test_no_phantom_bleed(
+    graph_data: tuple[SQLiteStore, list[Node], list[Edge]],
+) -> None:
+    """No node may have a file_path outside the ingested src/cgis/ subtree."""
+    _, nodes, _ = graph_data
+    src_prefix = SRC_DIR.as_posix()
+    for node in nodes:
+        assert node.file_path.startswith(src_prefix), (
+            f"Node {node.id!r} came from outside SRC_DIR: {node.file_path}"
+        )
+
+
+def test_no_external_library_nodes(
+    graph_data: tuple[SQLiteStore, list[Node], list[Edge]],
+) -> None:
+    """External library symbols (pydantic, tree_sitter) must not appear as nodes.
+
+    They may appear only as ``raw_call:`` edge targets, never as graph nodes.
+    """
+    store, _, _ = graph_data
+    external_fqns = [
+        "pydantic.BaseModel",
+        "tree_sitter.Parser",
+        "structlog.getLogger",
+        "typer.Typer",
+    ]
+    for fqn in external_fqns:
+        assert store.get_node(fqn) is None, f"External symbol leaked as a node: {fqn}"
+
+
+# ---------------------------------------------------------------------------
+# 4. File coverage — every non-empty .py file must produce at least one node
+# ---------------------------------------------------------------------------
+
+
+def test_file_coverage(
+    graph_data: tuple[SQLiteStore, list[Node], list[Edge]],
+) -> None:
+    """Every .py file in src/cgis/ that defines symbols must have at least one node.
+
+    Empty files and bare ``__init__.py`` stubs are excluded — the extractor
+    only emits nodes for functions and classes.
+    """
+    _, nodes, _ = graph_data
+    files_with_nodes = {n.file_path for n in nodes}
+
+    for py_file in sorted(SRC_DIR.rglob("*.py")):
+        source = py_file.read_text(encoding="utf-8").strip()
+        # Skip files that have no function/class definitions
+        if not any(kw in source for kw in ("def ", "class ")):
+            continue
+        abs_path = py_file.as_posix()
+        assert abs_path in files_with_nodes, (
+            f"{py_file.relative_to(SRC_DIR.parent.parent)} has definitions "
+            f"but produced no nodes in the graph"
+        )
