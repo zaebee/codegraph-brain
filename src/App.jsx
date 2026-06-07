@@ -377,7 +377,13 @@ function App() {
           (n.data?.file || "").toLowerCase().includes(q);
         return {
           ...n,
-          style: { ...n.style, opacity: match ? 1 : 0.15 }
+          style: {
+            ...n.style,
+            opacity: match ? 1 : 0.15,
+            boxShadow: match && searchQuery
+              ? "0 0 12px rgba(79, 195, 247, 0.6)"
+              : n.style?.boxShadow || "0 2px 8px rgba(0,0,0,0.3)"
+          }
         };
       })
     : nodes;
