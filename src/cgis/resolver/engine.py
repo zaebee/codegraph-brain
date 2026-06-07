@@ -59,13 +59,7 @@ class ResolverEngine:
 
             # Build suffix map for src/-layout prefix normalization:
             # "src.cgis.pipeline.X" → suffix "cgis.pipeline.X" also points to the node
-            parts = node.id.split(".")
-            self._internal_roots.add(parts[0])
-            if len(parts) > 1 and parts[0] in {"src", "lib"}:
-                self._internal_roots.add(parts[1])
-            for i in range(1, len(parts)):
-                suffix = ".".join(parts[i:])
-                self._suffix_map.setdefault(suffix, []).append(node.id)
+            self._add_node_to_suffix_map(node.id)
 
         self._build_external_roots()
 
@@ -81,8 +75,16 @@ class ResolverEngine:
             for val in import_map.values()
             if val
         }
-        for import_map in self._file_imports.values():
-            self._external_roots.update(import_map.keys())
+
+    def _add_node_to_suffix_map(self, node_id: str) -> None:
+        """Add node to suffix map and internal roots based on its ID."""
+        parts = node_id.split(".")
+        self._internal_roots.add(parts[0])
+        if len(parts) > 1 and parts[0] in {"src", "lib"}:
+            self._internal_roots.add(parts[1])
+        for i in range(1, len(parts)):
+            suffix = ".".join(parts[i:])
+            self._suffix_map.setdefault(suffix, []).append(node_id)
 
     def _classify_fqn(self, fqn: str) -> NodeNamespace:
         """Classify an FQN as STDLIB, INTERNAL, EXTERNAL, or UNKNOWN.
