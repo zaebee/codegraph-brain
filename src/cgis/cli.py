@@ -14,7 +14,11 @@ from cgis.extractors.python_extractor import PythonExtractor
 from cgis.pipeline import IngestionPipeline
 from cgis.query.engine import QueryEngine
 from cgis.query.mermaid import MermaidCompiler
-from cgis.storage.sqlite_store import SQLiteStore
+from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
+
+
+_DEFAULT_DB = "graph.db"
+_DEFAULT_DB_HELP = "Path to the SQLite database"
 
 
 class OutputFormat(StrEnum):
@@ -173,7 +177,7 @@ def build_trace_tree(
 @app.command()
 def trace(
     start: str = typer.Argument(..., help="FQN of the starting node to trace flow from"),
-    db: str = typer.Option("graph.db", "--db", "-d", help="Path to the SQLite database"),
+    db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
     depth: int = typer.Option(5, "--depth", help="Maximum traversal depth"),
     output_format: OutputFormat = typer.Option(
         OutputFormat.TEXT, "--format", "-f", help="Output format: text or mermaid"
@@ -183,7 +187,7 @@ def trace(
     Trace execution flow starting from a specific code entity downwards.
     """
     path = Path(db)
-    if not path.exists():
+    if not path.is_file():
         console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
         raise typer.Exit(code=1)
 
@@ -254,7 +258,7 @@ def build_impact_tree(
 @app.command()
 def impact(
     target: str = typer.Argument(..., help="FQN of the target entity to analyze"),
-    db: str = typer.Option("graph.db", "--db", "-d", help="Path to the SQLite database"),
+    db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
     depth: int = typer.Option(5, "--depth", help="Maximum traversal depth"),
     output_format: OutputFormat = typer.Option(
         OutputFormat.TEXT, "--format", "-f", help="Output format: text or mermaid"
@@ -264,7 +268,7 @@ def impact(
     Analyze transitive upstream impact (callers) of changing a specific code entity.
     """
     path = Path(db)
-    if not path.exists():
+    if not path.is_file():
         console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
         raise typer.Exit(code=1)
 
@@ -289,6 +293,70 @@ def impact(
             tree = Tree(root_label)
             build_impact_tree(store, target, tree, {target}, depth, 0)
             console.print(tree)
+
+
+@app.command()
+def validate(
+    db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
+    threshold: float = typer.Option(
+        0.30, "--threshold", "-t", min=0.0, max=1.0,
+        help="Max allowed unresolved ratio (default 0.30 = 30%)",
+    ),
+) -> None:
+    """
+    Report graph integrity: resolved vs unresolved edge ratio.
+
+    Exits with code 1 if the unresolved ratio exceeds the threshold.
+    """
+    path = Path(db)
+    if not path.is_file():
+        console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
+        raise typer.Exit(code=1)
+
+    try:
+        with SQLiteStore(db) as store:
+            stats = store.get_edge_stats()
+    except Exception as e:
+        console.print(f"[bold red]❌ Error reading database:[/bold red] {e}")
+        raise typer.Exit(code=1) from e
+
+    resolved_pct = (1.0 - stats.unresolved_ratio) * 100
+    unresolved_pct = stats.unresolved_ratio * 100
+
+    table = Table(title="Graph Integrity Report")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Value", style="magenta", justify="right")
+
+    table.add_row("Total edges", str(stats.total))
+    table.add_row("Resolved edges", f"{stats.resolved} ({resolved_pct:.1f}%)")
+    table.add_row(
+        "Unresolved edges",
+        f"[yellow]{stats.unresolved} ({unresolved_pct:.1f}%)[/yellow]",
+    )
+    console.print(table)
+
+    if stats.top_unresolved:
+        console.print("\n[bold]Top unresolved targets:[/bold]")
+        top_table = Table(show_header=False, box=None, padding=(0, 2))
+        top_table.add_column("target", style="dim")
+        top_table.add_column("count", justify="right", style="yellow")
+        for target, count in stats.top_unresolved:
+            name = target.removeprefix(RAW_CALL_PREFIX)
+            top_table.add_row(name, str(count))
+        console.print(top_table)
+
+    threshold_pct = threshold * 100
+    if stats.unresolved_ratio > threshold:
+        console.print(
+            f"\n[bold red]❌ Unresolved ratio {unresolved_pct:.1f}% "
+            f"exceeds threshold {threshold_pct:.1f}%[/bold red]"
+        )
+        raise typer.Exit(code=1)
+
+    console.print(
+        f"\n[bold green]✅ Resolution ratio {resolved_pct:.1f}% "
+        f"is above threshold {100 - threshold_pct:.1f}%[/bold green]"
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover
