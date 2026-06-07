@@ -1,5 +1,5 @@
 import { Component, useEffect, useState, useCallback, useRef } from "react";
-import { ReactFlow, Background, Controls, MiniMap, Panel } from "@xyflow/react";
+import { ReactFlow, Background, Controls, MiniMap, Panel, useReactFlow } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { toPng, toSvg } from "html-to-image";
 import "./App.css";
@@ -109,11 +109,11 @@ function App() {
   const [showExternal, setShowExternal] = useState(true);
   const [allNodes, setAllNodes] = useState([]);
   const [allEdges, setAllEdges] = useState([]);
-  const [needsFit, setNeedsFit] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const graphRef = useRef(graph);
   const wrapperRef = useRef(null);
   const enrichedRef = useRef(null);
+  const { fitView } = useReactFlow();
 
   const getEnriched = useCallback(() => {
     if (!enrichedRef.current) {
@@ -221,7 +221,7 @@ function App() {
     setNodes(layoutedNodes);
     setEdges(grouped.edges);
     setViewMode("full");
-    setNeedsFit(true);
+    fitView({ padding: 0.15 });
     setStats({
       nodes: enriched.nodes.length,
       edges: validEdges.length,
@@ -263,7 +263,7 @@ function App() {
       setNodes(reLayouted);
       setEdges(filteredEdges);
     }
-    setNeedsFit(true);
+    fitView({ padding: 0.15 });
   }, [showExternal, allNodes, allEdges, viewMode]);
 
   const onNodeClick = useCallback(
@@ -324,7 +324,7 @@ function App() {
       setNodes(layouted);
       setEdges(flowEdges);
       setViewMode("flow");
-      setNeedsFit(true);
+      fitView({ padding: 0.15 });
     },
     [depth, getEnriched]
   );
@@ -362,11 +362,8 @@ function App() {
         onNodeMouseEnter={onNodeMouseEnter}
         onNodeMouseLeave={onNodeMouseLeave}
         colorMode="dark"
-        fitView={needsFit}
-        fitViewOptions={{ padding: 0.15 }}
         minZoom={0.1}
         maxZoom={2}
-        onViewportChanged={() => needsFit && setNeedsFit(false)}
       >
         <Background gap={20} size={1} />
         <Controls showInteractive={false} />
