@@ -15,6 +15,9 @@ class NodeNamespace(StrEnum):
     UNKNOWN = "UNKNOWN"
 
 
+VIRTUAL_FILE_PATH = "EXTERNAL"
+
+
 class NodeType(StrEnum):
     """All possible node types in the Code Graph."""
 

@@ -2,7 +2,7 @@
 
 import hashlib
 
-from cgis.core.models import Edge, Node, NodeNamespace, NodeType
+from cgis.core.models import VIRTUAL_FILE_PATH, Edge, Node, NodeNamespace, NodeType
 
 _RAW_CALL_PREFIX = "raw_call:"
 
@@ -52,7 +52,7 @@ class MermaidCompiler:
             return ":::stdlibNode"
         if node.namespace == NodeNamespace.EXTERNAL:
             return ":::externalNode"
-        if node.file_path == "EXTERNAL" and node.namespace == NodeNamespace.INTERNAL:
+        if node.file_path == VIRTUAL_FILE_PATH and node.namespace == NodeNamespace.INTERNAL:
             return ":::unresolvedNode"
         if node.type == NodeType.CLASS:
             return ":::classNode"

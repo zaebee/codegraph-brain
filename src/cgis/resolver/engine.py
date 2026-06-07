@@ -4,9 +4,8 @@ import builtins
 import os
 import sys
 
-from cgis.core.models import Edge, Node, NodeNamespace, NodeType
+from cgis.core.models import VIRTUAL_FILE_PATH, Edge, Node, NodeNamespace, NodeType
 
-_VIRTUAL_FILE_PATH = "EXTERNAL"
 _BUILTINS: frozenset[str] = frozenset(dir(builtins))
 
 
@@ -82,7 +81,7 @@ class ResolverEngine:
             id=fqn,
             type=NodeType.FUNCTION,
             name=fqn.rsplit(".", maxsplit=1)[-1],
-            file_path=_VIRTUAL_FILE_PATH,
+            file_path=VIRTUAL_FILE_PATH,
             start_line=0,
             end_line=0,
             namespace=namespace,

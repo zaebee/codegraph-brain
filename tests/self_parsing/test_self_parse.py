@@ -15,10 +15,9 @@ from pathlib import Path
 
 import pytest
 
-from cgis.core.models import Edge, Node, NodeNamespace
+from cgis.core.models import VIRTUAL_FILE_PATH, Edge, Node, NodeNamespace
 from cgis.extractors.python_extractor import PythonExtractor, file_path_to_module_fqn
 from cgis.pipeline import IngestionPipeline
-from cgis.resolver.engine import _VIRTUAL_FILE_PATH
 from cgis.storage.sqlite_store import SQLiteStore
 
 SRC_DIR = Path(__file__).parent.parent.parent / "src" / "cgis"
@@ -179,7 +178,7 @@ def test_no_external_library_nodes(
             assert node.namespace == NodeNamespace.EXTERNAL, (
                 f"{fqn} present but not classified as EXTERNAL"
             )
-            assert node.file_path == _VIRTUAL_FILE_PATH, (
+            assert node.file_path == VIRTUAL_FILE_PATH, (
                 f"{fqn} has unexpected file_path={node.file_path!r}"
             )
 

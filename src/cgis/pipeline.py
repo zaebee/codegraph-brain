@@ -9,9 +9,9 @@ import structlog
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from cgis.core.models import Edge, Node
+from cgis.core.models import VIRTUAL_FILE_PATH, Edge, Node
 from cgis.extractors.base import BaseExtractor
-from cgis.resolver.engine import _VIRTUAL_FILE_PATH, ResolverEngine
+from cgis.resolver.engine import ResolverEngine
 
 if TYPE_CHECKING:
     from cgis.storage.sqlite_store import SQLiteStore
@@ -171,8 +171,8 @@ class IngestionPipeline:
         # Virtual nodes (EXTERNAL/STDLIB) are always re-persisted since they're derived;
         # mark the virtual path as changed so stale virtual nodes get purged first.
         if virtual_nodes:
-            nodes_by_file.setdefault(_VIRTUAL_FILE_PATH, []).extend(virtual_nodes)
-            changed_files[_VIRTUAL_FILE_PATH] = ""
+            nodes_by_file.setdefault(VIRTUAL_FILE_PATH, []).extend(virtual_nodes)
+            changed_files[VIRTUAL_FILE_PATH] = ""
 
         # Map source node → file so structural edges (file_path=None) can be assigned
         source_to_file: dict[str, str] = {

@@ -217,6 +217,9 @@ def trace(
                 nodes, edges = _filter_internal(nodes, edges)
             typer.echo(MermaidCompiler().compile(nodes, edges))
         else:
+            if internal_only:
+                msg = "--internal-only is only supported with '--format mermaid'"
+                raise typer.BadParameter(msg)
             console.print(
                 f"[bold blue]🔍 Tracing execution flow starting from:[/bold blue] {start}\n"
             )
@@ -303,6 +306,9 @@ def impact(
                 nodes, edges = _filter_internal(nodes, edges)
             typer.echo(MermaidCompiler().compile(nodes, edges))
         else:
+            if internal_only:
+                msg = "--internal-only is only supported with '--format mermaid'"
+                raise typer.BadParameter(msg)
             console.print(
                 f"[bold blue]🔍 Analyzing transitive upstream callers of:[/bold blue] {target}\n"
             )
