@@ -1,7 +1,6 @@
 """Implements mermaid queries to render diagram."""
 
 import hashlib
-from pathlib import Path
 
 from cgis.core.models import Edge, Node, NodeType
 
@@ -43,7 +42,7 @@ class MermaidCompiler:
 
     def _get_node_label(self, node: Node) -> str:
         """Formats the visible text inside a node (Name + file name + line range)."""
-        filename = Path(node.file_path).name
+        filename = node.file_path.replace("\\", "/").split("/")[-1]
         return _escape(f"{node.name} ({filename}:{node.start_line})")
 
     def _get_style_class(self, node_type: NodeType, is_unresolved: bool) -> str:
