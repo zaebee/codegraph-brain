@@ -102,8 +102,7 @@ def test_compile_phantom_target_without_raw_call_uses_default_style() -> None:
     assert '"mod.py:deep_callee"' in mermaid_code
     # Must NOT be marked as unresolved — the node is known, just not in the subgraph
     node_lines = [
-        line for line in mermaid_code.splitlines()
-        if "deep_callee" in line and "-->" not in line
+        line for line in mermaid_code.splitlines() if "deep_callee" in line and "-->" not in line
     ]
     assert node_lines
     assert ":::defaultNode" in node_lines[0]
@@ -115,6 +114,35 @@ def test_compile_empty_graph() -> None:
     mermaid_code = MermaidCompiler().compile([], [])
     assert mermaid_code.startswith("graph TD")
     assert "classDef" in mermaid_code
+
+
+def test_compile_escapes_angle_brackets_in_node_label() -> None:
+    """Names like <lambda> or <listcomp> are escaped so Mermaid does not treat them as HTML tags."""
+    nodes = [
+        Node(
+            id="mod.py:<lambda>",
+            type=NodeType.FUNCTION,
+            name="<lambda>",
+            file_path="src/mod.py",
+            start_line=1,
+            end_line=1,
+        )
+    ]
+    mermaid_code = MermaidCompiler().compile(nodes, [])
+
+    assert "&lt;lambda&gt;" in mermaid_code
+    assert "<lambda>" not in mermaid_code
+
+
+def test_compile_escapes_angle_brackets_in_phantom_nodes() -> None:
+    """Phantom source/target FQNs with < or > are escaped correctly."""
+    nodes = [_make_node("mod.py:caller")]
+    edges = [_make_edge("mod.py:<lambda>", "mod.py:caller")]
+
+    mermaid_code = MermaidCompiler().compile(nodes, edges)
+
+    assert "&lt;lambda&gt;" in mermaid_code
+    assert "<lambda>" not in mermaid_code
 
 
 def test_compile_output_is_deterministic() -> None:

@@ -156,7 +156,7 @@ def trace(
     db: str = typer.Option("graph.db", "--db", "-d", help="Path to the SQLite database"),
     depth: int = typer.Option(5, "--depth", help="Maximum traversal depth"),
     output_format: OutputFormat = typer.Option(
-        "text", "--format", "-f", help="Output format: text or mermaid"
+        OutputFormat.TEXT, "--format", "-f", help="Output format: text or mermaid"
     ),
 ) -> None:
     """
@@ -237,7 +237,7 @@ def impact(
     db: str = typer.Option("graph.db", "--db", "-d", help="Path to the SQLite database"),
     depth: int = typer.Option(5, "--depth", help="Maximum traversal depth"),
     output_format: OutputFormat = typer.Option(
-        "text", "--format", "-f", help="Output format: text or mermaid"
+        OutputFormat.TEXT, "--format", "-f", help="Output format: text or mermaid"
     ),
 ) -> None:
     """
