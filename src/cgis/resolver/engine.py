@@ -61,7 +61,7 @@ class ResolverEngine:
             # "src.cgis.pipeline.X" → suffix "cgis.pipeline.X" also points to the node
             parts = node.id.split(".")
             self._internal_roots.add(parts[0])
-            if len(parts) > 1:
+            if len(parts) > 1 and parts[0] in {"src", "lib"}:
                 self._internal_roots.add(parts[1])
             for i in range(1, len(parts)):
                 suffix = ".".join(parts[i:])

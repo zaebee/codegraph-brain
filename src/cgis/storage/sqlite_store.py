@@ -325,7 +325,8 @@ class SQLiteStore:
                 COUNT(CASE WHEN n.namespace = 'INTERNAL' THEN 1 END) AS resolved,
                 COUNT(CASE WHEN n.namespace = 'STDLIB'   THEN 1 END) AS stdlib,
                 COUNT(CASE WHEN n.namespace = 'EXTERNAL' THEN 1 END) AS external,
-                COUNT(CASE WHEN n.namespace = 'UNKNOWN' OR e.target GLOB ? THEN 1 END) AS unresolved
+                COUNT(CASE WHEN n.namespace IS NULL OR n.namespace = 'UNKNOWN'
+                           OR e.target GLOB ? THEN 1 END) AS unresolved
             FROM edges e
             LEFT JOIN nodes n ON e.target = n.id
             """,
