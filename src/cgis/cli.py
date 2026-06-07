@@ -11,7 +11,7 @@ from rich.tree import Tree
 
 from cgis import __app_name__, __version__
 from cgis.core.models import Edge, Node, NodeNamespace
-from cgis.extractors.python_extractor import PythonExtractor
+from cgis.extractors.python_extractor import PythonExtractor, file_path_to_module_fqn
 from cgis.pipeline import IngestionPipeline
 from cgis.query.engine import QueryEngine
 from cgis.query.mermaid import MermaidCompiler
@@ -19,6 +19,8 @@ from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 
 _DEFAULT_DB = "graph.db"
 _DEFAULT_DB_HELP = "Path to the SQLite database"
+_DEPTH_HELP = "Maximum traversal depth"
+_FORMAT_HELP = "Output format: text or mermaid"
 
 
 class OutputFormat(StrEnum):
@@ -189,9 +191,9 @@ def build_trace_tree(
 def trace(
     start: str = typer.Argument(..., help="FQN of the starting node to trace flow from"),
     db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
-    depth: int = typer.Option(5, "--depth", help="Maximum traversal depth"),
+    depth: int = typer.Option(5, "--depth", help=_DEPTH_HELP),
     output_format: OutputFormat = typer.Option(
-        OutputFormat.TEXT, "--format", "-f", help="Output format: text or mermaid"
+        OutputFormat.TEXT, "--format", "-f", help=_FORMAT_HELP
     ),
     internal_only: bool = typer.Option(
         False, "--internal-only", help="Exclude stdlib and external nodes from output"
@@ -278,9 +280,9 @@ def build_impact_tree(
 def impact(
     target: str = typer.Argument(..., help="FQN of the target entity to analyze"),
     db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
-    depth: int = typer.Option(5, "--depth", help="Maximum traversal depth"),
+    depth: int = typer.Option(5, "--depth", help=_DEPTH_HELP),
     output_format: OutputFormat = typer.Option(
-        OutputFormat.TEXT, "--format", "-f", help="Output format: text or mermaid"
+        OutputFormat.TEXT, "--format", "-f", help=_FORMAT_HELP
     ),
     internal_only: bool = typer.Option(
         False, "--internal-only", help="Exclude stdlib and external nodes from output"
@@ -394,6 +396,82 @@ def validate(
         f"\n[bold green]✅ Internal {internal_pct:.1f}% — "
         f"unresolved {unresolved_pct:.1f}% below threshold {threshold_pct:.1f}%[/bold green]"
     )
+
+
+@app.command()
+def structure(
+    target: str = typer.Argument(..., help="FQN or file path of the module/class to inspect"),
+    db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
+    depth: int = typer.Option(3, "--depth", help=_DEPTH_HELP),
+    output_format: OutputFormat = typer.Option(
+        OutputFormat.TEXT, "--format", "-f", help=_FORMAT_HELP
+    ),
+) -> None:
+    """
+    Show the structural hierarchy (UML) of a module or class.
+
+    Traverses only CONTAINS and DECLARES edges — no call-graph noise.
+    Accepts an FQN (e.g. src.cgis.pipeline) or a file path (src/cgis/pipeline.py).
+    """
+    path = Path(db)
+    if not path.is_file():
+        console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
+        raise typer.Exit(code=1)
+
+    # Normalize file path → FQN
+    if "/" in target or "\\" in target or target.endswith(".py"):
+        normalized = target.replace("\\", "/").removeprefix("./")
+        target = file_path_to_module_fqn(normalized)
+        console.print(f"[dim]→ FQN: {target}[/dim]")
+
+    with SQLiteStore(db) as store:
+        target_node = store.get_node(target)
+        if not target_node:
+            console.print(f"[bold red]❌ Node not found in graph:[/bold red] {target}")
+            raise typer.Exit(code=1)
+
+        nodes, edges = QueryEngine(store).get_structural_graph(target, max_depth=depth)
+
+    if output_format == OutputFormat.MERMAID:
+        typer.echo(MermaidCompiler().compile(nodes, edges))
+        return
+
+    console.print(f"[bold blue]📦 Structure of:[/bold blue] {target}\n")
+    root_label = (
+        f"[bold cyan]{target_node.type.value}[/bold cyan] [yellow]{target_node.id}[/yellow]"
+    )
+    tree = Tree(root_label)
+    nodes_map = {n.id: n for n in nodes}
+    children_map: dict[str, list[str]] = {}
+    for edge in edges:
+        children_map.setdefault(edge.source, []).append(edge.target)
+    _build_structure_tree(target_node.id, tree, nodes_map, children_map, depth, 0)
+    console.print(tree)
+
+
+def _build_structure_tree(
+    node_id: str,
+    branch: Tree,
+    nodes_map: dict[str, Node],
+    children_map: dict[str, list[str]],
+    max_depth: int,
+    current_depth: int,
+) -> None:
+    """Recursively add children to a rich Tree branch using preloaded nodes/edges."""
+    if current_depth >= max_depth:
+        return
+    for child_id in sorted(
+        children_map.get(node_id, []),
+        key=lambda cid: nodes_map[cid].start_line if cid in nodes_map else 0,
+    ):
+        child_node = nodes_map.get(child_id)
+        if not child_node:
+            continue
+        label = f"[bold cyan]{child_node.type.value}[/bold cyan] [yellow]{child_node.name}[/yellow]"
+        child_branch = branch.add(label)
+        _build_structure_tree(
+            child_id, child_branch, nodes_map, children_map, max_depth, current_depth + 1
+        )
 
 
 if __name__ == "__main__":  # pragma: no cover

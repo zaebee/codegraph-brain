@@ -314,6 +314,55 @@ class SQLiteStore:
         cursor = self._conn.execute("SELECT * FROM nodes WHERE file_path = ?", (file_path,))
         return [self._row_to_node(row) for row in cursor.fetchall()]
 
+    def get_structural_subgraph(
+        self, target_id: str, max_depth: int = 5
+    ) -> tuple[list[Node], list[Edge]]:
+        """Return the structural hierarchy rooted at target_id via a single recursive CTE.
+
+        Traverses only CONTAINS and DECLARES edges. One DB round-trip regardless of depth.
+        """
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        self._conn.execute("PRAGMA recursive_triggers = ON")
+        nodes_rows = self._conn.execute(
+            """
+            WITH RECURSIVE tree(id, depth) AS (
+                SELECT id, 0 FROM nodes WHERE id = ?
+                UNION ALL
+                SELECT e.target, t.depth + 1
+                FROM edges e
+                JOIN tree t ON e.source = t.id
+                WHERE e.type IN ('CONTAINS', 'DECLARES') AND t.depth < ?
+            )
+            SELECT DISTINCT n.*
+            FROM nodes n
+            JOIN tree t ON n.id = t.id
+            """,
+            (target_id, max_depth),
+        ).fetchall()
+        if not nodes_rows:
+            return [], []
+        nodes = [self._row_to_node(row) for row in nodes_rows]
+        edges_rows = self._conn.execute(
+            """
+            WITH RECURSIVE tree(id, depth) AS (
+                SELECT id, 0 FROM nodes WHERE id = ?
+                UNION ALL
+                SELECT e.target, t.depth + 1
+                FROM edges e
+                JOIN tree t ON e.source = t.id
+                WHERE e.type IN ('CONTAINS', 'DECLARES') AND t.depth < ?
+            )
+            SELECT DISTINCT e.*
+            FROM edges e
+            JOIN tree t ON e.source = t.id
+            WHERE e.type IN ('CONTAINS', 'DECLARES') AND t.depth < ?
+            """,
+            (target_id, max_depth, max_depth),
+        ).fetchall()
+        edges = [self._row_to_edge(row) for row in edges_rows]
+        return nodes, edges
+
     def get_edge_stats(self) -> EdgeStats:
         """Return resolution statistics for all edges in the graph."""
         if not self._conn:

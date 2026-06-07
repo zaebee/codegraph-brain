@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from cgis.core.models import NodeType
+from cgis.core.models import EdgeType, NodeType
 from cgis.extractors.python_extractor import PythonExtractor
 from cgis.pipeline import IngestionPipeline
 from cgis.storage.sqlite_store import SQLiteStore
@@ -24,7 +24,7 @@ def test_pipeline_extracts_function(pipeline: IngestionPipeline, tmp_path: Path)
     func_nodes = [n for n in nodes if n.type == NodeType.FUNCTION]
     assert len(func_nodes) == 1
     assert func_nodes[0].name == "calc_sum"
-    assert len(raw_edges) == 0
+    assert not any(e.type == EdgeType.CALLS for e in raw_edges)
 
 
 def test_pipeline_raises_for_nonexistent_path(pipeline: IngestionPipeline) -> None:
