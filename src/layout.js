@@ -1,7 +1,7 @@
 import dagre from "dagre";
 
-const NODE_WIDTH = 160;
-const NODE_HEIGHT = 50;
+import { NODE_WIDTH, NODE_HEIGHT } from "./constants";
+
 const GROUP_PADDING = 40;
 const GROUP_HEADER = 50;
 const GROUP_SPACING = 30;

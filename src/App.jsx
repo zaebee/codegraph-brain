@@ -10,6 +10,7 @@ import { layoutGraph } from "./layout";
 import { groupByFile } from "./grouping";
 import { buildExecutionFlow } from "./flow";
 import GroupNode from "./GroupNode";
+import { NODE_WIDTH } from "./constants";
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -180,7 +181,7 @@ function App() {
           fontSize: 12,
           fontWeight: 500,
           boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
-          width: 160,
+          width: NODE_WIDTH,
           minHeight: 40,
           opacity: n.type === "EXTERNAL" ? 0.6 : 1
         },
@@ -301,7 +302,7 @@ function App() {
             boxShadow: isRoot
               ? "0 0 16px rgba(244,67,54,0.5)"
               : "0 2px 8px rgba(0,0,0,0.3)",
-            width: 160,
+          width: NODE_WIDTH,
             minHeight: 40,
             opacity: isExternal ? 0.5 : 1
           }
