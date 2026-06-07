@@ -100,6 +100,100 @@ def test_resolver_resolves_self_call() -> None:
     assert target_edge.confidence > expected
 
 
+def test_resolver_same_file_preferred_over_cross_file() -> None:
+    """When two files define the same name, the same-file candidate wins."""
+    nodes = [
+        Node(
+            id="app.main.helper",
+            type=NodeType.FUNCTION,
+            name="helper",
+            file_path="main.py",
+            start_line=1,
+            end_line=3,
+        ),
+        Node(
+            id="app.utils.helper",
+            type=NodeType.FUNCTION,
+            name="helper",
+            file_path="utils.py",
+            start_line=1,
+            end_line=3,
+        ),
+        Node(
+            id="app.main.caller",
+            type=NodeType.FUNCTION,
+            name="caller",
+            file_path="main.py",
+            start_line=5,
+            end_line=8,
+        ),
+    ]
+    edges = [
+        Edge(
+            id="edge_1",
+            source="app.main.caller",
+            target="raw_call:helper",
+            type=EdgeType.CALLS,
+            confidence=0.5,
+            file_path="main.py",
+        )
+    ]
+
+    resolver = ResolverEngine(nodes, edges)
+    resolved = resolver.resolve()
+
+    target_edge = next(e for e in resolved if e.id == "edge_1")
+    assert target_edge.target == "app.main.helper"
+
+
+def test_resolver_leaves_ambiguous_same_file_duplicate_unresolved() -> None:
+    """Two symbols with the same name in the same file → leave unresolved (ambiguous)."""
+    nodes = [
+        Node(
+            id="app.mod.execute_v1",
+            type=NodeType.FUNCTION,
+            name="execute",
+            file_path="mod.py",
+            start_line=1,
+            end_line=3,
+        ),
+        Node(
+            id="app.mod.execute_v2",
+            type=NodeType.FUNCTION,
+            name="execute",
+            file_path="mod.py",
+            start_line=5,
+            end_line=7,
+        ),
+        Node(
+            id="app.mod.caller",
+            type=NodeType.FUNCTION,
+            name="caller",
+            file_path="mod.py",
+            start_line=10,
+            end_line=12,
+        ),
+    ]
+    edges = [
+        Edge(
+            id="edge_1",
+            source="app.mod.caller",
+            target="raw_call:execute",
+            type=EdgeType.CALLS,
+            confidence=0.5,
+            file_path="mod.py",
+        )
+    ]
+
+    resolver = ResolverEngine(nodes, edges)
+    resolved = resolver.resolve()
+
+    target_edge = next(e for e in resolved if e.id == "edge_1")
+    assert target_edge.target.startswith("raw_call:"), (
+        "Ambiguous same-file duplicate must stay unresolved"
+    )
+
+
 def test_resolver_resolves_class_instantiation() -> None:
     """Check: If resolver is able to resolve class instantiation calls."""
     nodes = [
