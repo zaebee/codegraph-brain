@@ -6,6 +6,7 @@ import pytest
 
 from cgis.extractors.python_extractor import PythonExtractor
 from cgis.pipeline import IngestionPipeline
+from cgis.storage.sqlite_store import SQLiteStore
 
 
 @pytest.fixture
@@ -59,6 +60,62 @@ def test_pipeline_skips_excluded_dirs(pipeline: IngestionPipeline, tmp_path: Pat
     names = {n.name for n in nodes}
     assert "main" in names
     assert "should_skip" not in names
+
+
+def test_incremental_skips_unchanged_file(pipeline: IngestionPipeline, tmp_path: Path) -> None:
+    """Second incremental run skips a file whose content did not change."""
+    (tmp_path / "mod.py").write_text("def alpha(): pass\n", encoding="utf-8")
+    db_path = str(tmp_path / "graph.db")
+
+    with SQLiteStore(db_path) as store:
+        nodes1, _, _ = pipeline.run(str(tmp_path), store=store)
+
+    # Content unchanged — incremental run should reuse cached nodes
+    with SQLiteStore(db_path) as store:
+        nodes2, _, _ = pipeline.run(str(tmp_path), store=store)
+
+    assert len(nodes1) == len(nodes2)
+    assert {n.name for n in nodes1} == {n.name for n in nodes2}
+
+
+def test_incremental_reparses_changed_file(pipeline: IngestionPipeline, tmp_path: Path) -> None:
+    """Incremental run re-extracts a file whose content changed."""
+    py_file = tmp_path / "mod.py"
+    py_file.write_text("def alpha(): pass\n", encoding="utf-8")
+    db_path = str(tmp_path / "graph.db")
+
+    with SQLiteStore(db_path) as store:
+        pipeline.run(str(tmp_path), store=store)
+
+    # Change the file
+    py_file.write_text("def alpha(): pass\ndef beta(): pass\n", encoding="utf-8")
+
+    with SQLiteStore(db_path) as store:
+        nodes2, _, _ = pipeline.run(str(tmp_path), store=store)
+
+    names = {n.name for n in nodes2}
+    assert "alpha" in names
+    assert "beta" in names
+
+
+def test_incremental_removes_stale_file(pipeline: IngestionPipeline, tmp_path: Path) -> None:
+    """Nodes from a deleted file are removed from the store on next incremental run."""
+    py_file = tmp_path / "transient.py"
+    py_file.write_text("def gone(): pass\n", encoding="utf-8")
+    (tmp_path / "stable.py").write_text("def stays(): pass\n", encoding="utf-8")
+    db_path = str(tmp_path / "graph.db")
+
+    with SQLiteStore(db_path) as store:
+        pipeline.run(str(tmp_path), store=store)
+
+    # Delete the file
+    py_file.unlink()
+
+    with SQLiteStore(db_path) as store:
+        pipeline.run(str(tmp_path), store=store)
+        remaining = {n.name for n in store.get_nodes_by_file(str(py_file))}
+
+    assert remaining == set()
 
 
 def test_pipeline_logs_and_skips_unparseable_file(

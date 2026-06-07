@@ -26,6 +26,9 @@ make type-check    # runs: uv run mypy src
 # Tests
 make pytest        # runs: uv run pytest
 
+# Full verification (run before every commit/PR)
+make format && make lint && make type-check && make pytest
+
 # Single test
 uv run pytest tests/unit/test_python_extractor.py::test_extract_simple_function -v
 
