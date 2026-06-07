@@ -183,10 +183,6 @@ body {
   max-width: 300px;
 }
 
-.tooltip-panel {
-  pointer-events: none;
-}
-
 .node-tooltip {
   background: #161b22;
   border: 1px solid #30363d;
