@@ -36,9 +36,8 @@ class ResolverEngine:
 
             # Index methods within classes
             if node.type == NodeType.METHOD:
-                # Logic: extract class FQN from method FQN
-                # Expected format: "file_path:class_name:method_name"
-                class_fqn, sep, _ = node.id.rpartition(":")
+                # FQN format: module.ClassName.method_name
+                class_fqn, sep, _ = node.id.rpartition(".")
                 if sep:
                     self._class_methods.setdefault(class_fqn, {})[node.name] = node.id
 
@@ -86,8 +85,8 @@ class ResolverEngine:
 
     def _resolve_self_call(self, source_fqn: str, method_name: str) -> str | None:
         """Attempts to find a method on the class that owns the source node."""
-        # source_fqn format: "file:class:method"
-        class_fqn, sep, _ = source_fqn.rpartition(":")
+        # source_fqn format: module.ClassName.method_name → class_fqn: module.ClassName
+        class_fqn, sep, _ = source_fqn.rpartition(".")
         if not sep:
             return None
         return self._class_methods.get(class_fqn, {}).get(method_name)

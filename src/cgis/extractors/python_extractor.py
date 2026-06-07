@@ -8,6 +8,27 @@ from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.extractors.base import BaseExtractor
 
 
+def file_path_to_module_fqn(file_path: str) -> str:
+    """Convert a file path to a dot-separated module namespace.
+
+    Examples:
+        src/cgis/pipeline.py  -> src.cgis.pipeline
+        src/cgis/__init__.py  -> src.cgis
+        /abs/path/mod.py      -> abs.path.mod
+        C:\\path\\to\\mod.py  -> path.to.mod
+    """
+    clean = file_path
+    # Strip Windows drive letter (e.g. "C:") before normalising slashes
+    if len(clean) >= 2 and clean[1] == ":" and clean[0].isalpha():
+        clean = clean[2:]
+    clean = clean.replace("\\", "/").lstrip("/")
+    if clean.endswith(".py"):
+        clean = clean[:-3]
+    if clean.endswith("/__init__"):
+        clean = clean[:-9]
+    return clean.replace("/", ".")
+
+
 class PythonExtractor(BaseExtractor):
     """
     A concrete extractor for Python source code using tree-sitter.
@@ -51,8 +72,10 @@ class PythonExtractor(BaseExtractor):
         name = node.child_by_field_name("name")
         node_name = self._extract_node_name(name, code_bytes)
         prefix = self._get_fqn_prefix(node, code_bytes)
-        full_name = f"{prefix}.{node_name}" if prefix else node_name
-        return f"{file_path}:{full_name}"
+        module = file_path_to_module_fqn(file_path)
+        if not module:
+            return f"{prefix}.{node_name}" if prefix else node_name
+        return f"{module}.{prefix}.{node_name}" if prefix else f"{module}.{node_name}"
 
     def _walk(
         self,
