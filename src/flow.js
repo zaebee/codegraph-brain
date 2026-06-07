@@ -77,12 +77,12 @@ export function buildExecutionFlow(graph, startNodeId, depth = 3, direction = "b
       }
     });
 
+    const edgeKeySet = new Set(flowEdges.map(e => `${e.source}->${e.target}`));
+
     inFlowEdges.forEach(e => {
       const key = `${e.source}->${e.target}`;
-      const exists = flowEdges.some(
-        fe => `${fe.source}->${fe.target}` === key
-      );
-      if (!exists) {
+      if (!edgeKeySet.has(key)) {
+        edgeKeySet.add(key);
         flowEdges.push(e);
       }
     });
