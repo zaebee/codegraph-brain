@@ -108,13 +108,18 @@ class IngestionPipeline:
             resolve_task = progress.add_task(description="Resolving semantic links...", total=None)
             logger.info("Starting resolution phase...")
             resolver = ResolverEngine(all_nodes, all_edges)
-            resolved_edges = resolver.resolve()
+            resolved_edges, virtual_nodes = resolver.resolve()
+            all_nodes.extend(virtual_nodes)
             progress.update(resolve_task, advance=1)
-            logger.info("Resolution complete. Resolved edges.", edges=len(resolved_edges))
+            logger.info(
+                "Resolution complete.",
+                edges=len(resolved_edges),
+                virtual_nodes=len(virtual_nodes),
+            )
 
         if store is not None:
             self._persist_incremental(
-                store, all_nodes, resolved_edges, changed_files, found_file_paths
+                store, all_nodes, resolved_edges, changed_files, found_file_paths, virtual_nodes
             )
 
         return all_nodes, all_edges, resolved_edges
@@ -156,6 +161,7 @@ class IngestionPipeline:
         resolved_edges: list[Edge],
         changed_files: dict[str, str],
         found_file_paths: set[str],
+        virtual_nodes: list[Node] | None = None,
     ) -> None:
         """Persist only changed files and clean up stale ones in one transaction."""
         nodes_by_file: dict[str, list[Node]] = {}
@@ -175,6 +181,12 @@ class IngestionPipeline:
 
         stale_files = store.get_all_tracked_files() - found_file_paths
         store.save_incremental_batch(nodes_by_file, edges_by_file, changed_files, stale_files)
+
+        # Virtual nodes are upserted separately — never deleted — because in incremental
+        # mode only changed files' edges are re-resolved, so virtual_nodes is incomplete.
+        # Orphaned virtual nodes (no incoming edges) are harmless phantom data.
+        if virtual_nodes:
+            store.upsert_nodes(virtual_nodes)
 
         for file_path in changed_files:
             logger.info("Re-ingested changed file", file_path=file_path)

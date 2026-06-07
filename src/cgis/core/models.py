@@ -6,6 +6,18 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class NodeNamespace(StrEnum):
+    """Classifies whether a node belongs to the ingested repo, stdlib, or third-party."""
+
+    INTERNAL = "INTERNAL"
+    STDLIB = "STDLIB"
+    EXTERNAL = "EXTERNAL"
+    UNKNOWN = "UNKNOWN"
+
+
+VIRTUAL_FILE_PATH = "EXTERNAL"
+
+
 class NodeType(StrEnum):
     """All possible node types in the Code Graph."""
 
@@ -84,6 +96,9 @@ class Node(BaseModel):
         default=None, description="Mapping to the formal ontology class"
     )
     domains: list[str] = Field(default_factory=list)
+
+    # Classification
+    namespace: NodeNamespace = Field(default=NodeNamespace.INTERNAL)
 
     # Reliability
     confidence_score: float = Field(default=1.0, ge=0.0, le=1.0)

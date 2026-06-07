@@ -5,7 +5,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from cgis.core.models import Edge, EdgeType, Node, NodeType
+from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
 
 RAW_CALL_PREFIX = "raw_call:"
 
@@ -13,10 +13,14 @@ RAW_CALL_PREFIX = "raw_call:"
 @dataclass
 class EdgeStats:
     total: int
-    resolved: int
-    unresolved: int
-    unresolved_ratio: float
-    top_unresolved: list[tuple[str, int]] = field(default_factory=list)
+    resolved: int  # edges whose target is an INTERNAL node
+    stdlib: int  # edges whose target is a STDLIB virtual node
+    external: int  # edges whose target is an EXTERNAL virtual node
+    unresolved: (
+        int  # edges whose target is UNKNOWN or raw_call: (post-resolver only UNKNOWN matters)
+    )
+    unresolved_ratio: float  # (unresolved + unknown) / total
+    top_unresolved: list[tuple[str, int]] = field(default_factory=list)  # top UNKNOWN targets
 
 
 class SQLiteStore:
@@ -67,7 +71,8 @@ class SQLiteStore:
             ontology_class TEXT,
             domains TEXT,
             confidence_score REAL NOT NULL,
-            metadata TEXT
+            metadata TEXT,
+            namespace TEXT NOT NULL DEFAULT 'INTERNAL'
         );
 
         CREATE TABLE IF NOT EXISTS edges (
@@ -96,12 +101,24 @@ class SQLiteStore:
         if self._conn:
             self._conn.executescript(schema)
             self._conn.commit()
+            self._migrate()
+
+    def _migrate(self) -> None:
+        """Apply incremental schema migrations for existing databases."""
+        if not self._conn:
+            return
+        cols = {row["name"] for row in self._conn.execute("PRAGMA table_info(nodes)").fetchall()}
+        if "namespace" not in cols:
+            self._conn.execute(
+                "ALTER TABLE nodes ADD COLUMN namespace TEXT NOT NULL DEFAULT 'INTERNAL'"
+            )
+            self._conn.commit()
 
     _NODE_INSERT = """
         INSERT OR REPLACE INTO nodes (
             id, type, name, file_path, start_line, end_line, language,
-            ontology_class, domains, confidence_score, metadata
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ontology_class, domains, confidence_score, metadata, namespace
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
     _EDGE_INSERT = """
         INSERT OR REPLACE INTO edges (
@@ -112,7 +129,7 @@ class SQLiteStore:
 
     def _node_to_row(
         self, n: Node
-    ) -> tuple[str, str, str, str, int, int, str, str | None, str, float, str]:
+    ) -> tuple[str, str, str, str, int, int, str, str | None, str, float, str, str]:
         return (
             n.id,
             n.type.value,
@@ -125,6 +142,7 @@ class SQLiteStore:
             json.dumps(n.domains),
             n.confidence_score,
             json.dumps(n.metadata),
+            n.namespace.value,
         )
 
     def _edge_to_row(
@@ -141,6 +159,13 @@ class SQLiteStore:
             e.file_path,
             e.line_number,
         )
+
+    def upsert_nodes(self, nodes: list[Node]) -> None:
+        """Insert or replace nodes without deleting existing ones first."""
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        with self._conn:
+            self._conn.executemany(self._NODE_INSERT, [self._node_to_row(n) for n in nodes])
 
     def save_graph(self, nodes: list[Node], edges: list[Edge], overwrite: bool = False) -> None:
         """Persists all nodes and edges inside a single transaction."""
@@ -294,25 +319,44 @@ class SQLiteStore:
         if not self._conn:
             raise RuntimeError(self._error_message)
         row = self._conn.execute(
-            "SELECT COUNT(*) AS total, COUNT(CASE WHEN target GLOB ? THEN 1 END) AS unresolved"
-            " FROM edges",
+            """
+            SELECT
+                COUNT(*) AS total,
+                COUNT(CASE WHEN n.namespace = 'INTERNAL' THEN 1 END) AS resolved,
+                COUNT(CASE WHEN n.namespace = 'STDLIB'   THEN 1 END) AS stdlib,
+                COUNT(CASE WHEN n.namespace = 'EXTERNAL' THEN 1 END) AS external,
+                COUNT(CASE WHEN n.namespace IS NULL OR n.namespace = 'UNKNOWN'
+                           OR e.target GLOB ? THEN 1 END) AS unresolved
+            FROM edges e
+            LEFT JOIN nodes n ON e.target = n.id
+            """,
             (f"{RAW_CALL_PREFIX}*",),
         ).fetchone()
         if row is None:
-            return EdgeStats(0, 0, 0, 0.0)
+            return EdgeStats(0, 0, 0, 0, 0, 0.0)
         total: int = row["total"]
+        resolved: int = row["resolved"]
+        stdlib: int = row["stdlib"]
+        external: int = row["external"]
         unresolved: int = row["unresolved"]
-        resolved = total - unresolved
         ratio = unresolved / total if total else 0.0
         rows = self._conn.execute(
-            """SELECT target, COUNT(*) AS cnt FROM edges
-               WHERE target GLOB ? GROUP BY target ORDER BY cnt DESC LIMIT 10""",
-            (f"{RAW_CALL_PREFIX}*",),
+            """
+            SELECT e.target, COUNT(*) AS cnt
+            FROM edges e
+            LEFT JOIN nodes n ON e.target = n.id
+            WHERE n.namespace = 'UNKNOWN' OR n.id IS NULL
+            GROUP BY e.target
+            ORDER BY cnt DESC
+            LIMIT 10
+            """,
         ).fetchall()
         top = [(r["target"], int(r["cnt"])) for r in rows]
         return EdgeStats(
             total=total,
             resolved=resolved,
+            stdlib=stdlib,
+            external=external,
             unresolved=unresolved,
             unresolved_ratio=ratio,
             top_unresolved=top,
@@ -338,6 +382,9 @@ class SQLiteStore:
             domains=json.loads(row["domains"]) or [] if row["domains"] else [],
             confidence_score=row["confidence_score"],
             metadata=json.loads(row["metadata"]) or {} if row["metadata"] else {},
+            namespace=NodeNamespace(row["namespace"])
+            if row["namespace"]
+            else NodeNamespace.INTERNAL,
         )
 
     def _row_to_edge(self, row: sqlite3.Row) -> Edge:

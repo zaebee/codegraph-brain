@@ -1,8 +1,13 @@
 """Implements ResolverEngine class."""
 
+import builtins
 import os
+import sys
 
-from cgis.core.models import Edge, Node, NodeType
+from cgis.core.models import VIRTUAL_FILE_PATH, Edge, Node, NodeNamespace, NodeType
+
+_BUILTINS: frozenset[str] = frozenset(dir(builtins))
+_SELF_PREFIX = "self."
 
 
 class ResolverEngine:
@@ -26,6 +31,8 @@ class ResolverEngine:
         self._file_imports: dict[str, dict[str, str]] = {}
         # suffix_fqn -> [full_node_ids]  (handles src/ layout prefix mismatch)
         self._suffix_map: dict[str, list[str]] = {}
+        # top-level root segments of all internal nodes (for classify)
+        self._internal_roots: set[str] = set()
 
         self._build_indices()
 
@@ -52,17 +59,73 @@ class ResolverEngine:
 
             # Build suffix map for src/-layout prefix normalization:
             # "src.cgis.pipeline.X" → suffix "cgis.pipeline.X" also points to the node
-            parts = node.id.split(".")
-            for i in range(1, len(parts)):
-                suffix = ".".join(parts[i:])
-                self._suffix_map.setdefault(suffix, []).append(node.id)
+            self._add_node_to_suffix_map(node.id)
 
-    def resolve(self) -> list[Edge]:
+        self._build_external_roots()
+
+    def _build_external_roots(self) -> None:
+        """Build set of known external root modules from file import maps.
+
+        Any root not in internal_roots, stdlib, or external_roots
+        is classified as UNKNOWN by _classify_fqn.
+        """
+        self._external_roots: set[str] = {
+            val.split(".", maxsplit=1)[0]
+            for import_map in self._file_imports.values()
+            for val in import_map.values()
+            if val and not val.startswith(".")
+        }
+
+    def _add_node_to_suffix_map(self, node_id: str) -> None:
+        """Add node to suffix map and internal roots based on its ID."""
+        parts = node_id.split(".")
+        self._internal_roots.add(parts[0])
+        if len(parts) > 1 and parts[0] in {"src", "lib"}:
+            self._internal_roots.add(parts[1])
+        for i in range(1, len(parts)):
+            suffix = ".".join(parts[i:])
+            self._suffix_map.setdefault(suffix, []).append(node_id)
+
+    def _classify_fqn(self, fqn: str) -> NodeNamespace:
+        """Classify an FQN as STDLIB, INTERNAL, EXTERNAL, or UNKNOWN.
+
+        UNKNOWN means the root segment was not found in internal roots,
+        stdlib/builtins, or any known import-map external root.
+        """
+        if fqn.startswith((".", _SELF_PREFIX)):
+            return NodeNamespace.INTERNAL
+        root = fqn.split(".", maxsplit=1)[0]
+        if root in self._internal_roots:
+            return NodeNamespace.INTERNAL
+        if root in sys.stdlib_module_names or root in _BUILTINS:
+            return NodeNamespace.STDLIB
+        if root in self._external_roots:
+            return NodeNamespace.EXTERNAL
+        return NodeNamespace.UNKNOWN
+
+    def _make_virtual_node(self, fqn: str, namespace: NodeNamespace) -> Node:
+        """Create a placeholder node for an external/stdlib symbol."""
+        return Node(
+            id=fqn,
+            type=NodeType.FUNCTION,
+            name=fqn.rsplit(".", maxsplit=1)[-1],
+            file_path=VIRTUAL_FILE_PATH,
+            start_line=0,
+            end_line=0,
+            namespace=namespace,
+            confidence_score=0.8,
+        )
+
+    def resolve(self) -> tuple[list[Edge], list[Node]]:
         """
         Phase 3: The Linking Pass.
-        Iterates through edges and resolves raw_call targets.
+        Resolves raw_call targets to FQNs. Remaining unresolved calls become
+        virtual nodes classified as STDLIB or EXTERNAL.
+
+        Returns (resolved_edges, virtual_nodes).
         """
         resolved_edges: list[Edge] = []
+        virtual_nodes: dict[str, Node] = {}
 
         for edge in self.edges:
             if not edge.target.startswith("raw_call:"):
@@ -70,11 +133,10 @@ class ResolverEngine:
                 continue
 
             raw_name = edge.target.removeprefix("raw_call:")
-
             new_target: str | None = None
 
-            if raw_name.startswith("self."):
-                method_name = raw_name.removeprefix("self.")
+            if raw_name.startswith(_SELF_PREFIX):
+                method_name = raw_name.removeprefix(_SELF_PREFIX)
                 new_target = self._resolve_self_call(edge.source, method_name)
             else:
                 new_target = self._resolve_global_call(raw_name, edge.source, edge.file_path)
@@ -89,9 +151,24 @@ class ResolverEngine:
                     )
                 )
             else:
-                resolved_edges.append(edge)
+                resolved_edges.append(
+                    edge.model_copy(
+                        update={
+                            "target": raw_name,
+                            "confidence": 0.8,
+                        }
+                    )
+                )
 
-        return resolved_edges
+        # Create virtual nodes for any edge target not already in internal nodes
+        # (covers both unresolved calls and resolved-but-external targets like json.dumps)
+        for edge in resolved_edges:
+            target = edge.target
+            if target not in self.nodes and target not in virtual_nodes:
+                ns = self._classify_fqn(target)
+                virtual_nodes[target] = self._make_virtual_node(target, ns)
+
+        return resolved_edges, list(virtual_nodes.values())
 
     def _resolve_self_call(self, source_fqn: str, method_name: str) -> str | None:
         """Attempts to find a method on the class that owns the source node."""

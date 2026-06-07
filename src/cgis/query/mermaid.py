@@ -2,9 +2,10 @@
 
 import hashlib
 
-from cgis.core.models import Edge, Node, NodeType
+from cgis.core.models import VIRTUAL_FILE_PATH, Edge, Node, NodeNamespace, NodeType
 
 _RAW_CALL_PREFIX = "raw_call:"
+_UNRESOLVED_STYLE = ":::unresolvedNode"
 
 
 def _escape(text: str) -> str:
@@ -30,6 +31,11 @@ class MermaidCompiler:
                 "stroke-dasharray: 4 4,color:#f57f17;"
             ),
             "classDef defaultNode fill:#fafafa,stroke:#9e9e9e,stroke-width:1.5px,color:#212121;",
+            "classDef stdlibNode fill:#eceff1,stroke:#607d8b,stroke-width:1px,color:#455a64;",
+            (
+                "classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,"
+                "stroke-dasharray: 3 3,color:#bf360c;"
+            ),
         ]
 
     def _normalize_id(self, fqn: str) -> str:
@@ -42,14 +48,20 @@ class MermaidCompiler:
         filename = node.file_path.replace("\\", "/").split("/")[-1]
         return _escape(f"{node.name} ({filename}:{node.start_line})")
 
-    def _get_style_class(self, node_type: NodeType, is_unresolved: bool) -> str:
-        if is_unresolved:
-            return ":::unresolvedNode"
-        if node_type == NodeType.CLASS:
+    def _get_style_class(self, node: Node) -> str:
+        if node.namespace == NodeNamespace.STDLIB:
+            return ":::stdlibNode"
+        if node.namespace == NodeNamespace.EXTERNAL:
+            return ":::externalNode"
+        if node.namespace == NodeNamespace.UNKNOWN:
+            return _UNRESOLVED_STYLE
+        if node.file_path == VIRTUAL_FILE_PATH and node.namespace == NodeNamespace.INTERNAL:
+            return _UNRESOLVED_STYLE
+        if node.type == NodeType.CLASS:
             return ":::classNode"
-        if node_type == NodeType.FUNCTION:
+        if node.type == NodeType.FUNCTION:
             return ":::funcNode"
-        if node_type == NodeType.METHOD:
+        if node.type == NodeType.METHOD:
             return ":::methodNode"
         return ":::defaultNode"
 
@@ -66,8 +78,7 @@ class MermaidCompiler:
             id_map[node.id] = safe_id
 
             label = self._get_node_label(node)
-            is_unresolved = node.id.startswith(_RAW_CALL_PREFIX)
-            style = self._get_style_class(node.type, is_unresolved=is_unresolved)
+            style = self._get_style_class(node)
 
             lines.append(f'    {safe_id}["{label}"]{style}')
 
@@ -83,7 +94,7 @@ class MermaidCompiler:
                 target_safe = self._normalize_id(edge.target)
                 is_unresolved_target = edge.target.startswith(_RAW_CALL_PREFIX)
                 clean_target = _escape(edge.target.removeprefix(_RAW_CALL_PREFIX))
-                target_style = ":::unresolvedNode" if is_unresolved_target else ":::defaultNode"
+                target_style = _UNRESOLVED_STYLE if is_unresolved_target else ":::defaultNode"
                 lines.append(f'    {target_safe}["{clean_target}"]{target_style}')
                 id_map[edge.target] = target_safe
 

@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from cgis.core.models import Edge, Node
+from cgis.core.models import VIRTUAL_FILE_PATH, Edge, Node, NodeNamespace
 from cgis.extractors.python_extractor import PythonExtractor, file_path_to_module_fqn
 from cgis.pipeline import IngestionPipeline
 from cgis.storage.sqlite_store import SQLiteStore
@@ -161,9 +161,9 @@ def test_no_phantom_bleed(
 def test_no_external_library_nodes(
     graph_data: tuple[SQLiteStore, list[Node], list[Edge]],
 ) -> None:
-    """External library symbols (pydantic, tree_sitter) must not appear as nodes.
+    """External library symbols appear only as virtual nodes (namespace=EXTERNAL).
 
-    They may appear only as ``raw_call:`` edge targets, never as graph nodes.
+    They must not be mistaken for internal source nodes — no real source location.
     """
     store, _, _ = graph_data
     external_fqns = [
@@ -173,7 +173,14 @@ def test_no_external_library_nodes(
         "typer.Typer",
     ]
     for fqn in external_fqns:
-        assert store.get_node(fqn) is None, f"External symbol leaked as a node: {fqn}"
+        node = store.get_node(fqn)
+        if node is not None:
+            assert node.namespace == NodeNamespace.EXTERNAL, (
+                f"{fqn} present but not classified as EXTERNAL"
+            )
+            assert node.file_path == VIRTUAL_FILE_PATH, (
+                f"{fqn} has unexpected file_path={node.file_path!r}"
+            )
 
 
 # ---------------------------------------------------------------------------

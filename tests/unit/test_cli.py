@@ -157,7 +157,8 @@ def test_trace_shows_unresolved_external_call(tmp_path: Path) -> None:
     )
 
     assert result.exit_code == 0
-    assert "Unresolved" in result.output
+    # print() becomes a virtual STDLIB node; check it appears in the trace
+    assert "print" in result.output
 
 
 def test_trace_detects_cycle(tmp_path: Path) -> None:
@@ -351,10 +352,20 @@ def test_validate_passes_when_ratio_below_threshold(tmp_path: Path) -> None:
 
 
 def test_validate_fails_when_ratio_exceeds_threshold(tmp_path: Path) -> None:
-    """Graph with many unresolved calls exits 1 when threshold is very tight."""
-    (tmp_path / "mod.py").write_text("def fn(): print('hi')\n", encoding="utf-8")
+    """Manually injected raw_call: edge causes validate to fail at threshold 0.0."""
     db_file = tmp_path / "graph.db"
-    runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
+    node = Node(
+        id="mod.fn", type=NodeType.FUNCTION, name="fn", file_path="mod.py", start_line=1, end_line=3
+    )
+    raw_edge = Edge(
+        id="e1",
+        source="mod.fn",
+        target="raw_call:missing_func",
+        type=EdgeType.CALLS,
+        confidence=0.1,
+    )
+    with SQLiteStore(str(db_file)) as store:
+        store.save_graph([node], [raw_edge], overwrite=True)
 
     result = runner.invoke(app, ["validate", "--db", str(db_file), "--threshold", "0.0"])
 
@@ -363,12 +374,22 @@ def test_validate_fails_when_ratio_exceeds_threshold(tmp_path: Path) -> None:
 
 
 def test_validate_shows_top_unresolved(tmp_path: Path) -> None:
-    """validate lists top unresolved call targets."""
-    (tmp_path / "mod.py").write_text("def fn(): print('hi')\n", encoding="utf-8")
+    """validate lists top unresolved call targets from raw_call: edges."""
     db_file = tmp_path / "graph.db"
-    runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
+    node = Node(
+        id="mod.fn", type=NodeType.FUNCTION, name="fn", file_path="mod.py", start_line=1, end_line=3
+    )
+    raw_edge = Edge(
+        id="e1",
+        source="mod.fn",
+        target="raw_call:missing_func",
+        type=EdgeType.CALLS,
+        confidence=0.1,
+    )
+    with SQLiteStore(str(db_file)) as store:
+        store.save_graph([node], [raw_edge], overwrite=True)
 
     result = runner.invoke(app, ["validate", "--db", str(db_file), "--threshold", "1.0"])
 
     assert result.exit_code == 0
-    assert "print" in result.output
+    assert "missing_func" in result.output
