@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import { ReactFlow, Background, Controls, MiniMap, Panel, useReactFlow } from "@xyflow/react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
+import { ReactFlow, Background, Controls, MiniMap, Panel } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { toPng, toSvg } from "html-to-image";
 import "./App.css";
@@ -68,8 +68,17 @@ export default function App() {
   const [showExternal, setShowExternal] = useState(true);
   const [allNodes, setAllNodes] = useState([]);
   const [allEdges, setAllEdges] = useState([]);
+  const [needsFit, setNeedsFit] = useState(true);
   const graphRef = useRef(graph);
   const wrapperRef = useRef(null);
+  const enrichedRef = useRef(null);
+
+  const getEnriched = useCallback(() => {
+    if (!enrichedRef.current) {
+      enrichedRef.current = addExternalNodes(graphRef.current);
+    }
+    return enrichedRef.current;
+  }, []);
 
   const downloadImage = useCallback((dataUrl, filename) => {
     const a = document.createElement("a");
@@ -87,7 +96,9 @@ export default function App() {
       filter: (node) =>
         !node?.classList?.contains("react-flow__minimap") &&
         !node?.classList?.contains("react-flow__controls")
-    }).then((dataUrl) => downloadImage(dataUrl, "graph.png"));
+    })
+      .then((dataUrl) => downloadImage(dataUrl, "graph.png"))
+      .catch((err) => console.error("PNG export failed:", err));
   }, [downloadImage]);
 
   const exportSvg = useCallback(() => {
@@ -98,14 +109,15 @@ export default function App() {
       filter: (node) =>
         !node?.classList?.contains("react-flow__minimap") &&
         !node?.classList?.contains("react-flow__controls")
-    }).then((dataUrl) => downloadImage(dataUrl, "graph.svg"));
+    })
+      .then((dataUrl) => downloadImage(dataUrl, "graph.svg"))
+      .catch((err) => console.error("SVG export failed:", err));
   }, [downloadImage]);
 
   const buildFullGraph = useCallback(() => {
-    const enriched = addExternalNodes(graphRef.current);
-    const g = enriched;
+    const enriched = getEnriched();
 
-    const baseNodes = g.nodes.map((n) => {
+    const baseNodes = enriched.nodes.map((n) => {
       const colors = NODE_COLORS[n.type] || NODE_COLORS.DEFAULT;
       return {
         id: n.id,
@@ -134,12 +146,12 @@ export default function App() {
       };
     });
 
-    const validEdges = g.edges.filter(e => {
-      return g.nodes.some(n => n.id === e.source) && g.nodes.some(n => n.id === e.target);
+    const validEdges = enriched.edges.filter(e => {
+      return enriched.nodes.some(n => n.id === e.source) && enriched.nodes.some(n => n.id === e.target);
     });
 
     const baseEdges = validEdges.map((e, i) => {
-      const targetNode = g.nodes.find(n => n.id === e.target);
+      const targetNode = enriched.nodes.find(n => n.id === e.target);
       const isExternal = targetNode?.type === "EXTERNAL";
       return {
         id: `e-${i}`,
@@ -167,12 +179,13 @@ export default function App() {
     setNodes(layoutedNodes);
     setEdges(grouped.edges);
     setViewMode("full");
+    setNeedsFit(true);
     setStats({
-      nodes: g.nodes.length,
+      nodes: enriched.nodes.length,
       edges: validEdges.length,
-      external: g.nodes.filter(n => n.type === "EXTERNAL").length
+      external: enriched.nodes.filter(n => n.type === "EXTERNAL").length
     });
-  }, []);
+  }, [getEnriched]);
 
   useEffect(() => {
     buildFullGraph();
@@ -208,12 +221,13 @@ export default function App() {
       setNodes(reLayouted);
       setEdges(filteredEdges);
     }
+    setNeedsFit(true);
   }, [showExternal, allNodes, allEdges, viewMode]);
 
   const onNodeClick = useCallback(
     (event, node) => {
       if (node.type === "group") return;
-      const enriched = addExternalNodes(graphRef.current);
+      const enriched = getEnriched();
       const flow = buildExecutionFlow(enriched, node.id, depth, "both");
 
       const flowNodes = flow.nodes.map((n) => {
@@ -268,8 +282,9 @@ export default function App() {
       setNodes(layouted);
       setEdges(flowEdges);
       setViewMode("flow");
+      setNeedsFit(true);
     },
-    [depth]
+    [depth, getEnriched]
   );
 
   const onNodeMouseEnter = useCallback((event, node) => {
@@ -290,10 +305,11 @@ export default function App() {
         onNodeMouseEnter={onNodeMouseEnter}
         onNodeMouseLeave={onNodeMouseLeave}
         colorMode="dark"
-        fitView
+        fitView={needsFit}
         fitViewOptions={{ padding: 0.15 }}
         minZoom={0.1}
         maxZoom={2}
+        onViewportChanged={() => needsFit && setNeedsFit(false)}
       >
         <Background gap={20} size={1} />
         <Controls showInteractive={false} />
