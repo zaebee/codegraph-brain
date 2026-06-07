@@ -134,3 +134,9 @@ plugins = ["pydantic.mypy"]
 [[tool.mypy.overrides]]
 module = "pydantic.*"
 ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: marks tests as slow — run with '-m slow' or skip with '-m \"not slow\"'",
+]
