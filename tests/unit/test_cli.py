@@ -257,3 +257,67 @@ def test_impact_detects_cycle(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     assert "Cycle detected" in result.output
+
+
+def test_trace_mermaid_format_outputs_diagram(tmp_path: Path) -> None:
+    """trace --format mermaid outputs a valid Mermaid graph definition."""
+    code = "def caller():\n    callee()\n\ndef callee(): pass\n"
+    (tmp_path / "funcs.py").write_text(code, encoding="utf-8")
+    db_file = tmp_path / "graph.db"
+    runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
+
+    py_file = tmp_path / "funcs.py"
+    result = runner.invoke(
+        app, ["trace", f"{py_file}:caller", "--db", str(db_file), "--format", "mermaid"]
+    )
+
+    assert result.exit_code == 0
+    assert "graph TD" in result.output
+    assert "classDef" in result.output
+
+
+def test_impact_mermaid_format_outputs_diagram(tmp_path: Path) -> None:
+    """impact --format mermaid outputs a valid Mermaid graph definition."""
+    code = "def caller():\n    callee()\n\ndef callee(): pass\n"
+    (tmp_path / "funcs.py").write_text(code, encoding="utf-8")
+    db_file = tmp_path / "graph.db"
+    runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
+
+    py_file = tmp_path / "funcs.py"
+    result = runner.invoke(
+        app, ["impact", f"{py_file}:callee", "--db", str(db_file), "--format", "mermaid"]
+    )
+
+    assert result.exit_code == 0
+    assert "graph TD" in result.output
+    assert "classDef" in result.output
+
+
+def test_trace_invalid_format_exits_with_error(tmp_path: Path) -> None:
+    """trace --format <unknown> exits with error and explains valid options."""
+    (tmp_path / "mod.py").write_text("def fn(): pass\n", encoding="utf-8")
+    db_file = tmp_path / "graph.db"
+    runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
+
+    py_file = tmp_path / "mod.py"
+    result = runner.invoke(
+        app, ["trace", f"{py_file}:fn", "--db", str(db_file), "--format", "svg"]
+    )
+
+    assert result.exit_code == 1
+    assert "Unknown format" in result.output
+
+
+def test_impact_invalid_format_exits_with_error(tmp_path: Path) -> None:
+    """impact --format <unknown> exits with error and explains valid options."""
+    (tmp_path / "mod.py").write_text("def fn(): pass\n", encoding="utf-8")
+    db_file = tmp_path / "graph.db"
+    runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
+
+    py_file = tmp_path / "mod.py"
+    result = runner.invoke(
+        app, ["impact", f"{py_file}:fn", "--db", str(db_file), "--format", "svg"]
+    )
+
+    assert result.exit_code == 1
+    assert "Unknown format" in result.output
