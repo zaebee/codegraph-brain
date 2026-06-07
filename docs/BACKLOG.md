@@ -2,10 +2,10 @@
 
 ## 🔴 Critical / Bugs
 
-- [ ] `onViewportChanged` — невалидный ReactFlow v12 проп, `needsFit` never resets after fit-view — `src/App.jsx:369`
-- [ ] Testing libs (`@testing-library/*`) в `dependencies` вместо `devDependencies` — `package.json:6-9`
-- [ ] `@testing-library/user-event` не используется — удалить — `package.json:9`
-- [ ] `build/` (CRA, 3MB + source maps) заtracked в git — `git rm -r --cached build/`
+- [x] `onViewportChanged` — невалидный ReactFlow v12 проп, `needsFit` never resets after fit-view — `src/App.jsx:369`
+- [x] Testing libs (`@testing-library/*`) в `dependencies` вместо `devDependencies` — `package.json:6-9`
+- [x] `@testing-library/user-event` не используется — удалить — `package.json:9`
+- [x] `build/` (CRA, 3MB + source maps) заtracked в git — `git rm -r --cached build/`
 
 ## 🟡 Quick Wins
 
