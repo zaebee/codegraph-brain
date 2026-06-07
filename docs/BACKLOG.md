@@ -47,13 +47,13 @@
 
 ## 🟣 Code Quality
 
-- [ ] ErrorBoundary → `react-error-boundary` пакет — `src/App.jsx:14-38`
-- [ ] Убрать `!important` из CSS (10+ использований) — `src/App.css`
-- [ ] `displayedNodes` вычисление в useMemo для оптимизации — `src/App.jsx:340-353`
-- [ ] `extractGroupKey` вынести в отдельный модуль — `src/App.jsx:478-482`
-- [ ] Edge validation в `buildFullGraph` вынести в утилиту — `src/App.jsx:191-193`
-- [ ] Flow edge dedup вынести в утилиту — `src/flow.js:80-88`
-- [ ] `NODE_WIDTH`, `NODE_HEIGHT`, `GROUP_PADDING` в shared constants — `src/layout.js:3-7`
-- [ ] Типизация — добавить JSDoc или TypeScript для graph node/edge interfaces
-- [ ] `onNodeMouseEnter`/`onNodeMouseLeave` — проверить валидность пропсов ReactFlow v12
-- [ ] Убрать стёртые CSS классы `.react-flow__node` из App.css если не используются
+- [x] ErrorBoundary → `react-error-boundary` пакет — `src/App.jsx:14-38`
+- [x] Убрать `!important` из CSS (10+ использований) — `src/App.css`
+- [x] `displayedNodes` вычисление в useMemo для оптимизации — `src/App.jsx:340-353`
+- [x] `extractGroupKey` вынести в отдельный модуль — `src/App.jsx:478-482`
+- [x] Edge validation в `buildFullGraph` вынести в утилиту — `src/App.jsx:191-193`
+- [x] Flow edge dedup вынести в утилиту — `src/flow.js:80-88`
+- [x] `NODE_WIDTH`, `NODE_HEIGHT`, `GROUP_PADDING` в shared constants — `src/layout.js:3-7`
+- [x] Типизация — добавить JSDoc или TypeScript для graph node/edge interfaces
+- [x] `onNodeMouseEnter`/`onNodeMouseLeave` — проверить валидность пропсов ReactFlow v12
+- [x] Убрать стёртые CSS классы `.react-flow__node` из App.css если не используются
