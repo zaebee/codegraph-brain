@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "mcp[cli]>=1.27.2",
     "pydantic>=2.13.4",
     "rich>=15.0.0",
     "structlog>=25.5.0",
@@ -26,6 +27,7 @@ dev = [
 
 [project.scripts]
 cgis = "cgis.cli:app"
+cgis-mcp = "cgis.api.mcp_server:mcp.run"
 
 [tool.ruff]
 # Target Python 3.12+
