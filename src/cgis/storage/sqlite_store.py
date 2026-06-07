@@ -70,9 +70,16 @@ class SQLiteStore:
             line_number INTEGER
         );
 
+        CREATE TABLE IF NOT EXISTS files_state (
+            file_path TEXT PRIMARY KEY,
+            hash TEXT NOT NULL
+        );
+
         CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(type);
         CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source);
         CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target);
+        CREATE INDEX IF NOT EXISTS idx_nodes_file_path ON nodes(file_path);
+        CREATE INDEX IF NOT EXISTS idx_edges_file_path ON edges(file_path);
         """
         if self._conn:
             self._conn.executescript(schema)
@@ -199,6 +206,49 @@ class SQLiteStore:
             cursor = self._conn.execute(query, chunk)
             edges.extend(self._row_to_edge(row) for row in cursor.fetchall())
         return edges
+
+    def get_file_hash(self, file_path: str) -> str | None:
+        """Return the stored hash for a file, or None if not yet tracked."""
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        cursor = self._conn.execute(
+            "SELECT hash FROM files_state WHERE file_path = ?", (file_path,)
+        )
+        row = cursor.fetchone()
+        return str(row["hash"]) if row else None
+
+    def upsert_file_hash(self, file_path: str, file_hash: str) -> None:
+        """Insert or update the hash for a file."""
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        with self._conn:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO files_state (file_path, hash) VALUES (?, ?)",
+                (file_path, file_hash),
+            )
+
+    def delete_file_data(self, file_path: str) -> None:
+        """Delete all nodes and edges associated with a file."""
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        with self._conn:
+            self._conn.execute("DELETE FROM nodes WHERE file_path = ?", (file_path,))
+            self._conn.execute("DELETE FROM edges WHERE file_path = ?", (file_path,))
+            self._conn.execute("DELETE FROM files_state WHERE file_path = ?", (file_path,))
+
+    def get_nodes_by_file(self, file_path: str) -> list[Node]:
+        """Return all nodes belonging to a specific file."""
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        cursor = self._conn.execute("SELECT * FROM nodes WHERE file_path = ?", (file_path,))
+        return [self._row_to_node(row) for row in cursor.fetchall()]
+
+    def get_all_tracked_files(self) -> set[str]:
+        """Return the set of all file paths currently tracked in files_state."""
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        cursor = self._conn.execute("SELECT file_path FROM files_state")
+        return {row["file_path"] for row in cursor.fetchall()}
 
     def _row_to_node(self, row: sqlite3.Row) -> Node:
         return Node(

@@ -1,7 +1,9 @@
 """Implements Pipeline to orcestrate code traversal."""
 
+import hashlib
 from collections.abc import Mapping
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import structlog
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -9,6 +11,9 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from cgis.core.models import Edge, Node
 from cgis.extractors.base import BaseExtractor
 from cgis.resolver.engine import ResolverEngine
+
+if TYPE_CHECKING:
+    from cgis.storage.sqlite_store import SQLiteStore
 
 logger = structlog.getLogger(__name__)
 
@@ -23,12 +28,29 @@ class IngestionPipeline:
         self._extractors = extractors
         self._excluded = {"venv", ".venv", "__pycache__", "node_modules", "build", "dist"}
 
-    def run(self, repo_path: str) -> tuple[list[Node], list[Edge], list[Edge]]:
+    @staticmethod
+    def _compute_hash(content: str) -> str:
+        return hashlib.md5(content.encode("utf-8"), usedforsecurity=False).hexdigest()
+
+    def run(
+        self,
+        repo_path: str,
+        store: "SQLiteStore | None" = None,
+    ) -> tuple[list[Node], list[Edge], list[Edge]]:
         """
         The main pipeline execution: Walk -> Extract -> Resolve.
+
+        When `store` is provided the pipeline runs in incremental mode:
+        unchanged files (same MD5) are skipped and their nodes are loaded
+        from the store for the resolver. Only changed/new files are
+        re-extracted and persisted. Stale files (removed from disk) are
+        cleaned up automatically.
         """
         all_nodes: list[Node] = []
         all_edges: list[Edge] = []
+        # file_path -> new hash, only for files that were re-extracted
+        changed_files: dict[str, str] = {}
+        found_file_paths: set[str] = set()
 
         path = Path(repo_path)
         if not path.exists():
@@ -47,7 +69,6 @@ class IngestionPipeline:
             extract_task = progress.add_task(description="Extracting code entities...", total=None)
 
             for root, dirs, files in path.walk():
-                # Skip hidden directories and common dependency/cache folders
                 dirs[:] = [d for d in dirs if not d.startswith(".") and d not in self._excluded]
                 for file in files:
                     extractor = self._get_extractor(file)
@@ -55,19 +76,13 @@ class IngestionPipeline:
                         continue
 
                     full_path = root / file
-                    try:
-                        with full_path.open(encoding="utf-8") as f:
-                            code = f.read()
+                    full_path_str = str(full_path)
+                    found_file_paths.add(full_path_str)
 
-                        nodes, edges = extractor.parse(code, str(full_path))
-                        if nodes:
-                            logger.info(
-                                "Parsed nodes from file", nodes=len(nodes), full_path=str(full_path)
-                            )
-                        all_nodes.extend(nodes)
-                        all_edges.extend(edges)
-                    except Exception as e:
-                        logger.exception("Failed to parse file", full_path=full_path, error=str(e))
+                    self._process_file(
+                        full_path, full_path_str, extractor, store,
+                        all_nodes, all_edges, changed_files,
+                    )
 
                     progress.update(extract_task, advance=1)
 
@@ -79,7 +94,74 @@ class IngestionPipeline:
             progress.update(resolve_task, advance=1)
             logger.info("Resolution complete. Resolved edges.", edges=len(resolved_edges))
 
+        if store is not None:
+            self._persist_incremental(
+                store, all_nodes, resolved_edges, changed_files, found_file_paths
+            )
+
         return all_nodes, all_edges, resolved_edges
+
+    def _process_file(
+        self,
+        full_path: Path,
+        full_path_str: str,
+        extractor: BaseExtractor,
+        store: "SQLiteStore | None",
+        all_nodes: list[Node],
+        all_edges: list[Edge],
+        changed_files: dict[str, str],
+    ) -> None:
+        """Extract nodes/edges from one file, applying hash-based skip when store is provided."""
+        try:
+            with full_path.open(encoding="utf-8") as f:
+                code = f.read()
+
+            if store is not None:
+                file_hash = self._compute_hash(code)
+                if store.get_file_hash(full_path_str) == file_hash:
+                    all_nodes.extend(store.get_nodes_by_file(full_path_str))
+                    return
+                changed_files[full_path_str] = file_hash
+
+            nodes, edges = extractor.parse(code, full_path_str)
+            if nodes:
+                logger.info("Parsed nodes from file", nodes=len(nodes), full_path=full_path_str)
+            all_nodes.extend(nodes)
+            all_edges.extend(edges)
+        except Exception as e:
+            logger.exception("Failed to parse file", full_path=full_path, error=str(e))
+
+    def _persist_incremental(
+        self,
+        store: "SQLiteStore",
+        all_nodes: list[Node],
+        resolved_edges: list[Edge],
+        changed_files: dict[str, str],
+        found_file_paths: set[str],
+    ) -> None:
+        """Persist only changed files and clean up stale ones."""
+        nodes_by_file: dict[str, list[Node]] = {}
+        for node in all_nodes:
+            nodes_by_file.setdefault(node.file_path, []).append(node)
+
+        edges_by_file: dict[str, list[Edge]] = {}
+        for edge in resolved_edges:
+            if edge.file_path:
+                edges_by_file.setdefault(edge.file_path, []).append(edge)
+
+        for file_path, file_hash in changed_files.items():
+            store.delete_file_data(file_path)
+            store.save_graph(
+                nodes_by_file.get(file_path, []),
+                edges_by_file.get(file_path, []),
+            )
+            store.upsert_file_hash(file_path, file_hash)
+            logger.info("Re-ingested changed file", file_path=file_path)
+
+        # Remove stale files (tracked but no longer on disk)
+        for stale_path in store.get_all_tracked_files() - found_file_paths:
+            store.delete_file_data(stale_path)
+            logger.info("Removed stale file from graph", file_path=stale_path)
 
     def _get_extractor(self, filename: str) -> BaseExtractor | None:
         for ext, extractor in self._extractors.items():

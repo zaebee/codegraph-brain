@@ -173,6 +173,63 @@ def test_impact_graph_external_node(temp_store: SQLiteStore) -> None:
     assert impact_edges[0].source == "A"
 
 
+def test_file_hash_roundtrip(temp_store: SQLiteStore) -> None:
+    """upsert_file_hash and get_file_hash persist and retrieve hashes correctly."""
+    assert temp_store.get_file_hash("src/mod.py") is None
+
+    temp_store.upsert_file_hash("src/mod.py", "abc123")
+    assert temp_store.get_file_hash("src/mod.py") == "abc123"
+
+    # Upsert again with new hash (overwrite)
+    temp_store.upsert_file_hash("src/mod.py", "def456")
+    assert temp_store.get_file_hash("src/mod.py") == "def456"
+
+
+def test_delete_file_data_removes_nodes_edges_and_hash(temp_store: SQLiteStore) -> None:
+    """delete_file_data removes nodes, edges and the files_state entry for that file."""
+    nodes = [
+        Node(id="mod.func_a", type=NodeType.FUNCTION, name="func_a",
+             file_path="mod.py", start_line=1, end_line=2),
+        Node(id="mod.func_b", type=NodeType.FUNCTION, name="func_b",
+             file_path="mod.py", start_line=3, end_line=4),
+    ]
+    edges = [Edge(id="e1", source="mod.func_a", target="mod.func_b",
+                  type=EdgeType.CALLS, file_path="mod.py")]
+    temp_store.save_graph(nodes, edges)
+    temp_store.upsert_file_hash("mod.py", "abc")
+
+    temp_store.delete_file_data("mod.py")
+
+    assert temp_store.get_node("mod.func_a") is None
+    assert temp_store.get_node("mod.func_b") is None
+    assert temp_store.get_outgoing_edges("mod.func_a") == []
+    assert temp_store.get_file_hash("mod.py") is None
+
+
+def test_get_nodes_by_file(temp_store: SQLiteStore) -> None:
+    """get_nodes_by_file returns only nodes for the requested file."""
+    nodes = [
+        Node(id="a.func", type=NodeType.FUNCTION, name="func",
+             file_path="a.py", start_line=1, end_line=2),
+        Node(id="b.func", type=NodeType.FUNCTION, name="func",
+             file_path="b.py", start_line=1, end_line=2),
+    ]
+    temp_store.save_graph(nodes, [])
+
+    result = temp_store.get_nodes_by_file("a.py")
+    assert len(result) == 1
+    assert result[0].id == "a.func"
+
+
+def test_get_all_tracked_files(temp_store: SQLiteStore) -> None:
+    """get_all_tracked_files returns the set of all files with a stored hash."""
+    temp_store.upsert_file_hash("a.py", "h1")
+    temp_store.upsert_file_hash("b.py", "h2")
+
+    tracked = temp_store.get_all_tracked_files()
+    assert tracked == {"a.py", "b.py"}
+
+
 def test_impact_graph_diamond_no_duplicate_visits(temp_store: SQLiteStore) -> None:
     """Diamond A->B->D, A->C->D: impact from D reaches A exactly once."""
     nodes = [_make_node(n) for n in ("A", "B", "C", "D")]
