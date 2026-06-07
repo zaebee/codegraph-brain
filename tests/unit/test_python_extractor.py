@@ -201,3 +201,63 @@ def test_extract_wildcard_import_does_not_crash(extractor: PythonExtractor) -> N
     assert isinstance(file_node.metadata["import_map"], dict)
     imports_edge = next(e for e in edges if e.type == EdgeType.IMPORTS)
     assert imports_edge.target == "module"
+
+
+# --- OOP & Decorator semantics tests ---
+
+
+def test_extract_class_inheritance(extractor: PythonExtractor) -> None:
+    """class Child(Parent) emits EXTENDS edge with raw_class: target."""
+    _nodes, edges = extractor.parse("class Child(Parent): pass\n", "mod.py")
+    extends_edges = [e for e in edges if e.type == EdgeType.EXTENDS]
+    assert len(extends_edges) == 1
+    assert extends_edges[0].source == "mod.Child"
+    assert extends_edges[0].target == "raw_class:Parent"
+
+
+def test_extract_multiple_bases(extractor: PythonExtractor) -> None:
+    """class C(A, B) emits two EXTENDS edges."""
+    _nodes, edges = extractor.parse("class C(A, B): pass\n", "mod.py")
+    extends_edges = [e for e in edges if e.type == EdgeType.EXTENDS]
+    targets = {e.target for e in extends_edges}
+    assert targets == {"raw_class:A", "raw_class:B"}
+
+
+def test_extract_abstract_class_marker(extractor: PythonExtractor) -> None:
+    """class Base(ABC) sets metadata['is_abstract'] = True."""
+    nodes, _edges = extractor.parse("class Base(ABC): pass\n", "mod.py")
+    class_node = next(n for n in nodes if n.name == "Base")
+    assert class_node.metadata.get("is_abstract") is True
+
+
+def test_extract_abstract_method_marker(extractor: PythonExtractor) -> None:
+    """@abstractmethod sets metadata['is_abstract'] = True on the method."""
+    code = "class Base:\n    @abstractmethod\n    def run(self): pass\n"
+    nodes, _edges = extractor.parse(code, "mod.py")
+    method_node = next(n for n in nodes if n.name == "run")
+    assert method_node.metadata.get("is_abstract") is True
+
+
+def test_extract_decorator_stored_in_metadata(extractor: PythonExtractor) -> None:
+    """@app.command() stores 'app.command' in metadata['decorators']."""
+    code = "@app.command()\ndef cmd(): pass\n"
+    nodes, _edges = extractor.parse(code, "mod.py")
+    func_node = next(n for n in nodes if n.name == "cmd")
+    assert "app.command" in func_node.metadata.get("decorators", [])
+
+
+def test_extract_decorator_emits_calls_edge(extractor: PythonExtractor) -> None:
+    """@app.command() emits a CALLS edge from the function to raw_call:app.command."""
+    code = "@app.command()\ndef cmd(): pass\n"
+    _nodes, edges = extractor.parse(code, "mod.py")
+    deco_edges = [e for e in edges if e.type == EdgeType.CALLS and e.source == "mod.cmd"]
+    assert any(e.target == "raw_call:app.command" for e in deco_edges)
+
+
+def test_extract_decorated_method_correct_fqn(extractor: PythonExtractor) -> None:
+    """Decorated method inside a class gets the correct FQN and NodeType.METHOD."""
+    code = "class API:\n    @mcp.tool()\n    def search(self): pass\n"
+    nodes, _edges = extractor.parse(code, "svc.py")
+    method_node = next(n for n in nodes if n.name == "search")
+    assert method_node.id == "svc.API.search"
+    assert method_node.type == NodeType.METHOD

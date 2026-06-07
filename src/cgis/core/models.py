@@ -51,6 +51,7 @@ class EdgeType(StrEnum):
     BELONGS_TO = "BELONGS_TO"
     IMPORTS = "IMPORTS"
     EXPORTS = "EXPORTS"
+    EXTENDS = "EXTENDS"
 
     # Behavioral/Execution
     CALLS = "CALLS"

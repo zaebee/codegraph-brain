@@ -27,6 +27,7 @@ edge_types:
     - BELONGS_TO  # Symbol belongs to a parent scope
     - IMPORTS     # Module imports another module or symbol
     - EXPORTS     # Module exports a symbol
+    - EXTENDS     # Subclass inherits from a superclass
   behavioral:
     - CALLS         # Function/method invokes another function/method
     - INSTANTIATES  # Code instantiates a class

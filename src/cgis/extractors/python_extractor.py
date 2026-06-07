@@ -1,5 +1,7 @@
 """Implements Python Extractor."""
 
+from typing import Any
+
 import tree_sitter_python as tspython
 from tree_sitter import Language, Parser
 from tree_sitter import Node as BaseNode
@@ -144,6 +146,19 @@ class PythonExtractor(BaseExtractor):
         if node.type in ("import_statement", "import_from_statement"):
             self._handle_import_node(node, code_bytes, file_path, import_map, module_fqn, edges)
             return  # never recurse into import nodes
+
+        if node.type == "decorated_definition":
+            self._handle_decorated_definition(
+                node,
+                code_bytes,
+                file_path,
+                nodes,
+                edges,
+                import_map,
+                module_fqn,
+                local_types_acc,
+            )
+            return  # prevent double-processing the inner definition
 
         next_func_node = current_func_node
         if node.type in ("function_definition", "async_function_definition"):
@@ -337,6 +352,80 @@ class PythonExtractor(BaseExtractor):
                 )
             )
 
+    def _handle_decorated_definition(
+        self,
+        node: BaseNode,
+        code_bytes: bytes,
+        file_path: str,
+        nodes: list[Node],
+        edges: list[Edge],
+        import_map: dict[str, str] | None,
+        module_fqn: str | None,
+        local_types_acc: dict[str, dict[str, str]] | None,
+    ) -> None:
+        raw_decorators = self._extract_decorator_names(node, code_bytes)
+        for child in node.children:
+            if child.type in ("function_definition", "async_function_definition"):
+                inner = self._process_function_node(
+                    child,
+                    code_bytes,
+                    file_path,
+                    nodes,
+                    edges,
+                    module_fqn or "",
+                    decorators=raw_decorators,
+                )
+                for grandchild in child.children:
+                    self._walk(
+                        grandchild,
+                        code_bytes,
+                        file_path,
+                        nodes,
+                        edges,
+                        inner,
+                        import_map=import_map,
+                        module_fqn=module_fqn,
+                        local_types_acc=local_types_acc,
+                    )
+            elif child.type == "class_definition":
+                self._process_class_node(
+                    child,
+                    code_bytes,
+                    file_path,
+                    nodes,
+                    edges,
+                    module_fqn or "",
+                    decorators=raw_decorators,
+                )
+                for grandchild in child.children:
+                    self._walk(
+                        grandchild,
+                        code_bytes,
+                        file_path,
+                        nodes,
+                        edges,
+                        None,
+                        import_map=import_map,
+                        module_fqn=module_fqn,
+                        local_types_acc=local_types_acc,
+                    )
+
+    def _extract_decorator_names(self, node: BaseNode, code_bytes: bytes) -> list[str]:
+        """Extract decorator names from a decorated_definition node."""
+        names: list[str] = []
+        for child in node.children:
+            if child.type == "decorator":
+                for inner in child.children:
+                    if inner.type in ("identifier", "attribute"):
+                        names.append(self._get_identifier(inner, code_bytes))
+                        break
+                    if inner.type == "call":
+                        func_node = inner.child_by_field_name("function")
+                        if func_node:
+                            names.append(self._get_identifier(func_node, code_bytes))
+                        break
+        return names
+
     def _process_function_node(
         self,
         node: BaseNode,
@@ -345,12 +434,19 @@ class PythonExtractor(BaseExtractor):
         nodes: list[Node],
         edges: list[Edge],
         module_fqn: str,
+        decorators: list[str] | None = None,
     ) -> Node:
         """Process function or method definition node."""
         child = node.child_by_field_name("name")
         node_id = self._get_id(node, code_bytes, file_path)
         node_name = self._extract_node_name(child, code_bytes)
         node_type = NodeType.METHOD if self._is_method(node) else NodeType.FUNCTION
+
+        metadata: dict[str, Any] = {}
+        if decorators:
+            metadata["decorators"] = decorators
+        if decorators and "abstractmethod" in decorators:
+            metadata["is_abstract"] = True
 
         func_node = Node(
             id=node_id,
@@ -360,8 +456,21 @@ class PythonExtractor(BaseExtractor):
             start_line=node.start_point.row + 1,
             end_line=node.end_point.row + 1,
             language=self.LANG,
+            metadata=metadata,
         )
         nodes.append(func_node)
+
+        edges.extend(
+            Edge(
+                id=f"{node_id}:decorator:{deco_name}",
+                type=EdgeType.CALLS,
+                source=node_id,
+                target=f"raw_call:{deco_name}",
+                confidence=0.5,
+                file_path=file_path,
+            )
+            for deco_name in decorators or []
+        )
 
         parts = node_id.rsplit(".", maxsplit=1)
         parent_fqn = parts[0] if len(parts) > 1 else module_fqn
@@ -386,11 +495,38 @@ class PythonExtractor(BaseExtractor):
         nodes: list[Node],
         edges: list[Edge],
         module_fqn: str,
+        decorators: list[str] | None = None,
     ) -> None:
         """Process class definition node."""
         child = node.child_by_field_name("name")
         node_id = self._get_id(node, code_bytes, file_path)
         node_name = self._extract_node_name(child, code_bytes)
+
+        superclass_names: list[str] = []
+        superclasses_node = node.child_by_field_name("superclasses")
+        if superclasses_node:
+            for sc in superclasses_node.children:
+                if sc.type in ("identifier", "attribute"):
+                    sc_name = self._get_identifier(sc, code_bytes)
+                    if sc_name != "unknown":
+                        superclass_names.append(sc_name)
+                        edges.append(
+                            Edge(
+                                id=f"{node_id}:extends:{sc_name}",
+                                type=EdgeType.EXTENDS,
+                                source=node_id,
+                                target=f"raw_class:{sc_name}",
+                                confidence=1.0,
+                                file_path=file_path,
+                            )
+                        )
+
+        metadata: dict[str, Any] = {}
+        if decorators:
+            metadata["decorators"] = decorators
+        is_abstract = "ABC" in superclass_names or "ABCMeta" in (decorators or [])
+        if is_abstract:
+            metadata["is_abstract"] = True
 
         nodes.append(
             Node(
@@ -401,6 +537,7 @@ class PythonExtractor(BaseExtractor):
                 start_line=node.start_point.row + 1,
                 end_line=node.end_point.row + 1,
                 language=self.LANG,
+                metadata=metadata,
             )
         )
 
