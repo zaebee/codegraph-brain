@@ -4,16 +4,22 @@ import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 
-const origError = console.error;
-console.error = (...args) => {
-  if (args[0]?.includes?.('ResizeObserver loop')) return;
-  origError(...args);
+const OrigResizeObserver = window.ResizeObserver;
+window.ResizeObserver = class extends OrigResizeObserver {
+  constructor(callback) {
+    let timer;
+    super((entries, observer) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => callback(entries, observer), 0);
+    });
+  }
 };
 
 window.addEventListener('error', (e) => {
   if (e.message?.includes('ResizeObserver loop')) {
     e.stopImmediatePropagation();
     e.preventDefault();
+    return false;
   }
 });
 
