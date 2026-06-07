@@ -6,6 +6,7 @@ from typer.testing import CliRunner
 
 from cgis.cli import app
 from cgis.core.models import Edge, EdgeType, Node, NodeType
+from cgis.extractors.python_extractor import file_path_to_module_fqn
 from cgis.storage.sqlite_store import SQLiteStore
 
 runner = CliRunner()
@@ -104,13 +105,14 @@ def test_full_workflow_ingest_trace_impact(tmp_path: Path) -> None:
     assert ingest_result.exit_code == 0
     assert db_file.exists()
 
-    expected_fqn = f"{py_file}:assist"
+    expected_fqn = f"{file_path_to_module_fqn(str(py_file))}.assist"
 
     trace_result = runner.invoke(app, ["trace", expected_fqn, "--db", str(db_file)])
     assert trace_result.exit_code == 0
     assert "Tracing execution flow starting from" in trace_result.output
 
     impact_result = runner.invoke(app, ["impact", expected_fqn, "--db", str(db_file)])
+
     assert impact_result.exit_code == 0
     assert "Analyzing transitive upstream callers" in impact_result.output
 
@@ -123,7 +125,9 @@ def test_trace_renders_callees_in_tree(tmp_path: Path) -> None:
     runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
 
     py_file = tmp_path / "funcs.py"
-    result = runner.invoke(app, ["trace", f"{py_file}:caller", "--db", str(db_file)])
+    result = runner.invoke(
+        app, ["trace", f"{file_path_to_module_fqn(str(py_file))}.caller", "--db", str(db_file)]
+    )
 
     assert result.exit_code == 0
     assert "callee" in result.output
@@ -136,7 +140,9 @@ def test_trace_shows_unresolved_external_call(tmp_path: Path) -> None:
     runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
 
     py_file = tmp_path / "mod.py"
-    result = runner.invoke(app, ["trace", f"{py_file}:greet", "--db", str(db_file)])
+    result = runner.invoke(
+        app, ["trace", f"{file_path_to_module_fqn(str(py_file))}.greet", "--db", str(db_file)]
+    )
 
     assert result.exit_code == 0
     assert "Unresolved" in result.output
@@ -150,9 +156,8 @@ def test_trace_detects_cycle(tmp_path: Path) -> None:
     runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
 
     py_file = tmp_path / "cycle.py"
-    result = runner.invoke(
-        app, ["trace", f"{py_file}:func_a", "--db", str(db_file), "--depth", "5"]
-    )
+    fqn = f"{file_path_to_module_fqn(str(py_file))}.func_a"
+    result = runner.invoke(app, ["trace", fqn, "--db", str(db_file), "--depth", "5"])
 
     assert result.exit_code == 0
     assert "Cycle detected" in result.output
@@ -166,7 +171,9 @@ def test_impact_renders_callers_in_tree(tmp_path: Path) -> None:
     runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
 
     py_file = tmp_path / "funcs.py"
-    result = runner.invoke(app, ["impact", f"{py_file}:callee", "--db", str(db_file)])
+    result = runner.invoke(
+        app, ["impact", f"{file_path_to_module_fqn(str(py_file))}.callee", "--db", str(db_file)]
+    )
 
     assert result.exit_code == 0
     assert "caller" in result.output
@@ -177,7 +184,7 @@ def test_impact_shows_unknown_caller_for_missing_node(tmp_path: Path) -> None:
     db_file = tmp_path / "graph.db"
     with SQLiteStore(str(db_file)) as store:
         target = Node(
-            id="mod.py:target",
+            id="mod.target",
             type=NodeType.FUNCTION,
             name="target",
             file_path="mod.py",
@@ -187,12 +194,12 @@ def test_impact_shows_unknown_caller_for_missing_node(tmp_path: Path) -> None:
         edge = Edge(
             id="ghost->target",
             source="ghost.node",
-            target="mod.py:target",
+            target="mod.target",
             type=EdgeType.CALLS,
         )
         store.save_graph([target], [edge])
 
-    result = runner.invoke(app, ["impact", "mod.py:target", "--db", str(db_file)])
+    result = runner.invoke(app, ["impact", "mod.target", "--db", str(db_file)])
 
     assert result.exit_code == 0
     assert "Unknown Caller" in result.output
@@ -210,9 +217,8 @@ def test_trace_stops_at_max_depth(tmp_path: Path) -> None:
     runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
 
     py_file = tmp_path / "chain.py"
-    result = runner.invoke(
-        app, ["trace", f"{py_file}:root_fn", "--db", str(db_file), "--depth", "1"]
-    )
+    fqn = f"{file_path_to_module_fqn(str(py_file))}.root_fn"
+    result = runner.invoke(app, ["trace", fqn, "--db", str(db_file), "--depth", "1"])
 
     # Rich may wrap long FQN strings across lines — join without separator to recover names
     flat = "".join(result.output.split())
@@ -233,9 +239,8 @@ def test_impact_stops_at_max_depth(tmp_path: Path) -> None:
     runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
 
     py_file = tmp_path / "chain.py"
-    result = runner.invoke(
-        app, ["impact", f"{py_file}:leaf_fn", "--db", str(db_file), "--depth", "1"]
-    )
+    fqn = f"{file_path_to_module_fqn(str(py_file))}.leaf_fn"
+    result = runner.invoke(app, ["impact", fqn, "--db", str(db_file), "--depth", "1"])
 
     flat = "".join(result.output.split())
     assert result.exit_code == 0
@@ -251,9 +256,8 @@ def test_impact_detects_cycle(tmp_path: Path) -> None:
     runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
 
     py_file = tmp_path / "cycle.py"
-    result = runner.invoke(
-        app, ["impact", f"{py_file}:func_b", "--db", str(db_file), "--depth", "5"]
-    )
+    fqn = f"{file_path_to_module_fqn(str(py_file))}.func_b"
+    result = runner.invoke(app, ["impact", fqn, "--db", str(db_file), "--depth", "5"])
 
     assert result.exit_code == 0
     assert "Cycle detected" in result.output
@@ -267,9 +271,8 @@ def test_trace_mermaid_format_outputs_diagram(tmp_path: Path) -> None:
     runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
 
     py_file = tmp_path / "funcs.py"
-    result = runner.invoke(
-        app, ["trace", f"{py_file}:caller", "--db", str(db_file), "--format", "mermaid"]
-    )
+    fqn = f"{file_path_to_module_fqn(str(py_file))}.caller"
+    result = runner.invoke(app, ["trace", fqn, "--db", str(db_file), "--format", "mermaid"])
 
     assert result.exit_code == 0
     assert "graph TD" in result.output
@@ -284,9 +287,8 @@ def test_impact_mermaid_format_outputs_diagram(tmp_path: Path) -> None:
     runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
 
     py_file = tmp_path / "funcs.py"
-    result = runner.invoke(
-        app, ["impact", f"{py_file}:callee", "--db", str(db_file), "--format", "mermaid"]
-    )
+    fqn = f"{file_path_to_module_fqn(str(py_file))}.callee"
+    result = runner.invoke(app, ["impact", fqn, "--db", str(db_file), "--format", "mermaid"])
 
     assert result.exit_code == 0
     assert "graph TD" in result.output
