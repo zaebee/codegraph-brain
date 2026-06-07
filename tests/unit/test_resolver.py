@@ -4,6 +4,20 @@ from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.resolver.engine import ResolverEngine
 
 
+def _file_node(file_path: str, import_map: dict[str, str]) -> Node:
+    """Helper: build a FILE node carrying an import_map."""
+    fqn = file_path.replace("/", ".").removesuffix(".py")
+    return Node(
+        id=fqn,
+        type=NodeType.FILE,
+        name=file_path.split("/")[-1],
+        file_path=file_path,
+        start_line=1,
+        end_line=10,
+        metadata={"import_map": import_map},
+    )
+
+
 def test_resolver_resolves_direct_call() -> None:
     """Check: If resolver is able to connect direct function call."""
     # 1. SETUP: Create two nodes and dirty edge
@@ -233,3 +247,145 @@ def test_resolver_resolves_class_instantiation() -> None:
     target_edge = next(e for e in resolved_edges if e.id == "edge_instantiate")
     assert target_edge.target == "app.models.User"
     assert target_edge.confidence > 0.5
+
+
+# --- Import Graph Linking (Issue #13) tests ---
+
+def _func_node(fqn: str, file_path: str) -> Node:
+    return Node(
+        id=fqn,
+        type=NodeType.FUNCTION,
+        name=fqn.split(".")[-1],
+        file_path=file_path,
+        start_line=1,
+        end_line=5,
+    )
+
+
+def test_resolver_direct_import_resolves_call() -> None:
+    """from src.utils import helper → helper() resolves to src.utils.helper."""
+    nodes = [
+        _file_node("main.py", {"helper": "src.utils.helper"}),
+        _func_node("src.utils.helper", "src/utils.py"),
+        _func_node("main.caller", "main.py"),
+    ]
+    edges = [
+        Edge(
+            id="e1",
+            source="main.caller",
+            target="raw_call:helper",
+            type=EdgeType.CALLS,
+            confidence=0.5,
+            file_path="main.py",
+        )
+    ]
+    resolver = ResolverEngine(nodes, edges)
+    result = resolver.resolve()
+    assert next(e for e in result if e.id == "e1").target == "src.utils.helper"
+
+
+def test_resolver_aliased_import_resolves_call() -> None:
+    """from src.utils import helper as h → h() resolves to src.utils.helper."""
+    nodes = [
+        _file_node("main.py", {"h": "src.utils.helper"}),
+        _func_node("src.utils.helper", "src/utils.py"),
+        _func_node("main.caller", "main.py"),
+    ]
+    edges = [
+        Edge(
+            id="e1",
+            source="main.caller",
+            target="raw_call:h",
+            type=EdgeType.CALLS,
+            confidence=0.5,
+            file_path="main.py",
+        )
+    ]
+    resolver = ResolverEngine(nodes, edges)
+    result = resolver.resolve()
+    assert next(e for e in result if e.id == "e1").target == "src.utils.helper"
+
+
+def test_resolver_module_prefixed_call_resolves() -> None:
+    """import json → json.dumps() resolves to json.dumps (external, kept as-is)."""
+    nodes = [
+        _file_node("main.py", {"json": "json"}),
+        _func_node("main.caller", "main.py"),
+    ]
+    edges = [
+        Edge(
+            id="e1",
+            source="main.caller",
+            target="raw_call:json.dumps",
+            type=EdgeType.CALLS,
+            confidence=0.5,
+            file_path="main.py",
+        )
+    ]
+    resolver = ResolverEngine(nodes, edges)
+    result = resolver.resolve()
+    edge = next(e for e in result if e.id == "e1")
+    assert edge.target == "json.dumps"
+    assert not edge.target.startswith("raw_call:")
+
+
+def test_resolver_imports_edge_emitted() -> None:
+    """FILE node with import_map is built during extraction (structural IMPORTS edge)."""
+    from cgis.extractors.python_extractor import PythonExtractor
+
+    extractor = PythonExtractor()
+    code = "from cgis.pipeline import IngestionPipeline\n"
+    _, edges = extractor.parse(code, "service.py")
+    imports_edges = [e for e in edges if e.type == EdgeType.IMPORTS]
+    assert any(e.target == "cgis.pipeline" for e in imports_edges)
+
+
+def test_resolver_src_layout_normalization() -> None:
+    """from cgis.pipeline import X with node src.cgis.pipeline.X in graph resolves correctly."""
+    nodes = [
+        _file_node("service.py", {"IngestionPipeline": "cgis.pipeline.IngestionPipeline"}),
+        # Node lives under src.cgis prefix
+        Node(
+            id="src.cgis.pipeline.IngestionPipeline",
+            type=NodeType.CLASS,
+            name="IngestionPipeline",
+            file_path="src/cgis/pipeline.py",
+            start_line=1,
+            end_line=20,
+        ),
+        _func_node("service.run", "service.py"),
+    ]
+    edges = [
+        Edge(
+            id="e1",
+            source="service.run",
+            target="raw_call:IngestionPipeline",
+            type=EdgeType.CALLS,
+            confidence=0.5,
+            file_path="service.py",
+        )
+    ]
+    resolver = ResolverEngine(nodes, edges)
+    result = resolver.resolve()
+    assert next(e for e in result if e.id == "e1").target == "src.cgis.pipeline.IngestionPipeline"
+
+
+def test_resolver_wildcard_import_call_stays_unresolved() -> None:
+    """from module import * → calls remain raw_call: (can't statically resolve wildcard)."""
+    nodes = [
+        _file_node("main.py", {}),  # wildcard leaves import_map empty
+        _func_node("main.caller", "main.py"),
+    ]
+    edges = [
+        Edge(
+            id="e1",
+            source="main.caller",
+            target="raw_call:mystery_func",
+            type=EdgeType.CALLS,
+            confidence=0.5,
+            file_path="main.py",
+        )
+    ]
+    resolver = ResolverEngine(nodes, edges)
+    result = resolver.resolve()
+    assert next(e for e in result if e.id == "e1").target.startswith("raw_call:")

@@ -16,12 +16,15 @@ def pipeline() -> IngestionPipeline:
 
 
 def test_pipeline_extracts_function(pipeline: IngestionPipeline, tmp_path: Path) -> None:
+    from cgis.core.models import NodeType
+
     (tmp_path / "calc.py").write_text("def calc_sum(a, b):\n    return a + b\n", encoding="utf-8")
 
     nodes, raw_edges, _resolved = pipeline.run(str(tmp_path))
 
-    assert len(nodes) == 1
-    assert nodes[0].name == "calc_sum"
+    func_nodes = [n for n in nodes if n.type == NodeType.FUNCTION]
+    assert len(func_nodes) == 1
+    assert func_nodes[0].name == "calc_sum"
     assert len(raw_edges) == 0
 
 
@@ -41,13 +44,16 @@ def test_pipeline_raises_for_file_instead_of_dir(
 
 
 def test_pipeline_skips_unknown_extensions(pipeline: IngestionPipeline, tmp_path: Path) -> None:
+    from cgis.core.models import NodeType
+
     (tmp_path / "notes.txt").write_text("some text", encoding="utf-8")
     (tmp_path / "script.py").write_text("def fn(): pass", encoding="utf-8")
 
     nodes, _, _ = pipeline.run(str(tmp_path))
 
-    assert len(nodes) == 1
-    assert nodes[0].name == "fn"
+    func_nodes = [n for n in nodes if n.type == NodeType.FUNCTION]
+    assert len(func_nodes) == 1
+    assert func_nodes[0].name == "fn"
 
 
 def test_pipeline_skips_excluded_dirs(pipeline: IngestionPipeline, tmp_path: Path) -> None:
@@ -171,5 +177,7 @@ def test_pipeline_logs_and_skips_unparseable_file(
 
     nodes, _, _ = pipeline.run(str(tmp_path))
 
-    assert len(nodes) == 1
-    assert nodes[0].name == "fine"
+    from cgis.core.models import NodeType
+    func_nodes = [n for n in nodes if n.type == NodeType.FUNCTION]
+    assert len(func_nodes) == 1
+    assert func_nodes[0].name == "fine"

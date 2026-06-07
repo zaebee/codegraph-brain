@@ -129,4 +129,5 @@ def test_cgis_ingest_overwrites_on_repeat_call(tmp_path: Path) -> None:
 
     with SQLiteStore(str(db)) as store:
         nodes = store.get_nodes_by_file("mod.py")
-    assert len(nodes) == 1
+    # FILE node + FUNCTION node — no duplicates from re-ingest
+    assert len(nodes) == 2
