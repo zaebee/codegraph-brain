@@ -165,3 +165,57 @@ def test_compile_output_is_deterministic() -> None:
         if "-->|" in line:
             parts = line.strip().split(" -->|")
             assert "/" not in parts[0], f"Raw path in edge source ID: {parts[0]}"
+
+
+# --- Coverage gap tests: namespace node styles ---
+
+
+def test_compile_stdlib_node_uses_stdlib_style() -> None:
+    """STDLIB-namespace nodes get the stdlibNode CSS class."""
+    node = Node(
+        id="os.path.join",
+        type=NodeType.FUNCTION,
+        name="join",
+        file_path="EXTERNAL",
+        start_line=0,
+        end_line=0,
+        namespace=NodeNamespace.STDLIB,
+    )
+    caller = _make_node("mod.fn")
+    edge = _make_edge("mod.fn", "os.path.join")
+    output = MermaidCompiler().compile([caller, node], [edge])
+    assert "stdlibNode" in output
+
+
+def test_compile_external_node_uses_external_style() -> None:
+    """EXTERNAL-namespace nodes get the externalNode CSS class."""
+    node = Node(
+        id="fastapi.FastAPI",
+        type=NodeType.CLASS,
+        name="FastAPI",
+        file_path="EXTERNAL",
+        start_line=0,
+        end_line=0,
+        namespace=NodeNamespace.EXTERNAL,
+    )
+    caller = _make_node("mod.fn")
+    edge = _make_edge("mod.fn", "fastapi.FastAPI")
+    output = MermaidCompiler().compile([caller, node], [edge])
+    assert "externalNode" in output
+
+
+def test_compile_unknown_namespace_uses_unresolved_style() -> None:
+    """UNKNOWN-namespace nodes get the unresolvedNode CSS class."""
+    node = Node(
+        id="mystery.func",
+        type=NodeType.FUNCTION,
+        name="func",
+        file_path="EXTERNAL",
+        start_line=0,
+        end_line=0,
+        namespace=NodeNamespace.UNKNOWN,
+    )
+    caller = _make_node("mod.fn")
+    edge = _make_edge("mod.fn", "mystery.func")
+    output = MermaidCompiler().compile([caller, node], [edge])
+    assert "unresolvedNode" in output

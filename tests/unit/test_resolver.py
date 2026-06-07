@@ -855,6 +855,112 @@ def test_resolver_inherited_method_cycle_safe() -> None:
     assert call_edge.target == "mod.A.method"
 
 
+# --- Coverage gap tests ---
+
+
+def test_resolve_self_call_no_class_context() -> None:
+    """source FQN with no '.' → _resolve_self_call returns None."""
+    nodes = [
+        Node(
+            id="bare_func",
+            type=NodeType.FUNCTION,
+            name="bare_func",
+            file_path="mod.py",
+            start_line=1,
+            end_line=2,
+        )
+    ]
+    edges = [
+        Edge(
+            id="e1",
+            source="bare_func",
+            target="raw_call:self.run",
+            type=EdgeType.CALLS,
+            confidence=0.5,
+        )
+    ]
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+    edge = next(e for e in resolved if e.id == "e1")
+    assert edge.target == "self.run"  # unresolved, prefix stripped by raw_name
+
+
+def test_resolve_method_hierarchy_cycle_no_method() -> None:
+    """Circular inheritance where neither class has the method triggers cycle guard."""
+    nodes = [
+        Node(
+            id="mod.A", type=NodeType.CLASS, name="A", file_path="mod.py", start_line=1, end_line=3
+        ),
+        Node(
+            id="mod.B", type=NodeType.CLASS, name="B", file_path="mod.py", start_line=5, end_line=7
+        ),
+        Node(
+            id="mod.A.go",
+            type=NodeType.METHOD,
+            name="go",
+            file_path="mod.py",
+            start_line=2,
+            end_line=3,
+        ),
+    ]
+    edges = [
+        Edge(
+            id="e1",
+            source="mod.A",
+            target="raw_class:B",
+            type=EdgeType.EXTENDS,
+            confidence=1.0,
+            file_path="mod.py",
+        ),
+        Edge(
+            id="e2",
+            source="mod.B",
+            target="raw_class:A",
+            type=EdgeType.EXTENDS,
+            confidence=1.0,
+            file_path="mod.py",
+        ),
+        Edge(
+            id="e3",
+            source="mod.A.go",
+            target="raw_call:self.missing",
+            type=EdgeType.CALLS,
+            confidence=0.5,
+            file_path="mod.py",
+        ),
+    ]
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+    edge = next(e for e in resolved if e.id == "e3")
+    # neither A nor B defines "missing"; cycle guard fires → stays unresolved
+    assert edge.target == "self.missing"
+
+
+def test_resolve_global_call_uses_edge_file_path_fallback() -> None:
+    """_get_normalized_file_path falls back to edge file_path when source_fqn not in nodes."""
+    nodes = [
+        Node(
+            id="mod.target_fn",
+            type=NodeType.FUNCTION,
+            name="target_fn",
+            file_path="mod.py",
+            start_line=1,
+            end_line=3,
+        ),
+    ]
+    edges = [
+        Edge(
+            id="e1",
+            source="ghost.caller",
+            target="raw_call:target_fn",
+            type=EdgeType.CALLS,
+            confidence=0.5,
+            file_path="mod.py",
+        ),
+    ]
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+    edge = next(e for e in resolved if e.id == "e1")
+    assert edge.target == "mod.target_fn"
+
+
 def test_resolve_self_call_nested_function_finds_class() -> None:
     """self.method() inside a nested function resolves via the enclosing class, not the fn."""
     nodes = [

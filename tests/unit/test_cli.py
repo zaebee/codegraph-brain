@@ -484,3 +484,116 @@ def test_validate_shows_top_unresolved(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     assert "missing_func" in result.output
+
+
+# --- Coverage gap tests ---
+
+
+def test_ingest_incremental_json_warns_and_falls_back(tmp_path: Path) -> None:
+    """--incremental with .json output prints a warning and runs full ingest."""
+    (tmp_path / "mod.py").write_text("def fn(): pass\n", encoding="utf-8")
+    output = tmp_path / "graph.json"
+
+    result = runner.invoke(app, ["ingest", str(tmp_path), "--output", str(output), "--incremental"])
+
+    assert result.exit_code == 0
+    assert "Falling back" in result.output
+    assert "Mode" not in result.output  # no incremental table row
+
+
+def test_ingest_incremental_db_shows_mode_row(tmp_path: Path) -> None:
+    """--incremental with .db output prints 'Mode: incremental' in the summary table."""
+    (tmp_path / "mod.py").write_text("def fn(): pass\n", encoding="utf-8")
+    db = str(tmp_path / "graph.db")
+
+    result = runner.invoke(app, ["ingest", str(tmp_path), "--output", db, "--incremental"])
+
+    assert result.exit_code == 0
+    assert "incremental" in result.output
+
+
+def test_trace_internal_only_without_mermaid_raises_bad_parameter(tmp_path: Path) -> None:
+    """trace --internal-only without --format mermaid exits with BadParameter."""
+    (tmp_path / "mod.py").write_text("def fn(): pass\n", encoding="utf-8")
+    db = str(tmp_path / "graph.db")
+    runner.invoke(app, ["ingest", str(tmp_path), "--output", db])
+
+    result = runner.invoke(app, ["trace", "mod.fn", "--db", db, "--internal-only"])
+
+    assert result.exit_code != 0
+
+
+def test_impact_internal_only_without_mermaid_raises_bad_parameter(tmp_path: Path) -> None:
+    """impact --internal-only without --format mermaid exits with BadParameter."""
+    (tmp_path / "mod.py").write_text("def fn(): pass\n", encoding="utf-8")
+    db = str(tmp_path / "graph.db")
+    runner.invoke(app, ["ingest", str(tmp_path), "--output", db])
+
+    result = runner.invoke(app, ["impact", "mod.fn", "--db", db, "--internal-only"])
+
+    assert result.exit_code != 0
+
+
+def test_trace_mermaid_internal_only_filters_output(tmp_path: Path) -> None:
+    """trace --format mermaid --internal-only calls _filter_internal (lines 143-146)."""
+    (tmp_path / "mod.py").write_text("def fn(): pass\n", encoding="utf-8")
+    db = str(tmp_path / "graph.db")
+    runner.invoke(app, ["ingest", str(tmp_path), "--output", db])
+
+    result = runner.invoke(
+        app, ["trace", "mod.fn", "--db", db, "--format", "mermaid", "--internal-only"]
+    )
+
+    assert result.exit_code == 0
+    # Mermaid output always starts with a graph declaration
+    assert "graph" in result.output
+
+
+def test_trace_tree_shows_unresolved_for_missing_target(tmp_path: Path) -> None:
+    """build_trace_tree labels missing targets as Unresolved (lines 174, 179)."""
+    db_file = tmp_path / "graph.db"
+    caller = Node(
+        id="mod.caller",
+        type=NodeType.FUNCTION,
+        name="caller",
+        file_path="mod.py",
+        start_line=1,
+        end_line=3,
+    )
+    call_edge = Edge(
+        id="e1",
+        source="mod.caller",
+        target="raw_call:missing",
+        type=EdgeType.CALLS,
+        confidence=0.1,
+    )
+    with SQLiteStore(str(db_file)) as store:
+        store.save_graph([caller], [call_edge], overwrite=True)
+
+    result = runner.invoke(app, ["trace", "mod.caller", "--db", str(db_file)])
+
+    assert result.exit_code == 0
+    assert "Unresolved" in result.output or "raw_call" in result.output
+
+
+def test_validate_db_read_error_exits_with_error(tmp_path: Path) -> None:
+    """validate catches DB errors and exits 1 (lines 352-354)."""
+    db_file = tmp_path / "corrupted.db"
+    db_file.write_bytes(b"not a sqlite database")
+
+    result = runner.invoke(app, ["validate", "--db", str(db_file)])
+
+    assert result.exit_code == 1
+    assert "Error" in result.output
+
+
+def test_structure_mermaid_output(tmp_path: Path) -> None:
+    """structure --format mermaid emits Mermaid diagram (lines 435-437)."""
+    (tmp_path / "mod.py").write_text("class A:\n    def run(self): pass\n", encoding="utf-8")
+    db = str(tmp_path / "graph.db")
+    runner.invoke(app, ["ingest", str(tmp_path), "--output", db])
+
+    result = runner.invoke(app, ["structure", "mod.A", "--db", db, "--format", "mermaid"])
+
+    assert result.exit_code == 0
+    assert "graph" in result.output

@@ -119,6 +119,42 @@ def test_cgis_get_structure_missing_db_returns_error(tmp_path: Path) -> None:
     assert "cgis_ingest" in result
 
 
+def test_cgis_trace_flow_db_error_returns_error(tmp_path: Path) -> None:
+    db = tmp_path / "bad.db"
+    db.write_bytes(b"not sqlite")
+
+    result = cgis_trace_flow("any.fqn", str(db))
+
+    assert "❌" in result
+
+
+def test_cgis_analyze_impact_db_error_returns_error(tmp_path: Path) -> None:
+    db = tmp_path / "bad.db"
+    db.write_bytes(b"not sqlite")
+
+    result = cgis_analyze_impact("any.fqn", str(db))
+
+    assert "❌" in result
+
+
+def test_cgis_get_structure_db_error_returns_error(tmp_path: Path) -> None:
+    db = tmp_path / "bad.db"
+    db.write_bytes(b"not sqlite")
+
+    result = cgis_get_structure("any.fqn", str(db))
+
+    assert "❌" in result
+
+
+def test_cgis_get_structure_unknown_fqn_returns_error(repo_with_calls: tuple[Path, Path]) -> None:
+    repo, db = repo_with_calls
+    cgis_ingest(str(repo), str(db))
+
+    result = cgis_get_structure("nonexistent.fqn", str(db))
+
+    assert "❌" in result
+
+
 def test_cgis_ingest_overwrites_on_repeat_call(tmp_path: Path) -> None:
     """Calling ingest twice must not duplicate nodes."""
     (tmp_path / "mod.py").write_text("def fn(): pass\n", encoding="utf-8")
