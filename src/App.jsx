@@ -389,7 +389,7 @@ function App() {
         <Panel position="top-left" className="control-panel">
           <div className="panel-row">
             {viewMode === "flow" ? (
-              <button className="btn btn-back" onClick={buildFullGraph}>
+              <button className="btn btn-back" onClick={buildFullGraph} aria-label="Back to full graph">
                 ← Back
               </button>
             ) : (
@@ -402,6 +402,10 @@ function App() {
                   value={depth}
                   onChange={(e) => setDepth(Number(e.target.value))}
                   className="depth-slider"
+                  aria-label="Flow depth"
+                  aria-valuemin={1}
+                  aria-valuemax={5}
+                  aria-valuenow={depth}
                 />
                 <span className="depth-value">{depth}</span>
               </div>
@@ -415,17 +419,20 @@ function App() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="search-input"
+                  aria-label="Search nodes"
                 />
                 <button
                   className={`btn btn-toggle ${showExternal ? "active" : ""}`}
                   onClick={() => setShowExternal(prev => !prev)}
+                  aria-label="Toggle external nodes"
+                  aria-pressed={showExternal}
                 >
                   {showExternal ? "● External" : "○ External"}
                 </button>
-                <button className="btn btn-export" onClick={exportPng}>
+                <button className="btn btn-export" onClick={exportPng} aria-label="Export as PNG">
                   ⬇ PNG
                 </button>
-                <button className="btn btn-export" onClick={exportSvg}>
+                <button className="btn btn-export" onClick={exportSvg} aria-label="Export as SVG">
                   ⬇ SVG
                 </button>
               </>
