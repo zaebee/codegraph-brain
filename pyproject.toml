@@ -102,6 +102,10 @@ select = [
 ]
 ignore = []
 
+[tool.ruff.lint.flake8-bugbear]
+# typer.Option/Argument are safe as default values — standard Typer pattern
+extend-immutable-calls = ["typer.Option", "typer.Argument"]
+
 [tool.ruff.lint.isort]
 known-first-party = ["cgis"]
 
