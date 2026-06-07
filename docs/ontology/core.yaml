@@ -1,39 +1,79 @@
-version: "0.1.1"
-description: "Core Code Graph Ontology"
+version: "0.2.0"
+description: "Core Code Graph Ontology — source of truth for NodeType and EdgeType enums"
+
+node_types:
+  structural:
+    - FILE        # A source file in the repository
+    - MODULE      # A logical module (package, namespace)
+    - CLASS       # A class definition
+    - FUNCTION    # A top-level or standalone function
+    - METHOD      # A method belonging to a class
+    - VARIABLE    # A module-level or class-level variable
+    - IMPORT      # An import statement node
+    - EXPORT      # An exported symbol
+  runtime:
+    - API_ENDPOINT   # An HTTP route / endpoint declaration
+    - ROUTE_HANDLER  # A function bound to an API route
+    - DB_TABLE       # A database table definition
+    - DB_QUERY       # A database query call site
+    - EVENT          # A domain event emitted or consumed
+  semantic:
+    - DOMAIN_CONCEPT  # High-level semantic domain (e.g. Auth, Billing)
+
+edge_types:
+  structural:
+    - CONTAINS    # Parent node physically contains child (file → class, class → method)
+    - DECLARES    # Node declares a symbol (module → function)
+    - BELONGS_TO  # Symbol belongs to a parent scope
+    - IMPORTS     # Module imports another module or symbol
+    - EXPORTS     # Module exports a symbol
+  behavioral:
+    - CALLS         # Function/method invokes another function/method
+    - INSTANTIATES  # Code instantiates a class
+    - REFERENCES    # Node references another node without calling it
+    - USES          # Node uses a variable or resource
+    - ROUTES_TO     # Route handler is bound to an API endpoint
+    - TRIGGERS      # Node triggers an event or side-effect
+    - EMITS         # Node emits a domain event
+    - CONSUMES      # Node consumes a domain event
+  semantic:
+    - HANDLES          # Handler is responsible for a domain concept
+    - TRANSFORMS       # Node transforms data from one shape to another
+    - VALIDATES        # Node performs validation
+    - AUTHORIZES       # Node performs authorization / permission check
+    - PERSISTS         # Node persists data to storage
+    - DOMAIN_DEPENDS_ON  # One domain concept depends on another
+
+confidence:
+  # Edges that are syntactically unambiguous — always 1.0
+  structural_exact: 1.0
+  # Resolved CALLS/IMPORTS edges — symbol found in GST
+  resolved: 1.0
+  # Unresolved calls — symbol not found; kept with raw_call: prefix in target
+  unresolved: 0.1
+  # Semantic/heuristic edges (LLM-assigned domain concepts, etc.)
+  semantic_min: 0.5
+
+conventions:
+  fqn_format: "<abs_file_path>:<ClassName>.<method_name>"
+  fqn_examples:
+    - "src/cgis/pipeline.py:IngestionPipeline.run"
+    - "src/cgis/query/engine.py:QueryEngine.get_flow_graph"
+  # Extractors emit CALLS edges with target="raw_call:<name>".
+  # ResolverEngine converts them to real FQNs, or leaves the prefix if unresolved.
+  unresolved_call_prefix: "raw_call:"
+  unresolved_call_example: "raw_call:print"
 
 classes:
   CodeEntity:
     description: "Base class for all code elements"
-    subclasses: [CodeFile, CodeModule, CodeSymbol]
-  
-  CodeSymbol:
-    description: "A named entity in the code"
-    subclasses: [Function, Method, Class, Variable, Import, Export]
-    belongs_to: CodeEntity
+    node_types: [FILE, MODULE, CLASS, FUNCTION, METHOD, VARIABLE, IMPORT, EXPORT]
 
-  Function:
-    description: "Executable block of code"
-    belongs_to: CodeSymbol
+  RuntimeEntity:
+    description: "Runtime/behavioral entities derived from code analysis"
+    node_types: [API_ENDPOINT, ROUTE_HANDLER, DB_TABLE, DB_QUERY, EVENT]
 
   DomainConcept:
     description: "High-level semantic domain"
-    subclasses: [Auth, Billing, UserManagement]
-
-relations:
-  CALLS:
-    domain: "Structural/Behavioral"
-    source: "Function"
-    target: "Function"
-    confidence_min: 0.7
-  
-  IMPORTS:
-    domain: "Structural"
-    source: "CodeModule"
-    target: "CodeModule"
-    confidence_min: 1.0
-
-  BELONGS_TO_DOMAIN:
-    domain: "Semantic"
-    source: "CodeEntity"
-    target: "DomainConcept"
-    confidence_min: 0.5
+    node_types: [DOMAIN_CONCEPT]
+    examples: [Auth, Billing, UserManagement]
