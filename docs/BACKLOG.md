@@ -17,11 +17,11 @@
 
 ## 🟢 Performance
 
-- [ ] `graph.json` (135KB) инлайнится в bundle — загружать через `fetch()` или dynamic import — `src/App.jsx:7`
-- [ ] Валидация рёбер O(n*m) → O(n+m) через Set — `src/App.jsx:191-193`
-- [ ] Дедупикация рёдер `flowEdges.some()` O(n²) → O(n) через Set — `src/flow.js:82-85`
-- [ ] Memoize результаты `buildExecutionFlow` для повторных кликов — `src/App.jsx:269-330`
-- [ ] Debounce search input (150-300ms) — `src/App.jsx:419`
+- [x] `graph.json` (135KB) инлайнится в bundle — загружать через `fetch()` или dynamic import — `src/App.jsx:7`
+- [x] Валидация рёбер O(n*m) → O(n+m) через Set — `src/App.jsx:191-193`
+- [x] Дедупикация рёдер `flowEdges.some()` O(n²) → O(n) через Set — `src/flow.js:82-85`
+- [x] Memoize результаты `buildExecutionFlow` для повторных кликов — `src/App.jsx:269-330`
+- [x] Debounce search input (150-300ms) — `src/App.jsx:419`
 - [ ] Lazy loading ReactFlow + dagre — уменьшить initial bundle — `src/App.jsx:2`
 
 ## 🔵 UX
