@@ -111,6 +111,7 @@ function App() {
   const [allNodes, setAllNodes] = useState([]);
   const [allEdges, setAllEdges] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   const graphRef = useRef(graph);
   const wrapperRef = useRef(null);
   const enrichedRef = useRef(null);
@@ -215,19 +216,23 @@ function App() {
       };
     });
 
-    const grouped = groupByFile(baseNodes, baseEdges);
-    const layoutedNodes = layoutGraph(grouped.nodes, grouped.edges);
+    setIsLoading(true);
+    requestAnimationFrame(() => {
+      const grouped = groupByFile(baseNodes, baseEdges);
+      const layoutedNodes = layoutGraph(grouped.nodes, grouped.edges);
 
-    setAllNodes(layoutedNodes);
-    setAllEdges(grouped.edges);
-    setNodes(layoutedNodes);
-    setEdges(grouped.edges);
-    setViewMode("full");
-    fitView({ padding: 0.15 });
-    setStats({
-      nodes: enriched.nodes.length,
-      edges: validEdges.length,
-      external: enriched.nodes.filter(n => n.type === "EXTERNAL").length
+      setAllNodes(layoutedNodes);
+      setAllEdges(grouped.edges);
+      setNodes(layoutedNodes);
+      setEdges(grouped.edges);
+      setViewMode("full");
+      fitView({ padding: 0.15 });
+      setStats({
+        nodes: enriched.nodes.length,
+        edges: validEdges.length,
+        external: enriched.nodes.filter(n => n.type === "EXTERNAL").length
+      });
+      setIsLoading(false);
     });
   }, [getEnriched]);
 
@@ -541,6 +546,14 @@ function App() {
             </div>
           </Panel>
         )}
+      {isLoading && (
+        <Panel position="top-center">
+          <div className="loading-indicator">
+            <div className="loading-spinner" />
+            <span>Computing layout...</span>
+          </div>
+        </Panel>
+      )}
       </ReactFlow>
     </div>
   );

@@ -381,3 +381,29 @@ body {
   max-width: 400px;
   text-align: center;
 }
+
+/* Loading indicator */
+.loading-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(13, 17, 23, 0.9);
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 8px 16px;
+  color: #b0bec5;
+  font-size: 13px;
+}
+
+.loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #333;
+  border-top-color: #4fc3f7;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
