@@ -4,7 +4,7 @@ import "@xyflow/react/dist/style.css";
 import { toPng, toSvg } from "html-to-image";
 import "./App.css";
 
-import graph from "./graph.json";
+// graph.json loaded via fetch()
 
 import { layoutGraph } from "./layout";
 import { groupByFile } from "./grouping";
@@ -114,17 +114,33 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [flowRootId, setFlowRootId] = useState(null);
-  const graphRef = useRef(graph);
+  const [graphData, setGraphData] = useState(null);
+  const [graphLoading, setGraphLoading] = useState(true);
+  const graphRef = useRef(null);
   const wrapperRef = useRef(null);
   const enrichedRef = useRef(null);
   const searchInputRef = useRef(null);
   const { fitView } = useReactFlow();
 
   const getEnriched = useCallback(() => {
-    if (!enrichedRef.current) {
+    if (!enrichedRef.current && graphRef.current) {
       enrichedRef.current = addExternalNodes(graphRef.current);
     }
     return enrichedRef.current;
+  }, []);
+
+  useEffect(() => {
+    fetch("/graph.json")
+      .then(r => r.json())
+      .then(data => {
+        graphRef.current = data;
+        setGraphData(data);
+        setGraphLoading(false);
+      })
+      .catch(err => {
+        console.error("Failed to load graph:", err);
+        setGraphLoading(false);
+      });
   }, []);
 
   const downloadImage = useCallback((dataUrl, filename) => {
@@ -239,8 +255,10 @@ function App() {
   }, [getEnriched]);
 
   useEffect(() => {
-    buildFullGraph();
-  }, [buildFullGraph]);
+    if (graphData) {
+      buildFullGraph();
+    }
+  }, [buildFullGraph, graphData]);
 
   useEffect(() => {
     if (viewMode !== "full") return;
@@ -395,6 +413,17 @@ function App() {
         };
       })
     : nodes;
+
+  if (graphLoading) {
+    return (
+      <div className="app-root loading">
+        <div className="loading-indicator">
+          <div className="loading-spinner" />
+          <span>Loading graph data...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="app-root" ref={wrapperRef} onMouseMove={(e) => setMousePos({ x: e.clientX, y: e.clientY })}>
