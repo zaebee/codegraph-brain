@@ -1,4 +1,4 @@
-import { Component, useEffect, useState, useCallback, useRef } from "react";
+import { Component, useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { ReactFlow, Background, Controls, MiniMap, Panel, useReactFlow } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { toPng, toSvg } from "html-to-image";
@@ -7,7 +7,7 @@ import "./App.css";
 // graph.json loaded via fetch()
 
 import { layoutGraph } from "./layout";
-import { groupByFile } from "./grouping";
+import { groupByFile, extractGroupKey } from "./grouping";
 import { buildExecutionFlow } from "./flow";
 import GroupNode from "./GroupNode";
 import { NODE_WIDTH } from "./constants";
@@ -415,26 +415,27 @@ function App() {
     setHoveredNode(null);
   }, []);
 
-  const displayedNodes = debouncedQuery
-    ? nodes.map(n => {
-        if (n.type === "group") return n;
-        const q = debouncedQuery.toLowerCase();
-        const match =
-          (n.data?.label || "").toLowerCase().includes(q) ||
-          (n.data?.subtitle || "").toLowerCase().includes(q) ||
-          (n.data?.file || "").toLowerCase().includes(q);
-        return {
-          ...n,
-          style: {
-            ...n.style,
-            opacity: match ? 1 : 0.15,
-            boxShadow: match && debouncedQuery
-              ? "0 0 12px rgba(79, 195, 247, 0.6)"
-              : n.style?.boxShadow || "0 2px 8px rgba(0,0,0,0.3)"
-          }
-        };
-      })
-    : nodes;
+  const displayedNodes = useMemo(() => {
+    if (!debouncedQuery) return nodes;
+    return nodes.map(n => {
+      if (n.type === "group") return n;
+      const q = debouncedQuery.toLowerCase();
+      const match =
+        (n.data?.label || "").toLowerCase().includes(q) ||
+        (n.data?.subtitle || "").toLowerCase().includes(q) ||
+        (n.data?.file || "").toLowerCase().includes(q);
+      return {
+        ...n,
+        style: {
+          ...n.style,
+          opacity: match ? 1 : 0.15,
+          boxShadow: match && debouncedQuery
+            ? "0 0 12px rgba(79, 195, 247, 0.6)"
+            : n.style?.boxShadow || "0 2px 8px rgba(0,0,0,0.3)"
+        }
+      };
+    });
+  }, [nodes, debouncedQuery]);
 
   if (graphLoading) {
     return (
@@ -630,8 +631,3 @@ function App() {
   );
 }
 
-function extractGroupKey(node) {
-  if (node.type === "EXTERNAL") return null;
-  if (node.file_path) return node.file_path;
-  return null;
-}
