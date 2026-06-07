@@ -209,8 +209,9 @@ function App() {
       };
     });
 
+    const nodeIds = new Set(enriched.nodes.map(n => n.id));
     const validEdges = enriched.edges.filter(e => {
-      return enriched.nodes.some(n => n.id === e.source) && enriched.nodes.some(n => n.id === e.target);
+      return nodeIds.has(e.source) && nodeIds.has(e.target);
     });
 
     const baseEdges = validEdges.map((e, i) => {
