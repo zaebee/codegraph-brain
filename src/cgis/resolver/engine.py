@@ -8,6 +8,7 @@ from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeNamesp
 
 _BUILTINS: frozenset[str] = frozenset(dir(builtins))
 _SELF_PREFIX = "self."
+_RAW_CLASS_PREFIX = "raw_class:"
 
 
 class ResolverEngine:
@@ -70,7 +71,7 @@ class ResolverEngine:
         """Build class→[parent FQNs] index from EXTENDS edges for hierarchy traversal."""
         for edge in self.edges:
             if edge.type == EdgeType.EXTENDS:
-                raw = edge.target.removeprefix("raw_class:")
+                raw = edge.target.removeprefix(_RAW_CLASS_PREFIX)
                 resolved = self._resolve_class_ref(raw, edge.source, edge.file_path)
                 self._inheritance_tree.setdefault(edge.source, []).append(resolved or raw)
 
@@ -151,8 +152,8 @@ class ResolverEngine:
         virtual_nodes: dict[str, Node] = {}
 
         for edge in self.edges:
-            if edge.target.startswith("raw_class:"):
-                raw = edge.target.removeprefix("raw_class:")
+            if edge.target.startswith(_RAW_CLASS_PREFIX):
+                raw = edge.target.removeprefix(_RAW_CLASS_PREFIX)
                 resolved = self._resolve_class_ref(raw, edge.source, edge.file_path)
                 final_target = resolved or raw
                 confidence = 1.0 if resolved else 0.5

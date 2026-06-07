@@ -1,5 +1,7 @@
 """Unit test cases for Resolver."""
 
+import pytest
+
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.extractors.python_extractor import PythonExtractor
 from cgis.resolver.engine import ResolverEngine
@@ -752,7 +754,7 @@ def test_resolver_resolves_extends_edge_to_fqn() -> None:
 
     ext_edge = next(e for e in resolved_edges if e.id == "e_ext")
     assert ext_edge.target == "pkg.base.Base"
-    assert ext_edge.confidence == 1.0
+    assert ext_edge.confidence == pytest.approx(1.0)
 
 
 def test_resolver_inherited_method_cycle_safe() -> None:

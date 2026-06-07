@@ -410,20 +410,27 @@ class PythonExtractor(BaseExtractor):
                         local_types_acc=local_types_acc,
                     )
 
+    def _get_decorator_name(self, decorator_node: BaseNode, code_bytes: bytes) -> str | None:
+        """Return the decorator's callable name from a single decorator node, or None."""
+        for inner in decorator_node.children:
+            if inner.type in ("identifier", "attribute"):
+                name = self._get_identifier(inner, code_bytes)
+                return name if name != "unknown" else None
+            if inner.type == "call":
+                func_node = inner.child_by_field_name("function")
+                if func_node:
+                    name = self._get_identifier(func_node, code_bytes)
+                    return name if name != "unknown" else None
+        return None
+
     def _extract_decorator_names(self, node: BaseNode, code_bytes: bytes) -> list[str]:
         """Extract decorator names from a decorated_definition node."""
         names: list[str] = []
         for child in node.children:
             if child.type == "decorator":
-                for inner in child.children:
-                    if inner.type in ("identifier", "attribute"):
-                        names.append(self._get_identifier(inner, code_bytes))
-                        break
-                    if inner.type == "call":
-                        func_node = inner.child_by_field_name("function")
-                        if func_node:
-                            names.append(self._get_identifier(func_node, code_bytes))
-                        break
+                name = self._get_decorator_name(child, code_bytes)
+                if name:
+                    names.append(name)
         return names
 
     def _process_function_node(
@@ -445,7 +452,9 @@ class PythonExtractor(BaseExtractor):
         metadata: dict[str, Any] = {}
         if decorators:
             metadata["decorators"] = decorators
-        if decorators and "abstractmethod" in decorators:
+        if decorators and any(
+            d == "abstractmethod" or d.endswith(".abstractmethod") for d in decorators
+        ):
             metadata["is_abstract"] = True
 
         func_node = Node(
@@ -506,7 +515,7 @@ class PythonExtractor(BaseExtractor):
         superclasses_node = node.child_by_field_name("superclasses")
         if superclasses_node:
             for sc in superclasses_node.children:
-                if sc.type in ("identifier", "attribute"):
+                if sc.type in ("identifier", "attribute", "subscript"):
                     sc_name = self._get_identifier(sc, code_bytes)
                     if sc_name != "unknown":
                         superclass_names.append(sc_name)
@@ -524,7 +533,9 @@ class PythonExtractor(BaseExtractor):
         metadata: dict[str, Any] = {}
         if decorators:
             metadata["decorators"] = decorators
-        is_abstract = "ABC" in superclass_names or "ABCMeta" in (decorators or [])
+        is_abstract = any(n == "ABC" or n.endswith(".ABC") for n in superclass_names) or any(
+            d == "ABCMeta" or d.endswith(".ABCMeta") for d in (decorators or [])
+        )
         if is_abstract:
             metadata["is_abstract"] = True
 
