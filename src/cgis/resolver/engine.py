@@ -218,23 +218,46 @@ class ResolverEngine:
 
         return None
 
+    def _resolve_local_type_call(self, name: str, source_node: Node) -> str | None:
+        """Resolve `var.method` using local_types metadata on the source node."""
+        if "." not in name:
+            return None
+        var_name, method_name = name.split(".", maxsplit=1)
+        local_types: dict[str, str] = source_node.metadata.get("local_types", {})
+        class_fqn = local_types.get(var_name)
+        if not class_fqn:
+            return None
+        candidate = f"{class_fqn}.{method_name}"
+        return self._map_to_node_fqn(candidate) or candidate
+
+    def _get_normalized_file_path(self, source_fqn: str, edge_file_path: str | None) -> str | None:
+        """Return the normalized file path for a source FQN, falling back to edge_file_path."""
+        source_node = self.nodes.get(source_fqn)
+        if source_node:
+            return os.path.normpath(source_node.file_path)
+        return os.path.normpath(edge_file_path) if edge_file_path else None
+
     def _resolve_global_call(
         self, name: str, source_fqn: str, edge_file_path: str | None = None
     ) -> str | None:
-        """Resolve a global call using import map, then global symbol index."""
+        """Resolve a global call using local types, import map, then global symbol index."""
         source_node = self.nodes.get(source_fqn)
+        file_path = self._get_normalized_file_path(source_fqn, edge_file_path)
+
         if source_node:
-            file_path: str | None = os.path.normpath(source_node.file_path)
-        elif edge_file_path:
-            file_path = os.path.normpath(edge_file_path)
-        else:
-            file_path = None
+            result = self._resolve_local_type_call(name, source_node)
+            if result:
+                return result
 
         if file_path:
             result = self._resolve_via_import_map(name, file_path)
             if result:
                 return result
 
+        return self._resolve_via_global_symbols(name, file_path)
+
+    def _resolve_via_global_symbols(self, name: str, file_path: str | None) -> str | None:
+        """Look up name in the global symbol index, preferring same-file candidates."""
         candidates = self._global_symbols.get(name, [])
         if not candidates:
             return None

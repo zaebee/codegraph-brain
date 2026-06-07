@@ -434,3 +434,104 @@ def test_resolver_wildcard_import_call_stays_unresolved() -> None:
     target_edge = next(e for e in result if e.id == "e1")
     assert target_edge.target == "mystery_func"
     assert any(n.id == "mystery_func" for n in virtual_nodes)
+
+
+# ============================================================================
+# Test suite: Local Type Propagation & Instance Method Resolution (Issue #12)
+# ============================================================================
+
+
+def _func_node_with_local_types(
+    func_fqn: str, file_path: str, local_types: dict[str, str] | None = None
+) -> Node:
+    """Helper: build a FUNCTION node with optional local_types metadata."""
+    module_path = file_path.replace("/", ".").removesuffix(".py")
+    full_fqn = f"{module_path}.{func_fqn}"
+    metadata = {}
+    if local_types:
+        metadata["local_types"] = local_types
+    return Node(
+        id=full_fqn,
+        type=NodeType.FUNCTION,
+        name=func_fqn.rsplit(".", maxsplit=1)[-1],
+        file_path=file_path,
+        start_line=1,
+        end_line=10,
+        language="python",
+        metadata=metadata,
+    )
+
+
+def test_local_type_resolution_assignment() -> None:
+    """Assignment: eng = Engine() → eng.execute() resolves to src.mod.Engine.execute."""
+    code = """
+import src.mod
+
+class Engine:
+    def execute(self):
+        pass
+
+def main():
+    eng = Engine()
+    eng.execute()  # Should resolve to src.mod.Engine.execute
+"""
+    nodes, edges = PythonExtractor().parse(code, "src/mod.py")
+    resolver = ResolverEngine(nodes, edges)
+    result, _ = resolver.resolve()
+    assert any(e.source == "src.mod.main" and e.target == "src.mod.Engine.execute" for e in result)
+
+
+def test_local_type_resolution_param_annotation() -> None:
+    """Test 2: Parameter Annotation - def run(store: SQLiteStore) → store.get_nodes() resolves."""
+    code = """
+class SQLiteStore:
+    def get_nodes(self):
+        pass
+
+def run(store: SQLiteStore):
+    store.get_nodes()  # Should resolve to SQLiteStore.get_nodes
+"""
+    nodes, edges = PythonExtractor().parse(code, "cgis/storage/sqlite_store.py")
+    resolver = ResolverEngine(nodes, edges)
+    result, _ = resolver.resolve()
+    assert any(
+        e.source == "cgis.storage.sqlite_store.run"
+        and e.target == "cgis.storage.sqlite_store.SQLiteStore.get_nodes"
+        for e in result
+    )
+
+
+def test_local_type_resolution_union_type() -> None:
+    """Test 3: Union Type Parsing - def f(node: Node | None) → node.method() resolves."""
+    code = """
+class Node:
+    def model_dump(self):
+        pass
+
+def process(node: Node | None):
+    node.model_dump()  # Should resolve to Node.model_dump
+"""
+    nodes, edges = PythonExtractor().parse(code, "cgis/core/models.py")
+    resolver = ResolverEngine(nodes, edges)
+    result, _ = resolver.resolve()
+    assert any(
+        e.source == "cgis.core.models.process" and e.target == "cgis.core.models.Node.model_dump"
+        for e in result
+    )
+
+
+def test_local_type_resolution_external_dep() -> None:
+    """External dep: console = Console() → console.print() resolves to rich.console.Console.print."""  # noqa: E501
+    code = """
+from rich.console import Console
+
+def main():
+    console = Console()
+    console.print()  # Should resolve to rich.console.Console.print
+"""
+    nodes, edges = PythonExtractor().parse(code, "app/main.py")
+    resolver = ResolverEngine(nodes, edges)
+    result, _ = resolver.resolve()
+    assert any(
+        e.source == "app.main.main" and e.target == "rich.console.Console.print" for e in result
+    )

@@ -69,6 +69,7 @@ class PythonExtractor(BaseExtractor):
         edges: list[Edge] = []
         import_map: dict[str, str] = {}
         module_fqn = file_path_to_module_fqn(file_path)
+        local_types_acc: dict[str, dict[str, str]] = {}
 
         self._walk(
             root_node,
@@ -78,7 +79,17 @@ class PythonExtractor(BaseExtractor):
             edges,
             import_map=import_map,
             module_fqn=module_fqn,
+            local_types_acc=local_types_acc,
         )
+
+        # Apply accumulated local types from assignments and param annotations
+        nodes_by_id = {n.id: i for i, n in enumerate(nodes)}
+        for func_id, lt in local_types_acc.items():
+            if func_id in nodes_by_id:
+                i = nodes_by_id[func_id]
+                nodes[i] = nodes[i].model_copy(
+                    update={"metadata": {**nodes[i].metadata, "local_types": lt}}
+                )
 
         file_node = Node(
             id=module_fqn,
@@ -122,9 +133,10 @@ class PythonExtractor(BaseExtractor):
         file_path: str,
         nodes: list[Node],
         edges: list[Edge],
-        current_func_id: str | None = None,
+        current_func_node: Node | None = None,
         import_map: dict[str, str] | None = None,
         module_fqn: str | None = None,
+        local_types_acc: dict[str, dict[str, str]] | None = None,
     ) -> None:
         """
         Recursive AST walker that extracts nodes and edges in a single pass.
@@ -141,14 +153,26 @@ class PythonExtractor(BaseExtractor):
                     )
             return  # never recurse into import nodes
 
-        next_id = current_func_id
+        next_func_node = current_func_node
         if node.type in ("function_definition", "async_function_definition"):
-            next_id = self._process_function_node(node, code_bytes, file_path, nodes)
+            next_func_node = self._process_function_node(node, code_bytes, file_path, nodes)
         elif node.type == "class_definition":
             self._process_class_node(node, code_bytes, file_path, nodes)
-            next_id = None
-        elif node.type == "call" and current_func_id:
-            self._process_call_node(node, code_bytes, file_path, current_func_id, edges)
+            next_func_node = None
+        elif node.type == "call" and current_func_node:
+            self._process_call_node(node, code_bytes, file_path, current_func_node.id, edges)
+        elif node.type == "assignment" and current_func_node and local_types_acc is not None:
+            self._collect_assignment_type(
+                node, code_bytes, import_map, current_func_node, local_types_acc
+            )
+        elif (
+            node.type in ("typed_parameter", "typed_default_parameter")
+            and current_func_node
+            and local_types_acc is not None
+        ):
+            self._collect_param_type(
+                node, code_bytes, import_map, current_func_node, local_types_acc
+            )
 
         for child in node.children:
             self._walk(
@@ -157,9 +181,10 @@ class PythonExtractor(BaseExtractor):
                 file_path,
                 nodes,
                 edges,
-                next_id,
+                next_func_node,
                 import_map=import_map,
                 module_fqn=module_fqn,
+                local_types_acc=local_types_acc,
             )
 
     def _process_import_statement(
@@ -304,25 +329,24 @@ class PythonExtractor(BaseExtractor):
         code_bytes: bytes,
         file_path: str,
         nodes: list[Node],
-    ) -> str:
+    ) -> Node:
         """Process function or method definition node."""
         child = node.child_by_field_name("name")
         node_id = self._get_id(node, code_bytes, file_path)
         node_name = self._extract_node_name(child, code_bytes)
         node_type = NodeType.METHOD if self._is_method(node) else NodeType.FUNCTION
 
-        nodes.append(
-            Node(
-                id=node_id,
-                type=node_type,
-                name=node_name,
-                file_path=file_path,
-                start_line=node.start_point.row + 1,
-                end_line=node.end_point.row + 1,
-                language=self.LANG,
-            )
+        func_node = Node(
+            id=node_id,
+            type=node_type,
+            name=node_name,
+            file_path=file_path,
+            start_line=node.start_point.row + 1,
+            end_line=node.end_point.row + 1,
+            language=self.LANG,
         )
-        return node_id
+        nodes.append(func_node)
+        return func_node
 
     def _process_class_node(
         self, node: BaseNode, code_bytes: bytes, file_path: str, nodes: list[Node]
@@ -371,6 +395,82 @@ class PythonExtractor(BaseExtractor):
                     line_number=node.start_point.row + 1,
                 )
             )
+
+    def _collect_assignment_type(
+        self,
+        node: BaseNode,
+        code_bytes: bytes,
+        import_map: dict[str, str] | None,
+        func_node: Node,
+        acc: dict[str, dict[str, str]],
+    ) -> None:
+        """Populate acc with var→FQN for `var = ClassName(...)` assignments."""
+        left_node = node.child_by_field_name("left")
+        right_node = node.child_by_field_name("right")
+        if not left_node or not right_node or right_node.type != "call":
+            return
+        var_name = self._get_identifier(left_node, code_bytes)
+        if var_name == "unknown":
+            return
+        func_call_node = right_node.child_by_field_name("function")
+        if not func_call_node:
+            return
+        class_name = self._get_identifier(func_call_node, code_bytes)
+        if class_name == "unknown":
+            return
+        if import_map and class_name in import_map:
+            fqn = import_map[class_name]
+        else:
+            fqn = f"{file_path_to_module_fqn(func_node.file_path)}.{class_name}"
+        acc.setdefault(func_node.id, {})[var_name] = fqn
+
+    def _collect_param_type(
+        self,
+        node: BaseNode,
+        code_bytes: bytes,
+        import_map: dict[str, str] | None,
+        func_node: Node,
+        acc: dict[str, dict[str, str]],
+    ) -> None:
+        """Populate acc with param→FQN for typed parameter annotations."""
+        if not node.named_children:
+            return
+        name_node = node.named_children[0]
+        type_node = node.child_by_field_name("type")
+        if not type_node:
+            return
+        var_name = self._get_identifier(name_node, code_bytes)
+        if var_name == "unknown":
+            return
+        # Slice raw bytes to capture union/generic types like `A | None` or `list[X]`
+        raw_type = (
+            code_bytes[type_node.start_byte : type_node.end_byte].decode("utf-8").strip("\"'")
+        )
+        clean_type = self._clean_python_type_string(raw_type)
+        if not clean_type:
+            return
+        if import_map and clean_type in import_map:
+            fqn = import_map[clean_type]
+        else:
+            fqn = f"{file_path_to_module_fqn(func_node.file_path)}.{clean_type}"
+        acc.setdefault(func_node.id, {})[var_name] = fqn
+
+    def _clean_python_type_string(self, type_str: str) -> str:
+        """
+        Extract the main class name from type strings with Optionals/Unions.
+
+        Examples:
+            "SQLiteStore | None" -> "SQLiteStore"
+            "Optional[SQLiteStore]" -> "SQLiteStore"
+            "list[Node]" -> "list"
+        """
+        # Handle union types (PEP 604)
+        if " | " in type_str:
+            type_str = type_str.split(" | ", maxsplit=1)[0]
+        # Handle list types and similar generic types
+        if "[" in type_str:
+            type_str = type_str.split("[")[0]
+        return type_str.strip()
 
     def _is_method(self, node: BaseNode) -> bool:
         """Check if a function node is a method (defined inside a class)."""
