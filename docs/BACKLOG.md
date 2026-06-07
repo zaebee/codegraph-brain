@@ -12,8 +12,8 @@
 - [ ] Переименовать `extractClass` → `extractGroupKey` — `src/App.jsx:478-482`
 - [ ] Переименовать `groupByClass` → `groupByFile` — `src/grouping.js:1`
 - [ ] Вынести `NODE_WIDTH = 160` в shared constant — дублируется в `src/layout.js:3` и `src/App.jsx:184,304`
-- [ ] Убрать дублирующий CSS reset в `index.css` — `src/index.css:2` дублирует `src/App.css:1-5`
-- [ ] Убрать `reportWebVitals.js` импорт если остался — `src/main.jsx`
+- [ ] Убрать дублирующий `margin: 0` из `index.css` — дублирует `src/App.css:1-5` (font-family и code правила оставить)
+- [x] Убрать `reportWebVitals.js` — уже удалён
 
 ## 🟢 Performance
 
