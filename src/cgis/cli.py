@@ -460,7 +460,10 @@ def _build_structure_tree(
     """Recursively add children to a rich Tree branch using preloaded nodes/edges."""
     if current_depth >= max_depth:
         return
-    for child_id in children_map.get(node_id, []):
+    for child_id in sorted(
+        children_map.get(node_id, []),
+        key=lambda cid: nodes_map[cid].start_line if cid in nodes_map else 0,
+    ):
         child_node = nodes_map.get(child_id)
         if not child_node:
             continue
