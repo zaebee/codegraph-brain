@@ -4,6 +4,12 @@ import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 
+const origError = console.error;
+console.error = (...args) => {
+  if (args[0]?.includes?.('ResizeObserver loop')) return;
+  origError(...args);
+};
+
 window.addEventListener('error', (e) => {
   if (e.message?.includes('ResizeObserver loop')) {
     e.stopImmediatePropagation();
