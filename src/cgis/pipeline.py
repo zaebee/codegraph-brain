@@ -9,7 +9,7 @@ import structlog
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from cgis.core.models import VIRTUAL_FILE_PATH, Edge, Node
+from cgis.core.models import Edge, Node
 from cgis.extractors.base import BaseExtractor
 from cgis.resolver.engine import ResolverEngine
 
@@ -168,11 +168,6 @@ class IngestionPipeline:
         for node in all_nodes:
             if node.file_path in changed_files:
                 nodes_by_file.setdefault(node.file_path, []).append(node)
-        # Virtual nodes (EXTERNAL/STDLIB) are always re-persisted since they're derived;
-        # mark the virtual path as changed so stale virtual nodes get purged first.
-        if virtual_nodes:
-            nodes_by_file.setdefault(VIRTUAL_FILE_PATH, []).extend(virtual_nodes)
-            changed_files[VIRTUAL_FILE_PATH] = ""
 
         # Map source node → file so structural edges (file_path=None) can be assigned
         source_to_file: dict[str, str] = {
@@ -186,6 +181,12 @@ class IngestionPipeline:
 
         stale_files = store.get_all_tracked_files() - found_file_paths
         store.save_incremental_batch(nodes_by_file, edges_by_file, changed_files, stale_files)
+
+        # Virtual nodes are upserted separately — never deleted — because in incremental
+        # mode only changed files' edges are re-resolved, so virtual_nodes is incomplete.
+        # Orphaned virtual nodes (no incoming edges) are harmless phantom data.
+        if virtual_nodes:
+            store.upsert_nodes(virtual_nodes)
 
         for file_path in changed_files:
             logger.info("Re-ingested changed file", file_path=file_path)

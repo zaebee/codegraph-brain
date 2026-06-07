@@ -158,6 +158,13 @@ class SQLiteStore:
             e.line_number,
         )
 
+    def upsert_nodes(self, nodes: list[Node]) -> None:
+        """Insert or replace nodes without deleting existing ones first."""
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        with self._conn:
+            self._conn.executemany(self._NODE_INSERT, [self._node_to_row(n) for n in nodes])
+
     def save_graph(self, nodes: list[Node], edges: list[Edge], overwrite: bool = False) -> None:
         """Persists all nodes and edges inside a single transaction."""
         if not self._conn:

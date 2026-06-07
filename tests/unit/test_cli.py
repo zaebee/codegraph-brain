@@ -358,7 +358,11 @@ def test_validate_fails_when_ratio_exceeds_threshold(tmp_path: Path) -> None:
         id="mod.fn", type=NodeType.FUNCTION, name="fn", file_path="mod.py", start_line=1, end_line=3
     )
     raw_edge = Edge(
-        id="e1", source="mod.fn", target="raw_call:missing_func", type=EdgeType.CALLS, confidence=0.1
+        id="e1",
+        source="mod.fn",
+        target="raw_call:missing_func",
+        type=EdgeType.CALLS,
+        confidence=0.1,
     )
     with SQLiteStore(str(db_file)) as store:
         store.save_graph([node], [raw_edge], overwrite=True)
@@ -376,7 +380,11 @@ def test_validate_shows_top_unresolved(tmp_path: Path) -> None:
         id="mod.fn", type=NodeType.FUNCTION, name="fn", file_path="mod.py", start_line=1, end_line=3
     )
     raw_edge = Edge(
-        id="e1", source="mod.fn", target="raw_call:missing_func", type=EdgeType.CALLS, confidence=0.1
+        id="e1",
+        source="mod.fn",
+        target="raw_call:missing_func",
+        type=EdgeType.CALLS,
+        confidence=0.1,
     )
     with SQLiteStore(str(db_file)) as store:
         store.save_graph([node], [raw_edge], overwrite=True)
