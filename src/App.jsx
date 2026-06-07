@@ -113,6 +113,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const [flowRootId, setFlowRootId] = useState(null);
   const graphRef = useRef(graph);
   const wrapperRef = useRef(null);
   const enrichedRef = useRef(null);
@@ -360,6 +361,7 @@ function App() {
       setNodes(layouted);
       setEdges(flowEdges);
       setViewMode("flow");
+      setFlowRootId(node.id);
       fitView({ padding: 0.15 });
     },
     [depth, getEnriched]
@@ -434,6 +436,15 @@ function App() {
                 <button className="btn btn-back" onClick={buildFullGraph} aria-label="Back to full graph">
                   ← Back
                 </button>
+                {flowRootId && (
+                  <button
+                    className="btn btn-back"
+                    onClick={() => onNodeClick({}, { id: flowRootId, type: 'FUNCTION' })}
+                    aria-label="Back to root node"
+                  >
+                    ↑ Root
+                  </button>
+                )}
                 <button className="btn btn-export" onClick={() => fitView({ padding: 0.15 })} aria-label="Zoom to fit">
                   ⊞ Fit
                 </button>
