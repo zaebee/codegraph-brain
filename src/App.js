@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import { ReactFlow, Background, Controls, MiniMap, Panel } from "@xyflow/react";
+import { ReactFlow, Background, Controls, MiniMap, Panel, useReactFlow } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { toPng, toSvg } from "html-to-image";
 import "./App.css";
 
 import graph from "./graph.json";
@@ -68,6 +69,42 @@ export default function App() {
   const [allNodes, setAllNodes] = useState([]);
   const [allEdges, setAllEdges] = useState([]);
   const graphRef = useRef(graph);
+  const wrapperRef = useRef(null);
+
+  const downloadImage = useCallback((dataUrl, filename) => {
+    const a = document.createElement("a");
+    a.setAttribute("download", filename);
+    a.setAttribute("href", dataUrl);
+    a.click();
+  }, []);
+
+  const exportPng = useCallback(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    toPng(el, {
+      backgroundColor: "#0d1117",
+      filter: (node) =>
+        !node?.classList?.contains("react-flow__minimap") &&
+        !node?.classList?.contains("react-flow__controls") &&
+        !node?.classList?.contains("control-panel") &&
+        !node?.classList?.contains("stats-panel") &&
+        !node?.classList?.contains("tooltip-panel")
+    }).then((dataUrl) => downloadImage(dataUrl, "graph.png"));
+  }, [downloadImage]);
+
+  const exportSvg = useCallback(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    toSvg(el, {
+      backgroundColor: "#0d1117",
+      filter: (node) =>
+        !node?.classList?.contains("react-flow__minimap") &&
+        !node?.classList?.contains("react-flow__controls") &&
+        !node?.classList?.contains("control-panel") &&
+        !node?.classList?.contains("stats-panel") &&
+        !node?.classList?.contains("tooltip-panel")
+    }).then((dataUrl) => downloadImage(dataUrl, "graph.svg"));
+  }, [downloadImage]);
 
   const buildFullGraph = useCallback(() => {
     const enriched = addExternalNodes(graphRef.current);
@@ -249,7 +286,7 @@ export default function App() {
   }, []);
 
   return (
-    <div className="app-root">
+    <div className="app-root" ref={wrapperRef}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -305,12 +342,20 @@ export default function App() {
             )}
 
             {viewMode === "full" && (
-              <button
-                className={`btn btn-toggle ${showExternal ? "active" : ""}`}
-                onClick={() => setShowExternal(prev => !prev)}
-              >
-                {showExternal ? "● External" : "○ External"}
-              </button>
+              <>
+                <button
+                  className={`btn btn-toggle ${showExternal ? "active" : ""}`}
+                  onClick={() => setShowExternal(prev => !prev)}
+                >
+                  {showExternal ? "● External" : "○ External"}
+                </button>
+                <button className="btn btn-export" onClick={exportPng}>
+                  ⬇ PNG
+                </button>
+                <button className="btn btn-export" onClick={exportSvg}>
+                  ⬇ SVG
+                </button>
+              </>
             )}
           </div>
         </Panel>

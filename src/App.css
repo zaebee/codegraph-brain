@@ -136,6 +136,20 @@ body {
   background: #30363d;
 }
 
+.btn-export {
+  background: #21262d;
+  color: #8b949e;
+  padding: 5px 10px;
+  border: 1px solid #30363d;
+  font-size: 11px;
+}
+
+.btn-export:hover {
+  background: #1a3a5f;
+  color: #4fc3f7;
+  border-color: #4fc3f7;
+}
+
 /* Tooltip */
 .tooltip-panel {
   pointer-events: none;
