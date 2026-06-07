@@ -104,3 +104,98 @@ async def fetch_data():
     assert func_node.type == NodeType.FUNCTION
     assert len(edges) == 1
     assert edges[0].target == "raw_call:print"
+
+
+# --- Import extraction tests ---
+
+
+def test_extract_creates_file_node(extractor: PythonExtractor) -> None:
+    """parse() always produces a FILE node for the given file."""
+    nodes, _ = extractor.parse("def f(): pass", "src/mod.py")
+    file_node = next(n for n in nodes if n.type == NodeType.FILE)
+    assert file_node.id == "src.mod"
+    assert file_node.file_path == "src/mod.py"
+
+
+def test_extract_simple_import(extractor: PythonExtractor) -> None:
+    """`import os` → import_map has {"os": "os"} and an IMPORTS edge."""
+    nodes, edges = extractor.parse("import os\n", "mod.py")
+    file_node = next(n for n in nodes if n.type == NodeType.FILE)
+    assert file_node.metadata["import_map"]["os"] == "os"
+    imports_edge = next(e for e in edges if e.type == EdgeType.IMPORTS)
+    assert imports_edge.target == "os"
+
+
+def test_extract_aliased_import(extractor: PythonExtractor) -> None:
+    """`import json as js` → import_map has {"js": "json"}."""
+    nodes, _ = extractor.parse("import json as js\n", "mod.py")
+    file_node = next(n for n in nodes if n.type == NodeType.FILE)
+    assert file_node.metadata["import_map"]["js"] == "json"
+
+
+def test_extract_from_import_direct(extractor: PythonExtractor) -> None:
+    """`from cgis.pipeline import IngestionPipeline` populates import_map correctly."""
+    nodes, edges = extractor.parse("from cgis.pipeline import IngestionPipeline\n", "mod.py")
+    file_node = next(n for n in nodes if n.type == NodeType.FILE)
+    assert (
+        file_node.metadata["import_map"]["IngestionPipeline"] == "cgis.pipeline.IngestionPipeline"
+    )
+    imports_edge = next(e for e in edges if e.type == EdgeType.IMPORTS)
+    assert imports_edge.target == "cgis.pipeline"
+
+
+def test_extract_from_import_aliased(extractor: PythonExtractor) -> None:
+    """`import X as Y` alias stored under alias key in import_map."""
+    nodes, _ = extractor.parse("from cgis.pipeline import IngestionPipeline as IP\n", "mod.py")
+    file_node = next(n for n in nodes if n.type == NodeType.FILE)
+    assert file_node.metadata["import_map"]["IP"] == "cgis.pipeline.IngestionPipeline"
+
+
+def test_extract_from_import_multiple_names(extractor: PythonExtractor) -> None:
+    """`from typing import Dict, List` → both mapped."""
+    nodes, _ = extractor.parse("from typing import Dict, List\n", "mod.py")
+    file_node = next(n for n in nodes if n.type == NodeType.FILE)
+    imap = file_node.metadata["import_map"]
+    assert imap["Dict"] == "typing.Dict"
+    assert imap["List"] == "typing.List"
+
+
+def test_extract_relative_import_one_dot(extractor: PythonExtractor) -> None:
+    """`from . import base` resolves to sibling module in import_map."""
+    nodes, _ = extractor.parse("from . import base\n", "src/cgis/extractors/python_extractor.py")
+    file_node = next(n for n in nodes if n.type == NodeType.FILE)
+    assert file_node.metadata["import_map"]["base"] == "src.cgis.extractors.base"
+
+
+def test_extract_relative_import_two_dots(extractor: PythonExtractor) -> None:
+    """`from ..core import models` in src.cgis.extractors.x → {"models": "src.cgis.core.models"}."""
+    nodes, _ = extractor.parse("from ..core import models\n", "src/cgis/extractors/x.py")
+    file_node = next(n for n in nodes if n.type == NodeType.FILE)
+    assert file_node.metadata["import_map"]["models"] == "src.cgis.core.models"
+
+
+def test_extract_dotted_import_maps_local_name(extractor: PythonExtractor) -> None:
+    """`import os.path` → import_map["os"] == "os", IMPORTS edge targets full module."""
+    nodes, edges = extractor.parse("import os.path\n", "mod.py")
+    file_node = next(n for n in nodes if n.type == NodeType.FILE)
+    assert file_node.metadata["import_map"]["os"] == "os"
+    imports_edge = next(e for e in edges if e.type == EdgeType.IMPORTS)
+    assert imports_edge.target == "os.path"
+
+
+def test_extract_parenthesized_import(extractor: PythonExtractor) -> None:
+    """`from typing import (Dict, List)` — import_list node flattened correctly."""
+    nodes, _ = extractor.parse("from typing import (\n    Dict,\n    List,\n)\n", "mod.py")
+    file_node = next(n for n in nodes if n.type == NodeType.FILE)
+    imap = file_node.metadata["import_map"]
+    assert imap["Dict"] == "typing.Dict"
+    assert imap["List"] == "typing.List"
+
+
+def test_extract_wildcard_import_does_not_crash(extractor: PythonExtractor) -> None:
+    """`from module import *` must not raise and produces an IMPORTS edge."""
+    nodes, edges = extractor.parse("from module import *\n", "mod.py")
+    file_node = next(n for n in nodes if n.type == NodeType.FILE)
+    assert isinstance(file_node.metadata["import_map"], dict)
+    imports_edge = next(e for e in edges if e.type == EdgeType.IMPORTS)
+    assert imports_edge.target == "module"

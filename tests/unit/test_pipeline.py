@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from cgis.core.models import NodeType
 from cgis.extractors.python_extractor import PythonExtractor
 from cgis.pipeline import IngestionPipeline
 from cgis.storage.sqlite_store import SQLiteStore
@@ -20,8 +21,9 @@ def test_pipeline_extracts_function(pipeline: IngestionPipeline, tmp_path: Path)
 
     nodes, raw_edges, _resolved = pipeline.run(str(tmp_path))
 
-    assert len(nodes) == 1
-    assert nodes[0].name == "calc_sum"
+    func_nodes = [n for n in nodes if n.type == NodeType.FUNCTION]
+    assert len(func_nodes) == 1
+    assert func_nodes[0].name == "calc_sum"
     assert len(raw_edges) == 0
 
 
@@ -46,8 +48,9 @@ def test_pipeline_skips_unknown_extensions(pipeline: IngestionPipeline, tmp_path
 
     nodes, _, _ = pipeline.run(str(tmp_path))
 
-    assert len(nodes) == 1
-    assert nodes[0].name == "fn"
+    func_nodes = [n for n in nodes if n.type == NodeType.FUNCTION]
+    assert len(func_nodes) == 1
+    assert func_nodes[0].name == "fn"
 
 
 def test_pipeline_skips_excluded_dirs(pipeline: IngestionPipeline, tmp_path: Path) -> None:
@@ -171,5 +174,6 @@ def test_pipeline_logs_and_skips_unparseable_file(
 
     nodes, _, _ = pipeline.run(str(tmp_path))
 
-    assert len(nodes) == 1
-    assert nodes[0].name == "fine"
+    func_nodes = [n for n in nodes if n.type == NodeType.FUNCTION]
+    assert len(func_nodes) == 1
+    assert func_nodes[0].name == "fine"
