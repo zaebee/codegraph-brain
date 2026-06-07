@@ -1,6 +1,7 @@
 """Implements mermaid queries to render diagram."""
 
 import hashlib
+from pathlib import Path
 
 from cgis.core.models import Edge, Node, NodeType
 
@@ -25,13 +26,14 @@ class MermaidCompiler:
 
     def _normalize_id(self, fqn: str) -> str:
         """Deterministically hashes any complex FQN into a Mermaid-safe alphanumeric ID."""
-        hasher = hashlib.md5(fqn.encode("utf-8"))
+        hasher = hashlib.md5(fqn.encode("utf-8"), usedforsecurity=False)
         return f"n_{hasher.hexdigest()[:8]}"
 
     def _get_node_label(self, node: Node) -> str:
         """Formats the visible text inside a node (Name + file name + line range)."""
-        filename = node.file_path.split("/")[-1]
-        return f"{node.name} ({filename}:{node.start_line})"
+        filename = Path(node.file_path).name
+        label = f"{node.name} ({filename}:{node.start_line})"
+        return label.replace('"', '\\"')
 
     def _get_style_class(self, node_type: NodeType, is_unresolved: bool) -> str:
         if is_unresolved:
@@ -66,14 +68,15 @@ class MermaidCompiler:
             source_safe = id_map.get(edge.source)
             if not source_safe:
                 source_safe = self._normalize_id(edge.source)
-                lines.append(f'    {source_safe}["{edge.source}"]:::defaultNode')
+                clean_source = edge.source.replace('"', '\\"')
+                lines.append(f'    {source_safe}["{clean_source}"]:::defaultNode')
                 id_map[edge.source] = source_safe
 
             target_safe = id_map.get(edge.target)
             if not target_safe:
                 target_safe = self._normalize_id(edge.target)
-                clean_target_name = edge.target.replace("raw_call:", "")
-                lines.append(f'    {target_safe}["{clean_target_name}"]:::unresolvedNode')
+                clean_target = edge.target.replace("raw_call:", "").replace('"', '\\"')
+                lines.append(f'    {target_safe}["{clean_target}"]:::unresolvedNode')
                 id_map[edge.target] = target_safe
 
             lines.append(f"    {source_safe} -->|{edge.type.value}| {target_safe}")
