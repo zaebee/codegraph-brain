@@ -389,26 +389,36 @@ function App() {
         <Panel position="top-left" className="control-panel">
           <div className="panel-row">
             {viewMode === "flow" ? (
-              <button className="btn btn-back" onClick={buildFullGraph} aria-label="Back to full graph">
-                ← Back
-              </button>
+              <>
+                <button className="btn btn-back" onClick={buildFullGraph} aria-label="Back to full graph">
+                  ← Back
+                </button>
+                <button className="btn btn-export" onClick={() => fitView({ padding: 0.15 })} aria-label="Zoom to fit">
+                  ⊞ Fit
+                </button>
+              </>
             ) : (
-              <div className="depth-control">
-                <span className="depth-label">Depth</span>
-                <input
-                  type="range"
-                  min="1"
-                  max="5"
-                  value={depth}
-                  onChange={(e) => setDepth(Number(e.target.value))}
-                  className="depth-slider"
-                  aria-label="Flow depth"
-                  aria-valuemin={1}
-                  aria-valuemax={5}
-                  aria-valuenow={depth}
-                />
-                <span className="depth-value">{depth}</span>
-              </div>
+              <>
+                <div className="depth-control">
+                  <span className="depth-label">Depth</span>
+                  <input
+                    type="range"
+                    min="1"
+                    max="5"
+                    value={depth}
+                    onChange={(e) => setDepth(Number(e.target.value))}
+                    className="depth-slider"
+                    aria-label="Flow depth"
+                    aria-valuemin={1}
+                    aria-valuemax={5}
+                    aria-valuenow={depth}
+                  />
+                  <span className="depth-value">{depth}</span>
+                </div>
+                <button className="btn btn-export" onClick={() => fitView({ padding: 0.15 })} aria-label="Zoom to fit">
+                  ⊞ Fit
+                </button>
+              </>
             )}
 
             {viewMode === "full" && (
