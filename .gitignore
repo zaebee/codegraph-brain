@@ -19,3 +19,4 @@
 .env.production.local
 
 bun-debug.log*
+dist/
