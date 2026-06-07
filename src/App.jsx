@@ -106,7 +106,7 @@ function App() {
   const [depth, setDepth] = useState(3);
   const [hoveredNode, setHoveredNode] = useState(null);
   const [stats, setStats] = useState(null);
-  const [showExternal, setShowExternal] = useState(true);
+  const [showExternal, setShowExternal] = useState(false);
   const [allNodes, setAllNodes] = useState([]);
   const [allEdges, setAllEdges] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
