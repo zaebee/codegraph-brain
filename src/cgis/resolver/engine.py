@@ -7,6 +7,7 @@ import sys
 from cgis.core.models import VIRTUAL_FILE_PATH, Edge, Node, NodeNamespace, NodeType
 
 _BUILTINS: frozenset[str] = frozenset(dir(builtins))
+_SELF_PREFIX = "self."
 
 
 class ResolverEngine:
@@ -66,8 +67,14 @@ class ResolverEngine:
                 suffix = ".".join(parts[i:])
                 self._suffix_map.setdefault(suffix, []).append(node.id)
 
-        # Build known external roots from import maps so that truly
-        # unknown symbols (not in any import_map) can be distinguished.
+        self._build_external_roots()
+
+    def _build_external_roots(self) -> None:
+        """Build set of known external root modules from file import maps.
+
+        Any root not in internal_roots, stdlib, or external_roots
+        is classified as UNKNOWN by _classify_fqn.
+        """
         self._external_roots: set[str] = {
             val.split(".", maxsplit=1)[0]
             for import_map in self._file_imports.values()
@@ -83,7 +90,7 @@ class ResolverEngine:
         UNKNOWN means the root segment was not found in internal roots,
         stdlib/builtins, or any known import-map external root.
         """
-        if fqn.startswith((".", "self.")):
+        if fqn.startswith((".", _SELF_PREFIX)):
             return NodeNamespace.INTERNAL
         root = fqn.split(".", maxsplit=1)[0]
         if root in self._internal_roots:
@@ -126,8 +133,8 @@ class ResolverEngine:
             raw_name = edge.target.removeprefix("raw_call:")
             new_target: str | None = None
 
-            if raw_name.startswith("self."):
-                method_name = raw_name.removeprefix("self.")
+            if raw_name.startswith(_SELF_PREFIX):
+                method_name = raw_name.removeprefix(_SELF_PREFIX)
                 new_target = self._resolve_self_call(edge.source, method_name)
             else:
                 new_target = self._resolve_global_call(raw_name, edge.source, edge.file_path)

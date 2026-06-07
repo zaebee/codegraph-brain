@@ -5,6 +5,7 @@ import hashlib
 from cgis.core.models import VIRTUAL_FILE_PATH, Edge, Node, NodeNamespace, NodeType
 
 _RAW_CALL_PREFIX = "raw_call:"
+_UNRESOLVED_STYLE = ":::unresolvedNode"
 
 
 def _escape(text: str) -> str:
@@ -53,9 +54,9 @@ class MermaidCompiler:
         if node.namespace == NodeNamespace.EXTERNAL:
             return ":::externalNode"
         if node.namespace == NodeNamespace.UNKNOWN:
-            return ":::unresolvedNode"
+            return _UNRESOLVED_STYLE
         if node.file_path == VIRTUAL_FILE_PATH and node.namespace == NodeNamespace.INTERNAL:
-            return ":::unresolvedNode"
+            return _UNRESOLVED_STYLE
         if node.type == NodeType.CLASS:
             return ":::classNode"
         if node.type == NodeType.FUNCTION:
@@ -93,7 +94,7 @@ class MermaidCompiler:
                 target_safe = self._normalize_id(edge.target)
                 is_unresolved_target = edge.target.startswith(_RAW_CALL_PREFIX)
                 clean_target = _escape(edge.target.removeprefix(_RAW_CALL_PREFIX))
-                target_style = ":::unresolvedNode" if is_unresolved_target else ":::defaultNode"
+                target_style = _UNRESOLVED_STYLE if is_unresolved_target else ":::defaultNode"
                 lines.append(f'    {target_safe}["{clean_target}"]{target_style}')
                 id_map[edge.target] = target_safe
 
