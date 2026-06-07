@@ -174,6 +174,24 @@ def test_extract_relative_import_two_dots(extractor: PythonExtractor) -> None:
     assert file_node.metadata["import_map"]["models"] == "src.cgis.core.models"
 
 
+def test_extract_dotted_import_maps_local_name(extractor: PythonExtractor) -> None:
+    """`import os.path` → import_map["os"] == "os", IMPORTS edge targets full module."""
+    nodes, edges = extractor.parse("import os.path\n", "mod.py")
+    file_node = next(n for n in nodes if n.type == NodeType.FILE)
+    assert file_node.metadata["import_map"]["os"] == "os"
+    imports_edge = next(e for e in edges if e.type == EdgeType.IMPORTS)
+    assert imports_edge.target == "os.path"
+
+
+def test_extract_parenthesized_import(extractor: PythonExtractor) -> None:
+    """`from typing import (Dict, List)` — import_list node flattened correctly."""
+    nodes, _ = extractor.parse("from typing import (\n    Dict,\n    List,\n)\n", "mod.py")
+    file_node = next(n for n in nodes if n.type == NodeType.FILE)
+    imap = file_node.metadata["import_map"]
+    assert imap["Dict"] == "typing.Dict"
+    assert imap["List"] == "typing.List"
+
+
 def test_extract_wildcard_import_does_not_crash(extractor: PythonExtractor) -> None:
     """`from module import *` must not raise and produces an IMPORTS edge."""
     nodes, edges = extractor.parse("from module import *\n", "mod.py")

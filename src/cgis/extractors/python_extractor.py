@@ -176,7 +176,7 @@ class PythonExtractor(BaseExtractor):
             if child.type == "dotted_name":
                 module_str = code_bytes[child.start_byte : child.end_byte].decode("utf-8")
                 local_name = module_str.split(".")[0]
-                import_map[local_name] = module_str
+                import_map[local_name] = local_name
                 edges.append(
                     Edge(
                         id=f"{module_fqn}:imports:{module_str}",
@@ -221,9 +221,18 @@ class PythonExtractor(BaseExtractor):
     def _collect_imported_symbols(
         self, children: list[BaseNode], code_bytes: bytes
     ) -> list[tuple[str, str]]:
-        """Collect (local_name, qualified_symbol) pairs from a list of sibling nodes."""
-        symbols: list[tuple[str, str]] = []
+        """Collect (local_name, qualified_symbol) pairs from a list of sibling nodes.
+
+        Flattens parenthesized imports (`import_list` node) transparently.
+        """
+        items: list[BaseNode] = []
         for child in children:
+            if child.type == "import_list":
+                items.extend(child.children)
+            else:
+                items.append(child)
+        symbols: list[tuple[str, str]] = []
+        for child in items:
             if child.type in ("dotted_name", "identifier"):
                 sym = code_bytes[child.start_byte : child.end_byte].decode("utf-8")
                 symbols.append((sym.split(".")[-1], sym))
@@ -234,7 +243,7 @@ class PythonExtractor(BaseExtractor):
                     sym = code_bytes[name_node.start_byte : name_node.end_byte].decode("utf-8")
                     alias = code_bytes[alias_node.start_byte : alias_node.end_byte].decode("utf-8")
                     symbols.append((alias, sym))
-            # wildcard_import → skip
+            # wildcard_import, punctuation → skip
         return symbols
 
     def _process_import_from_statement(

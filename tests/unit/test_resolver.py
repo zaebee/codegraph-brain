@@ -370,6 +370,49 @@ def test_resolver_src_layout_normalization() -> None:
     assert next(e for e in result if e.id == "e1").target == "src.cgis.pipeline.IngestionPipeline"
 
 
+def test_resolver_suffix_map_takes_priority_over_strip() -> None:
+    """suffix_map (layout prefix) is checked before strip leading segments.
+
+    imported_fqn="a.b.c", graph has node "b.c" (ambiguous strip candidate)
+    AND "src.a.b.c" (the actual target via suffix_map).
+    Without priority swap, strip("a.b.c") → "b.c" (wrong).
+    """
+    nodes = [
+        # import_map: `from a.b import c as Target` → {"Target": "a.b.c"}
+        _file_node("service.py", {"Target": "a.b.c"}),
+        Node(
+            id="b.c",
+            type=NodeType.MODULE,
+            name="c",
+            file_path="b/c.py",
+            start_line=1,
+            end_line=1,
+        ),
+        Node(
+            id="src.a.b.c",
+            type=NodeType.CLASS,
+            name="c",
+            file_path="src/a/b/c.py",
+            start_line=1,
+            end_line=10,
+        ),
+        _func_node("service.use", "service.py"),
+    ]
+    edges = [
+        Edge(
+            id="e1",
+            source="service.use",
+            target="raw_call:Target",
+            type=EdgeType.CALLS,
+            confidence=0.5,
+            file_path="service.py",
+        )
+    ]
+    resolver = ResolverEngine(nodes, edges)
+    result = resolver.resolve()
+    assert next(e for e in result if e.id == "e1").target == "src.a.b.c"
+
+
 def test_resolver_wildcard_import_call_stays_unresolved() -> None:
     """from module import * → calls remain raw_call: (can't statically resolve wildcard)."""
     nodes = [

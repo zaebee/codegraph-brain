@@ -113,23 +113,27 @@ class ResolverEngine:
         """
         if imported_fqn in self.nodes:
             return imported_fqn
+        # Node has extra layout prefix (e.g. src/) — most precise match first
+        candidates = self._suffix_map.get(imported_fqn, [])
+        if len(candidates) == 1:
+            return candidates[0]
         # Strip leading segments from the imported FQN (import has extra prefix)
         parts = imported_fqn.split(".")
         for i in range(1, len(parts)):
             candidate = ".".join(parts[i:])
             if candidate in self.nodes:
                 return candidate
-        # Node has extra layout prefix (e.g. src/) — look up suffix_map
-        candidates = self._suffix_map.get(imported_fqn, [])
-        return candidates[0] if len(candidates) == 1 else None
+        return None
 
     def _resolve_global_call(
         self, name: str, source_fqn: str, edge_file_path: str | None = None
     ) -> str | None:
         """Resolve a global call using import map, then global symbol index."""
         source_node = self.nodes.get(source_fqn)
-        file_path = os.path.normpath(source_node.file_path) if source_node else (
-            os.path.normpath(edge_file_path) if edge_file_path else None
+        file_path = (
+            os.path.normpath(source_node.file_path)
+            if source_node
+            else (os.path.normpath(edge_file_path) if edge_file_path else None)
         )
 
         # 1. Check file-level import map (highest priority — explicit import wins)
@@ -142,9 +146,9 @@ class ResolverEngine:
                 return self._map_to_node_fqn(target_fqn) or target_fqn
 
             # Module-prefixed call: `import mod` → `mod.func()`
-            first_part = name.split(".")[0]
+            first_part = name.split(".", maxsplit=1)[0]
             if first_part in file_import_map and "." in name:
-                rest = name[len(first_part) + 1:]
+                rest = name[len(first_part) + 1 :]
                 resolved_mod = file_import_map[first_part]
                 target_fqn = f"{resolved_mod}.{rest}"
                 return self._map_to_node_fqn(target_fqn) or target_fqn
@@ -156,9 +160,7 @@ class ResolverEngine:
         if len(candidates) == 1:
             return candidates[0]
         if file_path:
-            same_file_candidates = self._file_global_symbols.get(
-                (file_path, name), []
-            )
+            same_file_candidates = self._file_global_symbols.get((file_path, name), [])
             if len(same_file_candidates) == 1:
                 return same_file_candidates[0]
         return None
