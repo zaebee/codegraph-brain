@@ -1,8 +1,8 @@
 {
   "metadata": {
     "source_path": "src",
-    "node_count": 80,
-    "edge_count": 369
+    "node_count": 84,
+    "edge_count": 399
   },
   "nodes": [
     {
@@ -114,8 +114,8 @@
       "type": "CLASS",
       "name": "IngestionPipeline",
       "file_path": "cgis/pipeline.py",
-      "start_line": 21,
-      "end_line": 186,
+      "start_line": 22,
+      "end_line": 188,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -127,8 +127,8 @@
       "type": "METHOD",
       "name": "__init__",
       "file_path": "cgis/pipeline.py",
-      "start_line": 22,
-      "end_line": 29,
+      "start_line": 23,
+      "end_line": 30,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -140,8 +140,8 @@
       "type": "METHOD",
       "name": "_compute_hash",
       "file_path": "cgis/pipeline.py",
-      "start_line": 32,
-      "end_line": 33,
+      "start_line": 33,
+      "end_line": 34,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -153,8 +153,8 @@
       "type": "METHOD",
       "name": "run",
       "file_path": "cgis/pipeline.py",
-      "start_line": 35,
-      "end_line": 118,
+      "start_line": 36,
+      "end_line": 120,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -166,8 +166,8 @@
       "type": "METHOD",
       "name": "_process_file",
       "file_path": "cgis/pipeline.py",
-      "start_line": 120,
-      "end_line": 148,
+      "start_line": 122,
+      "end_line": 150,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -179,8 +179,8 @@
       "type": "METHOD",
       "name": "_persist_incremental",
       "file_path": "cgis/pipeline.py",
-      "start_line": 150,
-      "end_line": 180,
+      "start_line": 152,
+      "end_line": 182,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -192,8 +192,8 @@
       "type": "METHOD",
       "name": "_get_extractor",
       "file_path": "cgis/pipeline.py",
-      "start_line": 182,
-      "end_line": 186,
+      "start_line": 184,
+      "end_line": 188,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -960,7 +960,7 @@
       "name": "_escape",
       "file_path": "cgis/query/mermaid.py",
       "start_line": 10,
-      "end_line": 17,
+      "end_line": 14,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -972,8 +972,8 @@
       "type": "CLASS",
       "name": "MermaidCompiler",
       "file_path": "cgis/query/mermaid.py",
-      "start_line": 20,
-      "end_line": 95,
+      "start_line": 17,
+      "end_line": 92,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -985,8 +985,8 @@
       "type": "METHOD",
       "name": "__init__",
       "file_path": "cgis/query/mermaid.py",
-      "start_line": 26,
-      "end_line": 36,
+      "start_line": 23,
+      "end_line": 33,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -998,8 +998,8 @@
       "type": "METHOD",
       "name": "_normalize_id",
       "file_path": "cgis/query/mermaid.py",
-      "start_line": 38,
-      "end_line": 41,
+      "start_line": 35,
+      "end_line": 38,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -1011,8 +1011,8 @@
       "type": "METHOD",
       "name": "_get_node_label",
       "file_path": "cgis/query/mermaid.py",
-      "start_line": 43,
-      "end_line": 46,
+      "start_line": 40,
+      "end_line": 43,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -1024,8 +1024,8 @@
       "type": "METHOD",
       "name": "_get_style_class",
       "file_path": "cgis/query/mermaid.py",
-      "start_line": 48,
-      "end_line": 57,
+      "start_line": 45,
+      "end_line": 54,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -1037,8 +1037,60 @@
       "type": "METHOD",
       "name": "compile",
       "file_path": "cgis/query/mermaid.py",
-      "start_line": 59,
-      "end_line": 95,
+      "start_line": 56,
+      "end_line": 92,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "confidence_score": 1.0,
+      "metadata": {}
+    },
+    {
+      "id": "cgis.api.mcp_server.cgis_ingest",
+      "type": "FUNCTION",
+      "name": "cgis_ingest",
+      "file_path": "cgis/api/mcp_server.py",
+      "start_line": 30,
+      "end_line": 50,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "confidence_score": 1.0,
+      "metadata": {}
+    },
+    {
+      "id": "cgis.api.mcp_server.cgis_trace_flow",
+      "type": "FUNCTION",
+      "name": "cgis_trace_flow",
+      "file_path": "cgis/api/mcp_server.py",
+      "start_line": 54,
+      "end_line": 72,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "confidence_score": 1.0,
+      "metadata": {}
+    },
+    {
+      "id": "cgis.api.mcp_server.cgis_analyze_impact",
+      "type": "FUNCTION",
+      "name": "cgis_analyze_impact",
+      "file_path": "cgis/api/mcp_server.py",
+      "start_line": 76,
+      "end_line": 94,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "confidence_score": 1.0,
+      "metadata": {}
+    },
+    {
+      "id": "cgis.api.mcp_server.cgis_get_structure",
+      "type": "FUNCTION",
+      "name": "cgis_get_structure",
+      "file_path": "cgis/api/mcp_server.py",
+      "start_line": 98,
+      "end_line": 116,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -2148,7 +2200,7 @@
       "line_number": 291
     },
     {
-      "id": "cgis/pipeline.py:edge_976_1047",
+      "id": "cgis/pipeline.py:edge_1009_1080",
       "source": "cgis.pipeline.IngestionPipeline._compute_hash",
       "target": "raw_call:hashlib.md5.hexdigest",
       "type": "CALLS",
@@ -2156,10 +2208,10 @@
       "confidence": 0.5,
       "context": "Call to hashlib.md5.hexdigest",
       "file_path": "cgis/pipeline.py",
-      "line_number": 33
+      "line_number": 34
     },
     {
-      "id": "cgis/pipeline.py:edge_976_1035",
+      "id": "cgis/pipeline.py:edge_1009_1068",
       "source": "cgis.pipeline.IngestionPipeline._compute_hash",
       "target": "raw_call:hashlib.md5",
       "type": "CALLS",
@@ -2167,10 +2219,10 @@
       "confidence": 0.5,
       "context": "Call to hashlib.md5",
       "file_path": "cgis/pipeline.py",
-      "line_number": 33
+      "line_number": 34
     },
     {
-      "id": "cgis/pipeline.py:edge_988_1011",
+      "id": "cgis/pipeline.py:edge_1021_1044",
       "source": "cgis.pipeline.IngestionPipeline._compute_hash",
       "target": "raw_call:content.encode",
       "type": "CALLS",
@@ -2178,10 +2230,10 @@
       "confidence": 0.5,
       "context": "Call to content.encode",
       "file_path": "cgis/pipeline.py",
-      "line_number": 33
+      "line_number": 34
     },
     {
-      "id": "cgis/pipeline.py:edge_1827_1832",
+      "id": "cgis/pipeline.py:edge_1860_1865",
       "source": "cgis.pipeline.IngestionPipeline.run",
       "target": "raw_call:set",
       "type": "CALLS",
@@ -2189,10 +2241,10 @@
       "confidence": 0.5,
       "context": "Call to set",
       "file_path": "cgis/pipeline.py",
-      "line_number": 53
+      "line_number": 54
     },
     {
-      "id": "cgis/pipeline.py:edge_1849_1864",
+      "id": "cgis/pipeline.py:edge_1882_1897",
       "source": "cgis.pipeline.IngestionPipeline.run",
       "target": "raw_call:Path",
       "type": "CALLS",
@@ -2200,10 +2252,10 @@
       "confidence": 0.5,
       "context": "Call to Path",
       "file_path": "cgis/pipeline.py",
-      "line_number": 55
+      "line_number": 56
     },
     {
-      "id": "cgis/pipeline.py:edge_1880_1893",
+      "id": "cgis/pipeline.py:edge_1913_1926",
       "source": "cgis.pipeline.IngestionPipeline.run",
       "target": "raw_call:path.exists",
       "type": "CALLS",
@@ -2211,10 +2263,10 @@
       "confidence": 0.5,
       "context": "Call to path.exists",
       "file_path": "cgis/pipeline.py",
-      "line_number": 56
+      "line_number": 57
     },
     {
-      "id": "cgis/pipeline.py:edge_1962_1984",
+      "id": "cgis/pipeline.py:edge_1995_2017",
       "source": "cgis.pipeline.IngestionPipeline.run",
       "target": "raw_call:FileNotFoundError",
       "type": "CALLS",
@@ -2222,10 +2274,10 @@
       "confidence": 0.5,
       "context": "Call to FileNotFoundError",
       "file_path": "cgis/pipeline.py",
-      "line_number": 58
+      "line_number": 59
     },
     {
-      "id": "cgis/pipeline.py:edge_2000_2013",
+      "id": "cgis/pipeline.py:edge_2033_2046",
       "source": "cgis.pipeline.IngestionPipeline.run",
       "target": "raw_call:path.is_dir",
       "type": "CALLS",
@@ -2233,10 +2285,10 @@
       "confidence": 0.5,
       "context": "Call to path.is_dir",
       "file_path": "cgis/pipeline.py",
-      "line_number": 59
+      "line_number": 60
     },
     {
-      "id": "cgis/pipeline.py:edge_2091_2114",
+      "id": "cgis/pipeline.py:edge_2124_2147",
       "source": "cgis.pipeline.IngestionPipeline.run",
       "target": "raw_call:NotADirectoryError",
       "type": "CALLS",
@@ -2244,10 +2296,10 @@
       "confidence": 0.5,
       "context": "Call to NotADirectoryError",
       "file_path": "cgis/pipeline.py",
-      "line_number": 61
+      "line_number": 62
     },
     {
-      "id": "cgis/pipeline.py:edge_2350_2364",
+      "id": "cgis/pipeline.py:edge_2383_2397",
       "source": "cgis.pipeline.IngestionPipeline.run",
       "target": "raw_call:path.resolve",
       "type": "CALLS",
@@ -2255,10 +2307,10 @@
       "confidence": 0.5,
       "context": "Call to path.resolve",
       "file_path": "cgis/pipeline.py",
-      "line_number": 66
+      "line_number": 67
     },
     {
-      "id": "cgis/pipeline.py:edge_2379_2523",
+      "id": "cgis/pipeline.py:edge_2412_2598",
       "source": "cgis.pipeline.IngestionPipeline.run",
       "target": "raw_call:Progress",
       "type": "CALLS",
@@ -2266,10 +2318,10 @@
       "confidence": 0.5,
       "context": "Call to Progress",
       "file_path": "cgis/pipeline.py",
-      "line_number": 68
+      "line_number": 69
     },
     {
-      "id": "cgis/pipeline.py:edge_2401_2416",
+      "id": "cgis/pipeline.py:edge_2434_2449",
       "source": "cgis.pipeline.IngestionPipeline.run",
       "target": "raw_call:SpinnerColumn",
       "type": "CALLS",
@@ -2277,10 +2329,10 @@
       "confidence": 0.5,
       "context": "Call to SpinnerColumn",
       "file_path": "cgis/pipeline.py",
-      "line_number": 69
+      "line_number": 70
     },
     {
-      "id": "cgis/pipeline.py:edge_2430_2484",
+      "id": "cgis/pipeline.py:edge_2463_2517",
       "source": "cgis.pipeline.IngestionPipeline.run",
       "target": "raw_call:TextColumn",
       "type": "CALLS",
@@ -2288,10 +2340,21 @@
       "confidence": 0.5,
       "context": "Call to TextColumn",
       "file_path": "cgis/pipeline.py",
-      "line_number": 70
+      "line_number": 71
     },
     {
-      "id": "cgis/pipeline.py:edge_2597_2669",
+      "id": "cgis/pipeline.py:edge_2567_2587",
+      "source": "cgis.pipeline.IngestionPipeline.run",
+      "target": "raw_call:Console",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.5,
+      "context": "Call to Console",
+      "file_path": "cgis/pipeline.py",
+      "line_number": 73
+    },
+    {
+      "id": "cgis/pipeline.py:edge_2672_2744",
       "source": "cgis.pipeline.IngestionPipeline.run",
       "target": "raw_call:progress.add_task",
       "type": "CALLS",
@@ -2299,10 +2362,10 @@
       "confidence": 0.5,
       "context": "Call to progress.add_task",
       "file_path": "cgis/pipeline.py",
-      "line_number": 74
+      "line_number": 76
     },
     {
-      "id": "cgis/pipeline.py:edge_2708_2729",
+      "id": "cgis/pipeline.py:edge_2783_2804",
       "source": "cgis.pipeline.IngestionPipeline.run",
       "target": "raw_call:workspace_root.walk",
       "type": "CALLS",
@@ -2310,10 +2373,10 @@
       "confidence": 0.5,
       "context": "Call to workspace_root.walk",
       "file_path": "cgis/pipeline.py",
-      "line_number": 76
+      "line_number": 78
     },
     {
-      "id": "cgis/pipeline.py:edge_2781_2798",
+      "id": "cgis/pipeline.py:edge_2856_2873",
       "source": "cgis.pipeline.IngestionPipeline.run",
       "target": "raw_call:d.startswith",
       "type": "CALLS",
@@ -2321,10 +2384,10 @@
       "confidence": 0.5,
       "context": "Call to d.startswith",
       "file_path": "cgis/pipeline.py",
-      "line_number": 77
+      "line_number": 79
     },
     {
-      "id": "cgis/pipeline.py:edge_2895_2920",
+      "id": "cgis/pipeline.py:edge_2970_2995",
       "source": "cgis.pipeline.IngestionPipeline.run",
       "target": "cgis.pipeline.IngestionPipeline._get_extractor",
       "type": "CALLS",
@@ -2332,10 +2395,10 @@
       "confidence": 1.0,
       "context": "Call to self._get_extractor",
       "file_path": "cgis/pipeline.py",
-      "line_number": 79
+      "line_number": 81
     },
     {
-      "id": "cgis/pipeline.py:edge_3259_3317",
+      "id": "cgis/pipeline.py:edge_3334_3392",
       "source": "cgis.pipeline.IngestionPipeline.run",
       "target": "raw_call:full_path.resolve.relative_to.as_posix",
       "type": "CALLS",
@@ -2343,10 +2406,10 @@
       "confidence": 0.5,
       "context": "Call to full_path.resolve.relative_to.as_posix",
       "file_path": "cgis/pipeline.py",
-      "line_number": 87
+      "line_number": 89
     },
     {
-      "id": "cgis/pipeline.py:edge_3259_3306",
+      "id": "cgis/pipeline.py:edge_3334_3381",
       "source": "cgis.pipeline.IngestionPipeline.run",
       "target": "raw_call:full_path.resolve.relative_to",
       "type": "CALLS",
@@ -2354,10 +2417,10 @@
       "confidence": 0.5,
       "context": "Call to full_path.resolve.relative_to",
       "file_path": "cgis/pipeline.py",
-      "line_number": 87
+      "line_number": 89
     },
     {
-      "id": "cgis/pipeline.py:edge_3259_3278",
+      "id": "cgis/pipeline.py:edge_3334_3353",
       "source": "cgis.pipeline.IngestionPipeline.run",
       "target": "raw_call:full_path.resolve",
       "type": "CALLS",
@@ -2365,10 +2428,10 @@
       "confidence": 0.5,
       "context": "Call to full_path.resolve",
       "file_path": "cgis/pipeline.py",
-      "line_number": 87
+      "line_number": 89
     },
     {
-      "id": "cgis/pipeline.py:edge_3381_3457",
+      "id": "cgis/pipeline.py:edge_3456_3532",
       "source": "cgis.pipeline.IngestionPipeline.run",
       "target": "raw_call:logger.warning",
       "type": "CALLS",
@@ -2376,10 +2439,10 @@
       "confidence": 0.5,
       "context": "Call to logger.warning",
       "file_path": "cgis/pipeline.py",
-      "line_number": 89
+      "line_number": 91
     },
     {
-      "id": "cgis/pipeline.py:edge_3442_3456",
+      "id": "cgis/pipeline.py:edge_3517_3531",
       "source": "cgis.pipeline.IngestionPipeline.run",
       "target": "raw_call:str",
       "type": "CALLS",
@@ -2387,10 +2450,10 @@
       "confidence": 0.5,
       "context": "Call to str",
       "file_path": "cgis/pipeline.py",
-      "line_number": 89
+      "line_number": 91
     },
     {
-      "id": "cgis/pipeline.py:edge_3511_3545",
+      "id": "cgis/pipeline.py:edge_3586_3620",
       "source": "cgis.pipeline.IngestionPipeline.run",
       "target": "raw_call:found_file_paths.add",
       "type": "CALLS",
@@ -2398,10 +2461,10 @@
       "confidence": 0.5,
       "context": "Call to found_file_paths.add",
       "file_path": "cgis/pipeline.py",
-      "line_number": 91
+      "line_number": 93
     },
     {
-      "id": "cgis/pipeline.py:edge_3567_3856",
+      "id": "cgis/pipeline.py:edge_3642_3931",
       "source": "cgis.pipeline.IngestionPipeline.run",
       "target": "cgis.pipeline.IngestionPipeline._process_file",
       "type": "CALLS",
@@ -2409,10 +2472,10 @@
       "confidence": 1.0,
       "context": "Call to self._process_file",
       "file_path": "cgis/pipeline.py",
-      "line_number": 93
+      "line_number": 95
     },
     {
-      "id": "cgis/pipeline.py:edge_3878_3918",
+      "id": "cgis/pipeline.py:edge_3953_3993",
       "source": "cgis.pipeline.IngestionPipeline.run",
       "target": "raw_call:progress.update",
       "type": "CALLS",
@@ -2420,10 +2483,10 @@
       "confidence": 0.5,
       "context": "Call to progress.update",
       "file_path": "cgis/pipeline.py",
-      "line_number": 103
+      "line_number": 105
     },
     {
-      "id": "cgis/pipeline.py:edge_3980_4052",
+      "id": "cgis/pipeline.py:edge_4055_4127",
       "source": "cgis.pipeline.IngestionPipeline.run",
       "target": "raw_call:progress.add_task",
       "type": "CALLS",
@@ -2431,10 +2494,10 @@
       "confidence": 0.5,
       "context": "Call to progress.add_task",
       "file_path": "cgis/pipeline.py",
-      "line_number": 106
+      "line_number": 108
     },
     {
-      "id": "cgis/pipeline.py:edge_4065_4108",
+      "id": "cgis/pipeline.py:edge_4140_4183",
       "source": "cgis.pipeline.IngestionPipeline.run",
       "target": "raw_call:logger.info",
       "type": "CALLS",
@@ -2442,10 +2505,10 @@
       "confidence": 0.5,
       "context": "Call to logger.info",
       "file_path": "cgis/pipeline.py",
-      "line_number": 107
+      "line_number": 109
     },
     {
-      "id": "cgis/pipeline.py:edge_4132_4168",
+      "id": "cgis/pipeline.py:edge_4207_4243",
       "source": "cgis.pipeline.IngestionPipeline.run",
       "target": "cgis.resolver.engine.ResolverEngine",
       "type": "CALLS",
@@ -2453,10 +2516,10 @@
       "confidence": 1.0,
       "context": "Call to ResolverEngine",
       "file_path": "cgis/pipeline.py",
-      "line_number": 108
+      "line_number": 110
     },
     {
-      "id": "cgis/pipeline.py:edge_4198_4216",
+      "id": "cgis/pipeline.py:edge_4273_4291",
       "source": "cgis.pipeline.IngestionPipeline.run",
       "target": "raw_call:resolver.resolve",
       "type": "CALLS",
@@ -2464,10 +2527,10 @@
       "confidence": 0.5,
       "context": "Call to resolver.resolve",
       "file_path": "cgis/pipeline.py",
-      "line_number": 109
+      "line_number": 111
     },
     {
-      "id": "cgis/pipeline.py:edge_4229_4269",
+      "id": "cgis/pipeline.py:edge_4304_4344",
       "source": "cgis.pipeline.IngestionPipeline.run",
       "target": "raw_call:progress.update",
       "type": "CALLS",
@@ -2475,10 +2538,10 @@
       "confidence": 0.5,
       "context": "Call to progress.update",
       "file_path": "cgis/pipeline.py",
-      "line_number": 110
+      "line_number": 112
     },
     {
-      "id": "cgis/pipeline.py:edge_4282_4360",
+      "id": "cgis/pipeline.py:edge_4357_4435",
       "source": "cgis.pipeline.IngestionPipeline.run",
       "target": "raw_call:logger.info",
       "type": "CALLS",
@@ -2486,10 +2549,10 @@
       "confidence": 0.5,
       "context": "Call to logger.info",
       "file_path": "cgis/pipeline.py",
-      "line_number": 111
+      "line_number": 113
     },
     {
-      "id": "cgis/pipeline.py:edge_4340_4359",
+      "id": "cgis/pipeline.py:edge_4415_4434",
       "source": "cgis.pipeline.IngestionPipeline.run",
       "target": "raw_call:len",
       "type": "CALLS",
@@ -2497,10 +2560,10 @@
       "confidence": 0.5,
       "context": "Call to len",
       "file_path": "cgis/pipeline.py",
-      "line_number": 111
+      "line_number": 113
     },
     {
-      "id": "cgis/pipeline.py:edge_4404_4526",
+      "id": "cgis/pipeline.py:edge_4479_4601",
       "source": "cgis.pipeline.IngestionPipeline.run",
       "target": "cgis.pipeline.IngestionPipeline._persist_incremental",
       "type": "CALLS",
@@ -2508,10 +2571,10 @@
       "confidence": 1.0,
       "context": "Call to self._persist_incremental",
       "file_path": "cgis/pipeline.py",
-      "line_number": 114
+      "line_number": 116
     },
     {
-      "id": "cgis/pipeline.py:edge_4986_5018",
+      "id": "cgis/pipeline.py:edge_5061_5093",
       "source": "cgis.pipeline.IngestionPipeline._process_file",
       "target": "raw_call:full_path.open",
       "type": "CALLS",
@@ -2519,10 +2582,10 @@
       "confidence": 0.5,
       "context": "Call to full_path.open",
       "file_path": "cgis/pipeline.py",
-      "line_number": 132
+      "line_number": 134
     },
     {
-      "id": "cgis/pipeline.py:edge_5048_5056",
+      "id": "cgis/pipeline.py:edge_5123_5131",
       "source": "cgis.pipeline.IngestionPipeline._process_file",
       "target": "raw_call:f.read",
       "type": "CALLS",
@@ -2530,10 +2593,10 @@
       "confidence": 0.5,
       "context": "Call to f.read",
       "file_path": "cgis/pipeline.py",
-      "line_number": 133
+      "line_number": 135
     },
     {
-      "id": "cgis/pipeline.py:edge_5120_5144",
+      "id": "cgis/pipeline.py:edge_5195_5219",
       "source": "cgis.pipeline.IngestionPipeline._process_file",
       "target": "cgis.pipeline.IngestionPipeline._compute_hash",
       "type": "CALLS",
@@ -2541,10 +2604,10 @@
       "confidence": 1.0,
       "context": "Call to self._compute_hash",
       "file_path": "cgis/pipeline.py",
-      "line_number": 136
+      "line_number": 138
     },
     {
-      "id": "cgis/pipeline.py:edge_5164_5198",
+      "id": "cgis/pipeline.py:edge_5239_5273",
       "source": "cgis.pipeline.IngestionPipeline._process_file",
       "target": "raw_call:store.get_file_hash",
       "type": "CALLS",
@@ -2552,10 +2615,10 @@
       "confidence": 0.5,
       "context": "Call to store.get_file_hash",
       "file_path": "cgis/pipeline.py",
-      "line_number": 137
+      "line_number": 139
     },
     {
-      "id": "cgis/pipeline.py:edge_5233_5289",
+      "id": "cgis/pipeline.py:edge_5308_5364",
       "source": "cgis.pipeline.IngestionPipeline._process_file",
       "target": "raw_call:all_nodes.extend",
       "type": "CALLS",
@@ -2563,10 +2626,10 @@
       "confidence": 0.5,
       "context": "Call to all_nodes.extend",
       "file_path": "cgis/pipeline.py",
-      "line_number": 138
+      "line_number": 140
     },
     {
-      "id": "cgis/pipeline.py:edge_5250_5288",
+      "id": "cgis/pipeline.py:edge_5325_5363",
       "source": "cgis.pipeline.IngestionPipeline._process_file",
       "target": "raw_call:store.get_nodes_by_file",
       "type": "CALLS",
@@ -2574,10 +2637,10 @@
       "confidence": 0.5,
       "context": "Call to store.get_nodes_by_file",
       "file_path": "cgis/pipeline.py",
-      "line_number": 138
+      "line_number": 140
     },
     {
-      "id": "cgis/pipeline.py:edge_5402_5438",
+      "id": "cgis/pipeline.py:edge_5477_5513",
       "source": "cgis.pipeline.IngestionPipeline._process_file",
       "target": "raw_call:extractor.parse",
       "type": "CALLS",
@@ -2585,10 +2648,10 @@
       "confidence": 0.5,
       "context": "Call to extractor.parse",
       "file_path": "cgis/pipeline.py",
-      "line_number": 142
+      "line_number": 144
     },
     {
-      "id": "cgis/pipeline.py:edge_5477_5557",
+      "id": "cgis/pipeline.py:edge_5552_5632",
       "source": "cgis.pipeline.IngestionPipeline._process_file",
       "target": "raw_call:logger.info",
       "type": "CALLS",
@@ -2596,10 +2659,10 @@
       "confidence": 0.5,
       "context": "Call to logger.info",
       "file_path": "cgis/pipeline.py",
-      "line_number": 144
+      "line_number": 146
     },
     {
-      "id": "cgis/pipeline.py:edge_5521_5531",
+      "id": "cgis/pipeline.py:edge_5596_5606",
       "source": "cgis.pipeline.IngestionPipeline._process_file",
       "target": "raw_call:len",
       "type": "CALLS",
@@ -2607,10 +2670,10 @@
       "confidence": 0.5,
       "context": "Call to len",
       "file_path": "cgis/pipeline.py",
-      "line_number": 144
+      "line_number": 146
     },
     {
-      "id": "cgis/pipeline.py:edge_5570_5593",
+      "id": "cgis/pipeline.py:edge_5645_5668",
       "source": "cgis.pipeline.IngestionPipeline._process_file",
       "target": "raw_call:all_nodes.extend",
       "type": "CALLS",
@@ -2618,10 +2681,10 @@
       "confidence": 0.5,
       "context": "Call to all_nodes.extend",
       "file_path": "cgis/pipeline.py",
-      "line_number": 145
+      "line_number": 147
     },
     {
-      "id": "cgis/pipeline.py:edge_5606_5629",
+      "id": "cgis/pipeline.py:edge_5681_5704",
       "source": "cgis.pipeline.IngestionPipeline._process_file",
       "target": "raw_call:all_edges.extend",
       "type": "CALLS",
@@ -2629,10 +2692,10 @@
       "confidence": 0.5,
       "context": "Call to all_edges.extend",
       "file_path": "cgis/pipeline.py",
-      "line_number": 146
+      "line_number": 148
     },
     {
-      "id": "cgis/pipeline.py:edge_5673_5748",
+      "id": "cgis/pipeline.py:edge_5748_5823",
       "source": "cgis.pipeline.IngestionPipeline._process_file",
       "target": "raw_call:logger.exception",
       "type": "CALLS",
@@ -2640,10 +2703,10 @@
       "confidence": 0.5,
       "context": "Call to logger.exception",
       "file_path": "cgis/pipeline.py",
-      "line_number": 148
+      "line_number": 150
     },
     {
-      "id": "cgis/pipeline.py:edge_5741_5747",
+      "id": "cgis/pipeline.py:edge_5816_5822",
       "source": "cgis.pipeline.IngestionPipeline._process_file",
       "target": "raw_call:str",
       "type": "CALLS",
@@ -2651,10 +2714,10 @@
       "confidence": 0.5,
       "context": "Call to str",
       "file_path": "cgis/pipeline.py",
-      "line_number": 148
+      "line_number": 150
     },
     {
-      "id": "cgis/pipeline.py:edge_6211_6268",
+      "id": "cgis/pipeline.py:edge_6286_6343",
       "source": "cgis.pipeline.IngestionPipeline._persist_incremental",
       "target": "raw_call:nodes_by_file.setdefault.append",
       "type": "CALLS",
@@ -2662,10 +2725,10 @@
       "confidence": 0.5,
       "context": "Call to nodes_by_file.setdefault.append",
       "file_path": "cgis/pipeline.py",
-      "line_number": 162
+      "line_number": 164
     },
     {
-      "id": "cgis/pipeline.py:edge_6211_6255",
+      "id": "cgis/pipeline.py:edge_6286_6330",
       "source": "cgis.pipeline.IngestionPipeline._persist_incremental",
       "target": "raw_call:nodes_by_file.setdefault",
       "type": "CALLS",
@@ -2673,10 +2736,10 @@
       "confidence": 0.5,
       "context": "Call to nodes_by_file.setdefault",
       "file_path": "cgis/pipeline.py",
-      "line_number": 162
+      "line_number": 164
     },
     {
-      "id": "cgis/pipeline.py:edge_6632_6663",
+      "id": "cgis/pipeline.py:edge_6707_6738",
       "source": "cgis.pipeline.IngestionPipeline._persist_incremental",
       "target": "raw_call:source_to_file.get",
       "type": "CALLS",
@@ -2684,10 +2747,10 @@
       "confidence": 0.5,
       "context": "Call to source_to_file.get",
       "file_path": "cgis/pipeline.py",
-      "line_number": 170
+      "line_number": 172
     },
     {
-      "id": "cgis/pipeline.py:edge_6737_6789",
+      "id": "cgis/pipeline.py:edge_6812_6864",
       "source": "cgis.pipeline.IngestionPipeline._persist_incremental",
       "target": "raw_call:edges_by_file.setdefault.append",
       "type": "CALLS",
@@ -2695,10 +2758,10 @@
       "confidence": 0.5,
       "context": "Call to edges_by_file.setdefault.append",
       "file_path": "cgis/pipeline.py",
-      "line_number": 172
+      "line_number": 174
     },
     {
-      "id": "cgis/pipeline.py:edge_6737_6776",
+      "id": "cgis/pipeline.py:edge_6812_6851",
       "source": "cgis.pipeline.IngestionPipeline._persist_incremental",
       "target": "raw_call:edges_by_file.setdefault",
       "type": "CALLS",
@@ -2706,10 +2769,10 @@
       "confidence": 0.5,
       "context": "Call to edges_by_file.setdefault",
       "file_path": "cgis/pipeline.py",
-      "line_number": 172
+      "line_number": 174
     },
     {
-      "id": "cgis/pipeline.py:edge_6813_6842",
+      "id": "cgis/pipeline.py:edge_6888_6917",
       "source": "cgis.pipeline.IngestionPipeline._persist_incremental",
       "target": "raw_call:store.get_all_tracked_files",
       "type": "CALLS",
@@ -2717,10 +2780,10 @@
       "confidence": 0.5,
       "context": "Call to store.get_all_tracked_files",
       "file_path": "cgis/pipeline.py",
-      "line_number": 174
+      "line_number": 176
     },
     {
-      "id": "cgis/pipeline.py:edge_6870_6956",
+      "id": "cgis/pipeline.py:edge_6945_7031",
       "source": "cgis.pipeline.IngestionPipeline._persist_incremental",
       "target": "raw_call:store.save_incremental_batch",
       "type": "CALLS",
@@ -2728,21 +2791,10 @@
       "confidence": 0.5,
       "context": "Call to store.save_incremental_batch",
       "file_path": "cgis/pipeline.py",
-      "line_number": 175
+      "line_number": 177
     },
     {
-      "id": "cgis/pipeline.py:edge_7010_7070",
-      "source": "cgis.pipeline.IngestionPipeline._persist_incremental",
-      "target": "raw_call:logger.info",
-      "type": "CALLS",
-      "weight": 1.0,
-      "confidence": 0.5,
-      "context": "Call to logger.info",
-      "file_path": "cgis/pipeline.py",
-      "line_number": 178
-    },
-    {
-      "id": "cgis/pipeline.py:edge_7122_7188",
+      "id": "cgis/pipeline.py:edge_7085_7145",
       "source": "cgis.pipeline.IngestionPipeline._persist_incremental",
       "target": "raw_call:logger.info",
       "type": "CALLS",
@@ -2753,7 +2805,18 @@
       "line_number": 180
     },
     {
-      "id": "cgis/pipeline.py:edge_7289_7313",
+      "id": "cgis/pipeline.py:edge_7197_7263",
+      "source": "cgis.pipeline.IngestionPipeline._persist_incremental",
+      "target": "raw_call:logger.info",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.5,
+      "context": "Call to logger.info",
+      "file_path": "cgis/pipeline.py",
+      "line_number": 182
+    },
+    {
+      "id": "cgis/pipeline.py:edge_7364_7388",
       "source": "cgis.pipeline.IngestionPipeline._get_extractor",
       "target": "raw_call:self._extractors.items",
       "type": "CALLS",
@@ -2761,10 +2824,10 @@
       "confidence": 0.5,
       "context": "Call to self._extractors.items",
       "file_path": "cgis/pipeline.py",
-      "line_number": 183
+      "line_number": 185
     },
     {
-      "id": "cgis/pipeline.py:edge_7330_7352",
+      "id": "cgis/pipeline.py:edge_7405_7427",
       "source": "cgis.pipeline.IngestionPipeline._get_extractor",
       "target": "raw_call:filename.endswith",
       "type": "CALLS",
@@ -2772,7 +2835,7 @@
       "confidence": 0.5,
       "context": "Call to filename.endswith",
       "file_path": "cgis/pipeline.py",
-      "line_number": 184
+      "line_number": 186
     },
     {
       "id": "cgis/__main__.py:edge_191_222",
@@ -4799,7 +4862,7 @@
       "line_number": 75
     },
     {
-      "id": "cgis/query/mermaid.py:edge_287_405",
+      "id": "cgis/query/mermaid.py:edge_287_378",
       "source": "cgis.query.mermaid._escape",
       "target": "raw_call:text.replace.replace.replace.replace",
       "type": "CALLS",
@@ -4810,7 +4873,7 @@
       "line_number": 13
     },
     {
-      "id": "cgis/query/mermaid.py:edge_287_375",
+      "id": "cgis/query/mermaid.py:edge_287_357",
       "source": "cgis.query.mermaid._escape",
       "target": "raw_call:text.replace.replace.replace",
       "type": "CALLS",
@@ -4821,7 +4884,7 @@
       "line_number": 13
     },
     {
-      "id": "cgis/query/mermaid.py:edge_287_345",
+      "id": "cgis/query/mermaid.py:edge_287_336",
       "source": "cgis.query.mermaid._escape",
       "target": "raw_call:text.replace.replace",
       "type": "CALLS",
@@ -4843,7 +4906,7 @@
       "line_number": 13
     },
     {
-      "id": "cgis/query/mermaid.py:edge_1414_1469",
+      "id": "cgis/query/mermaid.py:edge_1387_1442",
       "source": "cgis.query.mermaid.MermaidCompiler._normalize_id",
       "target": "raw_call:hashlib.md5",
       "type": "CALLS",
@@ -4851,10 +4914,10 @@
       "confidence": 0.5,
       "context": "Call to hashlib.md5",
       "file_path": "cgis/query/mermaid.py",
-      "line_number": 40
+      "line_number": 37
     },
     {
-      "id": "cgis/query/mermaid.py:edge_1426_1445",
+      "id": "cgis/query/mermaid.py:edge_1399_1418",
       "source": "cgis.query.mermaid.MermaidCompiler._normalize_id",
       "target": "raw_call:fqn.encode",
       "type": "CALLS",
@@ -4862,10 +4925,10 @@
       "confidence": 0.5,
       "context": "Call to fqn.encode",
       "file_path": "cgis/query/mermaid.py",
-      "line_number": 40
+      "line_number": 37
     },
     {
-      "id": "cgis/query/mermaid.py:edge_1490_1508",
+      "id": "cgis/query/mermaid.py:edge_1463_1481",
       "source": "cgis.query.mermaid.MermaidCompiler._normalize_id",
       "target": "raw_call:hasher.hexdigest",
       "type": "CALLS",
@@ -4873,10 +4936,10 @@
       "confidence": 0.5,
       "context": "Call to hasher.hexdigest",
       "file_path": "cgis/query/mermaid.py",
-      "line_number": 41
+      "line_number": 38
     },
     {
-      "id": "cgis/query/mermaid.py:edge_1667_1711",
+      "id": "cgis/query/mermaid.py:edge_1640_1684",
       "source": "cgis.query.mermaid.MermaidCompiler._get_node_label",
       "target": "raw_call:node.file_path.replace.split",
       "type": "CALLS",
@@ -4884,10 +4947,10 @@
       "confidence": 0.5,
       "context": "Call to node.file_path.replace.split",
       "file_path": "cgis/query/mermaid.py",
-      "line_number": 45
+      "line_number": 42
     },
     {
-      "id": "cgis/query/mermaid.py:edge_1667_1700",
+      "id": "cgis/query/mermaid.py:edge_1640_1673",
       "source": "cgis.query.mermaid.MermaidCompiler._get_node_label",
       "target": "raw_call:node.file_path.replace",
       "type": "CALLS",
@@ -4895,10 +4958,10 @@
       "confidence": 0.5,
       "context": "Call to node.file_path.replace",
       "file_path": "cgis/query/mermaid.py",
-      "line_number": 45
+      "line_number": 42
     },
     {
-      "id": "cgis/query/mermaid.py:edge_1731_1785",
+      "id": "cgis/query/mermaid.py:edge_1704_1758",
       "source": "cgis.query.mermaid.MermaidCompiler._get_node_label",
       "target": "cgis.query.mermaid._escape",
       "type": "CALLS",
@@ -4906,10 +4969,10 @@
       "confidence": 1.0,
       "context": "Call to _escape",
       "file_path": "cgis/query/mermaid.py",
-      "line_number": 46
+      "line_number": 43
     },
     {
-      "id": "cgis/query/mermaid.py:edge_2348_2378",
+      "id": "cgis/query/mermaid.py:edge_2321_2351",
       "source": "cgis.query.mermaid.MermaidCompiler.compile",
       "target": "raw_call:lines.extend",
       "type": "CALLS",
@@ -4917,10 +4980,10 @@
       "confidence": 0.5,
       "context": "Call to lines.extend",
       "file_path": "cgis/query/mermaid.py",
-      "line_number": 63
+      "line_number": 60
     },
     {
-      "id": "cgis/query/mermaid.py:edge_2387_2403",
+      "id": "cgis/query/mermaid.py:edge_2360_2376",
       "source": "cgis.query.mermaid.MermaidCompiler.compile",
       "target": "raw_call:lines.append",
       "type": "CALLS",
@@ -4928,10 +4991,10 @@
       "confidence": 0.5,
       "context": "Call to lines.append",
       "file_path": "cgis/query/mermaid.py",
-      "line_number": 64
+      "line_number": 61
     },
     {
-      "id": "cgis/query/mermaid.py:edge_2520_2547",
+      "id": "cgis/query/mermaid.py:edge_2493_2520",
       "source": "cgis.query.mermaid.MermaidCompiler.compile",
       "target": "cgis.query.mermaid.MermaidCompiler._normalize_id",
       "type": "CALLS",
@@ -4939,10 +5002,10 @@
       "confidence": 1.0,
       "context": "Call to self._normalize_id",
       "file_path": "cgis/query/mermaid.py",
-      "line_number": 68
+      "line_number": 65
     },
     {
-      "id": "cgis/query/mermaid.py:edge_2607_2633",
+      "id": "cgis/query/mermaid.py:edge_2580_2606",
       "source": "cgis.query.mermaid.MermaidCompiler.compile",
       "target": "cgis.query.mermaid.MermaidCompiler._get_node_label",
       "type": "CALLS",
@@ -4950,10 +5013,10 @@
       "confidence": 1.0,
       "context": "Call to self._get_node_label",
       "file_path": "cgis/query/mermaid.py",
-      "line_number": 71
+      "line_number": 68
     },
     {
-      "id": "cgis/query/mermaid.py:edge_2662_2698",
+      "id": "cgis/query/mermaid.py:edge_2635_2671",
       "source": "cgis.query.mermaid.MermaidCompiler.compile",
       "target": "raw_call:node.id.startswith",
       "type": "CALLS",
@@ -4961,10 +5024,10 @@
       "confidence": 0.5,
       "context": "Call to node.id.startswith",
       "file_path": "cgis/query/mermaid.py",
-      "line_number": 72
+      "line_number": 69
     },
     {
-      "id": "cgis/query/mermaid.py:edge_2719_2780",
+      "id": "cgis/query/mermaid.py:edge_2692_2753",
       "source": "cgis.query.mermaid.MermaidCompiler.compile",
       "target": "cgis.query.mermaid.MermaidCompiler._get_style_class",
       "type": "CALLS",
@@ -4972,10 +5035,10 @@
       "confidence": 1.0,
       "context": "Call to self._get_style_class",
       "file_path": "cgis/query/mermaid.py",
-      "line_number": 73
+      "line_number": 70
     },
     {
-      "id": "cgis/query/mermaid.py:edge_2794_2842",
+      "id": "cgis/query/mermaid.py:edge_2767_2815",
       "source": "cgis.query.mermaid.MermaidCompiler.compile",
       "target": "raw_call:lines.append",
       "type": "CALLS",
@@ -4983,10 +5046,10 @@
       "confidence": 0.5,
       "context": "Call to lines.append",
       "file_path": "cgis/query/mermaid.py",
-      "line_number": 75
+      "line_number": 72
     },
     {
-      "id": "cgis/query/mermaid.py:edge_2897_2920",
+      "id": "cgis/query/mermaid.py:edge_2870_2893",
       "source": "cgis.query.mermaid.MermaidCompiler.compile",
       "target": "raw_call:id_map.get",
       "type": "CALLS",
@@ -4994,10 +5057,10 @@
       "confidence": 0.5,
       "context": "Call to id_map.get",
       "file_path": "cgis/query/mermaid.py",
-      "line_number": 78
+      "line_number": 75
     },
     {
-      "id": "cgis/query/mermaid.py:edge_2983_3014",
+      "id": "cgis/query/mermaid.py:edge_2956_2987",
       "source": "cgis.query.mermaid.MermaidCompiler.compile",
       "target": "cgis.query.mermaid.MermaidCompiler._normalize_id",
       "type": "CALLS",
@@ -5005,10 +5068,10 @@
       "confidence": 1.0,
       "context": "Call to self._normalize_id",
       "file_path": "cgis/query/mermaid.py",
-      "line_number": 80
+      "line_number": 77
     },
     {
-      "id": "cgis/query/mermaid.py:edge_3031_3105",
+      "id": "cgis/query/mermaid.py:edge_3004_3078",
       "source": "cgis.query.mermaid.MermaidCompiler.compile",
       "target": "raw_call:lines.append",
       "type": "CALLS",
@@ -5016,10 +5079,10 @@
       "confidence": 0.5,
       "context": "Call to lines.append",
       "file_path": "cgis/query/mermaid.py",
-      "line_number": 81
+      "line_number": 78
     },
     {
-      "id": "cgis/query/mermaid.py:edge_3066_3086",
+      "id": "cgis/query/mermaid.py:edge_3039_3059",
       "source": "cgis.query.mermaid.MermaidCompiler.compile",
       "target": "cgis.query.mermaid._escape",
       "type": "CALLS",
@@ -5027,10 +5090,10 @@
       "confidence": 1.0,
       "context": "Call to _escape",
       "file_path": "cgis/query/mermaid.py",
-      "line_number": 81
+      "line_number": 78
     },
     {
-      "id": "cgis/query/mermaid.py:edge_3183_3206",
+      "id": "cgis/query/mermaid.py:edge_3156_3179",
       "source": "cgis.query.mermaid.MermaidCompiler.compile",
       "target": "raw_call:id_map.get",
       "type": "CALLS",
@@ -5038,10 +5101,10 @@
       "confidence": 0.5,
       "context": "Call to id_map.get",
       "file_path": "cgis/query/mermaid.py",
-      "line_number": 84
+      "line_number": 81
     },
     {
-      "id": "cgis/query/mermaid.py:edge_3269_3300",
+      "id": "cgis/query/mermaid.py:edge_3242_3273",
       "source": "cgis.query.mermaid.MermaidCompiler.compile",
       "target": "cgis.query.mermaid.MermaidCompiler._normalize_id",
       "type": "CALLS",
@@ -5049,10 +5112,10 @@
       "confidence": 1.0,
       "context": "Call to self._normalize_id",
       "file_path": "cgis/query/mermaid.py",
-      "line_number": 86
+      "line_number": 83
     },
     {
-      "id": "cgis/query/mermaid.py:edge_3340_3380",
+      "id": "cgis/query/mermaid.py:edge_3313_3353",
       "source": "cgis.query.mermaid.MermaidCompiler.compile",
       "target": "raw_call:edge.target.startswith",
       "type": "CALLS",
@@ -5060,10 +5123,10 @@
       "confidence": 0.5,
       "context": "Call to edge.target.startswith",
       "file_path": "cgis/query/mermaid.py",
-      "line_number": 87
+      "line_number": 84
     },
     {
-      "id": "cgis/query/mermaid.py:edge_3412_3463",
+      "id": "cgis/query/mermaid.py:edge_3385_3436",
       "source": "cgis.query.mermaid.MermaidCompiler.compile",
       "target": "cgis.query.mermaid._escape",
       "type": "CALLS",
@@ -5071,10 +5134,10 @@
       "confidence": 1.0,
       "context": "Call to _escape",
       "file_path": "cgis/query/mermaid.py",
-      "line_number": 88
+      "line_number": 85
     },
     {
-      "id": "cgis/query/mermaid.py:edge_3420_3462",
+      "id": "cgis/query/mermaid.py:edge_3393_3435",
       "source": "cgis.query.mermaid.MermaidCompiler.compile",
       "target": "raw_call:edge.target.removeprefix",
       "type": "CALLS",
@@ -5082,10 +5145,21 @@
       "confidence": 0.5,
       "context": "Call to edge.target.removeprefix",
       "file_path": "cgis/query/mermaid.py",
-      "line_number": 88
+      "line_number": 85
     },
     {
-      "id": "cgis/query/mermaid.py:edge_3577_3643",
+      "id": "cgis/query/mermaid.py:edge_3550_3616",
+      "source": "cgis.query.mermaid.MermaidCompiler.compile",
+      "target": "raw_call:lines.append",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.5,
+      "context": "Call to lines.append",
+      "file_path": "cgis/query/mermaid.py",
+      "line_number": 87
+    },
+    {
+      "id": "cgis/query/mermaid.py:edge_3680_3751",
       "source": "cgis.query.mermaid.MermaidCompiler.compile",
       "target": "raw_call:lines.append",
       "type": "CALLS",
@@ -5096,15 +5170,323 @@
       "line_number": 90
     },
     {
-      "id": "cgis/query/mermaid.py:edge_3707_3778",
-      "source": "cgis.query.mermaid.MermaidCompiler.compile",
-      "target": "raw_call:lines.append",
+      "id": "cgis/api/mcp_server.py:edge_1099_1129",
+      "source": "cgis.api.mcp_server.cgis_ingest",
+      "target": "cgis.pipeline.IngestionPipeline",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": "Call to IngestionPipeline",
+      "file_path": "cgis/api/mcp_server.py",
+      "line_number": 37
+    },
+    {
+      "id": "cgis/api/mcp_server.py:edge_1152_1172",
+      "source": "cgis.api.mcp_server.cgis_ingest",
+      "target": "cgis.storage.sqlite_store.SQLiteStore",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": "Call to SQLiteStore",
+      "file_path": "cgis/api/mcp_server.py",
+      "line_number": 39
+    },
+    {
+      "id": "cgis/api/mcp_server.py:edge_1219_1258",
+      "source": "cgis.api.mcp_server.cgis_ingest",
+      "target": "raw_call:pipeline.run",
       "type": "CALLS",
       "weight": 1.0,
       "confidence": 0.5,
-      "context": "Call to lines.append",
-      "file_path": "cgis/query/mermaid.py",
+      "context": "Call to pipeline.run",
+      "file_path": "cgis/api/mcp_server.py",
+      "line_number": 40
+    },
+    {
+      "id": "cgis/api/mcp_server.py:edge_1321_1406",
+      "source": "cgis.api.mcp_server.cgis_ingest",
+      "target": "raw_call:logger.info",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.5,
+      "context": "Call to logger.info",
+      "file_path": "cgis/api/mcp_server.py",
+      "line_number": 44
+    },
+    {
+      "id": "cgis/api/mcp_server.py:edge_1362_1372",
+      "source": "cgis.api.mcp_server.cgis_ingest",
+      "target": "raw_call:len",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.5,
+      "context": "Call to len",
+      "file_path": "cgis/api/mcp_server.py",
+      "line_number": 44
+    },
+    {
+      "id": "cgis/api/mcp_server.py:edge_1380_1393",
+      "source": "cgis.api.mcp_server.cgis_ingest",
+      "target": "raw_call:len",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.5,
+      "context": "Call to len",
+      "file_path": "cgis/api/mcp_server.py",
+      "line_number": 44
+    },
+    {
+      "id": "cgis/api/mcp_server.py:edge_1480_1490",
+      "source": "cgis.api.mcp_server.cgis_ingest",
+      "target": "raw_call:len",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.5,
+      "context": "Call to len",
+      "file_path": "cgis/api/mcp_server.py",
+      "line_number": 47
+    },
+    {
+      "id": "cgis/api/mcp_server.py:edge_1522_1535",
+      "source": "cgis.api.mcp_server.cgis_ingest",
+      "target": "raw_call:len",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.5,
+      "context": "Call to len",
+      "file_path": "cgis/api/mcp_server.py",
+      "line_number": 48
+    },
+    {
+      "id": "cgis/api/mcp_server.py:edge_1916_1938",
+      "source": "cgis.api.mcp_server.cgis_trace_flow",
+      "target": "raw_call:Path.exists",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.5,
+      "context": "Call to Path.exists",
+      "file_path": "cgis/api/mcp_server.py",
+      "line_number": 60
+    },
+    {
+      "id": "cgis/api/mcp_server.py:edge_1916_1929",
+      "source": "cgis.api.mcp_server.cgis_trace_flow",
+      "target": "raw_call:Path",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.5,
+      "context": "Call to Path",
+      "file_path": "cgis/api/mcp_server.py",
+      "line_number": 60
+    },
+    {
+      "id": "cgis/api/mcp_server.py:edge_2041_2061",
+      "source": "cgis.api.mcp_server.cgis_trace_flow",
+      "target": "cgis.storage.sqlite_store.SQLiteStore",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": "Call to SQLiteStore",
+      "file_path": "cgis/api/mcp_server.py",
+      "line_number": 63
+    },
+    {
+      "id": "cgis/api/mcp_server.py:edge_2099_2154",
+      "source": "cgis.api.mcp_server.cgis_trace_flow",
+      "target": "raw_call:QueryEngine.get_flow_graph",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.5,
+      "context": "Call to QueryEngine.get_flow_graph",
+      "file_path": "cgis/api/mcp_server.py",
+      "line_number": 64
+    },
+    {
+      "id": "cgis/api/mcp_server.py:edge_2099_2117",
+      "source": "cgis.api.mcp_server.cgis_trace_flow",
+      "target": "cgis.query.engine.QueryEngine",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": "Call to QueryEngine",
+      "file_path": "cgis/api/mcp_server.py",
+      "line_number": 64
+    },
+    {
+      "id": "cgis/api/mcp_server.py:edge_2298_2337",
+      "source": "cgis.api.mcp_server.cgis_trace_flow",
+      "target": "raw_call:MermaidCompiler.compile",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.5,
+      "context": "Call to MermaidCompiler.compile",
+      "file_path": "cgis/api/mcp_server.py",
+      "line_number": 71
+    },
+    {
+      "id": "cgis/api/mcp_server.py:edge_2298_2315",
+      "source": "cgis.api.mcp_server.cgis_trace_flow",
+      "target": "cgis.query.mermaid.MermaidCompiler",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": "Call to MermaidCompiler",
+      "file_path": "cgis/api/mcp_server.py",
+      "line_number": 71
+    },
+    {
+      "id": "cgis/api/mcp_server.py:edge_2728_2750",
+      "source": "cgis.api.mcp_server.cgis_analyze_impact",
+      "target": "raw_call:Path.exists",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.5,
+      "context": "Call to Path.exists",
+      "file_path": "cgis/api/mcp_server.py",
+      "line_number": 82
+    },
+    {
+      "id": "cgis/api/mcp_server.py:edge_2728_2741",
+      "source": "cgis.api.mcp_server.cgis_analyze_impact",
+      "target": "raw_call:Path",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.5,
+      "context": "Call to Path",
+      "file_path": "cgis/api/mcp_server.py",
+      "line_number": 82
+    },
+    {
+      "id": "cgis/api/mcp_server.py:edge_2853_2873",
+      "source": "cgis.api.mcp_server.cgis_analyze_impact",
+      "target": "cgis.storage.sqlite_store.SQLiteStore",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": "Call to SQLiteStore",
+      "file_path": "cgis/api/mcp_server.py",
+      "line_number": 85
+    },
+    {
+      "id": "cgis/api/mcp_server.py:edge_2911_2968",
+      "source": "cgis.api.mcp_server.cgis_analyze_impact",
+      "target": "raw_call:QueryEngine.get_impact_graph",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.5,
+      "context": "Call to QueryEngine.get_impact_graph",
+      "file_path": "cgis/api/mcp_server.py",
+      "line_number": 86
+    },
+    {
+      "id": "cgis/api/mcp_server.py:edge_2911_2929",
+      "source": "cgis.api.mcp_server.cgis_analyze_impact",
+      "target": "cgis.query.engine.QueryEngine",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": "Call to QueryEngine",
+      "file_path": "cgis/api/mcp_server.py",
+      "line_number": 86
+    },
+    {
+      "id": "cgis/api/mcp_server.py:edge_3112_3151",
+      "source": "cgis.api.mcp_server.cgis_analyze_impact",
+      "target": "raw_call:MermaidCompiler.compile",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.5,
+      "context": "Call to MermaidCompiler.compile",
+      "file_path": "cgis/api/mcp_server.py",
       "line_number": 93
+    },
+    {
+      "id": "cgis/api/mcp_server.py:edge_3112_3129",
+      "source": "cgis.api.mcp_server.cgis_analyze_impact",
+      "target": "cgis.query.mermaid.MermaidCompiler",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": "Call to MermaidCompiler",
+      "file_path": "cgis/api/mcp_server.py",
+      "line_number": 93
+    },
+    {
+      "id": "cgis/api/mcp_server.py:edge_3571_3593",
+      "source": "cgis.api.mcp_server.cgis_get_structure",
+      "target": "raw_call:Path.exists",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.5,
+      "context": "Call to Path.exists",
+      "file_path": "cgis/api/mcp_server.py",
+      "line_number": 104
+    },
+    {
+      "id": "cgis/api/mcp_server.py:edge_3571_3584",
+      "source": "cgis.api.mcp_server.cgis_get_structure",
+      "target": "raw_call:Path",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.5,
+      "context": "Call to Path",
+      "file_path": "cgis/api/mcp_server.py",
+      "line_number": 104
+    },
+    {
+      "id": "cgis/api/mcp_server.py:edge_3696_3716",
+      "source": "cgis.api.mcp_server.cgis_get_structure",
+      "target": "cgis.storage.sqlite_store.SQLiteStore",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": "Call to SQLiteStore",
+      "file_path": "cgis/api/mcp_server.py",
+      "line_number": 107
+    },
+    {
+      "id": "cgis/api/mcp_server.py:edge_3754_3809",
+      "source": "cgis.api.mcp_server.cgis_get_structure",
+      "target": "raw_call:QueryEngine.get_flow_graph",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.5,
+      "context": "Call to QueryEngine.get_flow_graph",
+      "file_path": "cgis/api/mcp_server.py",
+      "line_number": 108
+    },
+    {
+      "id": "cgis/api/mcp_server.py:edge_3754_3772",
+      "source": "cgis.api.mcp_server.cgis_get_structure",
+      "target": "cgis.query.engine.QueryEngine",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": "Call to QueryEngine",
+      "file_path": "cgis/api/mcp_server.py",
+      "line_number": 108
+    },
+    {
+      "id": "cgis/api/mcp_server.py:edge_3953_3992",
+      "source": "cgis.api.mcp_server.cgis_get_structure",
+      "target": "raw_call:MermaidCompiler.compile",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.5,
+      "context": "Call to MermaidCompiler.compile",
+      "file_path": "cgis/api/mcp_server.py",
+      "line_number": 115
+    },
+    {
+      "id": "cgis/api/mcp_server.py:edge_3953_3970",
+      "source": "cgis.api.mcp_server.cgis_get_structure",
+      "target": "cgis.query.mermaid.MermaidCompiler",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": "Call to MermaidCompiler",
+      "file_path": "cgis/api/mcp_server.py",
+      "line_number": 115
     }
   ]
 }
