@@ -101,13 +101,19 @@ export function layoutGraph(nodes, edges) {
   for (const box of groupBoxes) {
     let y = box.origY;
 
-    for (const p of placed) {
-      const horizOverlap =
-        box.origX < p.x + p.width && box.origX + box.width > p.x;
-      const vertOverlap = y < p.y + p.height && y + box.height > p.y;
+    let hasOverlap = true;
+    while (hasOverlap) {
+      hasOverlap = false;
+      for (const p of placed) {
+        const horizOverlap =
+          box.origX < p.x + p.width && box.origX + box.width > p.x;
+        const vertOverlap = y < p.y + p.height && y + box.height > p.y;
 
-      if (horizOverlap && vertOverlap) {
-        y = p.y + p.height + GROUP_SPACING;
+        if (horizOverlap && vertOverlap) {
+          y = p.y + p.height + GROUP_SPACING;
+          hasOverlap = true;
+          break;
+        }
       }
     }
 
