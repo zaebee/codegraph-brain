@@ -357,7 +357,7 @@ def test_connect_idempotent() -> None:
     store.disconnect()
 
 
-def test_migrate_adds_namespace_column(tmp_path: pytest.TempPathFactory) -> None:
+def test_migrate_adds_namespace_column(tmp_path: Path) -> None:
     db_path = str(Path(str(tmp_path)) / "old.db")
     conn = sqlite3.connect(db_path)
     conn.executescript("""
