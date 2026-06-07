@@ -1,6 +1,6 @@
-import { groupByClass } from "./grouping";
+import { groupByFile } from "./grouping";
 
-describe("groupByClass", () => {
+describe("groupByFile", () => {
   const makeNode = (id, type, filePath) => ({
     id,
     type,
@@ -17,7 +17,7 @@ describe("groupByClass", () => {
       makeNode("c", "FUNCTION", "src/utils.py")
     ];
 
-    const result = groupByClass(nodes, []);
+    const result = groupByFile(nodes, []);
     const groups = result.nodes.filter(n => n.type === "group");
 
     expect(groups).toHaveLength(2);
@@ -29,7 +29,7 @@ describe("groupByClass", () => {
 
   it("uses filename as label", () => {
     const nodes = [makeNode("a", "FUNCTION", "src/cgis/pipeline.py")];
-    const result = groupByClass(nodes, []);
+    const result = groupByFile(nodes, []);
     const group = result.nodes.find(n => n.type === "group");
 
     expect(group.data.label).toBe("pipeline.py");
@@ -43,7 +43,7 @@ describe("groupByClass", () => {
       makeNode("b", "METHOD", "src/app.py")
     ];
 
-    const result = groupByClass(nodes, []);
+    const result = groupByFile(nodes, []);
     const childA = result.nodes.find(n => n.id === "a");
     const childB = result.nodes.find(n => n.id === "b");
 
@@ -53,7 +53,7 @@ describe("groupByClass", () => {
 
   it("does not set groupId on nodes without class", () => {
     const nodes = [{ id: "ext1", type: "EXTERNAL", data: {}, position: { x: 0, y: 0 } }];
-    const result = groupByClass(nodes, []);
+    const result = groupByFile(nodes, []);
 
     expect(result.nodes[0].groupId).toBeUndefined();
   });
@@ -62,7 +62,7 @@ describe("groupByClass", () => {
     const edges = [{ id: "e1", source: "a", target: "b" }];
     const nodes = [makeNode("a", "FUNCTION", "f.py"), makeNode("b", "FUNCTION", "f.py")];
 
-    const result = groupByClass(nodes, edges);
+    const result = groupByFile(nodes, edges);
     expect(result.edges).toEqual(edges);
   });
 
@@ -71,7 +71,7 @@ describe("groupByClass", () => {
       makeNode(`n${i}`, "METHOD", "big.py")
     );
 
-    const result = groupByClass(nodes, []);
+    const result = groupByFile(nodes, []);
     const groups = result.nodes.filter(n => n.type === "group");
     expect(groups).toHaveLength(1);
   });

@@ -7,7 +7,7 @@ import "./App.css";
 import graph from "./graph.json";
 
 import { layoutGraph } from "./layout";
-import { groupByClass } from "./grouping";
+import { groupByFile } from "./grouping";
 import { buildExecutionFlow } from "./flow";
 import GroupNode from "./GroupNode";
 
@@ -213,7 +213,7 @@ function App() {
       };
     });
 
-    const grouped = groupByClass(baseNodes, baseEdges);
+    const grouped = groupByFile(baseNodes, baseEdges);
     const layoutedNodes = layoutGraph(grouped.nodes, grouped.edges);
 
     setAllNodes(layoutedNodes);

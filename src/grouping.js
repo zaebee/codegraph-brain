@@ -1,4 +1,4 @@
-export function groupByClass(nodes, edges) {
+export function groupByFile(nodes, edges) {
   const classMap = new Map();
 
   nodes.forEach((n) => {
