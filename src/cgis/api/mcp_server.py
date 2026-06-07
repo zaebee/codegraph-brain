@@ -38,7 +38,7 @@ def cgis_ingest(project_path: str, db_path: str = _DEFAULT_DB) -> str:
     try:
         with SQLiteStore(db_path) as store:
             nodes, _raw, resolved = pipeline.run(project_path, store=store)
-    except (FileNotFoundError, NotADirectoryError) as exc:
+    except Exception as exc:
         return f"❌ {exc}"
 
     logger.info("MCP ingest complete", nodes=len(nodes), edges=len(resolved), db=db_path)
