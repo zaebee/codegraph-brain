@@ -2,9 +2,21 @@
 
 import json
 import sqlite3
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
+
+_RAW_CALL_PREFIX = "raw_call:"
+
+
+@dataclass
+class EdgeStats:
+    total: int
+    resolved: int
+    unresolved: int
+    unresolved_ratio: float
+    top_unresolved: list[tuple[str, int]] = field(default_factory=list)
 
 
 class SQLiteStore:
@@ -276,6 +288,30 @@ class SQLiteStore:
             raise RuntimeError(self._error_message)
         cursor = self._conn.execute("SELECT * FROM nodes WHERE file_path = ?", (file_path,))
         return [self._row_to_node(row) for row in cursor.fetchall()]
+
+    def get_edge_stats(self) -> EdgeStats:
+        """Return resolution statistics for all edges in the graph."""
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        total: int = self._conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
+        unresolved: int = self._conn.execute(
+            "SELECT COUNT(*) FROM edges WHERE target LIKE ?", (f"{_RAW_CALL_PREFIX}%",)
+        ).fetchone()[0]
+        resolved = total - unresolved
+        ratio = unresolved / total if total else 0.0
+        rows = self._conn.execute(
+            """SELECT target, COUNT(*) AS cnt FROM edges
+               WHERE target LIKE ? GROUP BY target ORDER BY cnt DESC LIMIT 10""",
+            (f"{_RAW_CALL_PREFIX}%",),
+        ).fetchall()
+        top = [(row["target"], int(row["cnt"])) for row in rows]
+        return EdgeStats(
+            total=total,
+            resolved=resolved,
+            unresolved=unresolved,
+            unresolved_ratio=ratio,
+            top_unresolved=top,
+        )
 
     def get_all_tracked_files(self) -> set[str]:
         """Return the set of all file paths currently tracked in files_state."""

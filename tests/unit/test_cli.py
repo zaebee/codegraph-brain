@@ -327,3 +327,48 @@ def test_impact_invalid_format_exits_with_error() -> None:
 
     assert result.exit_code == 2
     assert "Invalid value for '--format'" in result.output
+
+
+def test_validate_missing_db_exits_with_error(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["validate", "--db", str(tmp_path / "missing.db")])
+
+    assert result.exit_code == 1
+    assert "Database not found" in result.output
+
+
+def test_validate_passes_when_ratio_below_threshold(tmp_path: Path) -> None:
+    """Graph with only resolved edges exits 0."""
+    (tmp_path / "mod.py").write_text(
+        "def caller():\n    callee()\n\ndef callee(): pass\n", encoding="utf-8"
+    )
+    db_file = tmp_path / "graph.db"
+    runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
+
+    result = runner.invoke(app, ["validate", "--db", str(db_file), "--threshold", "1.0"])
+
+    assert result.exit_code == 0
+    assert "Graph Integrity Report" in result.output
+
+
+def test_validate_fails_when_ratio_exceeds_threshold(tmp_path: Path) -> None:
+    """Graph with many unresolved calls exits 1 when threshold is very tight."""
+    (tmp_path / "mod.py").write_text("def fn(): print('hi')\n", encoding="utf-8")
+    db_file = tmp_path / "graph.db"
+    runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
+
+    result = runner.invoke(app, ["validate", "--db", str(db_file), "--threshold", "0.0"])
+
+    assert result.exit_code == 1
+    assert "exceeds threshold" in result.output
+
+
+def test_validate_shows_top_unresolved(tmp_path: Path) -> None:
+    """validate lists top unresolved call targets."""
+    (tmp_path / "mod.py").write_text("def fn(): print('hi')\n", encoding="utf-8")
+    db_file = tmp_path / "graph.db"
+    runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
+
+    result = runner.invoke(app, ["validate", "--db", str(db_file), "--threshold", "1.0"])
+
+    assert result.exit_code == 0
+    assert "print" in result.output
