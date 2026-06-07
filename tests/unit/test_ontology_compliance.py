@@ -1,6 +1,8 @@
 """Validate that docs/ontology/core.yaml stays in sync with NodeType/EdgeType enums."""
 
+from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -9,18 +11,19 @@ from cgis.core.models import EdgeType, NodeType
 _ONTOLOGY_PATH = Path(__file__).parents[2] / "docs" / "ontology" / "core.yaml"
 
 
-def _load_ontology() -> dict:  # type: ignore[type-arg]
-    return yaml.safe_load(_ONTOLOGY_PATH.read_text(encoding="utf-8"))
+@lru_cache(maxsize=1)
+def _load_ontology() -> dict[str, Any]:
+    return yaml.safe_load(_ONTOLOGY_PATH.read_text(encoding="utf-8"))  # type: ignore[no-any-return]
 
 
-def _yaml_node_types(ontology: dict) -> set[str]:  # type: ignore[type-arg]
+def _yaml_node_types(ontology: dict[str, Any]) -> set[str]:
     node_types: set[str] = set()
     for values in ontology["node_types"].values():
         node_types.update(values)
     return node_types
 
 
-def _yaml_edge_types(ontology: dict) -> set[str]:  # type: ignore[type-arg]
+def _yaml_edge_types(ontology: dict[str, Any]) -> set[str]:
     edge_types: set[str] = set()
     for values in ontology["edge_types"].values():
         edge_types.update(values)
