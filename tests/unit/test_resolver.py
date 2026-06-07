@@ -571,6 +571,44 @@ def process(store: Store):
         )
 
 
+def test_local_type_resolution_typing_optional_annotation() -> None:
+    """typing.Optional[X] (module-prefixed wrapper) must extract X, not 'typing.Optional'."""
+    code = """
+import typing
+
+class SQLiteStore:
+    def save(self):
+        pass
+
+def run(store: typing.Optional[SQLiteStore]):
+    store.save()
+"""
+    nodes, _edges = PythonExtractor().parse(code, "cgis/storage/sqlite_store.py")
+    func_node = next(n for n in nodes if n.id == "cgis.storage.sqlite_store.run")
+    local_types = func_node.metadata.get("local_types", {})
+    assert local_types.get("store", "").endswith("SQLiteStore"), (
+        f"Expected type ending in 'SQLiteStore', got {local_types.get('store')!r}"
+    )
+
+
+def test_local_type_resolution_nested_generic_annotation() -> None:
+    """Optional[list[Node]] must not produce a malformed type string."""
+    code = """
+class Node:
+    def dump(self):
+        pass
+
+def run(nodes: Optional[list[Node]]):
+    pass
+"""
+    nodes, _edges = PythonExtractor().parse(code, "app/service.py")
+    func_node = next(n for n in nodes if n.id == "app.service.run")
+    local_types = func_node.metadata.get("local_types", {})
+    # Inner type is "list[Node]" — after cleaning should be "list", not "list[Node" (malformed)
+    stored = local_types.get("nodes", "")
+    assert "[" not in stored, f"Malformed type string in local_types: {stored!r}"
+
+
 def test_local_type_resolution_optional_annotation() -> None:
     """Optional[X] param annotations must record X as the type, not Optional."""
     code = """

@@ -503,10 +503,15 @@ class PythonExtractor(BaseExtractor):
         # Handle generic wrappers: Optional[X] -> X, Union[X, Y] -> X, list[X] -> list
         if "[" in type_str:
             outer, _, inner = type_str.partition("[")
-            if outer.strip() in self._GENERIC_WRAPPERS:
-                type_str = inner.rstrip("]").split(",")[0]
-            else:
-                type_str = outer
+            # Support both `Optional[X]` and `typing.Optional[X]`
+            outer_base = outer.strip().split(".")[-1]
+            if outer_base in self._GENERIC_WRAPPERS:
+                # Strip only the single outermost `]` to avoid mangling nested generics
+                if inner.endswith("]"):
+                    inner = inner[:-1]
+                first_arg = inner.split(",")[0].strip()
+                return self._clean_python_type_string(first_arg)
+            type_str = outer
         return type_str.strip()
 
     def _is_method(self, node: BaseNode) -> bool:
