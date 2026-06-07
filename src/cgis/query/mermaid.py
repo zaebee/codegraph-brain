@@ -75,10 +75,12 @@ class MermaidCompiler:
             target_safe = id_map.get(edge.target)
             if not target_safe:
                 target_safe = self._normalize_id(edge.target)
+                is_unresolved_target = edge.target.startswith("raw_call:")
                 clean_target = (
-                    edge.target.replace("raw_call:", "").replace("\\", "\\\\").replace('"', '\\"')
+                    edge.target.removeprefix("raw_call:").replace("\\", "\\\\").replace('"', '\\"')
                 )
-                lines.append(f'    {target_safe}["{clean_target}"]:::unresolvedNode')
+                target_style = ":::unresolvedNode" if is_unresolved_target else ":::defaultNode"
+                lines.append(f'    {target_safe}["{clean_target}"]{target_style}')
                 id_map[edge.target] = target_safe
 
             lines.append(f"    {source_safe} -->|{edge.type.value}| {target_safe}")

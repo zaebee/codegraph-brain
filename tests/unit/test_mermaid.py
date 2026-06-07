@@ -92,6 +92,24 @@ def test_compile_phantom_target_with_raw_call_prefix() -> None:
     assert ":::unresolvedNode" in mermaid_code
 
 
+def test_compile_phantom_target_without_raw_call_uses_default_style() -> None:
+    """Phantom target without raw_call: prefix gets defaultNode, not unresolvedNode."""
+    nodes = [_make_node("mod.py:caller")]
+    edges = [_make_edge("mod.py:caller", "mod.py:deep_callee")]
+
+    mermaid_code = MermaidCompiler().compile(nodes, edges)
+
+    assert '"mod.py:deep_callee"' in mermaid_code
+    # Must NOT be marked as unresolved — the node is known, just not in the subgraph
+    node_lines = [
+        line for line in mermaid_code.splitlines()
+        if "deep_callee" in line and "-->" not in line
+    ]
+    assert node_lines
+    assert ":::defaultNode" in node_lines[0]
+    assert ":::unresolvedNode" not in node_lines[0]
+
+
 def test_compile_empty_graph() -> None:
     """Compiling an empty graph returns a valid (but node-free) Mermaid header."""
     mermaid_code = MermaidCompiler().compile([], [])
