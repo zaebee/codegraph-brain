@@ -250,5 +250,5 @@ def impact(
     store.disconnect()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     app()
