@@ -293,31 +293,17 @@ def test_impact_mermaid_format_outputs_diagram(tmp_path: Path) -> None:
     assert "classDef" in result.output
 
 
-def test_trace_invalid_format_exits_with_error(tmp_path: Path) -> None:
-    """trace --format <unknown> exits with error and explains valid options."""
-    (tmp_path / "mod.py").write_text("def fn(): pass\n", encoding="utf-8")
-    db_file = tmp_path / "graph.db"
-    runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
+def test_trace_invalid_format_exits_with_error() -> None:
+    """trace --format <unknown> is rejected by Typer with exit code 2."""
+    result = runner.invoke(app, ["trace", "some.fqn", "--format", "svg"])
 
-    py_file = tmp_path / "mod.py"
-    result = runner.invoke(
-        app, ["trace", f"{py_file}:fn", "--db", str(db_file), "--format", "svg"]
-    )
-
-    assert result.exit_code == 1
-    assert "Unknown format" in result.output
+    assert result.exit_code == 2
+    assert "Invalid value for '--format'" in result.output
 
 
-def test_impact_invalid_format_exits_with_error(tmp_path: Path) -> None:
-    """impact --format <unknown> exits with error and explains valid options."""
-    (tmp_path / "mod.py").write_text("def fn(): pass\n", encoding="utf-8")
-    db_file = tmp_path / "graph.db"
-    runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
+def test_impact_invalid_format_exits_with_error() -> None:
+    """impact --format <unknown> is rejected by Typer with exit code 2."""
+    result = runner.invoke(app, ["impact", "some.fqn", "--format", "svg"])
 
-    py_file = tmp_path / "mod.py"
-    result = runner.invoke(
-        app, ["impact", f"{py_file}:fn", "--db", str(db_file), "--format", "svg"]
-    )
-
-    assert result.exit_code == 1
-    assert "Unknown format" in result.output
+    assert result.exit_code == 2
+    assert "Invalid value for '--format'" in result.output

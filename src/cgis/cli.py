@@ -1,6 +1,7 @@
 """ "CLI to run pipeline."""
 
 import json
+from enum import StrEnum
 from pathlib import Path
 
 import typer
@@ -14,6 +15,12 @@ from cgis.pipeline import IngestionPipeline
 from cgis.query.engine import QueryEngine
 from cgis.query.mermaid import MermaidCompiler
 from cgis.storage.sqlite_store import SQLiteStore
+
+
+class OutputFormat(StrEnum):
+    TEXT = "text"
+    MERMAID = "mermaid"
+
 
 console = Console()
 app = typer.Typer(help="CGIS: Code Graph Intelligence System CLI")
@@ -148,7 +155,7 @@ def trace(
     start: str = typer.Argument(..., help="FQN of the starting node to trace flow from"),
     db: str = typer.Option("graph.db", "--db", "-d", help="Path to the SQLite database"),
     depth: int = typer.Option(5, "--depth", help="Maximum traversal depth"),
-    output_format: str = typer.Option(
+    output_format: OutputFormat = typer.Option(
         "text", "--format", "-f", help="Output format: text or mermaid"
     ),
 ) -> None:
@@ -166,10 +173,10 @@ def trace(
             console.print(f"[bold red]❌ Start entity not found in graph:[/bold red] {start}")
             raise typer.Exit(code=1)
 
-        if output_format.lower() == "mermaid":
+        if output_format == OutputFormat.MERMAID:
             nodes, edges = QueryEngine(store).get_flow_graph(start, max_depth=depth)
             typer.echo(MermaidCompiler().compile(nodes, edges))
-        elif output_format.lower() == "text":
+        else:
             console.print(
                 f"[bold blue]🔍 Tracing execution flow starting from:[/bold blue] {start}\n"
             )
@@ -181,12 +188,6 @@ def trace(
             tree = Tree(root_label)
             build_trace_tree(store, start, tree, {start}, depth, 0)
             console.print(tree)
-        else:
-            console.print(
-                f"[bold red]❌ Unknown format:[/bold red] {output_format!r}. "
-                "Use 'text' or 'mermaid'."
-            )
-            raise typer.Exit(code=1)
 
 
 def build_impact_tree(
@@ -235,7 +236,7 @@ def impact(
     target: str = typer.Argument(..., help="FQN of the target entity to analyze"),
     db: str = typer.Option("graph.db", "--db", "-d", help="Path to the SQLite database"),
     depth: int = typer.Option(5, "--depth", help="Maximum traversal depth"),
-    output_format: str = typer.Option(
+    output_format: OutputFormat = typer.Option(
         "text", "--format", "-f", help="Output format: text or mermaid"
     ),
 ) -> None:
@@ -253,10 +254,10 @@ def impact(
             console.print(f"[bold red]❌ Target entity not found in graph:[/bold red] {target}")
             raise typer.Exit(code=1)
 
-        if output_format.lower() == "mermaid":
+        if output_format == OutputFormat.MERMAID:
             nodes, edges = QueryEngine(store).get_impact_graph(target, max_depth=depth)
             typer.echo(MermaidCompiler().compile(nodes, edges))
-        elif output_format.lower() == "text":
+        else:
             console.print(
                 f"[bold blue]🔍 Analyzing transitive upstream callers of:[/bold blue] {target}\n"
             )
@@ -268,12 +269,6 @@ def impact(
             tree = Tree(root_label)
             build_impact_tree(store, target, tree, {target}, depth, 0)
             console.print(tree)
-        else:
-            console.print(
-                f"[bold red]❌ Unknown format:[/bold red] {output_format!r}. "
-                "Use 'text' or 'mermaid'."
-            )
-            raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":  # pragma: no cover

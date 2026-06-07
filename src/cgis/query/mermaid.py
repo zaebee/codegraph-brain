@@ -5,6 +5,8 @@ from pathlib import Path
 
 from cgis.core.models import Edge, Node, NodeType
 
+_RAW_CALL_PREFIX = "raw_call:"
+
 
 class MermaidCompiler:
     """
@@ -33,7 +35,7 @@ class MermaidCompiler:
         """Formats the visible text inside a node (Name + file name + line range)."""
         filename = Path(node.file_path).name
         label = f"{node.name} ({filename}:{node.start_line})"
-        return label.replace("\\", "\\\\").replace('"', '\\"')
+        return label.replace("\\", "\\\\").replace('"', "#quot;")
 
     def _get_style_class(self, node_type: NodeType, is_unresolved: bool) -> str:
         if is_unresolved:
@@ -59,7 +61,7 @@ class MermaidCompiler:
             id_map[node.id] = safe_id
 
             label = self._get_node_label(node)
-            is_unresolved = node.id.startswith("raw_call:")
+            is_unresolved = node.id.startswith(_RAW_CALL_PREFIX)
             style = self._get_style_class(node.type, is_unresolved=is_unresolved)
 
             lines.append(f'    {safe_id}["{label}"]{style}')
@@ -68,16 +70,18 @@ class MermaidCompiler:
             source_safe = id_map.get(edge.source)
             if not source_safe:
                 source_safe = self._normalize_id(edge.source)
-                clean_source = edge.source.replace("\\", "\\\\").replace('"', '\\"')
+                clean_source = edge.source.replace("\\", "\\\\").replace('"', "#quot;")
                 lines.append(f'    {source_safe}["{clean_source}"]:::defaultNode')
                 id_map[edge.source] = source_safe
 
             target_safe = id_map.get(edge.target)
             if not target_safe:
                 target_safe = self._normalize_id(edge.target)
-                is_unresolved_target = edge.target.startswith("raw_call:")
+                is_unresolved_target = edge.target.startswith(_RAW_CALL_PREFIX)
                 clean_target = (
-                    edge.target.removeprefix("raw_call:").replace("\\", "\\\\").replace('"', '\\"')
+                    edge.target.removeprefix(_RAW_CALL_PREFIX)
+                    .replace("\\", "\\\\")
+                    .replace('"', "#quot;")
                 )
                 target_style = ":::unresolvedNode" if is_unresolved_target else ":::defaultNode"
                 lines.append(f'    {target_safe}["{clean_target}"]{target_style}')
