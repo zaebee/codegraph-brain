@@ -1,9 +1,20 @@
+/**
+ * Extract the group key from a node for file-based grouping.
+ * @param {{ type: string, file_path?: string }} node
+ * @returns {string|null} The file path to group by, or null for external nodes.
+ */
 export function extractGroupKey(node) {
   if (node.type === "EXTERNAL") return null;
   if (node.file_path) return node.file_path;
   return null;
 }
 
+/**
+ * Group nodes by their file path, creating group container nodes.
+ * @param {{ id: string, class?: string }[]} nodes
+ * @param {{ source: string, target: string }[]} edges
+ * @returns {{ nodes: Array, edges: Array }} Grouped nodes with group containers.
+ */
 export function groupByFile(nodes, edges) {
   const classMap = new Map();
 

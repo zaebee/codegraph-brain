@@ -2,6 +2,12 @@ import dagre from "dagre";
 
 import { NODE_WIDTH, NODE_HEIGHT, GROUP_PADDING, GROUP_HEADER, GROUP_SPACING } from "./constants";
 
+/**
+ * Layout nodes using dagre with TB direction and resolve group overlaps.
+ * @param {{ id: string, type: string, groupId?: string, style?: Object }[]} nodes
+ * @param {{ source: string, target: string }[]} edges
+ * @returns {Array} Nodes with computed positions.
+ */
 export function layoutGraph(nodes, edges) {
   const groupNodes = nodes.filter(n => n.type === "group");
   const classNodes = nodes.filter(n => n.type === "CLASS");

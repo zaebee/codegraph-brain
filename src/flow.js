@@ -1,3 +1,13 @@
+import { deduplicateEdges } from "./utils";
+
+/**
+ * Build an execution flow from a start node using bidirectional DFS.
+ * @param {{ nodes: Array, edges: Array }} graph - The full graph data.
+ * @param {string} startNodeId - The node to start the flow from.
+ * @param {number} [depth=3] - Maximum traversal depth.
+ * @param {'outgoing' | 'incoming' | 'both'} [direction='both'] - Traversal direction.
+ * @returns {{ nodes: Array, edges: Array }} The execution flow subgraph.
+ */
 export function buildExecutionFlow(graph, startNodeId, depth = 3, direction = "both") {
   const nodeMap = new Map(graph.nodes.map(n => [n.id, n]));
 
@@ -77,15 +87,9 @@ export function buildExecutionFlow(graph, startNodeId, depth = 3, direction = "b
       }
     });
 
-    const edgeKeySet = new Set(flowEdges.map(e => `${e.source}->${e.target}`));
-
-    inFlowEdges.forEach(e => {
-      const key = `${e.source}->${e.target}`;
-      if (!edgeKeySet.has(key)) {
-        edgeKeySet.add(key);
-        flowEdges.push(e);
-      }
-    });
+    const allEdges = [...flowEdges, ...inFlowEdges];
+    flowEdges.length = 0;
+    flowEdges.push(...deduplicateEdges(allEdges));
   }
 
   return {
