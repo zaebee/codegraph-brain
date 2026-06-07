@@ -1,3 +1,9 @@
+export function extractGroupKey(node) {
+  if (node.type === "EXTERNAL") return null;
+  if (node.file_path) return node.file_path;
+  return null;
+}
+
 export function groupByFile(nodes, edges) {
   const classMap = new Map();
 
