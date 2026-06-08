@@ -17,6 +17,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "interrogate>=1.7.0",
     "ipdb>=0.13.13",
     "mypy>=2.1.0",
     "pytest>=9.0.3",
