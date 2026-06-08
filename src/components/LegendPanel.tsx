@@ -1,5 +1,5 @@
 import { Panel } from "@xyflow/react";
-import "./LegendPanel.css";
+import styles from "./LegendPanel.module.css";
 import { LEGEND_ITEMS } from "../theme";
 import type { LegendItem } from "../theme";
 
@@ -12,12 +12,12 @@ export default function LegendPanel({ visible = true }: { visible: boolean }) {
   if (!visible) return null;
 
   return (
-    <Panel position="bottom-right" className="legend-panel">
-      <div className="legend">
+    <Panel position="bottom-right" className={styles["legend-panel"]}>
+      <div className={styles.legend}>
         {LEGEND_ITEMS.map((item: LegendItem) => (
-          <div key={item.type} className="legend-item">
-            <span className="legend-dot" style={{ background: item.color }} />
-            <span className="legend-label">{item.label}</span>
+          <div key={item.type} className={styles["legend-item"]}>
+            <span className={styles["legend-dot"]} style={{ background: item.color }} />
+            <span className={styles["legend-label"]}>{item.label}</span>
           </div>
         ))}
       </div>
