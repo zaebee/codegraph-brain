@@ -80,6 +80,7 @@ class SemanticUpliftEngine:
 
     def execute_uplift(self) -> None:
         """Run all phases against the store in a single pass."""
+        self._store.delete_semantic_uplift()
         nodes = self._store.get_all_nodes()
         edges = self._store.get_all_edges()
 

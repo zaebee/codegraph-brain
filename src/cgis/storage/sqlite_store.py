@@ -174,6 +174,16 @@ class SQLiteStore:
         with self._conn:
             self._conn.executemany(self._EDGE_INSERT, [self._edge_to_row(e) for e in edges])
 
+    def delete_semantic_uplift(self) -> None:
+        """Remove all DOMAIN_CONCEPT nodes and DOMAIN_DEPENDS_ON edges."""
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        with self._conn:
+            self._conn.execute("DELETE FROM nodes WHERE type = ?", (NodeType.DOMAIN_CONCEPT.value,))
+            self._conn.execute(
+                "DELETE FROM edges WHERE type = ?", (EdgeType.DOMAIN_DEPENDS_ON.value,)
+            )
+
     def get_all_nodes(self) -> list[Node]:
         """Return every node currently in the store."""
         if not self._conn:
