@@ -32,7 +32,8 @@ bun run build      # production build
 
 ## Gotchas
 
-- `html-to-image` pinned to `1.11.11` — newer versions broken per xyflow docs.
+- `html-to-image` at `^1.11.13` — verified compatible with export tests.
 - Search dims nodes via opacity — triggers ResizeObserver loop error (benign, ignore it).
 - `extractClass(n)` returns `n.file_path` — used as `class` prop for grouping, not class-based grouping.
 - Export targets `.react-flow__viewport`, filters out minimap/controls by class name.
+- **`bun test` (Bun native) vs `bun run test` (vitest):** Canonical runner is vitest (`bun run test:run`). `bun test` lacks `vi` global and `vi.mock()` hoisting — component tests (`*.test.tsx`) and any file using `vi.mock` silently fail under Bun native. Pure-logic tests (utils, layout, grouping) work fine. See `src/setup-bun.ts` for happy-dom DOM setup.

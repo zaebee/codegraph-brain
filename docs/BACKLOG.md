@@ -39,8 +39,8 @@
 
 - [x] CI/CD — GitHub Actions workflow для test + build
 - [x] ESLint + Prettier — flat config, React + typescript-eslint plugins
-- [ ] Environment variables — `.env` для graph data path, API URLs
-- [ ] `html-to-image` pin 1.11.11 — periodic re-check (tech debt tracking)
+- [x] Environment variables — `.env` для graph data path, API URLs
+- [x] `html-to-image` pin 1.11.11 — bumped to `^1.11.13`, verified with export tests
 - [ ] Bundle analyzer — `rollup-plugin-visualizer` для оптимизации
 
 ## 🟣 Code Quality
@@ -105,9 +105,20 @@
 - [x] Integration: fetch → layout → render (App.test.tsx)
 - **Итог:** 10 test files, 74 tests, lint + tsc clean
 
-### Phase 4: CSS Architecture — TODO
+### Phase 4: CSS Architecture ✅
 
-**Рекомендация:** CSS Modules — минимальные затраты, нет runtime overhead.
+- ✅ `tokens.css` — CSS custom properties (colors, spacing, radii, font sizes)
+- ✅ `shared.module.css` — shared button classes (`.btn`, `.btn-icon`, `.btn-toggle`, `.btn-preset`, `.btn-back`, `.btn-export`, `.btn.active`)
+- ✅ `GroupNode.module.css` — group node styles
+- ✅ `ControlPanel` → CSS Modules
+- ✅ `LoadingOverlay` → CSS Modules
+- ✅ `StatsPanel` → CSS Modules
+- ✅ `LegendPanel` → CSS Modules
+- ✅ `NodeTooltip` → CSS Modules
+- ✅ `App.tsx` → CSS Modules (+ `:global()` for react-flow classes)
+- ✅ `GroupNode.tsx` → CSS Modules
+- ✅ Old plain `.css` files deleted
+- **Итог:** 8 CSS Modules, only `index.css` remains as plain CSS (global body/font imports), all tokens via `var(--token)`
 
 ### Phase 5: Progressive Disclosure (GitHub #30, #31) — блокировано backend-ом
 
