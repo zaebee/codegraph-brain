@@ -15,7 +15,7 @@ class MistralProvider(BaseProvider):
         """Send prompts to Mistral and return the text response."""
         _install_hint = "mistralai is required. Install with: uv sync --group guardian"
         try:
-            from mistralai import Mistral  # noqa: PLC0415
+            from mistralai.client import Mistral  # noqa: PLC0415
         except ImportError as exc:
             raise ImportError(_install_hint) from exc
         async with Mistral(api_key=self._api_key) as client:
