@@ -41,7 +41,7 @@ def _prune_external(
 ) -> tuple[list[Node], list[Edge]]:
     """Remove non-INTERNAL nodes and prune internal nodes disconnected after that removal."""
     nodes = [n for n in nodes if n.namespace == NodeNamespace.INTERNAL or n.id == start_id]
-    internal_ids = {n.id for n in nodes}
+    internal_ids = {n.id for n in nodes} | {start_id}
     filtered_edges = [
         e for e in visited_edges.values() if e.source in internal_ids and e.target in internal_ids
     ]
