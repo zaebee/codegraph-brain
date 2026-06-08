@@ -99,14 +99,20 @@ classDef defaultNode fill:#fafafa,stroke:#9e9e9e,stroke-width:1.5px,color:#21212
 classDef stdlibNode fill:#eceff1,stroke:#607d8b,stroke-width:1px,color:#455a64;
 classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dasharray: 3 3,color:#bf360c;
 
-    n_0f875e605375c329869f67b3fb05ca43["_get_extractor (pipeline.py:210)"]:::methodNode
-    n_705d8fa6977288feb6d561fe353917bd["_persist_incremental (pipeline.py:171)"]:::methodNode
-    n_69ab802205de25759be41c9155266b2c["_process_file (pipeline.py:141)"]:::methodNode
-    n_380356b2071cde8dd55ba6287e99bd8a["run (pipeline.py:47)"]:::methodNode
-    n_ebda4de8e05ef057deb454e72894302d["ResolverEngine (engine.py:14)"]:::classNode
-    n_e75ca2e29418d9c85a1a14b7069c25d9["resolve (engine.py:149)"]:::methodNode
-    n_2dda32fbe79232f92feae85b97527aff["SemanticUpliftEngine (uplift.py:66)"]:::classNode
-    n_aafcdc9602017019ffdfedea66173d0e["execute_uplift (uplift.py:91)"]:::methodNode
+    subgraph n_9881ca900b7c44fd13c9206dbb6b1f1c["pipeline.py"]
+        n_0f875e605375c329869f67b3fb05ca43["_get_extractor (pipeline.py:210)"]:::methodNode
+        n_705d8fa6977288feb6d561fe353917bd["_persist_incremental (pipeline.py:171)"]:::methodNode
+        n_69ab802205de25759be41c9155266b2c["_process_file (pipeline.py:141)"]:::methodNode
+        n_380356b2071cde8dd55ba6287e99bd8a["run (pipeline.py:47)"]:::methodNode
+    end
+    subgraph n_724e82bcada88588298dcf4c3336e3f5["engine.py"]
+        n_ebda4de8e05ef057deb454e72894302d["ResolverEngine (engine.py:14)"]:::classNode
+        n_e75ca2e29418d9c85a1a14b7069c25d9["resolve (engine.py:149)"]:::methodNode
+    end
+    subgraph n_b64d9821d81a859afcf762f9892f0b4a["uplift.py"]
+        n_2dda32fbe79232f92feae85b97527aff["SemanticUpliftEngine (uplift.py:66)"]:::classNode
+        n_aafcdc9602017019ffdfedea66173d0e["execute_uplift (uplift.py:91)"]:::methodNode
+    end
     n_380356b2071cde8dd55ba6287e99bd8a -->|CALLS| n_0f875e605375c329869f67b3fb05ca43
     n_380356b2071cde8dd55ba6287e99bd8a -->|CALLS| n_69ab802205de25759be41c9155266b2c
     n_380356b2071cde8dd55ba6287e99bd8a -->|CALLS| n_ebda4de8e05ef057deb454e72894302d
