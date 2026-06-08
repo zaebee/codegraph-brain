@@ -4,7 +4,8 @@ import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { ReactFlow, Background, Controls, MiniMap, useReactFlow, Panel } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
-import "./App.css";
+import appStyles from "./App.module.css";
+import sharedStyles from "./shared.module.css";
 
 import { layoutGraph } from "./layout";
 import { groupByFile, extractGroupKey } from "./grouping";
@@ -28,10 +29,10 @@ import type { GraphData } from "./types";
 
 function ErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
   return (
-    <div className="error-boundary">
+    <div className={appStyles["error-boundary"]}>
       <h2>Something went wrong</h2>
       <p>{error instanceof Error ? error.message : String(error)}</p>
-      <button className="btn btn-back" onClick={resetErrorBoundary}>
+      <button className={sharedStyles.btn + " " + sharedStyles["btn-back"]} onClick={resetErrorBoundary}>
         Try again
       </button>
     </div>
@@ -233,9 +234,9 @@ function App() {
 
   if (graphLoading) {
     return (
-      <div className="app-root loading">
-        <div className="loading-indicator">
-          <div className="loading-spinner" />
+      <div className={appStyles["app-root"] + " loading"}>
+          <div className={appStyles["loading-indicator"]}>
+            <div className={appStyles["loading-spinner"]} />
           <span>Loading graph data...</span>
         </div>
       </div>
@@ -244,7 +245,7 @@ function App() {
 
   return (
     <div
-      className="app-root"
+      className={appStyles["app-root"]}
       ref={wrapperRef}
       onMouseMove={(e) => setMousePos({ x: e.clientX, y: e.clientY })}
     >
