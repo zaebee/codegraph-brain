@@ -102,7 +102,7 @@ def test_storage_does_not_import_api(
                 if val == "cgis" or _clean(val) == "api":
                     violations.add(f"{n.id} -> {val}")
 
-    assert not violations, +"\n".join(f"  {v}" for v in sorted(violations))
+    assert not violations, _API_STORAGE_FORBIDDEN + "\n".join(f"  {v}" for v in sorted(violations))
 
 
 # ---------------------------------------------------------------------------
