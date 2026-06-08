@@ -48,7 +48,7 @@ def _compute_health(db_path: str) -> _HealthResult:
 
     if node_count > 0 and resolved_ratio >= 0.85:
         message, color = "healthy", "brightgreen"
-    elif resolved_ratio >= 0.70:
+    elif node_count > 0 and resolved_ratio >= 0.70:
         message, color = "degraded", "yellow"
     else:
         message, color = "unhealthy", "red"
