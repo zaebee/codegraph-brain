@@ -16,11 +16,11 @@ def _reachable_from(
     edges: list[Edge],
     get_neighbor_id: Callable[[Edge], str],
 ) -> set[str]:
-    """BFS reachability from start_id through filtered edges."""
+    """DFS reachability from start_id through filtered edges."""
     adj: dict[str, list[str]] = {}
     for e in edges:
         nbr = get_neighbor_id(e)
-        frm = e.target if nbr == e.source else e.source
+        frm = e.source if nbr == e.target else e.target
         adj.setdefault(frm, []).append(nbr)
     reachable: set[str] = {start_id}
     queue: list[str] = [start_id]
