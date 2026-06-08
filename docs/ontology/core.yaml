@@ -56,7 +56,7 @@ confidence:
   semantic_min: 0.5
 
 conventions:
-  fqn_format: "<package>.<module>.<ClassName>.<method_name>"
+  fqn_format: "<package>.<module>.[ClassName].<symbol_name>"
   fqn_examples:
     - "src.cgis.pipeline.IngestionPipeline.run"
     - "src.cgis.query.engine.QueryEngine.get_flow_graph"
