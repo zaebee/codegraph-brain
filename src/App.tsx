@@ -9,6 +9,7 @@ import sharedStyles from "./shared.module.css";
 
 import { layoutGraph } from "./layout";
 import { filterValidEdges } from "./utils";
+import { getCollapsedView } from "./collapse";
 import { mapNodeToReactFlow } from "./utils/nodeMapper";
 import { mapEdgeToReactFlow } from "./utils/edgeMapper";
 
@@ -153,49 +154,12 @@ function App() {
     if (graphData) buildFullGraph();
   }, [graphData, buildFullGraph]);
 
-  const getCollapsedView = useCallback(
-    (nodes: any[], edges: any[]): { nodes: any[]; edges: any[] } => {
-      const parentChildren = parentChildrenRef.current;
-
-      if (expandedFiles.size === 0) {
-        const fileNodes = nodes.filter(
-          (n: any) => n.data?.nodeType === "FILE" && parentChildren.has(n.id)
-        );
-        const fileNodeIds = new Set(fileNodes.map((n: any) => n.id));
-        const fileEdges = edges.filter(
-          (e: any) => fileNodeIds.has(e.source) && fileNodeIds.has(e.target)
-        );
-        return { nodes: fileNodes, edges: fileEdges };
-      }
-
-      const visibleIds = new Set<string>();
-      for (const n of nodes) {
-        if (n.data?.nodeType === "FILE" && parentChildren.has(n.id)) {
-          visibleIds.add(n.id);
-          if (expandedFiles.has(n.id)) {
-            const children = parentChildren.get(n.id) || [];
-            for (const cid of children) {
-              visibleIds.add(cid);
-            }
-          }
-        }
-      }
-
-      const filteredNodes = nodes.filter((n: any) => visibleIds.has(n.id));
-      const filteredEdges = edges.filter(
-        (e: any) => visibleIds.has(e.source) && visibleIds.has(e.target)
-      );
-      return { nodes: filteredNodes, edges: filteredEdges };
-    },
-    [expandedFiles]
-  );
-
-  // Combined filter: collapse → external → layout
+  // Combined filter: collapse → edge type → external → layout
   useEffect(() => {
     async function applyFilters() {
       if (viewMode !== "full") return;
 
-      const collapsed = getCollapsedView(allNodes, allEdges);
+      const collapsed = getCollapsedView(allNodes, allEdges, expandedFiles, parentChildrenRef.current);
 
       const typeFilteredEdges = collapsed.edges.filter(
         (e: any) => {

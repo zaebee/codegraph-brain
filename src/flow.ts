@@ -33,70 +33,54 @@ export function buildExecutionFlow(
     incoming.get(e.target)!.push(e);
   });
 
-  const visited = new Set<string>();
   const flowNodes = new Map<string, GraphNode>();
   const flowEdges: GraphEdge[] = [];
 
-  function dfs(nodeId: string, currentDepth: number, edges: Map<string, GraphEdge[]>) {
+  function dfs(
+    nodeId: string,
+    currentDepth: number,
+    edgesMap: Map<string, GraphEdge[]>,
+    resolveNext: (edge: GraphEdge) => string,
+    visited: Set<string>,
+    nodeAcc: Map<string, GraphNode>,
+    edgeAcc: GraphEdge[]
+  ) {
     if (visited.has(nodeId) || currentDepth > depth) return;
-
     visited.add(nodeId);
 
     const node = nodeMap.get(nodeId);
     if (!node) return;
 
-    flowNodes.set(nodeId, node);
+    nodeAcc.set(nodeId, node);
 
-    const outEdges = edges.get(nodeId) || [];
-
-    outEdges.forEach((e) => {
+    const nodeEdges = edgesMap.get(nodeId) || [];
+    nodeEdges.forEach((e) => {
       if (!allowedEdgeTypes.includes(e.type)) return;
-
-      flowEdges.push(e);
-      dfs(e.target, currentDepth + 1, edges);
+      edgeAcc.push(e);
+      dfs(resolveNext(e), currentDepth + 1, edgesMap, resolveNext, visited, nodeAcc, edgeAcc);
     });
   }
 
   if (direction === "outgoing" || direction === "both") {
-    dfs(startNodeId, 0, outgoing);
+    const outVisited = new Set<string>();
+    const outNodes = new Map<string, GraphNode>();
+    const outEdges: GraphEdge[] = [];
+    dfs(startNodeId, 0, outgoing, (e) => e.target, outVisited, outNodes, outEdges);
+    outNodes.forEach((node, id) => flowNodes.set(id, node));
+    flowEdges.push(...outEdges);
   }
 
   if (direction === "incoming" || direction === "both") {
     const inVisited = new Set<string>();
-    const inFlowNodes = new Map<string, GraphNode>();
-    const inFlowEdges: GraphEdge[] = [];
-
-    function dfsIn(nodeId: string, currentDepth: number) {
-      if (inVisited.has(nodeId) || currentDepth > depth) return;
-
-      inVisited.add(nodeId);
-
-      const node = nodeMap.get(nodeId);
-      if (!node) return;
-
-      inFlowNodes.set(nodeId, node);
-
-      const inEdges = incoming.get(nodeId) || [];
-
-      inEdges.forEach((e) => {
-        if (!allowedEdgeTypes.includes(e.type)) return;
-
-        inFlowEdges.push(e);
-        dfsIn(e.source, currentDepth + 1);
-      });
-    }
-
-    dfsIn(startNodeId, 0);
-
-    inFlowNodes.forEach((node, id) => {
-      if (!flowNodes.has(id)) {
-        flowNodes.set(id, node);
-      }
+    const inNodes = new Map<string, GraphNode>();
+    const inEdges: GraphEdge[] = [];
+    dfs(startNodeId, 0, incoming, (e) => e.source, inVisited, inNodes, inEdges);
+    inNodes.forEach((node, id) => {
+      if (!flowNodes.has(id)) flowNodes.set(id, node);
     });
-
-    const allEdges: GraphEdge[] = [...flowEdges, ...inFlowEdges];
+    const merged = [...flowEdges, ...inEdges];
     flowEdges.length = 0;
-    flowEdges.push(...deduplicateEdges(allEdges));
+    flowEdges.push(...deduplicateEdges(merged));
   }
 
   return {

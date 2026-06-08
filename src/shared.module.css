@@ -25,13 +25,6 @@
   color: white;
 }
 
-.btn-icon {
-  padding: var(--spacing-xs) var(--spacing-sm);
-  font-size: var(--font-size-xl);
-  line-height: 1;
-  min-width: auto;
-}
-
 .btn-icon-sm {
   padding: 0 4px;
   font-size: 12px;
@@ -39,24 +32,14 @@
   min-width: auto;
 }
 
-.btn-toggle {
-  font-size: var(--font-size-sm);
-  padding: 8px 10px;
-}
-
-.btn-preset {
-  font-size: var(--font-size-md);
-  padding: var(--spacing-sm) 10px;
-}
-
-.btn-back {
-  font-size: var(--font-size-sm);
-}
-
 .btn-sm {
   font-size: 10px;
   padding: 2px 6px;
   line-height: 1.4;
+}
+
+.btn-back {
+  font-size: var(--font-size-sm);
 }
 
 .btn-edge-type {
