@@ -1,3 +1,5 @@
+"""Gathers git diff and project files needed for Guardian review context."""
+
 import subprocess
 from pathlib import Path
 
@@ -6,6 +8,7 @@ class ContextCollector:
     """Gathers all necessary context for the review."""
 
     def __init__(self, project_root: Path, base_branch: str = "main") -> None:
+        """Set project root and the base branch used for git diff."""
         self.project_root = project_root
         self.base_branch = base_branch
 

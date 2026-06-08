@@ -18,6 +18,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Check commenter has write access
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea  # v7
+        with:
+          script: |
+            const { data: perm } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              username: context.payload.comment.user.login,
+            });
+            const allowed = ['admin', 'write'];
+            if (!allowed.includes(perm.permission)) {
+              core.setFailed(`@${context.payload.comment.user.login} needs write access to trigger Guardian Review (has: ${perm.permission})`);
+            }
+
       - name: Validate PR number
         env:
           PR_NUMBER: ${{ github.event.issue.number }}
@@ -28,7 +42,7 @@ jobs:
           echo "PR_NUMBER=$PR_NUMBER" >> $GITHUB_ENV
 
       - name: Checkout PR branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
         with:
           # PR_NUMBER validated as digits-only in previous step
           ref: refs/pull/${{ env.PR_NUMBER }}/head
@@ -38,7 +52,7 @@ jobs:
         run: git fetch origin main
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39  # v3
 
       - name: Install dependencies
         run: uv sync --extra guardian
@@ -54,7 +68,7 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Post review as PR comment
-        uses: peter-evans/create-or-update-comment@v4
+        uses: peter-evans/create-or-update-comment@a111a2c3bacd7be7898ee22d0d71d9aec2bb972c  # v4
         with:
           issue-number: ${{ env.PR_NUMBER }}
           body: |

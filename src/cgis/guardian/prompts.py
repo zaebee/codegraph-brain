@@ -1,8 +1,12 @@
+"""Builds system and user prompts for the Guardian LLM reviewer."""
+
+
 class PromptBuilder:
     """Constructs the system and user prompts."""
 
     @staticmethod
     def build_system_prompt() -> str:
+        """Return the system prompt that establishes Guardian's reviewer persona."""
         return (
             "You are the CGIS Guardian, a Senior Software Architect and Code Quality Specialist. "
             "Your mission is to review Pull Requests for the CodeGraph Brain (CGIS) project. "
@@ -14,6 +18,7 @@ class PromptBuilder:
 
     @staticmethod
     def build_user_prompt(context: dict[str, str]) -> str:
+        """Assemble the user-turn prompt from collected diff, CONTRIBUTING, and ontology."""
         diff = context.get("diff", "")
         contributing = context.get("contributing", "")
         ontology = context.get("ontology", "")

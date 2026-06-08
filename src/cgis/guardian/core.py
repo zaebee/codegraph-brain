@@ -1,3 +1,5 @@
+"""Main orchestrator that wires together collector, prompts, and LLM provider."""
+
 from cgis.guardian.collector import ContextCollector
 from cgis.guardian.prompts import PromptBuilder
 from cgis.guardian.providers.base import BaseProvider
@@ -7,6 +9,7 @@ class GuardianReviewer:
     """Orchestrates the entire review process."""
 
     def __init__(self, provider: BaseProvider, context_collector: ContextCollector) -> None:
+        """Wire up the LLM provider, context collector, and prompt builder."""
         self.provider = provider
         self.context_collector = context_collector
         self.prompt_builder = PromptBuilder()

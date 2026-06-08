@@ -1,3 +1,5 @@
+"""Abstract base class for LLM provider implementations."""
+
 import abc
 
 
