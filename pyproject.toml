@@ -28,6 +28,7 @@ dev = [
     "ipdb>=0.13.13",
     "mypy>=2.1.0",
     "pytest>=9.0.3",
+    "pytest-asyncio>=0.24.0",
     "pytest-cov>=7.1.0",
     "ruff>=0.15.16",
     "types-pyyaml>=6.0.12.20260518",
@@ -175,6 +176,7 @@ color = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "auto"
 markers = [
     "slow: marks tests as slow — run with '-m slow' or skip with '-m \"not slow\"'",
 ]
