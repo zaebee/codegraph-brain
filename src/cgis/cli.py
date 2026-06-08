@@ -15,6 +15,7 @@ from cgis.extractors.python_extractor import PythonExtractor, file_path_to_modul
 from cgis.pipeline import IngestionPipeline
 from cgis.query.engine import BEHAVIORAL_EDGE_TYPES, QueryEngine
 from cgis.query.mermaid import MermaidCompiler
+from cgis.resolver.uplift import SemanticUpliftEngine
 from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 
 _DEFAULT_DB = "graph.db"
@@ -63,6 +64,33 @@ def main(
     return
 
 
+def _write_graph_output(
+    output: str,
+    source_path: str,
+    nodes: list[Node],
+    resolved_edges: list[Edge],
+    domains: str | None,
+) -> None:
+    if output.endswith(".json"):
+        graph_data = {
+            "metadata": {
+                "source_path": source_path,
+                "node_count": len(nodes),
+                "edge_count": len(resolved_edges),
+            },
+            "nodes": [n.model_dump() for n in nodes],
+            "edges": [e.model_dump() for e in resolved_edges],
+        }
+        output_path = Path(output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with output_path.open("w", encoding="utf-8") as f:
+            json.dump(graph_data, f, indent=2)
+    else:
+        with SQLiteStore(output) as store:
+            store.save_graph(nodes, resolved_edges, overwrite=True)
+            SemanticUpliftEngine(store, domains).execute_uplift()
+
+
 @app.command()
 def ingest(
     path: str = typer.Argument(..., help="Path to the repository to ingest"),
@@ -75,6 +103,12 @@ def ingest(
         "-i",
         help="Only re-ingest files whose content has changed (requires .db output).",
     ),
+    domains: str | None = typer.Option(
+        None,
+        "--domains",
+        "-d",
+        help="Path to a domains.yaml file for semantic uplift (requires .db output).",
+    ),
 ) -> None:
     """
     Scan a repository, extract code structure, and resolve semantic links.
@@ -83,7 +117,11 @@ def ingest(
         ".py": PythonExtractor(),
     }
 
-    pipeline = IngestionPipeline(extractors)
+    pipeline = IngestionPipeline(extractors, domains_config=domains)
+
+    if domains and not Path(domains).is_file():
+        console.print(f"[bold red]❌ Domains config file not found:[/bold red] {domains}")
+        raise typer.Exit(code=1)
 
     console.print(f"[bold blue]🚀 Starting ingestion for:[/bold blue] {path}")
 
@@ -109,24 +147,7 @@ def ingest(
             return
 
         if not incremental:
-            if output.endswith(".json"):
-                graph_data = {
-                    "metadata": {
-                        "source_path": path,
-                        "node_count": len(nodes),
-                        "edge_count": len(resolved_edges),
-                    },
-                    "nodes": [n.model_dump() for n in nodes],
-                    "edges": [e.model_dump() for e in resolved_edges],
-                }
-
-                output_path = Path(output)
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                with output_path.open("w", encoding="utf-8") as f:
-                    json.dump(graph_data, f, indent=2)
-            else:
-                with SQLiteStore(output) as store:
-                    store.save_graph(nodes, resolved_edges, overwrite=True)
+            _write_graph_output(output, path, nodes, resolved_edges, domains)
 
         table = Table(title="Ingestion Summary")
         table.add_column("Metric", style="cyan")
