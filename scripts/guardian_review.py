@@ -50,11 +50,17 @@ async def main() -> None:
         default=None,
         help="Write the review to this file instead of stdout.",
     )
+    parser.add_argument(
+        "--db",
+        type=Path,
+        default=None,
+        help="Path to graph.db for structural impact context (optional).",
+    )
     args = parser.parse_args()
 
     provider, model = _build_provider()
     project_root = Path(__file__).parent.parent.absolute()
-    collector = ContextCollector(project_root=project_root)
+    collector = ContextCollector(project_root=project_root, db_path=args.db)
     reviewer = GuardianReviewer(provider=provider, context_collector=collector)
 
     log.info("Collecting context and building prompts...", model=model)

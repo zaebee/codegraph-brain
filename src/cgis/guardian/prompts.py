@@ -18,10 +18,21 @@ class PromptBuilder:
 
     @staticmethod
     def build_user_prompt(context: dict[str, str]) -> str:
-        """Assemble the user-turn prompt from collected diff, CONTRIBUTING, and ontology."""
+        """Assemble the user-turn prompt from collected diff, CONTRIBUTING, ontology, and graph."""
         diff = context.get("diff", "")
         contributing = context.get("contributing", "")
         ontology = context.get("ontology", "")
+        graph_context = context.get("graph_context", "")
+
+        graph_section = ""
+        if graph_context:
+            graph_section = f"""
+### 4. STRUCTURAL IMPACT GRAPHS (from graph.db)
+The following Mermaid diagrams show which modules depend on the changed files.
+Use these to identify callers that may be broken or require updates.
+
+{graph_context}
+"""
 
         return f"""Please review the following Pull Request based on the provided context.
 
@@ -33,13 +44,15 @@ class PromptBuilder:
 
 ### 3. CHANGES TO REVIEW (git diff)
 {diff}
-
+{graph_section}
 ---
 ### INSTRUCTIONS:
 1. Analyze the changes against the standards and ontology.
 2. Identify any architectural violations, type safety issues (like prohibited use of 'Any'),
    or documentation gaps.
-3. Provide your review in a clean Markdown format.
-4. For each issue found, provide a clear reason and a suggested fix.
-5. If everything looks perfect, provide a brief 'LGTM' with praise for the quality.
-6. Be constructive, professional, and concise."""
+3. If structural impact graphs are provided, identify callers of changed symbols that may
+   need updates — reference them by file and function name.
+4. Provide your review in a clean Markdown format.
+5. For each issue found, provide a clear reason and a suggested fix.
+6. If everything looks perfect, provide a brief 'LGTM' with praise for the quality.
+7. Be constructive, professional, and concise."""
