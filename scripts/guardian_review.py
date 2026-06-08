@@ -13,7 +13,7 @@ from cgis.guardian.providers.gemini import GeminiProvider
 
 log = structlog.getLogger(__name__)
 
-_DEFAULT_MODEL = "gemini-2.0-flash"
+_DEFAULT_MODEL = "gemini-2.5-flash"
 
 
 async def main() -> None:
