@@ -150,16 +150,6 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
 
 | Symbol | Type | File |
 |--------|------|------|
-| `extend` | FUNCTION | [`EXTERNAL:0`](https://github.com/zaebee/codegraph-brain/blob/main/src/EXTERNAL#L0) |
-| `add` | FUNCTION | [`EXTERNAL:0`](https://github.com/zaebee/codegraph-brain/blob/main/src/EXTERNAL#L0) |
-| `endswith` | FUNCTION | [`EXTERNAL:0`](https://github.com/zaebee/codegraph-brain/blob/main/src/EXTERNAL#L0) |
-| `items` | FUNCTION | [`EXTERNAL:0`](https://github.com/zaebee/codegraph-brain/blob/main/src/EXTERNAL#L0) |
-| `items` | FUNCTION | [`EXTERNAL:0`](https://github.com/zaebee/codegraph-brain/blob/main/src/EXTERNAL#L0) |
-| `delete_semantic_uplift` | FUNCTION | [`EXTERNAL:0`](https://github.com/zaebee/codegraph-brain/blob/main/src/EXTERNAL#L0) |
-| `get_all_edges` | FUNCTION | [`EXTERNAL:0`](https://github.com/zaebee/codegraph-brain/blob/main/src/EXTERNAL#L0) |
-| `get_all_nodes` | FUNCTION | [`EXTERNAL:0`](https://github.com/zaebee/codegraph-brain/blob/main/src/EXTERNAL#L0) |
-| `upsert_edges` | FUNCTION | [`EXTERNAL:0`](https://github.com/zaebee/codegraph-brain/blob/main/src/EXTERNAL#L0) |
-| `upsert_nodes` | FUNCTION | [`EXTERNAL:0`](https://github.com/zaebee/codegraph-brain/blob/main/src/EXTERNAL#L0) |
 | `parse` | METHOD | [`base.py:17`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/extractors/base.py#L17) |
 | `_compute_hash` | METHOD | [`pipeline.py:43`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L43) |
 | `run` | METHOD | [`pipeline.py:47`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L47) |
