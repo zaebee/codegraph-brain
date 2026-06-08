@@ -107,10 +107,29 @@ class QueryEngine:
         if not show_external:
             nodes = [n for n in nodes if n.namespace == NodeNamespace.INTERNAL or n.id == start_id]
             internal_ids = {n.id for n in nodes}
-            return nodes, [
+            filtered_edges = [
                 e
                 for e in visited_edges.values()
                 if e.source in internal_ids and e.target in internal_ids
+            ]
+            # Prune internal nodes only reachable via external hops (would be
+            # floating/disconnected in the output graph after external nodes are removed).
+            adj: dict[str, list[str]] = {}
+            for e in filtered_edges:
+                nbr = get_neighbor_id(e)
+                frm = e.target if nbr == e.source else e.source
+                adj.setdefault(frm, []).append(nbr)
+            reachable: set[str] = {start_id}
+            queue: list[str] = [start_id]
+            while queue:
+                curr = queue.pop()
+                for nbr in adj.get(curr, []):
+                    if nbr not in reachable:
+                        reachable.add(nbr)
+                        queue.append(nbr)
+            nodes = [n for n in nodes if n.id in reachable]
+            return nodes, [
+                e for e in filtered_edges if e.source in reachable and e.target in reachable
             ]
 
         return nodes, list(visited_edges.values())

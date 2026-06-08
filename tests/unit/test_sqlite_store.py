@@ -536,3 +536,53 @@ def test_impact_graph_prunes_external_nodes(temp_store: SQLiteStore) -> None:
     filt_nodes, filt_edges = qe.get_impact_graph("mod.fn", max_depth=2, show_external=False)
     assert "pkg.util" not in {n.id for n in filt_nodes}
     assert len(filt_edges) == 0
+
+
+def test_flow_graph_prunes_disconnected_internal_nodes(temp_store: SQLiteStore) -> None:
+    """show_external=False prunes internal nodes only reachable via external hops.
+
+    A(internal) -> B(external) -> C(internal): with show_external=False, C is
+    disconnected after B is removed, so it should not appear in the result.
+    """
+    nodes = [
+        Node(
+            id="A",
+            type=NodeType.FUNCTION,
+            name="A",
+            file_path="mod.py",
+            start_line=1,
+            end_line=2,
+            namespace=NodeNamespace.INTERNAL,
+        ),
+        Node(
+            id="B",
+            type=NodeType.FUNCTION,
+            name="B",
+            file_path=VIRTUAL_FILE_PATH,
+            start_line=0,
+            end_line=0,
+            namespace=NodeNamespace.EXTERNAL,
+        ),
+        Node(
+            id="C",
+            type=NodeType.FUNCTION,
+            name="C",
+            file_path="mod.py",
+            start_line=3,
+            end_line=4,
+            namespace=NodeNamespace.INTERNAL,
+        ),
+    ]
+    edges = [
+        Edge(id="A->B", source="A", target="B", type=EdgeType.CALLS),
+        Edge(id="B->C", source="B", target="C", type=EdgeType.CALLS),
+    ]
+    temp_store.save_graph(nodes, edges)
+    qe = QueryEngine(temp_store)
+
+    filt_nodes, filt_edges = qe.get_flow_graph("A", max_depth=3, show_external=False)
+    node_ids = {n.id for n in filt_nodes}
+    assert "A" in node_ids
+    assert "B" not in node_ids
+    assert "C" not in node_ids  # disconnected after external hop removed
+    assert len(filt_edges) == 0
