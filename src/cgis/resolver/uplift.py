@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import fnmatch
+from collections import deque
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -46,8 +47,8 @@ _STRUCTURAL_EDGE_TYPES = frozenset({EdgeType.CONTAINS, EdgeType.DECLARES})
 
 def _load_domains_config(config_path: str) -> dict[str, Any]:
     with Path(config_path).open(encoding="utf-8") as fh:
-        data: dict[str, Any] = yaml.safe_load(fh)
-    domains: dict[str, Any] = data.get("domains", {})
+        data: dict[str, Any] = yaml.safe_load(fh) or {}
+    domains: dict[str, Any] = data.get("domains") or {}
     return domains
 
 
@@ -80,7 +81,8 @@ class SemanticUpliftEngine:
         nodes = self._store.get_all_nodes()
         edges = self._store.get_all_edges()
 
-        nodes_map: dict[str, Node] = {n.id: n for n in nodes}
+        original_nodes: dict[str, Node] = {n.id: n for n in nodes}
+        nodes_map = dict(original_nodes)
 
         nodes_map = _phase1_map_ontology_classes(nodes_map)
 
@@ -90,7 +92,9 @@ class SemanticUpliftEngine:
 
         domain_nodes, domain_edges = _phase4_infer_domain_dependencies(nodes_map, edges)
 
-        self._store.upsert_nodes(list(nodes_map.values()))
+        changed_nodes = [n for node_id, n in nodes_map.items() if n is not original_nodes[node_id]]
+        if changed_nodes:
+            self._store.upsert_nodes(changed_nodes)
         if domain_nodes:
             self._store.upsert_nodes(domain_nodes)
         if domain_edges:
@@ -120,10 +124,11 @@ def _phase2_apply_heuristic_tagging(
 ) -> dict[str, Node]:
     """Tag nodes with domain labels using file_path and fqn patterns from domains config."""
     result = dict(nodes_map)
-    for domain_name, domain_cfg in domains.items():
-        heuristics: dict[str, Any] = domain_cfg.get("heuristics", {})
-        fp_patterns: list[str] = heuristics.get("file_path_patterns", [])
-        fqn_patterns: list[str] = heuristics.get("fqn_patterns", [])
+    for domain_name, raw_cfg in domains.items():
+        domain_cfg: dict[str, Any] = raw_cfg or {}
+        heuristics: dict[str, Any] = domain_cfg.get("heuristics") or {}
+        fp_patterns: list[str] = heuristics.get("file_path_patterns") or []
+        fqn_patterns: list[str] = heuristics.get("fqn_patterns") or []
 
         for node_id, node in nodes_map.items():
             if node.namespace != NodeNamespace.INTERNAL:
@@ -142,27 +147,30 @@ def _phase3_propagate_domains(
     nodes_map: dict[str, Node],
     edges: list[Edge],
 ) -> dict[str, Node]:
-    """Propagate domains downward through CONTAINS/DECLARES structural edges."""
+    """Propagate domains downward through CONTAINS/DECLARES structural edges (O(V+E) BFS)."""
     children: dict[str, list[str]] = {}
     for edge in edges:
         if edge.type in _STRUCTURAL_EDGE_TYPES:
             children.setdefault(edge.source, []).append(edge.target)
 
     result = dict(nodes_map)
-    changed = True
-    while changed:
-        changed = False
-        for node_id, node in list(result.items()):
-            if not node.domains:
+    queue: deque[str] = deque(node_id for node_id, node in result.items() if node.domains)
+    in_queue: set[str] = set(queue)
+
+    while queue:
+        node_id = queue.popleft()
+        in_queue.discard(node_id)
+        node = result[node_id]
+        for child_id in children.get(node_id, []):
+            child = result.get(child_id)
+            if child is None:
                 continue
-            for child_id in children.get(node_id, []):
-                child = result.get(child_id)
-                if child is None:
-                    continue
-                merged = sorted(set(child.domains) | set(node.domains))
-                if merged != sorted(child.domains):
-                    result[child_id] = child.model_copy(update={"domains": merged})
-                    changed = True
+            merged = sorted(set(child.domains) | set(node.domains))
+            if merged != child.domains:
+                result[child_id] = child.model_copy(update={"domains": merged})
+                if child_id not in in_queue:
+                    queue.append(child_id)
+                    in_queue.add(child_id)
     return result
 
 
