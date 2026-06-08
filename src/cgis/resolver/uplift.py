@@ -99,7 +99,11 @@ class SemanticUpliftEngine:
 
         # Always reset domain tags — ensures deterministic state whether or not a
         # domains config is provided; prevents stale tags from driving phase 4.
-        nodes_map = {nid: n.model_copy(update={"domains": []}) for nid, n in nodes_map.items()}
+        # Only copy nodes that actually carry domains to avoid unnecessary allocations.
+        nodes_map = {
+            nid: n.model_copy(update={"domains": []}) if n.domains else n
+            for nid, n in nodes_map.items()
+        }
 
         if self._domains:
             nodes_map = _phase2_apply_heuristic_tagging(nodes_map, self._domains)
@@ -107,7 +111,7 @@ class SemanticUpliftEngine:
 
         domain_nodes, domain_edges = _phase4_infer_domain_dependencies(nodes_map, edges)
 
-        changed_nodes = [n for node_id, n in nodes_map.items() if n is not original_nodes[node_id]]
+        changed_nodes = [n for node_id, n in nodes_map.items() if n != original_nodes[node_id]]
         if changed_nodes:
             self._store.upsert_nodes(changed_nodes)
         if domain_nodes:

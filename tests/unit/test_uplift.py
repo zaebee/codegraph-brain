@@ -90,7 +90,7 @@ def test_phase1_maps_all_node_types() -> None:
         )
 
 
-def test_phase1_does_not_overwrite_existing_ontology_class() -> None:
+def test_phase1_overwrites_existing_ontology_class() -> None:
     n = Node(
         id="x",
         type=NodeType.CLASS,
