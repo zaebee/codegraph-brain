@@ -151,6 +151,14 @@ def test_phase2_does_not_duplicate_domains() -> None:
     assert result["storage.Store"].domains.count("StorageLayer") == 1
 
 
+def test_phase2_accumulates_multiple_domains() -> None:
+    n = _node("extractors.StoreImpl", file_path="extractors/store.py")
+    result = _phase2_apply_heuristic_tagging({"extractors.StoreImpl": n}, _SAMPLE_DOMAINS)
+    domains = result["extractors.StoreImpl"].domains
+    assert "ParserLayer" in domains
+    assert "StorageLayer" in domains
+
+
 # ---------------------------------------------------------------------------
 # Phase 3 — Structural propagation
 # ---------------------------------------------------------------------------

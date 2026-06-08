@@ -47,7 +47,9 @@ _STRUCTURAL_EDGE_TYPES = frozenset({EdgeType.CONTAINS, EdgeType.DECLARES})
 
 def _load_domains_config(config_path: str) -> dict[str, Any]:
     with Path(config_path).open(encoding="utf-8") as fh:
-        data: dict[str, Any] = yaml.safe_load(fh) or {}
+        data = yaml.safe_load(fh)
+    if not isinstance(data, dict):
+        return {}
     domains: dict[str, Any] = data.get("domains") or {}
     return domains
 
@@ -133,12 +135,12 @@ def _phase2_apply_heuristic_tagging(
         for node_id, node in nodes_map.items():
             if node.namespace != NodeNamespace.INTERNAL:
                 continue
-            matched = any(fnmatch.fnmatch(node.file_path, p) for p in fp_patterns) or any(
-                fnmatch.fnmatch(node.id, p) for p in fqn_patterns
+            matched = any(fnmatch.fnmatchcase(node.file_path, p) for p in fp_patterns) or any(
+                fnmatch.fnmatchcase(node.id, p) for p in fqn_patterns
             )
-            if matched and domain_name not in node.domains:
+            if matched and domain_name not in result[node_id].domains:
                 result[node_id] = result[node_id].model_copy(
-                    update={"domains": sorted({*node.domains, domain_name})}
+                    update={"domains": sorted({*result[node_id].domains, domain_name})}
                 )
     return result
 
