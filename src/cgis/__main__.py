@@ -11,5 +11,5 @@ def main() -> None:
     cli.app(prog_name=__app_name__)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()

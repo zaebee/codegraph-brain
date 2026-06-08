@@ -3,7 +3,7 @@
 import pytest
 
 from cgis.core.models import EdgeType, NodeType
-from cgis.extractors.python_extractor import PythonExtractor
+from cgis.extractors.python_extractor import PythonExtractor, file_path_to_module_fqn
 
 
 @pytest.fixture
@@ -282,3 +282,20 @@ def test_extract_metaclass_does_not_emit_extends_edge(extractor: PythonExtractor
     _nodes, edges = extractor.parse("class Foo(metaclass=ABCMeta): pass\n", "mod.py")
     extends = [e for e in edges if e.type == EdgeType.EXTENDS]
     assert not extends
+
+
+# --- Coverage gap tests ---
+
+
+def test_file_path_to_module_fqn_windows_path() -> None:
+    """Windows drive letter (C:\\...) is stripped before conversion."""
+    result = file_path_to_module_fqn("C:\\path\\to\\mod.py")
+    assert result == "path.to.mod"
+
+
+def test_extract_call_inside_parenthesized_expression(extractor: PythonExtractor) -> None:
+    """A call whose function is a parenthesized expression is still extracted."""
+    code = "def fn():\n    (my_func)()\n"
+    _nodes, edges = extractor.parse(code, "mod.py")
+    call_edges = [e for e in edges if e.type == EdgeType.CALLS]
+    assert any("my_func" in e.target for e in call_edges)

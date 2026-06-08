@@ -1,6 +1,8 @@
 """Unit test cases for sqlite storage."""
 
+import sqlite3
 from collections.abc import Generator
+from pathlib import Path
 
 import pytest
 
@@ -341,3 +343,84 @@ def test_impact_graph_diamond_no_duplicate_visits(temp_store: SQLiteStore) -> No
     assert impact_ids == {"A", "B", "C", "D"}
     assert len(impact_nodes) == 4
     assert len(impact_edges) == 4
+
+
+# --- Coverage gap tests ---
+
+
+def test_connect_idempotent() -> None:
+    with SQLiteStore(":memory:") as store:
+        conn1 = store._conn  # noqa: SLF001
+        store.connect()  # second call — must return early without re-creating
+        assert store._conn is conn1  # noqa: SLF001
+
+
+def test_migrate_adds_namespace_column(tmp_path: Path) -> None:
+    db_path = str(tmp_path / "old.db")
+    conn = sqlite3.connect(db_path)
+    conn.executescript("""
+        CREATE TABLE nodes (
+            id TEXT PRIMARY KEY, type TEXT NOT NULL, name TEXT NOT NULL,
+            file_path TEXT NOT NULL, start_line INTEGER NOT NULL,
+            end_line INTEGER NOT NULL, language TEXT NOT NULL,
+            ontology_class TEXT, domains TEXT,
+            confidence_score REAL NOT NULL, metadata TEXT
+        );
+        CREATE TABLE edges (
+            id TEXT PRIMARY KEY, source TEXT NOT NULL, target TEXT NOT NULL,
+            type TEXT NOT NULL, weight REAL NOT NULL, confidence REAL NOT NULL,
+            context TEXT, file_path TEXT, line_number INTEGER
+        );
+        CREATE TABLE files_state (file_path TEXT PRIMARY KEY, hash TEXT NOT NULL);
+    """)
+    conn.commit()
+    conn.close()
+
+    with SQLiteStore(db_path) as store:
+        cols = {row["name"] for row in store._conn.execute("PRAGMA table_info(nodes)").fetchall()}  # noqa: SLF001
+
+    assert "namespace" in cols
+
+
+def test_store_methods_raise_when_not_connected() -> None:
+    store = SQLiteStore(":memory:")
+    # intentionally never call connect()
+    sentinel = Node(
+        id="x", type=NodeType.FUNCTION, name="x", file_path="f.py", start_line=1, end_line=1
+    )
+    edge_sentinel = Edge(id="e", source="x", target="y", type=EdgeType.CALLS, confidence=0.5)
+    cases = [
+        lambda: store.upsert_nodes([sentinel]),
+        lambda: store.save_graph([sentinel], [edge_sentinel]),
+        lambda: store.get_node("x"),
+        lambda: store.get_nodes(["x"]),
+        lambda: store.get_outgoing_edges("x"),
+        lambda: store.get_incoming_edges("x"),
+        lambda: store.get_file_hash("x"),
+        lambda: store.upsert_file_hash("x", "hash"),
+        lambda: store.delete_file_data("x"),
+        lambda: store.save_incremental_batch({}, {}, {}, set()),
+        lambda: store.get_nodes_by_file("x"),
+        lambda: store.get_structural_subgraph("x"),
+        store.get_edge_stats,
+        store.get_all_tracked_files,
+    ]
+    for case in cases:
+        with pytest.raises(RuntimeError):
+            case()
+
+
+def test_get_edges_batch_invalid_column_raises(temp_store: SQLiteStore) -> None:
+    with pytest.raises(ValueError, match="Invalid column"):
+        temp_store._get_edges_batch(["x"], column="bad_col")  # noqa: SLF001
+
+
+def test_get_edges_batch_empty_list_returns_empty(temp_store: SQLiteStore) -> None:
+    assert temp_store.get_outgoing_edges_batch([]) == []
+    assert temp_store.get_incoming_edges_batch([]) == []
+
+
+def test_get_structural_subgraph_unknown_node_returns_empty(temp_store: SQLiteStore) -> None:
+    nodes, edges = temp_store.get_structural_subgraph("nonexistent.Node")
+    assert nodes == []
+    assert edges == []
