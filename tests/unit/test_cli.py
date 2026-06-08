@@ -154,11 +154,12 @@ def test_trace_shows_unresolved_external_call(tmp_path: Path) -> None:
             f"{file_path_to_module_fqn(py_file.relative_to(tmp_path).as_posix())}.greet",
             "--db",
             str(db_file),
+            "--show-external",
         ],
     )
 
     assert result.exit_code == 0
-    # print() becomes a virtual STDLIB node; check it appears in the trace
+    # print() becomes a virtual STDLIB node; check it appears when --show-external is set
     assert "print" in result.output
 
 
@@ -219,7 +220,7 @@ def test_impact_shows_unknown_caller_for_missing_node(tmp_path: Path) -> None:
         )
         store.save_graph([target], [edge])
 
-    result = runner.invoke(app, ["impact", "mod.target", "--db", str(db_file)])
+    result = runner.invoke(app, ["impact", "mod.target", "--db", str(db_file), "--show-external"])
 
     assert result.exit_code == 0
     assert "Unknown Caller" in result.output
@@ -572,7 +573,7 @@ def test_trace_tree_shows_unresolved_for_missing_target(tmp_path: Path) -> None:
     with SQLiteStore(str(db_file)) as store:
         store.save_graph([caller], [call_edge], overwrite=True)
 
-    result = runner.invoke(app, ["trace", "mod.caller", "--db", str(db_file)])
+    result = runner.invoke(app, ["trace", "mod.caller", "--db", str(db_file), "--show-external"])
 
     assert result.exit_code == 0
     assert "Unresolved" in result.output or "raw_call" in result.output
