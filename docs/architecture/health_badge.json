@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "label": "graph status",
+  "message": "healthy",
+  "color": "brightgreen",
+  "namedLogo": "graphql",
+  "cacheSeconds": 3600
+}

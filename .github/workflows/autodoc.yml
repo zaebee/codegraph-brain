@@ -1,0 +1,60 @@
+name: Self-Documenting Architecture Sync
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  sync-architecture-docs:
+    name: Regenerate architecture graph & MCP reference
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Install CGIS
+        run: uv sync
+
+      - name: Self-ingest core engine
+        run: uv run cgis ingest ./src --output docs/architecture/self_graph.db
+
+      - name: Generate pipeline flow diagram
+        run: |
+          mkdir -p docs/architecture/diagrams
+          uv run cgis trace "cgis.pipeline.IngestionPipeline.run" \
+            --db docs/architecture/self_graph.db \
+            --depth 2 \
+            --format mermaid \
+            > docs/architecture/diagrams/pipeline_flow.mermaid
+
+      - name: Compute graph health badge
+        run: uv run python scripts/generate_health.py
+
+      - name: Inject graph into README.md
+        run: uv run python scripts/inject_readme_graph.py
+
+      - name: Generate MCP reference manual
+        run: uv run python scripts/generate_mcp_ref.py
+
+      - name: Commit generated docs back to main
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add README.md docs/
+          if ! git diff-index --quiet HEAD; then
+            git commit -m "docs: auto-sync architecture graph and MCP reference [skip ci]"
+            git push origin main
+          else
+            echo "Nothing changed, skipping commit."
+          fi
