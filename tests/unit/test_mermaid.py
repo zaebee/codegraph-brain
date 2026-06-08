@@ -1,7 +1,7 @@
 """Unit test cases for mermaid queries."""
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
-from cgis.query.mermaid import MermaidCompiler
+from cgis.query.mermaid import MermaidCompiler, _normalize_id
 
 
 def _make_node(node_id: str, node_type: NodeType = NodeType.FUNCTION) -> Node:
@@ -165,6 +165,85 @@ def test_compile_output_is_deterministic() -> None:
         if "-->|" in line:
             parts = line.strip().split(" -->|")
             assert "/" not in parts[0], f"Raw path in edge source ID: {parts[0]}"
+
+
+# --- Subgraph grouping tests ---
+
+
+def _make_node_in_file(
+    node_id: str, file_path: str, node_type: NodeType = NodeType.FUNCTION
+) -> Node:
+    return Node(
+        id=node_id,
+        type=node_type,
+        name=node_id.rsplit(".", maxsplit=1)[-1],
+        file_path=file_path,
+        start_line=1,
+        end_line=5,
+        language="python",
+    )
+
+
+def test_compile_single_file_renders_flat() -> None:
+    """Nodes from a single file produce no subgraph blocks."""
+    nodes = [
+        _make_node_in_file("cgis.pipeline.run", "src/cgis/pipeline.py"),
+        _make_node_in_file("cgis.pipeline.ingest", "src/cgis/pipeline.py"),
+    ]
+    output = MermaidCompiler().compile(nodes, [])
+    assert "subgraph" not in output
+
+
+def test_compile_multiple_files_renders_subgraphs() -> None:
+    """Nodes from different files are wrapped in subgraph blocks."""
+    nodes = [
+        _make_node_in_file("cgis.pipeline.run", "src/cgis/pipeline.py"),
+        _make_node_in_file("cgis.cli.ingest", "src/cgis/cli.py"),
+    ]
+    output = MermaidCompiler().compile(nodes, [])
+    assert "subgraph" in output
+    assert "pipeline.py" in output
+    assert "cli.py" in output
+
+
+def test_compile_subgraph_contains_its_nodes() -> None:
+    """Each subgraph block wraps only the nodes belonging to that file."""
+    pipeline_node = _make_node_in_file("cgis.pipeline.run", "src/cgis/pipeline.py")
+    cli_node = _make_node_in_file("cgis.cli.ingest", "src/cgis/cli.py")
+    nodes = [pipeline_node, cli_node]
+    output = MermaidCompiler().compile(nodes, [])
+
+    pipeline_id = _normalize_id(pipeline_node.id)
+    cli_id = _normalize_id(cli_node.id)
+    lines = output.splitlines()
+
+    # Each node must appear inside its subgraph block (between subgraph...end)
+    def node_is_inside_subgraph(node_safe_id: str, subgraph_label: str) -> bool:
+        inside = False
+        for line in lines:
+            if "subgraph" in line and subgraph_label in line:
+                inside = True
+            if inside and node_safe_id in line:
+                return True
+            if inside and line.strip() == "end":
+                inside = False
+        return False
+
+    assert node_is_inside_subgraph(pipeline_id, "pipeline.py")
+    assert node_is_inside_subgraph(cli_id, "cli.py")
+
+
+def test_compile_edges_between_subgraphs_are_rendered() -> None:
+    """Cross-file edges appear in the output regardless of subgraph grouping."""
+    src = _make_node_in_file("cgis.cli.ingest", "src/cgis/cli.py")
+    dst = _make_node_in_file("cgis.pipeline.run", "src/cgis/pipeline.py")
+    edge = _make_edge("cgis.cli.ingest", "cgis.pipeline.run")
+    output = MermaidCompiler().compile([src, dst], [edge])
+
+    src_id = _normalize_id(src.id)
+    dst_id = _normalize_id(dst.id)
+    assert f"{src_id} -->|" in output
+    assert dst_id in output
 
 
 # --- Coverage gap tests: namespace node styles ---

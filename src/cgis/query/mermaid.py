@@ -8,6 +8,12 @@ _RAW_CALL_PREFIX = "raw_call:"
 _UNRESOLVED_STYLE = ":::unresolvedNode"
 
 
+def _normalize_id(fqn: str) -> str:
+    """Deterministically hash any complex FQN into a Mermaid-safe alphanumeric ID."""
+    hasher = hashlib.md5(fqn.encode("utf-8"), usedforsecurity=False)
+    return f"n_{hasher.hexdigest()}"
+
+
 def _escape(text: str) -> str:
     """Escape special characters that break Mermaid double-quoted node labels."""
     return (
@@ -39,11 +45,6 @@ class MermaidCompiler:
             ),
         ]
 
-    def _normalize_id(self, fqn: str) -> str:
-        """Deterministically hashes any complex FQN into a Mermaid-safe alphanumeric ID."""
-        hasher = hashlib.md5(fqn.encode("utf-8"), usedforsecurity=False)
-        return f"n_{hasher.hexdigest()}"
-
     def _get_node_label(self, node: Node) -> str:
         """Formats the visible text inside a node (Name + file name + line range)."""
         filename = node.file_path.replace("\\", "/").split("/")[-1]
@@ -68,32 +69,47 @@ class MermaidCompiler:
         return ":::defaultNode"
 
     def compile(self, nodes: list[Node], edges: list[Edge]) -> str:
-        """Generates Mermaid Graph Definition."""
+        """Generates Mermaid Graph Definition, grouping nodes by file into subgraphs."""
         lines = ["graph TD"]
-
         lines.extend(self._style_defs)
-        lines.append("")  # Empty line for readability
+        lines.append("")
 
         id_map: dict[str, str] = {}
         for node in nodes:
-            safe_id = self._normalize_id(node.id)
-            id_map[node.id] = safe_id
+            id_map[node.id] = _normalize_id(node.id)
 
-            label = self._get_node_label(node)
-            style = self._get_style_class(node)
+        file_groups: dict[str, list[Node]] = {}
+        for node in nodes:
+            file_groups.setdefault(node.file_path, []).append(node)
 
-            lines.append(f'    {safe_id}["{label}"]{style}')
+        if len(file_groups) > 1:
+            for file_path, group_nodes in file_groups.items():
+                sg_id = _normalize_id(f"sg_{file_path}")
+                sg_label = _escape(file_path.replace("\\", "/").split("/")[-1])
+                lines.append(f'    subgraph {sg_id}["{sg_label}"]')
+                for node in group_nodes:
+                    safe_id = id_map[node.id]
+                    node_label = self._get_node_label(node)
+                    style = self._get_style_class(node)
+                    lines.append(f'        {safe_id}["{node_label}"]{style}')
+                lines.append("    end")
+        else:
+            for node in nodes:
+                safe_id = id_map[node.id]
+                node_label = self._get_node_label(node)
+                style = self._get_style_class(node)
+                lines.append(f'    {safe_id}["{node_label}"]{style}')
 
         for edge in edges:
             source_safe = id_map.get(edge.source)
             if not source_safe:
-                source_safe = self._normalize_id(edge.source)
+                source_safe = _normalize_id(edge.source)
                 lines.append(f'    {source_safe}["{_escape(edge.source)}"]:::defaultNode')
                 id_map[edge.source] = source_safe
 
             target_safe = id_map.get(edge.target)
             if not target_safe:
-                target_safe = self._normalize_id(edge.target)
+                target_safe = _normalize_id(edge.target)
                 is_unresolved_target = edge.target.startswith(_RAW_CALL_PREFIX)
                 clean_target = _escape(edge.target.removeprefix(_RAW_CALL_PREFIX))
                 target_style = _UNRESOLVED_STYLE if is_unresolved_target else ":::defaultNode"
