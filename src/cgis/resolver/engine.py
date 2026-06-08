@@ -192,11 +192,16 @@ class ResolverEngine:
             virtual_nodes[target] = self._make_virtual_node(target, self._classify_fqn(target))
 
     def _resolve_self_call(self, source_fqn: str, method_name: str) -> str | None:
-        """Attempts to find a method on the class that owns source, traversing inheritance."""
-        class_fqn, sep, _ = source_fqn.rpartition(".")
-        if not sep:
-            return None
-        return self._resolve_method_on_class_hierarchy(class_fqn, method_name, set())
+        """Attempts to find a method on the class that owns source, traversing inheritance.
+
+        Walks up the FQN segments to handle nested functions (e.g. mod.Cls.method.inner).
+        """
+        parts = source_fqn.split(".")
+        for i in range(len(parts) - 1, 0, -1):
+            candidate = ".".join(parts[:i])
+            if candidate in self._class_methods:
+                return self._resolve_method_on_class_hierarchy(candidate, method_name, set())
+        return None
 
     def _resolve_method_on_class_hierarchy(
         self, class_fqn: str, method_name: str, visited: set[str]

@@ -468,14 +468,14 @@ class PythonExtractor(BaseExtractor):
 
         edges.extend(
             Edge(
-                id=f"{node_id}:decorator:{deco_name}",
+                id=f"{node_id}:decorator:{i}:{deco_name}",
                 type=EdgeType.CALLS,
                 source=node_id,
                 target=f"raw_call:{deco_name}",
                 confidence=0.5,
                 file_path=file_path,
             )
-            for deco_name in decorators or []
+            for i, deco_name in enumerate(decorators or [])
         )
 
         parts = node_id.rsplit(".", maxsplit=1)
@@ -508,28 +508,7 @@ class PythonExtractor(BaseExtractor):
         node_id = self._get_id(node, code_bytes, file_path)
         node_name = self._extract_node_name(child, code_bytes)
 
-        superclass_names: list[str] = []
-        superclasses_node = node.child_by_field_name("superclasses")
-        if superclasses_node:
-            for sc in superclasses_node.children:
-                if sc.type in ("identifier", "attribute", "subscript"):
-                    sc_name = self._get_identifier(sc, code_bytes)
-                    if sc_name != "unknown":
-                        superclass_names.append(sc_name)
-                        edges.append(
-                            Edge(
-                                id=f"{node_id}:extends:{sc_name}",
-                                type=EdgeType.EXTENDS,
-                                source=node_id,
-                                target=f"raw_class:{sc_name}",
-                                confidence=1.0,
-                                file_path=file_path,
-                            )
-                        )
-                elif sc.type == "keyword_argument":
-                    meta_name = self._extract_metaclass_name(sc, code_bytes)
-                    if meta_name:
-                        superclass_names.append(meta_name)
+        superclass_names = self._collect_superclasses(node, node_id, file_path, code_bytes, edges)
 
         metadata: dict[str, Any] = {}
         if decorators:
@@ -562,6 +541,40 @@ class PythonExtractor(BaseExtractor):
                 file_path=file_path,
             )
         )
+
+    def _collect_superclasses(
+        self,
+        node: BaseNode,
+        node_id: str,
+        file_path: str,
+        code_bytes: bytes,
+        edges: list[Edge],
+    ) -> list[str]:
+        """Collect superclass names and emit EXTENDS edges for a class definition node."""
+        names: list[str] = []
+        superclasses_node = node.child_by_field_name("superclasses")
+        if not superclasses_node:
+            return names
+        for sc in superclasses_node.children:
+            if sc.type in ("identifier", "attribute", "subscript"):
+                sc_name = self._get_identifier(sc, code_bytes)
+                if sc_name != "unknown":
+                    names.append(sc_name)
+                    edges.append(
+                        Edge(
+                            id=f"{node_id}:extends:{sc_name}",
+                            type=EdgeType.EXTENDS,
+                            source=node_id,
+                            target=f"raw_class:{sc_name}",
+                            confidence=1.0,
+                            file_path=file_path,
+                        )
+                    )
+            elif sc.type == "keyword_argument":
+                meta_name = self._extract_metaclass_name(sc, code_bytes)
+                if meta_name:
+                    names.append(meta_name)
+        return names
 
     @staticmethod
     def _is_abstract_class(superclass_names: list[str], decorators: list[str] | None) -> bool:

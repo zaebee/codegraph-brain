@@ -816,3 +816,56 @@ def test_resolver_inherited_method_cycle_safe() -> None:
     # must not raise; method should resolve via A
     call_edge = next(e for e in resolved_edges if e.id == "e3")
     assert call_edge.target == "mod.A.method"
+
+
+def test_resolve_self_call_nested_function_finds_class() -> None:
+    """self.method() inside a nested function resolves via the enclosing class, not the fn."""
+    nodes = [
+        Node(
+            id="mod.MyClass",
+            type=NodeType.CLASS,
+            name="MyClass",
+            file_path="mod.py",
+            start_line=1,
+            end_line=10,
+        ),
+        Node(
+            id="mod.MyClass.run",
+            type=NodeType.METHOD,
+            name="run",
+            file_path="mod.py",
+            start_line=2,
+            end_line=5,
+        ),
+        Node(
+            id="mod.MyClass.process",
+            type=NodeType.METHOD,
+            name="process",
+            file_path="mod.py",
+            start_line=6,
+            end_line=9,
+        ),
+        Node(
+            id="mod.MyClass.process.inner",
+            type=NodeType.FUNCTION,
+            name="inner",
+            file_path="mod.py",
+            start_line=7,
+            end_line=8,
+        ),
+    ]
+    edges = [
+        Edge(
+            id="e_nested_call",
+            source="mod.MyClass.process.inner",
+            target="raw_call:self.run",
+            type=EdgeType.CALLS,
+            confidence=0.5,
+            file_path="mod.py",
+        ),
+    ]
+    resolver = ResolverEngine(nodes, edges)
+    resolved_edges, _ = resolver.resolve()
+
+    call_edge = next(e for e in resolved_edges if e.id == "e_nested_call")
+    assert call_edge.target == "mod.MyClass.run"
