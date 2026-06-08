@@ -6,7 +6,7 @@ from cgis.guardian.providers.base import BaseProvider
 class GuardianReviewer:
     """Orchestrates the entire review process."""
 
-    def __init__(self, provider: BaseProvider, context_collector: ContextCollector):
+    def __init__(self, provider: BaseProvider, context_collector: ContextCollector) -> None:
         self.provider = provider
         self.context_collector = context_collector
         self.prompt_builder = PromptBuilder()
@@ -21,6 +21,4 @@ class GuardianReviewer:
         user_prompt = self.prompt_builder.build_user_prompt(context)
 
         print("🤖 Invoking LLM...")
-        review = await self.provider.generate_content(system_prompt, user_prompt)
-
-        return review
+        return await self.provider.generate_content(system_prompt, user_prompt)

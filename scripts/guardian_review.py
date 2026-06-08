@@ -7,10 +7,9 @@ from cgis.guardian.core import GuardianReviewer
 from cgis.guardian.providers.gemini import GeminiProvider
 
 
-async def main():
-    # In a real usage, API key would come from an environment variable
-    api_key = os.getenv("GEMINI_API_KEY", "mock_key")
-    project_root = Path(__file__).parent.parent.parent.absolute()
+async def main() -> None:
+    api_key = os.environ["GEMINI_API_KEY"]
+    project_root = Path(__file__).parent.parent.absolute()
 
     provider = GeminiProvider(api_key=api_key)
     collector = ContextCollector(project_root=project_root)
@@ -18,9 +17,9 @@ async def main():
 
     review_result = await reviewer.run_review()
 
-    print("\n" + "=" * 30)
+    print("\n" + "=" * 60)
     print("🛡️  GUARDIAN REVIEW RESULT")
-    print("=" * 30 + "\n")
+    print("=" * 60 + "\n")
     print(review_result)
 
 

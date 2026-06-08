@@ -8,7 +8,8 @@ class PromptBuilder:
             "Your mission is to review Pull Requests for the CodeGraph Brain (CGIS) project. "
             "You prioritize Correctness, Type Safety, and Determinism. "
             "You are not a syntax checker; you are a semantic and architectural reviewer. "
-            "Your goal is to ensure all changes align with the project's Engineering Standards and Ontology."
+            "Your goal is to ensure all changes align with the project's Engineering Standards "
+            "and Ontology."
         )
 
     @staticmethod
@@ -28,10 +29,11 @@ class PromptBuilder:
 ### 3. CHANGES TO REVIEW (git diff)
 {diff}
 
---- 
+---
 ### INSTRUCTIONS:
 1. Analyze the changes against the standards and ontology.
-2. Identify any architectural violations, type safety issues (like prohibited use of 'Any'), or documentation gaps.
+2. Identify any architectural violations, type safety issues (like prohibited use of 'Any'),
+   or documentation gaps.
 3. Provide your review in a clean Markdown format.
 4. For each issue found, provide a clear reason and a suggested fix.
 5. If everything looks perfect, provide a brief 'LGTM' with praise for the quality.
