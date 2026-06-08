@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import fnmatch
+import re
 from collections import deque
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -46,8 +47,15 @@ _STRUCTURAL_EDGE_TYPES = frozenset({EdgeType.CONTAINS, EdgeType.DECLARES})
 
 
 def _load_domains_config(config_path: str) -> dict[str, Any]:
-    with Path(config_path).open(encoding="utf-8") as fh:
-        data = yaml.safe_load(fh)
+    try:
+        with Path(config_path).open(encoding="utf-8") as fh:
+            data = yaml.safe_load(fh)
+    except OSError as e:
+        msg = f"Cannot read domains config {config_path!r}: {e}"
+        raise ValueError(msg) from e
+    except yaml.YAMLError as e:
+        msg = f"Invalid YAML in domains config {config_path!r}: {e}"
+        raise ValueError(msg) from e
     if not isinstance(data, dict):
         return {}
     domains: dict[str, Any] = data.get("domains") or {}
@@ -90,6 +98,8 @@ class SemanticUpliftEngine:
         nodes_map = _phase1_map_ontology_classes(nodes_map)
 
         if self._domains:
+            # Reset domain tags so removed patterns don't persist across re-runs
+            nodes_map = {nid: n.model_copy(update={"domains": []}) for nid, n in nodes_map.items()}
             nodes_map = _phase2_apply_heuristic_tagging(nodes_map, self._domains)
             nodes_map = _phase3_propagate_domains(nodes_map, edges)
 
@@ -121,6 +131,10 @@ def _phase1_map_ontology_classes(nodes_map: dict[str, Node]) -> dict[str, Node]:
     return result
 
 
+def _compile_patterns(patterns: list[str]) -> list[re.Pattern[str]]:
+    return [re.compile(fnmatch.translate(p)) for p in patterns]
+
+
 def _phase2_apply_heuristic_tagging(
     nodes_map: dict[str, Node],
     domains: dict[str, Any],
@@ -130,14 +144,14 @@ def _phase2_apply_heuristic_tagging(
     for domain_name, raw_cfg in domains.items():
         domain_cfg: dict[str, Any] = raw_cfg or {}
         heuristics: dict[str, Any] = domain_cfg.get("heuristics") or {}
-        fp_patterns: list[str] = heuristics.get("file_path_patterns") or []
-        fqn_patterns: list[str] = heuristics.get("fqn_patterns") or []
+        fp_patterns = _compile_patterns(heuristics.get("file_path_patterns") or [])
+        fqn_patterns = _compile_patterns(heuristics.get("fqn_patterns") or [])
 
         for node_id, node in nodes_map.items():
             if node.namespace != NodeNamespace.INTERNAL:
                 continue
-            matched = any(fnmatch.fnmatchcase(node.file_path, p) for p in fp_patterns) or any(
-                fnmatch.fnmatchcase(node.id, p) for p in fqn_patterns
+            matched = any(p.match(node.file_path) for p in fp_patterns) or any(
+                p.match(node.id) for p in fqn_patterns
             )
             if matched and domain_name not in result[node_id].domains:
                 result[node_id] = result[node_id].model_copy(
