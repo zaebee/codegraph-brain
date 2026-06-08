@@ -9,11 +9,32 @@ import structlog
 
 from cgis.guardian.collector import ContextCollector
 from cgis.guardian.core import GuardianReviewer
+from cgis.guardian.providers.base import BaseProvider
 from cgis.guardian.providers.gemini import GeminiProvider
+from cgis.guardian.providers.mistral import MistralProvider
 
 log = structlog.getLogger(__name__)
 
-_DEFAULT_MODEL = "gemini-2.5-flash"
+_DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
+_DEFAULT_MISTRAL_MODEL = "mistral-medium-latest"
+
+
+def _build_provider() -> tuple[BaseProvider, str]:
+    """Return (provider, model_name) based on available environment variables."""
+    model_override = os.environ.get("GUARDIAN_MODEL")
+
+    mistral_key = os.environ.get("MISTRAL_API_KEY")
+    if mistral_key:
+        model = model_override or _DEFAULT_MISTRAL_MODEL
+        return MistralProvider(api_key=mistral_key, model_name=model), model
+
+    gemini_key = os.environ.get("GEMINI_API_KEY")
+    if gemini_key:
+        model = model_override or _DEFAULT_GEMINI_MODEL
+        return GeminiProvider(api_key=gemini_key, model_name=model), model
+
+    _msg = "Set MISTRAL_API_KEY or GEMINI_API_KEY to run Guardian."
+    raise OSError(_msg)
 
 
 async def main() -> None:
@@ -27,11 +48,8 @@ async def main() -> None:
     )
     args = parser.parse_args()
 
-    api_key = os.environ["GEMINI_API_KEY"]
-    model = os.environ.get("GUARDIAN_MODEL") or _DEFAULT_MODEL
+    provider, model = _build_provider()
     project_root = Path(__file__).parent.parent.absolute()
-
-    provider = GeminiProvider(api_key=api_key, model_name=model)
     collector = ContextCollector(project_root=project_root)
     reviewer = GuardianReviewer(provider=provider, context_collector=collector)
 
