@@ -145,6 +145,20 @@ plugins = ["pydantic.mypy"]
 module = "pydantic.*"
 ignore_missing_imports = true
 
+[tool.interrogate]
+ignore-init-method = true
+ignore-init-module = true
+ignore-magic = true
+ignore-semiprivate = false
+ignore-private = false
+ignore-property-decorators = false
+ignore-module = false
+fail-under = 90
+exclude = ["setup.py", "docs", "tests", "ui", ".venv", "build", "scripts"]
+verbose = 1
+quiet = false
+color = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
