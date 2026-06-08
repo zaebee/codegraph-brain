@@ -9,6 +9,7 @@ bun run dev        # dev server (localhost:3000)
 bun run test       # vitest watch mode
 bun run test:run   # single run
 bun run build      # production build
+bun run analyze    # build + bundle visualization (opens dist/stats.html)
 ```
 
 ## Architecture

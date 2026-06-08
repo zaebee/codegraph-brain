@@ -41,7 +41,7 @@
 - [x] ESLint + Prettier — flat config, React + typescript-eslint plugins
 - [x] Environment variables — `.env` для graph data path, API URLs
 - [x] `html-to-image` pin 1.11.11 — bumped to `^1.11.13`, verified with export tests
-- [ ] Bundle analyzer — `rollup-plugin-visualizer` для оптимизации
+- [x] Bundle analyzer — `rollup-plugin-visualizer` через `ANALYZE=true vite build`
 
 ## 🟣 Code Quality
 
