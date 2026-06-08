@@ -22,7 +22,7 @@ const mockGraph = {
 };
 
 beforeEach(() => {
-  globalThis.fetch = vi.fn(() => Promise.resolve({ json: () => Promise.resolve(mockGraph) }));
+  globalThis.fetch = vi.fn().mockResolvedValue({ json: () => Promise.resolve(mockGraph) }) as unknown as typeof fetch;
 });
 
 afterEach(() => {

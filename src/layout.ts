@@ -27,11 +27,12 @@ export async function layoutGraph(nodes: Node[], edges: Edge[]): Promise<Node[]>
 
   const childrenByGroup = new Map<string, string[]>();
   nodes.forEach((node) => {
-    if (node.groupId) {
-      if (!childrenByGroup.has(node.groupId)) {
-        childrenByGroup.set(node.groupId, []);
+    const gid = (node as any).groupId;
+    if (gid) {
+      if (!childrenByGroup.has(gid)) {
+        childrenByGroup.set(gid, []);
       }
-      childrenByGroup.get(node.groupId)!.push(node.id);
+      childrenByGroup.get(gid)!.push(node.id);
     }
   });
 
@@ -184,18 +185,19 @@ export async function layoutGraph(nodes: Node[], edges: Edge[]): Promise<Node[]>
   return nodes.map((node) => {
     let pos = positioned.get(node.id) || { x: 0, y: 0 };
 
-    if (node.type === "group" && groupPositions.has(node.id)) {
+    if (node.type === "group") {
       const gp = groupPositions.get(node.id);
-      pos = { x: gp.x, y: gp.y };
-      return {
-        ...node,
-        position: pos,
-        style: {
-          ...node.style,
-          width: gp.width,
-          height: gp.height,
-        },
-      };
+      if (gp) {
+        return {
+          ...node,
+          position: { x: gp.x, y: gp.y },
+          style: {
+            ...node.style,
+            width: gp.width,
+            height: gp.height,
+          },
+        };
+      }
     }
 
     return {

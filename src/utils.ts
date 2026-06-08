@@ -14,12 +14,8 @@ export function filterValidEdges(
 
 /**
  * Deduplicate edges by source->target key, keeping first occurrence.
- * @param {{ source: string, target: string }[]} edges
- * @returns {{ source: string, target: string }[]}
  */
-export function deduplicateEdges(
-  edges: { source: string; target: string }[]
-): { source: string; target: string }[] {
+export function deduplicateEdges<T extends { source: string; target: string }>(edges: T[]): T[] {
   const seen = new Set();
   return edges.filter((e) => {
     const key = `${e.source}->${e.target}`;

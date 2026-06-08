@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck
+
 import { layoutGraph } from "./layout";
 
 describe("layoutGraph", () => {

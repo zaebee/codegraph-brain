@@ -64,6 +64,6 @@ export function groupByFile(
 
   return {
     nodes: [...Array.from(classMap.values()), ...updatedNodes],
-    edges,
+    edges: edges as Edge[],
   };
 }
