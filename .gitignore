@@ -20,3 +20,6 @@
 
 bun-debug.log*
 dist/
+
+# brainstorming companion server
+.superpowers/

@@ -15,7 +15,7 @@
 }
 
 :global(.react-flow__node[data-id]) {
-  transition: box-shadow 0.2s, transform 0.3s ease;
+  transition: box-shadow 0.2s, transform 0.3s ease, opacity 0.2s ease;
   cursor: pointer;
 }
 
@@ -26,6 +26,10 @@
 :global(.react-flow__edge-text) {
   font-size: var(--font-size-xs);
   fill: var(--color-text-muted);
+}
+
+:global(.react-flow__edge-path) {
+  transition: opacity 0.2s ease;
 }
 
 :global(.react-flow__controls) {

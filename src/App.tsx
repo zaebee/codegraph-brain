@@ -7,11 +7,10 @@ import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
 import appStyles from "./App.module.css";
 import sharedStyles from "./shared.module.css";
 
-import { layoutGraph } from "./layout";
 import { filterValidEdges } from "./utils";
-import { getCollapsedView } from "./collapse";
 import { mapNodeToReactFlow } from "./utils/nodeMapper";
 import { mapEdgeToReactFlow } from "./utils/edgeMapper";
+import { applyContextHighlight } from "./utils/applyHighlight";
 
 import ControlPanel from "./components/ControlPanel";
 import StatsPanel from "./components/StatsPanel";
@@ -20,6 +19,7 @@ import LegendPanel from "./components/LegendPanel";
 import LoadingOverlay from "./components/LoadingOverlay";
 
 import { useGraphFetch } from "./hooks/useGraphFetch";
+import { useGraphFilter } from "./hooks/useGraphFilter";
 import { useSearch } from "./hooks/useSearch";
 import { useExport } from "./hooks/useExport";
 import { useFlowNavigation } from "./hooks/useFlowNavigation";
@@ -54,21 +54,37 @@ function App() {
   const [stats, setStats] = useState<{ nodes: number; edges: number; external: number } | null>(
     null
   );
-  const [showExternal, setShowExternal] = useState(false);
-  const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
-  const ALL_EDGE_TYPES = ["CALLS", "IMPORTS", "EXTENDS", "DECLARES"];
-  const [activeEdgeTypes, setActiveEdgeTypes] = useState<string[]>([...ALL_EDGE_TYPES]);
   const [allNodes, setAllNodes] = useState<any[]>([]);
   const [allEdges, setAllEdges] = useState<any[]>([]);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [flowRootId, setFlowRootId] = useState<string | null>(null);
   const [graphLoading, setGraphLoading] = useState(true);
-  const [isLayouting, setIsLayouting] = useState(false);
 
   const wrapperRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const parentChildrenRef = useRef<Map<string, string[]>>(new Map());
   const { fitView } = useReactFlow();
+
+  const ALL_EDGE_TYPES = ["CALLS", "IMPORTS", "EXTENDS", "DECLARES"];
+
+  const {
+    showExternal,
+    activeEdgeTypes,
+    isLayouting,
+    setShowExternal,
+    setExpandedFiles,
+    setActiveEdgeTypes,
+  } = useGraphFilter({
+    viewMode,
+    allNodes,
+    allEdges,
+    parentChildrenRef,
+    ALL_EDGE_TYPES,
+    onFiltered: useCallback((filteredNodes: any[], filteredEdges: any[]) => {
+      setNodes(filteredNodes);
+      setEdges(filteredEdges);
+    }, []),
+  });
 
   // Hook: fetch graph
   const { graph: graphData, loading: loadingState } = useGraphFetch();
@@ -131,84 +147,25 @@ function App() {
       (e: any, i: number) => mapEdgeToReactFlow(e, i)
     );
 
-    setIsLayouting(true);
-    const layoutedNodes = await layoutGraph(baseNodes, baseEdges);
-
-    setAllNodes(layoutedNodes);
+    setAllNodes(baseNodes);
     setAllEdges(baseEdges);
-    setNodes(layoutedNodes);
-    setEdges(baseEdges);
     setViewMode("full");
     clearCache();
-    fitView({ padding: 0.15, duration: 250 });
     setStats({
       nodes: graphData.nodes.length,
       edges: baseEdges.length,
       external: graphData.nodes.filter((n) => n.namespace && n.namespace !== "INTERNAL").length,
     });
-    setIsLayouting(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graphData, clearCache]);
+  }, [graphData, clearCache, setExpandedFiles]);
 
   useEffect(() => {
     if (graphData) buildFullGraph();
   }, [graphData, buildFullGraph]);
 
-  // Combined filter: collapse → edge type → external → layout
-  useEffect(() => {
-    async function applyFilters() {
-      if (viewMode !== "full") return;
-
-      const collapsed = getCollapsedView(allNodes, allEdges, expandedFiles, parentChildrenRef.current);
-
-      const typeFilteredEdges = collapsed.edges.filter(
-        (e: any) => {
-          if (!e.data?.edgeType) return false;
-          if (e.data.edgeType === "CONTAINS") return true;
-          return activeEdgeTypes.includes(e.data.edgeType);
-        }
-      );
-
-      const externalFilteredNodes = showExternal
-        ? collapsed.nodes
-        : collapsed.nodes.filter(
-            (n: any) => !n.data?.namespace || n.data?.namespace === "INTERNAL"
-          );
-
-      const filteredNodeIds = new Set(externalFilteredNodes.map((n: any) => n.id));
-      const externalFilteredEdges = typeFilteredEdges.filter(
-        (e: any) => filteredNodeIds.has(e.source) && filteredNodeIds.has(e.target)
-      );
-
-      const labeledNodes = externalFilteredNodes.map((n: any) => {
-        if (n.data?.nodeType === "FILE") {
-          const indicator = expandedFiles.has(n.id) ? "▼ " : "▶ ";
-          return {
-            ...n,
-            data: {
-              ...n.data,
-              label: indicator + n.data.label.replace(/^[▶▼]\s/, ""),
-            },
-          };
-        }
-        return n;
-      });
-
-      setIsLayouting(true);
-      const reLayouted = await layoutGraph(labeledNodes, externalFilteredEdges);
-      setNodes(reLayouted);
-      setEdges(externalFilteredEdges);
-      setIsLayouting(false);
-      fitView({ padding: 0.15, duration: 250 });
-    }
-    applyFilters();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showExternal, allNodes, allEdges, viewMode, expandedFiles, activeEdgeTypes]);
-
   const onNodeClick = useCallback(
     (_event: any, node: any) => {
       if (viewMode === "full" && node.data?.nodeType === "FILE") {
-        setExpandedFiles((prev) => {
+        setExpandedFiles((prev: Set<string>) => {
           const next = new Set(prev);
           if (next.has(node.id)) {
             next.delete(node.id);
@@ -221,7 +178,7 @@ function App() {
         onNodeClickHandler(_event, node);
       }
     },
-    [viewMode, onNodeClickHandler]
+    [viewMode, onNodeClickHandler, setExpandedFiles]
   );
 
   const onNodeMouseEnter = useCallback((_event: any, node: any) => {
@@ -231,6 +188,11 @@ function App() {
   const onNodeMouseLeave = useCallback(() => {
     setHoveredNode(null);
   }, []);
+
+  const { nodes: highlightedNodes, edges: highlightedEdges } = useMemo(
+    () => applyContextHighlight(displayedNodes, edges, hoveredNode?.id ?? null),
+    [displayedNodes, edges, hoveredNode]
+  );
 
   if (graphLoading) {
     return (
@@ -250,8 +212,8 @@ function App() {
       onMouseMove={(e) => setMousePos({ x: e.clientX, y: e.clientY })}
     >
       <ReactFlow
-        nodes={displayedNodes}
-        edges={edges}
+        nodes={highlightedNodes}
+        edges={highlightedEdges}
         onNodeClick={onNodeClick}
         onNodeMouseEnter={onNodeMouseEnter}
         onNodeMouseLeave={onNodeMouseLeave}

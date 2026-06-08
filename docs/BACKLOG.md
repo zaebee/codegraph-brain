@@ -140,14 +140,14 @@
 
 ## 🎯 Phase 6: Visual Refinements (2026-06-08)
 
-### Edge Aggregation (B) — approved, prototype OK
+### Edge Aggregation — done ✅
 
-- [ ] Агрегировать множественные CALLS между двумя нодами в одно ребро
-- [ ] Толщина линии = количество вызовов (log-scale или sqrt)
-- [ ] Лейбл "×N" на ребре
-- [ ] При наведении на ребро — тултип с деталями вызовов
-- [ ] Context highlighting: при наведении на ноду — dim не-связанных нод/рёбер (opacity 0.15)
-- [ ] CSS transition для opacity при hover
+- [x] Агрегировать множественные CALLS между двумя нодами в одно ребро
+- [x] Толщина линии = количество вызовов (log-scale или sqrt)
+- [x] Лейбл "×N" на ребре
+- [ ] При наведении на ребро — тултип с деталями вызовов (future)
+- [x] Context highlighting: при наведении на ноду — dim не-связанных нод/рёбер (opacity 0.15)
+- [x] CSS transition для opacity при hover
 
 ### File Containers (A)
 
@@ -169,4 +169,4 @@
 - [x] Вынести `getCollapsedView` в чистую функцию (`collapse.ts`)
 - [x] Обобщить DFS в `flow.ts` (один `dfs()` для outgoing/incoming)
 - [x] Удалить мёртвый код: `ErrorFallback.tsx`, `types.js`, неиспользуемые CSS-классы
-- [ ] Вынести filter pipeline из App.tsx в хук `useGraphFilter`
+- [x] Вынести filter pipeline из App.tsx в хук `useGraphFilter`
