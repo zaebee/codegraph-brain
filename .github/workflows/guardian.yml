@@ -1,0 +1,66 @@
+name: Guardian Review
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: read
+
+jobs:
+  review:
+    # job-level if: uses GitHub expression engine, not shell — safe for comment.body comparison
+    if: |
+      github.event.issue.pull_request != null &&
+      github.event.comment.body == '/guardian review'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate PR number
+        env:
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "Invalid PR number: $PR_NUMBER" && exit 1
+          fi
+          echo "PR_NUMBER=$PR_NUMBER" >> $GITHUB_ENV
+
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          # PR_NUMBER validated as digits-only in previous step
+          ref: refs/pull/${{ env.PR_NUMBER }}/head
+          fetch-depth: 0
+
+      - name: Fetch base branch for diff
+        run: git fetch origin main
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --extra guardian
+
+      - name: Run Guardian Review
+        id: guardian
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          RESULT=$(uv run python scripts/guardian_review.py 2>/dev/null | tail -n +4)
+          echo "result<<EOF" >> $GITHUB_OUTPUT
+          echo "$RESULT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Post review as PR comment
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ env.PR_NUMBER }}
+          body: |
+            ## 🛡️ Guardian Review
+
+            ${{ steps.guardian.outputs.result }}
+
+            ---
+            *Triggered by `@${{ github.event.comment.user.login }}` · [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*
