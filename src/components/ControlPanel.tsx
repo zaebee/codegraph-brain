@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Panel } from "@xyflow/react";
 import { useReactFlow } from "@xyflow/react";
 import type { RefObject } from "react";
-import "./ControlPanel.css";
+import panelStyles from "./ControlPanel.module.css";
+import sharedStyles from "../shared.module.css";
 
 export default function ControlPanel({
   onDepthChange,
@@ -45,10 +46,10 @@ export default function ControlPanel({
 
   if (collapsed) {
     return (
-      <Panel position="top-left" className="control-panel">
-        <div className="panel-collapsed">
+      <Panel position="top-left" className={panelStyles["control-panel"]}>
+        <div className={panelStyles["panel-collapsed"]}>
           <button
-            className="btn btn-icon"
+            className={sharedStyles.btn + " " + sharedStyles["btn-icon"]}
             onClick={() => setCollapsed(false)}
             aria-label="Expand panel"
             title="Expand panel"
@@ -61,12 +62,12 @@ export default function ControlPanel({
   }
 
   return (
-    <Panel position="top-left" className="control-panel">
-      <div className="panel-row">
-        <div className="panel-header">
-          <span className="panel-title">Controls</span>
+    <Panel position="top-left" className={panelStyles["control-panel"]}>
+      <div className={panelStyles["panel-row"]}>
+        <div className={panelStyles["panel-header"]}>
+          <span className={panelStyles["panel-title"]}>Controls</span>
           <button
-            className="btn btn-icon"
+            className={sharedStyles.btn + " " + sharedStyles["btn-icon"]}
             onClick={() => setCollapsed(true)}
             aria-label="Collapse panel"
             title="Collapse panel"
@@ -76,90 +77,90 @@ export default function ControlPanel({
         </div>
 
         {viewMode === "flow" ? (
-          <div className="panel-content">
-            <button className="btn btn-back" onClick={onBack} aria-label="Back to full graph">
+          <div className={panelStyles["panel-content"]}>
+            <button className={sharedStyles.btn + " " + sharedStyles["btn-back"]} onClick={onBack} aria-label="Back to full graph">
               ← Back
             </button>
             {flowRootId && (
               <button
-                className="btn btn-back"
+                className={sharedStyles.btn + " " + sharedStyles["btn-back"]}
                 onClick={() => onBackToRoot?.()}
                 aria-label="Back to root node"
               >
                 ↑ Root
               </button>
             )}
-            <button className="btn btn-export" onClick={handleFit} aria-label="Zoom to fit">
+            <button className={sharedStyles.btn + " " + sharedStyles["btn-export"]} onClick={handleFit} aria-label="Zoom to fit">
               ⊞ Fit
             </button>
           </div>
         ) : (
-          <div className="panel-content">
-            <div className="depth-control">
-              <span className="depth-label">Depth</span>
+          <div className={panelStyles["panel-content"]}>
+            <div className={panelStyles["depth-control"]}>
+              <span className={panelStyles["depth-label"]}>Depth</span>
               <input
                 type="range"
                 min="1"
                 max="5"
                 value={depth}
                 onChange={(e) => onDepthChange(Number(e.target.value))}
-                className="depth-slider"
+                className={panelStyles["depth-slider"]}
                 aria-label="Flow depth"
                 aria-valuemin={1}
                 aria-valuemax={5}
                 aria-valuenow={depth}
               />
-              <span className="depth-value">{depth}</span>
-              <div className="depth-presets">
+              <span className={panelStyles["depth-value"]}>{depth}</span>
+              <div className={panelStyles["depth-presets"]}>
                 <button
-                  className={`btn btn-preset ${depth === 1 ? "active" : ""}`}
+                  className={`${sharedStyles.btn} ${sharedStyles["btn-preset"]} ${depth === 1 ? sharedStyles.active : ""}`}
                   onClick={() => onDepthChange(1)}
                 >
                   1: Immediate
                 </button>
                 <button
-                  className={`btn btn-preset ${depth === 2 ? "active" : ""}`}
+                  className={`${sharedStyles.btn} ${sharedStyles["btn-preset"]} ${depth === 2 ? sharedStyles.active : ""}`}
                   onClick={() => onDepthChange(2)}
                 >
                   2: Near
                 </button>
                 <button
-                  className={`btn btn-preset ${depth === 3 ? "active" : ""}`}
+                  className={`${sharedStyles.btn} ${sharedStyles["btn-preset"]} ${depth === 3 ? sharedStyles.active : ""}`}
                   onClick={() => onDepthChange(3)}
                 >
                   3: Call tree
                 </button>
               </div>
             </div>
-            <button className="btn btn-export" onClick={handleFit} aria-label="Zoom to fit">
+            <button className={sharedStyles.btn + " " + sharedStyles["btn-export"]} onClick={handleFit} aria-label="Zoom to fit">
               ⊞ Fit
             </button>
           </div>
         )}
 
         {viewMode === "full" && (
-          <div className="panel-content">
+          <div className={panelStyles["panel-content"]}>
             <input
               type="text"
               placeholder="Search nodes... (press / to focus)"
-              className="search-input"
+              className={panelStyles["search-input"]}
               aria-label="Search nodes"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               ref={searchInputRef}
             />
             <button
-              className={`btn btn-toggle ${showExternal ? "active" : ""}`}
+              className={`${sharedStyles.btn} ${sharedStyles["btn-toggle"]} ${showExternal ? sharedStyles.active : ""}`}
               onClick={() => onToggleExternal?.(!showExternal)}
               aria-label="Toggle external nodes"
               aria-pressed={showExternal}
             >
               {showExternal ? "● External" : "○ External"}
             </button>
-            <button className="btn btn-export" onClick={onExportPng} aria-label="Export as PNG">
+            <button className={sharedStyles.btn + " " + sharedStyles["btn-export"]} onClick={onExportPng} aria-label="Export as PNG">
               ⬇ PNG
             </button>
-            <button className="btn btn-export" onClick={onExportSvg} aria-label="Export as SVG">
+            <button className={sharedStyles.btn + " " + sharedStyles["btn-export"]} onClick={onExportSvg} aria-label="Export as SVG">
               ⬇ SVG
             </button>
           </div>

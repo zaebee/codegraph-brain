@@ -2,6 +2,7 @@
 
 import { render, screen, fireEvent } from "@testing-library/react";
 import ControlPanel from "./ControlPanel";
+import sharedStyles from "../shared.module.css";
 
 const mockFitView = vi.fn();
 
@@ -82,7 +83,7 @@ describe("ControlPanel", () => {
   it("shows active class on current depth preset", () => {
     renderControlPanel({ depth: 3 });
     const presets = screen.getAllByText(/^\d+:/);
-    expect(presets[2]).toHaveClass("active");
+    expect(presets[2]).toHaveClass(sharedStyles.active);
   });
 
   it("shows search input in full mode", () => {
