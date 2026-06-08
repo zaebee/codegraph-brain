@@ -84,6 +84,7 @@ Node
 ├── type            NodeType     — L1/L2/L3 classification
 ├── name            str          — short symbol name (last segment of FQN)
 ├── file_path       str          — absolute or repo-relative path; VIRTUAL_FILE_PATH for synthetic nodes
+├── language        str          — source language (e.g. "python"); empty string for virtual nodes
 ├── start_line      int          — 1-based line number
 ├── end_line        int          — 1-based line number
 ├── namespace       NodeNamespace — INTERNAL (repo code) | EXTERNAL (stdlib/deps) | VIRTUAL

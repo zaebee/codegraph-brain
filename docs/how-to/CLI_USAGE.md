@@ -26,7 +26,7 @@ cgis ingest <path> [OPTIONS]
 
 | Option | Default | Description |
 | :--- | :--- | :--- |
-| `--output`, `-o` | `graph.db` | Output path (`.db` for SQLite, `.json` for raw dump) |
+| `--output`, `-o` | `graph.json` | Output path (`.db` for SQLite, `.json` for raw dump) |
 | `--incremental`, `-i` | `False` | Only re-ingest changed files (requires `.db` output) |
 | `--domains`, `-d` | `None` | Path to `domains.yaml` for semantic uplift |
 

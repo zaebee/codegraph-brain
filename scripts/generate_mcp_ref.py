@@ -1,28 +1,27 @@
 """Auto-generate docs/how-to/MCP_REFERENCE.md from FastMCP tool docstrings.
 
-Introspects the live cgis MCP server instance and renders a Markdown
-reference table for every registered tool. Output is deterministic and
-suitable for committing back to the repository via CI.
+Introspects the live cgis MCP server via the public mcp.list_tools() API
+and renders a Markdown reference table for every registered tool.
+Output is deterministic and suitable for committing back to the repository via CI.
 """
 
+import asyncio
 from pathlib import Path
 from typing import Any
+
+from mcp.types import Tool
 
 from cgis.api.mcp_server import mcp  # registers tools as a side-effect
 
 _OUTPUT = Path("docs/how-to/MCP_REFERENCE.md")
 
 
-def _format_tool(name: str) -> str:
+def _format_tool(tool: Tool) -> str:
     """Render a single MCP tool as a Markdown section."""
-    tool = mcp._tool_manager._tools.get(name)  # noqa: SLF001
-    if tool is None:
-        return ""
-
     description = (tool.description or "").strip()
-    lines = [f"## `{name}`", "", description, ""]
+    lines = [f"## `{tool.name}`", "", description, ""]
 
-    schema: dict[str, Any] = tool.parameters if isinstance(tool.parameters, dict) else {}
+    schema: dict[str, Any] = tool.inputSchema if isinstance(tool.inputSchema, dict) else {}
     props: dict[str, Any] = schema.get("properties") or {}
     required: list[str] = schema.get("required") or []
 
@@ -45,7 +44,7 @@ def generate_reference() -> None:
     """Write MCP_REFERENCE.md from all registered FastMCP tool schemas."""
     _OUTPUT.parent.mkdir(parents=True, exist_ok=True)
 
-    tool_names: list[str] = sorted(mcp._tool_manager._tools.keys())  # noqa: SLF001
+    tools: list[Tool] = sorted(asyncio.run(mcp.list_tools()), key=lambda t: t.name)
 
     header = [
         "# 📑 MCP Tools Reference Manual",
@@ -57,9 +56,9 @@ def generate_reference() -> None:
         "",
     ]
 
-    body = [_format_tool(name) for name in tool_names]
+    body = [_format_tool(tool) for tool in tools]
     _OUTPUT.write_text("\n".join(header + body), encoding="utf-8")
-    print(f"✅ Generated {_OUTPUT} ({len(tool_names)} tools)")
+    print(f"✅ Generated {_OUTPUT} ({len(tools)} tools)")
 
 
 if __name__ == "__main__":
