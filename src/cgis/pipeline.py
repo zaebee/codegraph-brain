@@ -12,6 +12,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from cgis.core.models import Edge, Node
 from cgis.extractors.base import BaseExtractor
 from cgis.resolver.engine import ResolverEngine
+from cgis.resolver.uplift import SemanticUpliftEngine
 
 if TYPE_CHECKING:
     from cgis.storage.sqlite_store import SQLiteStore
@@ -20,13 +21,20 @@ logger = structlog.getLogger(__name__)
 
 
 class IngestionPipeline:
-    def __init__(self, extractors: Mapping[str, BaseExtractor]) -> None:
+    def __init__(
+        self,
+        extractors: Mapping[str, BaseExtractor],
+        domains_config: str | None = None,
+    ) -> None:
         """
         Args:
             extractors: Map of file extensions to their respective extractors.
                         e.g., {".py": PythonExtractor()}
+            domains_config: Optional path to a domains.yaml file. When provided,
+                            the SemanticUpliftEngine runs after resolution.
         """
         self._extractors = extractors
+        self._domains_config = domains_config
         self._excluded = {"venv", ".venv", "__pycache__", "node_modules", "build", "dist"}
 
     @staticmethod
@@ -121,6 +129,9 @@ class IngestionPipeline:
             self._persist_incremental(
                 store, all_nodes, resolved_edges, changed_files, found_file_paths, virtual_nodes
             )
+            logger.info("Running semantic uplift...")
+            SemanticUpliftEngine(store, self._domains_config).execute_uplift()
+            logger.info("Semantic uplift complete.")
 
         return all_nodes, all_edges, resolved_edges
 

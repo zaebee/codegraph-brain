@@ -167,6 +167,27 @@ class SQLiteStore:
         with self._conn:
             self._conn.executemany(self._NODE_INSERT, [self._node_to_row(n) for n in nodes])
 
+    def upsert_edges(self, edges: list[Edge]) -> None:
+        """Insert or replace edges without deleting existing ones first."""
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        with self._conn:
+            self._conn.executemany(self._EDGE_INSERT, [self._edge_to_row(e) for e in edges])
+
+    def get_all_nodes(self) -> list[Node]:
+        """Return every node currently in the store."""
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        cursor = self._conn.execute("SELECT * FROM nodes")
+        return [self._row_to_node(row) for row in cursor.fetchall()]
+
+    def get_all_edges(self) -> list[Edge]:
+        """Return every edge currently in the store."""
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        cursor = self._conn.execute("SELECT * FROM edges")
+        return [self._row_to_edge(row) for row in cursor.fetchall()]
+
     def save_graph(self, nodes: list[Node], edges: list[Edge], overwrite: bool = False) -> None:
         """Persists all nodes and edges inside a single transaction."""
         if not self._conn:

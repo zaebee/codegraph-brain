@@ -75,6 +75,12 @@ def ingest(
         "-i",
         help="Only re-ingest files whose content has changed (requires .db output).",
     ),
+    domains: str | None = typer.Option(
+        None,
+        "--domains",
+        "-d",
+        help="Path to a domains.yaml file for semantic uplift (requires .db output).",
+    ),
 ) -> None:
     """
     Scan a repository, extract code structure, and resolve semantic links.
@@ -83,7 +89,7 @@ def ingest(
         ".py": PythonExtractor(),
     }
 
-    pipeline = IngestionPipeline(extractors)
+    pipeline = IngestionPipeline(extractors, domains_config=domains)
 
     console.print(f"[bold blue]🚀 Starting ingestion for:[/bold blue] {path}")
 
