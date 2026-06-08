@@ -328,3 +328,34 @@ def test_execute_uplift_creates_domain_concept_nodes(
     assert len(dep_edges) == 1
     assert dep_edges[0].source == "domain:Alpha"
     assert dep_edges[0].target == "domain:Beta"
+
+
+def test_execute_uplift_without_domains_clears_stale_tags(
+    temp_store: SQLiteStore, tmp_path: Path
+) -> None:
+    """Re-running uplift without --domains removes previously assigned domain tags."""
+    domains_yaml = tmp_path / "domains.yaml"
+    domains_yaml.write_text(
+        "version: '0.1.0'\ndomains:\n"
+        "  Alpha:\n    heuristics:\n      file_path_patterns: ['a.py']\n      fqn_patterns: []\n"
+        "  Beta:\n    heuristics:\n      file_path_patterns: ['b.py']\n      fqn_patterns: []\n",
+        encoding="utf-8",
+    )
+    nodes = [_node("a.fn", file_path="a.py"), _node("b.fn", file_path="b.py")]
+    edges = [_edge("a.fn", "b.fn", EdgeType.CALLS)]
+    temp_store.save_graph(nodes, edges)
+
+    # First run: assign domain tags and create DOMAIN_CONCEPT nodes
+    SemanticUpliftEngine(temp_store, str(domains_yaml)).execute_uplift()
+    assert temp_store.get_node("domain:Alpha") is not None
+    tagged = temp_store.get_node("a.fn")
+    assert tagged is not None
+    assert "Alpha" in tagged.domains
+
+    # Second run: no domains config — stale tags and concept nodes must be cleared
+    SemanticUpliftEngine(temp_store).execute_uplift()
+
+    assert temp_store.get_node("domain:Alpha") is None
+    cleared = temp_store.get_node("a.fn")
+    assert cleared is not None
+    assert cleared.domains == []

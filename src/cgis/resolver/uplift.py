@@ -97,9 +97,11 @@ class SemanticUpliftEngine:
 
         nodes_map = _phase1_map_ontology_classes(nodes_map)
 
+        # Always reset domain tags — ensures deterministic state whether or not a
+        # domains config is provided; prevents stale tags from driving phase 4.
+        nodes_map = {nid: n.model_copy(update={"domains": []}) for nid, n in nodes_map.items()}
+
         if self._domains:
-            # Reset domain tags so removed patterns don't persist across re-runs
-            nodes_map = {nid: n.model_copy(update={"domains": []}) for nid, n in nodes_map.items()}
             nodes_map = _phase2_apply_heuristic_tagging(nodes_map, self._domains)
             nodes_map = _phase3_propagate_domains(nodes_map, edges)
 
