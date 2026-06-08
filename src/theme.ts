@@ -33,9 +33,17 @@ export const EDGE_COLORS: Record<string, string> = {
   DECLARES: "#78909c",
 };
 
-export const LEGEND_ITEMS: LegendItem[] = [
+export const NODE_LEGEND_ITEMS: LegendItem[] = [
   { type: "FILE", label: "File", color: NODE_COLORS.FILE.border },
   { type: "CLASS", label: "Class", color: NODE_COLORS.CLASS.border },
   { type: "FUNCTION", label: "Function", color: NODE_COLORS.FUNCTION.border },
   { type: "METHOD", label: "Method", color: NODE_COLORS.METHOD.border },
+];
+
+export const EDGE_LEGEND_ITEMS: LegendItem[] = [
+  { type: "CALLS", label: "Calls", color: EDGE_COLORS.CALLS },
+  { type: "IMPORTS", label: "Imports", color: EDGE_COLORS.IMPORTS },
+  { type: "EXTENDS", label: "Extends", color: EDGE_COLORS.EXTENDS },
+  { type: "CONTAINS", label: "Contains", color: EDGE_COLORS.CONTAINS },
+  { type: "DECLARES", label: "Declares", color: EDGE_COLORS.DECLARES },
 ];

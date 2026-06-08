@@ -32,6 +32,13 @@
   min-width: auto;
 }
 
+.btn-icon-sm {
+  padding: 0 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  min-width: auto;
+}
+
 .btn-toggle {
   font-size: var(--font-size-sm);
   padding: 8px 10px;
@@ -46,6 +53,37 @@
   font-size: var(--font-size-sm);
 }
 
-.btn-export {
-  font-size: var(--font-size-md);
+.btn-sm {
+  font-size: 10px;
+  padding: 2px 6px;
+  line-height: 1.4;
+}
+
+.btn-edge-type {
+  font-size: var(--font-size-sm);
+  padding: 4px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--color-text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-edge-type:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-border);
+}
+
+.btn-edge-type.active {
+  background: color-mix(in srgb, var(--edge-color) 20%, transparent);
+  border-color: var(--edge-color, var(--color-border-focus));
+  color: var(--color-text-primary);
+}
+
+.btn-sm.active {
+  border-color: var(--edge-color, var(--color-border-focus));
 }

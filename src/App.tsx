@@ -49,13 +49,14 @@ function App() {
   const [nodes, setNodes] = useState<any[]>([]);
   const [edges, setEdges] = useState<any[]>([]);
   const [viewMode, setViewMode] = useState("full");
-  const [depth, setDepth] = useState(3);
   const [hoveredNode, setHoveredNode] = useState<any>(null);
   const [stats, setStats] = useState<{ nodes: number; edges: number; external: number } | null>(
     null
   );
   const [showExternal, setShowExternal] = useState(false);
-  const [showStructure, setShowStructure] = useState(true);
+  const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
+  const ALL_EDGE_TYPES = ["CALLS", "IMPORTS", "EXTENDS", "DECLARES"];
+  const [activeEdgeTypes, setActiveEdgeTypes] = useState<string[]>([...ALL_EDGE_TYPES]);
   const [allNodes, setAllNodes] = useState<any[]>([]);
   const [allEdges, setAllEdges] = useState<any[]>([]);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
@@ -65,6 +66,7 @@ function App() {
 
   const wrapperRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const parentChildrenRef = useRef<Map<string, string[]>>(new Map());
   const { fitView } = useReactFlow();
 
   // Hook: fetch graph
@@ -81,7 +83,7 @@ function App() {
     onEscape: () => {
       if (viewMode === "flow") buildFullGraph();
     },
-    onFit: () => fitView({ padding: 0.15 }),
+    onFit: () => fitView({ padding: 0.15, duration: 250 }),
     onFocusSearch: () => searchInputRef.current?.focus(),
     disabled: false,
   });
@@ -104,23 +106,28 @@ function App() {
     setEdges,
     setViewMode,
     setFlowRootId,
-    depth,
-    showStructure
+    activeEdgeTypes
   );
 
   const buildFullGraph = useCallback(async () => {
     if (!graphData?.nodes || !graphData?.edges) return;
+    setExpandedFiles(new Set());
 
-    const validEdges = filterValidEdges(graphData.nodes, graphData.edges);
-    const visibleEdges = showStructure
-      ? validEdges
-      : validEdges.filter((e: any) => e.type === "CALLS");
+    const rawParentChildren = new Map<string, string[]>();
+    for (const edge of graphData.edges) {
+      if (edge.type === "CONTAINS") {
+        const children = rawParentChildren.get(edge.source) || [];
+        children.push(edge.target);
+        rawParentChildren.set(edge.source, children);
+      }
+    }
+    parentChildrenRef.current = rawParentChildren;
 
     const baseNodes = graphData.nodes.map((n) =>
       mapNodeToReactFlow(n, { groupKey: n.file_path || undefined })
     );
-    const baseEdges = visibleEdges.map((e: any, i: number) =>
-      mapEdgeToReactFlow(e, i)
+    const baseEdges = filterValidEdges(graphData.nodes, graphData.edges).map(
+      (e: any, i: number) => mapEdgeToReactFlow(e, i)
     );
 
     setIsLayouting(true);
@@ -132,55 +139,125 @@ function App() {
     setEdges(baseEdges);
     setViewMode("full");
     clearCache();
-    fitView({ padding: 0.15 });
+    fitView({ padding: 0.15, duration: 250 });
     setStats({
       nodes: graphData.nodes.length,
-      edges: visibleEdges.length,
+      edges: baseEdges.length,
       external: graphData.nodes.filter((n) => n.namespace && n.namespace !== "INTERNAL").length,
     });
     setIsLayouting(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graphData, clearCache, showStructure]);
+  }, [graphData, clearCache]);
 
   useEffect(() => {
     if (graphData) buildFullGraph();
   }, [graphData, buildFullGraph]);
 
-  // Filter external nodes
+  const getCollapsedView = useCallback(
+    (nodes: any[], edges: any[]): { nodes: any[]; edges: any[] } => {
+      const parentChildren = parentChildrenRef.current;
+
+      if (expandedFiles.size === 0) {
+        const fileNodes = nodes.filter(
+          (n: any) => n.data?.nodeType === "FILE" && parentChildren.has(n.id)
+        );
+        const fileNodeIds = new Set(fileNodes.map((n: any) => n.id));
+        const fileEdges = edges.filter(
+          (e: any) => fileNodeIds.has(e.source) && fileNodeIds.has(e.target)
+        );
+        return { nodes: fileNodes, edges: fileEdges };
+      }
+
+      const visibleIds = new Set<string>();
+      for (const n of nodes) {
+        if (n.data?.nodeType === "FILE" && parentChildren.has(n.id)) {
+          visibleIds.add(n.id);
+          if (expandedFiles.has(n.id)) {
+            const children = parentChildren.get(n.id) || [];
+            for (const cid of children) {
+              visibleIds.add(cid);
+            }
+          }
+        }
+      }
+
+      const filteredNodes = nodes.filter((n: any) => visibleIds.has(n.id));
+      const filteredEdges = edges.filter(
+        (e: any) => visibleIds.has(e.source) && visibleIds.has(e.target)
+      );
+      return { nodes: filteredNodes, edges: filteredEdges };
+    },
+    [expandedFiles]
+  );
+
+  // Combined filter: collapse → external → layout
   useEffect(() => {
-    async function filterAndLayout() {
+    async function applyFilters() {
       if (viewMode !== "full") return;
 
-      if (showExternal) {
-        setNodes(allNodes);
-        setEdges(allEdges);
-      } else {
-        const filteredNodes = allNodes.filter((n: any) => {
-          if (n.data?.namespace && n.data?.namespace !== "INTERNAL") return false;
-          return true;
-        });
-        const filteredNodeIds = new Set(filteredNodes.map((n: any) => n.id));
-        const filteredEdges = allEdges.filter(
-          (e: any) => filteredNodeIds.has(e.source) && filteredNodeIds.has(e.target)
-        );
+      const collapsed = getCollapsedView(allNodes, allEdges);
 
-        setIsLayouting(true);
-        const reLayouted = await layoutGraph(filteredNodes, filteredEdges);
-        setNodes(reLayouted);
-        setEdges(filteredEdges);
-        setIsLayouting(false);
-      }
-      fitView({ padding: 0.15 });
+      const typeFilteredEdges = collapsed.edges.filter(
+        (e: any) => {
+          if (!e.data?.edgeType) return false;
+          if (e.data.edgeType === "CONTAINS") return true;
+          return activeEdgeTypes.includes(e.data.edgeType);
+        }
+      );
+
+      const externalFilteredNodes = showExternal
+        ? collapsed.nodes
+        : collapsed.nodes.filter(
+            (n: any) => !n.data?.namespace || n.data?.namespace === "INTERNAL"
+          );
+
+      const filteredNodeIds = new Set(externalFilteredNodes.map((n: any) => n.id));
+      const externalFilteredEdges = typeFilteredEdges.filter(
+        (e: any) => filteredNodeIds.has(e.source) && filteredNodeIds.has(e.target)
+      );
+
+      const labeledNodes = externalFilteredNodes.map((n: any) => {
+        if (n.data?.nodeType === "FILE") {
+          const indicator = expandedFiles.has(n.id) ? "▼ " : "▶ ";
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              label: indicator + n.data.label.replace(/^[▶▼]\s/, ""),
+            },
+          };
+        }
+        return n;
+      });
+
+      setIsLayouting(true);
+      const reLayouted = await layoutGraph(labeledNodes, externalFilteredEdges);
+      setNodes(reLayouted);
+      setEdges(externalFilteredEdges);
+      setIsLayouting(false);
+      fitView({ padding: 0.15, duration: 250 });
     }
-    filterAndLayout();
+    applyFilters();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showExternal, allNodes, allEdges, viewMode]);
+  }, [showExternal, allNodes, allEdges, viewMode, expandedFiles, activeEdgeTypes]);
 
   const onNodeClick = useCallback(
     (_event: any, node: any) => {
-      onNodeClickHandler(_event, node);
+      if (viewMode === "full" && node.data?.nodeType === "FILE") {
+        setExpandedFiles((prev) => {
+          const next = new Set(prev);
+          if (next.has(node.id)) {
+            next.delete(node.id);
+          } else {
+            next.add(node.id);
+          }
+          return next;
+        });
+      } else {
+        onNodeClickHandler(_event, node);
+      }
     },
-    [onNodeClickHandler]
+    [viewMode, onNodeClickHandler]
   );
 
   const onNodeMouseEnter = useCallback((_event: any, node: any) => {
@@ -217,6 +294,7 @@ function App() {
         colorMode="dark"
         minZoom={0.1}
         maxZoom={2}
+        nodesDraggable={false}
       >
         <Background gap={20} size={1} style={{ backgroundColor: "#0d1117" }} />
         <Controls
@@ -241,18 +319,22 @@ function App() {
         />
 
         <ControlPanel
-          onDepthChange={setDepth}
-          depth={depth}
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
           searchInputRef={searchInputRef}
           onToggleExternal={setShowExternal}
           showExternal={showExternal}
-          onToggleStructure={setShowStructure}
-          showStructure={showStructure}
+          activeEdgeTypes={activeEdgeTypes}
+          onToggleEdgeType={(t: string) => {
+            setActiveEdgeTypes((prev) => {
+              if (prev.includes(t)) return prev.filter((x) => x !== t);
+              return [...prev, t];
+            });
+          }}
+          ALL_EDGE_TYPES={ALL_EDGE_TYPES}
           onExportPng={exportPng}
           onExportSvg={exportSvg}
-          onFit={() => fitView({ padding: 0.15 })}
+          onFit={() => fitView({ padding: 0.15, duration: 250 })}
           viewMode={viewMode}
           flowRootId={flowRootId}
           onBack={() => buildFullGraph()}

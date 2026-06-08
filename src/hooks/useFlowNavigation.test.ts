@@ -31,7 +31,7 @@ function setup() {
   const setViewMode = vi.fn();
   const setFlowRootId = vi.fn();
   const { result } = renderHook(() =>
-    useFlowNavigation(graphData, setNodes, setEdges, setViewMode, setFlowRootId, 3)
+    useFlowNavigation(graphData, setNodes, setEdges, setViewMode, setFlowRootId)
   );
   return { result, setNodes, setEdges, setViewMode, setFlowRootId };
 }
@@ -73,7 +73,7 @@ describe("useFlowNavigation", () => {
     expect(setEdges).toHaveBeenCalled();
     expect(setViewMode).toHaveBeenCalledWith("flow");
     expect(setFlowRootId).toHaveBeenCalledWith("a");
-    expect(mockFitView).toHaveBeenCalledWith({ padding: 0.15 });
+    expect(mockFitView).toHaveBeenCalledWith({ padding: 0.15, duration: 250 });
   });
 
   it("clearCache does not throw", () => {

@@ -1,17 +1,19 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { Panel } from "@xyflow/react";
 import { useReactFlow } from "@xyflow/react";
 import type { RefObject } from "react";
 import panelStyles from "./ControlPanel.module.css";
 import sharedStyles from "../shared.module.css";
+import { EDGE_COLORS } from "../theme";
+
+const EDGE_COLOR_MAP: Record<string, string> = EDGE_COLORS;
 
 export default function ControlPanel({
-  onDepthChange,
-  depth,
   onToggleExternal,
   showExternal,
-  onToggleStructure,
-  showStructure,
+  activeEdgeTypes,
+  onToggleEdgeType,
+  ALL_EDGE_TYPES,
   onExportPng,
   onExportSvg,
   onFit,
@@ -23,12 +25,11 @@ export default function ControlPanel({
   setSearchQuery,
   searchInputRef,
 }: {
-  onDepthChange: (depth: number) => void;
-  depth: number;
   onToggleExternal?: (show: boolean) => void;
   showExternal: boolean;
-  onToggleStructure?: (show: boolean) => void;
-  showStructure?: boolean;
+  activeEdgeTypes: string[];
+  onToggleEdgeType: (type: string) => void;
+  ALL_EDGE_TYPES: string[];
   onExportPng?: () => void;
   onExportSvg?: () => void;
   onFit?: () => void;
@@ -40,12 +41,11 @@ export default function ControlPanel({
   setSearchQuery: (q: string) => void;
   searchInputRef?: RefObject<HTMLInputElement | null>;
 }) {
-  const structVisible = showStructure === undefined ? true : showStructure;
   const { fitView } = useReactFlow();
   const [collapsed, setCollapsed] = useState(false);
 
   const handleFit = () => {
-    fitView({ padding: 0.15 });
+    fitView({ padding: 0.15, duration: 250 });
     onFit?.();
   };
 
@@ -54,7 +54,7 @@ export default function ControlPanel({
       <Panel position="top-left" className={panelStyles["control-panel"]}>
         <div className={panelStyles["panel-collapsed"]}>
           <button
-            className={sharedStyles.btn + " " + sharedStyles["btn-icon"]}
+            className={sharedStyles.btn + " " + sharedStyles["btn-icon-sm"]}
             onClick={() => setCollapsed(false)}
             aria-label="Expand panel"
             title="Expand panel"
@@ -68,11 +68,10 @@ export default function ControlPanel({
 
   return (
     <Panel position="top-left" className={panelStyles["control-panel"]}>
-      <div className={panelStyles["panel-row"]}>
-        <div className={panelStyles["panel-header"]}>
-          <span className={panelStyles["panel-title"]}>Controls</span>
+      <div className={panelStyles["panel-row-compact"]}>
+        <div className={panelStyles["compact-header"]}>
           <button
-            className={sharedStyles.btn + " " + sharedStyles["btn-icon"]}
+            className={sharedStyles.btn + " " + sharedStyles["btn-icon-sm"]}
             onClick={() => setCollapsed(true)}
             aria-label="Collapse panel"
             title="Collapse panel"
@@ -81,103 +80,80 @@ export default function ControlPanel({
           </button>
         </div>
 
-        {viewMode === "flow" ? (
-          <div className={panelStyles["panel-content"]}>
-            <button className={sharedStyles.btn + " " + sharedStyles["btn-back"]} onClick={onBack} aria-label="Back to full graph">
-              ← Back
-            </button>
-            {flowRootId && (
-              <button
-                className={sharedStyles.btn + " " + sharedStyles["btn-back"]}
-                onClick={() => onBackToRoot?.()}
-                aria-label="Back to root node"
-              >
-                ↑ Root
+        {/* Row 1: navigation / search + actions */}
+        <div className={panelStyles["compact-row"]}>
+          {viewMode === "flow" ? (
+            <>
+              <button className={sharedStyles.btn + " " + sharedStyles["btn-sm"]} onClick={onBack} aria-label="Back to full graph">
+                ← Back
               </button>
-            )}
-            <button className={sharedStyles.btn + " " + sharedStyles["btn-export"]} onClick={handleFit} aria-label="Zoom to fit">
-              ⊞ Fit
-            </button>
-          </div>
-        ) : (
-          <div className={panelStyles["panel-content"]}>
-            <div className={panelStyles["depth-control"]}>
-              <span className={panelStyles["depth-label"]}>Depth</span>
+              {flowRootId && (
+                <button className={sharedStyles.btn + " " + sharedStyles["btn-sm"]} onClick={() => onBackToRoot?.()} aria-label="Back to root node">
+                  ↑ Root
+                </button>
+              )}
+              <button className={sharedStyles.btn + " " + sharedStyles["btn-sm"]} onClick={handleFit} aria-label="Zoom to fit" title="Fit">
+                ⊞ Fit
+              </button>
+            </>
+          ) : (
+            <>
               <input
-                type="range"
-                min="1"
-                max="5"
-                value={depth}
-                onChange={(e) => onDepthChange(Number(e.target.value))}
-                className={panelStyles["depth-slider"]}
-                aria-label="Flow depth"
-                aria-valuemin={1}
-                aria-valuemax={5}
-                aria-valuenow={depth}
+                type="text"
+                placeholder="search..."
+                className={panelStyles["search-input-compact"]}
+                aria-label="Search nodes"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                ref={searchInputRef}
               />
-              <span className={panelStyles["depth-value"]}>{depth}</span>
-              <div className={panelStyles["depth-presets"]}>
-                <button
-                  className={`${sharedStyles.btn} ${sharedStyles["btn-preset"]} ${depth === 1 ? sharedStyles.active : ""}`}
-                  onClick={() => onDepthChange(1)}
-                >
-                  1: Immediate
-                </button>
-                <button
-                  className={`${sharedStyles.btn} ${sharedStyles["btn-preset"]} ${depth === 2 ? sharedStyles.active : ""}`}
-                  onClick={() => onDepthChange(2)}
-                >
-                  2: Near
-                </button>
-                <button
-                  className={`${sharedStyles.btn} ${sharedStyles["btn-preset"]} ${depth === 3 ? sharedStyles.active : ""}`}
-                  onClick={() => onDepthChange(3)}
-                >
-                  3: Call tree
-                </button>
-              </div>
-            </div>
-            <button className={sharedStyles.btn + " " + sharedStyles["btn-export"]} onClick={handleFit} aria-label="Zoom to fit">
-              ⊞ Fit
-            </button>
-          </div>
-        )}
+              <button
+                className={`${sharedStyles.btn} ${sharedStyles["btn-sm"]} ${showExternal ? sharedStyles.active : ""}`}
+                onClick={() => onToggleExternal?.(!showExternal)}
+                aria-label="Toggle external nodes"
+                aria-pressed={showExternal}
+              >
+                {showExternal ? "●Ext" : "○Ext"}
+              </button>
+              <button className={sharedStyles.btn + " " + sharedStyles["btn-sm"]} onClick={handleFit} aria-label="Zoom to fit" title="Fit">
+                ⊞
+              </button>
+              <button className={sharedStyles.btn + " " + sharedStyles["btn-sm"]} onClick={onExportPng} aria-label="Export as PNG" title="Export PNG">
+                ⬇PNG
+              </button>
+              <button className={sharedStyles.btn + " " + sharedStyles["btn-sm"]} onClick={onExportSvg} aria-label="Export as SVG" title="Export SVG">
+                ⬇SVG
+              </button>
+            </>
+          )}
+        </div>
 
-        {viewMode === "full" && (
-          <div className={panelStyles["panel-content"]}>
-            <input
-              type="text"
-              placeholder="Search nodes... (press / to focus)"
-              className={panelStyles["search-input"]}
-              aria-label="Search nodes"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              ref={searchInputRef}
-            />
-            <button
-              className={`${sharedStyles.btn} ${sharedStyles["btn-toggle"]} ${showExternal ? sharedStyles.active : ""}`}
-              onClick={() => onToggleExternal?.(!showExternal)}
-              aria-label="Toggle external nodes"
-              aria-pressed={showExternal}
-            >
-              {showExternal ? "● External" : "○ External"}
-            </button>
-            <button
-              className={`${sharedStyles.btn} ${sharedStyles["btn-toggle"]} ${structVisible ? sharedStyles.active : ""}`}
-              onClick={() => onToggleStructure?.(!structVisible)}
-              aria-label="Toggle structure edges"
-              aria-pressed={structVisible}
-            >
-              {structVisible ? "● Structure" : "○ Structure"}
-            </button>
-            <button className={sharedStyles.btn + " " + sharedStyles["btn-export"]} onClick={onExportPng} aria-label="Export as PNG">
-              ⬇ PNG
-            </button>
-            <button className={sharedStyles.btn + " " + sharedStyles["btn-export"]} onClick={onExportSvg} aria-label="Export as SVG">
-              ⬇ SVG
-            </button>
+        {/* Row 2: edge type toggles */}
+        <div className={panelStyles["compact-row"]}>
+          <div className={panelStyles["edge-type-buttons-compact"]}>
+            {ALL_EDGE_TYPES.map((type) => {
+              const isActive = activeEdgeTypes.includes(type);
+              const color = EDGE_COLOR_MAP[type] || "#78909c";
+              return (
+                <button
+                  key={type}
+                  className={`${sharedStyles["btn-edge-type"]} ${isActive ? sharedStyles.active : ""}`}
+                  onClick={() => onToggleEdgeType(type)}
+                  aria-label={`Toggle ${type}`}
+                  aria-pressed={isActive}
+                  style={{ "--edge-color": color } as React.CSSProperties}
+                  title={type}
+                >
+                  <span
+                    className={panelStyles["edge-type-indicator"]}
+                    style={{ background: isActive ? color : "transparent" }}
+                  />
+                  {type}
+                </button>
+              );
+            })}
           </div>
-        )}
+        </div>
       </div>
     </Panel>
   );

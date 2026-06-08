@@ -20,6 +20,7 @@ export function mapEdgeToReactFlow(edge: GraphEdge, index: number): Edge {
     style,
     animated: false,
     type: "default",
+    data: { edgeType: edge.type },
   } as Edge;
 }
 

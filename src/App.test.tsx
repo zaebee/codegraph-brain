@@ -39,13 +39,13 @@ async function renderApp() {
     </ReactFlowProvider>
   );
   await waitFor(() => {
-    expect(screen.getByText(/Controls/i)).toBeInTheDocument();
+    expect(screen.getByLabelText("Collapse panel")).toBeInTheDocument();
   });
 }
 
 it("renders control panel", async () => {
   await renderApp();
-  expect(screen.getByText(/Depth/i)).toBeInTheDocument();
+  expect(screen.getByLabelText("Toggle CALLS")).toBeInTheDocument();
 });
 
 it("shows legend with all node types", async () => {

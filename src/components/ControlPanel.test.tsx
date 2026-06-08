@@ -2,7 +2,6 @@
 
 import { render, screen, fireEvent } from "@testing-library/react";
 import ControlPanel from "./ControlPanel";
-import sharedStyles from "../shared.module.css";
 
 const mockFitView = vi.fn();
 
@@ -13,10 +12,11 @@ vi.mock("@xyflow/react", () => ({
 
 function renderControlPanel(props: Partial<Parameters<typeof ControlPanel>[0]> = {}) {
   const defaults = {
-    onDepthChange: vi.fn(),
-    depth: 3,
     onToggleExternal: vi.fn(),
     showExternal: false,
+    activeEdgeTypes: ["CALLS", "IMPORTS", "EXTENDS", "DECLARES"],
+    onToggleEdgeType: vi.fn(),
+    ALL_EDGE_TYPES: ["CALLS", "IMPORTS", "EXTENDS", "DECLARES"],
     onExportPng: vi.fn(),
     onExportSvg: vi.fn(),
     onFit: vi.fn(),
@@ -35,11 +35,6 @@ describe("ControlPanel", () => {
     mockFitView.mockClear();
   });
 
-  it("renders Controls title", () => {
-    renderControlPanel();
-    expect(screen.getByText("Controls")).toBeInTheDocument();
-  });
-
   it("renders collapse button", () => {
     renderControlPanel();
     expect(screen.getByLabelText("Collapse panel")).toBeInTheDocument();
@@ -55,40 +50,12 @@ describe("ControlPanel", () => {
     renderControlPanel();
     fireEvent.click(screen.getByLabelText("Collapse panel"));
     fireEvent.click(screen.getByLabelText("Expand panel"));
-    expect(screen.getByText("Controls")).toBeInTheDocument();
-  });
-
-  it("shows depth slider in full mode", () => {
-    renderControlPanel();
-    const slider = screen.getByLabelText("Flow depth");
-    expect(slider).toBeInTheDocument();
-    expect(slider).toHaveValue("3");
-  });
-
-  it("calls onDepthChange when depth slider changes", () => {
-    const onDepthChange = vi.fn();
-    renderControlPanel({ onDepthChange });
-    const slider = screen.getByLabelText("Flow depth");
-    fireEvent.change(slider, { target: { value: "5" } });
-    expect(onDepthChange).toHaveBeenCalledWith(5);
-  });
-
-  it("calls onDepthChange via preset buttons", () => {
-    const onDepthChange = vi.fn();
-    renderControlPanel({ onDepthChange, depth: 1 });
-    fireEvent.click(screen.getByText("2: Near"));
-    expect(onDepthChange).toHaveBeenCalledWith(2);
-  });
-
-  it("shows active class on current depth preset", () => {
-    renderControlPanel({ depth: 3 });
-    const presets = screen.getAllByText(/^\d+:/);
-    expect(presets[2]).toHaveClass(sharedStyles.active);
+    expect(screen.getByLabelText("Collapse panel")).toBeInTheDocument();
   });
 
   it("shows search input in full mode", () => {
     renderControlPanel();
-    expect(screen.getByPlaceholderText(/Search nodes/)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/search/)).toBeInTheDocument();
   });
 
   it("calls setSearchQuery on input change", () => {
@@ -155,6 +122,20 @@ describe("ControlPanel", () => {
   it("calls fitView when Fit button clicked", () => {
     renderControlPanel();
     fireEvent.click(screen.getByLabelText("Zoom to fit"));
-    expect(mockFitView).toHaveBeenCalledWith({ padding: 0.15 });
+    expect(mockFitView).toHaveBeenCalledWith({ padding: 0.15, duration: 250 });
+  });
+
+  it("renders edge type toggle buttons", () => {
+    renderControlPanel();
+    expect(screen.getByLabelText("Toggle CALLS")).toBeInTheDocument();
+    expect(screen.getByLabelText("Toggle IMPORTS")).toBeInTheDocument();
+    expect(screen.getByLabelText("Toggle DECLARES")).toBeInTheDocument();
+  });
+
+  it("calls onToggleEdgeType when edge type button clicked", () => {
+    const onToggleEdgeType = vi.fn();
+    renderControlPanel({ onToggleEdgeType });
+    fireEvent.click(screen.getByLabelText("Toggle IMPORTS"));
+    expect(onToggleEdgeType).toHaveBeenCalledWith("IMPORTS");
   });
 });
