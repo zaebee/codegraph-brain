@@ -8,6 +8,12 @@ _RAW_CALL_PREFIX = "raw_call:"
 _UNRESOLVED_STYLE = ":::unresolvedNode"
 
 
+def _normalize_id(fqn: str) -> str:
+    """Deterministically hash any complex FQN into a Mermaid-safe alphanumeric ID."""
+    hasher = hashlib.md5(fqn.encode("utf-8"), usedforsecurity=False)
+    return f"n_{hasher.hexdigest()}"
+
+
 def _escape(text: str) -> str:
     """Escape special characters that break Mermaid double-quoted node labels."""
     return (
@@ -39,11 +45,6 @@ class MermaidCompiler:
             ),
         ]
 
-    def _normalize_id(self, fqn: str) -> str:
-        """Deterministically hashes any complex FQN into a Mermaid-safe alphanumeric ID."""
-        hasher = hashlib.md5(fqn.encode("utf-8"), usedforsecurity=False)
-        return f"n_{hasher.hexdigest()}"
-
     def _get_node_label(self, node: Node) -> str:
         """Formats the visible text inside a node (Name + file name + line range)."""
         filename = node.file_path.replace("\\", "/").split("/")[-1]
@@ -67,39 +68,60 @@ class MermaidCompiler:
             return ":::methodNode"
         return ":::defaultNode"
 
-    def compile(self, nodes: list[Node], edges: list[Edge]) -> str:
-        """Generates Mermaid Graph Definition."""
-        lines = ["graph TD"]
+    def _render_node_line(self, node: Node, id_map: dict[str, str], indent: str) -> str:
+        """Format a single node declaration with its label and style class."""
+        safe_id = id_map[node.id]
+        return f'{indent}{safe_id}["{self._get_node_label(node)}"]{self._get_style_class(node)}'
 
-        lines.extend(self._style_defs)
-        lines.append("")  # Empty line for readability
+    def _render_subgraphs(
+        self, file_groups: dict[str, list[Node]], id_map: dict[str, str]
+    ) -> list[str]:
+        """Render nodes grouped into subgraph blocks, one block per source file."""
+        lines: list[str] = []
+        for file_path, group_nodes in file_groups.items():
+            sg_id = _normalize_id(f"sg_{file_path}")
+            sg_label = _escape(file_path.replace("\\", "/").split("/")[-1])
+            lines.append(f'    subgraph {sg_id}["{sg_label}"]')
+            lines.extend(self._render_node_line(n, id_map, "        ") for n in group_nodes)
+            lines.append("    end")
+        return lines
 
-        id_map: dict[str, str] = {}
-        for node in nodes:
-            safe_id = self._normalize_id(node.id)
-            id_map[node.id] = safe_id
-
-            label = self._get_node_label(node)
-            style = self._get_style_class(node)
-
-            lines.append(f'    {safe_id}["{label}"]{style}')
-
+    def _render_edges(self, edges: list[Edge], id_map: dict[str, str]) -> list[str]:
+        """Render edge declarations, injecting phantom node stubs for unknown endpoints."""
+        lines: list[str] = []
         for edge in edges:
             source_safe = id_map.get(edge.source)
             if not source_safe:
-                source_safe = self._normalize_id(edge.source)
+                source_safe = _normalize_id(edge.source)
                 lines.append(f'    {source_safe}["{_escape(edge.source)}"]:::defaultNode')
                 id_map[edge.source] = source_safe
 
             target_safe = id_map.get(edge.target)
             if not target_safe:
-                target_safe = self._normalize_id(edge.target)
-                is_unresolved_target = edge.target.startswith(_RAW_CALL_PREFIX)
+                target_safe = _normalize_id(edge.target)
+                is_unresolved = edge.target.startswith(_RAW_CALL_PREFIX)
                 clean_target = _escape(edge.target.removeprefix(_RAW_CALL_PREFIX))
-                target_style = _UNRESOLVED_STYLE if is_unresolved_target else ":::defaultNode"
+                target_style = _UNRESOLVED_STYLE if is_unresolved else ":::defaultNode"
                 lines.append(f'    {target_safe}["{clean_target}"]{target_style}')
                 id_map[edge.target] = target_safe
 
             lines.append(f"    {source_safe} -->|{edge.type.value}| {target_safe}")
+        return lines
 
+    def compile(self, nodes: list[Node], edges: list[Edge]) -> str:
+        """Generates Mermaid Graph Definition, grouping nodes by file into subgraphs."""
+        lines = ["graph TD", *self._style_defs, ""]
+
+        id_map = {node.id: _normalize_id(node.id) for node in nodes}
+
+        file_groups: dict[str, list[Node]] = {}
+        for node in nodes:
+            file_groups.setdefault(node.file_path, []).append(node)
+
+        if len(file_groups) > 1:
+            lines.extend(self._render_subgraphs(file_groups, id_map))
+        else:
+            lines.extend(self._render_node_line(n, id_map, "    ") for n in nodes)
+
+        lines.extend(self._render_edges(edges, id_map))
         return "\n".join(lines)
