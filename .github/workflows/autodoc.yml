@@ -41,13 +41,19 @@ jobs:
             --db /tmp/self_graph.db \
             --depth 2 \
             --format mermaid \
+            --internal-only \
             > docs/architecture/diagrams/pipeline_flow.mermaid
 
       - name: Compute graph health badge
         run: uv run python scripts/generate_health.py --db /tmp/self_graph.db
 
       - name: Inject graph into README.md
-        run: uv run python scripts/inject_readme_graph.py
+        run: |
+          uv run python scripts/inject_readme_graph.py \
+            --db /tmp/self_graph.db \
+            --fqn "cgis.pipeline.IngestionPipeline.run" \
+            --depth 2 \
+            --path-prefix "src/"
 
       - name: Generate MCP reference manual
         run: uv run python scripts/generate_mcp_ref.py

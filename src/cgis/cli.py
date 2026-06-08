@@ -10,7 +10,7 @@ from rich.table import Table
 from rich.tree import Tree
 
 from cgis import __app_name__, __version__
-from cgis.core.models import Edge, EdgeType, Node, NodeNamespace
+from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeNamespace
 from cgis.extractors.python_extractor import PythonExtractor, file_path_to_module_fqn
 from cgis.pipeline import IngestionPipeline
 from cgis.query.engine import BEHAVIORAL_EDGE_TYPES, QueryEngine
@@ -175,8 +175,12 @@ def _filter_internal(
     nodes: list[Node],
     edges: list[Edge],
 ) -> tuple[list[Node], list[Edge]]:
-    """Keep only INTERNAL nodes and edges between them."""
-    filtered_nodes = [n for n in nodes if n.namespace == NodeNamespace.INTERNAL]
+    """Keep only INTERNAL nodes backed by a real source file (exclude virtual placeholders)."""
+    filtered_nodes = [
+        n
+        for n in nodes
+        if n.namespace == NodeNamespace.INTERNAL and n.file_path != VIRTUAL_FILE_PATH
+    ]
     internal_ids = {n.id for n in filtered_nodes}
     filtered_edges = [e for e in edges if e.source in internal_ids and e.target in internal_ids]
     return filtered_nodes, filtered_edges
