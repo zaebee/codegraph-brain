@@ -12,3 +12,7 @@ type-check:
 
 pytest:
 	uv run pytest
+
+# 5. Check docstring coverage (minimum 90%)
+doc-coverage:
+	uv run interrogate src

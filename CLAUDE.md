@@ -26,8 +26,11 @@ make type-check    # runs: uv run mypy src
 # Tests
 make pytest        # runs: uv run pytest
 
+# Docstring coverage (minimum 90%)
+make doc-coverage  # runs: uv run interrogate src
+
 # Full verification (run before every commit/PR)
-make format && make lint && make type-check && make pytest
+make format && make lint && make type-check && make pytest && make doc-coverage
 
 # Single test
 uv run pytest tests/unit/test_python_extractor.py::test_extract_simple_function -v
