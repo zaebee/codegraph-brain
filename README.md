@@ -1,411 +1,116 @@
-# 🧠 CodeGraph Brain
+# 🧠 CGIS: Code Graph Intelligence System
+### *The Semantic Ground Truth for AI Agents*
 
-### A Symbolic Graph-Based Code Intelligence System with FQN Resolution and Semantic Ontology Layer
+[![Continuous Integration](https://github.com/zaebee/codegraph-brain/actions/workflows/ci.yml/badge.svg)](https://github.com/zaebee/codegraph-brain/actions/workflows/ci.yml)
+[![Graph Integrity](https://img.shields.io/badge/graph_status-healthy-brightgreen)](https://github.com/zaebee/codegraph-brain)
 
----
+**LLM coding agents (Claude, Cursor, GPT) are currently "guessing" your architecture based on flat text snippets. CGIS stops the guessing.**
 
-## Abstract
-
-Modern code understanding systems rely heavily on embedding-based retrieval, which fails to capture **structural correctness, namespace resolution, and execution semantics** of real-world software systems.
-
-We introduce **CodeGraph Brain**, a graph-native code intelligence system that models repositories as a **multi-layer semantic graph**. The system combines:
-
-* Fully Qualified Name (FQN) resolution
-* AST-based extraction via tree-sitter
-* Multi-pass symbol resolution (imports, scope, aliasing)
-* Semantic ontology layer (GraphRAG-ready)
-* Hybrid structural + semantic retrieval
-
-Unlike embedding-only systems, CodeGraph Brain provides **deterministic reasoning over code structure and execution flow**.
+CGIS transforms raw source code into a deterministic, multi-layered semantic graph. It provides AI agents with a high-fidelity architectural model, enabling them to understand not just what the code *says*, but how it *behaves* and *connects*.
 
 ---
 
-## 1. Introduction
+## ⚡ The Problem: The "Context Gap"
+Traditional RAG (Retrieval-Augmented Generation) feeds agents chunks of text. This leads to:
+*   **Hallucinations:** Agents assume connections that don't exist.
+*   **Context Bloat:** Passing entire files to explain a single function.
+*   **Structural Blindness:** Agents cannot "see" transitive impacts (e.g., *"If I change this, what breaks 5 layers up?"*).
 
-Code is not text. Code is a **structured, recursive system of symbolic references**.
-
-Existing systems (e.g., embedding-based RAG tools) fail in:
-
-* Namespace ambiguity (e.g., `save()` in multiple contexts)
-* Aliasing (`import x as y`)
-* Cross-file resolution
-* Runtime flow reconstruction
-* Domain-level reasoning
-
-We propose a **symbolic graph-first model** for code intelligence.
-
----
-
-## 2. Problem Statement
-
-We define three fundamental problems:
-
-### 2.1 Symbol Ambiguity
-
-Multiple definitions of the same symbol exist across scopes.
-
-### 2.2 Resolution Failure
-
-Naive name matching fails under:
-
-* imports
-* aliasing
-* class scope
-* module boundaries
-
-### 2.3 Semantic Gap
-
-Embedding models cannot reliably infer:
-
-* execution flow
-* call chains
-* system boundaries
+## ✨ The Solution: Semantic Intelligence
+CGIS replaces "textual guessing" with **"structural calculation"**:
+*   **Deterministic Resolution:** Full FQN (Fully Qualified Name) resolution via AST-based extraction.
+*   **Multi-Layer Ontology:** Goes beyond calls. It understands `CONTAINS`, `DECLARES`, `IMPORTS`, and semantic domains.
+*   **Agent-Native (MCP):** Exposes the entire graph as a set of high-performance tools for Claude, Cursor, and custom agents.
+*   **Self-Documenting:** The documentation is a living artifact, automatically updated with live architecture diagrams.
 
 ---
 
-## 3. System Overview
+## 🏗️ Architecture: The Pipeline
 
-CodeGraph Brain is composed of 4 layers:
+CGIS operates via a high-speed, three-stage pipeline:
 
-```text
-┌──────────────────────────────┐
-│  Semantic Ontology Layer     │
-├──────────────────────────────┤
-│  Execution Graph Layer       │
-├──────────────────────────────┤
-│  Structural Code Graph       │
-├──────────────────────────────┤
-│  AST (tree-sitter) Layer     │
-└──────────────────────────────┘
+1.  **EXTRACT:** Language-specific AST parsers (Tree-sitter) convert source code into raw nodes and edges.
+2.  **RESOLVE:** The `ResolverEngine` disambiguates raw calls into absolute, deterministic FQNs.
+3.  **STORE:** A high-performance SQLite/DuckDB backend enables complex graph traversals (BFS/DFS) in milliseconds.
+
+```mermaid
+graph LR
+    A[Source Code] --> B[Extractors]
+    B --> C[Resolver Engine]
+    C --> D[(SQLite Graph DB)]
+    D --> E[MCP Server]
+    D --> F[Prompt Compiler]
+    E --> G[AI Agents]
+    F --> G
 ```
 
 ---
 
-## 4. Core Idea
+## 🚀 Quickstart
 
-We model code as:
-
-> **A directed labeled multigraph over symbolic entities with fully qualified resolution.**
-
-Each node is uniquely identified via:
-
-```text
-FQN = [module path] + [class scope] + [symbol name]
+### 1. Installation
+Using `uv` (recommended):
+```bash
+uv pip install -e .
 ```
 
-Example:
-
-```text
-src.auth.services.UserService.login
+### 2. Ingest a Repository
+Turn any codebase into a semantic knowledge graph:
+```bash
+cgis ingest ./my-awesome-project --output graph.db
 ```
 
----
+### 3. Query the Graph
+Analyze impact or trace execution flow directly from your terminal:
+```bash
+# Trace the execution path of a function
+cgis trace "my_module.MyClass.my_method" --depth 3 --format mermaid
 
-## 5. System Architecture
-
-### 5.1 Pipeline
-
-```text
-Repository
-   ↓
-Tree-sitter Parser
-   ↓
-Symbol Extraction
-   ↓
-Phase 1: Global Indexing
-   ↓
-Phase 2: Namespace Resolution
-   ↓
-Phase 3: Edge Linking
-   ↓
-Graph Store (SQLite / DuckDB)
-   ↓
-Graph API (FastAPI)
+# Analyze the blast radius of a change
+cgis impact "my_module.core_function" --depth 5
 ```
 
 ---
 
-## 6. Three-Pass Resolution Model
+## 🤖 Agent Integration (MCP)
 
-### Phase 1 — Declaration Indexing
+CGIS is designed to be plugged into your AI workflow via the **Model Context Protocol (MCP)**. Once running, your agent gains "Superpowers":
 
-Build global symbol table:
-
-```text
-FQN → Node metadata
-```
-
-Captures:
-
-* functions
-* classes
-* methods
+*   `cgis_ingest`: Build the knowledge base.
+*   `cgis_trace_flow`: Visualize execution paths.
+*   `cgis_analyze_impact`: Predict regressions before they happen.
+*   `cgis_get_structure`: Understand class/module hierarchy.
 
 ---
 
-### Phase 2 — Namespace Mapping
+## 📊 Live System Architecture
+*This diagram is automatically re-generated by CGIS every time the core engine is updated.*
 
-Construct per-file local namespace:
-
-* imports
-* aliases
-* scoped symbols
-* class members
-
-Example:
-
-```python
-from auth import login as auth_login
-```
-
-→
-
-```text
-auth_login → src.auth.login
+```mermaid
+<!-- START_CGIS_GRAPH -->
+graph TD
+    n_cli["cgis.cli.ingest (cli.py)"] -- CALLS --> n_pipe["cgis.pipeline.IngestionPipeline.run (pipeline.py)"]
+    n_pipe -- CALLS --> n_ext["cgis.extractors.python_extractor.PythonExtractor.parse"]
+    n_pipe -- CALLS --> n_res["cgis.resolver.engine.ResolverEngine.resolve"]
+    n_pipe -- CALLS --> n_db["cgis.storage.sqlite_store.SQLiteStore.save"]
+<!-- END_CGIS_GRAPH -->
 ```
 
 ---
 
-### Phase 3 — Linking
+## 🛠️ Development
 
-Resolve calls:
+### Requirements
+*   Python 3.12+
+*   `uv` (for dependency management)
 
-* CALLS edges
-* IMPORTS edges
-* SCOPE edges
-
-Fallback:
-
-* unresolved calls are explicitly stored for debugging
-
----
-
-## 7. Graph Model
-
-### 7.1 Node Schema
-
-```python
-Node:
-    id: str
-    type: NodeType
-    name: str
-    file_path: str
-    start_line: int
-    end_line: int
-    language: str
-
-    ontology_class: Optional[str]
-    domains: List[str]
-    metadata: dict
+### Running Tests
+```bash
+make pytest
 ```
 
----
-
-### 7.2 Node Types
-
-* FILE
-* MODULE
-* CLASS
-* FUNCTION
-* METHOD
-* VARIABLE
-* API_ENDPOINT
-* DOMAIN_CONCEPT
+### Contributing
+We are building the future of agentic engineering. Please see `CONTRIBUTING.md` for our standards on type safety (strict MyPy), linting, and ontology compliance.
 
 ---
-
-### 7.3 Edge Schema
-
-```python
-Edge:
-    source: str
-    target: str
-    type: EdgeType
-
-    weight: float
-    confidence: float
-    context: Optional[str]
-```
-
----
-
-### 7.4 Edge Types
-
-#### Structural
-
-* DECLARES
-* CONTAINS
-* IMPORTS
-
-#### Behavioral
-
-* CALLS
-* REFERENCES
-
-#### Runtime
-
-* ROUTES_TO
-* TRIGGERS
-* EMITS
-
-#### Semantic
-
-* HANDLES
-* AUTHORIZES
-* PERSISTS
-
----
-
-## 8. Ontology Layer (OWL-Lite)
-
-We define a lightweight ontology over the graph.
-
-### 8.1 Core Classes
-
-* CodeEntity
-* CodeSymbol
-* RuntimeBehavior
-* DataEntity
-* DomainConcept
-
----
-
-### 8.2 Domain Model
-
-Domains are first-class nodes:
-
-* Auth
-* Billing
-* UserManagement
-* Notifications
-
----
-
-### 8.3 Semantic Relations
-
-* belongsToDomain
-* dependsOnDomain
-* handles
-* transforms
-* persists
-
----
-
-## 9. Resolver Model
-
-We implement a deterministic resolution engine:
-
-```text
-resolve_call():
-    1. Local Namespace (imports/alias)
-    2. Class Scope (self.method)
-    3. Global Symbol Table
-    4. Mark unresolved if failed
-```
-
-This solves:
-
-* shadowing
-* aliasing
-* namespace collisions
-
----
-
-## 10. Query Model
-
-Supported queries:
-
-### 10.1 Usage Query
-
-> Where is X used?
-
-### 10.2 Dependency Query
-
-> What depends on X?
-
-### 10.3 Flow Query
-
-> How does X work?
-
-### 10.4 Impact Query
-
-> What breaks if X changes?
-
----
-
-## 11. Graph Context Output
-
-All retrieval returns structured context:
-
-```json
-{
-  "focus": "function_name",
-  "nodes": [...],
-  "edges": [...],
-  "paths": [...],
-  "summary": "...",
-  "confidence": 0.0
-}
-```
-
----
-
-## 12. Design Principles
-
-### 12.1 Determinism over fuzziness
-
-No embedding-based ambiguity in core resolution.
-
-### 12.2 Explicit unresolved tracking
-
-Unknown calls are first-class entities.
-
-### 12.3 Multi-layer graph separation
-
-Structural ≠ semantic ≠ runtime.
-
-### 12.4 Fractal representation
-
-Every node can be expanded into subgraphs.
-
----
-
-## 13. Limitations (v0.1)
-
-* dynamic languages (Python reflection) partially unresolved
-* no runtime tracing yet
-* no distributed indexing
-* no full type inference system
-
----
-
-## 14. Future Work
-
-* Cross-repository graph linking
-* Live runtime instrumentation
-* IDE integration (VSCode plugin)
-* GraphRAG prompt compiler
-* Auto-domain inference (LLM-assisted ontology growth)
-* Graph query language (Cypher-lite for agents)
-
----
-
-## 15. Conclusion
-
-CodeGraph Brain reframes code understanding as:
-
-> a symbolic, resolvable, multi-layer graph system rather than semantic text retrieval.
-
-This enables deterministic reasoning over software systems and forms a foundation for next-generation GraphRAG architectures.
-
----
-
-## 🧠 Philosophy
-
-> “If embeddings are intuition, graphs are cognition.”
-
----
-
-## License
-
-MIT
+*Built with ❤️ for the future of autonomous software engineering.*
