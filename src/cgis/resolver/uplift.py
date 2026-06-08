@@ -143,16 +143,20 @@ def _phase2_apply_heuristic_tagging(
     return result
 
 
+def _build_children_map(edges: list[Edge]) -> dict[str, list[str]]:
+    children: dict[str, list[str]] = {}
+    for edge in edges:
+        if edge.type in _STRUCTURAL_EDGE_TYPES:
+            children.setdefault(edge.source, []).append(edge.target)
+    return children
+
+
 def _phase3_propagate_domains(
     nodes_map: dict[str, Node],
     edges: list[Edge],
 ) -> dict[str, Node]:
     """Propagate domains downward through CONTAINS/DECLARES structural edges (O(V+E) BFS)."""
-    children: dict[str, list[str]] = {}
-    for edge in edges:
-        if edge.type in _STRUCTURAL_EDGE_TYPES:
-            children.setdefault(edge.source, []).append(edge.target)
-
+    children = _build_children_map(edges)
     result = dict(nodes_map)
     queue: deque[str] = deque(node_id for node_id, node in result.items() if node.domains)
     in_queue: set[str] = set(queue)
@@ -174,6 +178,17 @@ def _phase3_propagate_domains(
     return result
 
 
+def _collect_cross_domain_pairs(
+    src_domains: list[str],
+    tgt_domains: list[str],
+    dep_pairs: set[tuple[str, str]],
+) -> None:
+    for src_domain in src_domains:
+        for tgt_domain in tgt_domains:
+            if src_domain != tgt_domain:
+                dep_pairs.add((src_domain, tgt_domain))
+
+
 def _phase4_infer_domain_dependencies(
     nodes_map: dict[str, Node],
     edges: list[Edge],
@@ -187,10 +202,7 @@ def _phase4_infer_domain_dependencies(
         tgt = nodes_map.get(edge.target)
         if src is None or tgt is None:
             continue
-        for src_domain in src.domains:
-            for tgt_domain in tgt.domains:
-                if src_domain != tgt_domain:
-                    dep_pairs.add((src_domain, tgt_domain))
+        _collect_cross_domain_pairs(src.domains, tgt.domains, dep_pairs)
 
     domain_ids: set[str] = set()
     new_edges: list[Edge] = []
