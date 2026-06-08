@@ -520,7 +520,8 @@ def test_trace_internal_only_without_mermaid_raises_bad_parameter(tmp_path: Path
 
     result = runner.invoke(app, ["trace", "mod.fn", "--db", db, "--internal-only"])
 
-    assert result.exit_code != 0
+    assert result.exit_code == 2
+    assert "--internal-only is only supported with '--format mermaid'" in result.output
 
 
 def test_impact_internal_only_without_mermaid_raises_bad_parameter(tmp_path: Path) -> None:
@@ -531,7 +532,8 @@ def test_impact_internal_only_without_mermaid_raises_bad_parameter(tmp_path: Pat
 
     result = runner.invoke(app, ["impact", "mod.fn", "--db", db, "--internal-only"])
 
-    assert result.exit_code != 0
+    assert result.exit_code == 2
+    assert "--internal-only is only supported with '--format mermaid'" in result.output
 
 
 def test_trace_mermaid_internal_only_filters_output(tmp_path: Path) -> None:

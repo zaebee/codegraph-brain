@@ -349,16 +349,14 @@ def test_impact_graph_diamond_no_duplicate_visits(temp_store: SQLiteStore) -> No
 
 
 def test_connect_idempotent() -> None:
-    store = SQLiteStore(":memory:")
-    store.connect()
-    conn1 = store._conn  # noqa: SLF001
-    store.connect()  # second call — must return early without re-creating
-    assert store._conn is conn1  # noqa: SLF001
-    store.disconnect()
+    with SQLiteStore(":memory:") as store:
+        conn1 = store._conn  # noqa: SLF001
+        store.connect()  # second call — must return early without re-creating
+        assert store._conn is conn1  # noqa: SLF001
 
 
 def test_migrate_adds_namespace_column(tmp_path: Path) -> None:
-    db_path = str(Path(str(tmp_path)) / "old.db")
+    db_path = str(tmp_path / "old.db")
     conn = sqlite3.connect(db_path)
     conn.executescript("""
         CREATE TABLE nodes (
@@ -404,8 +402,8 @@ def test_store_methods_raise_when_not_connected() -> None:
         lambda: store.save_incremental_batch({}, {}, {}, set()),
         lambda: store.get_nodes_by_file("x"),
         lambda: store.get_structural_subgraph("x"),
-        lambda: store.get_edge_stats(),  # noqa: PLW0108
-        lambda: store.get_all_tracked_files(),  # noqa: PLW0108
+        store.get_edge_stats,
+        store.get_all_tracked_files,
     ]
     for case in cases:
         with pytest.raises(RuntimeError):
