@@ -68,38 +68,27 @@ class MermaidCompiler:
             return ":::methodNode"
         return ":::defaultNode"
 
-    def compile(self, nodes: list[Node], edges: list[Edge]) -> str:
-        """Generates Mermaid Graph Definition, grouping nodes by file into subgraphs."""
-        lines = ["graph TD"]
-        lines.extend(self._style_defs)
-        lines.append("")
+    def _render_node_line(self, node: Node, id_map: dict[str, str], indent: str) -> str:
+        """Format a single node declaration with its label and style class."""
+        safe_id = id_map[node.id]
+        return f'{indent}{safe_id}["{self._get_node_label(node)}"]{self._get_style_class(node)}'
 
-        id_map: dict[str, str] = {}
-        for node in nodes:
-            id_map[node.id] = _normalize_id(node.id)
+    def _render_subgraphs(
+        self, file_groups: dict[str, list[Node]], id_map: dict[str, str]
+    ) -> list[str]:
+        """Render nodes grouped into subgraph blocks, one block per source file."""
+        lines: list[str] = []
+        for file_path, group_nodes in file_groups.items():
+            sg_id = _normalize_id(f"sg_{file_path}")
+            sg_label = _escape(file_path.replace("\\", "/").split("/")[-1])
+            lines.append(f'    subgraph {sg_id}["{sg_label}"]')
+            lines.extend(self._render_node_line(n, id_map, "        ") for n in group_nodes)
+            lines.append("    end")
+        return lines
 
-        file_groups: dict[str, list[Node]] = {}
-        for node in nodes:
-            file_groups.setdefault(node.file_path, []).append(node)
-
-        if len(file_groups) > 1:
-            for file_path, group_nodes in file_groups.items():
-                sg_id = _normalize_id(f"sg_{file_path}")
-                sg_label = _escape(file_path.replace("\\", "/").split("/")[-1])
-                lines.append(f'    subgraph {sg_id}["{sg_label}"]')
-                for node in group_nodes:
-                    safe_id = id_map[node.id]
-                    node_label = self._get_node_label(node)
-                    style = self._get_style_class(node)
-                    lines.append(f'        {safe_id}["{node_label}"]{style}')
-                lines.append("    end")
-        else:
-            for node in nodes:
-                safe_id = id_map[node.id]
-                node_label = self._get_node_label(node)
-                style = self._get_style_class(node)
-                lines.append(f'    {safe_id}["{node_label}"]{style}')
-
+    def _render_edges(self, edges: list[Edge], id_map: dict[str, str]) -> list[str]:
+        """Render edge declarations, injecting phantom node stubs for unknown endpoints."""
+        lines: list[str] = []
         for edge in edges:
             source_safe = id_map.get(edge.source)
             if not source_safe:
@@ -110,12 +99,29 @@ class MermaidCompiler:
             target_safe = id_map.get(edge.target)
             if not target_safe:
                 target_safe = _normalize_id(edge.target)
-                is_unresolved_target = edge.target.startswith(_RAW_CALL_PREFIX)
+                is_unresolved = edge.target.startswith(_RAW_CALL_PREFIX)
                 clean_target = _escape(edge.target.removeprefix(_RAW_CALL_PREFIX))
-                target_style = _UNRESOLVED_STYLE if is_unresolved_target else ":::defaultNode"
+                target_style = _UNRESOLVED_STYLE if is_unresolved else ":::defaultNode"
                 lines.append(f'    {target_safe}["{clean_target}"]{target_style}')
                 id_map[edge.target] = target_safe
 
             lines.append(f"    {source_safe} -->|{edge.type.value}| {target_safe}")
+        return lines
 
+    def compile(self, nodes: list[Node], edges: list[Edge]) -> str:
+        """Generates Mermaid Graph Definition, grouping nodes by file into subgraphs."""
+        lines = ["graph TD", *self._style_defs, ""]
+
+        id_map = {node.id: _normalize_id(node.id) for node in nodes}
+
+        file_groups: dict[str, list[Node]] = {}
+        for node in nodes:
+            file_groups.setdefault(node.file_path, []).append(node)
+
+        if len(file_groups) > 1:
+            lines.extend(self._render_subgraphs(file_groups, id_map))
+        else:
+            lines.extend(self._render_node_line(n, id_map, "    ") for n in nodes)
+
+        lines.extend(self._render_edges(edges, id_map))
         return "\n".join(lines)
