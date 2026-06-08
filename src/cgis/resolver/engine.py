@@ -84,7 +84,13 @@ class ResolverEngine:
             result = self._resolve_via_import_map(name, file_path)
             if result:
                 return result
-        return self._resolve_via_global_symbols(name, file_path)
+        # Global symbol index is keyed by short name; for dotted refs like `models.BaseModel`
+        # strip the module prefix and verify the resolved FQN ends with the full dotted name.
+        query_name = name.rsplit(".", maxsplit=1)[-1]
+        resolved = self._resolve_via_global_symbols(query_name, file_path)
+        if resolved and ("." not in name or resolved == name or resolved.endswith(f".{name}")):
+            return resolved
+        return None
 
     def _build_external_roots(self) -> None:
         """Build set of known external root modules from file import maps.

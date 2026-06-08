@@ -653,6 +653,43 @@ def create():
     assert local_types["store"] == "app.models.Store"
 
 
+def test_resolver_resolves_dotted_class_ref_via_global_symbols() -> None:
+    """class Child(models.Base) resolves Base via global symbols when models not in import map."""
+    nodes = [
+        Node(
+            id="pkg.models.Base",
+            type=NodeType.CLASS,
+            name="Base",
+            file_path="pkg/models.py",
+            start_line=1,
+            end_line=5,
+        ),
+        Node(
+            id="pkg.child.Child",
+            type=NodeType.CLASS,
+            name="Child",
+            file_path="pkg/child.py",
+            start_line=1,
+            end_line=5,
+        ),
+    ]
+    edges = [
+        Edge(
+            id="e_ext",
+            source="pkg.child.Child",
+            target="raw_class:models.Base",
+            type=EdgeType.EXTENDS,
+            confidence=1.0,
+            file_path="pkg/child.py",
+        ),
+    ]
+    resolver = ResolverEngine(nodes, edges)
+    resolved_edges, _ = resolver.resolve()
+
+    ext_edge = next(e for e in resolved_edges if e.id == "e_ext")
+    assert ext_edge.target == "pkg.models.Base"
+
+
 # --- Inheritance resolution tests ---
 
 
