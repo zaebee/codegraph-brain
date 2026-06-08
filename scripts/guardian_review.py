@@ -40,8 +40,13 @@ async def main() -> None:
     log.info("Review complete.")
 
     if args.output:
-        args.output.write_text(review_result)
-        log.info("Review written to file.", path=str(args.output))
+        safe_root = Path.cwd().resolve()
+        output_path = (safe_root / args.output).resolve()
+        if not output_path.is_relative_to(safe_root):
+            _msg = f"--output must be within the working directory: {output_path}"
+            raise ValueError(_msg)
+        output_path.write_text(review_result)
+        log.info("Review written to file.", path=str(output_path))
     else:
         print(review_result)
 
