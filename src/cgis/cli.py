@@ -12,6 +12,7 @@ from rich.tree import Tree
 from cgis import __app_name__, __version__
 from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeNamespace
 from cgis.extractors.python_extractor import PythonExtractor, file_path_to_module_fqn
+from cgis.extractors.typescript_extractor import TypeScriptExtractor
 from cgis.pipeline import IngestionPipeline
 from cgis.query.engine import BEHAVIORAL_EDGE_TYPES, QueryEngine
 from cgis.query.mermaid import MermaidCompiler
@@ -119,6 +120,8 @@ def ingest(
     """
     extractors = {
         ".py": PythonExtractor(),
+        ".ts": TypeScriptExtractor(),
+        ".tsx": TypeScriptExtractor(tsx=True),
     }
 
     pipeline = IngestionPipeline(extractors, domains_config=domains)
