@@ -1,5 +1,5 @@
 import { Panel } from "@xyflow/react";
-import "./StatsPanel.css";
+import styles from "./StatsPanel.module.css";
 
 /**
  * Панель со статистикой (nodes, edges, external).
@@ -17,13 +17,13 @@ export default function StatsPanel({
   if (!stats || !visible) return null;
 
   return (
-    <Panel position="top-right" className="stats-panel">
-      <div className="stats">
+    <Panel position="top-right" className={styles["stats-panel"]}>
+      <div className={styles.stats}>
         <span>{stats.nodes} nodes</span>
-        <span className="stats-sep">|</span>
+        <span className={styles["stats-sep"]}>|</span>
         <span>{stats.edges} edges</span>
-        <span className="stats-sep">|</span>
-        <span className="stats-ext">{stats.external} ext</span>
+        <span className={styles["stats-sep"]}>|</span>
+        <span className={styles["stats-ext"]}>{stats.external} ext</span>
       </div>
     </Panel>
   );
