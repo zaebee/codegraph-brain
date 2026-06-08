@@ -1,0 +1,39 @@
+name: Docs Generation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - '.github/workflows/docs.yml'
+
+jobs:
+  generate-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install uv
+          uv pip install .
+      - name: Ingest codebase
+        run: |
+          cgis ingest ./src --output graph.db
+      - name: Generate Mermaid graph
+        id: graph
+        run: |
+          cgis trace "src.cgis.pipeline.IngestionPipeline.run" --depth 2 > graph.mmd
+      - name: Update README
+        run: |
+          perl -0777 -i -pe 's/<!-- START_CGIS_GRAPH -->.*?<!-- END_CGIS_GRAPH -->/<!-- START_CGIS_GRAPH -->\n```mermaid\n$(cat graph.mmd)\n```\n<!-- END_CGIS_GRAPH -->/s' docs/self-doc-portal/README.md
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[n          git config user.email "github-actions@github.com"
+          git add docs/self-doc-portal/README.md graph.db
+          git commit -m "chore: update auto-generated docs"
+          git push
