@@ -6,7 +6,7 @@ import type { GraphData } from "../types";
  * @param {string} url - URL для загрузки графа (по умолчанию '/graph.json')
  * @returns {{ graph: GraphData | null, loading: boolean, error: Error | null, refetch: () => Promise<GraphData | null> }}
  */
-export function useGraphFetch(url: string = "/graph.json") {
+export function useGraphFetch(url: string = import.meta.env.VITE_GRAPH_DATA_URL ?? "/graph.json") {
   const [graph, setGraph] = useState<GraphData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
