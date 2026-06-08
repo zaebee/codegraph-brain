@@ -56,10 +56,10 @@ confidence:
   semantic_min: 0.5
 
 conventions:
-  fqn_format: "<abs_file_path>:<ClassName>.<method_name>"
+  fqn_format: "<package>.<module>.<ClassName>.<method_name>"
   fqn_examples:
-    - "src/cgis/pipeline.py:IngestionPipeline.run"
-    - "src/cgis/query/engine.py:QueryEngine.get_flow_graph"
+    - "src.cgis.pipeline.IngestionPipeline.run"
+    - "src.cgis.query.engine.QueryEngine.get_flow_graph"
   # Extractors emit CALLS edges with target="raw_call:<name>".
   # ResolverEngine converts them to real FQNs, or leaves the prefix if unresolved.
   unresolved_call_prefix: "raw_call:"

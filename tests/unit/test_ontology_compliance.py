@@ -97,7 +97,16 @@ def test_conventions_unresolved_prefix_is_documented() -> None:
 def test_fqn_format_is_documented() -> None:
     ontology = _load_ontology()
     fqn_format = ontology["conventions"]["fqn_format"]
-    assert ":" in fqn_format, (
-        "core.yaml conventions.fqn_format must document the colon separator "
-        "between file path and symbol name."
+    # FQNs are fully dot-separated — no colon, no slash (file path is NOT part of the FQN)
+    assert "." in fqn_format, (
+        "core.yaml conventions.fqn_format must use dot-separated segments, e.g. "
+        "'<package>.<module>.<ClassName>.<method_name>'"
+    )
+    assert ":" not in fqn_format, (
+        "core.yaml conventions.fqn_format must not contain a colon — "
+        "FQNs use dots only, not 'file_path:ClassName.method' format."
+    )
+    examples = ontology["conventions"]["fqn_examples"]
+    assert all("." in ex and ":" not in ex for ex in examples), (
+        "All fqn_examples in core.yaml must be dot-separated and contain no colon."
     )
