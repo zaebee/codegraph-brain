@@ -13,6 +13,8 @@ from cgis.guardian.providers.gemini import GeminiProvider
 
 log = structlog.getLogger(__name__)
 
+_DEFAULT_MODEL = "gemini-2.0-flash"
+
 
 async def main() -> None:
     """Run Guardian review and write the result to stdout or a file."""
@@ -26,13 +28,14 @@ async def main() -> None:
     args = parser.parse_args()
 
     api_key = os.environ["GEMINI_API_KEY"]
+    model = os.environ.get("GUARDIAN_MODEL") or _DEFAULT_MODEL
     project_root = Path(__file__).parent.parent.absolute()
 
-    provider = GeminiProvider(api_key=api_key)
+    provider = GeminiProvider(api_key=api_key, model_name=model)
     collector = ContextCollector(project_root=project_root)
     reviewer = GuardianReviewer(provider=provider, context_collector=collector)
 
-    log.info("Collecting context and building prompts...")
+    log.info("Collecting context and building prompts...", model=model)
     review_result = await reviewer.run_review()
     log.info("Review complete.")
 
