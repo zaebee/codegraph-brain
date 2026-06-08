@@ -65,7 +65,6 @@ def main(
     ),
 ) -> None:
     """CGIS — Code Graph Intelligence System CLI."""
-    return
 
 
 def _write_graph_output(

@@ -69,33 +69,49 @@ Unresolved calls are **first-class citizens** — they appear in the graph expli
 
 **Entry point:** `SQLiteStore.save_graph(nodes, edges, overwrite=False)`
 
-The SQLite store runs in **WAL mode** for concurrent read safety. The schema is minimal by design — two tables:
+The SQLite store runs in **WAL mode** for concurrent read safety. The schema is auto-generated from `SQLiteStore._create_schema()` — do not edit below manually:
 
+<!-- START_CGIS_SCHEMA -->
 ```sql
-CREATE TABLE nodes (
-    id TEXT PRIMARY KEY,
-    type TEXT NOT NULL,
-    name TEXT NOT NULL,
-    file_path TEXT NOT NULL,
-    start_line INTEGER,
-    end_line INTEGER,
-    namespace TEXT,
-    ontology_class TEXT,
-    domains TEXT,          -- JSON array
-    confidence_score REAL,
-    metadata TEXT          -- JSON object
-);
+CREATE TABLE IF NOT EXISTS nodes (
+            id TEXT PRIMARY KEY,
+            type TEXT NOT NULL,
+            name TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            start_line INTEGER NOT NULL,
+            end_line INTEGER NOT NULL,
+            language TEXT NOT NULL,
+            ontology_class TEXT,
+            domains TEXT,
+            confidence_score REAL NOT NULL,
+            metadata TEXT,
+            namespace TEXT NOT NULL DEFAULT 'INTERNAL'
+        );
 
-CREATE TABLE edges (
-    id TEXT PRIMARY KEY,
-    source TEXT NOT NULL,
-    target TEXT NOT NULL,
-    type TEXT NOT NULL,
-    weight REAL,
-    confidence REAL,
-    metadata TEXT          -- JSON object
-);
+        CREATE TABLE IF NOT EXISTS edges (
+            id TEXT PRIMARY KEY,
+            source TEXT NOT NULL,
+            target TEXT NOT NULL,
+            type TEXT NOT NULL,
+            weight REAL NOT NULL,
+            confidence REAL NOT NULL,
+            context TEXT,
+            file_path TEXT,
+            line_number INTEGER
+        );
+
+        CREATE TABLE IF NOT EXISTS files_state (
+            file_path TEXT PRIMARY KEY,
+            hash TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(type);
+        CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source);
+        CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target);
+        CREATE INDEX IF NOT EXISTS idx_nodes_file_path ON nodes(file_path);
+        CREATE INDEX IF NOT EXISTS idx_edges_file_path ON edges(file_path);
 ```
+<!-- END_CGIS_SCHEMA -->
 
 Graph traversals use iterative BFS with batch edge fetches (O(depth) round-trips, not O(nodes)):
 
