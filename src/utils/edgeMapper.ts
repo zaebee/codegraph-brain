@@ -1,26 +1,23 @@
 import type { Edge } from "@xyflow/react";
-import type { GraphEdge, GraphNode } from "../types";
+import type { GraphEdge } from "../types";
+import { EDGE_COLORS } from "../theme";
+
+const FULL_EDGE_STYLES: Record<string, { stroke: string; strokeWidth: number; opacity: number }> = {};
+for (const [type, stroke] of Object.entries(EDGE_COLORS)) {
+  FULL_EDGE_STYLES[type] = { stroke, strokeWidth: 1.5, opacity: 0.8 };
+}
+FULL_EDGE_STYLES.DECLARES = { stroke: EDGE_COLORS.DECLARES, strokeWidth: 1, opacity: 0.6 };
 
 /**
  * Map a raw edge to a ReactFlow edge for the full graph view.
  */
-export function mapEdgeToReactFlow(
-  edge: GraphEdge,
-  index: number,
-  { enrichedNodes }: { enrichedNodes?: GraphNode[] } = {}
-): Edge {
-  const sourceIsExternal = enrichedNodes?.find((n) => n.id === edge.source)?.type === "EXTERNAL";
-  const targetIsExternal = enrichedNodes?.find((n) => n.id === edge.target)?.type === "EXTERNAL";
-  const isExternal = sourceIsExternal || targetIsExternal;
+export function mapEdgeToReactFlow(edge: GraphEdge, index: number): Edge {
+  const style = FULL_EDGE_STYLES[edge.type] || FULL_EDGE_STYLES.DECLARES;
   return {
     id: `e-${index}`,
     source: edge.source,
     target: edge.target,
-    style: {
-      stroke: isExternal ? "#546e7a" : "#4fc3f7",
-      strokeWidth: isExternal ? 1 : 1.5,
-      opacity: isExternal ? 0.4 : 0.8,
-    },
+    style,
     animated: false,
     type: "default",
   } as Edge;

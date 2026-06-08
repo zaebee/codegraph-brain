@@ -39,35 +39,6 @@ function ErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
   );
 }
 
-function addExternalNodes(graphData: GraphData) {
-  const nodeIds = new Set(graphData.nodes.map((n) => n.id));
-  const externals: GraphData["nodes"] = [];
-
-  graphData.edges.forEach((e) => {
-    if (!nodeIds.has(e.target) && !externals.some((x) => x.id === e.target)) {
-      const rawName = e.target.includes(":") ? e.target.split(":").pop()! : e.target;
-      externals.push({
-        id: e.target,
-        type: "EXTERNAL",
-        name: rawName,
-        file_path: "(external)",
-        start_line: 0,
-        end_line: 0,
-        language: "",
-        ontology_class: null,
-        domains: [],
-        confidence_score: 0,
-        metadata: {},
-      });
-    }
-  });
-
-  return {
-    ...graphData,
-    nodes: [...graphData.nodes, ...externals],
-  };
-}
-
 const nodeTypes = { group: GroupNode };
 
 export default function AppWrapper() {
@@ -106,12 +77,6 @@ function App() {
     setGraphLoading(loadingState);
   }, [loadingState]);
 
-  // Compute enriched graph data (adds external nodes) outside render phase
-  const enrichedGraph = useMemo(() => {
-    if (!graphData) return null;
-    return addExternalNodes(graphData);
-  }, [graphData]);
-
   const emptyGraph = useMemo<GraphData>(() => ({ nodes: [], edges: [] }), []);
 
   // Hook: keyboard shortcuts
@@ -137,7 +102,7 @@ function App() {
 
   // Hook: flow navigation
   const { onNodeClick: onNodeClickHandler, clearCache } = useFlowNavigation(
-    enrichedGraph ?? emptyGraph,
+    graphData ?? emptyGraph,
     setNodes,
     setEdges,
     setViewMode,
@@ -146,15 +111,14 @@ function App() {
   );
 
   const buildFullGraph = useCallback(async () => {
-    const enriched = enrichedGraph;
-    if (!enriched?.nodes || !enriched?.edges) return;
+    if (!graphData?.nodes || !graphData?.edges) return;
 
-    const validEdges = filterValidEdges(enriched.nodes, enriched.edges);
-    const baseNodes = enriched.nodes.map((n) =>
+    const validEdges = filterValidEdges(graphData.nodes, graphData.edges);
+    const baseNodes = graphData.nodes.map((n) =>
       mapNodeToReactFlow(n, { groupKey: extractGroupKey(n) ?? undefined })
     );
     const baseEdges = validEdges.map((e: any, i: number) =>
-      mapEdgeToReactFlow(e, i, { enrichedNodes: enriched.nodes })
+      mapEdgeToReactFlow(e, i)
     );
 
     setIsLayouting(true);
@@ -169,13 +133,13 @@ function App() {
     clearCache();
     fitView({ padding: 0.15 });
     setStats({
-      nodes: enriched.nodes.length,
+      nodes: graphData.nodes.length,
       edges: validEdges.length,
-      external: enriched.nodes.filter((n) => n.type === "EXTERNAL").length,
+      external: graphData.nodes.filter((n) => n.namespace && n.namespace !== "INTERNAL").length,
     });
     setIsLayouting(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enrichedGraph, clearCache]);
+  }, [graphData, clearCache]);
 
   useEffect(() => {
     if (graphData) buildFullGraph();
@@ -191,10 +155,10 @@ function App() {
         setEdges(allEdges);
       } else {
         const externalIds = new Set(
-          allNodes.filter((n: any) => n.data?.nodeType === "EXTERNAL").map((n: any) => n.id)
+          allNodes.filter((n: any) => n.data?.namespace && n.data?.namespace !== "INTERNAL").map((n: any) => n.id)
         );
         const filteredNodes = allNodes.filter((n: any) => {
-          if (n.data?.nodeType === "EXTERNAL") return false;
+          if (n.data?.namespace && n.data?.namespace !== "INTERNAL") return false;
           if (n.type === "group")
             return allNodes.some((c: any) => c.groupId === n.id && !externalIds.has(c.id));
           return true;
@@ -269,10 +233,10 @@ function App() {
           nodeColor={(n: any) => {
             if (viewMode === "flow") return n.id === hoveredNode?.id ? "#f44336" : "#ff9800";
             const colorMap: Record<string, string> = {
+              FILE: "#5c6bc0",
               FUNCTION: "#4fc3f7",
               CLASS: "#66bb6a",
               METHOD: "#ce93d8",
-              EXTERNAL: "#546e7a",
             };
             return colorMap[n.data?.nodeType] || "#78909c";
           }}

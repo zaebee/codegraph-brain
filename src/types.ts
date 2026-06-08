@@ -1,4 +1,5 @@
-export type NodeType = "FUNCTION" | "CLASS" | "METHOD" | "EXTERNAL";
+export type NodeType = "FILE" | "CLASS" | "FUNCTION" | "METHOD";
+export type NodeNamespace = "INTERNAL" | "STDLIB" | "EXTERNAL" | "UNKNOWN";
 
 export interface GraphNode {
   id: string;
@@ -8,6 +9,7 @@ export interface GraphNode {
   start_line: number;
   end_line: number;
   language: string;
+  namespace: NodeNamespace;
   ontology_class: string | null;
   domains: string[];
   confidence_score: number;

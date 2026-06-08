@@ -1,6 +1,6 @@
 
 import { mapEdgeToReactFlow, mapEdgeToFlowView } from "./edgeMapper";
-import type { GraphEdge, GraphNode } from "../types";
+import type { GraphEdge } from "../types";
 
 const mockEdge: GraphEdge = {
   id: "e1",
@@ -19,73 +19,24 @@ describe("mapEdgeToReactFlow", () => {
     expect(result.animated).toBe(false);
   });
 
-  it("uses dim styling when target is external", () => {
-    const enrichedNodes: GraphNode[] = [
-      {
-        id: "a",
-        type: "FUNCTION",
-        name: "a",
-        file_path: "f.py",
-        start_line: 1,
-        end_line: 2,
-        language: "py",
-        ontology_class: null,
-        domains: [],
-        confidence_score: 1,
-        metadata: {},
-      },
-      {
-        id: "b",
-        type: "EXTERNAL",
-        name: "b",
-        file_path: "",
-        start_line: 0,
-        end_line: 0,
-        language: "",
-        ontology_class: null,
-        domains: [],
-        confidence_score: 0,
-        metadata: {},
-      },
-    ];
-    const result = mapEdgeToReactFlow(mockEdge, 0, { enrichedNodes });
-    expect(result.style!.stroke).toBe("#546e7a");
-    expect(result.style!.opacity).toBe(0.4);
+  it("colors CALLS edge blue", () => {
+    const result = mapEdgeToReactFlow(mockEdge, 0);
+    expect(result.style!.stroke).toBe("#4fc3f7");
   });
 
-  it("uses dim styling when source is external", () => {
-    const enrichedNodes: GraphNode[] = [
-      {
-        id: "a",
-        type: "FUNCTION",
-        name: "a",
-        file_path: "f.py",
-        start_line: 1,
-        end_line: 2,
-        language: "py",
-        ontology_class: null,
-        domains: [],
-        confidence_score: 1,
-        metadata: {},
-      },
-      {
-        id: "b",
-        type: "EXTERNAL",
-        name: "b",
-        file_path: "",
-        start_line: 0,
-        end_line: 0,
-        language: "",
-        ontology_class: null,
-        domains: [],
-        confidence_score: 0,
-        metadata: {},
-      },
-    ];
-    const result = mapEdgeToReactFlow({ ...mockEdge, source: "b", target: "a" }, 0, {
-      enrichedNodes,
-    });
-    expect(result.style!.stroke).toBe("#546e7a");
+  it("colors IMPORTS edge green", () => {
+    const result = mapEdgeToReactFlow({ ...mockEdge, type: "IMPORTS" }, 0);
+    expect(result.style!.stroke).toBe("#66bb6a");
+  });
+
+  it("colors EXTENDS edge purple", () => {
+    const result = mapEdgeToReactFlow({ ...mockEdge, type: "EXTENDS" }, 0);
+    expect(result.style!.stroke).toBe("#ce93d8");
+  });
+
+  it("colors CONTAINS edge amber", () => {
+    const result = mapEdgeToReactFlow({ ...mockEdge, type: "CONTAINS" }, 0);
+    expect(result.style!.stroke).toBe("#ff9800");
   });
 });
 

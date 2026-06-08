@@ -12,6 +12,7 @@ const mockNode: GraphNode = {
   start_line: 1,
   end_line: 10,
   language: "python",
+  namespace: "INTERNAL",
   ontology_class: null,
   domains: [],
   confidence_score: 1,
@@ -45,10 +46,22 @@ describe("mapNodeToReactFlow", () => {
     expect((result as any).class).toBeUndefined();
   });
 
-  it("reduces opacity for EXTERNAL type", () => {
-    const ext: GraphNode = { ...mockNode, type: "EXTERNAL" };
+  it("reduces opacity for non-INTERNAL namespace", () => {
+    const ext: GraphNode = { ...mockNode, namespace: "STDLIB" };
     const result = mapNodeToReactFlow(ext);
     expect(result.style!.opacity).toBe(0.6);
+  });
+
+  it("full opacity for INTERNAL namespace", () => {
+    const ext: GraphNode = { ...mockNode, namespace: "INTERNAL" };
+    const result = mapNodeToReactFlow(ext);
+    expect(result.style!.opacity).toBe(1);
+  });
+
+  it("sets namespace in data", () => {
+    const ext: GraphNode = { ...mockNode, namespace: "STDLIB" };
+    const result = mapNodeToReactFlow(ext);
+    expect(result.data.namespace).toBe("STDLIB");
   });
 });
 
@@ -67,8 +80,8 @@ describe("mapNodeToFlowView", () => {
     expect(nonRoot.style!.fontWeight).toBe(500);
   });
 
-  it("reduces opacity for EXTERNAL type", () => {
-    const ext: GraphNode = { ...mockNode, type: "EXTERNAL" };
+  it("reduces opacity for non-INTERNAL namespace in flow view", () => {
+    const ext: GraphNode = { ...mockNode, namespace: "UNKNOWN" };
     const result = mapNodeToFlowView(ext);
     expect(result.style!.opacity).toBe(0.5);
   });

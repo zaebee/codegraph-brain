@@ -49,7 +49,7 @@ export function buildExecutionFlow(
     const outEdges = edges.get(nodeId) || [];
 
     outEdges.forEach((e) => {
-      if (e.type !== "CALLS") return;
+      if (!["CALLS", "IMPORTS", "CONTAINS"].includes(e.type)) return;
 
       flowEdges.push(e);
       dfs(e.target, currentDepth + 1, edges);
@@ -78,7 +78,7 @@ export function buildExecutionFlow(
       const inEdges = incoming.get(nodeId) || [];
 
       inEdges.forEach((e) => {
-        if (e.type !== "CALLS") return;
+        if (!["CALLS", "IMPORTS", "CONTAINS"].includes(e.type)) return;
 
         inFlowEdges.push(e);
         dfsIn(e.source, currentDepth + 1);

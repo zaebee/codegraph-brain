@@ -11,6 +11,7 @@ describe("buildExecutionFlow", () => {
       start_line: 1,
       end_line: 10,
       language: "python",
+      namespace: "INTERNAL",
       ontology_class: null,
       domains: [],
       confidence_score: 1,
@@ -86,7 +87,7 @@ describe("buildExecutionFlow", () => {
     expect(flow.nodes.map((n) => n.id)).toEqual(expect.arrayContaining(["a", "b", "c"]));
   });
 
-  it("skips non-CALLS edges", () => {
+  it("skips non-traversal edge types", () => {
     const graph: GraphData = {
       nodes: [
         {
@@ -97,6 +98,7 @@ describe("buildExecutionFlow", () => {
           start_line: 1,
           end_line: 1,
           language: "python",
+          namespace: "INTERNAL",
           ontology_class: null,
           domains: [],
           confidence_score: 1,
@@ -110,17 +112,30 @@ describe("buildExecutionFlow", () => {
           start_line: 1,
           end_line: 1,
           language: "python",
+          namespace: "INTERNAL",
           ontology_class: null,
           domains: [],
           confidence_score: 1,
           metadata: {},
         },
       ],
-      edges: [{ id: "e-a-b", source: "a", target: "b", type: "IMPORTS" }],
+      edges: [{ id: "e-a-b", source: "a", target: "b", type: "DECLARES" }],
     };
 
     const flow = buildExecutionFlow(graph, "a", 3, "outgoing");
     expect(flow.nodes.map((n) => n.id)).toEqual(["a"]);
+  });
+
+  it("traverses IMPORTS edges", () => {
+    const graph = makeGraph(["a", "b"], [["a", "b", "IMPORTS"]]);
+    const flow = buildExecutionFlow(graph, "a", 3, "outgoing");
+    expect(flow.nodes.map((n) => n.id)).toEqual(expect.arrayContaining(["a", "b"]));
+  });
+
+  it("traverses CONTAINS edges", () => {
+    const graph = makeGraph(["a", "b"], [["a", "b", "CONTAINS"]]);
+    const flow = buildExecutionFlow(graph, "a", 3, "outgoing");
+    expect(flow.nodes.map((n) => n.id)).toEqual(expect.arrayContaining(["a", "b"]));
   });
 
   it("handles cycles without infinite loop", () => {

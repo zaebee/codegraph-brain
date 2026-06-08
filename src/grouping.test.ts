@@ -48,7 +48,7 @@ describe("groupByFile", () => {
   });
 
   it("does not set groupId on nodes without class", () => {
-    const nodes: any[] = [{ id: "ext1", type: "EXTERNAL", data: {}, position: { x: 0, y: 0 } }];
+    const nodes: any[] = [{ id: "orphan", type: "FILE", data: {}, position: { x: 0, y: 0 } }];
     const result = groupByFile(nodes, []);
 
     expect((result.nodes[0] as any).groupId).toBeUndefined();

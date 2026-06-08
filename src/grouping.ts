@@ -5,8 +5,7 @@ import type { Node, Edge } from "@xyflow/react";
  * @param {{ type: string, file_path?: string }} node
  * @returns {string|null} The file path to group by, or null for external nodes.
  */
-export function extractGroupKey(node: { type: string; file_path?: string }): string | null {
-  if (node.type === "EXTERNAL") return null;
+export function extractGroupKey(node: { file_path?: string }): string | null {
   if (node.file_path) return node.file_path;
   return null;
 }

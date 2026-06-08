@@ -16,6 +16,8 @@ interface MapFlowViewOptions {
 /**
  * Map a raw graph node to a ReactFlow node for the full graph view.
  */
+const isDimmed = (n: GraphNode) => n.namespace && n.namespace !== "INTERNAL";
+
 export function mapNodeToReactFlow(n: GraphNode, { groupKey }: MapNodeOptions = {}): Node {
   const colors = (NODE_COLORS as any)[n.type] || NODE_COLORS.DEFAULT;
   return {
@@ -26,6 +28,7 @@ export function mapNodeToReactFlow(n: GraphNode, { groupKey }: MapNodeOptions = 
       file: n.file_path,
       lines: `${n.start_line}-${n.end_line}`,
       nodeType: n.type,
+      namespace: n.namespace,
     },
     position: { x: 0, y: 0 },
     style: {
@@ -39,7 +42,7 @@ export function mapNodeToReactFlow(n: GraphNode, { groupKey }: MapNodeOptions = 
       boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
       width: NODE_WIDTH,
       minHeight: 40,
-      opacity: n.type === "EXTERNAL" ? 0.6 : 1,
+      opacity: isDimmed(n) ? 0.6 : 1,
     },
     ...(groupKey != null ? { class: groupKey } : {}),
   } as Node;
@@ -49,10 +52,10 @@ export function mapNodeToReactFlow(n: GraphNode, { groupKey }: MapNodeOptions = 
  * Map a raw graph node to a ReactFlow node for the flow (execution) view.
  */
 export function mapNodeToFlowView(n: GraphNode, { isRoot = false }: MapFlowViewOptions = {}): Node {
-  const isExternal = n.type === "EXTERNAL";
+  const dimmed = isDimmed(n);
   const colors = isRoot
     ? FLOW_NODE_COLORS.ROOT
-    : isExternal
+    : dimmed
       ? NODE_COLORS.EXTERNAL
       : FLOW_NODE_COLORS.DEFAULT;
   return {
@@ -63,6 +66,7 @@ export function mapNodeToFlowView(n: GraphNode, { isRoot = false }: MapFlowViewO
       file: n.file_path,
       lines: `${n.start_line}-${n.end_line}`,
       nodeType: n.type,
+      namespace: n.namespace,
     },
     position: { x: 0, y: 0 },
     style: {
@@ -76,7 +80,7 @@ export function mapNodeToFlowView(n: GraphNode, { isRoot = false }: MapFlowViewO
       boxShadow: isRoot ? "0 0 16px rgba(244,67,54,0.5)" : "0 2px 8px rgba(0,0,0,0.3)",
       width: NODE_WIDTH,
       minHeight: 40,
-      opacity: isExternal ? 0.5 : 1,
+      opacity: dimmed ? 0.5 : 1,
     },
   } as Node;
 }

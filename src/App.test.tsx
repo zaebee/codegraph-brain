@@ -12,20 +12,14 @@ const mockGraph = {
       start_line: 1,
       end_line: 5,
       language: "python",
+      namespace: "INTERNAL",
       ontology_class: null,
       domains: [],
       confidence_score: 1,
       metadata: {},
     },
   ],
-  edges: [
-    {
-      id: "e1",
-      source: "n1",
-      target: "ext1",
-      type: "CALLS",
-    },
-  ],
+  edges: [],
 };
 
 beforeEach(() => {
@@ -59,14 +53,14 @@ it("shows legend with all node types", async () => {
   expect(screen.getByText("Function")).toBeInTheDocument();
   expect(screen.getByText("Class")).toBeInTheDocument();
   expect(screen.getByText("Method")).toBeInTheDocument();
-  expect(screen.getByText("External")).toBeInTheDocument();
+  expect(screen.getByText("File")).toBeInTheDocument();
 });
 
 it("shows stats panel with correct counts", async () => {
   await renderApp();
   await waitFor(() => {
-    expect(screen.getByText("2 nodes")).toBeInTheDocument();
-    expect(screen.getByText("1 edges")).toBeInTheDocument();
-    expect(screen.getByText("1 ext")).toBeInTheDocument();
+    expect(screen.getByText("1 nodes")).toBeInTheDocument();
+    expect(screen.getByText("0 edges")).toBeInTheDocument();
+    expect(screen.getByText("0 ext")).toBeInTheDocument();
   });
 });
