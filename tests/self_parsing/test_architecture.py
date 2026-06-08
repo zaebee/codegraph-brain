@@ -71,7 +71,7 @@ def test_extractors_are_database_blind(
             violations.add(f"{e.source} -> {e.target}")
 
     for n in nodes:
-        if _clean(n.id) == "extractors" and "import_map" in n.metadata:
+        if _clean(n.id) == "extractors":
             import_map = n.metadata.get("import_map") or {}
             for val in import_map.values():
                 if val == "cgis" or _clean(val) in _FORBIDDEN_FROM_EXTRACTORS:
@@ -98,7 +98,7 @@ def test_storage_does_not_import_api(
             violations.add(f"{e.source} -> {e.target}")
 
     for n in nodes:
-        if _clean(n.id) == "storage" and "import_map" in n.metadata:
+        if _clean(n.id) == "storage":
             import_map = n.metadata.get("import_map") or {}
             for val in import_map.values():
                 if val == "cgis" or _clean(val) == "api":
