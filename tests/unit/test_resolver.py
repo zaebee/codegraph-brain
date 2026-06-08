@@ -1,5 +1,7 @@
 """Unit test cases for Resolver."""
 
+import pytest
+
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.extractors.python_extractor import PythonExtractor
 from cgis.resolver.engine import ResolverEngine
@@ -649,3 +651,258 @@ def create():
     local_types = func_node.metadata.get("local_types", {})
     assert "store" in local_types, f"Expected 'store' in local_types, got {local_types}"
     assert local_types["store"] == "app.models.Store"
+
+
+def test_resolver_resolves_dotted_class_ref_via_global_symbols() -> None:
+    """class Child(models.Base) resolves Base via global symbols when models not in import map."""
+    nodes = [
+        Node(
+            id="pkg.models.Base",
+            type=NodeType.CLASS,
+            name="Base",
+            file_path="pkg/models.py",
+            start_line=1,
+            end_line=5,
+        ),
+        Node(
+            id="pkg.child.Child",
+            type=NodeType.CLASS,
+            name="Child",
+            file_path="pkg/child.py",
+            start_line=1,
+            end_line=5,
+        ),
+    ]
+    edges = [
+        Edge(
+            id="e_ext",
+            source="pkg.child.Child",
+            target="raw_class:models.Base",
+            type=EdgeType.EXTENDS,
+            confidence=1.0,
+            file_path="pkg/child.py",
+        ),
+    ]
+    resolver = ResolverEngine(nodes, edges)
+    resolved_edges, _ = resolver.resolve()
+
+    ext_edge = next(e for e in resolved_edges if e.id == "e_ext")
+    assert ext_edge.target == "pkg.models.Base"
+
+
+# --- Inheritance resolution tests ---
+
+
+def test_resolver_resolves_inherited_method() -> None:
+    """Child inherits Parent; self.run() in Child resolves to Parent.run."""
+    nodes = [
+        Node(
+            id="mod.Parent",
+            type=NodeType.CLASS,
+            name="Parent",
+            file_path="mod.py",
+            start_line=1,
+            end_line=5,
+        ),
+        Node(
+            id="mod.Parent.run",
+            type=NodeType.METHOD,
+            name="run",
+            file_path="mod.py",
+            start_line=2,
+            end_line=4,
+        ),
+        Node(
+            id="mod.Child",
+            type=NodeType.CLASS,
+            name="Child",
+            file_path="mod.py",
+            start_line=7,
+            end_line=12,
+        ),
+        Node(
+            id="mod.Child.call_run",
+            type=NodeType.METHOD,
+            name="call_run",
+            file_path="mod.py",
+            start_line=8,
+            end_line=11,
+        ),
+    ]
+    edges = [
+        Edge(
+            id="e_extends",
+            source="mod.Child",
+            target="raw_class:Parent",
+            type=EdgeType.EXTENDS,
+            confidence=1.0,
+            file_path="mod.py",
+        ),
+        Edge(
+            id="e_call",
+            source="mod.Child.call_run",
+            target="raw_call:self.run",
+            type=EdgeType.CALLS,
+            confidence=0.5,
+            file_path="mod.py",
+        ),
+    ]
+    resolver = ResolverEngine(nodes, edges)
+    resolved_edges, _ = resolver.resolve()
+
+    call_edge = next(e for e in resolved_edges if e.id == "e_call")
+    assert call_edge.target == "mod.Parent.run"
+    assert call_edge.confidence > 0.5
+
+
+def test_resolver_resolves_extends_edge_to_fqn() -> None:
+    """EXTENDS edge with raw_class: target is resolved to the actual class FQN."""
+    nodes = [
+        Node(
+            id="pkg.base.Base",
+            type=NodeType.CLASS,
+            name="Base",
+            file_path="pkg/base.py",
+            start_line=1,
+            end_line=5,
+        ),
+        Node(
+            id="pkg.child.Child",
+            type=NodeType.CLASS,
+            name="Child",
+            file_path="pkg/child.py",
+            start_line=1,
+            end_line=5,
+        ),
+        _file_node("pkg/child.py", {"Base": "pkg.base.Base"}),
+    ]
+    edges = [
+        Edge(
+            id="e_ext",
+            source="pkg.child.Child",
+            target="raw_class:Base",
+            type=EdgeType.EXTENDS,
+            confidence=1.0,
+            file_path="pkg/child.py",
+        ),
+    ]
+    resolver = ResolverEngine(nodes, edges)
+    resolved_edges, _ = resolver.resolve()
+
+    ext_edge = next(e for e in resolved_edges if e.id == "e_ext")
+    assert ext_edge.target == "pkg.base.Base"
+    assert ext_edge.confidence == pytest.approx(1.0)
+
+
+def test_resolver_inherited_method_cycle_safe() -> None:
+    """Circular inheritance (A extends B, B extends A) doesn't infinite-loop."""
+    nodes = [
+        Node(
+            id="mod.A", type=NodeType.CLASS, name="A", file_path="mod.py", start_line=1, end_line=3
+        ),
+        Node(
+            id="mod.B", type=NodeType.CLASS, name="B", file_path="mod.py", start_line=5, end_line=7
+        ),
+        Node(
+            id="mod.A.method",
+            type=NodeType.METHOD,
+            name="method",
+            file_path="mod.py",
+            start_line=9,
+            end_line=11,
+        ),
+        # B.caller is the method that calls self.method (inherited from A through the cycle)
+        Node(
+            id="mod.B.caller",
+            type=NodeType.METHOD,
+            name="caller",
+            file_path="mod.py",
+            start_line=13,
+            end_line=15,
+        ),
+    ]
+    edges = [
+        Edge(
+            id="e1",
+            source="mod.A",
+            target="raw_class:B",
+            type=EdgeType.EXTENDS,
+            confidence=1.0,
+            file_path="mod.py",
+        ),
+        Edge(
+            id="e2",
+            source="mod.B",
+            target="raw_class:A",
+            type=EdgeType.EXTENDS,
+            confidence=1.0,
+            file_path="mod.py",
+        ),
+        # self.method called from B.caller — resolved via A through the cycle-safe traversal
+        Edge(
+            id="e3",
+            source="mod.B.caller",
+            target="raw_call:self.method",
+            type=EdgeType.CALLS,
+            confidence=0.5,
+            file_path="mod.py",
+        ),
+    ]
+    resolver = ResolverEngine(nodes, edges)
+    resolved_edges, _ = resolver.resolve()
+    # must not raise; method should resolve via A
+    call_edge = next(e for e in resolved_edges if e.id == "e3")
+    assert call_edge.target == "mod.A.method"
+
+
+def test_resolve_self_call_nested_function_finds_class() -> None:
+    """self.method() inside a nested function resolves via the enclosing class, not the fn."""
+    nodes = [
+        Node(
+            id="mod.MyClass",
+            type=NodeType.CLASS,
+            name="MyClass",
+            file_path="mod.py",
+            start_line=1,
+            end_line=10,
+        ),
+        Node(
+            id="mod.MyClass.run",
+            type=NodeType.METHOD,
+            name="run",
+            file_path="mod.py",
+            start_line=2,
+            end_line=5,
+        ),
+        Node(
+            id="mod.MyClass.process",
+            type=NodeType.METHOD,
+            name="process",
+            file_path="mod.py",
+            start_line=6,
+            end_line=9,
+        ),
+        Node(
+            id="mod.MyClass.process.inner",
+            type=NodeType.FUNCTION,
+            name="inner",
+            file_path="mod.py",
+            start_line=7,
+            end_line=8,
+        ),
+    ]
+    edges = [
+        Edge(
+            id="e_nested_call",
+            source="mod.MyClass.process.inner",
+            target="raw_call:self.run",
+            type=EdgeType.CALLS,
+            confidence=0.5,
+            file_path="mod.py",
+        ),
+    ]
+    resolver = ResolverEngine(nodes, edges)
+    resolved_edges, _ = resolver.resolve()
+
+    call_edge = next(e for e in resolved_edges if e.id == "e_nested_call")
+    assert call_edge.target == "mod.MyClass.run"

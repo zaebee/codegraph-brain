@@ -4,10 +4,11 @@ import builtins
 import os
 import sys
 
-from cgis.core.models import VIRTUAL_FILE_PATH, Edge, Node, NodeNamespace, NodeType
+from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeNamespace, NodeType
 
 _BUILTINS: frozenset[str] = frozenset(dir(builtins))
 _SELF_PREFIX = "self."
+_RAW_CLASS_PREFIX = "raw_class:"
 
 
 class ResolverEngine:
@@ -33,6 +34,8 @@ class ResolverEngine:
         self._suffix_map: dict[str, list[str]] = {}
         # top-level root segments of all internal nodes (for classify)
         self._internal_roots: set[str] = set()
+        # class_fqn -> [resolved parent FQNs] built from EXTENDS edges
+        self._inheritance_tree: dict[str, list[str]] = {}
 
         self._build_indices()
 
@@ -62,6 +65,32 @@ class ResolverEngine:
             self._add_node_to_suffix_map(node.id)
 
         self._build_external_roots()
+        self._build_inheritance_tree()
+
+    def _build_inheritance_tree(self) -> None:
+        """Build class→[parent FQNs] index from EXTENDS edges for hierarchy traversal."""
+        for edge in self.edges:
+            if edge.type == EdgeType.EXTENDS:
+                raw = edge.target.removeprefix(_RAW_CLASS_PREFIX)
+                resolved = self._resolve_class_ref(raw, edge.source, edge.file_path)
+                self._inheritance_tree.setdefault(edge.source, []).append(resolved or raw)
+
+    def _resolve_class_ref(
+        self, name: str, source_fqn: str, edge_file_path: str | None
+    ) -> str | None:
+        """Resolve a class name from an EXTENDS edge target to a graph FQN."""
+        file_path = self._get_normalized_file_path(source_fqn, edge_file_path)
+        if file_path:
+            result = self._resolve_via_import_map(name, file_path)
+            if result:
+                return result
+        # Global symbol index is keyed by short name; for dotted refs like `models.BaseModel`
+        # strip the module prefix and verify the resolved FQN ends with the full dotted name.
+        query_name = name.rsplit(".", maxsplit=1)[-1]
+        resolved = self._resolve_via_global_symbols(query_name, file_path)
+        if resolved and ("." not in name or resolved == name or resolved.endswith(f".{name}")):
+            return resolved
+        return None
 
     def _build_external_roots(self) -> None:
         """Build set of known external root modules from file import maps.
@@ -129,6 +158,17 @@ class ResolverEngine:
         virtual_nodes: dict[str, Node] = {}
 
         for edge in self.edges:
+            if edge.target.startswith(_RAW_CLASS_PREFIX):
+                raw = edge.target.removeprefix(_RAW_CLASS_PREFIX)
+                resolved = self._resolve_class_ref(raw, edge.source, edge.file_path)
+                final_target = resolved or raw
+                confidence = 1.0 if resolved else 0.5
+                resolved_edges.append(
+                    edge.model_copy(update={"target": final_target, "confidence": confidence})
+                )
+                self._ensure_virtual_node(final_target, virtual_nodes)
+                continue
+
             if not edge.target.startswith("raw_call:"):
                 resolved_edges.append(edge)
                 self._ensure_virtual_node(edge.target, virtual_nodes)
@@ -158,11 +198,32 @@ class ResolverEngine:
             virtual_nodes[target] = self._make_virtual_node(target, self._classify_fqn(target))
 
     def _resolve_self_call(self, source_fqn: str, method_name: str) -> str | None:
-        """Attempts to find a method on the class that owns the source node."""
-        class_fqn, sep, _ = source_fqn.rpartition(".")
-        if not sep:
+        """Attempts to find a method on the class that owns source, traversing inheritance.
+
+        Walks up the FQN segments to handle nested functions (e.g. mod.Cls.method.inner).
+        """
+        parts = source_fqn.split(".")
+        for i in range(len(parts) - 1, 0, -1):
+            candidate = ".".join(parts[:i])
+            if candidate in self._class_methods:
+                return self._resolve_method_on_class_hierarchy(candidate, method_name, set())
+        return None
+
+    def _resolve_method_on_class_hierarchy(
+        self, class_fqn: str, method_name: str, visited: set[str]
+    ) -> str | None:
+        """DFS over EXTENDS edges to find method_name defined in class_fqn or any ancestor."""
+        if class_fqn in visited:
             return None
-        return self._class_methods.get(class_fqn, {}).get(method_name)
+        visited.add(class_fqn)
+        direct = self._class_methods.get(class_fqn, {}).get(method_name)
+        if direct:
+            return direct
+        for parent_fqn in self._inheritance_tree.get(class_fqn, []):
+            result = self._resolve_method_on_class_hierarchy(parent_fqn, method_name, visited)
+            if result:
+                return result
+        return None
 
     def _map_to_node_fqn(self, imported_fqn: str) -> str | None:
         """Resolve an imported FQN to an actual node in the graph.
