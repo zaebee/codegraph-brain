@@ -415,14 +415,9 @@ class PythonExtractor(BaseExtractor):
     def _get_decorator_name(self, decorator_node: BaseNode, code_bytes: bytes) -> str | None:
         """Return the decorator's callable name from a single decorator node, or None."""
         for inner in decorator_node.children:
-            if inner.type in ("identifier", "attribute"):
+            if inner.type in ("identifier", "attribute", "call"):
                 name = self._get_identifier(inner, code_bytes)
                 return name if name != "unknown" else None
-            if inner.type == "call":
-                func_node = inner.child_by_field_name("function")
-                if func_node:
-                    name = self._get_identifier(func_node, code_bytes)
-                    return name if name != "unknown" else None
         return None
 
     def _extract_decorator_names(self, node: BaseNode, code_bytes: bytes) -> list[str]:
@@ -531,6 +526,10 @@ class PythonExtractor(BaseExtractor):
                                 file_path=file_path,
                             )
                         )
+                elif sc.type == "keyword_argument":
+                    meta_name = self._extract_metaclass_name(sc, code_bytes)
+                    if meta_name:
+                        superclass_names.append(meta_name)
 
         metadata: dict[str, Any] = {}
         if decorators:
@@ -569,6 +568,15 @@ class PythonExtractor(BaseExtractor):
         """Return True if class should be marked abstract (ABC/ABCMeta in bases or decorators)."""
         candidates = (*superclass_names, *(decorators or []))
         return any(n in _ABC_NAMES or n.rpartition(".")[-1] in _ABC_NAMES for n in candidates)
+
+    def _extract_metaclass_name(self, node: BaseNode, code_bytes: bytes) -> str | None:
+        """Return the metaclass name from a keyword_argument node like `metaclass=ABCMeta`."""
+        name_node = node.child_by_field_name("name")
+        value_node = node.child_by_field_name("value")
+        if name_node and value_node and self._get_identifier(name_node, code_bytes) == "metaclass":
+            meta_name = self._get_identifier(value_node, code_bytes)
+            return meta_name if meta_name != "unknown" else None
+        return None
 
     def _process_call_node(
         self, node: BaseNode, code_bytes: bytes, file_path: str, source_id: str, edges: list[Edge]

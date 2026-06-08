@@ -261,3 +261,24 @@ def test_extract_decorated_method_correct_fqn(extractor: PythonExtractor) -> Non
     method_node = next(n for n in nodes if n.name == "search")
     assert method_node.id == "svc.API.search"
     assert method_node.type == NodeType.METHOD
+
+
+def test_extract_abstract_class_via_metaclass_kwarg(extractor: PythonExtractor) -> None:
+    """class Foo(metaclass=ABCMeta) sets metadata['is_abstract'] = True."""
+    nodes, _edges = extractor.parse("class Foo(metaclass=ABCMeta): pass\n", "mod.py")
+    class_node = next(n for n in nodes if n.name == "Foo")
+    assert class_node.metadata.get("is_abstract") is True
+
+
+def test_extract_abstract_class_via_qualified_metaclass(extractor: PythonExtractor) -> None:
+    """class Foo(metaclass=abc.ABCMeta) also sets is_abstract."""
+    nodes, _edges = extractor.parse("class Foo(metaclass=abc.ABCMeta): pass\n", "mod.py")
+    class_node = next(n for n in nodes if n.name == "Foo")
+    assert class_node.metadata.get("is_abstract") is True
+
+
+def test_extract_metaclass_does_not_emit_extends_edge(extractor: PythonExtractor) -> None:
+    """metaclass= kwarg must NOT produce an EXTENDS edge."""
+    _nodes, edges = extractor.parse("class Foo(metaclass=ABCMeta): pass\n", "mod.py")
+    extends = [e for e in edges if e.type == EdgeType.EXTENDS]
+    assert not extends
