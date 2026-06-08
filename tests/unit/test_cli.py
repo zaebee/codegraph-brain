@@ -10,7 +10,7 @@ from cgis.extractors.python_extractor import file_path_to_module_fqn
 from cgis.query.engine import QueryEngine
 from cgis.storage.sqlite_store import SQLiteStore
 
-runner = CliRunner()
+runner = CliRunner(env={"NO_COLOR": "1"})
 
 
 def test_version() -> None:
