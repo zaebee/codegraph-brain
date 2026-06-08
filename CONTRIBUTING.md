@@ -33,8 +33,8 @@ CGIS is a semantic engine. Code without documentation is useless to an agent.
 **"A change is not complete until it is verified."**
 
 1.  **Unit Tests:** Every new feature or logic change must include corresponding unit tests in `tests/unit/`.
-2.  **Integration Tests:** Complex logic (e.g., resolver changes, pipeline updates) must be validated in `tests/integration/`.
-3.  **Self-Parsing Tests:** If you modify the core engine, you MUST update the self-parsing tests in `tests/self_parsing/` to ensure the engine can still correctly model itself.
+2.  **Integration Tests:** Complex logic (e.g., resolver changes, pipeline updates) should be validated in `tests/integration/` (infrastructure is being built — see open issues).
+3.  **Self-Parsing Tests:** If you modify the core engine, add self-parsing tests in `tests/self_parsing/` that verify the engine can correctly model itself (framework is planned — contribute to its design).
 4.  **Coverage:** New code must be covered by tests. We monitor coverage trends in CI.
 
 ---
@@ -43,10 +43,10 @@ CGIS is a semantic engine. Code without documentation is useless to an agent.
 
 1.  **Fork & Branch:** Create a descriptive branch name (e.g., `feat/add-go-extractor` or `fix/resolver-import-bug`).
 2.  **Development Loop:**
-    *   `uv run ruff format .`
-    *   `uv run ruff check .`
-    *   `uv run mypy src`
-    *   `uv run pytest`
+    *   `make format`
+    *   `make lint`
+    *   `make type-check`
+    *   `make pytest`
 3.  **Pull Request:**
     *   Provide a clear, concise description of **WHY** the change is needed and **HOW** it was implemented.
     *   Link to relevant issues if applicable.
