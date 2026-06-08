@@ -14,7 +14,7 @@ from cgis.storage.sqlite_store import SQLiteStore
 # Invariant 1 — Pure Domain Isolation
 # ---------------------------------------------------------------------------
 
-_FORBIDDEN_FROM_CORE = frozenset({"extractors", "storage", "query", "api", "resolver"})
+_FORBIDDEN_FROM_CORE = frozenset({"extractors", "storage", "query", "api", "resolver", "pipeline"})
 
 
 def test_core_models_has_no_internal_dependencies(
@@ -39,7 +39,7 @@ def test_core_models_has_no_internal_dependencies(
 # Invariant 2 — Extractor Boundary
 # ---------------------------------------------------------------------------
 
-_FORBIDDEN_FROM_EXTRACTORS = frozenset({"storage", "query", "api"})
+_FORBIDDEN_FROM_EXTRACTORS = frozenset({"storage", "query", "api", "pipeline"})
 
 
 def test_extractors_are_database_blind(
