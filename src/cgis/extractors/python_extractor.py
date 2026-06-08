@@ -413,9 +413,14 @@ class PythonExtractor(BaseExtractor):
                     )
 
     def _get_decorator_name(self, decorator_node: BaseNode, code_bytes: bytes) -> str | None:
-        """Return the decorator's callable name from a single decorator node, or None."""
+        """Return the decorator's callable name from a single decorator node, or None.
+
+        Skips the leading '@' token and any comments; passes the first real expression
+        node to _get_identifier, which handles identifier / attribute / call / PEP-614
+        parenthesized expressions.
+        """
         for inner in decorator_node.children:
-            if inner.type in ("identifier", "attribute", "call"):
+            if inner.type not in ("@", "comment"):
                 name = self._get_identifier(inner, code_bytes)
                 return name if name != "unknown" else None
         return None
