@@ -22,6 +22,7 @@ class MermaidCompiler:
     """
 
     def __init__(self) -> None:
+        """Initialise with the default CSS class definitions for node styling."""
         self._style_defs = [
             "classDef classNode fill:#e8f5e9,stroke:#2e7d32,stroke-width:1.5px,color:#1b5e20;",
             "classDef funcNode fill:#e3f2fd,stroke:#1565c0,stroke-width:1.5px,color:#0d47a1;",
@@ -49,6 +50,7 @@ class MermaidCompiler:
         return _escape(f"{node.name} ({filename}:{node.start_line})")
 
     def _get_style_class(self, node: Node) -> str:
+        """Map a node to its Mermaid CSS class suffix based on namespace and type."""
         if node.namespace == NodeNamespace.STDLIB:
             return ":::stdlibNode"
         if node.namespace == NodeNamespace.EXTERNAL:

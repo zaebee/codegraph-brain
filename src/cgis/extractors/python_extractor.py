@@ -59,6 +59,7 @@ class PythonExtractor(BaseExtractor):
     LANG: str = "python"
 
     def __init__(self) -> None:
+        """Initialise the tree-sitter Python parser."""
         self._parser = Parser(Language(tspython.language()))
 
     def parse(self, code: str, file_path: str) -> tuple[list[Node], list[Edge]]:
@@ -207,6 +208,7 @@ class PythonExtractor(BaseExtractor):
         module_fqn: str | None,
         edges: list[Edge],
     ) -> None:
+        """Dispatch import or import-from AST nodes to the appropriate handler."""
         if import_map is None or module_fqn is None:
             return
         if node.type == "import_statement":
@@ -365,6 +367,7 @@ class PythonExtractor(BaseExtractor):
         module_fqn: str | None,
         local_types_acc: dict[str, dict[str, str]] | None,
     ) -> None:
+        """Process a decorated function or class definition, forwarding decorator names."""
         raw_decorators = self._extract_decorator_names(node, code_bytes)
         for child in node.children:
             if child.type in ("function_definition", "async_function_definition"):

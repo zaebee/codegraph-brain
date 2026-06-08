@@ -18,6 +18,7 @@ class ResolverEngine:
     """
 
     def __init__(self, nodes: list[Node], edges: list[Edge]) -> None:
+        """Build resolution indexes from the extracted node and edge lists."""
         self.nodes = {n.id: n for n in nodes}
         self.edges = edges
 
