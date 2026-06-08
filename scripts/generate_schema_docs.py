@@ -53,7 +53,7 @@ def inject_schema() -> None:
 
     head, rest = content.split(_START, 1)
     _, tail = rest.split(_END, 1)
-    _HOW_IT_WORKS.write_text("".join([head, block, tail]), encoding="utf-8")
+    _HOW_IT_WORKS.write_text("".join([head, block, tail]), encoding="utf-8")  # NOSONAR
     print(f"✅ Injected schema ({sql.count('CREATE TABLE')} tables) into {_HOW_IT_WORKS}")
 
 

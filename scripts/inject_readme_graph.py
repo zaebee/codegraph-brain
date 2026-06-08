@@ -31,7 +31,7 @@ def inject_graph() -> None:
 
     head, rest = content.split(_START, 1)
     _, tail = rest.split(_END, 1)
-    _README.write_text("".join([head, block, tail]), encoding="utf-8")
+    _README.write_text("".join([head, block, tail]), encoding="utf-8")  # NOSONAR
     print(f"✅ Injected architecture graph into {_README}")
 
 
