@@ -137,3 +137,36 @@
 **Deprecation:**
 - `graph.json` → заменяется на API
 - `addExternalNodes()` → больше не нужен (API возвращает External)
+
+## 🎯 Phase 6: Visual Refinements (2026-06-08)
+
+### Edge Aggregation (B) — approved, prototype OK
+
+- [ ] Агрегировать множественные CALLS между двумя нодами в одно ребро
+- [ ] Толщина линии = количество вызовов (log-scale или sqrt)
+- [ ] Лейбл "×N" на ребре
+- [ ] При наведении на ребро — тултип с деталями вызовов
+- [ ] Context highlighting: при наведении на ноду — dim не-связанных нод/рёбер (opacity 0.15)
+- [ ] CSS transition для opacity при hover
+
+### File Containers (A)
+
+- [ ] Вместо CONTAINS рёбер при раскрытии FILE — ReactFlow group nodes
+- [ ] Дети (FUNCTION/METHOD) отрисовываются внутри прямоугольника файла
+- [ ] Полупрозрачный фон, padding, заголовок с именем файла
+- [ ] Layout: dagre + group overlap resolution (было в старой версии layout.ts)
+- [ ] Требует чинить конфликт dagre ↔ groups (file grouping)
+
+### Module-level Hierarchy
+
+- [ ] Добавить MODULE-ноды для директорий
+- [ ] Три уровня: MODULE → FILE → FUNCTION/METHOD
+- [ ] Drill-down навигация: модули → файлы → функции
+- [ ] По умолчанию показаны только MODULE с IMPORTS
+
+## 🧹 Code Quality (Phase 6)
+
+- [x] Вынести `getCollapsedView` в чистую функцию (`collapse.ts`)
+- [x] Обобщить DFS в `flow.ts` (один `dfs()` для outgoing/incoming)
+- [x] Удалить мёртвый код: `ErrorFallback.tsx`, `types.js`, неиспользуемые CSS-классы
+- [ ] Вынести filter pipeline из App.tsx в хук `useGraphFilter`
