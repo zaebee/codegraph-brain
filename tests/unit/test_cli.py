@@ -590,6 +590,34 @@ def test_validate_db_read_error_exits_with_error(tmp_path: Path) -> None:
     assert "Error" in result.output
 
 
+def test_ingest_domains_missing_file_exits_with_error(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        ["ingest", str(tmp_path), "--output", str(tmp_path / "g.db"), "--domains", "missing.yaml"],
+    )
+    assert result.exit_code == 1
+    assert "not found" in result.output
+
+
+def test_ingest_full_db_with_domains_runs_uplift(tmp_path: Path) -> None:
+    (tmp_path / "mod.py").write_text("class Store: pass\n", encoding="utf-8")
+    domains_yaml = tmp_path / "domains.yaml"
+    domains_yaml.write_text(
+        "version: '0.1.0'\ndomains:\n  StorageLayer:\n"
+        "    heuristics:\n      file_path_patterns: ['*mod.py']\n      fqn_patterns: []\n",
+        encoding="utf-8",
+    )
+    db = str(tmp_path / "graph.db")
+    result = runner.invoke(
+        app, ["ingest", str(tmp_path), "--output", db, "--domains", str(domains_yaml)]
+    )
+    assert result.exit_code == 0
+    with SQLiteStore(db) as store:
+        node = store.get_node("mod.Store")
+    assert node is not None
+    assert "StorageLayer" in node.domains
+
+
 def test_structure_mermaid_output(tmp_path: Path) -> None:
     """structure --format mermaid emits Mermaid diagram (lines 435-437)."""
     (tmp_path / "mod.py").write_text("class A:\n    def run(self): pass\n", encoding="utf-8")

@@ -1,0 +1,79 @@
+version: "0.1.0"
+description: "Declarative domain boundaries for the CGIS codebase"
+
+domains:
+  ParserLayer:
+    description: "Source code parsing and AST extraction"
+    heuristics:
+      file_path_patterns:
+        - "*extractors/*"
+      fqn_patterns:
+        - "*.Extractor*"
+        - "*extractors.*"
+
+  StorageLayer:
+    description: "Database storage, schemas, and persistence"
+    heuristics:
+      file_path_patterns:
+        - "*storage/*"
+      fqn_patterns:
+        - "*.Store*"
+        - "*storage.*"
+
+  SemanticEngine:
+    description: "Symbol resolution, linkage, and semantic uplift"
+    heuristics:
+      file_path_patterns:
+        - "*resolver/*"
+      fqn_patterns:
+        - "*.Resolver*"
+        - "*.ResolverEngine*"
+        - "*resolver.*"
+        - "*.uplift*"
+        - "*.SemanticUplift*"
+
+  QueryLayer:
+    description: "Graph traversal and query operations"
+    heuristics:
+      file_path_patterns:
+        - "*query/*"
+      fqn_patterns:
+        - "*.QueryEngine*"
+        - "*.MermaidCompiler*"
+        - "*query.*"
+
+  CoreDomain:
+    description: "Pure domain models and ontology definitions"
+    heuristics:
+      file_path_patterns:
+        - "*core/*"
+      fqn_patterns:
+        - "*core.*"
+        - "*.NodeType*"
+        - "*.EdgeType*"
+
+  Pipeline:
+    description: "Ingestion pipeline orchestration"
+    heuristics:
+      file_path_patterns:
+        - "*pipeline.py"
+      fqn_patterns:
+        - "*.IngestionPipeline*"
+        - "*pipeline.*"
+
+  APILayer:
+    description: "MCP API server and external interface"
+    heuristics:
+      file_path_patterns:
+        - "*api/*"
+      fqn_patterns:
+        - "*api.*"
+        - "*.mcp_server*"
+
+  CLI:
+    description: "Command-line interface and output formatting"
+    heuristics:
+      file_path_patterns:
+        - "*cli.py"
+      fqn_patterns:
+        - "*cli.*"
