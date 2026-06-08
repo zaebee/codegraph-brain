@@ -15,6 +15,7 @@ from cgis.storage.sqlite_store import SQLiteStore
 # ---------------------------------------------------------------------------
 
 _CGIS = "cgis"
+_FORBIDDEN_API = frozenset({"api"})
 _FORBIDDEN_FROM_CORE = frozenset({"extractors", "storage", "query", "api", "resolver", "pipeline"})
 _FORBIDDEN_FROM_EXTRACTORS = frozenset({"storage", "query", "api", "pipeline"})
 
@@ -35,7 +36,7 @@ def _is_imports(target: str, constraint: str, target_type: EdgeType) -> bool:
     return target == constraint and target_type == EdgeType.IMPORTS
 
 
-def _is_forbidden(target: str, constraint: str, rules: set[str]) -> bool:
+def _is_forbidden(target: str, constraint: str, rules: frozenset[str]) -> bool:
     """Returns true if target equal constraint or violates rules."""
     return target == constraint or _clean(target) in rules
 
@@ -102,7 +103,7 @@ def test_storage_does_not_import_api(
     violations = set()
     for e in edges:
         is_imports = _is_imports(_clean(e.source), "storage", e.type)
-        is_forbidden = _is_forbidden(e.target, _CGIS, ["api"])
+        is_forbidden = _is_forbidden(e.target, _CGIS, _FORBIDDEN_API)
         if is_imports and is_forbidden:
             violations.add(f"{e.source} -> {e.target}")
 
@@ -110,7 +111,7 @@ def test_storage_does_not_import_api(
         if _clean(n.id) == "storage":
             import_map = n.metadata.get("import_map") or {}
             for val in import_map.values():
-                if _is_forbidden(val, _CGIS, ["api"]):
+                if _is_forbidden(val, _CGIS, _FORBIDDEN_API):
                     violations.add(f"{n.id} -> {val}")
 
     assert not violations, _API_STORAGE_FORBIDDEN + "\n".join(f"  {v}" for v in sorted(violations))
