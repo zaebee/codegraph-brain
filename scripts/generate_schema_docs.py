@@ -14,22 +14,37 @@ _START = "<!-- START_CGIS_SCHEMA -->"
 _END = "<!-- END_CGIS_SCHEMA -->"
 
 
+def _find_create_schema_func(tree: ast.AST) -> ast.FunctionDef | None:
+    """Return the _create_schema FunctionDef node, or None if absent."""
+    return next(
+        (
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef) and node.name == "_create_schema"
+        ),
+        None,
+    )
+
+
+def _find_schema_literal(func: ast.FunctionDef) -> str | None:
+    """Return the string assigned to `schema` inside the function body, or None."""
+    for stmt in ast.walk(func):
+        if not isinstance(stmt, ast.Assign):
+            continue
+        if not (isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str)):
+            continue
+        if any(isinstance(t, ast.Name) and t.id == "schema" for t in stmt.targets):
+            return stmt.value.value.strip()
+    return None
+
+
 def _extract_schema_sql(store_path: Path) -> str:
     """Parse _create_schema() with AST and return the SQL string literal it assigns to `schema`."""
-    source = store_path.read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name == "_create_schema":
-            for stmt in ast.walk(node):
-                if isinstance(stmt, ast.Assign):
-                    for target in stmt.targets:
-                        if (
-                            isinstance(target, ast.Name)
-                            and target.id == "schema"
-                            and isinstance(stmt.value, ast.Constant)
-                            and isinstance(stmt.value.value, str)
-                        ):
-                            return stmt.value.value.strip()
+    tree = ast.parse(store_path.read_text(encoding="utf-8"))
+    func = _find_create_schema_func(tree)
+    sql = _find_schema_literal(func) if func is not None else None
+    if sql is not None:
+        return sql
     msg = f'Cannot find `schema = """..."""` assignment in _create_schema() in {store_path}'
     raise ValueError(msg)
 
