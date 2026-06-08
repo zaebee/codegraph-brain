@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+
 import { mapEdgeToReactFlow, mapEdgeToFlowView } from "./edgeMapper";
 import type { GraphEdge, GraphNode } from "../types";
 
@@ -21,8 +21,32 @@ describe("mapEdgeToReactFlow", () => {
 
   it("uses dim styling when target is external", () => {
     const enrichedNodes: GraphNode[] = [
-      { id: "a", type: "FUNCTION", name: "a", file_path: "f.py", start_line: 1, end_line: 2, language: "py", ontology_class: null, domains: [], confidence_score: 1, metadata: {} },
-      { id: "b", type: "EXTERNAL", name: "b", file_path: "", start_line: 0, end_line: 0, language: "", ontology_class: null, domains: [], confidence_score: 0, metadata: {} },
+      {
+        id: "a",
+        type: "FUNCTION",
+        name: "a",
+        file_path: "f.py",
+        start_line: 1,
+        end_line: 2,
+        language: "py",
+        ontology_class: null,
+        domains: [],
+        confidence_score: 1,
+        metadata: {},
+      },
+      {
+        id: "b",
+        type: "EXTERNAL",
+        name: "b",
+        file_path: "",
+        start_line: 0,
+        end_line: 0,
+        language: "",
+        ontology_class: null,
+        domains: [],
+        confidence_score: 0,
+        metadata: {},
+      },
     ];
     const result = mapEdgeToReactFlow(mockEdge, 0, { enrichedNodes });
     expect(result.style!.stroke).toBe("#546e7a");
@@ -31,10 +55,36 @@ describe("mapEdgeToReactFlow", () => {
 
   it("uses dim styling when source is external", () => {
     const enrichedNodes: GraphNode[] = [
-      { id: "a", type: "FUNCTION", name: "a", file_path: "f.py", start_line: 1, end_line: 2, language: "py", ontology_class: null, domains: [], confidence_score: 1, metadata: {} },
-      { id: "b", type: "EXTERNAL", name: "b", file_path: "", start_line: 0, end_line: 0, language: "", ontology_class: null, domains: [], confidence_score: 0, metadata: {} },
+      {
+        id: "a",
+        type: "FUNCTION",
+        name: "a",
+        file_path: "f.py",
+        start_line: 1,
+        end_line: 2,
+        language: "py",
+        ontology_class: null,
+        domains: [],
+        confidence_score: 1,
+        metadata: {},
+      },
+      {
+        id: "b",
+        type: "EXTERNAL",
+        name: "b",
+        file_path: "",
+        start_line: 0,
+        end_line: 0,
+        language: "",
+        ontology_class: null,
+        domains: [],
+        confidence_score: 0,
+        metadata: {},
+      },
     ];
-    const result = mapEdgeToReactFlow({ ...mockEdge, source: "b", target: "a" }, 0, { enrichedNodes });
+    const result = mapEdgeToReactFlow({ ...mockEdge, source: "b", target: "a" }, 0, {
+      enrichedNodes,
+    });
     expect(result.style!.stroke).toBe("#546e7a");
   });
 });

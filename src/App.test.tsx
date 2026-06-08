@@ -22,14 +22,16 @@ const mockGraph = {
 };
 
 beforeEach(() => {
-  globalThis.fetch = vi.fn().mockResolvedValue({ json: () => Promise.resolve(mockGraph) }) as unknown as typeof fetch;
+  globalThis.fetch = vi
+    .fn()
+    .mockResolvedValue({ json: () => Promise.resolve(mockGraph) }) as unknown as typeof fetch;
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
-test("renders graph debugger", async () => {
+it("renders graph debugger", async () => {
   render(
     <ReactFlowProvider>
       <App />

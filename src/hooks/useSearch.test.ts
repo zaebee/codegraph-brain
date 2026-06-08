@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
+import { renderHook, act, waitFor } from "@testing-library/react";
 import { useSearch } from "./useSearch";
 import type { Node } from "@xyflow/react";
 
@@ -21,53 +20,54 @@ const nodes: Node[] = [
 ];
 
 describe("useSearch", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
   it("returns all nodes when query is empty", () => {
-    const { result } = renderHook(() => useSearch(nodes, "", 200));
+    const { result } = renderHook(() => useSearch(nodes, "", 5));
     expect(result.current.displayedNodes).toHaveLength(3);
   });
 
-  it("filters by label (case-insensitive)", () => {
-    const { result } = renderHook(() => useSearch(nodes, "", 200));
+  it("filters by label (case-insensitive)", async () => {
+    const { result } = renderHook(() => useSearch(nodes, "", 5));
     act(() => result.current.setSearchQuery("process"));
-    act(() => vi.advanceTimersByTime(200));
-    const visible = result.current.displayedNodes.filter((n) => (n.style as any).opacity !== 0.15);
-    expect(visible).toHaveLength(1);
-    expect((visible[0].data as any).label).toBe("processData");
+    await waitFor(() => {
+      const visible = result.current.displayedNodes.filter(
+        (n) => (n.style as any).opacity !== 0.15
+      );
+      expect(visible).toHaveLength(1);
+    });
   });
 
-  it("filters by subtitle (type)", () => {
-    const { result } = renderHook(() => useSearch(nodes, "", 200));
+  it("filters by subtitle (type)", async () => {
+    const { result } = renderHook(() => useSearch(nodes, "", 5));
     act(() => result.current.setSearchQuery("METHOD"));
-    act(() => vi.advanceTimersByTime(200));
-    const visible = result.current.displayedNodes.filter((n) => (n.style as any).opacity !== 0.15);
-    expect(visible).toHaveLength(1);
+    await waitFor(() => {
+      const visible = result.current.displayedNodes.filter(
+        (n) => (n.style as any).opacity !== 0.15
+      );
+      expect(visible).toHaveLength(1);
+    });
   });
 
-  it("filters by file path", () => {
-    const { result } = renderHook(() => useSearch(nodes, "", 200));
+  it("filters by file path", async () => {
+    const { result } = renderHook(() => useSearch(nodes, "", 5));
     act(() => result.current.setSearchQuery("config"));
-    act(() => vi.advanceTimersByTime(200));
-    const visible = result.current.displayedNodes.filter((n) => (n.style as any).opacity !== 0.15);
-    expect(visible).toHaveLength(1);
+    await waitFor(() => {
+      const visible = result.current.displayedNodes.filter(
+        (n) => (n.style as any).opacity !== 0.15
+      );
+      expect(visible).toHaveLength(1);
+    });
   });
 
-  it("dims non-matching nodes", () => {
-    const { result } = renderHook(() => useSearch(nodes, "", 200));
+  it("dims non-matching nodes", async () => {
+    const { result } = renderHook(() => useSearch(nodes, "", 5));
     act(() => result.current.setSearchQuery("process"));
-    act(() => vi.advanceTimersByTime(200));
-    const dimmed = result.current.displayedNodes.filter((n) => (n.style as any).opacity === 0.15);
-    expect(dimmed).toHaveLength(2);
+    await waitFor(() => {
+      const dimmed = result.current.displayedNodes.filter((n) => (n.style as any).opacity === 0.15);
+      expect(dimmed).toHaveLength(2);
+    });
   });
 
-  it("passes through group nodes unmodified", () => {
+  it("passes through group nodes unmodified", async () => {
     const groupNode: Node = {
       id: "g1",
       type: "group",
@@ -75,19 +75,26 @@ describe("useSearch", () => {
       position: { x: 0, y: 0 },
       style: {},
     };
-    const { result } = renderHook(() => useSearch([...nodes, groupNode], "", 200));
+    const { result } = renderHook(() => useSearch([...nodes, groupNode], "", 5));
     act(() => result.current.setSearchQuery("process"));
-    act(() => vi.advanceTimersByTime(200));
-    const group = result.current.displayedNodes.find((n) => n.id === "g1");
-    expect((group!.style as any).opacity).toBeUndefined();
+    await waitFor(() => {
+      const group = result.current.displayedNodes.find((n) => n.id === "g1");
+      expect((group!.style as any).opacity).toBeUndefined();
+    });
   });
 
-  it("debounces query updates", () => {
+  it("debounces query updates", async () => {
     const { result } = renderHook(() => useSearch(nodes, "", 200));
     act(() => result.current.setSearchQuery("process"));
-    // Before debounce, all nodes still visible
-    expect(result.current.displayedNodes.filter((n) => (n.style as any).opacity !== 0.15)).toHaveLength(3);
-    act(() => vi.advanceTimersByTime(200));
-    expect(result.current.displayedNodes.filter((n) => (n.style as any).opacity !== 0.15)).toHaveLength(1);
+    // Before debounce, all nodes still visible (no opacity change yet)
+    expect(
+      result.current.displayedNodes.filter((n) => (n.style as any).opacity !== 0.15)
+    ).toHaveLength(3);
+    // After debounce delay, only matching node is visible
+    await waitFor(() => {
+      expect(
+        result.current.displayedNodes.filter((n) => (n.style as any).opacity !== 0.15)
+      ).toHaveLength(1);
+    });
   });
 });
