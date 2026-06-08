@@ -57,6 +57,7 @@ class QueryEngine:
     """
 
     def __init__(self, store: SQLiteStore) -> None:
+        """Bind the query engine to an open SQLiteStore instance."""
         self.store = store
 
     def get_impact_graph(

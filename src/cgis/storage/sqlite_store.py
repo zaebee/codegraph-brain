@@ -12,6 +12,8 @@ RAW_CALL_PREFIX = "raw_call:"
 
 @dataclass
 class EdgeStats:
+    """Aggregated edge statistics returned by get_edge_stats()."""
+
     total: int
     resolved: int  # edges whose target is an INTERNAL node
     stdlib: int  # edges whose target is a STDLIB virtual node
@@ -30,6 +32,7 @@ class SQLiteStore:
     """
 
     def __init__(self, db_path: str) -> None:
+        """Initialise the store with a path to the SQLite database file."""
         self.db_path = db_path
         self._conn: sqlite3.Connection | None = None
         self._error_message = "Database not connected."
@@ -47,18 +50,22 @@ class SQLiteStore:
         self._create_schema()
 
     def disconnect(self) -> None:
+        """Close the SQLite connection if open."""
         if self._conn:
             self._conn.close()
             self._conn = None
 
     def __enter__(self) -> "SQLiteStore":
+        """Connect and return self for use as a context manager."""
         self.connect()
         return self
 
     def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
+        """Disconnect on context manager exit regardless of exception state."""
         self.disconnect()
 
     def _create_schema(self) -> None:
+        """Create nodes, edges, and files_state tables if they do not yet exist."""
         schema = """
         CREATE TABLE IF NOT EXISTS nodes (
             id TEXT PRIMARY KEY,
@@ -130,6 +137,7 @@ class SQLiteStore:
     def _node_to_row(
         self, n: Node
     ) -> tuple[str, str, str, str, int, int, str, str | None, str, float, str, str]:
+        """Serialise a Node into a tuple matching the nodes table column order."""
         return (
             n.id,
             n.type.value,
@@ -148,6 +156,7 @@ class SQLiteStore:
     def _edge_to_row(
         self, e: Edge
     ) -> tuple[str, str, str, str, float, float, str | None, str | None, int | None]:
+        """Serialise an Edge into a tuple matching the edges table column order."""
         return (
             e.id,
             e.source,
@@ -210,6 +219,7 @@ class SQLiteStore:
             self._conn.executemany(self._NODE_INSERT, [self._node_to_row(n) for n in nodes])
 
     def get_node(self, node_id: str) -> Node | None:
+        """Return a single node by FQN, or None if not found."""
         if not self._conn:
             raise RuntimeError(self._error_message)
         cursor = self._conn.execute("SELECT * FROM nodes WHERE id = ?", (node_id,))
@@ -219,6 +229,7 @@ class SQLiteStore:
         return self._row_to_node(row)
 
     def get_nodes(self, node_ids: list[str]) -> list[Node]:
+        """Return nodes matching the given FQN list, fetched in 999-item chunks."""
         if not self._conn:
             raise RuntimeError(self._error_message)
         if not node_ids:
@@ -236,12 +247,14 @@ class SQLiteStore:
         return nodes
 
     def get_outgoing_edges(self, node_id: str) -> list[Edge]:
+        """Return all edges where the given node is the source."""
         if not self._conn:
             raise RuntimeError(self._error_message)
         cursor = self._conn.execute("SELECT * FROM edges WHERE source = ?", (node_id,))
         return [self._row_to_edge(row) for row in cursor.fetchall()]
 
     def get_incoming_edges(self, node_id: str) -> list[Edge]:
+        """Return all edges where the given node is the target."""
         if not self._conn:
             raise RuntimeError(self._error_message)
         cursor = self._conn.execute("SELECT * FROM edges WHERE target = ?", (node_id,))
@@ -256,6 +269,7 @@ class SQLiteStore:
         return self._get_edges_batch(node_ids, column="target")
 
     def _get_edges_batch(self, node_ids: list[str], column: str) -> list[Edge]:
+        """Fetch edges for many nodes at once, chunked to respect SQLite's 999-param limit."""
         if column not in ("source", "target"):
             msg = f"Invalid column: {column!r}. Must be 'source' or 'target'."
             raise ValueError(msg)
@@ -450,6 +464,7 @@ class SQLiteStore:
         return {row["file_path"] for row in cursor.fetchall()}
 
     def _row_to_node(self, row: sqlite3.Row) -> Node:
+        """Deserialise a SQLite row into a Node model."""
         return Node(
             id=row["id"],
             type=NodeType(row["type"]),
@@ -468,6 +483,7 @@ class SQLiteStore:
         )
 
     def _row_to_edge(self, row: sqlite3.Row) -> Edge:
+        """Deserialise a SQLite row into an Edge model."""
         return Edge(
             id=row["id"],
             source=row["source"],

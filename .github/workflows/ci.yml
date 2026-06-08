@@ -1,0 +1,39 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [ main, dev, "feat/**", "fix/**", "docs/**" ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  python-ci:
+    name: Python Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39  # v3
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Install Dependencies
+        run: uv sync --group dev
+
+      - name: Ruff Format Check
+        run: uv run ruff format --check .
+
+      - name: Ruff Lint
+        run: uv run ruff check .
+
+      - name: Interrogate (≥90% docstring coverage)
+        run: uv run interrogate -v --fail-under 90 src/cgis
+
+      - name: Mypy (strict)
+        run: uv run mypy src
+
+      - name: Pytest
+        run: uv run pytest --cov=cgis --cov-report=term-missing

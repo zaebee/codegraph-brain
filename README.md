@@ -2,7 +2,7 @@
 ### *The Semantic Ground Truth for AI Agents*
 
 [![Continuous Integration](https://github.com/zaebee/codegraph-brain/actions/workflows/ci.yml/badge.svg)](https://github.com/zaebee/codegraph-brain/actions/workflows/ci.yml)
-[![Graph Integrity](https://img.shields.io/badge/graph_status-healthy-brightgreen)](https://github.com/zaebee/codegraph-brain)
+[![Graph Integrity](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/zaebee/codegraph-brain/main/docs/architecture/health_badge.json)](https://github.com/zaebee/codegraph-brain/actions/workflows/autodoc.yml)
 
 **LLM coding agents (Claude, Cursor, GPT) are currently "guessing" your architecture based on flat text snippets. CGIS stops the guessing.**
 

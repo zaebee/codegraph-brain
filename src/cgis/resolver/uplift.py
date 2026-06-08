@@ -47,6 +47,7 @@ _STRUCTURAL_EDGE_TYPES = frozenset({EdgeType.CONTAINS, EdgeType.DECLARES})
 
 
 def _load_domains_config(config_path: str) -> dict[str, Any]:
+    """Read and parse a domains.yaml file, returning the `domains` mapping."""
     try:
         with Path(config_path).open(encoding="utf-8") as fh:
             data = yaml.safe_load(fh)
@@ -81,6 +82,7 @@ class SemanticUpliftEngine:
         store: SQLiteStore,
         domains_config_path: str | None = None,
     ) -> None:
+        """Bind to a store and optionally load domain heuristics from a YAML config."""
         self._store = store
         self._domains: dict[str, Any] = {}
         if domains_config_path:
@@ -138,6 +140,7 @@ def _phase1_map_ontology_classes(nodes_map: dict[str, Node]) -> dict[str, Node]:
 
 
 def _compile_patterns(patterns: list[str]) -> list[re.Pattern[str]]:
+    """Pre-compile fnmatch glob patterns into regex for efficient repeated matching."""
     return [re.compile(fnmatch.translate(p)) for p in patterns]
 
 
@@ -167,6 +170,7 @@ def _phase2_apply_heuristic_tagging(
 
 
 def _build_children_map(edges: list[Edge]) -> dict[str, list[str]]:
+    """Build a parent → [child, ...] mapping from CONTAINS/DECLARES structural edges."""
     children: dict[str, list[str]] = {}
     for edge in edges:
         if edge.type in _STRUCTURAL_EDGE_TYPES:
@@ -206,6 +210,7 @@ def _collect_cross_domain_pairs(
     tgt_domains: list[str],
     dep_pairs: set[tuple[str, str]],
 ) -> None:
+    """Add all cross-domain (src, tgt) pairs where src_domain != tgt_domain."""
     for src_domain in src_domains:
         for tgt_domain in tgt_domains:
             if src_domain != tgt_domain:

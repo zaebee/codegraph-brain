@@ -1,5 +1,6 @@
 """Unit test cases for cli."""
 
+import re
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -11,6 +12,11 @@ from cgis.query.engine import QueryEngine
 from cgis.storage.sqlite_store import SQLiteStore
 
 runner = CliRunner()
+
+
+def _plain(text: str) -> str:
+    """Strip ANSI escape sequences — Rich/Typer highlights option names even in error messages."""
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
 
 
 def test_version() -> None:
@@ -321,7 +327,7 @@ def test_trace_invalid_format_exits_with_error() -> None:
     result = runner.invoke(app, ["trace", "some.fqn", "--format", "svg"])
 
     assert result.exit_code == 2
-    assert "Invalid value for '--format'" in result.output
+    assert "Invalid value for '--format'" in _plain(result.output)
 
 
 def test_impact_invalid_format_exits_with_error() -> None:
@@ -329,7 +335,7 @@ def test_impact_invalid_format_exits_with_error() -> None:
     result = runner.invoke(app, ["impact", "some.fqn", "--format", "svg"])
 
     assert result.exit_code == 2
-    assert "Invalid value for '--format'" in result.output
+    assert "Invalid value for '--format'" in _plain(result.output)
 
 
 def test_validate_missing_db_exits_with_error(tmp_path: Path) -> None:
@@ -522,7 +528,7 @@ def test_trace_internal_only_without_mermaid_raises_bad_parameter(tmp_path: Path
     result = runner.invoke(app, ["trace", "mod.fn", "--db", db, "--internal-only"])
 
     assert result.exit_code == 2
-    assert "--internal-only is only supported with '--format mermaid'" in result.output
+    assert "--internal-only is only supported with '--format mermaid'" in _plain(result.output)
 
 
 def test_impact_internal_only_without_mermaid_raises_bad_parameter(tmp_path: Path) -> None:
@@ -534,7 +540,7 @@ def test_impact_internal_only_without_mermaid_raises_bad_parameter(tmp_path: Pat
     result = runner.invoke(app, ["impact", "mod.fn", "--db", db, "--internal-only"])
 
     assert result.exit_code == 2
-    assert "--internal-only is only supported with '--format mermaid'" in result.output
+    assert "--internal-only is only supported with '--format mermaid'" in _plain(result.output)
 
 
 def test_trace_mermaid_internal_only_filters_output(tmp_path: Path) -> None:

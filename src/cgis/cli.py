@@ -36,6 +36,8 @@ _OPT_SHOW_EXTERNAL: bool = typer.Option(
 
 
 class OutputFormat(StrEnum):
+    """Supported output formats for trace, impact, and structure commands."""
+
     TEXT = "text"
     MERMAID = "mermaid"
 
@@ -45,6 +47,7 @@ app = typer.Typer(help="CGIS: Code Graph Intelligence System CLI")
 
 
 def _version_callback(value: bool) -> None:
+    """Print version string and exit when --version flag is passed."""
     if value:
         typer.echo(f"{__app_name__} v{__version__}")
         raise typer.Exit
@@ -61,7 +64,7 @@ def main(
         is_eager=True,
     ),
 ) -> None:
-    return
+    """CGIS — Code Graph Intelligence System CLI."""
 
 
 def _write_graph_output(
@@ -71,6 +74,7 @@ def _write_graph_output(
     resolved_edges: list[Edge],
     domains: str | None,
 ) -> None:
+    """Persist the ingestion result to the given output path (.db or .json)."""
     if output.endswith(".json"):
         graph_data = {
             "metadata": {
@@ -452,6 +456,7 @@ def validate(
         raise typer.Exit(code=1) from e
 
     def _pct(n: int) -> str:
+        """Format an edge count as a percentage of total edges."""
         return f"{n / stats.total * 100:.1f}%" if stats.total else "0.0%"
 
     unresolved_pct = stats.unresolved_ratio * 100

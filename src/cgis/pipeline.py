@@ -21,6 +21,8 @@ logger = structlog.getLogger(__name__)
 
 
 class IngestionPipeline:
+    """Orchestrates the full Extract → Resolve → Store pipeline over a source tree."""
+
     def __init__(
         self,
         extractors: Mapping[str, BaseExtractor],
@@ -39,6 +41,7 @@ class IngestionPipeline:
 
     @staticmethod
     def _compute_hash(content: str) -> str:
+        """Return the MD5 hex digest of the given source content string."""
         return hashlib.md5(content.encode("utf-8"), usedforsecurity=False).hexdigest()
 
     def run(
@@ -205,6 +208,7 @@ class IngestionPipeline:
             logger.info("Removed stale file from graph", file_path=stale_path)
 
     def _get_extractor(self, filename: str) -> BaseExtractor | None:
+        """Return the registered extractor for the given filename, or None."""
         for ext, extractor in self._extractors.items():
             if filename.endswith(ext):
                 return extractor

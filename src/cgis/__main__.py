@@ -8,6 +8,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 
 def main() -> None:
+    """Launch the CGIS CLI application."""
     cli.app(prog_name=__app_name__)
 
 
