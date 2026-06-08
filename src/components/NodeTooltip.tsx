@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import "./NodeTooltip.css";
+import styles from "./NodeTooltip.module.css";
 import type { Node } from "@xyflow/react";
 
 interface NodeTooltipData {
@@ -38,7 +38,7 @@ export default function NodeTooltip({
 
   return (
     <div
-      className="tooltip-follow"
+      className={styles["tooltip-follow"]}
       style={{
         position: "fixed",
         left: position.x,
@@ -46,11 +46,11 @@ export default function NodeTooltip({
         pointerEvents: "none",
       }}
     >
-      <div className="node-tooltip">
-        <div className="tooltip-name">{data?.label}</div>
-        <div className="tooltip-type">{data?.subtitle}</div>
-        <div className="tooltip-file">{data?.file}</div>
-        <div className="tooltip-lines">lines {data?.lines}</div>
+      <div className={styles["node-tooltip"]}>
+        <div className={styles["tooltip-name"]}>{data?.label}</div>
+        <div className={styles["tooltip-type"]}>{data?.subtitle}</div>
+        <div className={styles["tooltip-file"]}>{data?.file}</div>
+        <div className={styles["tooltip-lines"]}>lines {data?.lines}</div>
       </div>
     </div>
   );

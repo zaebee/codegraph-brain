@@ -1,0 +1,40 @@
+.tooltip-follow {
+  position: fixed;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.node-tooltip {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md);
+  min-width: 200px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.tooltip-name {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.tooltip-type {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--spacing-xs);
+}
+
+.tooltip-file {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-accent);
+  margin-bottom: 2px;
+}
+
+.tooltip-lines {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
