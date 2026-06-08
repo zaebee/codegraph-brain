@@ -177,7 +177,8 @@ def _filter_internal(
 ) -> tuple[list[Node], list[Edge]]:
     """Keep only INTERNAL nodes backed by a real source file (exclude virtual placeholders)."""
     filtered_nodes = [
-        n for n in nodes
+        n
+        for n in nodes
         if n.namespace == NodeNamespace.INTERNAL and n.file_path != VIRTUAL_FILE_PATH
     ]
     internal_ids = {n.id for n in filtered_nodes}
