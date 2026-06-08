@@ -18,26 +18,55 @@ const mockGraph = {
       metadata: {},
     },
   ],
-  edges: [],
+  edges: [
+    {
+      id: "e1",
+      source: "n1",
+      target: "ext1",
+      type: "CALLS",
+    },
+  ],
 };
 
 beforeEach(() => {
   globalThis.fetch = vi
     .fn()
-    .mockResolvedValue({ json: () => Promise.resolve(mockGraph) }) as unknown as typeof fetch;
+    .mockResolvedValue({ ok: true, json: () => Promise.resolve(mockGraph) }) as unknown as typeof fetch;
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
-it("renders graph debugger", async () => {
+async function renderApp() {
   render(
     <ReactFlowProvider>
       <App />
     </ReactFlowProvider>
   );
   await waitFor(() => {
-    expect(screen.getByText(/Depth/i)).toBeInTheDocument();
+    expect(screen.getByText(/Controls/i)).toBeInTheDocument();
+  });
+}
+
+it("renders control panel", async () => {
+  await renderApp();
+  expect(screen.getByText(/Depth/i)).toBeInTheDocument();
+});
+
+it("shows legend with all node types", async () => {
+  await renderApp();
+  expect(screen.getByText("Function")).toBeInTheDocument();
+  expect(screen.getByText("Class")).toBeInTheDocument();
+  expect(screen.getByText("Method")).toBeInTheDocument();
+  expect(screen.getByText("External")).toBeInTheDocument();
+});
+
+it("shows stats panel with correct counts", async () => {
+  await renderApp();
+  await waitFor(() => {
+    expect(screen.getByText("2 nodes")).toBeInTheDocument();
+    expect(screen.getByText("1 edges")).toBeInTheDocument();
+    expect(screen.getByText("1 ext")).toBeInTheDocument();
   });
 });

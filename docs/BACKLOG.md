@@ -90,19 +90,20 @@
 - ✅ `tsconfig.json` strict mode, `allowJs: true`
 - ✅ 6 post-merge TS issues resolved (duplicate effect, mapper integration, isLayouting state, / search focus, enriched data to useFlowNavigation, noUnusedLocals)
 
-### Phase 3: Тесты — In Progress
+### Phase 3: Тесты ✅
 
-- [x] App smoke test
+- [x] App smoke test → extended to integration (legend + stats panel)
 - [x] flow.test.ts (execution flow)
 - [x] grouping.test.ts (file-based grouping)
 - [x] layout.test.ts (dagre layout + group boundaries)
-- [ ] `utils/nodeMapper.ts` — Unit
-- [ ] `utils/edgeMapper.ts` — Unit
-- [ ] `hooks/useSearch` — Unit (renderHook)
-- [ ] `hooks/useExport` — Unit (mock html-to-image)
-- [ ] `hooks/useFlowNavigation` — Unit
-- [ ] `components/ControlPanel` — Render test
-- [ ] Integration: fetch → layout → render
+- [x] `utils/nodeMapper.ts` — Unit
+- [x] `utils/edgeMapper.ts` — Unit
+- [x] `hooks/useSearch` — Unit (renderHook)
+- [x] `hooks/useExport` — Unit (mock html-to-image)
+- [x] `hooks/useFlowNavigation` — Unit
+- [x] `components/ControlPanel` — Render test
+- [x] Integration: fetch → layout → render (App.test.tsx)
+- **Итог:** 10 test files, 74 tests, lint + tsc clean
 
 ### Phase 4: CSS Architecture — TODO
 
