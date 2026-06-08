@@ -1,7 +1,7 @@
 """Generate docs/architecture/health_badge.json for the Shields.io endpoint badge.
 
-Ingests src/cgis/ into a temporary graph, computes basic health metrics,
-and writes a Shields.io-compatible JSON badge file.
+Reads an existing graph DB (--db) or ingests src/cgis/ into a fresh temporary DB,
+then computes health metrics and writes a Shields.io-compatible JSON badge file.
 
 Health scoring:
   - resolved_ratio >= 0.85 and node_count > 0  → healthy  (green)
@@ -9,6 +9,7 @@ Health scoring:
   - otherwise                                   → unhealthy (red)
 """
 
+import argparse
 import json
 import tempfile
 from dataclasses import dataclass
@@ -34,6 +35,7 @@ class _HealthResult:
 
 
 def _compute_health(db_path: str) -> _HealthResult:
+    """Read an existing DB and return health metrics."""
     with SQLiteStore(db_path) as store:
         nodes = store.get_all_nodes()
         edges = store.get_all_edges()
@@ -61,24 +63,26 @@ def _compute_health(db_path: str) -> _HealthResult:
     )
 
 
-def generate_health() -> None:
-    """Ingest src/cgis, compute health metrics, write health_badge.json."""
+def generate_health(db: str | None = None) -> None:
+    """Compute health badge from an existing DB or by ingesting src/cgis/ on the fly."""
     if not _SRC.exists():
         msg = f"Source directory not found: {_SRC}"
         raise FileNotFoundError(msg)
 
     _OUTPUT.parent.mkdir(parents=True, exist_ok=True)
 
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
-        db_path = tmp.name
-
-    try:
-        pipeline = IngestionPipeline(_EXTRACTORS)
-        with SQLiteStore(db_path) as store:
-            pipeline.run(str(_SRC), store=store)
-        result = _compute_health(db_path)
-    finally:
-        Path(db_path).unlink(missing_ok=True)
+    if db:
+        result = _compute_health(db)
+    else:
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
+            db_path = tmp.name
+        try:
+            pipeline = IngestionPipeline(_EXTRACTORS)
+            with SQLiteStore(db_path) as store:
+                pipeline.run(str(_SRC), store=store)
+            result = _compute_health(db_path)
+        finally:
+            Path(db_path).unlink(missing_ok=True)
 
     badge: dict[str, str | int] = {
         "schemaVersion": 1,
@@ -100,4 +104,11 @@ def generate_health() -> None:
 
 
 if __name__ == "__main__":
-    generate_health()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--db",
+        default=None,
+        help="Path to an existing graph DB. If omitted, src/cgis/ is ingested fresh.",
+    )
+    args = parser.parse_args()
+    generate_health(db=args.db)

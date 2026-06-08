@@ -27,19 +27,19 @@ jobs:
         run: uv sync
 
       - name: Self-ingest core engine
-        run: uv run cgis ingest ./src --output docs/architecture/self_graph.db
+        run: uv run cgis ingest ./src --output /tmp/self_graph.db
 
       - name: Generate pipeline flow diagram
         run: |
           mkdir -p docs/architecture/diagrams
           uv run cgis trace "cgis.pipeline.IngestionPipeline.run" \
-            --db docs/architecture/self_graph.db \
+            --db /tmp/self_graph.db \
             --depth 2 \
             --format mermaid \
             > docs/architecture/diagrams/pipeline_flow.mermaid
 
       - name: Compute graph health badge
-        run: uv run python scripts/generate_health.py
+        run: uv run python scripts/generate_health.py --db /tmp/self_graph.db
 
       - name: Inject graph into README.md
         run: uv run python scripts/inject_readme_graph.py
