@@ -6,31 +6,29 @@ domains:
     description: "Source code parsing and AST extraction"
     heuristics:
       file_path_patterns:
-        - "extractors/*"
+        - "*extractors/*"
       fqn_patterns:
         - "*.Extractor*"
-        - "*.extractor*"
-        - "extractors.*"
+        - "*extractors.*"
 
   StorageLayer:
     description: "Database storage, schemas, and persistence"
     heuristics:
       file_path_patterns:
-        - "storage/*"
+        - "*storage/*"
       fqn_patterns:
         - "*.Store*"
-        - "*.sqlite_store*"
-        - "storage.*"
+        - "*storage.*"
 
   SemanticEngine:
     description: "Symbol resolution, linkage, and semantic uplift"
     heuristics:
       file_path_patterns:
-        - "resolver/*"
+        - "*resolver/*"
       fqn_patterns:
         - "*.Resolver*"
         - "*.ResolverEngine*"
-        - "resolver.*"
+        - "*resolver.*"
         - "*.uplift*"
         - "*.SemanticUplift*"
 
@@ -38,19 +36,19 @@ domains:
     description: "Graph traversal and query operations"
     heuristics:
       file_path_patterns:
-        - "query/*"
+        - "*query/*"
       fqn_patterns:
         - "*.QueryEngine*"
         - "*.MermaidCompiler*"
-        - "query.*"
+        - "*query.*"
 
   CoreDomain:
     description: "Pure domain models and ontology definitions"
     heuristics:
       file_path_patterns:
-        - "core/*"
+        - "*core/*"
       fqn_patterns:
-        - "core.*"
+        - "*core.*"
         - "*.NodeType*"
         - "*.EdgeType*"
 
@@ -58,24 +56,24 @@ domains:
     description: "Ingestion pipeline orchestration"
     heuristics:
       file_path_patterns:
-        - "pipeline.py"
+        - "*pipeline.py"
       fqn_patterns:
         - "*.IngestionPipeline*"
-        - "pipeline.*"
+        - "*pipeline.*"
 
   APILayer:
     description: "MCP API server and external interface"
     heuristics:
       file_path_patterns:
-        - "api/*"
+        - "*api/*"
       fqn_patterns:
-        - "api.*"
+        - "*api.*"
         - "*.mcp_server*"
 
   CLI:
     description: "Command-line interface and output formatting"
     heuristics:
       file_path_patterns:
-        - "cli.py"
+        - "*cli.py"
       fqn_patterns:
-        - "cli.*"
+        - "*cli.*"

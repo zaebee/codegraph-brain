@@ -15,6 +15,7 @@ from cgis.extractors.python_extractor import PythonExtractor, file_path_to_modul
 from cgis.pipeline import IngestionPipeline
 from cgis.query.engine import BEHAVIORAL_EDGE_TYPES, QueryEngine
 from cgis.query.mermaid import MermaidCompiler
+from cgis.resolver.uplift import SemanticUpliftEngine
 from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 
 _DEFAULT_DB = "graph.db"
@@ -91,6 +92,10 @@ def ingest(
 
     pipeline = IngestionPipeline(extractors, domains_config=domains)
 
+    if domains and not Path(domains).is_file():
+        console.print(f"[bold red]❌ Domains config file not found:[/bold red] {domains}")
+        raise typer.Exit(code=1)
+
     console.print(f"[bold blue]🚀 Starting ingestion for:[/bold blue] {path}")
 
     if incremental and output.endswith(".json"):
@@ -133,6 +138,8 @@ def ingest(
             else:
                 with SQLiteStore(output) as store:
                     store.save_graph(nodes, resolved_edges, overwrite=True)
+                    if domains:
+                        SemanticUpliftEngine(store, domains).execute_uplift()
 
         table = Table(title="Ingestion Summary")
         table.add_column("Metric", style="cyan")
