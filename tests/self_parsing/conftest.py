@@ -1,0 +1,25 @@
+"""Shared fixtures for self-parsing tests."""
+
+from collections.abc import Generator
+from pathlib import Path
+
+import pytest
+
+from cgis.core.models import Edge, Node
+from cgis.extractors.python_extractor import PythonExtractor
+from cgis.pipeline import IngestionPipeline
+from cgis.storage.sqlite_store import SQLiteStore
+
+SRC_DIR = Path(__file__).parent.parent.parent / "src" / "cgis"
+
+
+@pytest.fixture(scope="session")
+def graph_data(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Generator[tuple[SQLiteStore, list[Node], list[Edge]], None, None]:
+    """Run the full pipeline once on src/cgis/ and share across all self-parsing tests."""
+    db_path = str(tmp_path_factory.mktemp("self_parse") / "graph.db")
+    pipeline = IngestionPipeline({".py": PythonExtractor()})
+    with SQLiteStore(db_path) as store:
+        nodes, _, resolved_edges = pipeline.run(str(SRC_DIR), store=store)
+        yield store, nodes, resolved_edges

@@ -10,14 +10,12 @@ Expected FQNs are built dynamically with ``file_path_to_module_fqn`` so the
 suite stays correct regardless of the absolute checkout path.
 """
 
-from collections.abc import Generator
 from pathlib import Path
 
 import pytest
 
 from cgis.core.models import VIRTUAL_FILE_PATH, Edge, Node, NodeNamespace
-from cgis.extractors.python_extractor import PythonExtractor, file_path_to_module_fqn
-from cgis.pipeline import IngestionPipeline
+from cgis.extractors.python_extractor import file_path_to_module_fqn
 from cgis.storage.sqlite_store import SQLiteStore
 
 SRC_DIR = Path(__file__).parent.parent.parent / "src" / "cgis"
@@ -39,23 +37,6 @@ def _fqn(relative: str, *parts: str) -> str:
     """
     module = file_path_to_module_fqn(relative)
     return ".".join([module, *parts]) if parts else module
-
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture(scope="module")
-def graph_data(
-    tmp_path_factory: pytest.TempPathFactory,
-) -> Generator[tuple[SQLiteStore, list[Node], list[Edge]], None, None]:
-    """Run the full pipeline once on src/cgis/ and share the result."""
-    db_path = str(tmp_path_factory.mktemp("self_parse") / "graph.db")
-    pipeline = IngestionPipeline({".py": PythonExtractor()})
-    with SQLiteStore(db_path) as store:
-        nodes, _, resolved_edges = pipeline.run(str(SRC_DIR), store=store)
-        yield store, nodes, resolved_edges
 
 
 # ---------------------------------------------------------------------------

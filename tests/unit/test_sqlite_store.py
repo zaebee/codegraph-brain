@@ -377,7 +377,11 @@ def test_migrate_adds_namespace_column(tmp_path: Path) -> None:
     conn.close()
 
     with SQLiteStore(db_path) as store:
-        cols = {row["name"] for row in store._conn.execute("PRAGMA table_info(nodes)").fetchall()}  # noqa: SLF001
+        assert store._conn is not None, "Database connection is not established"  # noqa: SLF001
+        cols = {
+            row["name"]
+            for row in store._conn.execute("PRAGMA table_info(nodes)").fetchall()  # noqa: SLF001
+        }
 
     assert "namespace" in cols
 
