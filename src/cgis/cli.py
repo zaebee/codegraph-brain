@@ -10,10 +10,10 @@ from rich.table import Table
 from rich.tree import Tree
 
 from cgis import __app_name__, __version__
-from cgis.core.models import Edge, Node, NodeNamespace
+from cgis.core.models import Edge, EdgeType, Node, NodeNamespace
 from cgis.extractors.python_extractor import PythonExtractor, file_path_to_module_fqn
 from cgis.pipeline import IngestionPipeline
-from cgis.query.engine import QueryEngine
+from cgis.query.engine import BEHAVIORAL_EDGE_TYPES, QueryEngine
 from cgis.query.mermaid import MermaidCompiler
 from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 
@@ -153,16 +153,23 @@ def build_trace_tree(
     path_visited: set[str],
     max_depth: int,
     current_depth: int,
+    allowed_edge_types: frozenset[EdgeType] | None = None,
+    show_external: bool = True,
 ) -> None:
     """Cycle-safe recursive tree builder for downstream flow tracing."""
     if current_depth >= max_depth:
         return
 
     outgoing = store.get_outgoing_edges(current_id)
+    if allowed_edge_types is not None:
+        outgoing = [e for e in outgoing if e.type in allowed_edge_types]
     nodes_map = {n.id: n for n in store.get_nodes([e.target for e in outgoing])}
     for edge in outgoing:
         target_id = edge.target
         target_node = nodes_map.get(target_id)
+
+        if not show_external and target_node and target_node.namespace != NodeNamespace.INTERNAL:
+            continue
 
         if target_node:
             label = (
@@ -183,7 +190,16 @@ def build_trace_tree(
             continue
 
         path_visited.add(target_id)
-        build_trace_tree(store, target_id, branch, path_visited, max_depth, current_depth + 1)
+        build_trace_tree(
+            store,
+            target_id,
+            branch,
+            path_visited,
+            max_depth,
+            current_depth + 1,
+            allowed_edge_types=allowed_edge_types,
+            show_external=show_external,
+        )
         path_visited.remove(target_id)
 
 
@@ -198,6 +214,16 @@ def trace(
     internal_only: bool = typer.Option(
         False, "--internal-only", help="Exclude stdlib and external nodes from output"
     ),
+    show_structure: bool = typer.Option(
+        False,
+        "--show-structure/--no-show-structure",
+        help="Include structural edges (CONTAINS, DECLARES) in output",
+    ),
+    show_external: bool = typer.Option(
+        False,
+        "--show-external/--no-show-external",
+        help="Include stdlib and external nodes in output",
+    ),
 ) -> None:
     """
     Trace execution flow starting from a specific code entity downwards.
@@ -207,6 +233,8 @@ def trace(
         console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
         raise typer.Exit(code=1)
 
+    allowed: frozenset[EdgeType] | None = None if show_structure else BEHAVIORAL_EDGE_TYPES
+
     with SQLiteStore(db) as store:
         start_node = store.get_node(start)
         if not start_node:
@@ -214,7 +242,9 @@ def trace(
             raise typer.Exit(code=1)
 
         if output_format == OutputFormat.MERMAID:
-            nodes, edges = QueryEngine(store).get_flow_graph(start, max_depth=depth)
+            nodes, edges = QueryEngine(store).get_flow_graph(
+                start, max_depth=depth, allowed_edge_types=allowed, show_external=show_external
+            )
             if internal_only:
                 nodes, edges = _filter_internal(nodes, edges)
             typer.echo(MermaidCompiler().compile(nodes, edges))
@@ -231,7 +261,16 @@ def trace(
                 f"[dim]({start_node.file_path}:{start_node.start_line})[/dim]"
             )
             tree = Tree(root_label)
-            build_trace_tree(store, start, tree, {start}, depth, 0)
+            build_trace_tree(
+                store,
+                start,
+                tree,
+                {start},
+                depth,
+                0,
+                allowed_edge_types=allowed,
+                show_external=show_external,
+            )
             console.print(tree)
 
 
@@ -242,16 +281,23 @@ def build_impact_tree(
     path_visited: set[str],
     max_depth: int,
     current_depth: int,
+    allowed_edge_types: frozenset[EdgeType] | None = None,
+    show_external: bool = True,
 ) -> None:
     """Cycle-safe recursive tree builder for upstream impact analysis."""
     if current_depth >= max_depth:
         return
 
     incoming = store.get_incoming_edges(current_id)
+    if allowed_edge_types is not None:
+        incoming = [e for e in incoming if e.type in allowed_edge_types]
     nodes_map = {n.id: n for n in store.get_nodes([e.source for e in incoming])}
     for edge in incoming:
         source_id = edge.source
         source_node = nodes_map.get(source_id)
+
+        if not show_external and source_node and source_node.namespace != NodeNamespace.INTERNAL:
+            continue
 
         if source_node:
             label = (
@@ -272,7 +318,16 @@ def build_impact_tree(
             continue
 
         path_visited.add(source_id)
-        build_impact_tree(store, source_id, branch, path_visited, max_depth, current_depth + 1)
+        build_impact_tree(
+            store,
+            source_id,
+            branch,
+            path_visited,
+            max_depth,
+            current_depth + 1,
+            allowed_edge_types=allowed_edge_types,
+            show_external=show_external,
+        )
         path_visited.remove(source_id)
 
 
@@ -287,6 +342,16 @@ def impact(
     internal_only: bool = typer.Option(
         False, "--internal-only", help="Exclude stdlib and external nodes from output"
     ),
+    show_structure: bool = typer.Option(
+        False,
+        "--show-structure/--no-show-structure",
+        help="Include structural edges (CONTAINS, DECLARES) in output",
+    ),
+    show_external: bool = typer.Option(
+        False,
+        "--show-external/--no-show-external",
+        help="Include stdlib and external nodes in output",
+    ),
 ) -> None:
     """
     Analyze transitive upstream impact (callers) of changing a specific code entity.
@@ -296,6 +361,8 @@ def impact(
         console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
         raise typer.Exit(code=1)
 
+    allowed: frozenset[EdgeType] | None = None if show_structure else BEHAVIORAL_EDGE_TYPES
+
     with SQLiteStore(db) as store:
         target_node = store.get_node(target)
         if not target_node:
@@ -303,7 +370,9 @@ def impact(
             raise typer.Exit(code=1)
 
         if output_format == OutputFormat.MERMAID:
-            nodes, edges = QueryEngine(store).get_impact_graph(target, max_depth=depth)
+            nodes, edges = QueryEngine(store).get_impact_graph(
+                target, max_depth=depth, allowed_edge_types=allowed, show_external=show_external
+            )
             if internal_only:
                 nodes, edges = _filter_internal(nodes, edges)
             typer.echo(MermaidCompiler().compile(nodes, edges))
@@ -320,7 +389,16 @@ def impact(
                 f"[dim]({target_node.file_path}:{target_node.start_line})[/dim]"
             )
             tree = Tree(root_label)
-            build_impact_tree(store, target, tree, {target}, depth, 0)
+            build_impact_tree(
+                store,
+                target,
+                tree,
+                {target},
+                depth,
+                0,
+                allowed_edge_types=allowed,
+                show_external=show_external,
+            )
             console.print(tree)
 
 

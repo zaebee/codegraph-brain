@@ -2,8 +2,13 @@
 
 from collections.abc import Callable
 
-from cgis.core.models import Edge, Node
+from cgis.core.models import Edge, EdgeType, Node, NodeNamespace
 from cgis.storage.sqlite_store import SQLiteStore
+
+STRUCTURAL_EDGE_TYPES: frozenset[EdgeType] = frozenset({EdgeType.CONTAINS, EdgeType.DECLARES})
+BEHAVIORAL_EDGE_TYPES: frozenset[EdgeType] = frozenset(
+    t for t in EdgeType if t not in STRUCTURAL_EDGE_TYPES
+)
 
 
 class QueryEngine:
@@ -16,7 +21,11 @@ class QueryEngine:
         self.store = store
 
     def get_impact_graph(
-        self, target_node_id: str, max_depth: int = 5
+        self,
+        target_node_id: str,
+        max_depth: int = 5,
+        allowed_edge_types: frozenset[EdgeType] | None = None,
+        show_external: bool = True,
     ) -> tuple[list[Node], list[Edge]]:
         """
         Transitive upstream traversal (who calls me?).
@@ -27,10 +36,16 @@ class QueryEngine:
             self.store.get_incoming_edges_batch,
             lambda e: e.source,
             max_depth,
+            allowed_edge_types=allowed_edge_types,
+            show_external=show_external,
         )
 
     def get_flow_graph(
-        self, start_node_id: str, max_depth: int = 5
+        self,
+        start_node_id: str,
+        max_depth: int = 5,
+        allowed_edge_types: frozenset[EdgeType] | None = None,
+        show_external: bool = True,
     ) -> tuple[list[Node], list[Edge]]:
         """
         Transitive downstream traversal (who do I call?).
@@ -41,6 +56,8 @@ class QueryEngine:
             self.store.get_outgoing_edges_batch,
             lambda e: e.target,
             max_depth,
+            allowed_edge_types=allowed_edge_types,
+            show_external=show_external,
         )
 
     def get_structural_graph(
@@ -59,6 +76,8 @@ class QueryEngine:
         get_edges_batch: Callable[[list[str]], list[Edge]],
         get_neighbor_id: Callable[[Edge], str],
         max_depth: int,
+        allowed_edge_types: frozenset[EdgeType] | None = None,
+        show_external: bool = True,
     ) -> tuple[list[Node], list[Edge]]:
         """
         Level-by-level BFS. Fetches edges for the entire frontier in one
@@ -73,6 +92,8 @@ class QueryEngine:
             edges = get_edges_batch(current_frontier)
             next_frontier: list[str] = []
             for edge in edges:
+                if allowed_edge_types is not None and edge.type not in allowed_edge_types:
+                    continue
                 visited_edges[edge.id] = edge
                 neighbor_id = get_neighbor_id(edge)
                 if neighbor_id not in discovered_ids:
@@ -82,4 +103,14 @@ class QueryEngine:
             depth += 1
 
         nodes = self.store.get_nodes(list(discovered_ids))
+
+        if not show_external:
+            nodes = [n for n in nodes if n.namespace == NodeNamespace.INTERNAL]
+            internal_ids = {n.id for n in nodes}
+            return nodes, [
+                e
+                for e in visited_edges.values()
+                if e.source in internal_ids and e.target in internal_ids
+            ]
+
         return nodes, list(visited_edges.values())

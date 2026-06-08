@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from cgis.core.models import Edge, EdgeType, Node, NodeType
-from cgis.query.engine import QueryEngine
+from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeNamespace, NodeType
+from cgis.query.engine import BEHAVIORAL_EDGE_TYPES, QueryEngine
 from cgis.storage.sqlite_store import SQLiteStore
 
 
@@ -424,3 +424,115 @@ def test_get_structural_subgraph_unknown_node_returns_empty(temp_store: SQLiteSt
     nodes, edges = temp_store.get_structural_subgraph("nonexistent.Node")
     assert nodes == []
     assert edges == []
+
+
+# --- Issue #58: Query Filtering & Noise Pruning ---
+
+
+def test_flow_graph_filters_structural_edges(temp_store: SQLiteStore) -> None:
+    """allowed_edge_types excludes CONTAINS/DECLARES so structural nodes are not traversed."""
+    nodes = [_make_node("parent"), _make_node("child"), _make_node("callee")]
+    edges = [
+        Edge(id="p->c", source="parent", target="child", type=EdgeType.CONTAINS),
+        Edge(id="p->f", source="parent", target="callee", type=EdgeType.CALLS),
+    ]
+    temp_store.save_graph(nodes, edges)
+    qe = QueryEngine(temp_store)
+
+    # Default (no filter): both edges traversed
+    all_nodes, all_edges = qe.get_flow_graph("parent", max_depth=2)
+    assert {n.id for n in all_nodes} == {"parent", "child", "callee"}
+    assert len(all_edges) == 2
+
+    # BEHAVIORAL_EDGE_TYPES: CONTAINS edge skipped → child not reached
+    filt_nodes, filt_edges = qe.get_flow_graph(
+        "parent", max_depth=2, allowed_edge_types=BEHAVIORAL_EDGE_TYPES
+    )
+    assert {n.id for n in filt_nodes} == {"parent", "callee"}
+    assert len(filt_edges) == 1
+    assert filt_edges[0].type == EdgeType.CALLS
+
+
+def test_impact_graph_filters_structural_edges(temp_store: SQLiteStore) -> None:
+    """allowed_edge_types excludes CONTAINS/DECLARES in upstream impact traversal."""
+    nodes = [_make_node("container"), _make_node("caller"), _make_node("target")]
+    edges = [
+        Edge(id="cont->tgt", source="container", target="target", type=EdgeType.CONTAINS),
+        Edge(id="caller->tgt", source="caller", target="target", type=EdgeType.CALLS),
+    ]
+    temp_store.save_graph(nodes, edges)
+    qe = QueryEngine(temp_store)
+
+    filt_nodes, filt_edges = qe.get_impact_graph(
+        "target", max_depth=2, allowed_edge_types=BEHAVIORAL_EDGE_TYPES
+    )
+    node_ids = {n.id for n in filt_nodes}
+    assert "caller" in node_ids
+    assert "container" not in node_ids
+    assert len(filt_edges) == 1
+
+
+def test_flow_graph_prunes_external_nodes(temp_store: SQLiteStore) -> None:
+    """show_external=False removes STDLIB/EXTERNAL nodes and edges that cross the boundary."""
+    internal = Node(
+        id="mod.fn",
+        type=NodeType.FUNCTION,
+        name="fn",
+        file_path="mod.py",
+        start_line=1,
+        end_line=2,
+        namespace=NodeNamespace.INTERNAL,
+    )
+    stdlib_node = Node(
+        id="os.path.join",
+        type=NodeType.FUNCTION,
+        name="join",
+        file_path=VIRTUAL_FILE_PATH,
+        start_line=0,
+        end_line=0,
+        namespace=NodeNamespace.STDLIB,
+    )
+    nodes = [internal, stdlib_node]
+    edges = [Edge(id="e1", source="mod.fn", target="os.path.join", type=EdgeType.CALLS)]
+    temp_store.save_graph(nodes, edges)
+    qe = QueryEngine(temp_store)
+
+    # With show_external=True (default): stdlib node present
+    all_nodes, all_edges = qe.get_flow_graph("mod.fn", max_depth=2)
+    assert "os.path.join" in {n.id for n in all_nodes}
+    assert len(all_edges) == 1
+
+    # With show_external=False: stdlib node and its edge pruned
+    filt_nodes, filt_edges = qe.get_flow_graph("mod.fn", max_depth=2, show_external=False)
+    assert "os.path.join" not in {n.id for n in filt_nodes}
+    assert len(filt_edges) == 0
+
+
+def test_impact_graph_prunes_external_nodes(temp_store: SQLiteStore) -> None:
+    """show_external=False prunes external callers from impact traversal."""
+    internal = Node(
+        id="mod.fn",
+        type=NodeType.FUNCTION,
+        name="fn",
+        file_path="mod.py",
+        start_line=1,
+        end_line=2,
+        namespace=NodeNamespace.INTERNAL,
+    )
+    external_caller = Node(
+        id="pkg.util",
+        type=NodeType.FUNCTION,
+        name="util",
+        file_path=VIRTUAL_FILE_PATH,
+        start_line=0,
+        end_line=0,
+        namespace=NodeNamespace.EXTERNAL,
+    )
+    nodes = [internal, external_caller]
+    edges = [Edge(id="e1", source="pkg.util", target="mod.fn", type=EdgeType.CALLS)]
+    temp_store.save_graph(nodes, edges)
+    qe = QueryEngine(temp_store)
+
+    filt_nodes, filt_edges = qe.get_impact_graph("mod.fn", max_depth=2, show_external=False)
+    assert "pkg.util" not in {n.id for n in filt_nodes}
+    assert len(filt_edges) == 0
