@@ -7,30 +7,27 @@ describe("groupByFile", () => {
     file_path: filePath,
     class: filePath,
     data: { label: id },
-    position: { x: 0, y: 0 }
+    position: { x: 0, y: 0 },
   });
 
   it("creates group nodes for each unique file path", () => {
     const nodes = [
       makeNode("a", "FUNCTION", "src/app.py"),
       makeNode("b", "FUNCTION", "src/app.py"),
-      makeNode("c", "FUNCTION", "src/utils.py")
+      makeNode("c", "FUNCTION", "src/utils.py"),
     ];
 
     const result = groupByFile(nodes, []);
-    const groups = result.nodes.filter(n => n.type === "group");
+    const groups = result.nodes.filter((n) => n.type === "group");
 
     expect(groups).toHaveLength(2);
-    expect(groups.map(g => g.id).sort()).toEqual([
-      "file:src/app.py",
-      "file:src/utils.py"
-    ]);
+    expect(groups.map((g) => g.id).sort()).toEqual(["file:src/app.py", "file:src/utils.py"]);
   });
 
   it("uses filename as label", () => {
     const nodes = [makeNode("a", "FUNCTION", "src/cgis/pipeline.py")];
     const result = groupByFile(nodes, []);
-    const group = result.nodes.find(n => n.type === "group");
+    const group = result.nodes.find((n) => n.type === "group");
 
     expect(group.data.label).toBe("pipeline.py");
     expect(group.data.fullPath).toBe("src/cgis/pipeline.py");
@@ -38,14 +35,11 @@ describe("groupByFile", () => {
   });
 
   it("sets groupId on child nodes", () => {
-    const nodes = [
-      makeNode("a", "FUNCTION", "src/app.py"),
-      makeNode("b", "METHOD", "src/app.py")
-    ];
+    const nodes = [makeNode("a", "FUNCTION", "src/app.py"), makeNode("b", "METHOD", "src/app.py")];
 
     const result = groupByFile(nodes, []);
-    const childA = result.nodes.find(n => n.id === "a");
-    const childB = result.nodes.find(n => n.id === "b");
+    const childA = result.nodes.find((n) => n.id === "a");
+    const childB = result.nodes.find((n) => n.id === "b");
 
     expect(childA.groupId).toBe("file:src/app.py");
     expect(childB.groupId).toBe("file:src/app.py");
@@ -67,12 +61,10 @@ describe("groupByFile", () => {
   });
 
   it("creates one group per file even with many nodes", () => {
-    const nodes = Array.from({ length: 10 }, (_, i) =>
-      makeNode(`n${i}`, "METHOD", "big.py")
-    );
+    const nodes = Array.from({ length: 10 }, (_, i) => makeNode(`n${i}`, "METHOD", "big.py"));
 
     const result = groupByFile(nodes, []);
-    const groups = result.nodes.filter(n => n.type === "group");
+    const groups = result.nodes.filter((n) => n.type === "group");
     expect(groups).toHaveLength(1);
   });
 });

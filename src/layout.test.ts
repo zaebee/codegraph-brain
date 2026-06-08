@@ -5,53 +5,51 @@ describe("layoutGraph", () => {
     id,
     type,
     data: { label: id },
-    position: { x: 0, y: 0 }
+    position: { x: 0, y: 0 },
   });
 
   const makeEdge = (source, target) => ({ id: `e-${source}-${target}`, source, target });
 
-  it("positions all leaf nodes", () => {
+  it("positions all leaf nodes", async () => {
     const nodes = [makeLeaf("a"), makeLeaf("b"), makeLeaf("c")];
     const edges = [makeEdge("a", "b"), makeEdge("b", "c")];
 
-    const result = layoutGraph(nodes, edges);
+    const result = await layoutGraph(nodes, edges);
 
-    result.forEach(n => {
+    result.forEach((n) => {
       expect(typeof n.position.x).toBe("number");
       expect(typeof n.position.y).toBe("number");
     });
   });
 
-  it("creates group nodes from groupId", () => {
+  it("creates group nodes from groupId", async () => {
     const nodes = [
       { id: "g1", type: "group", data: {}, position: { x: 0, y: 0 }, style: {} },
       makeLeaf("a"),
-      { ...makeLeaf("b"), groupId: "g1" }
+      { ...makeLeaf("b"), groupId: "g1" },
     ];
 
-    const result = layoutGraph(nodes, []);
-    const group = result.find(n => n.id === "g1");
+    const result = await layoutGraph(nodes, []);
+    const group = result.find((n) => n.id === "g1");
 
     expect(group.style.width).toBeGreaterThan(0);
     expect(group.style.height).toBeGreaterThan(0);
   });
 
-  it("positions children within group bounds", () => {
+  it("positions children within group bounds", async () => {
     const nodes = [
       { id: "g1", type: "group", data: {}, position: { x: 0, y: 0 }, style: {} },
       { ...makeLeaf("a"), groupId: "g1" },
-      { ...makeLeaf("b"), groupId: "g1" }
+      { ...makeLeaf("b"), groupId: "g1" },
     ];
 
-    const result = layoutGraph(nodes, [makeEdge("a", "b")]);
-    const group = result.find(n => n.id === "g1");
-    const childA = result.find(n => n.id === "a");
-    const childB = result.find(n => n.id === "b");
+    const result = await layoutGraph(nodes, [makeEdge("a", "b")]);
+    const group = result.find((n) => n.id === "g1");
+    const childA = result.find((n) => n.id === "a");
+    const childB = result.find((n) => n.id === "b");
 
     const gx = group.position.x;
-    const gy = group.position.y;
     const gw = group.style.width;
-    const gh = group.style.height;
 
     expect(childA.position.x).toBeGreaterThanOrEqual(gx);
     expect(childA.position.x + 160).toBeLessThanOrEqual(gx + gw);
@@ -59,17 +57,17 @@ describe("layoutGraph", () => {
     expect(childB.position.x + 160).toBeLessThanOrEqual(gx + gw);
   });
 
-  it("does not overlap groups", () => {
+  it("does not overlap groups", async () => {
     const nodes = [
       { id: "g1", type: "group", data: {}, position: { x: 0, y: 0 }, style: {} },
       { id: "g2", type: "group", data: {}, position: { x: 0, y: 0 }, style: {} },
       { ...makeLeaf("a"), groupId: "g1" },
-      { ...makeLeaf("b"), groupId: "g2" }
+      { ...makeLeaf("b"), groupId: "g2" },
     ];
 
-    const result = layoutGraph(nodes, []);
-    const g1 = result.find(n => n.id === "g1");
-    const g2 = result.find(n => n.id === "g2");
+    const result = await layoutGraph(nodes, []);
+    const g1 = result.find((n) => n.id === "g1");
+    const g2 = result.find((n) => n.id === "g2");
 
     const g1Bottom = g1.position.y + g1.style.height;
     const g1Right = g1.position.x + g1.style.width;
@@ -82,32 +80,32 @@ describe("layoutGraph", () => {
     expect(horizOverlap && vertOverlap).toBe(false);
   });
 
-  it("positions CLASS nodes centered in group", () => {
+  it("positions CLASS nodes centered in group", async () => {
     const nodes = [
       { id: "g1", type: "group", data: {}, position: { x: 0, y: 0 }, style: {} },
       { id: "cls", type: "CLASS", data: {}, position: { x: 0, y: 0 }, groupId: "g1" },
-      { ...makeLeaf("a"), groupId: "g1" }
+      { ...makeLeaf("a"), groupId: "g1" },
     ];
 
-    const result = layoutGraph(nodes, []);
-    const cls = result.find(n => n.id === "cls");
-    const group = result.find(n => n.id === "g1");
+    const result = await layoutGraph(nodes, []);
+    const cls = result.find((n) => n.id === "cls");
+    const group = result.find((n) => n.id === "g1");
 
     expect(cls.position.x).toBeGreaterThan(group.position.x - 50);
     expect(cls.position.x).toBeLessThan(group.position.x + group.style.width);
   });
 
-  it("handles empty input", () => {
-    const result = layoutGraph([], []);
+  it("handles empty input", async () => {
+    const result = await layoutGraph([], []);
     expect(result).toEqual([]);
   });
 
-  it("handles nodes with no edges", () => {
+  it("handles nodes with no edges", async () => {
     const nodes = [makeLeaf("a"), makeLeaf("b")];
-    const result = layoutGraph(nodes, []);
+    const result = await layoutGraph(nodes, []);
 
     expect(result).toHaveLength(2);
-    result.forEach(n => {
+    result.forEach((n) => {
       expect(typeof n.position.x).toBe("number");
     });
   });

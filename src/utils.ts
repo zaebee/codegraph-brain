@@ -4,9 +4,12 @@
  * @param {{ source: string, target: string }[]} edges
  * @returns {{ source: string, target: string }[]}
  */
-export function filterValidEdges(nodes, edges) {
-  const nodeIds = new Set(nodes.map(n => n.id));
-  return edges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target));
+export function filterValidEdges(
+  nodes: { id: string }[],
+  edges: { source: string; target: string }[]
+): { source: string; target: string }[] {
+  const nodeIds = new Set(nodes.map((n) => n.id));
+  return edges.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target));
 }
 
 /**
@@ -14,9 +17,11 @@ export function filterValidEdges(nodes, edges) {
  * @param {{ source: string, target: string }[]} edges
  * @returns {{ source: string, target: string }[]}
  */
-export function deduplicateEdges(edges) {
+export function deduplicateEdges(
+  edges: { source: string; target: string }[]
+): { source: string; target: string }[] {
   const seen = new Set();
-  return edges.filter(e => {
+  return edges.filter((e) => {
     const key = `${e.source}->${e.target}`;
     if (seen.has(key)) return false;
     seen.add(key);
