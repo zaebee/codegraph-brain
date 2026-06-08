@@ -11,6 +11,45 @@ BEHAVIORAL_EDGE_TYPES: frozenset[EdgeType] = frozenset(
 )
 
 
+def _reachable_from(
+    start_id: str,
+    edges: list[Edge],
+    get_neighbor_id: Callable[[Edge], str],
+) -> set[str]:
+    """BFS reachability from start_id through filtered edges."""
+    adj: dict[str, list[str]] = {}
+    for e in edges:
+        nbr = get_neighbor_id(e)
+        frm = e.target if nbr == e.source else e.source
+        adj.setdefault(frm, []).append(nbr)
+    reachable: set[str] = {start_id}
+    queue: list[str] = [start_id]
+    while queue:
+        curr = queue.pop()
+        for nbr in adj.get(curr, []):
+            if nbr not in reachable:
+                reachable.add(nbr)
+                queue.append(nbr)
+    return reachable
+
+
+def _prune_external(
+    start_id: str,
+    nodes: list[Node],
+    visited_edges: dict[str, Edge],
+    get_neighbor_id: Callable[[Edge], str],
+) -> tuple[list[Node], list[Edge]]:
+    """Remove non-INTERNAL nodes and prune internal nodes disconnected after that removal."""
+    nodes = [n for n in nodes if n.namespace == NodeNamespace.INTERNAL or n.id == start_id]
+    internal_ids = {n.id for n in nodes}
+    filtered_edges = [
+        e for e in visited_edges.values() if e.source in internal_ids and e.target in internal_ids
+    ]
+    reachable = _reachable_from(start_id, filtered_edges, get_neighbor_id)
+    nodes = [n for n in nodes if n.id in reachable]
+    return nodes, [e for e in filtered_edges if e.source in reachable and e.target in reachable]
+
+
 class QueryEngine:
     """
     Performs graph traversals over the SQLite Code Graph.
@@ -105,31 +144,6 @@ class QueryEngine:
         nodes = self.store.get_nodes(list(discovered_ids))
 
         if not show_external:
-            nodes = [n for n in nodes if n.namespace == NodeNamespace.INTERNAL or n.id == start_id]
-            internal_ids = {n.id for n in nodes}
-            filtered_edges = [
-                e
-                for e in visited_edges.values()
-                if e.source in internal_ids and e.target in internal_ids
-            ]
-            # Prune internal nodes only reachable via external hops (would be
-            # floating/disconnected in the output graph after external nodes are removed).
-            adj: dict[str, list[str]] = {}
-            for e in filtered_edges:
-                nbr = get_neighbor_id(e)
-                frm = e.target if nbr == e.source else e.source
-                adj.setdefault(frm, []).append(nbr)
-            reachable: set[str] = {start_id}
-            queue: list[str] = [start_id]
-            while queue:
-                curr = queue.pop()
-                for nbr in adj.get(curr, []):
-                    if nbr not in reachable:
-                        reachable.add(nbr)
-                        queue.append(nbr)
-            nodes = [n for n in nodes if n.id in reachable]
-            return nodes, [
-                e for e in filtered_edges if e.source in reachable and e.target in reachable
-            ]
+            return _prune_external(start_id, nodes, visited_edges, get_neighbor_id)
 
         return nodes, list(visited_edges.values())
