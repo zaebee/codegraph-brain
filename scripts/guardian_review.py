@@ -20,11 +20,15 @@ _DEFAULT_MISTRAL_MODEL = "mistral-medium-latest"
 
 
 def _build_provider() -> tuple[BaseProvider, str]:
-    """Return (provider, model_name) based on available environment variables."""
+    """Return (provider, model_name) based on GUARDIAN_PROVIDER or available API keys."""
     model_override = os.environ.get("GUARDIAN_MODEL")
+    provider_name = os.environ.get("GUARDIAN_PROVIDER", "").lower()
 
-    mistral_key = os.environ.get("MISTRAL_API_KEY")
-    if mistral_key:
+    if provider_name == "mistral" or (not provider_name and os.environ.get("MISTRAL_API_KEY")):
+        mistral_key = os.environ.get("MISTRAL_API_KEY")
+        if not mistral_key:
+            _msg = "MISTRAL_API_KEY must be set when GUARDIAN_PROVIDER=mistral"
+            raise RuntimeError(_msg)
         model = model_override or _DEFAULT_MISTRAL_MODEL
         return MistralProvider(api_key=mistral_key, model_name=model), model
 
@@ -34,7 +38,7 @@ def _build_provider() -> tuple[BaseProvider, str]:
         return GeminiProvider(api_key=gemini_key, model_name=model), model
 
     _msg = "Set MISTRAL_API_KEY or GEMINI_API_KEY to run Guardian."
-    raise OSError(_msg)
+    raise RuntimeError(_msg)
 
 
 async def main() -> None:
