@@ -19,13 +19,16 @@ import type { Node, Edge } from "@xyflow/react";
  * @param {number} depth - максимальная глубина трассировки
  * @returns {{ onNodeClick: Function, flowRootId: string|null }}
  */
+const STRUCTURAL_EDGE_TYPES = ["CALLS", "IMPORTS", "CONTAINS"];
+
 export function useFlowNavigation(
   graphData: GraphData,
   setNodes: (nodes: Node[]) => void,
   setEdges: (edges: Edge[]) => void,
   setViewMode: (mode: string) => void,
   setFlowRootId: (id: string | null) => void,
-  depth: number = 3
+  depth: number = 3,
+  showStructure: boolean = true
 ) {
   const [flowRootId, setFlowRootIdState] = useState<string | null>(null);
   const flowCacheRef = useRef<Map<string, { nodes: any[]; edges: any[] }>>(new Map());
@@ -46,7 +49,8 @@ export function useFlowNavigation(
         flow = flowCacheRef.current.get(cacheKey)!;
       } else {
         // Build execution flow
-        flow = buildExecutionFlow(graphData, node.id, depth, "both");
+        const allowedTypes = showStructure ? STRUCTURAL_EDGE_TYPES : ["CALLS"];
+        flow = buildExecutionFlow(graphData, node.id, depth, "both", allowedTypes);
         flowCacheRef.current.set(cacheKey, flow);
       }
 
@@ -67,7 +71,7 @@ export function useFlowNavigation(
       // Fit view
       fitView({ padding: 0.15 });
     },
-    [graphData, depth, setNodes, setEdges, setViewMode, setFlowRootId, fitView]
+    [graphData, depth, showStructure, setNodes, setEdges, setViewMode, setFlowRootId, fitView]
   );
 
   /**

@@ -13,7 +13,8 @@ export function buildExecutionFlow(
   graph: { nodes: GraphNode[]; edges: GraphEdge[] },
   startNodeId: string,
   depth: number = 3,
-  direction: "outgoing" | "incoming" | "both" = "both"
+  direction: "outgoing" | "incoming" | "both" = "both",
+  allowedEdgeTypes: string[] = ["CALLS", "IMPORTS", "CONTAINS"]
 ): { nodes: GraphNode[]; edges: GraphEdge[] } {
   const nodeMap = new Map(graph.nodes.map((n) => [n.id, n]));
 
@@ -49,7 +50,7 @@ export function buildExecutionFlow(
     const outEdges = edges.get(nodeId) || [];
 
     outEdges.forEach((e) => {
-      if (!["CALLS", "IMPORTS", "CONTAINS"].includes(e.type)) return;
+      if (!allowedEdgeTypes.includes(e.type)) return;
 
       flowEdges.push(e);
       dfs(e.target, currentDepth + 1, edges);
@@ -78,7 +79,7 @@ export function buildExecutionFlow(
       const inEdges = incoming.get(nodeId) || [];
 
       inEdges.forEach((e) => {
-        if (!["CALLS", "IMPORTS", "CONTAINS"].includes(e.type)) return;
+        if (!allowedEdgeTypes.includes(e.type)) return;
 
         inFlowEdges.push(e);
         dfsIn(e.source, currentDepth + 1);

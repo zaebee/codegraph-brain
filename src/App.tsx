@@ -8,8 +8,6 @@ import appStyles from "./App.module.css";
 import sharedStyles from "./shared.module.css";
 
 import { layoutGraph } from "./layout";
-import { groupByFile, extractGroupKey } from "./grouping";
-import GroupNode from "./GroupNode";
 import { filterValidEdges } from "./utils";
 import { mapNodeToReactFlow } from "./utils/nodeMapper";
 import { mapEdgeToReactFlow } from "./utils/edgeMapper";
@@ -39,8 +37,6 @@ function ErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
   );
 }
 
-const nodeTypes = { group: GroupNode };
-
 export default function AppWrapper() {
   return (
     <ErrorBoundary FallbackComponent={ErrorFallback}>
@@ -59,6 +55,7 @@ function App() {
     null
   );
   const [showExternal, setShowExternal] = useState(false);
+  const [showStructure, setShowStructure] = useState(true);
   const [allNodes, setAllNodes] = useState<any[]>([]);
   const [allEdges, setAllEdges] = useState<any[]>([]);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
@@ -107,39 +104,43 @@ function App() {
     setEdges,
     setViewMode,
     setFlowRootId,
-    depth
+    depth,
+    showStructure
   );
 
   const buildFullGraph = useCallback(async () => {
     if (!graphData?.nodes || !graphData?.edges) return;
 
     const validEdges = filterValidEdges(graphData.nodes, graphData.edges);
+    const visibleEdges = showStructure
+      ? validEdges
+      : validEdges.filter((e: any) => e.type === "CALLS");
+
     const baseNodes = graphData.nodes.map((n) =>
-      mapNodeToReactFlow(n, { groupKey: extractGroupKey(n) ?? undefined })
+      mapNodeToReactFlow(n, { groupKey: n.file_path || undefined })
     );
-    const baseEdges = validEdges.map((e: any, i: number) =>
+    const baseEdges = visibleEdges.map((e: any, i: number) =>
       mapEdgeToReactFlow(e, i)
     );
 
     setIsLayouting(true);
-    const grouped = groupByFile(baseNodes, baseEdges);
-    const layoutedNodes = await layoutGraph(grouped.nodes, grouped.edges);
+    const layoutedNodes = await layoutGraph(baseNodes, baseEdges);
 
     setAllNodes(layoutedNodes);
-    setAllEdges(grouped.edges);
+    setAllEdges(baseEdges);
     setNodes(layoutedNodes);
-    setEdges(grouped.edges);
+    setEdges(baseEdges);
     setViewMode("full");
     clearCache();
     fitView({ padding: 0.15 });
     setStats({
       nodes: graphData.nodes.length,
-      edges: validEdges.length,
+      edges: visibleEdges.length,
       external: graphData.nodes.filter((n) => n.namespace && n.namespace !== "INTERNAL").length,
     });
     setIsLayouting(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graphData, clearCache]);
+  }, [graphData, clearCache, showStructure]);
 
   useEffect(() => {
     if (graphData) buildFullGraph();
@@ -154,13 +155,8 @@ function App() {
         setNodes(allNodes);
         setEdges(allEdges);
       } else {
-        const externalIds = new Set(
-          allNodes.filter((n: any) => n.data?.namespace && n.data?.namespace !== "INTERNAL").map((n: any) => n.id)
-        );
         const filteredNodes = allNodes.filter((n: any) => {
           if (n.data?.namespace && n.data?.namespace !== "INTERNAL") return false;
-          if (n.type === "group")
-            return allNodes.some((c: any) => c.groupId === n.id && !externalIds.has(c.id));
           return true;
         });
         const filteredNodeIds = new Set(filteredNodes.map((n: any) => n.id));
@@ -182,7 +178,6 @@ function App() {
 
   const onNodeClick = useCallback(
     (_event: any, node: any) => {
-      if (node.type === "group") return;
       onNodeClickHandler(_event, node);
     },
     [onNodeClickHandler]
@@ -216,7 +211,6 @@ function App() {
       <ReactFlow
         nodes={displayedNodes}
         edges={edges}
-        nodeTypes={nodeTypes}
         onNodeClick={onNodeClick}
         onNodeMouseEnter={onNodeMouseEnter}
         onNodeMouseLeave={onNodeMouseLeave}
@@ -254,6 +248,8 @@ function App() {
           searchInputRef={searchInputRef}
           onToggleExternal={setShowExternal}
           showExternal={showExternal}
+          onToggleStructure={setShowStructure}
+          showStructure={showStructure}
           onExportPng={exportPng}
           onExportSvg={exportSvg}
           onFit={() => fitView({ padding: 0.15 })}

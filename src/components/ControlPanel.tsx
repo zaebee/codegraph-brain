@@ -10,6 +10,8 @@ export default function ControlPanel({
   depth,
   onToggleExternal,
   showExternal,
+  onToggleStructure,
+  showStructure,
   onExportPng,
   onExportSvg,
   onFit,
@@ -25,6 +27,8 @@ export default function ControlPanel({
   depth: number;
   onToggleExternal?: (show: boolean) => void;
   showExternal: boolean;
+  onToggleStructure?: (show: boolean) => void;
+  showStructure?: boolean;
   onExportPng?: () => void;
   onExportSvg?: () => void;
   onFit?: () => void;
@@ -36,6 +40,7 @@ export default function ControlPanel({
   setSearchQuery: (q: string) => void;
   searchInputRef?: RefObject<HTMLInputElement | null>;
 }) {
+  const structVisible = showStructure === undefined ? true : showStructure;
   const { fitView } = useReactFlow();
   const [collapsed, setCollapsed] = useState(false);
 
@@ -156,6 +161,14 @@ export default function ControlPanel({
               aria-pressed={showExternal}
             >
               {showExternal ? "● External" : "○ External"}
+            </button>
+            <button
+              className={`${sharedStyles.btn} ${sharedStyles["btn-toggle"]} ${structVisible ? sharedStyles.active : ""}`}
+              onClick={() => onToggleStructure?.(!structVisible)}
+              aria-label="Toggle structure edges"
+              aria-pressed={structVisible}
+            >
+              {structVisible ? "● Structure" : "○ Structure"}
             </button>
             <button className={sharedStyles.btn + " " + sharedStyles["btn-export"]} onClick={onExportPng} aria-label="Export as PNG">
               ⬇ PNG

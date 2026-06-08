@@ -1,8 +1,8 @@
 {
   "metadata": {
     "source_path": "src",
-    "node_count": 366,
-    "edge_count": 888
+    "node_count": 375,
+    "edge_count": 900
   },
   "nodes": [
     {
@@ -11,7 +11,7 @@
       "name": "cli.py",
       "file_path": "cgis/cli.py",
       "start_line": 1,
-      "end_line": 479,
+      "end_line": 556,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -29,11 +29,13 @@
           "__app_name__": "cgis.__app_name__",
           "__version__": "cgis.__version__",
           "Edge": "cgis.core.models.Edge",
+          "EdgeType": "cgis.core.models.EdgeType",
           "Node": "cgis.core.models.Node",
           "NodeNamespace": "cgis.core.models.NodeNamespace",
           "PythonExtractor": "cgis.extractors.python_extractor.PythonExtractor",
           "file_path_to_module_fqn": "cgis.extractors.python_extractor.file_path_to_module_fqn",
           "IngestionPipeline": "cgis.pipeline.IngestionPipeline",
+          "BEHAVIORAL_EDGE_TYPES": "cgis.query.engine.BEHAVIORAL_EDGE_TYPES",
           "QueryEngine": "cgis.query.engine.QueryEngine",
           "MermaidCompiler": "cgis.query.mermaid.MermaidCompiler",
           "RAW_CALL_PREFIX": "cgis.storage.sqlite_store.RAW_CALL_PREFIX",
@@ -46,8 +48,8 @@
       "type": "CLASS",
       "name": "OutputFormat",
       "file_path": "cgis/cli.py",
-      "start_line": 26,
-      "end_line": 28,
+      "start_line": 37,
+      "end_line": 39,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -60,8 +62,8 @@
       "type": "FUNCTION",
       "name": "_version_callback",
       "file_path": "cgis/cli.py",
-      "start_line": 35,
-      "end_line": 38,
+      "start_line": 46,
+      "end_line": 49,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -78,8 +80,8 @@
       "type": "FUNCTION",
       "name": "main",
       "file_path": "cgis/cli.py",
-      "start_line": 42,
-      "end_line": 52,
+      "start_line": 53,
+      "end_line": 63,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -99,8 +101,8 @@
       "type": "FUNCTION",
       "name": "ingest",
       "file_path": "cgis/cli.py",
-      "start_line": 56,
-      "end_line": 135,
+      "start_line": 67,
+      "end_line": 146,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -125,8 +127,8 @@
       "type": "FUNCTION",
       "name": "_filter_internal",
       "file_path": "cgis/cli.py",
-      "start_line": 138,
-      "end_line": 146,
+      "start_line": 149,
+      "end_line": 157,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -144,8 +146,8 @@
       "type": "FUNCTION",
       "name": "build_trace_tree",
       "file_path": "cgis/cli.py",
-      "start_line": 149,
-      "end_line": 187,
+      "start_line": 160,
+      "end_line": 216,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -158,7 +160,9 @@
           "current_tree": "rich.tree.Tree",
           "path_visited": "cgis.cli.set",
           "max_depth": "cgis.cli.int",
-          "current_depth": "cgis.cli.int"
+          "current_depth": "cgis.cli.int",
+          "allowed_edge_types": "cgis.cli.frozenset",
+          "show_external": "cgis.cli.bool"
         }
       }
     },
@@ -167,8 +171,8 @@
       "type": "FUNCTION",
       "name": "trace",
       "file_path": "cgis/cli.py",
-      "start_line": 191,
-      "end_line": 235,
+      "start_line": 220,
+      "end_line": 279,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -184,6 +188,8 @@
           "depth": "cgis.cli.int",
           "output_format": "cgis.cli.OutputFormat",
           "internal_only": "cgis.cli.bool",
+          "show_structure": "cgis.cli.bool",
+          "show_external": "cgis.cli.bool",
           "path": "pathlib.Path",
           "tree": "rich.tree.Tree"
         }
@@ -194,8 +200,8 @@
       "type": "FUNCTION",
       "name": "build_impact_tree",
       "file_path": "cgis/cli.py",
-      "start_line": 238,
-      "end_line": 276,
+      "start_line": 282,
+      "end_line": 338,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -208,7 +214,9 @@
           "current_tree": "rich.tree.Tree",
           "path_visited": "cgis.cli.set",
           "max_depth": "cgis.cli.int",
-          "current_depth": "cgis.cli.int"
+          "current_depth": "cgis.cli.int",
+          "allowed_edge_types": "cgis.cli.frozenset",
+          "show_external": "cgis.cli.bool"
         }
       }
     },
@@ -217,8 +225,8 @@
       "type": "FUNCTION",
       "name": "impact",
       "file_path": "cgis/cli.py",
-      "start_line": 280,
-      "end_line": 324,
+      "start_line": 342,
+      "end_line": 401,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -234,6 +242,8 @@
           "depth": "cgis.cli.int",
           "output_format": "cgis.cli.OutputFormat",
           "internal_only": "cgis.cli.bool",
+          "show_structure": "cgis.cli.bool",
+          "show_external": "cgis.cli.bool",
           "path": "pathlib.Path",
           "tree": "rich.tree.Tree"
         }
@@ -244,8 +254,8 @@
       "type": "FUNCTION",
       "name": "validate",
       "file_path": "cgis/cli.py",
-      "start_line": 328,
-      "end_line": 398,
+      "start_line": 405,
+      "end_line": 475,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -269,8 +279,8 @@
       "type": "FUNCTION",
       "name": "_pct",
       "file_path": "cgis/cli.py",
-      "start_line": 356,
-      "end_line": 357,
+      "start_line": 433,
+      "end_line": 434,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -287,8 +297,8 @@
       "type": "FUNCTION",
       "name": "structure",
       "file_path": "cgis/cli.py",
-      "start_line": 402,
-      "end_line": 449,
+      "start_line": 479,
+      "end_line": 526,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -313,8 +323,8 @@
       "type": "FUNCTION",
       "name": "_build_structure_tree",
       "file_path": "cgis/cli.py",
-      "start_line": 452,
-      "end_line": 474,
+      "start_line": 529,
+      "end_line": 551,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -2309,7 +2319,7 @@
       "name": "engine.py",
       "file_path": "cgis/query/engine.py",
       "start_line": 1,
-      "end_line": 86,
+      "end_line": 150,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -2319,8 +2329,53 @@
         "import_map": {
           "Callable": "collections.abc.Callable",
           "Edge": "cgis.core.models.Edge",
+          "EdgeType": "cgis.core.models.EdgeType",
           "Node": "cgis.core.models.Node",
+          "NodeNamespace": "cgis.core.models.NodeNamespace",
           "SQLiteStore": "cgis.storage.sqlite_store.SQLiteStore"
+        }
+      }
+    },
+    {
+      "id": "cgis.query.engine._reachable_from",
+      "type": "FUNCTION",
+      "name": "_reachable_from",
+      "file_path": "cgis/query/engine.py",
+      "start_line": 14,
+      "end_line": 33,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "local_types": {
+          "start_id": "cgis.query.engine.str",
+          "edges": "cgis.query.engine.list",
+          "get_neighbor_id": "collections.abc.Callable",
+          "nbr": "cgis.query.engine.get_neighbor_id"
+        }
+      }
+    },
+    {
+      "id": "cgis.query.engine._prune_external",
+      "type": "FUNCTION",
+      "name": "_prune_external",
+      "file_path": "cgis/query/engine.py",
+      "start_line": 36,
+      "end_line": 50,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "local_types": {
+          "start_id": "cgis.query.engine.str",
+          "nodes": "cgis.query.engine.list",
+          "visited_edges": "cgis.query.engine.dict",
+          "get_neighbor_id": "collections.abc.Callable",
+          "reachable": "cgis.query.engine._reachable_from"
         }
       }
     },
@@ -2329,8 +2384,8 @@
       "type": "CLASS",
       "name": "QueryEngine",
       "file_path": "cgis/query/engine.py",
-      "start_line": 9,
-      "end_line": 85,
+      "start_line": 53,
+      "end_line": 149,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -2343,8 +2398,8 @@
       "type": "METHOD",
       "name": "__init__",
       "file_path": "cgis/query/engine.py",
-      "start_line": 15,
-      "end_line": 16,
+      "start_line": 59,
+      "end_line": 60,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -2361,8 +2416,8 @@
       "type": "METHOD",
       "name": "get_impact_graph",
       "file_path": "cgis/query/engine.py",
-      "start_line": 18,
-      "end_line": 30,
+      "start_line": 62,
+      "end_line": 80,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -2371,7 +2426,9 @@
       "metadata": {
         "local_types": {
           "target_node_id": "cgis.query.engine.str",
-          "max_depth": "cgis.query.engine.int"
+          "max_depth": "cgis.query.engine.int",
+          "allowed_edge_types": "cgis.query.engine.frozenset",
+          "show_external": "cgis.query.engine.bool"
         }
       }
     },
@@ -2380,8 +2437,8 @@
       "type": "METHOD",
       "name": "get_flow_graph",
       "file_path": "cgis/query/engine.py",
-      "start_line": 32,
-      "end_line": 44,
+      "start_line": 82,
+      "end_line": 100,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -2390,7 +2447,9 @@
       "metadata": {
         "local_types": {
           "start_node_id": "cgis.query.engine.str",
-          "max_depth": "cgis.query.engine.int"
+          "max_depth": "cgis.query.engine.int",
+          "allowed_edge_types": "cgis.query.engine.frozenset",
+          "show_external": "cgis.query.engine.bool"
         }
       }
     },
@@ -2399,8 +2458,8 @@
       "type": "METHOD",
       "name": "get_structural_graph",
       "file_path": "cgis/query/engine.py",
-      "start_line": 46,
-      "end_line": 54,
+      "start_line": 102,
+      "end_line": 110,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -2418,8 +2477,8 @@
       "type": "METHOD",
       "name": "_bfs_traverse",
       "file_path": "cgis/query/engine.py",
-      "start_line": 56,
-      "end_line": 85,
+      "start_line": 112,
+      "end_line": 149,
       "language": "python",
       "ontology_class": null,
       "domains": [],
@@ -2431,6 +2490,8 @@
           "get_edges_batch": "collections.abc.Callable",
           "get_neighbor_id": "collections.abc.Callable",
           "max_depth": "cgis.query.engine.int",
+          "allowed_edge_types": "cgis.query.engine.frozenset",
+          "show_external": "cgis.query.engine.bool",
           "edges": "cgis.query.engine.get_edges_batch",
           "neighbor_id": "cgis.query.engine.get_neighbor_id"
         }
@@ -5630,6 +5691,118 @@
       "metadata": {}
     },
     {
+      "id": "get_neighbor_id",
+      "type": "FUNCTION",
+      "name": "get_neighbor_id",
+      "file_path": "EXTERNAL",
+      "start_line": 0,
+      "end_line": 0,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "UNKNOWN",
+      "confidence_score": 0.8,
+      "metadata": {}
+    },
+    {
+      "id": "adj.setdefault.append",
+      "type": "FUNCTION",
+      "name": "append",
+      "file_path": "EXTERNAL",
+      "start_line": 0,
+      "end_line": 0,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "UNKNOWN",
+      "confidence_score": 0.8,
+      "metadata": {}
+    },
+    {
+      "id": "adj.setdefault",
+      "type": "FUNCTION",
+      "name": "setdefault",
+      "file_path": "EXTERNAL",
+      "start_line": 0,
+      "end_line": 0,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "UNKNOWN",
+      "confidence_score": 0.8,
+      "metadata": {}
+    },
+    {
+      "id": "queue.pop",
+      "type": "FUNCTION",
+      "name": "pop",
+      "file_path": "EXTERNAL",
+      "start_line": 0,
+      "end_line": 0,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "STDLIB",
+      "confidence_score": 0.8,
+      "metadata": {}
+    },
+    {
+      "id": "adj.get",
+      "type": "FUNCTION",
+      "name": "get",
+      "file_path": "EXTERNAL",
+      "start_line": 0,
+      "end_line": 0,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "UNKNOWN",
+      "confidence_score": 0.8,
+      "metadata": {}
+    },
+    {
+      "id": "reachable.add",
+      "type": "FUNCTION",
+      "name": "add",
+      "file_path": "EXTERNAL",
+      "start_line": 0,
+      "end_line": 0,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "UNKNOWN",
+      "confidence_score": 0.8,
+      "metadata": {}
+    },
+    {
+      "id": "queue.append",
+      "type": "FUNCTION",
+      "name": "append",
+      "file_path": "EXTERNAL",
+      "start_line": 0,
+      "end_line": 0,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "STDLIB",
+      "confidence_score": 0.8,
+      "metadata": {}
+    },
+    {
+      "id": "cgis.query.engine.dict.values",
+      "type": "FUNCTION",
+      "name": "values",
+      "file_path": "EXTERNAL",
+      "start_line": 0,
+      "end_line": 0,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 0.8,
+      "metadata": {}
+    },
+    {
       "id": "self.store.get_structural_subgraph",
       "type": "FUNCTION",
       "name": "get_structural_subgraph",
@@ -5647,20 +5820,6 @@
       "id": "get_edges_batch",
       "type": "FUNCTION",
       "name": "get_edges_batch",
-      "file_path": "EXTERNAL",
-      "start_line": 0,
-      "end_line": 0,
-      "language": "python",
-      "ontology_class": null,
-      "domains": [],
-      "namespace": "UNKNOWN",
-      "confidence_score": 0.8,
-      "metadata": {}
-    },
-    {
-      "id": "get_neighbor_id",
-      "type": "FUNCTION",
-      "name": "get_neighbor_id",
       "file_path": "EXTERNAL",
       "start_line": 0,
       "end_line": 0,
@@ -6085,7 +6244,7 @@
       "line_number": null
     },
     {
-      "id": "cgis/cli.py:edge_973_1017",
+      "id": "cgis/cli.py:edge_1326_1370",
       "source": "cgis.cli._version_callback",
       "target": "typer.echo",
       "type": "CALLS",
@@ -6093,7 +6252,7 @@
       "confidence": 1.0,
       "context": "Call to typer.echo",
       "file_path": "cgis/cli.py",
-      "line_number": 37
+      "line_number": 48
     },
     {
       "id": "cgis.cli.main:decorator:0:app.callback",
@@ -6118,7 +6277,7 @@
       "line_number": null
     },
     {
-      "id": "cgis/cli.py:edge_1099_1283",
+      "id": "cgis/cli.py:edge_1452_1636",
       "source": "cgis.cli.main",
       "target": "typer.Option",
       "type": "CALLS",
@@ -6126,7 +6285,7 @@
       "confidence": 1.0,
       "context": "Call to typer.Option",
       "file_path": "cgis/cli.py",
-      "line_number": 43
+      "line_number": 54
     },
     {
       "id": "cgis.cli.ingest:decorator:0:app.command",
@@ -6151,7 +6310,7 @@
       "line_number": null
     },
     {
-      "id": "cgis/cli.py:edge_1352_1412",
+      "id": "cgis/cli.py:edge_1705_1765",
       "source": "cgis.cli.ingest",
       "target": "typer.Argument",
       "type": "CALLS",
@@ -6159,10 +6318,10 @@
       "confidence": 1.0,
       "context": "Call to typer.Argument",
       "file_path": "cgis/cli.py",
-      "line_number": 57
+      "line_number": 68
     },
     {
-      "id": "cgis/cli.py:edge_1432_1535",
+      "id": "cgis/cli.py:edge_1785_1888",
       "source": "cgis.cli.ingest",
       "target": "typer.Option",
       "type": "CALLS",
@@ -6170,10 +6329,10 @@
       "confidence": 1.0,
       "context": "Call to typer.Option",
       "file_path": "cgis/cli.py",
-      "line_number": 58
+      "line_number": 69
     },
     {
-      "id": "cgis/cli.py:edge_1561_1720",
+      "id": "cgis/cli.py:edge_1914_2073",
       "source": "cgis.cli.ingest",
       "target": "typer.Option",
       "type": "CALLS",
@@ -6181,10 +6340,10 @@
       "confidence": 1.0,
       "context": "Call to typer.Option",
       "file_path": "cgis/cli.py",
-      "line_number": 61
+      "line_number": 72
     },
     {
-      "id": "cgis/cli.py:edge_1858_1875",
+      "id": "cgis/cli.py:edge_2211_2228",
       "source": "cgis.cli.ingest",
       "target": "cgis.extractors.python_extractor.PythonExtractor",
       "type": "CALLS",
@@ -6192,10 +6351,10 @@
       "confidence": 1.0,
       "context": "Call to PythonExtractor",
       "file_path": "cgis/cli.py",
-      "line_number": 72
+      "line_number": 83
     },
     {
-      "id": "cgis/cli.py:edge_1899_1928",
+      "id": "cgis/cli.py:edge_2252_2281",
       "source": "cgis.cli.ingest",
       "target": "cgis.pipeline.IngestionPipeline",
       "type": "CALLS",
@@ -6203,10 +6362,10 @@
       "confidence": 1.0,
       "context": "Call to IngestionPipeline",
       "file_path": "cgis/cli.py",
-      "line_number": 75
+      "line_number": 86
     },
     {
-      "id": "cgis/cli.py:edge_1934_2010",
+      "id": "cgis/cli.py:edge_2287_2363",
       "source": "cgis.cli.ingest",
       "target": "console.print",
       "type": "CALLS",
@@ -6214,10 +6373,10 @@
       "confidence": 0.8,
       "context": "Call to console.print",
       "file_path": "cgis/cli.py",
-      "line_number": 77
+      "line_number": 88
     },
     {
-      "id": "cgis/cli.py:edge_2035_2059",
+      "id": "cgis/cli.py:edge_2388_2412",
       "source": "cgis.cli.ingest",
       "target": "cgis.cli.str.endswith",
       "type": "CALLS",
@@ -6225,10 +6384,10 @@
       "confidence": 1.0,
       "context": "Call to output.endswith",
       "file_path": "cgis/cli.py",
-      "line_number": 79
+      "line_number": 90
     },
     {
-      "id": "cgis/cli.py:edge_2069_2228",
+      "id": "cgis/cli.py:edge_2422_2581",
       "source": "cgis.cli.ingest",
       "target": "console.print",
       "type": "CALLS",
@@ -6236,10 +6395,10 @@
       "confidence": 0.8,
       "context": "Call to console.print",
       "file_path": "cgis/cli.py",
-      "line_number": 80
+      "line_number": 91
     },
     {
-      "id": "cgis/cli.py:edge_2308_2327",
+      "id": "cgis/cli.py:edge_2661_2680",
       "source": "cgis.cli.ingest",
       "target": "cgis.storage.sqlite_store.SQLiteStore",
       "type": "CALLS",
@@ -6247,10 +6406,10 @@
       "confidence": 1.0,
       "context": "Call to SQLiteStore",
       "file_path": "cgis/cli.py",
-      "line_number": 88
+      "line_number": 99
     },
     {
-      "id": "cgis/cli.py:edge_2389_2420",
+      "id": "cgis/cli.py:edge_2742_2773",
       "source": "cgis.cli.ingest",
       "target": "cgis.pipeline.IngestionPipeline.run",
       "type": "CALLS",
@@ -6258,10 +6417,10 @@
       "confidence": 1.0,
       "context": "Call to pipeline.run",
       "file_path": "cgis/cli.py",
-      "line_number": 89
+      "line_number": 100
     },
     {
-      "id": "cgis/cli.py:edge_2482_2500",
+      "id": "cgis/cli.py:edge_2835_2853",
       "source": "cgis.cli.ingest",
       "target": "cgis.pipeline.IngestionPipeline.run",
       "type": "CALLS",
@@ -6269,10 +6428,10 @@
       "confidence": 1.0,
       "context": "Call to pipeline.run",
       "file_path": "cgis/cli.py",
-      "line_number": 91
+      "line_number": 102
     },
     {
-      "id": "cgis/cli.py:edge_2536_2706",
+      "id": "cgis/cli.py:edge_2889_3059",
       "source": "cgis.cli.ingest",
       "target": "console.print",
       "type": "CALLS",
@@ -6280,10 +6439,10 @@
       "confidence": 0.8,
       "context": "Call to console.print",
       "file_path": "cgis/cli.py",
-      "line_number": 94
+      "line_number": 105
     },
     {
-      "id": "cgis/cli.py:edge_2770_2794",
+      "id": "cgis/cli.py:edge_3123_3147",
       "source": "cgis.cli.ingest",
       "target": "cgis.cli.str.endswith",
       "type": "CALLS",
@@ -6291,10 +6450,10 @@
       "confidence": 1.0,
       "context": "Call to output.endswith",
       "file_path": "cgis/cli.py",
-      "line_number": 101
+      "line_number": 112
     },
     {
-      "id": "cgis/cli.py:edge_2944_2954",
+      "id": "cgis/cli.py:edge_3297_3307",
       "source": "cgis.cli.ingest",
       "target": "len",
       "type": "CALLS",
@@ -6302,10 +6461,10 @@
       "confidence": 0.8,
       "context": "Call to len",
       "file_path": "cgis/cli.py",
-      "line_number": 105
+      "line_number": 116
     },
     {
-      "id": "cgis/cli.py:edge_2994_3013",
+      "id": "cgis/cli.py:edge_3347_3366",
       "source": "cgis.cli.ingest",
       "target": "len",
       "type": "CALLS",
@@ -6313,10 +6472,10 @@
       "confidence": 0.8,
       "context": "Call to len",
       "file_path": "cgis/cli.py",
-      "line_number": 106
+      "line_number": 117
     },
     {
-      "id": "cgis/cli.py:edge_3068_3082",
+      "id": "cgis/cli.py:edge_3421_3435",
       "source": "cgis.cli.ingest",
       "target": "n.model_dump",
       "type": "CALLS",
@@ -6324,10 +6483,10 @@
       "confidence": 0.8,
       "context": "Call to n.model_dump",
       "file_path": "cgis/cli.py",
-      "line_number": 108
+      "line_number": 119
     },
     {
-      "id": "cgis/cli.py:edge_3130_3144",
+      "id": "cgis/cli.py:edge_3483_3497",
       "source": "cgis.cli.ingest",
       "target": "e.model_dump",
       "type": "CALLS",
@@ -6335,10 +6494,10 @@
       "confidence": 0.8,
       "context": "Call to e.model_dump",
       "file_path": "cgis/cli.py",
-      "line_number": 109
+      "line_number": 120
     },
     {
-      "id": "cgis/cli.py:edge_3220_3232",
+      "id": "cgis/cli.py:edge_3573_3585",
       "source": "cgis.cli.ingest",
       "target": "pathlib.Path",
       "type": "CALLS",
@@ -6346,10 +6505,10 @@
       "confidence": 1.0,
       "context": "Call to Path",
       "file_path": "cgis/cli.py",
-      "line_number": 112
+      "line_number": 123
     },
     {
-      "id": "cgis/cli.py:edge_3249_3302",
+      "id": "cgis/cli.py:edge_3602_3655",
       "source": "cgis.cli.ingest",
       "target": "pathlib.Path.parent.mkdir",
       "type": "CALLS",
@@ -6357,10 +6516,10 @@
       "confidence": 1.0,
       "context": "Call to output_path.parent.mkdir",
       "file_path": "cgis/cli.py",
-      "line_number": 113
+      "line_number": 124
     },
     {
-      "id": "cgis/cli.py:edge_3324_3363",
+      "id": "cgis/cli.py:edge_3677_3716",
       "source": "cgis.cli.ingest",
       "target": "pathlib.Path.open",
       "type": "CALLS",
@@ -6368,10 +6527,10 @@
       "confidence": 1.0,
       "context": "Call to output_path.open",
       "file_path": "cgis/cli.py",
-      "line_number": 114
+      "line_number": 125
     },
     {
-      "id": "cgis/cli.py:edge_3390_3424",
+      "id": "cgis/cli.py:edge_3743_3777",
       "source": "cgis.cli.ingest",
       "target": "json.dump",
       "type": "CALLS",
@@ -6379,10 +6538,10 @@
       "confidence": 1.0,
       "context": "Call to json.dump",
       "file_path": "cgis/cli.py",
-      "line_number": 115
+      "line_number": 126
     },
     {
-      "id": "cgis/cli.py:edge_3464_3483",
+      "id": "cgis/cli.py:edge_3817_3836",
       "source": "cgis.cli.ingest",
       "target": "cgis.storage.sqlite_store.SQLiteStore",
       "type": "CALLS",
@@ -6390,10 +6549,10 @@
       "confidence": 1.0,
       "context": "Call to SQLiteStore",
       "file_path": "cgis/cli.py",
-      "line_number": 117
+      "line_number": 128
     },
     {
-      "id": "cgis/cli.py:edge_3514_3569",
+      "id": "cgis/cli.py:edge_3867_3922",
       "source": "cgis.cli.ingest",
       "target": "store.save_graph",
       "type": "CALLS",
@@ -6401,10 +6560,10 @@
       "confidence": 0.8,
       "context": "Call to store.save_graph",
       "file_path": "cgis/cli.py",
-      "line_number": 118
+      "line_number": 129
     },
     {
-      "id": "cgis/cli.py:edge_3587_3619",
+      "id": "cgis/cli.py:edge_3940_3972",
       "source": "cgis.cli.ingest",
       "target": "rich.table.Table",
       "type": "CALLS",
@@ -6412,164 +6571,142 @@
       "confidence": 1.0,
       "context": "Call to Table",
       "file_path": "cgis/cli.py",
-      "line_number": 120
-    },
-    {
-      "id": "cgis/cli.py:edge_3628_3668",
-      "source": "cgis.cli.ingest",
-      "target": "rich.table.Table.add_column",
-      "type": "CALLS",
-      "weight": 1.0,
-      "confidence": 1.0,
-      "context": "Call to table.add_column",
-      "file_path": "cgis/cli.py",
-      "line_number": 121
-    },
-    {
-      "id": "cgis/cli.py:edge_3677_3719",
-      "source": "cgis.cli.ingest",
-      "target": "rich.table.Table.add_column",
-      "type": "CALLS",
-      "weight": 1.0,
-      "confidence": 1.0,
-      "context": "Call to table.add_column",
-      "file_path": "cgis/cli.py",
-      "line_number": 122
-    },
-    {
-      "id": "cgis/cli.py:edge_3729_3778",
-      "source": "cgis.cli.ingest",
-      "target": "rich.table.Table.add_row",
-      "type": "CALLS",
-      "weight": 1.0,
-      "confidence": 1.0,
-      "context": "Call to table.add_row",
-      "file_path": "cgis/cli.py",
-      "line_number": 124
-    },
-    {
-      "id": "cgis/cli.py:edge_3762_3777",
-      "source": "cgis.cli.ingest",
-      "target": "str",
-      "type": "CALLS",
-      "weight": 1.0,
-      "confidence": 0.8,
-      "context": "Call to str",
-      "file_path": "cgis/cli.py",
-      "line_number": 124
-    },
-    {
-      "id": "cgis/cli.py:edge_3766_3776",
-      "source": "cgis.cli.ingest",
-      "target": "len",
-      "type": "CALLS",
-      "weight": 1.0,
-      "confidence": 0.8,
-      "context": "Call to len",
-      "file_path": "cgis/cli.py",
-      "line_number": 124
-    },
-    {
-      "id": "cgis/cli.py:edge_3787_3846",
-      "source": "cgis.cli.ingest",
-      "target": "rich.table.Table.add_row",
-      "type": "CALLS",
-      "weight": 1.0,
-      "confidence": 1.0,
-      "context": "Call to table.add_row",
-      "file_path": "cgis/cli.py",
-      "line_number": 125
-    },
-    {
-      "id": "cgis/cli.py:edge_3826_3845",
-      "source": "cgis.cli.ingest",
-      "target": "str",
-      "type": "CALLS",
-      "weight": 1.0,
-      "confidence": 0.8,
-      "context": "Call to str",
-      "file_path": "cgis/cli.py",
-      "line_number": 125
-    },
-    {
-      "id": "cgis/cli.py:edge_3830_3844",
-      "source": "cgis.cli.ingest",
-      "target": "len",
-      "type": "CALLS",
-      "weight": 1.0,
-      "confidence": 0.8,
-      "context": "Call to len",
-      "file_path": "cgis/cli.py",
-      "line_number": 125
-    },
-    {
-      "id": "cgis/cli.py:edge_3855_3920",
-      "source": "cgis.cli.ingest",
-      "target": "rich.table.Table.add_row",
-      "type": "CALLS",
-      "weight": 1.0,
-      "confidence": 1.0,
-      "context": "Call to table.add_row",
-      "file_path": "cgis/cli.py",
-      "line_number": 126
-    },
-    {
-      "id": "cgis/cli.py:edge_3895_3919",
-      "source": "cgis.cli.ingest",
-      "target": "str",
-      "type": "CALLS",
-      "weight": 1.0,
-      "confidence": 0.8,
-      "context": "Call to str",
-      "file_path": "cgis/cli.py",
-      "line_number": 126
-    },
-    {
-      "id": "cgis/cli.py:edge_3899_3918",
-      "source": "cgis.cli.ingest",
-      "target": "len",
-      "type": "CALLS",
-      "weight": 1.0,
-      "confidence": 0.8,
-      "context": "Call to len",
-      "file_path": "cgis/cli.py",
-      "line_number": 126
-    },
-    {
-      "id": "cgis/cli.py:edge_3957_3993",
-      "source": "cgis.cli.ingest",
-      "target": "rich.table.Table.add_row",
-      "type": "CALLS",
-      "weight": 1.0,
-      "confidence": 1.0,
-      "context": "Call to table.add_row",
-      "file_path": "cgis/cli.py",
-      "line_number": 128
-    },
-    {
-      "id": "cgis/cli.py:edge_4003_4023",
-      "source": "cgis.cli.ingest",
-      "target": "console.print",
-      "type": "CALLS",
-      "weight": 1.0,
-      "confidence": 0.8,
-      "context": "Call to console.print",
-      "file_path": "cgis/cli.py",
-      "line_number": 130
-    },
-    {
-      "id": "cgis/cli.py:edge_4032_4104",
-      "source": "cgis.cli.ingest",
-      "target": "console.print",
-      "type": "CALLS",
-      "weight": 1.0,
-      "confidence": 0.8,
-      "context": "Call to console.print",
-      "file_path": "cgis/cli.py",
       "line_number": 131
     },
     {
-      "id": "cgis/cli.py:edge_4141_4211",
+      "id": "cgis/cli.py:edge_3981_4021",
+      "source": "cgis.cli.ingest",
+      "target": "rich.table.Table.add_column",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": "Call to table.add_column",
+      "file_path": "cgis/cli.py",
+      "line_number": 132
+    },
+    {
+      "id": "cgis/cli.py:edge_4030_4072",
+      "source": "cgis.cli.ingest",
+      "target": "rich.table.Table.add_column",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": "Call to table.add_column",
+      "file_path": "cgis/cli.py",
+      "line_number": 133
+    },
+    {
+      "id": "cgis/cli.py:edge_4082_4131",
+      "source": "cgis.cli.ingest",
+      "target": "rich.table.Table.add_row",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": "Call to table.add_row",
+      "file_path": "cgis/cli.py",
+      "line_number": 135
+    },
+    {
+      "id": "cgis/cli.py:edge_4115_4130",
+      "source": "cgis.cli.ingest",
+      "target": "str",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.8,
+      "context": "Call to str",
+      "file_path": "cgis/cli.py",
+      "line_number": 135
+    },
+    {
+      "id": "cgis/cli.py:edge_4119_4129",
+      "source": "cgis.cli.ingest",
+      "target": "len",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.8,
+      "context": "Call to len",
+      "file_path": "cgis/cli.py",
+      "line_number": 135
+    },
+    {
+      "id": "cgis/cli.py:edge_4140_4199",
+      "source": "cgis.cli.ingest",
+      "target": "rich.table.Table.add_row",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": "Call to table.add_row",
+      "file_path": "cgis/cli.py",
+      "line_number": 136
+    },
+    {
+      "id": "cgis/cli.py:edge_4179_4198",
+      "source": "cgis.cli.ingest",
+      "target": "str",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.8,
+      "context": "Call to str",
+      "file_path": "cgis/cli.py",
+      "line_number": 136
+    },
+    {
+      "id": "cgis/cli.py:edge_4183_4197",
+      "source": "cgis.cli.ingest",
+      "target": "len",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.8,
+      "context": "Call to len",
+      "file_path": "cgis/cli.py",
+      "line_number": 136
+    },
+    {
+      "id": "cgis/cli.py:edge_4208_4273",
+      "source": "cgis.cli.ingest",
+      "target": "rich.table.Table.add_row",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": "Call to table.add_row",
+      "file_path": "cgis/cli.py",
+      "line_number": 137
+    },
+    {
+      "id": "cgis/cli.py:edge_4248_4272",
+      "source": "cgis.cli.ingest",
+      "target": "str",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.8,
+      "context": "Call to str",
+      "file_path": "cgis/cli.py",
+      "line_number": 137
+    },
+    {
+      "id": "cgis/cli.py:edge_4252_4271",
+      "source": "cgis.cli.ingest",
+      "target": "len",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.8,
+      "context": "Call to len",
+      "file_path": "cgis/cli.py",
+      "line_number": 137
+    },
+    {
+      "id": "cgis/cli.py:edge_4310_4346",
+      "source": "cgis.cli.ingest",
+      "target": "rich.table.Table.add_row",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": "Call to table.add_row",
+      "file_path": "cgis/cli.py",
+      "line_number": 139
+    },
+    {
+      "id": "cgis/cli.py:edge_4356_4376",
       "source": "cgis.cli.ingest",
       "target": "console.print",
       "type": "CALLS",
@@ -6577,10 +6714,32 @@
       "confidence": 0.8,
       "context": "Call to console.print",
       "file_path": "cgis/cli.py",
-      "line_number": 134
+      "line_number": 141
     },
     {
-      "id": "cgis/cli.py:edge_4226_4244",
+      "id": "cgis/cli.py:edge_4385_4457",
+      "source": "cgis.cli.ingest",
+      "target": "console.print",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.8,
+      "context": "Call to console.print",
+      "file_path": "cgis/cli.py",
+      "line_number": 142
+    },
+    {
+      "id": "cgis/cli.py:edge_4494_4564",
+      "source": "cgis.cli.ingest",
+      "target": "console.print",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.8,
+      "context": "Call to console.print",
+      "file_path": "cgis/cli.py",
+      "line_number": 145
+    },
+    {
+      "id": "cgis/cli.py:edge_4579_4597",
       "source": "cgis.cli.ingest",
       "target": "typer.Exit",
       "type": "CALLS",
@@ -6588,7 +6747,7 @@
       "confidence": 1.0,
       "context": "Call to typer.Exit",
       "file_path": "cgis/cli.py",
-      "line_number": 135
+      "line_number": 146
     },
     {
       "id": "cgis.cli:structural:cgis.cli._filter_internal",
@@ -6613,7 +6772,7 @@
       "line_number": null
     },
     {
-      "id": "cgis/cli.py:edge_5002_5038",
+      "id": "cgis/cli.py:edge_5446_5482",
       "source": "cgis.cli.build_trace_tree",
       "target": "cgis.storage.sqlite_store.SQLiteStore.get_outgoing_edges",
       "type": "CALLS",
@@ -6621,10 +6780,10 @@
       "confidence": 1.0,
       "context": "Call to store.get_outgoing_edges",
       "file_path": "cgis/cli.py",
-      "line_number": 161
+      "line_number": 174
     },
     {
-      "id": "cgis/cli.py:edge_5073_5118",
+      "id": "cgis/cli.py:edge_5629_5674",
       "source": "cgis.cli.build_trace_tree",
       "target": "cgis.storage.sqlite_store.SQLiteStore.get_nodes",
       "type": "CALLS",
@@ -6632,10 +6791,10 @@
       "confidence": 1.0,
       "context": "Call to store.get_nodes",
       "file_path": "cgis/cli.py",
-      "line_number": 162
+      "line_number": 177
     },
     {
-      "id": "cgis/cli.py:edge_5200_5224",
+      "id": "cgis/cli.py:edge_5756_5780",
       "source": "cgis.cli.build_trace_tree",
       "target": "nodes_map.get",
       "type": "CALLS",
@@ -6643,10 +6802,10 @@
       "confidence": 0.8,
       "context": "Call to nodes_map.get",
       "file_path": "cgis/cli.py",
-      "line_number": 165
+      "line_number": 180
     },
     {
-      "id": "cgis/cli.py:edge_5601_5624",
+      "id": "cgis/cli.py:edge_6308_6331",
       "source": "cgis.cli.build_trace_tree",
       "target": "rich.tree.Tree.add",
       "type": "CALLS",
@@ -6654,10 +6813,10 @@
       "confidence": 1.0,
       "context": "Call to current_tree.add",
       "file_path": "cgis/cli.py",
-      "line_number": 176
+      "line_number": 196
     },
     {
-      "id": "cgis/cli.py:edge_5726_5779",
+      "id": "cgis/cli.py:edge_6433_6486",
       "source": "cgis.cli.build_trace_tree",
       "target": "branch.add",
       "type": "CALLS",
@@ -6665,10 +6824,10 @@
       "confidence": 0.8,
       "context": "Call to branch.add",
       "file_path": "cgis/cli.py",
-      "line_number": 182
+      "line_number": 202
     },
     {
-      "id": "cgis/cli.py:edge_5810_5837",
+      "id": "cgis/cli.py:edge_6517_6544",
       "source": "cgis.cli.build_trace_tree",
       "target": "cgis.cli.set.add",
       "type": "CALLS",
@@ -6676,10 +6835,10 @@
       "confidence": 1.0,
       "context": "Call to path_visited.add",
       "file_path": "cgis/cli.py",
-      "line_number": 185
+      "line_number": 205
     },
     {
-      "id": "cgis/cli.py:edge_5846_5932",
+      "id": "cgis/cli.py:edge_6553_6814",
       "source": "cgis.cli.build_trace_tree",
       "target": "cgis.cli.build_trace_tree",
       "type": "CALLS",
@@ -6687,10 +6846,10 @@
       "confidence": 1.0,
       "context": "Call to build_trace_tree",
       "file_path": "cgis/cli.py",
-      "line_number": 186
+      "line_number": 206
     },
     {
-      "id": "cgis/cli.py:edge_5941_5971",
+      "id": "cgis/cli.py:edge_6823_6853",
       "source": "cgis.cli.build_trace_tree",
       "target": "cgis.cli.set.remove",
       "type": "CALLS",
@@ -6698,7 +6857,7 @@
       "confidence": 1.0,
       "context": "Call to path_visited.remove",
       "file_path": "cgis/cli.py",
-      "line_number": 187
+      "line_number": 216
     },
     {
       "id": "cgis.cli.trace:decorator:0:app.command",
@@ -6723,7 +6882,7 @@
       "line_number": null
     },
     {
-      "id": "cgis/cli.py:edge_6017_6088",
+      "id": "cgis/cli.py:edge_6899_6970",
       "source": "cgis.cli.trace",
       "target": "typer.Argument",
       "type": "CALLS",
@@ -6731,10 +6890,10 @@
       "confidence": 1.0,
       "context": "Call to typer.Argument",
       "file_path": "cgis/cli.py",
-      "line_number": 192
+      "line_number": 221
     },
     {
-      "id": "cgis/cli.py:edge_6104_6166",
+      "id": "cgis/cli.py:edge_6986_7048",
       "source": "cgis.cli.trace",
       "target": "typer.Option",
       "type": "CALLS",
@@ -6742,10 +6901,10 @@
       "confidence": 1.0,
       "context": "Call to typer.Option",
       "file_path": "cgis/cli.py",
-      "line_number": 193
+      "line_number": 222
     },
     {
-      "id": "cgis/cli.py:edge_6185_6229",
+      "id": "cgis/cli.py:edge_7067_7111",
       "source": "cgis.cli.trace",
       "target": "typer.Option",
       "type": "CALLS",
@@ -6753,10 +6912,10 @@
       "confidence": 1.0,
       "context": "Call to typer.Option",
       "file_path": "cgis/cli.py",
-      "line_number": 194
+      "line_number": 223
     },
     {
-      "id": "cgis/cli.py:edge_6265_6347",
+      "id": "cgis/cli.py:edge_7147_7229",
       "source": "cgis.cli.trace",
       "target": "typer.Option",
       "type": "CALLS",
@@ -6764,10 +6923,10 @@
       "confidence": 1.0,
       "context": "Call to typer.Option",
       "file_path": "cgis/cli.py",
-      "line_number": 195
+      "line_number": 224
     },
     {
-      "id": "cgis/cli.py:edge_6375_6481",
+      "id": "cgis/cli.py:edge_7257_7363",
       "source": "cgis.cli.trace",
       "target": "typer.Option",
       "type": "CALLS",
@@ -6775,10 +6934,10 @@
       "confidence": 1.0,
       "context": "Call to typer.Option",
       "file_path": "cgis/cli.py",
-      "line_number": 198
+      "line_number": 227
     },
     {
-      "id": "cgis/cli.py:edge_6594_6602",
+      "id": "cgis/cli.py:edge_7570_7578",
       "source": "cgis.cli.trace",
       "target": "pathlib.Path",
       "type": "CALLS",
@@ -6786,10 +6945,10 @@
       "confidence": 1.0,
       "context": "Call to Path",
       "file_path": "cgis/cli.py",
-      "line_number": 205
+      "line_number": 236
     },
     {
-      "id": "cgis/cli.py:edge_6614_6628",
+      "id": "cgis/cli.py:edge_7590_7604",
       "source": "cgis.cli.trace",
       "target": "pathlib.Path.is_file",
       "type": "CALLS",
@@ -6797,10 +6956,10 @@
       "confidence": 1.0,
       "context": "Call to path.is_file",
       "file_path": "cgis/cli.py",
-      "line_number": 206
+      "line_number": 237
     },
     {
-      "id": "cgis/cli.py:edge_6638_6726",
+      "id": "cgis/cli.py:edge_7614_7702",
       "source": "cgis.cli.trace",
       "target": "console.print",
       "type": "CALLS",
@@ -6808,10 +6967,10 @@
       "confidence": 0.8,
       "context": "Call to console.print",
       "file_path": "cgis/cli.py",
-      "line_number": 207
+      "line_number": 238
     },
     {
-      "id": "cgis/cli.py:edge_6741_6759",
+      "id": "cgis/cli.py:edge_7717_7735",
       "source": "cgis.cli.trace",
       "target": "typer.Exit",
       "type": "CALLS",
@@ -6819,10 +6978,10 @@
       "confidence": 1.0,
       "context": "Call to typer.Exit",
       "file_path": "cgis/cli.py",
-      "line_number": 208
+      "line_number": 239
     },
     {
-      "id": "cgis/cli.py:edge_6770_6785",
+      "id": "cgis/cli.py:edge_7839_7854",
       "source": "cgis.cli.trace",
       "target": "cgis.storage.sqlite_store.SQLiteStore",
       "type": "CALLS",
@@ -6830,10 +6989,10 @@
       "confidence": 1.0,
       "context": "Call to SQLiteStore",
       "file_path": "cgis/cli.py",
-      "line_number": 210
+      "line_number": 243
     },
     {
-      "id": "cgis/cli.py:edge_6817_6838",
+      "id": "cgis/cli.py:edge_7886_7907",
       "source": "cgis.cli.trace",
       "target": "store.get_node",
       "type": "CALLS",
@@ -6841,10 +7000,10 @@
       "confidence": 0.8,
       "context": "Call to store.get_node",
       "file_path": "cgis/cli.py",
-      "line_number": 211
+      "line_number": 244
     },
     {
-      "id": "cgis/cli.py:edge_6878_6961",
+      "id": "cgis/cli.py:edge_7947_8030",
       "source": "cgis.cli.trace",
       "target": "console.print",
       "type": "CALLS",
@@ -6852,10 +7011,10 @@
       "confidence": 0.8,
       "context": "Call to console.print",
       "file_path": "cgis/cli.py",
-      "line_number": 213
+      "line_number": 246
     },
     {
-      "id": "cgis/cli.py:edge_6980_6998",
+      "id": "cgis/cli.py:edge_8049_8067",
       "source": "cgis.cli.trace",
       "target": "typer.Exit",
       "type": "CALLS",
@@ -6863,10 +7022,10 @@
       "confidence": 1.0,
       "context": "Call to typer.Exit",
       "file_path": "cgis/cli.py",
-      "line_number": 214
+      "line_number": 247
     },
     {
-      "id": "cgis/cli.py:edge_7077_7134",
+      "id": "cgis/cli.py:edge_8146_8290",
       "source": "cgis.cli.trace",
       "target": "cgis.query.engine.QueryEngine.get_flow_graph",
       "type": "CALLS",
@@ -6874,10 +7033,10 @@
       "confidence": 1.0,
       "context": "Call to QueryEngine.get_flow_graph",
       "file_path": "cgis/cli.py",
-      "line_number": 217
+      "line_number": 250
     },
     {
-      "id": "cgis/cli.py:edge_7077_7095",
+      "id": "cgis/cli.py:edge_8146_8164",
       "source": "cgis.cli.trace",
       "target": "cgis.query.engine.QueryEngine",
       "type": "CALLS",
@@ -6885,10 +7044,10 @@
       "confidence": 1.0,
       "context": "Call to QueryEngine",
       "file_path": "cgis/cli.py",
-      "line_number": 217
+      "line_number": 250
     },
     {
-      "id": "cgis/cli.py:edge_7196_7226",
+      "id": "cgis/cli.py:edge_8352_8382",
       "source": "cgis.cli.trace",
       "target": "cgis.cli._filter_internal",
       "type": "CALLS",
@@ -6896,10 +7055,10 @@
       "confidence": 1.0,
       "context": "Call to _filter_internal",
       "file_path": "cgis/cli.py",
-      "line_number": 219
+      "line_number": 254
     },
     {
-      "id": "cgis/cli.py:edge_7239_7290",
+      "id": "cgis/cli.py:edge_8395_8446",
       "source": "cgis.cli.trace",
       "target": "typer.echo",
       "type": "CALLS",
@@ -6907,10 +7066,10 @@
       "confidence": 1.0,
       "context": "Call to typer.echo",
       "file_path": "cgis/cli.py",
-      "line_number": 220
+      "line_number": 255
     },
     {
-      "id": "cgis/cli.py:edge_7250_7289",
+      "id": "cgis/cli.py:edge_8406_8445",
       "source": "cgis.cli.trace",
       "target": "cgis.query.mermaid.MermaidCompiler.compile",
       "type": "CALLS",
@@ -6918,10 +7077,10 @@
       "confidence": 1.0,
       "context": "Call to MermaidCompiler.compile",
       "file_path": "cgis/cli.py",
-      "line_number": 220
+      "line_number": 255
     },
     {
-      "id": "cgis/cli.py:edge_7250_7267",
+      "id": "cgis/cli.py:edge_8406_8423",
       "source": "cgis.cli.trace",
       "target": "cgis.query.mermaid.MermaidCompiler",
       "type": "CALLS",
@@ -6929,10 +7088,10 @@
       "confidence": 1.0,
       "context": "Call to MermaidCompiler",
       "file_path": "cgis/cli.py",
-      "line_number": 220
+      "line_number": 255
     },
     {
-      "id": "cgis/cli.py:edge_7439_7462",
+      "id": "cgis/cli.py:edge_8595_8618",
       "source": "cgis.cli.trace",
       "target": "typer.BadParameter",
       "type": "CALLS",
@@ -6940,10 +7099,10 @@
       "confidence": 1.0,
       "context": "Call to typer.BadParameter",
       "file_path": "cgis/cli.py",
-      "line_number": 224
+      "line_number": 259
     },
     {
-      "id": "cgis/cli.py:edge_7475_7598",
+      "id": "cgis/cli.py:edge_8631_8754",
       "source": "cgis.cli.trace",
       "target": "console.print",
       "type": "CALLS",
@@ -6951,10 +7110,10 @@
       "confidence": 0.8,
       "context": "Call to console.print",
       "file_path": "cgis/cli.py",
-      "line_number": 225
+      "line_number": 260
     },
     {
-      "id": "cgis/cli.py:edge_7858_7874",
+      "id": "cgis/cli.py:edge_9014_9030",
       "source": "cgis.cli.trace",
       "target": "rich.tree.Tree",
       "type": "CALLS",
@@ -6962,10 +7121,10 @@
       "confidence": 1.0,
       "context": "Call to Tree",
       "file_path": "cgis/cli.py",
-      "line_number": 233
+      "line_number": 268
     },
     {
-      "id": "cgis/cli.py:edge_7887_7942",
+      "id": "cgis/cli.py:edge_9043_9298",
       "source": "cgis.cli.trace",
       "target": "cgis.cli.build_trace_tree",
       "type": "CALLS",
@@ -6973,10 +7132,10 @@
       "confidence": 1.0,
       "context": "Call to build_trace_tree",
       "file_path": "cgis/cli.py",
-      "line_number": 234
+      "line_number": 269
     },
     {
-      "id": "cgis/cli.py:edge_7955_7974",
+      "id": "cgis/cli.py:edge_9311_9330",
       "source": "cgis.cli.trace",
       "target": "console.print",
       "type": "CALLS",
@@ -6984,7 +7143,7 @@
       "confidence": 0.8,
       "context": "Call to console.print",
       "file_path": "cgis/cli.py",
-      "line_number": 235
+      "line_number": 279
     },
     {
       "id": "cgis.cli:structural:cgis.cli.build_impact_tree",
@@ -6998,7 +7157,7 @@
       "line_number": null
     },
     {
-      "id": "cgis/cli.py:edge_8292_8328",
+      "id": "cgis/cli.py:edge_9739_9775",
       "source": "cgis.cli.build_impact_tree",
       "target": "cgis.storage.sqlite_store.SQLiteStore.get_incoming_edges",
       "type": "CALLS",
@@ -7006,10 +7165,10 @@
       "confidence": 1.0,
       "context": "Call to store.get_incoming_edges",
       "file_path": "cgis/cli.py",
-      "line_number": 250
+      "line_number": 296
     },
     {
-      "id": "cgis/cli.py:edge_8363_8408",
+      "id": "cgis/cli.py:edge_9922_9967",
       "source": "cgis.cli.build_impact_tree",
       "target": "cgis.storage.sqlite_store.SQLiteStore.get_nodes",
       "type": "CALLS",
@@ -7017,10 +7176,10 @@
       "confidence": 1.0,
       "context": "Call to store.get_nodes",
       "file_path": "cgis/cli.py",
-      "line_number": 251
+      "line_number": 299
     },
     {
-      "id": "cgis/cli.py:edge_8490_8514",
+      "id": "cgis/cli.py:edge_10049_10073",
       "source": "cgis.cli.build_impact_tree",
       "target": "nodes_map.get",
       "type": "CALLS",
@@ -7028,10 +7187,10 @@
       "confidence": 0.8,
       "context": "Call to nodes_map.get",
       "file_path": "cgis/cli.py",
-      "line_number": 254
+      "line_number": 302
     },
     {
-      "id": "cgis/cli.py:edge_8899_8922",
+      "id": "cgis/cli.py:edge_10609_10632",
       "source": "cgis.cli.build_impact_tree",
       "target": "rich.tree.Tree.add",
       "type": "CALLS",
@@ -7039,10 +7198,10 @@
       "confidence": 1.0,
       "context": "Call to current_tree.add",
       "file_path": "cgis/cli.py",
-      "line_number": 265
+      "line_number": 318
     },
     {
-      "id": "cgis/cli.py:edge_9024_9077",
+      "id": "cgis/cli.py:edge_10734_10787",
       "source": "cgis.cli.build_impact_tree",
       "target": "branch.add",
       "type": "CALLS",
@@ -7050,10 +7209,10 @@
       "confidence": 0.8,
       "context": "Call to branch.add",
       "file_path": "cgis/cli.py",
-      "line_number": 271
+      "line_number": 324
     },
     {
-      "id": "cgis/cli.py:edge_9108_9135",
+      "id": "cgis/cli.py:edge_10818_10845",
       "source": "cgis.cli.build_impact_tree",
       "target": "cgis.cli.set.add",
       "type": "CALLS",
@@ -7061,10 +7220,10 @@
       "confidence": 1.0,
       "context": "Call to path_visited.add",
       "file_path": "cgis/cli.py",
-      "line_number": 274
+      "line_number": 327
     },
     {
-      "id": "cgis/cli.py:edge_9144_9231",
+      "id": "cgis/cli.py:edge_10854_11116",
       "source": "cgis.cli.build_impact_tree",
       "target": "cgis.cli.build_impact_tree",
       "type": "CALLS",
@@ -7072,10 +7231,10 @@
       "confidence": 1.0,
       "context": "Call to build_impact_tree",
       "file_path": "cgis/cli.py",
-      "line_number": 275
+      "line_number": 328
     },
     {
-      "id": "cgis/cli.py:edge_9240_9270",
+      "id": "cgis/cli.py:edge_11125_11155",
       "source": "cgis.cli.build_impact_tree",
       "target": "cgis.cli.set.remove",
       "type": "CALLS",
@@ -7083,7 +7242,7 @@
       "confidence": 1.0,
       "context": "Call to path_visited.remove",
       "file_path": "cgis/cli.py",
-      "line_number": 276
+      "line_number": 338
     },
     {
       "id": "cgis.cli.impact:decorator:0:app.command",
@@ -7108,7 +7267,7 @@
       "line_number": null
     },
     {
-      "id": "cgis/cli.py:edge_9318_9381",
+      "id": "cgis/cli.py:edge_11203_11266",
       "source": "cgis.cli.impact",
       "target": "typer.Argument",
       "type": "CALLS",
@@ -7116,10 +7275,10 @@
       "confidence": 1.0,
       "context": "Call to typer.Argument",
       "file_path": "cgis/cli.py",
-      "line_number": 281
+      "line_number": 343
     },
     {
-      "id": "cgis/cli.py:edge_9397_9459",
+      "id": "cgis/cli.py:edge_11282_11344",
       "source": "cgis.cli.impact",
       "target": "typer.Option",
       "type": "CALLS",
@@ -7127,10 +7286,10 @@
       "confidence": 1.0,
       "context": "Call to typer.Option",
       "file_path": "cgis/cli.py",
-      "line_number": 282
+      "line_number": 344
     },
     {
-      "id": "cgis/cli.py:edge_9478_9522",
+      "id": "cgis/cli.py:edge_11363_11407",
       "source": "cgis.cli.impact",
       "target": "typer.Option",
       "type": "CALLS",
@@ -7138,10 +7297,10 @@
       "confidence": 1.0,
       "context": "Call to typer.Option",
       "file_path": "cgis/cli.py",
-      "line_number": 283
+      "line_number": 345
     },
     {
-      "id": "cgis/cli.py:edge_9558_9640",
+      "id": "cgis/cli.py:edge_11443_11525",
       "source": "cgis.cli.impact",
       "target": "typer.Option",
       "type": "CALLS",
@@ -7149,10 +7308,10 @@
       "confidence": 1.0,
       "context": "Call to typer.Option",
       "file_path": "cgis/cli.py",
-      "line_number": 284
+      "line_number": 346
     },
     {
-      "id": "cgis/cli.py:edge_9668_9774",
+      "id": "cgis/cli.py:edge_11553_11659",
       "source": "cgis.cli.impact",
       "target": "typer.Option",
       "type": "CALLS",
@@ -7160,10 +7319,10 @@
       "confidence": 1.0,
       "context": "Call to typer.Option",
       "file_path": "cgis/cli.py",
-      "line_number": 287
+      "line_number": 349
     },
     {
-      "id": "cgis/cli.py:edge_9899_9907",
+      "id": "cgis/cli.py:edge_11878_11886",
       "source": "cgis.cli.impact",
       "target": "pathlib.Path",
       "type": "CALLS",
@@ -7171,10 +7330,10 @@
       "confidence": 1.0,
       "context": "Call to Path",
       "file_path": "cgis/cli.py",
-      "line_number": 294
+      "line_number": 358
     },
     {
-      "id": "cgis/cli.py:edge_9919_9933",
+      "id": "cgis/cli.py:edge_11898_11912",
       "source": "cgis.cli.impact",
       "target": "pathlib.Path.is_file",
       "type": "CALLS",
@@ -7182,10 +7341,10 @@
       "confidence": 1.0,
       "context": "Call to path.is_file",
       "file_path": "cgis/cli.py",
-      "line_number": 295
+      "line_number": 359
     },
     {
-      "id": "cgis/cli.py:edge_9943_10031",
+      "id": "cgis/cli.py:edge_11922_12010",
       "source": "cgis.cli.impact",
       "target": "console.print",
       "type": "CALLS",
@@ -7193,10 +7352,10 @@
       "confidence": 0.8,
       "context": "Call to console.print",
       "file_path": "cgis/cli.py",
-      "line_number": 296
+      "line_number": 360
     },
     {
-      "id": "cgis/cli.py:edge_10046_10064",
+      "id": "cgis/cli.py:edge_12025_12043",
       "source": "cgis.cli.impact",
       "target": "typer.Exit",
       "type": "CALLS",
@@ -7204,10 +7363,10 @@
       "confidence": 1.0,
       "context": "Call to typer.Exit",
       "file_path": "cgis/cli.py",
-      "line_number": 297
+      "line_number": 361
     },
     {
-      "id": "cgis/cli.py:edge_10075_10090",
+      "id": "cgis/cli.py:edge_12147_12162",
       "source": "cgis.cli.impact",
       "target": "cgis.storage.sqlite_store.SQLiteStore",
       "type": "CALLS",
@@ -7215,10 +7374,10 @@
       "confidence": 1.0,
       "context": "Call to SQLiteStore",
       "file_path": "cgis/cli.py",
-      "line_number": 299
+      "line_number": 365
     },
     {
-      "id": "cgis/cli.py:edge_10123_10145",
+      "id": "cgis/cli.py:edge_12195_12217",
       "source": "cgis.cli.impact",
       "target": "store.get_node",
       "type": "CALLS",
@@ -7226,10 +7385,10 @@
       "confidence": 0.8,
       "context": "Call to store.get_node",
       "file_path": "cgis/cli.py",
-      "line_number": 300
+      "line_number": 366
     },
     {
-      "id": "cgis/cli.py:edge_10186_10271",
+      "id": "cgis/cli.py:edge_12258_12343",
       "source": "cgis.cli.impact",
       "target": "console.print",
       "type": "CALLS",
@@ -7237,10 +7396,10 @@
       "confidence": 0.8,
       "context": "Call to console.print",
       "file_path": "cgis/cli.py",
-      "line_number": 302
+      "line_number": 368
     },
     {
-      "id": "cgis/cli.py:edge_10290_10308",
+      "id": "cgis/cli.py:edge_12362_12380",
       "source": "cgis.cli.impact",
       "target": "typer.Exit",
       "type": "CALLS",
@@ -7248,10 +7407,10 @@
       "confidence": 1.0,
       "context": "Call to typer.Exit",
       "file_path": "cgis/cli.py",
-      "line_number": 303
+      "line_number": 369
     },
     {
-      "id": "cgis/cli.py:edge_10387_10447",
+      "id": "cgis/cli.py:edge_12459_12606",
       "source": "cgis.cli.impact",
       "target": "cgis.query.engine.QueryEngine.get_impact_graph",
       "type": "CALLS",
@@ -7259,10 +7418,10 @@
       "confidence": 1.0,
       "context": "Call to QueryEngine.get_impact_graph",
       "file_path": "cgis/cli.py",
-      "line_number": 306
+      "line_number": 372
     },
     {
-      "id": "cgis/cli.py:edge_10387_10405",
+      "id": "cgis/cli.py:edge_12459_12477",
       "source": "cgis.cli.impact",
       "target": "cgis.query.engine.QueryEngine",
       "type": "CALLS",
@@ -7270,10 +7429,10 @@
       "confidence": 1.0,
       "context": "Call to QueryEngine",
       "file_path": "cgis/cli.py",
-      "line_number": 306
+      "line_number": 372
     },
     {
-      "id": "cgis/cli.py:edge_10509_10539",
+      "id": "cgis/cli.py:edge_12668_12698",
       "source": "cgis.cli.impact",
       "target": "cgis.cli._filter_internal",
       "type": "CALLS",
@@ -7281,10 +7440,10 @@
       "confidence": 1.0,
       "context": "Call to _filter_internal",
       "file_path": "cgis/cli.py",
-      "line_number": 308
+      "line_number": 376
     },
     {
-      "id": "cgis/cli.py:edge_10552_10603",
+      "id": "cgis/cli.py:edge_12711_12762",
       "source": "cgis.cli.impact",
       "target": "typer.echo",
       "type": "CALLS",
@@ -7292,10 +7451,10 @@
       "confidence": 1.0,
       "context": "Call to typer.echo",
       "file_path": "cgis/cli.py",
-      "line_number": 309
+      "line_number": 377
     },
     {
-      "id": "cgis/cli.py:edge_10563_10602",
+      "id": "cgis/cli.py:edge_12722_12761",
       "source": "cgis.cli.impact",
       "target": "cgis.query.mermaid.MermaidCompiler.compile",
       "type": "CALLS",
@@ -7303,10 +7462,10 @@
       "confidence": 1.0,
       "context": "Call to MermaidCompiler.compile",
       "file_path": "cgis/cli.py",
-      "line_number": 309
+      "line_number": 377
     },
     {
-      "id": "cgis/cli.py:edge_10563_10580",
+      "id": "cgis/cli.py:edge_12722_12739",
       "source": "cgis.cli.impact",
       "target": "cgis.query.mermaid.MermaidCompiler",
       "type": "CALLS",
@@ -7314,10 +7473,10 @@
       "confidence": 1.0,
       "context": "Call to MermaidCompiler",
       "file_path": "cgis/cli.py",
-      "line_number": 309
+      "line_number": 377
     },
     {
-      "id": "cgis/cli.py:edge_10752_10775",
+      "id": "cgis/cli.py:edge_12911_12934",
       "source": "cgis.cli.impact",
       "target": "typer.BadParameter",
       "type": "CALLS",
@@ -7325,10 +7484,10 @@
       "confidence": 1.0,
       "context": "Call to typer.BadParameter",
       "file_path": "cgis/cli.py",
-      "line_number": 313
+      "line_number": 381
     },
     {
-      "id": "cgis/cli.py:edge_10788_10916",
+      "id": "cgis/cli.py:edge_12947_13075",
       "source": "cgis.cli.impact",
       "target": "console.print",
       "type": "CALLS",
@@ -7336,10 +7495,10 @@
       "confidence": 0.8,
       "context": "Call to console.print",
       "file_path": "cgis/cli.py",
-      "line_number": 314
+      "line_number": 382
     },
     {
-      "id": "cgis/cli.py:edge_11180_11196",
+      "id": "cgis/cli.py:edge_13339_13355",
       "source": "cgis.cli.impact",
       "target": "rich.tree.Tree",
       "type": "CALLS",
@@ -7347,10 +7506,10 @@
       "confidence": 1.0,
       "context": "Call to Tree",
       "file_path": "cgis/cli.py",
-      "line_number": 322
+      "line_number": 390
     },
     {
-      "id": "cgis/cli.py:edge_11209_11267",
+      "id": "cgis/cli.py:edge_13368_13626",
       "source": "cgis.cli.impact",
       "target": "cgis.cli.build_impact_tree",
       "type": "CALLS",
@@ -7358,10 +7517,10 @@
       "confidence": 1.0,
       "context": "Call to build_impact_tree",
       "file_path": "cgis/cli.py",
-      "line_number": 323
+      "line_number": 391
     },
     {
-      "id": "cgis/cli.py:edge_11280_11299",
+      "id": "cgis/cli.py:edge_13639_13658",
       "source": "cgis.cli.impact",
       "target": "console.print",
       "type": "CALLS",
@@ -7369,7 +7528,7 @@
       "confidence": 0.8,
       "context": "Call to console.print",
       "file_path": "cgis/cli.py",
-      "line_number": 324
+      "line_number": 401
     },
     {
       "id": "cgis.cli.validate:decorator:0:app.command",
@@ -7394,7 +7553,7 @@
       "line_number": null
     },
     {
-      "id": "cgis/cli.py:edge_11345_11407",
+      "id": "cgis/cli.py:edge_13704_13766",
       "source": "cgis.cli.validate",
       "target": "typer.Option",
       "type": "CALLS",
@@ -7402,10 +7561,10 @@
       "confidence": 1.0,
       "context": "Call to typer.Option",
       "file_path": "cgis/cli.py",
-      "line_number": 329
+      "line_number": 406
     },
     {
-      "id": "cgis/cli.py:edge_11432_11602",
+      "id": "cgis/cli.py:edge_13791_13961",
       "source": "cgis.cli.validate",
       "target": "typer.Option",
       "type": "CALLS",
@@ -7413,10 +7572,10 @@
       "confidence": 1.0,
       "context": "Call to typer.Option",
       "file_path": "cgis/cli.py",
-      "line_number": 330
+      "line_number": 407
     },
     {
-      "id": "cgis/cli.py:edge_11775_11783",
+      "id": "cgis/cli.py:edge_14134_14142",
       "source": "cgis.cli.validate",
       "target": "pathlib.Path",
       "type": "CALLS",
@@ -7424,10 +7583,10 @@
       "confidence": 1.0,
       "context": "Call to Path",
       "file_path": "cgis/cli.py",
-      "line_number": 344
+      "line_number": 421
     },
     {
-      "id": "cgis/cli.py:edge_11795_11809",
+      "id": "cgis/cli.py:edge_14154_14168",
       "source": "cgis.cli.validate",
       "target": "pathlib.Path.is_file",
       "type": "CALLS",
@@ -7435,10 +7594,10 @@
       "confidence": 1.0,
       "context": "Call to path.is_file",
       "file_path": "cgis/cli.py",
-      "line_number": 345
+      "line_number": 422
     },
     {
-      "id": "cgis/cli.py:edge_11819_11907",
+      "id": "cgis/cli.py:edge_14178_14266",
       "source": "cgis.cli.validate",
       "target": "console.print",
       "type": "CALLS",
@@ -7446,10 +7605,10 @@
       "confidence": 0.8,
       "context": "Call to console.print",
       "file_path": "cgis/cli.py",
-      "line_number": 346
+      "line_number": 423
     },
     {
-      "id": "cgis/cli.py:edge_11922_11940",
+      "id": "cgis/cli.py:edge_14281_14299",
       "source": "cgis.cli.validate",
       "target": "typer.Exit",
       "type": "CALLS",
@@ -7457,10 +7616,10 @@
       "confidence": 1.0,
       "context": "Call to typer.Exit",
       "file_path": "cgis/cli.py",
-      "line_number": 347
+      "line_number": 424
     },
     {
-      "id": "cgis/cli.py:edge_11964_11979",
+      "id": "cgis/cli.py:edge_14323_14338",
       "source": "cgis.cli.validate",
       "target": "cgis.storage.sqlite_store.SQLiteStore",
       "type": "CALLS",
@@ -7468,10 +7627,10 @@
       "confidence": 1.0,
       "context": "Call to SQLiteStore",
       "file_path": "cgis/cli.py",
-      "line_number": 350
+      "line_number": 427
     },
     {
-      "id": "cgis/cli.py:edge_12010_12032",
+      "id": "cgis/cli.py:edge_14369_14391",
       "source": "cgis.cli.validate",
       "target": "store.get_edge_stats",
       "type": "CALLS",
@@ -7479,10 +7638,10 @@
       "confidence": 0.8,
       "context": "Call to store.get_edge_stats",
       "file_path": "cgis/cli.py",
-      "line_number": 351
+      "line_number": 428
     },
     {
-      "id": "cgis/cli.py:edge_12068_12138",
+      "id": "cgis/cli.py:edge_14427_14497",
       "source": "cgis.cli.validate",
       "target": "console.print",
       "type": "CALLS",
@@ -7490,10 +7649,10 @@
       "confidence": 0.8,
       "context": "Call to console.print",
       "file_path": "cgis/cli.py",
-      "line_number": 353
+      "line_number": 430
     },
     {
-      "id": "cgis/cli.py:edge_12153_12171",
+      "id": "cgis/cli.py:edge_14512_14530",
       "source": "cgis.cli.validate",
       "target": "typer.Exit",
       "type": "CALLS",
@@ -7501,7 +7660,7 @@
       "confidence": 1.0,
       "context": "Call to typer.Exit",
       "file_path": "cgis/cli.py",
-      "line_number": 354
+      "line_number": 431
     },
     {
       "id": "cgis.cli.validate:structural:cgis.cli.validate._pct",
@@ -7515,7 +7674,7 @@
       "line_number": null
     },
     {
-      "id": "cgis/cli.py:edge_12347_12384",
+      "id": "cgis/cli.py:edge_14706_14743",
       "source": "cgis.cli.validate",
       "target": "rich.table.Table",
       "type": "CALLS",
@@ -7523,10 +7682,10 @@
       "confidence": 1.0,
       "context": "Call to Table",
       "file_path": "cgis/cli.py",
-      "line_number": 361
+      "line_number": 438
     },
     {
-      "id": "cgis/cli.py:edge_12389_12429",
+      "id": "cgis/cli.py:edge_14748_14788",
       "source": "cgis.cli.validate",
       "target": "rich.table.Table.add_column",
       "type": "CALLS",
@@ -7534,10 +7693,10 @@
       "confidence": 1.0,
       "context": "Call to table.add_column",
       "file_path": "cgis/cli.py",
-      "line_number": 362
+      "line_number": 439
     },
     {
-      "id": "cgis/cli.py:edge_12434_12493",
+      "id": "cgis/cli.py:edge_14793_14852",
       "source": "cgis.cli.validate",
       "target": "rich.table.Table.add_column",
       "type": "CALLS",
@@ -7545,10 +7704,10 @@
       "confidence": 1.0,
       "context": "Call to table.add_column",
       "file_path": "cgis/cli.py",
-      "line_number": 363
+      "line_number": 440
     },
     {
-      "id": "cgis/cli.py:edge_12499_12545",
+      "id": "cgis/cli.py:edge_14858_14904",
       "source": "cgis.cli.validate",
       "target": "rich.table.Table.add_row",
       "type": "CALLS",
@@ -7556,10 +7715,10 @@
       "confidence": 1.0,
       "context": "Call to table.add_row",
       "file_path": "cgis/cli.py",
-      "line_number": 365
+      "line_number": 442
     },
     {
-      "id": "cgis/cli.py:edge_12528_12544",
+      "id": "cgis/cli.py:edge_14887_14903",
       "source": "cgis.cli.validate",
       "target": "str",
       "type": "CALLS",
@@ -7567,10 +7726,10 @@
       "confidence": 0.8,
       "context": "Call to str",
       "file_path": "cgis/cli.py",
-      "line_number": 365
+      "line_number": 442
     },
     {
-      "id": "cgis/cli.py:edge_12550_12632",
+      "id": "cgis/cli.py:edge_14909_14991",
       "source": "cgis.cli.validate",
       "target": "rich.table.Table.add_row",
       "type": "CALLS",
@@ -7578,10 +7737,10 @@
       "confidence": 1.0,
       "context": "Call to table.add_row",
       "file_path": "cgis/cli.py",
-      "line_number": 366
+      "line_number": 443
     },
     {
-      "id": "cgis/cli.py:edge_12608_12628",
+      "id": "cgis/cli.py:edge_14967_14987",
       "source": "cgis.cli.validate",
       "target": "cgis.cli.validate._pct",
       "type": "CALLS",
@@ -7589,10 +7748,10 @@
       "confidence": 1.0,
       "context": "Call to _pct",
       "file_path": "cgis/cli.py",
-      "line_number": 366
+      "line_number": 443
     },
     {
-      "id": "cgis/cli.py:edge_12637_12708",
+      "id": "cgis/cli.py:edge_14996_15067",
       "source": "cgis.cli.validate",
       "target": "rich.table.Table.add_row",
       "type": "CALLS",
@@ -7600,10 +7759,10 @@
       "confidence": 1.0,
       "context": "Call to table.add_row",
       "file_path": "cgis/cli.py",
-      "line_number": 367
+      "line_number": 444
     },
     {
-      "id": "cgis/cli.py:edge_12686_12704",
+      "id": "cgis/cli.py:edge_15045_15063",
       "source": "cgis.cli.validate",
       "target": "cgis.cli.validate._pct",
       "type": "CALLS",
@@ -7611,10 +7770,10 @@
       "confidence": 1.0,
       "context": "Call to _pct",
       "file_path": "cgis/cli.py",
-      "line_number": 367
+      "line_number": 444
     },
     {
-      "id": "cgis/cli.py:edge_12713_12790",
+      "id": "cgis/cli.py:edge_15072_15149",
       "source": "cgis.cli.validate",
       "target": "rich.table.Table.add_row",
       "type": "CALLS",
@@ -7622,10 +7781,10 @@
       "confidence": 1.0,
       "context": "Call to table.add_row",
       "file_path": "cgis/cli.py",
-      "line_number": 368
+      "line_number": 445
     },
     {
-      "id": "cgis/cli.py:edge_12766_12786",
+      "id": "cgis/cli.py:edge_15125_15145",
       "source": "cgis.cli.validate",
       "target": "cgis.cli.validate._pct",
       "type": "CALLS",
@@ -7633,10 +7792,10 @@
       "confidence": 1.0,
       "context": "Call to _pct",
       "file_path": "cgis/cli.py",
-      "line_number": 368
+      "line_number": 445
     },
     {
-      "id": "cgis/cli.py:edge_12824_12963",
+      "id": "cgis/cli.py:edge_15183_15322",
       "source": "cgis.cli.validate",
       "target": "rich.table.Table.add_row",
       "type": "CALLS",
@@ -7644,10 +7803,10 @@
       "confidence": 1.0,
       "context": "Call to table.add_row",
       "file_path": "cgis/cli.py",
-      "line_number": 370
+      "line_number": 447
     },
     {
-      "id": "cgis/cli.py:edge_12916_12938",
+      "id": "cgis/cli.py:edge_15275_15297",
       "source": "cgis.cli.validate",
       "target": "cgis.cli.validate._pct",
       "type": "CALLS",
@@ -7655,10 +7814,10 @@
       "confidence": 1.0,
       "context": "Call to _pct",
       "file_path": "cgis/cli.py",
-      "line_number": 372
+      "line_number": 449
     },
     {
-      "id": "cgis/cli.py:edge_12968_12988",
+      "id": "cgis/cli.py:edge_15327_15347",
       "source": "cgis.cli.validate",
       "target": "console.print",
       "type": "CALLS",
@@ -7666,10 +7825,10 @@
       "confidence": 0.8,
       "context": "Call to console.print",
       "file_path": "cgis/cli.py",
-      "line_number": 374
+      "line_number": 451
     },
     {
-      "id": "cgis/cli.py:edge_13027_13082",
+      "id": "cgis/cli.py:edge_15386_15441",
       "source": "cgis.cli.validate",
       "target": "console.print",
       "type": "CALLS",
@@ -7677,10 +7836,10 @@
       "confidence": 0.8,
       "context": "Call to console.print",
       "file_path": "cgis/cli.py",
-      "line_number": 377
+      "line_number": 454
     },
     {
-      "id": "cgis/cli.py:edge_13103_13153",
+      "id": "cgis/cli.py:edge_15462_15512",
       "source": "cgis.cli.validate",
       "target": "rich.table.Table",
       "type": "CALLS",
@@ -7688,10 +7847,10 @@
       "confidence": 1.0,
       "context": "Call to Table",
       "file_path": "cgis/cli.py",
-      "line_number": 378
+      "line_number": 455
     },
     {
-      "id": "cgis/cli.py:edge_13162_13205",
+      "id": "cgis/cli.py:edge_15521_15564",
       "source": "cgis.cli.validate",
       "target": "rich.table.Table.add_column",
       "type": "CALLS",
@@ -7699,10 +7858,10 @@
       "confidence": 1.0,
       "context": "Call to top_table.add_column",
       "file_path": "cgis/cli.py",
-      "line_number": 379
+      "line_number": 456
     },
     {
-      "id": "cgis/cli.py:edge_13214_13276",
+      "id": "cgis/cli.py:edge_15573_15635",
       "source": "cgis.cli.validate",
       "target": "rich.table.Table.add_column",
       "type": "CALLS",
@@ -7710,10 +7869,10 @@
       "confidence": 1.0,
       "context": "Call to top_table.add_column",
       "file_path": "cgis/cli.py",
-      "line_number": 380
+      "line_number": 457
     },
     {
-      "id": "cgis/cli.py:edge_13347_13383",
+      "id": "cgis/cli.py:edge_15706_15742",
       "source": "cgis.cli.validate",
       "target": "target.removeprefix",
       "type": "CALLS",
@@ -7721,10 +7880,10 @@
       "confidence": 0.8,
       "context": "Call to target.removeprefix",
       "file_path": "cgis/cli.py",
-      "line_number": 382
+      "line_number": 459
     },
     {
-      "id": "cgis/cli.py:edge_13396_13431",
+      "id": "cgis/cli.py:edge_15755_15790",
       "source": "cgis.cli.validate",
       "target": "rich.table.Table.add_row",
       "type": "CALLS",
@@ -7732,10 +7891,10 @@
       "confidence": 1.0,
       "context": "Call to top_table.add_row",
       "file_path": "cgis/cli.py",
-      "line_number": 383
+      "line_number": 460
     },
     {
-      "id": "cgis/cli.py:edge_13420_13430",
+      "id": "cgis/cli.py:edge_15779_15789",
       "source": "cgis.cli.validate",
       "target": "str",
       "type": "CALLS",
@@ -7743,10 +7902,10 @@
       "confidence": 0.8,
       "context": "Call to str",
       "file_path": "cgis/cli.py",
-      "line_number": 383
+      "line_number": 460
     },
     {
-      "id": "cgis/cli.py:edge_13440_13464",
+      "id": "cgis/cli.py:edge_15799_15823",
       "source": "cgis.cli.validate",
       "target": "console.print",
       "type": "CALLS",
@@ -7754,10 +7913,10 @@
       "confidence": 0.8,
       "context": "Call to console.print",
       "file_path": "cgis/cli.py",
-      "line_number": 384
+      "line_number": 461
     },
     {
-      "id": "cgis/cli.py:edge_13553_13713",
+      "id": "cgis/cli.py:edge_15912_16072",
       "source": "cgis.cli.validate",
       "target": "console.print",
       "type": "CALLS",
@@ -7765,10 +7924,10 @@
       "confidence": 0.8,
       "context": "Call to console.print",
       "file_path": "cgis/cli.py",
-      "line_number": 388
+      "line_number": 465
     },
     {
-      "id": "cgis/cli.py:edge_13728_13746",
+      "id": "cgis/cli.py:edge_16087_16105",
       "source": "cgis.cli.validate",
       "target": "typer.Exit",
       "type": "CALLS",
@@ -7776,10 +7935,10 @@
       "confidence": 1.0,
       "context": "Call to typer.Exit",
       "file_path": "cgis/cli.py",
-      "line_number": 392
+      "line_number": 469
     },
     {
-      "id": "cgis/cli.py:edge_13830_14007",
+      "id": "cgis/cli.py:edge_16189_16366",
       "source": "cgis.cli.validate",
       "target": "console.print",
       "type": "CALLS",
@@ -7787,7 +7946,7 @@
       "confidence": 0.8,
       "context": "Call to console.print",
       "file_path": "cgis/cli.py",
-      "line_number": 395
+      "line_number": 472
     },
     {
       "id": "cgis.cli.structure:decorator:0:app.command",
@@ -7812,7 +7971,7 @@
       "line_number": null
     },
     {
-      "id": "cgis/cli.py:edge_14058_14133",
+      "id": "cgis/cli.py:edge_16417_16492",
       "source": "cgis.cli.structure",
       "target": "typer.Argument",
       "type": "CALLS",
@@ -7820,10 +7979,10 @@
       "confidence": 1.0,
       "context": "Call to typer.Argument",
       "file_path": "cgis/cli.py",
-      "line_number": 403
+      "line_number": 480
     },
     {
-      "id": "cgis/cli.py:edge_14149_14211",
+      "id": "cgis/cli.py:edge_16508_16570",
       "source": "cgis.cli.structure",
       "target": "typer.Option",
       "type": "CALLS",
@@ -7831,10 +7990,10 @@
       "confidence": 1.0,
       "context": "Call to typer.Option",
       "file_path": "cgis/cli.py",
-      "line_number": 404
+      "line_number": 481
     },
     {
-      "id": "cgis/cli.py:edge_14230_14274",
+      "id": "cgis/cli.py:edge_16589_16633",
       "source": "cgis.cli.structure",
       "target": "typer.Option",
       "type": "CALLS",
@@ -7842,10 +8001,10 @@
       "confidence": 1.0,
       "context": "Call to typer.Option",
       "file_path": "cgis/cli.py",
-      "line_number": 405
+      "line_number": 482
     },
     {
-      "id": "cgis/cli.py:edge_14310_14392",
+      "id": "cgis/cli.py:edge_16669_16751",
       "source": "cgis.cli.structure",
       "target": "typer.Option",
       "type": "CALLS",
@@ -7853,10 +8012,10 @@
       "confidence": 1.0,
       "context": "Call to typer.Option",
       "file_path": "cgis/cli.py",
-      "line_number": 406
+      "line_number": 483
     },
     {
-      "id": "cgis/cli.py:edge_14650_14658",
+      "id": "cgis/cli.py:edge_17009_17017",
       "source": "cgis.cli.structure",
       "target": "pathlib.Path",
       "type": "CALLS",
@@ -7864,10 +8023,10 @@
       "confidence": 1.0,
       "context": "Call to Path",
       "file_path": "cgis/cli.py",
-      "line_number": 416
+      "line_number": 493
     },
     {
-      "id": "cgis/cli.py:edge_14670_14684",
+      "id": "cgis/cli.py:edge_17029_17043",
       "source": "cgis.cli.structure",
       "target": "pathlib.Path.is_file",
       "type": "CALLS",
@@ -7875,10 +8034,10 @@
       "confidence": 1.0,
       "context": "Call to path.is_file",
       "file_path": "cgis/cli.py",
-      "line_number": 417
+      "line_number": 494
     },
     {
-      "id": "cgis/cli.py:edge_14694_14782",
+      "id": "cgis/cli.py:edge_17053_17141",
       "source": "cgis.cli.structure",
       "target": "console.print",
       "type": "CALLS",
@@ -7886,10 +8045,10 @@
       "confidence": 0.8,
       "context": "Call to console.print",
       "file_path": "cgis/cli.py",
-      "line_number": 418
+      "line_number": 495
     },
     {
-      "id": "cgis/cli.py:edge_14797_14815",
+      "id": "cgis/cli.py:edge_17156_17174",
       "source": "cgis.cli.structure",
       "target": "typer.Exit",
       "type": "CALLS",
@@ -7897,10 +8056,10 @@
       "confidence": 1.0,
       "context": "Call to typer.Exit",
       "file_path": "cgis/cli.py",
-      "line_number": 419
+      "line_number": 496
     },
     {
-      "id": "cgis/cli.py:edge_14893_14915",
+      "id": "cgis/cli.py:edge_17252_17274",
       "source": "cgis.cli.structure",
       "target": "cgis.extractors.python_extractor.file_path_to_module_fqn.endswith",
       "type": "CALLS",
@@ -7908,10 +8067,10 @@
       "confidence": 1.0,
       "context": "Call to target.endswith",
       "file_path": "cgis/cli.py",
-      "line_number": 422
+      "line_number": 499
     },
     {
-      "id": "cgis/cli.py:edge_14938_14982",
+      "id": "cgis/cli.py:edge_17297_17341",
       "source": "cgis.cli.structure",
       "target": "cgis.extractors.python_extractor.file_path_to_module_fqn.replace.removeprefix",
       "type": "CALLS",
@@ -7919,10 +8078,10 @@
       "confidence": 1.0,
       "context": "Call to target.replace.removeprefix",
       "file_path": "cgis/cli.py",
-      "line_number": 423
+      "line_number": 500
     },
     {
-      "id": "cgis/cli.py:edge_14938_14963",
+      "id": "cgis/cli.py:edge_17297_17322",
       "source": "cgis.cli.structure",
       "target": "cgis.extractors.python_extractor.file_path_to_module_fqn.replace",
       "type": "CALLS",
@@ -7930,10 +8089,10 @@
       "confidence": 1.0,
       "context": "Call to target.replace",
       "file_path": "cgis/cli.py",
-      "line_number": 423
+      "line_number": 500
     },
     {
-      "id": "cgis/cli.py:edge_15000_15035",
+      "id": "cgis/cli.py:edge_17359_17394",
       "source": "cgis.cli.structure",
       "target": "cgis.extractors.python_extractor.file_path_to_module_fqn",
       "type": "CALLS",
@@ -7941,10 +8100,10 @@
       "confidence": 1.0,
       "context": "Call to file_path_to_module_fqn",
       "file_path": "cgis/cli.py",
-      "line_number": 424
+      "line_number": 501
     },
     {
-      "id": "cgis/cli.py:edge_15044_15090",
+      "id": "cgis/cli.py:edge_17403_17449",
       "source": "cgis.cli.structure",
       "target": "console.print",
       "type": "CALLS",
@@ -7952,10 +8111,10 @@
       "confidence": 0.8,
       "context": "Call to console.print",
       "file_path": "cgis/cli.py",
-      "line_number": 425
+      "line_number": 502
     },
     {
-      "id": "cgis/cli.py:edge_15101_15116",
+      "id": "cgis/cli.py:edge_17460_17475",
       "source": "cgis.cli.structure",
       "target": "cgis.storage.sqlite_store.SQLiteStore",
       "type": "CALLS",
@@ -7963,10 +8122,10 @@
       "confidence": 1.0,
       "context": "Call to SQLiteStore",
       "file_path": "cgis/cli.py",
-      "line_number": 427
+      "line_number": 504
     },
     {
-      "id": "cgis/cli.py:edge_15149_15171",
+      "id": "cgis/cli.py:edge_17508_17530",
       "source": "cgis.cli.structure",
       "target": "store.get_node",
       "type": "CALLS",
@@ -7974,10 +8133,10 @@
       "confidence": 0.8,
       "context": "Call to store.get_node",
       "file_path": "cgis/cli.py",
-      "line_number": 428
+      "line_number": 505
     },
     {
-      "id": "cgis/cli.py:edge_15212_15288",
+      "id": "cgis/cli.py:edge_17571_17647",
       "source": "cgis.cli.structure",
       "target": "console.print",
       "type": "CALLS",
@@ -7985,10 +8144,10 @@
       "confidence": 0.8,
       "context": "Call to console.print",
       "file_path": "cgis/cli.py",
-      "line_number": 430
+      "line_number": 507
     },
     {
-      "id": "cgis/cli.py:edge_15307_15325",
+      "id": "cgis/cli.py:edge_17666_17684",
       "source": "cgis.cli.structure",
       "target": "typer.Exit",
       "type": "CALLS",
@@ -7996,10 +8155,10 @@
       "confidence": 1.0,
       "context": "Call to typer.Exit",
       "file_path": "cgis/cli.py",
-      "line_number": 431
+      "line_number": 508
     },
     {
-      "id": "cgis/cli.py:edge_15350_15414",
+      "id": "cgis/cli.py:edge_17709_17773",
       "source": "cgis.cli.structure",
       "target": "cgis.query.engine.QueryEngine.get_structural_graph",
       "type": "CALLS",
@@ -8007,10 +8166,10 @@
       "confidence": 1.0,
       "context": "Call to QueryEngine.get_structural_graph",
       "file_path": "cgis/cli.py",
-      "line_number": 433
+      "line_number": 510
     },
     {
-      "id": "cgis/cli.py:edge_15350_15368",
+      "id": "cgis/cli.py:edge_17709_17727",
       "source": "cgis.cli.structure",
       "target": "cgis.query.engine.QueryEngine",
       "type": "CALLS",
@@ -8018,10 +8177,10 @@
       "confidence": 1.0,
       "context": "Call to QueryEngine",
       "file_path": "cgis/cli.py",
-      "line_number": 433
+      "line_number": 510
     },
     {
-      "id": "cgis/cli.py:edge_15470_15521",
+      "id": "cgis/cli.py:edge_17829_17880",
       "source": "cgis.cli.structure",
       "target": "typer.echo",
       "type": "CALLS",
@@ -8029,10 +8188,10 @@
       "confidence": 1.0,
       "context": "Call to typer.echo",
       "file_path": "cgis/cli.py",
-      "line_number": 436
+      "line_number": 513
     },
     {
-      "id": "cgis/cli.py:edge_15481_15520",
+      "id": "cgis/cli.py:edge_17840_17879",
       "source": "cgis.cli.structure",
       "target": "cgis.query.mermaid.MermaidCompiler.compile",
       "type": "CALLS",
@@ -8040,10 +8199,10 @@
       "confidence": 1.0,
       "context": "Call to MermaidCompiler.compile",
       "file_path": "cgis/cli.py",
-      "line_number": 436
+      "line_number": 513
     },
     {
-      "id": "cgis/cli.py:edge_15481_15498",
+      "id": "cgis/cli.py:edge_17840_17857",
       "source": "cgis.cli.structure",
       "target": "cgis.query.mermaid.MermaidCompiler",
       "type": "CALLS",
@@ -8051,10 +8210,10 @@
       "confidence": 1.0,
       "context": "Call to MermaidCompiler",
       "file_path": "cgis/cli.py",
-      "line_number": 436
+      "line_number": 513
     },
     {
-      "id": "cgis/cli.py:edge_15542_15612",
+      "id": "cgis/cli.py:edge_17901_17971",
       "source": "cgis.cli.structure",
       "target": "console.print",
       "type": "CALLS",
@@ -8062,10 +8221,10 @@
       "confidence": 0.8,
       "context": "Call to console.print",
       "file_path": "cgis/cli.py",
-      "line_number": 439
+      "line_number": 516
     },
     {
-      "id": "cgis/cli.py:edge_15742_15758",
+      "id": "cgis/cli.py:edge_18101_18117",
       "source": "cgis.cli.structure",
       "target": "rich.tree.Tree",
       "type": "CALLS",
@@ -8073,10 +8232,10 @@
       "confidence": 1.0,
       "context": "Call to Tree",
       "file_path": "cgis/cli.py",
-      "line_number": 443
+      "line_number": 520
     },
     {
-      "id": "cgis/cli.py:edge_15875_15935",
+      "id": "cgis/cli.py:edge_18234_18294",
       "source": "cgis.cli.structure",
       "target": "children_map.setdefault.append",
       "type": "CALLS",
@@ -8084,10 +8243,10 @@
       "confidence": 0.8,
       "context": "Call to children_map.setdefault.append",
       "file_path": "cgis/cli.py",
-      "line_number": 447
+      "line_number": 524
     },
     {
-      "id": "cgis/cli.py:edge_15875_15915",
+      "id": "cgis/cli.py:edge_18234_18274",
       "source": "cgis.cli.structure",
       "target": "children_map.setdefault",
       "type": "CALLS",
@@ -8095,10 +8254,10 @@
       "confidence": 0.8,
       "context": "Call to children_map.setdefault",
       "file_path": "cgis/cli.py",
-      "line_number": 447
+      "line_number": 524
     },
     {
-      "id": "cgis/cli.py:edge_15940_16018",
+      "id": "cgis/cli.py:edge_18299_18377",
       "source": "cgis.cli.structure",
       "target": "cgis.cli._build_structure_tree",
       "type": "CALLS",
@@ -8106,10 +8265,10 @@
       "confidence": 1.0,
       "context": "Call to _build_structure_tree",
       "file_path": "cgis/cli.py",
-      "line_number": 448
+      "line_number": 525
     },
     {
-      "id": "cgis/cli.py:edge_16023_16042",
+      "id": "cgis/cli.py:edge_18382_18401",
       "source": "cgis.cli.structure",
       "target": "console.print",
       "type": "CALLS",
@@ -8117,7 +8276,7 @@
       "confidence": 0.8,
       "context": "Call to console.print",
       "file_path": "cgis/cli.py",
-      "line_number": 449
+      "line_number": 526
     },
     {
       "id": "cgis.cli:structural:cgis.cli._build_structure_tree",
@@ -8131,7 +8290,7 @@
       "line_number": null
     },
     {
-      "id": "cgis/cli.py:edge_16391_16521",
+      "id": "cgis/cli.py:edge_18750_18880",
       "source": "cgis.cli._build_structure_tree",
       "target": "sorted",
       "type": "CALLS",
@@ -8139,10 +8298,10 @@
       "confidence": 0.8,
       "context": "Call to sorted",
       "file_path": "cgis/cli.py",
-      "line_number": 463
+      "line_number": 540
     },
     {
-      "id": "cgis/cli.py:edge_16407_16436",
+      "id": "cgis/cli.py:edge_18766_18795",
       "source": "cgis.cli._build_structure_tree",
       "target": "cgis.cli.dict.get",
       "type": "CALLS",
@@ -8150,10 +8309,10 @@
       "confidence": 1.0,
       "context": "Call to children_map.get",
       "file_path": "cgis/cli.py",
-      "line_number": 464
+      "line_number": 541
     },
     {
-      "id": "cgis/cli.py:edge_16544_16567",
+      "id": "cgis/cli.py:edge_18903_18926",
       "source": "cgis.cli._build_structure_tree",
       "target": "cgis.cli.dict.get",
       "type": "CALLS",
@@ -8161,10 +8320,10 @@
       "confidence": 1.0,
       "context": "Call to nodes_map.get",
       "file_path": "cgis/cli.py",
-      "line_number": 467
+      "line_number": 544
     },
     {
-      "id": "cgis/cli.py:edge_16740_16757",
+      "id": "cgis/cli.py:edge_19099_19116",
       "source": "cgis.cli._build_structure_tree",
       "target": "rich.tree.Tree.add",
       "type": "CALLS",
@@ -8172,10 +8331,10 @@
       "confidence": 1.0,
       "context": "Call to branch.add",
       "file_path": "cgis/cli.py",
-      "line_number": 471
+      "line_number": 548
     },
     {
-      "id": "cgis/cli.py:edge_16766_16888",
+      "id": "cgis/cli.py:edge_19125_19247",
       "source": "cgis.cli._build_structure_tree",
       "target": "cgis.cli._build_structure_tree",
       "type": "CALLS",
@@ -8183,7 +8342,7 @@
       "confidence": 1.0,
       "context": "Call to _build_structure_tree",
       "file_path": "cgis/cli.py",
-      "line_number": 472
+      "line_number": 549
     },
     {
       "id": "cgis.pipeline:imports:hashlib",
@@ -14577,6 +14736,127 @@
       "line_number": null
     },
     {
+      "id": "cgis.query.engine:structural:cgis.query.engine._reachable_from",
+      "source": "cgis.query.engine",
+      "target": "cgis.query.engine._reachable_from",
+      "type": "CONTAINS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "cgis/query/engine.py",
+      "line_number": null
+    },
+    {
+      "id": "cgis/query/engine.py:edge_669_687",
+      "source": "cgis.query.engine._reachable_from",
+      "target": "get_neighbor_id",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.8,
+      "context": "Call to get_neighbor_id",
+      "file_path": "cgis/query/engine.py",
+      "line_number": 22
+    },
+    {
+      "id": "cgis/query/engine.py:edge_752_787",
+      "source": "cgis.query.engine._reachable_from",
+      "target": "adj.setdefault.append",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.8,
+      "context": "Call to adj.setdefault.append",
+      "file_path": "cgis/query/engine.py",
+      "line_number": 24
+    },
+    {
+      "id": "cgis/query/engine.py:edge_752_775",
+      "source": "cgis.query.engine._reachable_from",
+      "target": "adj.setdefault",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.8,
+      "context": "Call to adj.setdefault",
+      "file_path": "cgis/query/engine.py",
+      "line_number": 24
+    },
+    {
+      "id": "cgis/query/engine.py:edge_891_902",
+      "source": "cgis.query.engine._reachable_from",
+      "target": "queue.pop",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.8,
+      "context": "Call to queue.pop",
+      "file_path": "cgis/query/engine.py",
+      "line_number": 28
+    },
+    {
+      "id": "cgis/query/engine.py:edge_922_939",
+      "source": "cgis.query.engine._reachable_from",
+      "target": "adj.get",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.8,
+      "context": "Call to adj.get",
+      "file_path": "cgis/query/engine.py",
+      "line_number": 29
+    },
+    {
+      "id": "cgis/query/engine.py:edge_994_1012",
+      "source": "cgis.query.engine._reachable_from",
+      "target": "reachable.add",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.8,
+      "context": "Call to reachable.add",
+      "file_path": "cgis/query/engine.py",
+      "line_number": 31
+    },
+    {
+      "id": "cgis/query/engine.py:edge_1029_1046",
+      "source": "cgis.query.engine._reachable_from",
+      "target": "queue.append",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 0.8,
+      "context": "Call to queue.append",
+      "file_path": "cgis/query/engine.py",
+      "line_number": 32
+    },
+    {
+      "id": "cgis.query.engine:structural:cgis.query.engine._prune_external",
+      "source": "cgis.query.engine",
+      "target": "cgis.query.engine._prune_external",
+      "type": "CONTAINS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "cgis/query/engine.py",
+      "line_number": null
+    },
+    {
+      "id": "cgis/query/engine.py:edge_1531_1553",
+      "source": "cgis.query.engine._prune_external",
+      "target": "cgis.query.engine.dict.values",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": "Call to visited_edges.values",
+      "file_path": "cgis/query/engine.py",
+      "line_number": 46
+    },
+    {
+      "id": "cgis/query/engine.py:edge_1633_1691",
+      "source": "cgis.query.engine._prune_external",
+      "target": "cgis.query.engine._reachable_from",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": "Call to _reachable_from",
+      "file_path": "cgis/query/engine.py",
+      "line_number": 48
+    },
+    {
       "id": "cgis.query.engine:structural:cgis.query.engine.QueryEngine",
       "source": "cgis.query.engine",
       "target": "cgis.query.engine.QueryEngine",
@@ -14610,7 +14890,7 @@
       "line_number": null
     },
     {
-      "id": "cgis/query/engine.py:edge_692_853",
+      "id": "cgis/query/engine.py:edge_2475_2728",
       "source": "cgis.query.engine.QueryEngine.get_impact_graph",
       "target": "cgis.query.engine.QueryEngine._bfs_traverse",
       "type": "CALLS",
@@ -14618,7 +14898,7 @@
       "confidence": 1.0,
       "context": "Call to self._bfs_traverse",
       "file_path": "cgis/query/engine.py",
-      "line_number": 25
+      "line_number": 73
     },
     {
       "id": "cgis.query.engine.QueryEngine:structural:cgis.query.engine.QueryEngine.get_flow_graph",
@@ -14632,7 +14912,7 @@
       "line_number": null
     },
     {
-      "id": "cgis/query/engine.py:edge_1128_1288",
+      "id": "cgis/query/engine.py:edge_3119_3371",
       "source": "cgis.query.engine.QueryEngine.get_flow_graph",
       "target": "cgis.query.engine.QueryEngine._bfs_traverse",
       "type": "CALLS",
@@ -14640,7 +14920,7 @@
       "confidence": 1.0,
       "context": "Call to self._bfs_traverse",
       "file_path": "cgis/query/engine.py",
-      "line_number": 39
+      "line_number": 93
     },
     {
       "id": "cgis.query.engine.QueryEngine:structural:cgis.query.engine.QueryEngine.get_structural_graph",
@@ -14654,7 +14934,7 @@
       "line_number": null
     },
     {
-      "id": "cgis/query/engine.py:edge_1666_1722",
+      "id": "cgis/query/engine.py:edge_3749_3805",
       "source": "cgis.query.engine.QueryEngine.get_structural_graph",
       "target": "self.store.get_structural_subgraph",
       "type": "CALLS",
@@ -14662,7 +14942,7 @@
       "confidence": 0.8,
       "context": "Call to self.store.get_structural_subgraph",
       "file_path": "cgis/query/engine.py",
-      "line_number": 54
+      "line_number": 110
     },
     {
       "id": "cgis.query.engine.QueryEngine:structural:cgis.query.engine.QueryEngine._bfs_traverse",
@@ -14676,7 +14956,7 @@
       "line_number": null
     },
     {
-      "id": "cgis/query/engine.py:edge_2352_2385",
+      "id": "cgis/query/engine.py:edge_4534_4567",
       "source": "cgis.query.engine.QueryEngine._bfs_traverse",
       "target": "get_edges_batch",
       "type": "CALLS",
@@ -14684,10 +14964,10 @@
       "confidence": 0.8,
       "context": "Call to get_edges_batch",
       "file_path": "cgis/query/engine.py",
-      "line_number": 73
+      "line_number": 131
     },
     {
-      "id": "cgis/query/engine.py:edge_2535_2556",
+      "id": "cgis/query/engine.py:edge_4837_4858",
       "source": "cgis.query.engine.QueryEngine._bfs_traverse",
       "target": "get_neighbor_id",
       "type": "CALLS",
@@ -14695,10 +14975,10 @@
       "confidence": 0.8,
       "context": "Call to get_neighbor_id",
       "file_path": "cgis/query/engine.py",
-      "line_number": 77
+      "line_number": 137
     },
     {
-      "id": "cgis/query/engine.py:edge_2631_2662",
+      "id": "cgis/query/engine.py:edge_4933_4964",
       "source": "cgis.query.engine.QueryEngine._bfs_traverse",
       "target": "discovered_ids.add",
       "type": "CALLS",
@@ -14706,10 +14986,10 @@
       "confidence": 0.8,
       "context": "Call to discovered_ids.add",
       "file_path": "cgis/query/engine.py",
-      "line_number": 79
+      "line_number": 139
     },
     {
-      "id": "cgis/query/engine.py:edge_2683_2716",
+      "id": "cgis/query/engine.py:edge_4985_5018",
       "source": "cgis.query.engine.QueryEngine._bfs_traverse",
       "target": "next_frontier.append",
       "type": "CALLS",
@@ -14717,10 +14997,10 @@
       "confidence": 0.8,
       "context": "Call to next_frontier.append",
       "file_path": "cgis/query/engine.py",
-      "line_number": 80
+      "line_number": 140
     },
     {
-      "id": "cgis/query/engine.py:edge_2802_2844",
+      "id": "cgis/query/engine.py:edge_5104_5146",
       "source": "cgis.query.engine.QueryEngine._bfs_traverse",
       "target": "self.store.get_nodes",
       "type": "CALLS",
@@ -14728,10 +15008,10 @@
       "confidence": 0.8,
       "context": "Call to self.store.get_nodes",
       "file_path": "cgis/query/engine.py",
-      "line_number": 84
+      "line_number": 144
     },
     {
-      "id": "cgis/query/engine.py:edge_2823_2843",
+      "id": "cgis/query/engine.py:edge_5125_5145",
       "source": "cgis.query.engine.QueryEngine._bfs_traverse",
       "target": "list",
       "type": "CALLS",
@@ -14739,10 +15019,21 @@
       "confidence": 0.8,
       "context": "Call to list",
       "file_path": "cgis/query/engine.py",
-      "line_number": 84
+      "line_number": 144
     },
     {
-      "id": "cgis/query/engine.py:edge_2867_2895",
+      "id": "cgis/query/engine.py:edge_5197_5261",
+      "source": "cgis.query.engine.QueryEngine._bfs_traverse",
+      "target": "cgis.query.engine._prune_external",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": "Call to _prune_external",
+      "file_path": "cgis/query/engine.py",
+      "line_number": 147
+    },
+    {
+      "id": "cgis/query/engine.py:edge_5285_5313",
       "source": "cgis.query.engine.QueryEngine._bfs_traverse",
       "target": "list",
       "type": "CALLS",
@@ -14750,10 +15041,10 @@
       "confidence": 0.8,
       "context": "Call to list",
       "file_path": "cgis/query/engine.py",
-      "line_number": 85
+      "line_number": 149
     },
     {
-      "id": "cgis/query/engine.py:edge_2872_2894",
+      "id": "cgis/query/engine.py:edge_5290_5312",
       "source": "cgis.query.engine.QueryEngine._bfs_traverse",
       "target": "visited_edges.values",
       "type": "CALLS",
@@ -14761,7 +15052,7 @@
       "confidence": 0.8,
       "context": "Call to visited_edges.values",
       "file_path": "cgis/query/engine.py",
-      "line_number": 85
+      "line_number": 149
     },
     {
       "id": "cgis.query.mermaid:imports:hashlib",
