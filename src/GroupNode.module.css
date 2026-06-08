@@ -1,0 +1,18 @@
+.group-node {
+  background: rgba(30, 40, 55, 0.6);
+  border: 2px dashed var(--color-text-muted);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-md);
+  pointer-events: none;
+}
+
+.group-node-label {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: var(--spacing-sm);
+  padding-bottom: var(--spacing-xs);
+  border-bottom: 1px solid var(--color-border);
+}

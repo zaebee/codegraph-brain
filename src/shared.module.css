@@ -1,0 +1,51 @@
+.btn {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--font-size-md);
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.btn:hover {
+  background: var(--color-border);
+  border-color: var(--color-border-hover);
+}
+
+.btn:active {
+  background: var(--color-bg-elevated);
+}
+
+.btn.active {
+  background: var(--color-border-focus);
+  border-color: var(--color-border-focus);
+  color: white;
+}
+
+.btn-icon {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--font-size-xl);
+  line-height: 1;
+  min-width: auto;
+}
+
+.btn-toggle {
+  font-size: var(--font-size-sm);
+  padding: 8px 10px;
+}
+
+.btn-preset {
+  font-size: var(--font-size-md);
+  padding: var(--spacing-sm) 10px;
+}
+
+.btn-back {
+  font-size: var(--font-size-sm);
+}
+
+.btn-export {
+  font-size: var(--font-size-md);
+}
