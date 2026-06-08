@@ -27,10 +27,10 @@ class MistralProvider(BaseProvider):
                 ],
             )
         if not response.choices:
-            _msg = "Mistral returned an empty response"
+            _msg = f"Mistral returned no choices for model {self._model_name}"
             raise ValueError(_msg)
         content = response.choices[0].message.content
         if content is None:
-            _msg = "Mistral returned a null message content"
+            _msg = f"Mistral returned null message content for model {self._model_name}"
             raise ValueError(_msg)
         return str(content)
