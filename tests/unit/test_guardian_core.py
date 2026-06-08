@@ -215,7 +215,11 @@ async def test_gemini_provider_import_error() -> None:
 
 
 def _mistral_modules(mock_instance: MagicMock) -> dict[str, MagicMock]:
-    """Patch dict: makes `from mistralai.client import Mistral` return mock_instance."""
+    """Build sys.modules entries so `from mistralai.client import Mistral` returns mock_instance.
+
+    mistralai is in the guardian dep-group, not dev — it's absent in CI test runs.
+    We inject a fake module tree instead of installing the real package.
+    """
     mock_client_mod = MagicMock()
     mock_client_mod.Mistral = MagicMock(return_value=mock_instance)
     mock_top = MagicMock()
@@ -256,7 +260,7 @@ async def test_mistral_provider_empty_choices() -> None:
     provider = MistralProvider(api_key="fake")
     with (
         patch.dict("sys.modules", _mistral_modules(inst)),
-        pytest.raises(ValueError, match="empty response"),
+        pytest.raises(ValueError, match="no choices"),
     ):
         await provider.generate_content("sys", "user")
 
@@ -272,6 +276,6 @@ async def test_mistral_provider_null_content() -> None:
     provider = MistralProvider(api_key="fake")
     with (
         patch.dict("sys.modules", _mistral_modules(inst)),
-        pytest.raises(ValueError, match="null message"),
+        pytest.raises(ValueError, match="null message content"),
     ):
         await provider.generate_content("sys", "user")
