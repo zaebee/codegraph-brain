@@ -8,8 +8,6 @@ Four invariants are enforced:
 """
 
 from cgis.core.models import Edge, EdgeType, Node
-from cgis.core.models import Edge as EdgeModel
-from cgis.core.models import Node as NodeModel
 from cgis.storage.sqlite_store import SQLiteStore
 
 # ---------------------------------------------------------------------------
@@ -98,9 +96,9 @@ def test_storage_does_not_import_api(
 
 def test_domain_models_are_frozen() -> None:
     """Node and Edge must declare frozen=True — graph nodes are immutable once created."""
-    assert NodeModel.model_config.get("frozen") is True, (
+    assert Node.model_config.get("frozen") is True, (
         "ARCHITECTURAL VIOLATION — Node.model_config missing frozen=True"
     )
-    assert EdgeModel.model_config.get("frozen") is True, (
+    assert Edge.model_config.get("frozen") is True, (
         "ARCHITECTURAL VIOLATION — Edge.model_config missing frozen=True"
     )
