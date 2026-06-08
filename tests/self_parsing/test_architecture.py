@@ -14,13 +14,7 @@ from cgis.storage.sqlite_store import SQLiteStore
 # Invariant 1 — Pure Domain Isolation
 # ---------------------------------------------------------------------------
 
-_FORBIDDEN_FROM_CORE = (
-    "extractors",
-    "storage",
-    "query",
-    "api",
-    "resolver",
-)
+_FORBIDDEN_FROM_CORE = frozenset({"extractors", "storage", "query", "api", "resolver"})
 
 
 def test_core_models_has_no_internal_dependencies(
@@ -33,7 +27,7 @@ def test_core_models_has_no_internal_dependencies(
         for e in edges
         if e.source == "core.models"
         and e.type == EdgeType.IMPORTS
-        and any(e.target.removeprefix("cgis.").startswith(pkg) for pkg in _FORBIDDEN_FROM_CORE)
+        and e.target.removeprefix("cgis.").split(".")[0] in _FORBIDDEN_FROM_CORE
     ]
     assert not violations, (
         "ARCHITECTURAL VIOLATION — 'core.models' imports forbidden subpackage(s):\n"
@@ -45,7 +39,7 @@ def test_core_models_has_no_internal_dependencies(
 # Invariant 2 — Extractor Boundary
 # ---------------------------------------------------------------------------
 
-_FORBIDDEN_FROM_EXTRACTORS = ("storage", "query", "api")
+_FORBIDDEN_FROM_EXTRACTORS = frozenset({"storage", "query", "api"})
 
 
 def test_extractors_are_database_blind(
@@ -58,9 +52,7 @@ def test_extractors_are_database_blind(
         for e in edges
         if e.source.split(".")[0] == "extractors"
         and e.type == EdgeType.IMPORTS
-        and any(
-            e.target.removeprefix("cgis.").startswith(pkg) for pkg in _FORBIDDEN_FROM_EXTRACTORS
-        )
+        and e.target.removeprefix("cgis.").split(".")[0] in _FORBIDDEN_FROM_EXTRACTORS
     ]
     assert not violations, (
         "ARCHITECTURAL VIOLATION — extractor(s) import forbidden layer(s):\n"
@@ -83,7 +75,7 @@ def test_storage_does_not_import_api(
         for e in edges
         if e.source.split(".")[0] == "storage"
         and e.type == EdgeType.IMPORTS
-        and e.target.removeprefix("cgis.").startswith("api")
+        and e.target.removeprefix("cgis.").split(".")[0] == "api"
     ]
     assert not violations, (
         "ARCHITECTURAL VIOLATION — storage layer imports api layer:\n"
