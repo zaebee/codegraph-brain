@@ -4,7 +4,7 @@ from cgis.guardian.providers.base import BaseProvider
 
 
 class GeminiProvider(BaseProvider):
-    """Google Gemini provider. Requires: uv sync --extra guardian"""
+    """Google Gemini provider. Requires: uv sync --group guardian"""
 
     def __init__(self, api_key: str, model_name: str = "gemini-2.0-flash") -> None:
         """Store credentials; google-generativeai is imported lazily at call time."""
@@ -13,7 +13,7 @@ class GeminiProvider(BaseProvider):
 
     async def generate_content(self, system_prompt: str, user_prompt: str) -> str:
         """Send prompts to Gemini and return the text response."""
-        _install_hint = "google-generativeai is required. Install with: uv sync --extra guardian"
+        _install_hint = "google-generativeai is required. Install with: uv sync --group guardian"
         try:
             import google.generativeai as genai  # noqa: PLC0415
         except ImportError as exc:
