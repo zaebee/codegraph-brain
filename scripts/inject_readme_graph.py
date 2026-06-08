@@ -11,7 +11,7 @@ import argparse
 import subprocess
 from pathlib import Path
 
-from cgis.core.models import NodeNamespace
+from cgis.core.models import VIRTUAL_FILE_PATH, NodeNamespace
 from cgis.query.engine import BEHAVIORAL_EDGE_TYPES, QueryEngine
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -41,7 +41,11 @@ def _node_table(db: str, fqn: str, depth: int, repo_url: str, path_prefix: str) 
             show_external=False,
         )
     internal = sorted(
-        [n for n in nodes if n.namespace == NodeNamespace.INTERNAL],
+        [
+            n
+            for n in nodes
+            if n.namespace == NodeNamespace.INTERNAL and n.file_path != VIRTUAL_FILE_PATH
+        ],
         key=lambda n: (n.file_path, n.start_line),
     )
     rows = [
