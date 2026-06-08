@@ -105,7 +105,7 @@ class QueryEngine:
         nodes = self.store.get_nodes(list(discovered_ids))
 
         if not show_external:
-            nodes = [n for n in nodes if n.namespace == NodeNamespace.INTERNAL]
+            nodes = [n for n in nodes if n.namespace == NodeNamespace.INTERNAL or n.id == start_id]
             internal_ids = {n.id for n in nodes}
             return nodes, [
                 e

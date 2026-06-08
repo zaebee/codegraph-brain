@@ -22,6 +22,17 @@ _DEFAULT_DB_HELP = "Path to the SQLite database"
 _DEPTH_HELP = "Maximum traversal depth"
 _FORMAT_HELP = "Output format: text or mermaid"
 
+_OPT_SHOW_STRUCTURE: bool = typer.Option(
+    False,
+    "--show-structure/--no-show-structure",
+    help="Include structural edges (CONTAINS, DECLARES) in output",
+)
+_OPT_SHOW_EXTERNAL: bool = typer.Option(
+    False,
+    "--show-external/--no-show-external",
+    help="Include stdlib and external nodes in output",
+)
+
 
 class OutputFormat(StrEnum):
     TEXT = "text"
@@ -168,7 +179,9 @@ def build_trace_tree(
         target_id = edge.target
         target_node = nodes_map.get(target_id)
 
-        if not show_external and target_node and target_node.namespace != NodeNamespace.INTERNAL:
+        if not show_external and (
+            target_node is None or target_node.namespace != NodeNamespace.INTERNAL
+        ):
             continue
 
         if target_node:
@@ -214,16 +227,8 @@ def trace(
     internal_only: bool = typer.Option(
         False, "--internal-only", help="Exclude stdlib and external nodes from output"
     ),
-    show_structure: bool = typer.Option(
-        False,
-        "--show-structure/--no-show-structure",
-        help="Include structural edges (CONTAINS, DECLARES) in output",
-    ),
-    show_external: bool = typer.Option(
-        False,
-        "--show-external/--no-show-external",
-        help="Include stdlib and external nodes in output",
-    ),
+    show_structure: bool = _OPT_SHOW_STRUCTURE,
+    show_external: bool = _OPT_SHOW_EXTERNAL,
 ) -> None:
     """
     Trace execution flow starting from a specific code entity downwards.
@@ -296,7 +301,9 @@ def build_impact_tree(
         source_id = edge.source
         source_node = nodes_map.get(source_id)
 
-        if not show_external and source_node and source_node.namespace != NodeNamespace.INTERNAL:
+        if not show_external and (
+            source_node is None or source_node.namespace != NodeNamespace.INTERNAL
+        ):
             continue
 
         if source_node:
@@ -342,16 +349,8 @@ def impact(
     internal_only: bool = typer.Option(
         False, "--internal-only", help="Exclude stdlib and external nodes from output"
     ),
-    show_structure: bool = typer.Option(
-        False,
-        "--show-structure/--no-show-structure",
-        help="Include structural edges (CONTAINS, DECLARES) in output",
-    ),
-    show_external: bool = typer.Option(
-        False,
-        "--show-external/--no-show-external",
-        help="Include stdlib and external nodes in output",
-    ),
+    show_structure: bool = _OPT_SHOW_STRUCTURE,
+    show_external: bool = _OPT_SHOW_EXTERNAL,
 ) -> None:
     """
     Analyze transitive upstream impact (callers) of changing a specific code entity.
