@@ -9,6 +9,8 @@ from tree_sitter import Node as BaseNode
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.extractors.base import BaseExtractor
 
+_ABC_NAMES: frozenset[str] = frozenset({"ABC", "ABCMeta"})
+
 
 def _resolve_relative_module(module_fqn: str, leading_dots: int, relative_path: str) -> str:
     """Resolve a relative import to an absolute FQN.
@@ -533,10 +535,7 @@ class PythonExtractor(BaseExtractor):
         metadata: dict[str, Any] = {}
         if decorators:
             metadata["decorators"] = decorators
-        is_abstract = any(n == "ABC" or n.endswith(".ABC") for n in superclass_names) or any(
-            d == "ABCMeta" or d.endswith(".ABCMeta") for d in (decorators or [])
-        )
-        if is_abstract:
+        if self._is_abstract_class(superclass_names, decorators):
             metadata["is_abstract"] = True
 
         nodes.append(
@@ -564,6 +563,12 @@ class PythonExtractor(BaseExtractor):
                 file_path=file_path,
             )
         )
+
+    @staticmethod
+    def _is_abstract_class(superclass_names: list[str], decorators: list[str] | None) -> bool:
+        """Return True if class should be marked abstract (ABC/ABCMeta in bases or decorators)."""
+        candidates = (*superclass_names, *(decorators or []))
+        return any(n in _ABC_NAMES or n.rpartition(".")[-1] in _ABC_NAMES for n in candidates)
 
     def _process_call_node(
         self, node: BaseNode, code_bytes: bytes, file_path: str, source_id: str, edges: list[Edge]
