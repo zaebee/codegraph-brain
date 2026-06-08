@@ -55,7 +55,7 @@ jobs:
         uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39  # v3
 
       - name: Install dependencies
-        run: uv sync --group guardian
+        run: uv sync --extra guardian
 
       - name: Run Guardian Review
         env:
