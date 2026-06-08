@@ -58,23 +58,12 @@ jobs:
         run: uv sync --extra guardian
 
       - name: Run Guardian Review
-        id: guardian
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: |
-          RESULT=$(uv run python scripts/guardian_review.py 2>/dev/null | tail -n +4)
-          echo "result<<EOF" >> $GITHUB_OUTPUT
-          echo "$RESULT" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+        run: uv run python scripts/guardian_review.py --output guardian_report.md
 
       - name: Post review as PR comment
         uses: peter-evans/create-or-update-comment@a111a2c3bacd7be7898ee22d0d71d9aec2bb972c  # v4
         with:
           issue-number: ${{ env.PR_NUMBER }}
-          body: |
-            ## 🛡️ Guardian Review
-
-            ${{ steps.guardian.outputs.result }}
-
-            ---
-            *Triggered by `@${{ github.event.comment.user.login }}` · [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*
+          body-path: guardian_report.md

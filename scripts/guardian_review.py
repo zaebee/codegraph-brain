@@ -1,3 +1,6 @@
+"""CLI entry point for running a Guardian AI code review."""
+
+import argparse
 import asyncio
 import os
 from pathlib import Path
@@ -12,6 +15,16 @@ log = structlog.getLogger(__name__)
 
 
 async def main() -> None:
+    """Run Guardian review and write the result to stdout or a file."""
+    parser = argparse.ArgumentParser(description="Run CGIS Guardian AI code review.")
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Write the review to this file instead of stdout.",
+    )
+    args = parser.parse_args()
+
     api_key = os.environ["GEMINI_API_KEY"]
     project_root = Path(__file__).parent.parent.absolute()
 
@@ -23,10 +36,11 @@ async def main() -> None:
     review_result = await reviewer.run_review()
     log.info("Review complete.")
 
-    print("\n" + "=" * 60)
-    print("GUARDIAN REVIEW RESULT")
-    print("=" * 60 + "\n")
-    print(review_result)
+    if args.output:
+        args.output.write_text(review_result)
+        log.info("Review written to file.", path=str(args.output))
+    else:
+        print(review_result)
 
 
 if __name__ == "__main__":

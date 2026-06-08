@@ -6,7 +6,7 @@ from cgis.guardian.providers.base import BaseProvider
 class GeminiProvider(BaseProvider):
     """Google Gemini provider. Requires: uv sync --extra guardian"""
 
-    def __init__(self, api_key: str, model_name: str = "gemini-1.5-pro") -> None:
+    def __init__(self, api_key: str, model_name: str = "gemini-2.0-flash") -> None:
         """Store credentials; google-generativeai is imported lazily at call time."""
         self._api_key = api_key
         self._model_name = model_name
