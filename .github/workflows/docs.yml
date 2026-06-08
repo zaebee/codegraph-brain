@@ -11,29 +11,42 @@ jobs:
   generate-docs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Astral 'uv'
+        uses: astral-sh/setup-uv@v3
         with:
-          python-version: '3.12'
-      - name: Install dependencies
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Install CGIS
         run: |
-          python -m pip install --upgrade pip
-          pip install uv
-          uv pip install .
-      - name: Ingest codebase
+          uv pip install -e .
+
+      - name: Ingest Codebase
         run: |
-          cgis ingest ./src --output graph.db
+          # Временная база данных живет только во время работы Runner'а
+          uv run cgis ingest ./src --output temp_graph.db
+
       - name: Generate Mermaid graph
-        id: graph
         run: |
-          cgis trace "src.cgis.pipeline.IngestionPipeline.run" --depth 2 > graph.mmd
-      - name: Update README
+          mkdir -p docs/architecture/diagrams
+          uv run cgis trace "src.cgis.pipeline.IngestionPipeline.run" --depth 2 -f mermaid > docs/architecture/diagrams/pipeline_flow.mermaid
+
+      - name: Inject Mermaid Graph into Root README
         run: |
-          perl -0777 -i -pe 's/<!-- START_CGIS_GRAPH -->.*?<!-- END_CGIS_GRAPH -->/<!-- START_CGIS_GRAPH -->\n```mermaid\n$(cat graph.mmd)\n```\n<!-- END_CGIS_GRAPH -->/s' docs/self-doc-portal/README.md
+          # Используем наш надежный и безопасный питоновский скрипт вместо хрупкого Perl
+          uv run python scripts/inject_readme_graph.py
+
       - name: Commit changes
         run: |
-          git config user.name "github-actions[n          git config user.email "github-actions@github.com"
-          git add docs/self-doc-portal/README.md graph.db
-          git commit -m "chore: update auto-generated docs"
-          git push
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add README.md docs/architecture/
+
+          if ! git diff-index --quiet HEAD; then
+            git commit -m "docs: auto-sync architecture diagrams [skip ci]"
+            git push origin main
+          fi

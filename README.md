@@ -81,6 +81,13 @@ CodeGraph Brain is composed of 4 layers:
 
 ---
 
+This documentation is **self‑generated** from the CodeGraph Intelligence System (CGIS). The graph of the codebase is automatically injected below.
+
+<!-- START_CGIS_GRAPH -->
+<!-- END_CGIS_GRAPH -->
+
+---
+
 ## 4. Core Idea
 
 We model code as:
