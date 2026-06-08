@@ -39,7 +39,7 @@ jobs:
           mkdir -p docs/architecture/diagrams
           uv run cgis trace "cgis.pipeline.IngestionPipeline.run" \
             --db /tmp/self_graph.db \
-            --depth 2 \
+            --depth 1 \
             --format mermaid \
             --internal-only \
             > docs/architecture/diagrams/pipeline_flow.mermaid
@@ -52,7 +52,7 @@ jobs:
           uv run python scripts/inject_readme_graph.py \
             --db /tmp/self_graph.db \
             --fqn "cgis.pipeline.IngestionPipeline.run" \
-            --depth 2 \
+            --depth 1 \
             --path-prefix "src/"
 
       - name: Generate MCP reference manual
