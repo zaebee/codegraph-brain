@@ -37,11 +37,13 @@ def test_core_models_has_no_internal_dependencies(
     violations = set()
     for e in edges:
         is_forbidden = _clean(e.target) in _FORBIDDEN_FROM_CORE
-        is_core_imports = e.source == "core.models" and e.type == EdgeType.IMPORTS
+        is_core_imports = (
+            e.source.removeprefix("cgis.") == "core.models" and e.type == EdgeType.IMPORTS
+        )
         if is_core_imports and (e.target == "cgis" or is_forbidden):
             violations.add(e.target)
 
-    core_file = next((n for n in nodes if n.id == "core.models"), None)
+    core_file = next((n for n in nodes if n.id.removeprefix("cgis.") == "core.models"), None)
     assert core_file is not None, _CORE_NOT_FOUND
     import_map = core_file.metadata.get("import_map") or {}
     for val in import_map.values():
@@ -64,12 +66,12 @@ def test_extractors_are_database_blind(
     violations = set()
     for e in edges:
         is_extractors_import = _clean(e.source) == "extractors" and e.type == EdgeType.IMPORTS
-        is_forbidden = e.target == "sgis" or _clean(e.target) in _FORBIDDEN_FROM_EXTRACTORS
+        is_forbidden = e.target == "cgis" or _clean(e.target) in _FORBIDDEN_FROM_EXTRACTORS
         if is_extractors_import and is_forbidden:
             violations.add(f"{e.source} -> {e.target}")
 
     for n in nodes:
-        if n.id.split(".")[0] == "extractors" and "import_map" in n.metadata:
+        if _clean(n.id) == "extractors" and "import_map" in n.metadata:
             import_map = n.metadata.get("import_map") or {}
             for val in import_map.values():
                 if val == "cgis" or _clean(val) in _FORBIDDEN_FROM_EXTRACTORS:
@@ -90,13 +92,13 @@ def test_storage_does_not_import_api(
     _, nodes, edges = graph_data
     violations = set()
     for e in edges:
-        is_storage_imports = e.source.split(".")[0] == "storage" and e.type == EdgeType.IMPORTS
+        is_storage_imports = _clean(e.source) == "storage" and e.type == EdgeType.IMPORTS
         is_forbidden = e.target == "cgis" or _clean(e.target) == "api"
         if is_storage_imports and is_forbidden:
             violations.add(f"{e.source} -> {e.target}")
 
     for n in nodes:
-        if n.id.split(".")[0] == "storage" and "import_map" in n.metadata:
+        if _clean(n.id) == "storage" and "import_map" in n.metadata:
             import_map = n.metadata.get("import_map") or {}
             for val in import_map.values():
                 if val == "cgis" or _clean(val) == "api":
