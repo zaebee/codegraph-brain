@@ -211,7 +211,7 @@ class IngestionPipeline:
         for stale_path in stale_files:
             logger.info("Removed stale file from graph", file_path=stale_path)
 
-    _TEST_FILE_PATTERN = re.compile(r"\.(test|spec)\.(py|ts|tsx|js|jsx)$")
+    _TEST_FILE_PATTERN = re.compile(r"\.(test|spec)\.(py|ts|tsx|js|jsx)$", re.IGNORECASE)
 
     def _get_extractor(self, filename: str) -> BaseExtractor | None:
         """Return the registered extractor for the given filename, or None."""

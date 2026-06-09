@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from cgis.core.models import Edge, Node
+from cgis.core.models import Edge, Node, NodeType
 from cgis.extractors.typescript_extractor import file_path_to_module_fqn
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -46,7 +46,7 @@ def test_ts_file_nodes_exist(ts_graph_data: tuple[SQLiteStore, list[Node], list[
     for rel in expected_files:
         fqn = _fqn(rel)
         assert store.get_node(fqn) is not None, f"Missing FILE node: {fqn}"
-        assert store.get_node(fqn).type == "FILE", f"{fqn} is not a FILE node"
+        assert store.get_node(fqn).type == NodeType.FILE, f"{fqn} is not a FILE node"
 
 
 @_skip_no_ui
@@ -95,12 +95,12 @@ def test_ts_contains_edge_exists(
     contains_edges = [e for e in resolved_edges if e.type == "CONTAINS"]
     assert len(contains_edges) > 0, "No CONTAINS edges found in the TS graph"
 
-    valid_child_types = {"FUNCTION", "METHOD", "CLASS"}
+    valid_child_types = {NodeType.FUNCTION, NodeType.METHOD, NodeType.CLASS}
     structural_contains = [
         e
         for e in contains_edges
         if (src := store.get_node(e.source)) is not None
-        and src.type == "FILE"
+        and src.type == NodeType.FILE
         and (tgt := store.get_node(e.target)) is not None
         and tgt.type in valid_child_types
     ]
