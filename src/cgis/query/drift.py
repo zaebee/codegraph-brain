@@ -63,7 +63,8 @@ class DriftScorer:
 
     def __init__(self, patterns_config: str) -> None:
         """Load and parse the patterns YAML file at patterns_config path."""
-        raw: dict[str, Any] = yaml.safe_load(Path(patterns_config).read_text()) or {}
+        content = yaml.safe_load(Path(patterns_config).read_text())
+        raw: dict[str, Any] = content if isinstance(content, dict) else {}
         self._weights: dict[str, float] = raw.get("drift_weights") or {}
         self._patterns: dict[str, dict[str, Any]] = raw.get("patterns") or {}
         self._project_domains: list[dict[str, Any]] = raw.get("project_domains") or []
@@ -86,6 +87,9 @@ class DriftScorer:
         if template is None:
             msg = f"Expected pattern '{domain.expected_pattern}' not found in patterns config."
             raise ValueError(msg)
+        if not isinstance(template, dict):
+            msg = f"Pattern '{domain.expected_pattern}' must be a mapping of constraints."
+            raise TypeError(msg)
         constraints = self._parse_constraints(template)
 
         if not constraints:

@@ -345,7 +345,8 @@ def generate_from_ontology(patterns_path: str) -> dict[str, Any]:
     if not path.is_file():
         msg = f"Patterns file not found: {patterns_path}"
         raise FileNotFoundError(msg)
-    raw: dict[str, Any] = yaml.safe_load(path.read_text()) or {}
+    content = yaml.safe_load(path.read_text())
+    raw: dict[str, Any] = content if isinstance(content, dict) else {}
     domains: list[dict[str, Any]] = raw.get("project_domains") or []
 
     all_nodes: list[GraphDict] = []

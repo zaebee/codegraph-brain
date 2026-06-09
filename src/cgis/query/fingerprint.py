@@ -34,49 +34,22 @@ def _in_domain(fqn: str, prefix: str) -> bool:
     return fqn == prefix or fqn.startswith(prefix + ".")
 
 
-def _avg_chain_length(domain_ids: set[str], internal_calls: list[Edge]) -> float:
-    """Average longest-path depth from each source node along CALLS edges within the domain."""
+def _root_depths(domain_ids: set[str], edges: list[Edge], edge_type: EdgeType) -> list[int]:
+    """Longest-path depth from each root node along edges of edge_type within the domain.
+
+    A root is a domain node with outgoing edges of the given type but no incoming ones.
+    Uses memoized DFS (cycle-safe); roots are sorted so results are deterministic.
+    """
     adj: dict[str, list[str]] = {}
     has_incoming: set[str] = set()
-    for e in internal_calls:
-        if e.type == EdgeType.CALLS:
-            adj.setdefault(e.source, []).append(e.target)
-            has_incoming.add(e.target)
-
-    sources = sorted(n for n in domain_ids if n not in has_incoming and n in adj)
-    if not sources:
-        return 0.0
-
-    memo: dict[str, int] = {}
-    visiting: set[str] = set()
-
-    def dfs(u: str) -> int:
-        if u in memo:
-            return memo[u]
-        if u in visiting:
-            return 0
-        visiting.add(u)
-        val = max((1 + dfs(v) for v in adj.get(u, [])), default=0)
-        visiting.remove(u)
-        memo[u] = val
-        return val
-
-    depths = [dfs(src) for src in sources]
-    return sum(depths) / len(depths)
-
-
-def _max_dag_depth(domain_ids: set[str], internal_edges: list[Edge]) -> int:
-    """Max longest-path depth along IMPORTS edges within the domain (from import-root nodes)."""
-    adj: dict[str, list[str]] = {}
-    has_incoming: set[str] = set()
-    for e in internal_edges:
-        if e.type == EdgeType.IMPORTS:
+    for e in edges:
+        if e.type == edge_type:
             adj.setdefault(e.source, []).append(e.target)
             has_incoming.add(e.target)
 
     roots = sorted(n for n in domain_ids if n not in has_incoming and n in adj)
     if not roots:
-        return 0
+        return []
 
     memo: dict[str, int] = {}
     visiting: set[str] = set()
@@ -92,7 +65,19 @@ def _max_dag_depth(domain_ids: set[str], internal_edges: list[Edge]) -> int:
         memo[u] = val
         return val
 
-    return max(dfs(root) for root in roots)
+    return [dfs(root) for root in roots]
+
+
+def _avg_chain_length(domain_ids: set[str], internal_calls: list[Edge]) -> float:
+    """Average longest-path depth from each source node along CALLS edges within the domain."""
+    depths = _root_depths(domain_ids, internal_calls, EdgeType.CALLS)
+    return sum(depths) / len(depths) if depths else 0.0
+
+
+def _max_dag_depth(domain_ids: set[str], internal_edges: list[Edge]) -> int:
+    """Max longest-path depth along IMPORTS edges within the domain (from import-root nodes)."""
+    depths = _root_depths(domain_ids, internal_edges, EdgeType.IMPORTS)
+    return max(depths) if depths else 0
 
 
 def _count_routers(domain_node_ids: set[str], all_edges: list[Edge]) -> int:
