@@ -16,7 +16,12 @@ export default defineConfig({
         ]
       : []),
   ],
-  server: { port: 3000, allowedHosts: ['monitoring.zae.life', 'codebrain.zae.life'] },
+  server: {
+    port: 3000,
+    allowedHosts: process.env.VITE_ALLOWED_HOSTS
+      ? process.env.VITE_ALLOWED_HOSTS.split(',')
+      : [],
+  },
   test: {
     globals: true,
     environment: 'jsdom',
