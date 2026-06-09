@@ -45,12 +45,14 @@ export class IslandLayoutEngine {
 
     this.crossEdges = []
     for (const edge of this.edges) {
+      const srcNode = nodeIndex.get(edge.source)
+      const tgtNode = nodeIndex.get(edge.target)
+      if (!srcNode || !tgtNode) continue
+
       const srcNs =
-        ((nodeIndex.get(edge.source)?.data as Record<string, unknown>)?.namespace as string) ||
-        '_default'
+        ((srcNode.data as Record<string, unknown>)?.namespace as string) || '_default'
       const tgtNs =
-        ((nodeIndex.get(edge.target)?.data as Record<string, unknown>)?.namespace as string) ||
-        '_default'
+        ((tgtNode.data as Record<string, unknown>)?.namespace as string) || '_default'
       if (srcNs === tgtNs) {
         islands.get(srcNs)?.edges.push(edge)
       } else {
@@ -77,7 +79,9 @@ export class IslandLayoutEngine {
 
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
     const positioned = island.nodes.map((node) => {
-      const { x, y } = g.node(node.id)
+      const pos = g.node(node.id)
+      const x = pos.x - NODE_WIDTH / 2
+      const y = pos.y - NODE_HEIGHT / 2
       minX = Math.min(minX, x)
       minY = Math.min(minY, y)
       maxX = Math.max(maxX, x + NODE_WIDTH)
@@ -106,7 +110,7 @@ export class IslandLayoutEngine {
     bboxes: IslandBBox[],
     canvasMaxWidth: number = CANVAS_MAX_WIDTH
   ): Map<string, { x: number; y: number }> {
-    const sorted = [...bboxes].sort((a, b) => b.width * b.height - a.width * a.height)
+    const sorted = [...bboxes].sort((a, b) => a.namespace.localeCompare(b.namespace))
 
     const offsets = new Map<string, { x: number; y: number }>()
     let rowX = 0
@@ -144,18 +148,8 @@ export class IslandLayoutEngine {
     const allNodes: Node[] = []
     for (const [ns, result] of islandResults) {
       const offset = offsets.get(ns) ?? { x: 0, y: 0 }
-      for (const node of result.nodes) {
-        allNodes.push({
-          ...node,
-          position: {
-            x: node.position.x + offset.x,
-            y: node.position.y + offset.y,
-          },
-          data: { ...node.data as object, islandNamespace: ns },
-        })
-      }
-
       const bbox = bboxes.find((b) => b.namespace === ns) ?? { width: 0, height: 0 }
+
       allNodes.push({
         id: `island-container-${ns}`,
         type: 'islandContainer',
@@ -169,6 +163,17 @@ export class IslandLayoutEngine {
         selectable: false,
         draggable: false,
       })
+
+      for (const node of result.nodes) {
+        allNodes.push({
+          ...node,
+          position: {
+            x: node.position.x + offset.x,
+            y: node.position.y + offset.y,
+          },
+          data: { ...node.data as object, islandNamespace: ns },
+        })
+      }
     }
 
     const allEdges = [...this.crossEdges]
