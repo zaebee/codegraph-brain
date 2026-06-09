@@ -42,12 +42,18 @@ CGIS is a semantic engine. Code without documentation is useless to an agent.
 ## 🚀 Workflow
 
 1.  **Fork & Branch:** Create a descriptive branch name (e.g., `feat/add-go-extractor` or `fix/resolver-import-bug`).
-2.  **Development Loop:**
+2.  **Set up pre-commit hooks** (one-time, after cloning):
+    ```bash
+    uv sync
+    uv run pre-commit install
+    ```
+    Hooks run `ruff format`, `ruff check --fix`, and `mypy` automatically on every `git commit`.
+3.  **Development Loop:**
     *   `make format`
     *   `make lint`
     *   `make type-check`
     *   `make pytest`
-3.  **Pull Request:**
+4.  **Pull Request:**
     *   Provide a clear, concise description of **WHY** the change is needed and **HOW** it was implemented.
     *   Link to relevant issues if applicable.
     *   Ensure your PR passes all CI checks (Linting, Type Checking, Testing).

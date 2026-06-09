@@ -28,6 +28,7 @@ dev = [
     "interrogate>=1.7.0",
     "ipdb>=0.13.13",
     "mypy>=2.1.0",
+    "pre-commit>=4.6.0",
     "pytest>=9.0.3",
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=7.1.0",
