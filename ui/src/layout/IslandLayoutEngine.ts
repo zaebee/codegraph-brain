@@ -85,15 +85,18 @@ export class IslandLayoutEngine {
       return { ...node, position: { x, y } }
     })
 
+    // Offset nodes so they sit inside the container border + below the header
     const normalised = positioned.map((n) => ({
       ...n,
-      position: { x: n.position.x - minX, y: n.position.y - minY },
+      position: {
+        x: n.position.x - minX + FILE_CONTAINER_PADDING,
+        y: n.position.y - minY + FILE_CONTAINER_PADDING + FILE_HEADER_HEIGHT + FILE_HEADER_GAP,
+      },
     }))
 
-    const containerPad = FILE_CONTAINER_PADDING * 2 + FILE_HEADER_HEIGHT + FILE_HEADER_GAP
     const bbox = {
-      width: maxX - minX + containerPad,
-      height: maxY - minY + containerPad,
+      width: maxX - minX + FILE_CONTAINER_PADDING * 2,
+      height: maxY - minY + FILE_CONTAINER_PADDING * 2 + FILE_HEADER_HEIGHT + FILE_HEADER_GAP,
     }
 
     return { nodes: normalised, bbox }
@@ -151,15 +154,14 @@ export class IslandLayoutEngine {
         })
       }
 
-      const containerPad = FILE_CONTAINER_PADDING
       const bbox = bboxes.find((b) => b.namespace === ns) ?? { width: 0, height: 0 }
       allNodes.push({
         id: `island-container-${ns}`,
         type: 'islandContainer',
-        position: { x: offset.x - containerPad, y: offset.y - containerPad },
+        position: { x: offset.x, y: offset.y },
         style: {
-          width: bbox.width + containerPad * 2,
-          height: bbox.height + containerPad * 2,
+          width: bbox.width,
+          height: bbox.height,
           pointerEvents: 'none' as const,
         },
         data: { namespace: ns },
