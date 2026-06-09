@@ -24,6 +24,8 @@ export default function ControlPanel({
   searchQuery,
   setSearchQuery,
   searchInputRef,
+  colorMode,
+  onToggleColorMode,
 }: {
   onToggleExternal?: (show: boolean) => void;
   showExternal: boolean;
@@ -40,6 +42,8 @@ export default function ControlPanel({
   searchQuery: string;
   setSearchQuery: (q: string) => void;
   searchInputRef?: RefObject<HTMLInputElement | null>;
+  colorMode: 'type' | 'health';
+  onToggleColorMode: () => void;
 }) {
   const { fitView } = useReactFlow();
   const [collapsed, setCollapsed] = useState(false);
@@ -114,6 +118,15 @@ export default function ControlPanel({
                 aria-pressed={showExternal}
               >
                 {showExternal ? "●Ext" : "○Ext"}
+              </button>
+              <button
+                className={`${sharedStyles.btn} ${sharedStyles["btn-sm"]} ${colorMode === 'health' ? sharedStyles.active : ""}`}
+                onClick={onToggleColorMode}
+                aria-label="Toggle heatmap coloring"
+                aria-pressed={colorMode === 'health'}
+                title="Health heatmap (fan-out)"
+              >
+                {colorMode === 'health' ? '🌡On' : '🌡Off'}
               </button>
               <button className={sharedStyles.btn + " " + sharedStyles["btn-sm"]} onClick={handleFit} aria-label="Zoom to fit" title="Fit">
                 ⊞
