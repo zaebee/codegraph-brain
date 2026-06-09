@@ -391,6 +391,24 @@ def test_detect_god_object_unresolved_calls_count_as_efferent(store: SQLiteStore
     assert any(a.focal_fqn == "app.GodClass" for a in anomalies)
 
 
+def test_detect_god_object_duplicate_raw_calls_deduplicated(store: SQLiteStore) -> None:
+    """Multiple calls to the same raw_call: target count as one efferent target (set dedup)."""
+    god = _class_node("app.GodClass")
+    methods = [_method_node(f"app.GodClass.m{i}") for i in range(12)]
+    nodes = [god, *methods]
+    edges: list[Edge] = [
+        *[_contains("app.GodClass", m.id) for m in methods],
+        *[
+            Edge(id=f"raw_{i}", source=m.id, target="raw_call:same_fn", type=EdgeType.CALLS)
+            for i, m in enumerate(methods)
+        ],
+    ]
+    store.save_graph(nodes, edges)
+
+    anomalies = AnalyzerEngine(store).detect_god_objects()
+    assert anomalies == []  # efferent == 1 (same target deduped) < _GOD_OBJECT_MIN_EFFERENT
+
+
 def test_detect_zone_of_pain_no_class_nodes(store: SQLiteStore) -> None:
     """Graph with only FILE nodes (no CLASS nodes) returns no Zone of Pain anomalies."""
     store.save_graph([_file_node("app.main"), _file_node("app.utils")], [])
