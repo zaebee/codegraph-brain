@@ -83,8 +83,8 @@ export class IslandLayoutEngine {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
     const positioned = island.nodes.map((node) => {
       const pos = g.node(node.id)
-      const x = pos ? pos.x - NODE_WIDTH / 2 : node.position.x
-      const y = pos ? pos.y - NODE_HEIGHT / 2 : node.position.y
+      const x = pos ? pos.x - NODE_WIDTH / 2 : (node.position?.x ?? 0)
+      const y = pos ? pos.y - NODE_HEIGHT / 2 : (node.position?.y ?? 0)
       minX = Math.min(minX, x)
       minY = Math.min(minY, y)
       maxX = Math.max(maxX, x + NODE_WIDTH)
@@ -134,6 +134,12 @@ export class IslandLayoutEngine {
     return offsets
   }
 
+  // TODO(PR3): wrap expanded FILE nodes into fileContainer nodes with React Flow parentNode
+  //   so children are visually grouped inside a container background. Requires:
+  //   1. Detect FILE nodes that are in expandedFiles
+  //   2. Emit a type:'fileContainer' node sized to its children's bbox
+  //   3. Set parentNode + extent:'parent' on each child node
+  //   FileContainerNode component + GraphShell registration already exist.
   // TODO(PR4): use _expandedFiles to highlight the ego-subgraph overlay (issue #30)
   run(_expandedFiles: Set<string>): { nodes: Node[]; edges: Edge[] } {
     const islands = this.partition()
