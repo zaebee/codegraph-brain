@@ -1,0 +1,73 @@
+version: "1.0.0"
+
+# Weights for the drift score (must sum exactly to 1.0).
+# cycle_ratio is weighted highest — import cycles are always harmful.
+drift_weights:
+  hub_count:        0.15
+  star_count:       0.15
+  chain_len:        0.10
+  dag_depth:        0.10
+  router_count:     0.10
+  cycle_ratio:      0.25
+  unresolved_ratio: 0.15
+
+# Named ideal pattern templates.
+# Each component key accepts exactly one of: {min: X}, {max: X}, {exact: X}.
+# Omitted components are unconstrained — they contribute zero drift.
+patterns:
+  pure_utility:
+    description: "Shared library called by many; depends on nothing"
+    hub_count:        {min: 1}
+    star_count:       {exact: 0}
+    cycle_ratio:      {max: 0.0}
+    unresolved_ratio: {max: 0.1}
+
+  pipeline_stage:
+    description: "Sequential transformer — one input domain, one output domain"
+    chain_len:        {min: 2.0}
+    star_count:       {max: 1}
+    cycle_ratio:      {max: 0.0}
+
+  orchestrator:
+    description: "Coordinates N independent services; no leaf-to-leaf edges"
+    star_count:       {min: 1}
+    hub_count:        {max: 1}
+    cycle_ratio:      {max: 0.0}
+
+  layered_dag:
+    description: "Clean layered architecture; no upward dependencies"
+    dag_depth:        {min: 3}
+    cycle_ratio:      {max: 0.0}
+
+  dispatcher:
+    # Planned — requires ResolverEngine split (#115).
+    description: "Routes to the first matching strategy; mutually exclusive paths"
+    router_count:     {min: 1}
+    star_count:       {exact: 0}
+
+# Project-specific domain expectations.
+project_domains:
+  - name: "extraction"
+    fqn_prefix: "cgis.extractors"
+    expected_pattern: pure_utility
+    drift_tolerance: 0.15
+
+  - name: "resolution"
+    fqn_prefix: "cgis.resolver"
+    expected_pattern: pipeline_stage
+    drift_tolerance: 0.20
+
+  - name: "pipeline"
+    fqn_prefix: "cgis.pipeline"
+    expected_pattern: orchestrator
+    drift_tolerance: 0.25
+
+  - name: "storage"
+    fqn_prefix: "cgis.storage"
+    expected_pattern: pure_utility
+    drift_tolerance: 0.15
+
+  - name: "query"
+    fqn_prefix: "cgis.query"
+    expected_pattern: layered_dag
+    drift_tolerance: 0.20
