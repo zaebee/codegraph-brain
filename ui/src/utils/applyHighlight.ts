@@ -17,6 +17,17 @@ export function applyContextHighlight(
     if (edge.target === hoveredNodeId) connected.add(edge.source);
   }
 
+  // If hovering a child node, also keep its file container visible.
+  // Then add all nodes whose groupId is already in `connected` (handles
+  // both hovering the container → show children, and hovering a child → show siblings).
+  const hoveredNode = nodes.find((n) => n.id === hoveredNodeId);
+  const hoveredGroupId = hoveredNode?.data?.groupId as string | undefined;
+  if (hoveredGroupId) connected.add(hoveredGroupId);
+  for (const n of nodes) {
+    const groupId = n.data?.groupId as string | undefined;
+    if (groupId && connected.has(groupId)) connected.add(n.id);
+  }
+
   const highlightedEdgeIds = new Set<string>();
   for (const edge of edges) {
     if (connected.has(edge.source) && connected.has(edge.target)) {

@@ -69,4 +69,30 @@ describe("applyContextHighlight", () => {
     expect(result.nodes[0].style.opacity).toBeCloseTo(0.15);
     expect(result.nodes[1].style.opacity).toBeCloseTo(0.15);
   });
+
+  it("keeps children visible when hovering a fileContainer", () => {
+    const container = { id: "file-a", data: { label: "file-a" }, style: { opacity: 1 } };
+    const child1 = { id: "child1", data: { label: "child1", groupId: "file-a" }, style: { opacity: 1 } };
+    const child2 = { id: "child2", data: { label: "child2", groupId: "file-a" }, style: { opacity: 1 } };
+    const unrelated = makeNode("other");
+    const nodes = [container, child1, child2, unrelated];
+    const result = applyContextHighlight(nodes, [], "file-a");
+    expect(result.nodes[0].style.opacity).toBe(1); // container itself
+    expect(result.nodes[1].style.opacity).toBe(1); // child1 stays visible
+    expect(result.nodes[2].style.opacity).toBe(1); // child2 stays visible
+    expect(result.nodes[3].style.opacity).toBeCloseTo(0.15); // unrelated dims
+  });
+
+  it("keeps container and siblings visible when hovering a child node", () => {
+    const container = { id: "file-a", data: { label: "file-a" }, style: { opacity: 1 } };
+    const child1 = { id: "child1", data: { label: "child1", groupId: "file-a" }, style: { opacity: 1 } };
+    const child2 = { id: "child2", data: { label: "child2", groupId: "file-a" }, style: { opacity: 1 } };
+    const unrelated = makeNode("other");
+    const nodes = [container, child1, child2, unrelated];
+    const result = applyContextHighlight(nodes, [], "child1");
+    expect(result.nodes[0].style.opacity).toBe(1); // container stays visible
+    expect(result.nodes[1].style.opacity).toBe(1); // hovered child
+    expect(result.nodes[2].style.opacity).toBe(1); // sibling stays visible
+    expect(result.nodes[3].style.opacity).toBeCloseTo(0.15); // unrelated dims
+  });
 });
