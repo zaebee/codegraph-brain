@@ -80,6 +80,7 @@ describe("layoutGraph container wrap", () => {
     expect(wrappedFile.position.y).toBeLessThan(Math.min(child1Pos.y, child2Pos.y));
     expect(wrappedFile.style?.width).toBeGreaterThan(0);
     expect(wrappedFile.style?.height).toBeGreaterThan(0);
+    expect((wrappedFile.style as any)?.border).toBeUndefined();
 
     expect(result.edges.some((e: Edge) => e.id === "e1" || e.id === "e2")).toBe(false);
   });

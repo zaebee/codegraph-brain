@@ -86,7 +86,7 @@ export async function layoutGraph(
           x: minX - FILE_CONTAINER_PADDING,
           y: minY - FILE_CONTAINER_PADDING - FILE_HEADER_HEIGHT - FILE_HEADER_GAP,
         };
-        (node as any).style = { ...((node as any).style || {}), width: containerW, height: containerH };
+        (node as any).style = { width: containerW, height: containerH };
       }
     });
 

@@ -17,8 +17,8 @@
 }
 
 .expanded {
-  background: rgba(26, 35, 78, 0.2);
-  border: 2px dashed var(--color-border-file, #5c6bc0);
+  background: rgba(26, 35, 78, 0.08);
+  border: 1px solid var(--color-border-file, #5c6bc0);
   pointer-events: none;
 }
 
@@ -28,8 +28,8 @@
   left: 0;
   right: 0;
   height: 32px;
-  background: rgba(26, 35, 78, 0.6);
-  border-radius: 6px 6px 0 0;
+  background: rgba(26, 35, 78, 0.35);
+  border-radius: 7px 7px 0 0;
   display: flex;
   align-items: center;
   padding: 0 12px;
