@@ -90,10 +90,23 @@ def test_ts_calls_edge_exists(
 def test_ts_contains_edge_exists(
     ts_graph_data: tuple[SQLiteStore, list[Node], list[Edge]],
 ) -> None:
-    """CONTAINS edges must connect files to their children."""
-    _, _, resolved_edges = ts_graph_data
+    """CONTAINS edges must connect FILE nodes to FUNCTION or CLASS children."""
+    store, _, resolved_edges = ts_graph_data
     contains_edges = [e for e in resolved_edges if e.type == "CONTAINS"]
     assert len(contains_edges) > 0, "No CONTAINS edges found in the TS graph"
+
+    valid_child_types = {"FUNCTION", "METHOD", "CLASS"}
+    structural_contains = [
+        e
+        for e in contains_edges
+        if (src := store.get_node(e.source)) is not None
+        and src.type == "FILE"
+        and (tgt := store.get_node(e.target)) is not None
+        and tgt.type in valid_child_types
+    ]
+    assert len(structural_contains) > 0, (
+        "No CONTAINS edge connects a FILE node to a FUNCTION/METHOD/CLASS node"
+    )
 
 
 @_skip_no_ui

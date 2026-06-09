@@ -11,6 +11,7 @@ repos:
     hooks:
       - id: mypy
         args: [--config-file=pyproject.toml]
+        files: ^src/
         additional_dependencies:
           - pydantic>=2.13.4
           - structlog>=25.5.0
