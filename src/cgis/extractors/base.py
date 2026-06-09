@@ -15,13 +15,15 @@ class BaseExtractor(ABC):
 
     def __init__(self, source_roots: list[str] | None = None) -> None:
         """Store optional source roots used to strip prefixes from FQNs."""
-        self._source_roots: list[str] = source_roots or []
+        # Pre-normalize once at init; _pick_source_root is called per node during parsing.
+        self._source_roots: list[tuple[str, str]] = [
+            (sr, sr.replace("\\", "/").strip("/") + "/") for sr in (source_roots or [])
+        ]
 
     def _pick_source_root(self, file_path: str) -> str | None:
         """Return the first source root that matches file_path as a prefix, or None."""
         clean = file_path.replace("\\", "/").lstrip("/")
-        for sr in self._source_roots:
-            sr_norm = sr.replace("\\", "/").strip("/") + "/"
+        for sr, sr_norm in self._source_roots:
             if clean.startswith(sr_norm):
                 return sr
         return None
