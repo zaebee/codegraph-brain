@@ -93,8 +93,7 @@ class ContextCollector:
         self.graph_stats = {"total": total_changed, "with_graph": len(sections)}
         if total_changed > 0 and len(sections) == 0:
             log.warning(
-                "Graph context empty for all changed files — "
-                "graph.db may be stale or built from wrong path.",
+                "No graph context found for any changed file.",
                 changed_files=total_changed,
                 project_root=str(self.project_root),
             )

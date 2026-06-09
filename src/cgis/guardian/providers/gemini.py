@@ -29,7 +29,7 @@ class GeminiProvider(BaseProvider):
         meta = getattr(response, "usage_metadata", None)
         if meta is not None:
             self.last_usage = ProviderUsage(
-                prompt_tokens=getattr(meta, "prompt_token_count", 0) or 0,
-                completion_tokens=getattr(meta, "candidates_token_count", 0) or 0,
+                prompt_tokens=getattr(meta, "prompt_token_count", 0),
+                completion_tokens=getattr(meta, "candidates_token_count", 0),
             )
         return str(response.text)

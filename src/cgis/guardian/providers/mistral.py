@@ -37,7 +37,7 @@ class MistralProvider(BaseProvider):
         usage = getattr(response, "usage", None)
         if usage is not None:
             self.last_usage = ProviderUsage(
-                prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
-                completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
+                prompt_tokens=getattr(usage, "prompt_tokens", 0),
+                completion_tokens=getattr(usage, "completion_tokens", 0),
             )
         return str(content)

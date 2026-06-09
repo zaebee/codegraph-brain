@@ -127,6 +127,15 @@ def test_provider_usage_total_tokens_computed() -> None:
     assert usage.total_tokens == 100
 
 
+def test_provider_usage_is_immutable() -> None:
+    """ProviderUsage is frozen — mutation raises ValidationError."""
+    from pydantic import ValidationError
+
+    usage = ProviderUsage(prompt_tokens=100, completion_tokens=50)
+    with pytest.raises(ValidationError):
+        usage.prompt_tokens = 200  # type: ignore[misc]
+
+
 async def test_provider_last_usage_after_call(collector: ContextCollector) -> None:
     """last_usage reflects values set by the provider after generate_content."""
 
