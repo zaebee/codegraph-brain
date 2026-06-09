@@ -650,3 +650,69 @@ def test_ingest_json_output_has_health_metrics(tmp_path: Path) -> None:
     assert "fan_in" in node["metadata"]
     assert "depth" in node["metadata"]
     assert "in_cycle" in node["metadata"]
+
+
+def test_drift_exits_0_when_all_clean(tmp_path: Path) -> None:
+    """cgis drift exits 0 when no project domains are defined (trivially all clean)."""
+    db_path = str(tmp_path / "g.db")
+    with SQLiteStore(db_path) as store:
+        store.save_graph([], [], overwrite=True)
+
+    patterns_path = str(tmp_path / "patterns.yaml")
+    Path(patterns_path).write_text(
+        "version: '1.0.0'\n"
+        "drift_weights:\n"
+        "  hub_count: 0.15\n  star_count: 0.15\n  chain_len: 0.10\n"
+        "  dag_depth: 0.10\n  router_count: 0.10\n  cycle_ratio: 0.25\n"
+        "  unresolved_ratio: 0.15\n"
+        "patterns:\n"
+        "  pure_utility:\n    description: x\n    cycle_ratio: {max: 0.0}\n"
+        "project_domains: []\n"
+    )
+
+    result = runner.invoke(app, ["drift", "--db", db_path, "--patterns", patterns_path])
+    assert result.exit_code == 0
+
+
+def test_drift_exits_1_when_any_critical(tmp_path: Path) -> None:
+    """cgis drift exits 1 when at least one domain is critical."""
+    db_path = str(tmp_path / "g.db")
+    with SQLiteStore(db_path) as store:
+        store.save_graph([], [], overwrite=True)
+
+    patterns_path = str(tmp_path / "patterns.yaml")
+    # hub_count min:10 on an empty domain drives drift to 1.0 → critical
+    Path(patterns_path).write_text(
+        "version: '1.0.0'\n"
+        "drift_weights:\n"
+        "  hub_count: 1.0\n  star_count: 0.0\n  chain_len: 0.0\n"
+        "  dag_depth: 0.0\n  router_count: 0.0\n  cycle_ratio: 0.0\n"
+        "  unresolved_ratio: 0.0\n"
+        "patterns:\n"
+        "  needs_hub:\n    description: x\n    hub_count: {min: 10}\n"
+        "project_domains:\n"
+        "  - name: test\n    fqn_prefix: nonexistent\n"
+        "    expected_pattern: needs_hub\n    drift_tolerance: 0.10\n"
+    )
+
+    result = runner.invoke(app, ["drift", "--db", db_path, "--patterns", patterns_path])
+    assert result.exit_code == 1
+
+
+def test_drift_missing_db_exits_1(tmp_path: Path) -> None:
+    """cgis drift exits 1 when --db path does not exist."""
+    patterns_path = str(tmp_path / "patterns.yaml")
+    Path(patterns_path).write_text(
+        "version: '1.0.0'\ndrift_weights: {}\npatterns: {}\nproject_domains: []\n"
+    )
+    result = runner.invoke(app, ["drift", "--db", "no_such.db", "--patterns", patterns_path])
+    assert result.exit_code == 1
+
+
+def test_drift_missing_patterns_exits_1(tmp_path: Path) -> None:
+    """cgis drift exits 1 when --patterns path does not exist."""
+    db_path = str(tmp_path / "g.db")
+    with SQLiteStore(db_path) as store:
+        store.save_graph([], [], overwrite=True)
+    result = runner.invoke(app, ["drift", "--db", db_path, "--patterns", "no_such.yaml"])
+    assert result.exit_code == 1

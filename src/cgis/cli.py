@@ -1,5 +1,6 @@
 """ "CLI to run pipeline."""
 
+import dataclasses
 import json as _json
 from enum import StrEnum
 from pathlib import Path
@@ -17,7 +18,9 @@ from cgis.guardian.metrics import load_reviews, rate_review
 from cgis.pipeline import IngestionPipeline
 from cgis.query.analyzer import AnalyzerEngine
 from cgis.query.anomaly import AnomalyType, ArchitecturalAnomaly
+from cgis.query.drift import DriftReport, DriftScorer
 from cgis.query.engine import BEHAVIORAL_EDGE_TYPES, QueryEngine
+from cgis.query.fingerprint import FingerprintExtractor
 from cgis.query.health import HealthScorer
 from cgis.query.mermaid import MermaidCompiler
 from cgis.resolver.uplift import SemanticUpliftEngine
@@ -754,6 +757,92 @@ def guardian_stats(
         console.print(f"\n  Avg tokens/review : [cyan]{total_tokens // len(reviews):,}[/cyan]")
         rated_label = f"rated {len(rated)}/{len(reviews)} reviews"
         console.print(f"  Overall precision : [cyan]{avg_precision}[/cyan]  ({rated_label})")
+
+
+def _drift_status_label(score: float, max_drift: float) -> str:
+    """Return a Rich-formatted status label for a given drift score."""
+    if score >= max_drift:
+        return "[bold red]❌ critical[/bold red]"
+    if score >= 0.20:
+        return "[yellow]⚠️  warning[/yellow]"
+    return "[green]✅ clean[/green]"
+
+
+def _render_drift_table(reports: list[DriftReport], max_drift: float) -> None:
+    """Print an Architectural Drift Report table to the console."""
+    table = Table(title="Architectural Drift Report")
+    table.add_column("Domain", style="cyan")
+    table.add_column("Expected Pattern", style="dim")
+    table.add_column("Drift", justify="right")
+    table.add_column("Status", justify="center")
+    for r in reports:
+        table.add_row(
+            r.fqn_prefix,
+            r.expected_pattern,
+            f"{r.drift_score:.2f}",
+            _drift_status_label(r.drift_score, max_drift),
+        )
+    console.print(table)
+
+
+@app.command()
+def drift(
+    db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
+    patterns: str = typer.Option(
+        "docs/ontology/patterns.yaml",
+        "--patterns",
+        "-p",
+        help="Path to a patterns.yaml file with domain expectations.",
+    ),
+    output_format: OutputFormat = typer.Option(
+        OutputFormat.TEXT, "--format", "-f", help="Output format: text or json"
+    ),
+    max_drift: float = typer.Option(
+        0.50,
+        "--max-drift",
+        min=0.0,
+        max=1.0,
+        help="Override critical threshold (default 0.50).",
+    ),
+) -> None:
+    """
+    Report per-domain architectural drift against declared ideal patterns.
+
+    Exits with code 1 if any domain drift score meets or exceeds the critical threshold.
+    """
+    if not Path(db).is_file():
+        console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
+        raise typer.Exit(code=1)
+
+    if not Path(patterns).is_file():
+        console.print(f"[bold red]❌ Patterns file not found:[/bold red] {patterns}")
+        raise typer.Exit(code=1)
+
+    scorer = DriftScorer(patterns)
+    domains = scorer.load_project_domains()
+
+    reports: list[DriftReport] = []
+    with SQLiteStore(db) as store:
+        extractor = FingerprintExtractor(store)
+        for domain in domains:
+            fp = extractor.extract(domain.fqn_prefix)
+            reports.append(scorer.score(fp, domain))
+
+    any_critical = any(r.drift_score >= max_drift for r in reports)
+
+    if output_format.value == "json":
+        typer.echo(_json.dumps([dataclasses.asdict(r) for r in reports], indent=2))
+        if any_critical:
+            raise typer.Exit(code=1)
+        return
+
+    _render_drift_table(reports, max_drift)
+
+    if any_critical:
+        console.print("[bold red]❌ One or more domains exceed the drift threshold.[/bold red]")
+        raise typer.Exit(code=1)
+
+    console.print("[bold green]✅ All domains within tolerance.[/bold green]")
 
 
 if __name__ == "__main__":  # pragma: no cover
