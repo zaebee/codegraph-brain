@@ -55,3 +55,21 @@ export const NAMESPACE_COLORS: Record<string, string> = {
   'rider-web': '#1a5a5a',
   _default: '#546e7a',
 };
+
+// 5-stop color scale: healthy (low fan_out) → sick (high fan_out)
+export const HEATMAP_COLORS: NodeColor[] = [
+  { bg: "#1b3a1b", border: "#66bb6a", text: "#c8e6c9" }, // 0–2  healthy
+  { bg: "#2e3b1b", border: "#aed581", text: "#dcedc8" }, // 3–5  ok
+  { bg: "#3b2a00", border: "#ffb74d", text: "#ffe0b2" }, // 6–9  warning
+  { bg: "#3b1500", border: "#ff8a65", text: "#ffccbc" }, // 10–14 danger
+  { bg: "#3b0000", border: "#ef9a9a", text: "#ffcdd2" }, // 15+  critical
+]
+
+export function getHeatmapColor(fanOut: number, inCycle: boolean): NodeColor {
+  if (inCycle) return HEATMAP_COLORS[4]
+  if (fanOut <= 2) return HEATMAP_COLORS[0]
+  if (fanOut <= 5) return HEATMAP_COLORS[1]
+  if (fanOut <= 9) return HEATMAP_COLORS[2]
+  if (fanOut <= 14) return HEATMAP_COLORS[3]
+  return HEATMAP_COLORS[4]
+}
