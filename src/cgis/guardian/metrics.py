@@ -8,16 +8,21 @@ from typing import Any
 
 _DEFAULT_METRICS_FILE = Path("guardian_metrics.jsonl")
 
+# Matches **[<Category>] — <title> regardless of dash variant (em/en/hyphen).
+# Unicode escapes avoid ambiguous-character linter warnings (RUF001/RUF002).
+_FINDING_RE = re.compile(r"^\*\*\[.*?\]\s*" + "[\u2014\u2013-]", re.MULTILINE)
+
 
 def _count_findings(review_text: str) -> tuple[int, bool]:
     """Parse finding count and LGTM flag from review text.
 
     Returns (findings_total, lgtm).
     Matches finding headers in the format: **[<Category>] — <title>
-    Requiring the closing bracket + em-dash separator prevents generic markdown
-    like **[Note]** or **[See also]** from being counted as findings.
+    Requiring the closing bracket + separator prevents generic markdown like
+    **[Note]** from being counted. Accepts em-dash (U+2014), en-dash (U+2013),
+    or hyphen since LLMs don't always follow the prompt's exact dash character.
     """
-    findings = len(re.findall(r"^\*\*\[.*?\]\s*—", review_text, re.MULTILINE))
+    findings = len(_FINDING_RE.findall(review_text))
     lgtm = findings == 0 and "lgtm" in review_text.lower()
     return findings, lgtm
 

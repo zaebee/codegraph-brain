@@ -58,6 +58,18 @@ def test_count_findings_non_standard_category() -> None:
     assert not lgtm
 
 
+def test_count_findings_dash_variants() -> None:
+    """En-dash and hyphen separators are accepted alongside em-dash."""
+    text = (
+        "**[Logic Bug] — em-dash finding**\n"
+        "**[Test Coverage] \u2013 en-dash finding**\n"
+        "**[Type Safety] - hyphen finding**\n"
+    )
+    count, lgtm = _count_findings(text)
+    assert count == 3
+    assert not lgtm
+
+
 def test_count_findings_ignores_generic_markdown() -> None:
     """Generic **[Note]** or **[See also]** blocks without '—' separator are not findings."""
     text = (
