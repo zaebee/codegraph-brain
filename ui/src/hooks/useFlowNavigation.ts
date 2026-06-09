@@ -1,60 +1,53 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+// ui/src/hooks/useFlowNavigation.ts
+import { useCallback, useRef } from 'react'
+import { useReactFlow, type Node } from '@xyflow/react'
+import { buildExecutionFlow } from '../flow'
+import { layoutGraph } from '../layout'
+import { mapNodeToFlowView } from '../utils/nodeMapper'
+import { mapEdgeToFlowView } from '../utils/edgeMapper'
+import { useGraphStore } from '../store/useGraphStore'
 
-import { useState, useCallback, useRef } from "react";
-import { useReactFlow } from "@xyflow/react";
-import { buildExecutionFlow } from "../flow";
-import { layoutGraph } from "../layout";
-import { mapNodeToFlowView } from "../utils/nodeMapper";
-import { mapEdgeToFlowView } from "../utils/edgeMapper";
-import type { GraphData } from "../types";
-import type { Node, Edge } from "@xyflow/react";
+const FLOW_DEPTH = 3
+const DEFAULT_ALLOWED = ['CALLS', 'IMPORTS', 'CONTAINS']
 
-export function useFlowNavigation(
-  graphData: GraphData,
-  setNodes: (nodes: Node[]) => void,
-  setEdges: (edges: Edge[]) => void,
-  setViewMode: (mode: string) => void,
-  setFlowRootId: (id: string | null) => void,
-  allowedEdgeTypes: string[] = ["CALLS", "IMPORTS", "CONTAINS"]
-) {
-  const depth = 3;
-  const [flowRootId, setFlowRootIdState] = useState<string | null>(null);
-  const flowCacheRef = useRef<Map<string, { nodes: any[]; edges: any[] }>>(new Map());
-  const { fitView } = useReactFlow();
+export function useFlowNavigation(allowedEdgeTypes: string[] = DEFAULT_ALLOWED) {
+  const rawNodes = useGraphStore((s) => s.rawNodes)
+  const rawEdges = useGraphStore((s) => s.rawEdges)
+  const graphVersion = useGraphStore((s) => s.graphVersion)
+  const setFlow = useGraphStore((s) => s.setFlow)
+  const setViewMode = useGraphStore((s) => s.setViewMode)
+  const { fitView } = useReactFlow()
+
+  // Local ref cache — keyed by graphVersion so stale data is never served
+  const cacheRef = useRef<Map<string, { nodes: any[]; edges: any[] }>>(new Map())
 
   const onNodeClick = useCallback(
-    async (_event: any, node: Node) => {
-      if (node.type === "group") return;
+    async (_event: React.MouseEvent, node: Node) => {
+      if (node.type === 'group' || node.type === 'fileContainer') return
 
-      const cacheKey = `${node.id}:${depth}:${allowedEdgeTypes.join(",")}`;
-      let flow: { nodes: any[]; edges: any[] };
+      const cacheKey = `${node.id}:${FLOW_DEPTH}:${allowedEdgeTypes.join(',')}:${graphVersion}`
 
-      if (flowCacheRef.current.has(cacheKey)) {
-        flow = flowCacheRef.current.get(cacheKey)!;
+      let flow: { nodes: any[]; edges: any[] }
+      if (cacheRef.current.has(cacheKey)) {
+        flow = cacheRef.current.get(cacheKey)!
       } else {
-        flow = buildExecutionFlow(graphData, node.id, depth, "both", allowedEdgeTypes);
-        flowCacheRef.current.set(cacheKey, flow);
+        const graphData = { nodes: rawNodes as any[], edges: rawEdges as any[] }
+        flow = buildExecutionFlow(graphData, node.id, FLOW_DEPTH, 'both', allowedEdgeTypes)
+        cacheRef.current.set(cacheKey, flow)
       }
 
-      const flowNodes = flow.nodes.map((n) => mapNodeToFlowView(n, { isRoot: n.id === node.id }));
-      const flowEdges = flow.edges.map((e, i) => mapEdgeToFlowView(e, i));
+      const flowNodes = flow.nodes.map((n) =>
+        mapNodeToFlowView(n, { isRoot: n.id === node.id })
+      )
+      const flowEdges = flow.edges.map((e, i) => mapEdgeToFlowView(e, i))
+      const { nodes: layoutedNodes } = await layoutGraph(flowNodes, flowEdges)
 
-      const { nodes: layoutedNodes } = await layoutGraph(flowNodes, flowEdges);
-
-      setNodes(layoutedNodes);
-      setEdges(flowEdges);
-      setViewMode("flow");
-      setFlowRootIdState(node.id);
-      setFlowRootId(node.id);
-
-      fitView({ padding: 0.15, duration: 250 });
+      setFlow(layoutedNodes, flowEdges)
+      setViewMode('flow')
+      fitView({ padding: 0.15, duration: 250 })
     },
-    [graphData, depth, allowedEdgeTypes, setNodes, setEdges, setViewMode, setFlowRootId, fitView]
-  );
+    [rawNodes, rawEdges, graphVersion, allowedEdgeTypes, setFlow, setViewMode, fitView]
+  )
 
-  const clearCache = useCallback(() => {
-    flowCacheRef.current.clear();
-  }, []);
-
-  return { onNodeClick, flowRootId, clearCache };
+  return { onNodeClick }
 }
