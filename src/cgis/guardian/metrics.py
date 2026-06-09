@@ -13,13 +13,10 @@ def _count_findings(review_text: str) -> tuple[int, bool]:
     """Parse finding count and LGTM flag from review text.
 
     Returns (findings_total, lgtm).
-    Counts headings that match the output format: lines starting with '**['.
+    Counts any line starting with '**[' — the output format only uses that
+    pattern for finding headers, regardless of which category label the model chose.
     """
-    findings = len(
-        re.findall(
-            r"^\*\*\[(?:Logic Bug|Test Coverage|Type Safety|Ontology)", review_text, re.MULTILINE
-        )
-    )
+    findings = len(re.findall(r"^\*\*\[", review_text, re.MULTILINE))
     lgtm = findings == 0 and "lgtm" in review_text.lower()
     return findings, lgtm
 

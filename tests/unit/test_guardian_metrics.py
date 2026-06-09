@@ -44,6 +44,20 @@ def test_count_findings_lgtm_false_when_findings_present() -> None:
     assert not lgtm
 
 
+def test_count_findings_non_standard_category() -> None:
+    """Model-invented category names (e.g. Missing Tests) are still counted."""
+    text = (
+        "**[Missing Tests] — run() has no coverage**\n"
+        "Confidence: 90%\n"
+        "\n"
+        "**[Architecture] — something structural**\n"
+        "Confidence: 85%\n"
+    )
+    count, lgtm = _count_findings(text)
+    assert count == 2
+    assert not lgtm
+
+
 def test_record_review_creates_file(tmp_path: Path) -> None:
     """record_review creates the file and appends a valid JSON entry."""
     p = tmp_path / "metrics.jsonl"
