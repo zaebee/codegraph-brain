@@ -14,6 +14,11 @@ from cgis.storage.sqlite_store import SQLiteStore
 SRC_DIR = Path(__file__).parent.parent.parent / "src" / "cgis"
 TS_SRC = Path(__file__).parent.parent.parent / "ui" / "src"
 
+skip_if_no_ui = pytest.mark.skipif(
+    not TS_SRC.exists(),
+    reason="ui/src/ not available (requires feat/ui merge)",
+)
+
 
 @pytest.fixture(scope="session")
 def graph_data(
@@ -33,7 +38,9 @@ def ts_graph_data(
 ) -> Generator[tuple[SQLiteStore, list[Node], list[Edge]], None, None]:
     """Run the full pipeline on ui/src/ and share across all TS self-parsing tests."""
     db_path = str(tmp_path_factory.mktemp("self_parse_ts") / "graph.db")
-    pipeline = IngestionPipeline({".ts": TypeScriptExtractor(), ".tsx": TypeScriptExtractor(tsx=True)})
+    pipeline = IngestionPipeline(
+        {".ts": TypeScriptExtractor(), ".tsx": TypeScriptExtractor(tsx=True)}
+    )
     with SQLiteStore(db_path) as store:
         nodes, _, resolved_edges = pipeline.run(str(TS_SRC), store=store)
         yield store, nodes, resolved_edges
