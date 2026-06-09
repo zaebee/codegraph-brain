@@ -1,7 +1,5 @@
 """Implements TypeScript/TSX Extractor using tree-sitter."""
 
-from typing import Any
-
 import tree_sitter_typescript as tsts
 from tree_sitter import Language, Parser
 from tree_sitter import Node as TSNode
@@ -10,6 +8,14 @@ from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
 from cgis.extractors.base import BaseExtractor
 
 _RAW_CALL_PREFIX = "raw_call:"
+_EXPORT_UNWRAP_TYPES = frozenset(
+    {
+        "class_declaration",
+        "abstract_class_declaration",
+        "function_declaration",
+        "lexical_declaration",
+    }
+)
 
 
 def file_path_to_module_fqn(file_path: str) -> str:
@@ -42,14 +48,31 @@ def _node_text(node: TSNode | None) -> str:
 
 def _get_name(node: TSNode) -> str:
     """Extract identifier/property_identifier/type_identifier text from a node."""
-    for field in ("name",):
-        child = node.child_by_field_name(field)
-        if child is not None:
-            return _node_text(child)
+    child = node.child_by_field_name("name")
+    if child is not None:
+        return _node_text(child)
     for child in node.children:
         if child.type in ("identifier", "property_identifier", "type_identifier"):
             return _node_text(child)
     return ""
+
+
+def _make_node(fqn: str, name: str, node_type: NodeType, file_path: str, ts_node: TSNode) -> Node:
+    """Construct an internal Node from a tree-sitter node's position."""
+    return Node(
+        id=fqn,
+        name=name,
+        type=node_type,
+        file_path=file_path,
+        start_line=ts_node.start_point[0] + 1,
+        end_line=ts_node.end_point[0] + 1,
+        namespace=NodeNamespace.INTERNAL,
+    )
+
+
+def _make_edge(source: str, target: str, edge_type: EdgeType) -> Edge:
+    """Construct an Edge with a deterministic id."""
+    return Edge(id=f"{source}->{target}", source=source, target=target, type=edge_type)
 
 
 class TypeScriptExtractor(BaseExtractor):
@@ -101,40 +124,27 @@ class TypeScriptExtractor(BaseExtractor):
     ) -> None:
         """Recursively walk the AST, emitting nodes and edges."""
         inner = node
-        # Unwrap export_statement to its declaration child
         if node.type == "export_statement":
             for child in node.children:
-                if child.type in (
-                    "class_declaration",
-                    "function_declaration",
-                    "lexical_declaration",
-                    "abstract_class_declaration",
-                ):
+                if child.type in _EXPORT_UNWRAP_TYPES:
                     inner = child
                     break
 
         if inner.type in ("class_declaration", "abstract_class_declaration"):
             self._handle_class(inner, namespace, file_path, file_id, nodes, edges)
-            return
-
-        if inner.type == "function_declaration":
+        elif inner.type == "function_declaration":
             self._handle_function(
                 inner, namespace, file_path, file_id, active_class_fqn, nodes, edges
             )
-            return
-
-        if inner.type == "lexical_declaration":
+        elif inner.type == "lexical_declaration":
             self._handle_lexical(
                 inner, namespace, file_path, file_id, active_class_fqn, nodes, edges
             )
-            return
-
-        if inner.type == "import_statement":
-            self._handle_import(inner, namespace, file_path, file_id, nodes, edges)
-            return
-
-        for child in node.children:
-            self._walk(child, namespace, file_path, file_id, active_class_fqn, nodes, edges)
+        elif inner.type == "import_statement":
+            self._handle_import(inner, namespace, file_id, edges)
+        else:
+            for child in node.children:
+                self._walk(child, namespace, file_path, file_id, active_class_fqn, nodes, edges)
 
     def _handle_class(
         self,
@@ -150,25 +160,8 @@ class TypeScriptExtractor(BaseExtractor):
         if not name:
             return
         class_fqn = f"{namespace}.{name}"
-        nodes.append(
-            Node(
-                id=class_fqn,
-                name=name,
-                type=NodeType.CLASS,
-                file_path=file_path,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                namespace=NodeNamespace.INTERNAL,
-            )
-        )
-        edges.append(
-            Edge(
-                id=f"{file_id}->{class_fqn}",
-                source=file_id,
-                target=class_fqn,
-                type=EdgeType.CONTAINS,
-            )
-        )
+        nodes.append(_make_node(class_fqn, name, NodeType.CLASS, file_path, node))
+        edges.append(_make_edge(file_id, class_fqn, EdgeType.CONTAINS))
         body = node.child_by_field_name("body")
         if body is not None:
             for child in body.children:
@@ -185,28 +178,11 @@ class TypeScriptExtractor(BaseExtractor):
     ) -> None:
         """Emit a METHOD node + DECLARES edge, then find calls in the body."""
         name = _get_name(node)
-        if not name or name in ("#", ""):
+        if not name:
             return
         method_fqn = f"{class_fqn}.{name}"
-        nodes.append(
-            Node(
-                id=method_fqn,
-                name=name,
-                type=NodeType.METHOD,
-                file_path=file_path,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                namespace=NodeNamespace.INTERNAL,
-            )
-        )
-        edges.append(
-            Edge(
-                id=f"{class_fqn}->{method_fqn}",
-                source=class_fqn,
-                target=method_fqn,
-                type=EdgeType.DECLARES,
-            )
-        )
+        nodes.append(_make_node(method_fqn, name, NodeType.METHOD, file_path, node))
+        edges.append(_make_edge(class_fqn, method_fqn, EdgeType.DECLARES))
         self._find_calls(node, method_fqn, edges)
 
     def _handle_function(
@@ -223,27 +199,9 @@ class TypeScriptExtractor(BaseExtractor):
         name = _get_name(node)
         if not name:
             return
-        parent_id = active_class_fqn or file_id
         func_fqn = f"{namespace}.{name}"
-        nodes.append(
-            Node(
-                id=func_fqn,
-                name=name,
-                type=NodeType.FUNCTION,
-                file_path=file_path,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                namespace=NodeNamespace.INTERNAL,
-            )
-        )
-        edges.append(
-            Edge(
-                id=f"{parent_id}->{func_fqn}",
-                source=parent_id,
-                target=func_fqn,
-                type=EdgeType.CONTAINS,
-            )
-        )
+        nodes.append(_make_node(func_fqn, name, NodeType.FUNCTION, file_path, node))
+        edges.append(_make_edge(active_class_fqn or file_id, func_fqn, EdgeType.CONTAINS))
         self._find_calls(node, func_fqn, edges)
 
     def _handle_lexical(
@@ -263,58 +221,33 @@ class TypeScriptExtractor(BaseExtractor):
             value = child.child_by_field_name("value")
             if value is None or value.type != "arrow_function":
                 continue
-            name_node = child.child_by_field_name("name")
-            name = _node_text(name_node)
+            name = _node_text(child.child_by_field_name("name"))
             if not name:
                 continue
-            parent_id = active_class_fqn or file_id
             func_fqn = f"{namespace}.{name}"
-            nodes.append(
-                Node(
-                    id=func_fqn,
-                    name=name,
-                    type=NodeType.FUNCTION,
-                    file_path=file_path,
-                    start_line=node.start_point[0] + 1,
-                    end_line=node.end_point[0] + 1,
-                    namespace=NodeNamespace.INTERNAL,
-                )
-            )
-            edges.append(
-                Edge(
-                    id=f"{parent_id}->{func_fqn}",
-                    source=parent_id,
-                    target=func_fqn,
-                    type=EdgeType.CONTAINS,
-                )
-            )
+            nodes.append(_make_node(func_fqn, name, NodeType.FUNCTION, file_path, node))
+            edges.append(_make_edge(active_class_fqn or file_id, func_fqn, EdgeType.CONTAINS))
             self._find_calls(value, func_fqn, edges)
 
     def _handle_import(
         self,
         node: TSNode,
         namespace: str,
-        file_path: str,  # noqa: ARG002
         file_id: str,
-        nodes: list[Node],  # noqa: ARG002
         edges: list[Edge],
     ) -> None:
-        """Emit IMPORTS edges for each import statement."""
-        source_node = node.child_by_field_name("source")
-        raw_source = _node_text(source_node).strip("'\"")
+        """Emit an IMPORTS edge for an import statement."""
+        raw_source = _node_text(node.child_by_field_name("source")).strip("'\"")
         if not raw_source:
             return
-        # Resolve relative imports to FQN
         if raw_source.startswith("."):
             parts = namespace.split(".")
             clean = raw_source.lstrip("./").replace("/", ".")
-            # one dot → same dir, two dots → parent dir
             dots = len(raw_source) - len(raw_source.lstrip("."))
             base_parts = parts[: max(0, len(parts) - (dots - 1))]
             target_fqn = ".".join(base_parts + ([clean] if clean else []))
         else:
             target_fqn = raw_source.replace("/", ".")
-
         edges.append(
             Edge(
                 id=f"{file_id}->import:{target_fqn}",
@@ -324,12 +257,7 @@ class TypeScriptExtractor(BaseExtractor):
             )
         )
 
-    def _find_calls(
-        self,
-        node: TSNode,
-        source_id: str,
-        edges: list[Edge],
-    ) -> None:
+    def _find_calls(self, node: TSNode, source_id: str, edges: list[Edge]) -> None:
         """Recursively find call_expression nodes and emit CALLS edges."""
         if node.type == "call_expression":
             func_node = node.child_by_field_name("function")
@@ -337,10 +265,9 @@ class TypeScriptExtractor(BaseExtractor):
                 call_name = self._get_call_name(func_node)
                 if call_name:
                     target = f"{_RAW_CALL_PREFIX}{call_name}"
-                    edge_id = f"{source_id}->{target}@{node.start_point[0]}"
                     edges.append(
                         Edge(
-                            id=edge_id,
+                            id=f"{source_id}->{target}@{node.start_point[0]}",
                             source=source_id,
                             target=target,
                             type=EdgeType.CALLS,
@@ -355,16 +282,8 @@ class TypeScriptExtractor(BaseExtractor):
         if node.type == "identifier":
             return _node_text(node)
         if node.type == "member_expression":
-            obj = node.child_by_field_name("object")
-            prop = node.child_by_field_name("property")
-            obj_text = _node_text(obj)
-            prop_text = _node_text(prop)
+            obj_text = _node_text(node.child_by_field_name("object"))
+            prop_text = _node_text(node.child_by_field_name("property"))
             if obj_text and prop_text:
-                # Normalise 'this' → mirrors Python's 'self' for resolver
                 return f"self.{prop_text}" if obj_text == "this" else f"{obj_text}.{prop_text}"
         return ""
-
-    # Required by BaseExtractor — tree-sitter node access is via public API
-    def _get_ts_node_field(self, node: Any, field: str) -> Any:  # noqa: ANN401
-        """Delegate to tree-sitter child_by_field_name (unused externally)."""
-        return node.child_by_field_name(field)
