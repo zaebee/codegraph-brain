@@ -321,6 +321,57 @@ def test_detect_god_object_low_efferent_not_flagged(store: SQLiteStore) -> None:
     assert anomalies == []
 
 
+def test_detect_god_object_self_calls_not_counted(store: SQLiteStore) -> None:
+    """Methods calling sibling methods in the same class do not inflate efferent coupling."""
+    god = _class_node("app.GodClass")
+    methods = [_method_node(f"app.GodClass.m{i}") for i in range(12)]
+    nodes = [god, *methods]
+    edges: list[Edge] = [
+        *[_contains("app.GodClass", m.id) for m in methods],
+        *[_calls(methods[i].id, methods[(i + 1) % 12].id) for i in range(12)],
+    ]
+    store.save_graph(nodes, edges)
+
+    assert AnalyzerEngine(store).detect_god_objects() == []
+
+
+def test_detect_god_object_unresolved_calls_count_as_efferent(store: SQLiteStore) -> None:
+    """raw_call: targets count as distinct efferent targets (external dependencies)."""
+    god = _class_node("app.GodClass")
+    methods = [_method_node(f"app.GodClass.m{i}") for i in range(12)]
+    nodes = [god, *methods]
+    edges: list[Edge] = [
+        *[_contains("app.GodClass", m.id) for m in methods],
+        *[
+            Edge(
+                id=f"raw_{i}",
+                source=methods[i].id,
+                target=f"raw_call:ext_fn_{i}",
+                type=EdgeType.CALLS,
+            )
+            for i in range(6)
+        ],
+    ]
+    store.save_graph(nodes, edges)
+
+    anomalies = AnalyzerEngine(store).detect_god_objects()
+    assert any(a.focal_fqn == "app.GodClass" for a in anomalies)
+
+
+def test_detect_zone_of_pain_no_class_nodes(store: SQLiteStore) -> None:
+    """Graph with only FILE nodes (no CLASS nodes) returns no Zone of Pain anomalies."""
+    store.save_graph([_file_node("app.main"), _file_node("app.utils")], [])
+
+    assert AnalyzerEngine(store).detect_zone_of_pain() == []
+
+
+def test_detect_god_objects_no_class_nodes(store: SQLiteStore) -> None:
+    """Graph with only FILE nodes (no CLASS nodes) returns no God Object anomalies."""
+    store.save_graph([_file_node("app.main")], [])
+
+    assert AnalyzerEngine(store).detect_god_objects() == []
+
+
 # ---------------------------------------------------------------------------
 # run (full report)
 # ---------------------------------------------------------------------------

@@ -9,11 +9,11 @@ from cgis.storage.sqlite_store import SQLiteStore
 log = structlog.getLogger(__name__)
 
 # Thresholds -- tuned for typical Python codebases
-_ZONE_OF_PAIN_DISTANCE = 0.70
-_ZONE_OF_PAIN_MAX_INSTABILITY = 0.30
-_ZONE_OF_PAIN_MIN_AFFERENT = 3  # ignore low-usage classes; Zone of Pain requires real dependents
-_GOD_OBJECT_MIN_METHODS = 10
-_GOD_OBJECT_MIN_EFFERENT = 5
+_ZONE_OF_PAIN_DISTANCE = 0.70  # D-distance threshold; Uncle Bob places the Zone of Pain at D > 0.7
+_ZONE_OF_PAIN_MAX_INSTABILITY = 0.30  # I <= 0.3 means "stable" (more dependents than dependencies)
+_ZONE_OF_PAIN_MIN_AFFERENT = 3  # require >= 3 callers to avoid flagging obscure low-usage classes
+_GOD_OBJECT_MIN_METHODS = 10  # classes below this are too small to qualify regardless of coupling
+_GOD_OBJECT_MIN_EFFERENT = 5  # low coupling means cohesion is still acceptable
 
 
 def _build_adjacency(edges: list[Edge], allowed_types: frozenset[EdgeType]) -> dict[str, list[str]]:
