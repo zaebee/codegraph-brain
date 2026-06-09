@@ -8,19 +8,23 @@ for (const [type, stroke] of Object.entries(EDGE_COLORS)) {
 }
 FULL_EDGE_STYLES.DECLARES = { stroke: EDGE_COLORS.DECLARES, strokeWidth: 1, opacity: 0.6 };
 
+function stableEdgeId(source: string, target: string, type: string): string {
+  return `${source}→${target}:${type}`;
+}
+
 /**
  * Map a raw edge to a ReactFlow edge for the full graph view.
  */
-export function mapEdgeToReactFlow(edge: GraphEdge, index: number): Edge {
+export function mapEdgeToReactFlow(edge: GraphEdge, _index: number): Edge {
   const style = FULL_EDGE_STYLES[edge.type] || FULL_EDGE_STYLES.DECLARES;
   return {
-    id: `e-${index}`,
+    id: stableEdgeId(edge.source, edge.target, edge.type),
     source: edge.source,
     target: edge.target,
     style,
     animated: false,
     type: "default",
-    markerEnd: { type: MarkerType.ArrowClosed },
+    markerEnd: { type: MarkerType.ArrowClosed, color: style.stroke },
     data: { edgeType: edge.type },
   } as Edge;
 }
@@ -28,15 +32,18 @@ export function mapEdgeToReactFlow(edge: GraphEdge, index: number): Edge {
 /**
  * Map a raw edge to a ReactFlow edge for the flow (execution) view.
  */
-export function mapEdgeToFlowView(edge: GraphEdge, index: number): Edge {
+export function mapEdgeToFlowView(edge: GraphEdge, _index: number): Edge {
+  const color = "#ff9800";
   return {
-    id: `flow-${index}`,
+    id: stableEdgeId(edge.source, edge.target, edge.type),
     source: edge.source,
     target: edge.target,
     animated: true,
     style: {
-      stroke: "#ff9800",
+      stroke: color,
       strokeWidth: 2,
     },
+    markerEnd: { type: MarkerType.ArrowClosed, color },
+    data: { edgeType: edge.type },
   } as Edge;
 }

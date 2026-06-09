@@ -9,7 +9,8 @@
     "html-to-image": "^1.11.13",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "react-error-boundary": "^6.1.2"
+    "react-error-boundary": "^6.1.2",
+    "zustand": "^5.0.14"
   },
   "scripts": {
     "dev": "vite",

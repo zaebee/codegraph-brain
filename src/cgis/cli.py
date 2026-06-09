@@ -1,6 +1,6 @@
 """ "CLI to run pipeline."""
 
-import json
+import json as _json
 from enum import StrEnum
 from pathlib import Path
 
@@ -13,7 +13,10 @@ from cgis import __app_name__, __version__
 from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeNamespace
 from cgis.extractors.python_extractor import PythonExtractor, file_path_to_module_fqn
 from cgis.extractors.typescript_extractor import TypeScriptExtractor
+from cgis.guardian.metrics import load_reviews, rate_review
 from cgis.pipeline import IngestionPipeline
+from cgis.query.analyzer import AnalyzerEngine
+from cgis.query.anomaly import AnomalyType, ArchitecturalAnomaly
 from cgis.query.engine import BEHAVIORAL_EDGE_TYPES, QueryEngine
 from cgis.query.mermaid import MermaidCompiler
 from cgis.resolver.uplift import SemanticUpliftEngine
@@ -89,7 +92,7 @@ def _write_graph_output(
         output_path = Path(output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with output_path.open("w", encoding="utf-8") as f:
-            json.dump(graph_data, f, indent=2)
+            _json.dump(graph_data, f, indent=2)
     else:
         with SQLiteStore(output) as store:
             store.save_graph(nodes, resolved_edges, overwrite=True)
@@ -582,6 +585,162 @@ def _build_structure_tree(
         _build_structure_tree(
             child_id, child_branch, nodes_map, children_map, max_depth, current_depth + 1
         )
+
+
+_SEVERITY_COLOUR = {
+    AnomalyType.CIRCULAR_DEPENDENCY: "red",
+    AnomalyType.ZONE_OF_PAIN: "yellow",
+    AnomalyType.GOD_OBJECT: "magenta",
+}
+
+
+@app.command()
+def analyze(
+    db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
+    min_severity: float = typer.Option(
+        0.0,
+        "--min-severity",
+        "-s",
+        min=0.0,
+        max=1.0,
+        help="Only show anomalies at or above this severity score (0.0-1.0)",
+    ),
+    output_format: OutputFormat = typer.Option(
+        OutputFormat.TEXT, "--format", "-f", help="Output format: text or json"
+    ),
+) -> None:
+    """
+    Detect architectural anti-patterns in the ingested code graph.
+
+    Runs three detectors: circular dependencies (Tarjan SCC), Zone of Pain
+    (Uncle Bob's instability / abstractness metrics), and God Objects.
+    Requires a .db graph file produced by the `ingest` command.
+    """
+    path = Path(db)
+    if not path.is_file():
+        console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
+        raise typer.Exit(code=1)
+
+    with SQLiteStore(db) as store:
+        report = AnalyzerEngine(store).run()
+
+    visible = [a for a in report.anomalies if a.severity_score >= min_severity]
+
+    if output_format == OutputFormat.MERMAID:
+        console.print("[bold red]❌ JSON/text only for analyze — mermaid not supported.[/bold red]")
+        raise typer.Exit(code=1)
+
+    if output_format.value == "json":
+        typer.echo(_json.dumps([a.model_dump() for a in visible], indent=2))
+        return
+
+    console.print(
+        f"\n[bold blue]🔍 Architectural Health Report[/bold blue]  "
+        f"[dim]{db}[/dim]\n"
+        f"  Nodes analysed : [cyan]{report.total_nodes_analyzed}[/cyan]\n"
+        f"  Anomalies found: [{'red' if report.total_anomalies else 'green'}]"
+        f"{report.total_anomalies}[/{'red' if report.total_anomalies else 'green'}]\n"
+    )
+
+    if not visible:
+        console.print("[bold green]✅ No anomalies above the severity threshold.[/bold green]")
+        return
+
+    by_type: dict[AnomalyType, list[ArchitecturalAnomaly]] = {}
+    for a in visible:
+        by_type.setdefault(a.type, []).append(a)
+
+    for anomaly_type, items in by_type.items():
+        colour = _SEVERITY_COLOUR.get(anomaly_type, "white")
+        console.print(f"[bold {colour}]{'━' * 60}[/bold {colour}]")
+        console.print(
+            f"[bold {colour}]{anomaly_type.value}[/bold {colour}]  ({len(items)} found)\n"
+        )
+        for a in sorted(items, key=lambda x: x.severity_score, reverse=True):
+            console.print(
+                f"  [yellow]{a.focal_fqn}[/yellow]  "
+                f"severity=[bold {colour}]{a.severity_score:.2f}[/bold {colour}]"
+            )
+            for key, val in a.metrics.items():
+                console.print(f"    [dim]{key}:[/dim] {val}")
+            console.print(f"  [italic]💡 {a.refactoring_hint}[/italic]\n")
+
+
+_DEFAULT_METRICS = "guardian_metrics.jsonl"
+
+
+@app.command()
+def guardian_rate(
+    pr: int = typer.Argument(..., help="GitHub PR number to rate."),
+    applied: int = typer.Argument(..., help="Number of findings actually applied."),
+    metrics: str = typer.Option(_DEFAULT_METRICS, "--metrics", "-m", help="Path to metrics file."),
+) -> None:
+    """Record how many Guardian findings were applied for a given PR."""
+    updated = rate_review(pr=pr, applied=applied, metrics_path=Path(metrics))
+    if updated:
+        console.print(f"[green]✅ PR #{pr}: recorded {applied} applied findings.[/green]")
+    else:
+        console.print(f"[red]❌ No unrated entry found for PR #{pr} in {metrics}.[/red]")
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def guardian_stats(
+    metrics: str = typer.Option(_DEFAULT_METRICS, "--metrics", "-m", help="Path to metrics file."),
+    last: int = typer.Option(20, "--last", "-n", help="Show only the last N reviews."),
+) -> None:
+    """Show Guardian review quality metrics trend."""
+    reviews = load_reviews(Path(metrics))
+    if not reviews:
+        console.print(f"[yellow]No metrics found in {metrics}.[/yellow]")
+        raise typer.Exit
+
+    reviews = reviews[-last:]
+
+    table = Table(title=f"Guardian Review Metrics (last {len(reviews)})")
+    table.add_column("PR", style="cyan", justify="right")
+    table.add_column("Model", style="dim")
+    table.add_column("Tokens", justify="right")
+    table.add_column("Findings", justify="right")
+    table.add_column("Applied", justify="right")
+    table.add_column("Precision", justify="right")
+    table.add_column("LGTM")
+
+    total_tokens = 0
+    rated = [r for r in reviews if r.get("findings_applied") is not None]
+
+    for r in reviews:
+        pr_str = f"#{r['pr']}" if r.get("pr") else "—"
+        tokens = int(r.get("total_tokens", 0))
+        total_tokens += tokens
+        findings = int(r.get("findings_total", 0))
+        applied = r.get("findings_applied")
+        if applied is not None:
+            applied_str = str(applied)
+            precision = f"{int(applied) / findings * 100:.0f}%" if findings else "—"
+        else:
+            applied_str = "[dim]?[/dim]"
+            precision = "[dim]?[/dim]"
+        lgtm = "✅" if r.get("lgtm") else ""
+        table.add_row(
+            pr_str,
+            str(r.get("model", "")),
+            f"{tokens:,}",
+            str(findings),
+            applied_str,
+            precision,
+            lgtm,
+        )
+
+    console.print(table)
+
+    if rated:
+        total_findings = sum(int(r["findings_total"]) for r in rated)
+        total_applied = sum(int(r["findings_applied"]) for r in rated)
+        avg_precision = f"{total_applied / total_findings * 100:.0f}%" if total_findings else "—"
+        console.print(f"\n  Avg tokens/review : [cyan]{total_tokens // len(reviews):,}[/cyan]")
+        rated_label = f"rated {len(rated)}/{len(reviews)} reviews"
+        console.print(f"  Overall precision : [cyan]{avg_precision}[/cyan]  ({rated_label})")
 
 
 if __name__ == "__main__":  # pragma: no cover

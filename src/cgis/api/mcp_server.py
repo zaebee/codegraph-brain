@@ -11,6 +11,7 @@ import structlog
 from mcp.server.fastmcp import FastMCP
 
 from cgis.extractors.python_extractor import PythonExtractor
+from cgis.extractors.typescript_extractor import TypeScriptExtractor
 from cgis.pipeline import IngestionPipeline
 from cgis.query.engine import QueryEngine
 from cgis.query.mermaid import MermaidCompiler
@@ -22,7 +23,11 @@ logger = structlog.getLogger(__name__)
 
 mcp: FastMCP = FastMCP("cgis-code-graph")
 
-_EXTRACTORS = {".py": PythonExtractor()}
+_EXTRACTORS = {
+    ".py": PythonExtractor(),
+    ".ts": TypeScriptExtractor(),
+    ".tsx": TypeScriptExtractor(tsx=True),
+}
 _DEFAULT_DB = "graph.db"
 
 

@@ -235,7 +235,7 @@ def test_file_node_always_present(extractor: TypeScriptExtractor) -> None:
     """A FILE node is always the first node emitted."""
     nodes, _ = extractor.parse("", "src/empty.ts")
     assert nodes[0].type == NodeType.FILE
-    assert nodes[0].id == "src/empty.ts"
+    assert nodes[0].id == "src.empty"
 
 
 # ---------------------------------------------------------------------------

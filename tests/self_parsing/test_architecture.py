@@ -1,13 +1,16 @@
 """Architectural guardrails: hexagonal boundary invariants verified via the self-parsed graph.
 
-Four invariants are enforced:
+Six invariants are enforced:
   1. Pure Domain Isolation  — cgis.core.models never imports other cgis.* subpackages.
   2. Extractor Boundary     — cgis.extractors.* never imports storage, query, or api layers.
   3. Storage Boundary       — cgis.storage.* never imports the api layer.
   4. Model Immutability     — Node and Edge declare frozen=True.
+  5. No Circular Dependencies — AnalyzerEngine finds zero cycles in cgis itself.
+  6. God Object Baseline    — number of God Objects does not grow beyond known set.
 """
 
 from cgis.core.models import Edge, EdgeType, Node
+from cgis.query.analyzer import AnalyzerEngine
 from cgis.storage.sqlite_store import SQLiteStore
 
 # ---------------------------------------------------------------------------
@@ -129,4 +132,78 @@ def test_domain_models_are_frozen() -> None:
     )
     assert Edge.model_config.get("frozen") is True, (
         "ARCHITECTURAL VIOLATION — Edge.model_config missing frozen=True"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Invariant 5 — No Circular Dependencies
+# ---------------------------------------------------------------------------
+
+_CYCLES_VIOLATION = "ARCHITECTURAL VIOLATION — circular dependencies detected in cgis core:\n"
+
+
+def test_cgis_has_no_circular_dependencies(
+    graph_data: tuple[SQLiteStore, list[Node], list[Edge]],
+) -> None:
+    """AnalyzerEngine must find zero cycles in cgis itself.
+
+    Cycles make modules impossible to test in isolation and are the primary
+    cause of spaghetti architecture. This test enforces the layered DAG.
+    """
+    store, _, _ = graph_data
+    engine = AnalyzerEngine(store)
+    cycles = engine.detect_cycles()
+    assert not cycles, _CYCLES_VIOLATION + "\n".join(
+        f"  {a.focal_fqn}: {a.metrics.get('cycle_members')}" for a in cycles
+    )
+
+
+def test_analyzer_report_is_deterministic(
+    graph_data: tuple[SQLiteStore, list[Node], list[Edge]],
+) -> None:
+    """Running AnalyzerEngine twice on the same graph must produce identical results."""
+    store, _, _ = graph_data
+    report_a = AnalyzerEngine(store).run()
+    report_b = AnalyzerEngine(store).run()
+    assert report_a.total_anomalies == report_b.total_anomalies
+    ids_a = {a.id for a in report_a.anomalies}
+    ids_b = {a.id for a in report_b.anomalies}
+    assert ids_a == ids_b, f"Non-deterministic analyzer output: {ids_a.symmetric_difference(ids_b)}"
+
+
+# ---------------------------------------------------------------------------
+# Invariant 6 — God Object Baseline
+# ---------------------------------------------------------------------------
+
+# Known large classes whose size is accepted and documented.
+# Adding a new entry here requires a conscious decision.
+_KNOWN_GOD_OBJECTS = frozenset(
+    {
+        "storage.sqlite_store.SQLiteStore",  # data-access layer — many CRUD methods by design
+        "extractors.python_extractor.PythonExtractor",  # complex AST visitor
+        "extractors.typescript_extractor.TypeScriptExtractor",  # complex AST visitor
+        "resolver.engine.ResolverEngine",  # multi-pass symbol resolution
+    }
+)
+
+_GOD_OBJECT_VIOLATION = (
+    "ARCHITECTURAL VIOLATION — new God Object(s) detected beyond the known baseline:\n"
+)
+
+
+def test_god_object_baseline_not_exceeded(
+    graph_data: tuple[SQLiteStore, list[Node], list[Edge]],
+) -> None:
+    """No new God Objects must be introduced beyond the documented baseline.
+
+    If a class grows beyond the thresholds, either refactor it or explicitly
+    add it to _KNOWN_GOD_OBJECTS with a justification comment.
+    """
+    store, _, _ = graph_data
+    engine = AnalyzerEngine(store)
+    god_objects = engine.detect_god_objects()
+    found_fqns = {a.focal_fqn for a in god_objects}
+    new_violations = found_fqns - _KNOWN_GOD_OBJECTS
+    assert not new_violations, _GOD_OBJECT_VIOLATION + "\n".join(
+        f"  {fqn}" for fqn in sorted(new_violations)
     )

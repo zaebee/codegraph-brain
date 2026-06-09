@@ -11,7 +11,14 @@ repos:
     hooks:
       - id: mypy
         args: [--config-file=pyproject.toml]
+        files: ^src/
         additional_dependencies:
           - pydantic>=2.13.4
           - structlog>=25.5.0
           - types-pyyaml>=6.0.12.20260518
+          - rich>=15.0.0
+          - typer>=0.26.7
+          - tree-sitter>=0.25.2
+          - tree-sitter-python>=0.25.0
+          - tree-sitter-typescript>=0.23.2
+          - pytest>=9.0.3
