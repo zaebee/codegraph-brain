@@ -1,6 +1,6 @@
 """Google Gemini LLM provider for Guardian."""
 
-from cgis.guardian.providers.base import BaseProvider
+from cgis.guardian.providers.base import BaseProvider, ProviderUsage
 
 
 class GeminiProvider(BaseProvider):
@@ -8,6 +8,7 @@ class GeminiProvider(BaseProvider):
 
     def __init__(self, api_key: str, model_name: str = "gemini-2.5-flash") -> None:
         """Store credentials; google-genai is imported lazily at call time."""
+        super().__init__()
         self._api_key = api_key
         self._model_name = model_name
 
@@ -25,4 +26,10 @@ class GeminiProvider(BaseProvider):
             contents=user_prompt,
             config=types.GenerateContentConfig(system_instruction=system_prompt),
         )
+        meta = getattr(response, "usage_metadata", None)
+        if meta is not None:
+            self.last_usage = ProviderUsage(
+                prompt_tokens=getattr(meta, "prompt_token_count", 0),
+                completion_tokens=getattr(meta, "candidates_token_count", 0),
+            )
         return str(response.text)

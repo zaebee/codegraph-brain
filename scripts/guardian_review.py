@@ -67,13 +67,43 @@ async def main() -> None:
     review_result = await reviewer.run_review()
     log.info("Review complete.")
 
+    usage = provider.last_usage
+    if usage.total_tokens > 0:
+        log.info(
+            "Token usage",
+            prompt=usage.prompt_tokens,
+            completion=usage.completion_tokens,
+            total=usage.total_tokens,
+        )
+
+    stats = collector.graph_stats
+    if stats["total"] > 0:
+        pct = round(stats["with_graph"] / stats["total"] * 100)
+        log.info(
+            "Graph context",
+            files_with_graph=stats["with_graph"],
+            total_changed=stats["total"],
+            coverage_pct=f"{pct}%",
+        )
+
+    footer_parts = [f"🤖 **{model}**"]
+    if usage.total_tokens > 0:
+        footer_parts.append(
+            f"{usage.prompt_tokens:,} prompt + {usage.completion_tokens:,} completion"
+            f" = **{usage.total_tokens:,} tokens**"
+        )
+    if stats["total"] > 0:
+        pct = round(stats["with_graph"] / stats["total"] * 100)
+        footer_parts.append(f"graph {stats['with_graph']}/{stats['total']} files ({pct}%)")
+    footer = "\n\n---\n> " + " · ".join(footer_parts)
+
     if args.output:
         safe_root = Path.cwd().resolve()
         output_path = (safe_root / args.output).resolve()
         if not output_path.is_relative_to(safe_root):
             _msg = f"--output must be within the working directory: {output_path}"
             raise ValueError(_msg)
-        output_path.write_text(review_result)
+        output_path.write_text(review_result + footer)
         log.info("Review written to file.", path=str(output_path))
     else:
         print(review_result)
