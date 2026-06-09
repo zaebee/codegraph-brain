@@ -29,7 +29,10 @@ class HealthScorer:
         self._edges = edges
 
     def _compute_fan_counts(self) -> tuple[dict[str, int], dict[str, int]]:
-        """Count incoming and outgoing behavioral edges per node."""
+        """Count incoming and outgoing behavioral edges (CALLS, IMPORTS, REFERENCES, USES) per node.
+
+        Returns fan_in and fan_out dicts keyed by node ID.
+        """
         fan_in: dict[str, int] = {n.id: 0 for n in self._nodes}
         fan_out: dict[str, int] = {n.id: 0 for n in self._nodes}
         for edge in self._edges:
@@ -72,18 +75,32 @@ class HealthScorer:
                 cyclic.update(scc)
         return cyclic
 
+    def _compute_file_ancestors(self) -> dict[str, str]:
+        """Map every descendant node ID to the FILE node it belongs to (transitive)."""
+        children: dict[str, list[str]] = {}
+        for edge in self._edges:
+            if edge.type in _STRUCTURAL:
+                children.setdefault(edge.source, []).append(edge.target)
+
+        file_ids = {n.id for n in self._nodes if n.type == NodeType.FILE}
+        ancestor: dict[str, str] = {}
+        queue: deque[tuple[str, str]] = deque((fid, fid) for fid in file_ids)
+        while queue:
+            node_id, root_file = queue.popleft()
+            if node_id in ancestor:
+                continue
+            ancestor[node_id] = root_file
+            for child_id in children.get(node_id, []):
+                if child_id not in ancestor:
+                    queue.append((child_id, root_file))
+        return ancestor
+
     def enrich(self) -> list[Node]:
         """Return a new list of Nodes with health metrics merged into `metadata`."""
         fan_in, fan_out = self._compute_fan_counts()
         depths = self._compute_depths()
         cyclic_file_ids = self._compute_cycles()
-
-        # Map child → its nearest FILE ancestor for cycle propagation
-        file_ids = {n.id for n in self._nodes if n.type == NodeType.FILE}
-        file_ancestor: dict[str, str] = {}
-        for edge in self._edges:
-            if edge.type in _STRUCTURAL and edge.source in file_ids:
-                file_ancestor[edge.target] = edge.source
+        file_ancestor = self._compute_file_ancestors()
 
         result: list[Node] = []
         for node in self._nodes:

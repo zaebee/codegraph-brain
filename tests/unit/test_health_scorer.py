@@ -106,6 +106,23 @@ def test_in_cycle_false_for_dag() -> None:
     assert a_result.metadata["in_cycle"] is False
 
 
+def test_in_cycle_propagates_to_methods_in_cyclic_file() -> None:
+    """Methods inside a cyclic file must also report in_cycle=True."""
+    file_a = _node("a", NodeType.FILE, fp="a.py")
+    file_b = _node("b", NodeType.FILE, fp="b.py")
+    cls = _node("a.Cls", NodeType.CLASS, fp="a.py")
+    method = _node("a.Cls.m", NodeType.METHOD, fp="a.py")
+    edges = [
+        _edge("a", "b", EdgeType.IMPORTS),
+        _edge("b", "a", EdgeType.IMPORTS),
+        _edge("a", "a.Cls", EdgeType.CONTAINS),
+        _edge("a.Cls", "a.Cls.m", EdgeType.CONTAINS),
+    ]
+    result = HealthScorer([file_a, file_b, cls, method], edges).enrich()
+    method_result = next(n for n in result if n.id == "a.Cls.m")
+    assert method_result.metadata["in_cycle"] is True
+
+
 def test_enrich_preserves_existing_metadata() -> None:
     """Pre-existing metadata keys survive the enrich() call."""
     n = Node(
