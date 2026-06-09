@@ -219,3 +219,4 @@ __marimo__/
 graph.json
 *.db
 ui/
+guardian_metrics.jsonl
