@@ -3,6 +3,7 @@
 import structlog
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
+from cgis.query._scc import build_adjacency, tarjan_scc
 from cgis.query.anomaly import AnomalyType, ArchitecturalAnomaly, ArchitecturalReport
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -16,93 +17,6 @@ _ZONE_OF_PAIN_MAX_INSTABILITY = 0.30  # I <= 0.3 means "stable" (more dependents
 _ZONE_OF_PAIN_MIN_AFFERENT = 3  # require >= 3 callers to avoid flagging obscure low-usage classes
 _GOD_OBJECT_MIN_METHODS = 10  # classes below this are too small to qualify regardless of coupling
 _GOD_OBJECT_MIN_EFFERENT = 5  # low coupling means cohesion is still acceptable
-
-
-def _build_adjacency(edges: list[Edge], allowed_types: frozenset[EdgeType]) -> dict[str, list[str]]:
-    """Build a directed adjacency list from edges matching allowed_types."""
-    adj: dict[str, list[str]] = {}
-    for edge in edges:
-        if edge.type not in allowed_types:
-            continue
-        if edge.target.startswith(("raw_call:", "raw_import:")):
-            continue
-        adj.setdefault(edge.source, []).append(edge.target)
-    return adj
-
-
-def _pop_scc(v: str, stack: list[str], on_stack: dict[str, bool]) -> list[str]:
-    """Pop nodes from stack until v is reached, forming one SCC."""
-    scc: list[str] = []
-    while True:
-        w = stack.pop()
-        on_stack[w] = False
-        scc.append(w)
-        if w == v:
-            break
-    return scc
-
-
-def _tarjan_step(
-    v: str,
-    i: int,
-    adj: dict[str, list[str]],
-    index: dict[str, int],
-    lowlink: dict[str, int],
-    on_stack: dict[str, bool],
-    stack: list[str],
-    work: list[tuple[str, int]],
-    sccs: list[list[str]],
-    counter: list[int],
-) -> None:
-    """Process one step of the iterative Tarjan walk: advance or backtrack."""
-    neighbors = adj.get(v, [])
-    if i < len(neighbors):
-        work[-1] = (v, i + 1)
-        w = neighbors[i]
-        if w not in index:
-            index[w] = counter[0]
-            lowlink[w] = counter[0]
-            counter[0] += 1
-            stack.append(w)
-            on_stack[w] = True
-            work.append((w, 0))
-        elif on_stack.get(w, False):
-            lowlink[v] = min(lowlink[v], index[w])
-    else:
-        work.pop()
-        if work:
-            lowlink[work[-1][0]] = min(lowlink[work[-1][0]], lowlink[v])
-        if lowlink[v] == index[v]:
-            sccs.append(_pop_scc(v, stack, on_stack))
-
-
-def _tarjan_scc(adj: dict[str, list[str]]) -> list[list[str]]:
-    """Iterative Tarjan's SCC algorithm.
-
-    Returns all strongly connected components. O(V+E), no recursion limit.
-    Any returned component with len > 1 is a cycle.
-    """
-    index: dict[str, int] = {}
-    lowlink: dict[str, int] = {}
-    on_stack: dict[str, bool] = {}
-    stack: list[str] = []
-    sccs: list[list[str]] = []
-    counter = [0]
-
-    for start in sorted(adj):
-        if start in index:
-            continue
-        index[start] = counter[0]
-        lowlink[start] = counter[0]
-        counter[0] += 1
-        stack.append(start)
-        on_stack[start] = True
-        work: list[tuple[str, int]] = [(start, 0)]
-        while work:
-            v, i = work[-1]
-            _tarjan_step(v, i, adj, index, lowlink, on_stack, stack, work, sccs, counter)
-
-    return sccs
 
 
 def _build_method_to_class(nodes: list[Node], edges: list[Edge]) -> dict[str, str]:
@@ -181,13 +95,13 @@ class AnalyzerEngine:
             for n in self._nodes
             if n.namespace == NodeNamespace.INTERNAL and n.type in (NodeType.FILE, NodeType.MODULE)
         }
-        adj = _build_adjacency(self._edges, frozenset({EdgeType.IMPORTS}))
+        adj = build_adjacency(self._edges, frozenset({EdgeType.IMPORTS}))
         adj = {
             k: [v for v in vs if v in internal_fqns] for k, vs in adj.items() if k in internal_fqns
         }
 
         anomalies: list[ArchitecturalAnomaly] = []
-        for scc in _tarjan_scc(adj):
+        for scc in tarjan_scc(adj):
             if len(scc) < 2:
                 continue
             sorted_members = sorted(scc)
