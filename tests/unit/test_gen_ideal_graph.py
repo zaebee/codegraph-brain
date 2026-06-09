@@ -52,7 +52,7 @@ def test_all_nodes_are_internal(pattern: str) -> None:
     graph = generate(pattern)
     for node in graph["nodes"]:
         assert node["namespace"] == "INTERNAL"
-        assert node["confidence_score"] == 1.0
+        assert node["confidence_score"] == pytest.approx(1.0)
 
 
 def test_hub_has_high_fan_in_utils() -> None:
