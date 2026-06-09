@@ -26,6 +26,7 @@ class ContextCollector:
         self.project_root = project_root
         self.base_branch = base_branch
         self.db_path = db_path
+        self.graph_stats: dict[str, int] = {"total": 0, "with_graph": 0}
 
     def get_git_diff(self) -> str:
         """Returns diff between HEAD and the base branch on origin."""
@@ -74,6 +75,7 @@ class ContextCollector:
 
         compiler = MermaidCompiler()
         sections: list[str] = []
+        total = len(changed_files)
 
         with SQLiteStore(str(self.db_path)) as store:
             engine = QueryEngine(store)
@@ -88,6 +90,13 @@ class ContextCollector:
                     f"#### Impact graph for `{module_fqn}`:\n```mermaid\n{mermaid}\n```"
                 )
 
+        self.graph_stats = {"total": total, "with_graph": len(sections)}
+        if total > 0 and len(sections) == 0:
+            log.warning(
+                "Graph context empty for all changed files — "
+                "graph.db may be stale or built from wrong path.",
+                changed_files=total,
+            )
         return "\n\n".join(sections)
 
     def collect_all(self) -> dict[str, str]:

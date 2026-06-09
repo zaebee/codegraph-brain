@@ -1,6 +1,6 @@
 """Mistral AI LLM provider for Guardian."""
 
-from cgis.guardian.providers.base import BaseProvider
+from cgis.guardian.providers.base import BaseProvider, ProviderUsage
 
 
 class MistralProvider(BaseProvider):
@@ -8,6 +8,7 @@ class MistralProvider(BaseProvider):
 
     def __init__(self, api_key: str, model_name: str = "mistral-medium-latest") -> None:
         """Store credentials; mistralai is imported lazily at call time."""
+        super().__init__()
         self._api_key = api_key
         self._model_name = model_name
 
@@ -33,4 +34,10 @@ class MistralProvider(BaseProvider):
         if content is None:
             _msg = f"Mistral returned null message content for model {self._model_name}"
             raise ValueError(_msg)
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            self.last_usage = ProviderUsage(
+                prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
+                completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
+            )
         return str(content)

@@ -67,6 +67,25 @@ async def main() -> None:
     review_result = await reviewer.run_review()
     log.info("Review complete.")
 
+    usage = provider.last_usage
+    if usage.total_tokens > 0:
+        log.info(
+            "Token usage",
+            prompt=usage.prompt_tokens,
+            completion=usage.completion_tokens,
+            total=usage.total_tokens,
+        )
+
+    stats = collector.graph_stats
+    if stats["total"] > 0:
+        pct = round(stats["with_graph"] / stats["total"] * 100)
+        log.info(
+            "Graph context",
+            files_with_graph=stats["with_graph"],
+            total_changed=stats["total"],
+            coverage_pct=f"{pct}%",
+        )
+
     if args.output:
         safe_root = Path.cwd().resolve()
         output_path = (safe_root / args.output).resolve()

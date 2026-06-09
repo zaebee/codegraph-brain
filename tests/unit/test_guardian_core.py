@@ -9,7 +9,7 @@ import pytest
 from cgis.guardian.collector import ContextCollector
 from cgis.guardian.core import GuardianReviewer
 from cgis.guardian.prompts import PromptBuilder
-from cgis.guardian.providers.base import BaseProvider
+from cgis.guardian.providers.base import BaseProvider, ProviderUsage
 from cgis.guardian.providers.gemini import GeminiProvider
 from cgis.guardian.providers.mistral import MistralProvider
 
@@ -64,6 +64,7 @@ class _FakeProvider(BaseProvider):
 
     def __init__(self, response: str = "LGTM") -> None:
         """Store canned response."""
+        super().__init__()
         self._response = response
 
     async def generate_content(self, system_prompt: str, user_prompt: str) -> str:  # noqa: ARG002
@@ -110,6 +111,47 @@ async def test_run_review_passes_context_to_prompt(collector: ContextCollector) 
         await reviewer.run_review()
 
     assert "MY_DIFF" in captured["user"]
+
+
+async def test_provider_last_usage_defaults_to_zero() -> None:
+    """last_usage is initialised to zero before any call."""
+    provider = _FakeProvider()
+    assert provider.last_usage.prompt_tokens == 0
+    assert provider.last_usage.completion_tokens == 0
+    assert provider.last_usage.total_tokens == 0
+
+
+async def test_provider_last_usage_after_call(collector: ContextCollector) -> None:
+    """last_usage reflects values set by the provider after generate_content."""
+
+    class _UsageProvider(BaseProvider):
+        async def generate_content(self, system_prompt: str, user_prompt: str) -> str:  # noqa: ARG002
+            """Return ok and set fake usage."""
+            self.last_usage = ProviderUsage(prompt_tokens=100, completion_tokens=50)
+            return "ok"
+
+    p = _UsageProvider()
+    with patch.object(
+        collector, "collect_all", return_value={"diff": "", "contributing": "", "ontology": ""}
+    ):
+        await GuardianReviewer(provider=p, context_collector=collector).run_review()
+
+    assert p.last_usage.prompt_tokens == 100
+    assert p.last_usage.completion_tokens == 50
+    assert p.last_usage.total_tokens == 150
+
+
+def test_graph_stats_initialised_to_zero(tmp_path: Path) -> None:
+    """graph_stats starts at zero before collect_graph_context is called."""
+    c = ContextCollector(project_root=tmp_path)
+    assert c.graph_stats == {"total": 0, "with_graph": 0}
+
+
+def test_graph_stats_updated_when_no_db(tmp_path: Path) -> None:
+    """graph_stats stays at zero when db_path is None."""
+    c = ContextCollector(project_root=tmp_path)
+    c.collect_graph_context()
+    assert c.graph_stats == {"total": 0, "with_graph": 0}
 
 
 # ---------------------------------------------------------------------------
