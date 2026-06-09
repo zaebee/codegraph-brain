@@ -1,4 +1,4 @@
-import type { Edge } from "@xyflow/react";
+import { MarkerType, type Edge } from "@xyflow/react";
 import type { GraphEdge } from "../types";
 import { EDGE_COLORS } from "../theme";
 
@@ -20,6 +20,7 @@ export function mapEdgeToReactFlow(edge: GraphEdge, index: number): Edge {
     style,
     animated: false,
     type: "default",
+    markerEnd: { type: MarkerType.ArrowClosed },
     data: { edgeType: edge.type },
   } as Edge;
 }

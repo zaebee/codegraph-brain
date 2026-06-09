@@ -1,5 +1,18 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+function collectAllDescendants(
+  id: string,
+  parentChildren: Map<string, string[]>
+): string[] {
+  const result: string[] = [];
+  const direct = parentChildren.get(id) || [];
+  for (const c of direct) {
+    result.push(c);
+    result.push(...collectAllDescendants(c, parentChildren));
+  }
+  return result;
+}
+
 export function getCollapsedView(
   nodes: any[],
   edges: any[],
@@ -18,13 +31,22 @@ export function getCollapsedView(
   }
 
   const visibleIds = new Set<string>();
+  const allDescendantsCache = new Map<string, string[]>();
+
+  function descendants(id: string): string[] {
+    const cached = allDescendantsCache.get(id);
+    if (cached) return cached;
+    const all = collectAllDescendants(id, parentChildren);
+    allDescendantsCache.set(id, all);
+    return all;
+  }
+
   for (const n of nodes) {
-    if (n.data?.nodeType === "FILE" && parentChildren.has(n.id)) {
+    if (n.data?.nodeType === "FILE") {
       visibleIds.add(n.id);
       if (expandedFiles.has(n.id)) {
-        const children = parentChildren.get(n.id) || [];
-        for (const cid of children) {
-          visibleIds.add(cid);
+        for (const descId of descendants(n.id)) {
+          visibleIds.add(descId);
         }
       }
     }

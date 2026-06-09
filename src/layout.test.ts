@@ -169,7 +169,6 @@ describe("layoutGraph container wrap", () => {
     ]);
 
     const result = await layoutGraph(nodes, edges, expandedFiles, parentChildren);
-    const child1 = result.nodes.find((n: Node) => n.id === "c1")!;
     const child2 = result.nodes.find((n: Node) => n.id === "c2")!;
     const container2 = result.nodes.find((n: Node) => n.id === "f2")!;
 
