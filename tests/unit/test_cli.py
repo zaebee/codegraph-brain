@@ -1,5 +1,6 @@
 """Unit test cases for cli."""
 
+import json
 import re
 from pathlib import Path
 
@@ -634,3 +635,18 @@ def test_structure_mermaid_output(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     assert "graph" in result.output
+
+
+def test_ingest_json_output_has_health_metrics(tmp_path: Path) -> None:
+    """After ingest to JSON, nodes must contain fan_in/fan_out/depth/in_cycle."""
+    runner = CliRunner()
+    out = tmp_path / "graph.json"
+    result = runner.invoke(app, ["ingest", "src/cgis", "--output", str(out)])
+    assert result.exit_code == 0, result.output
+    data = json.loads(out.read_text())
+    assert len(data["nodes"]) > 0
+    node = data["nodes"][0]
+    assert "fan_out" in node["metadata"]
+    assert "fan_in" in node["metadata"]
+    assert "depth" in node["metadata"]
+    assert "in_cycle" in node["metadata"]
