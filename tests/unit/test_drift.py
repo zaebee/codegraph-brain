@@ -74,7 +74,7 @@ def test_load_project_domains_fields(scorer: DriftScorer) -> None:
     assert d.name == "extraction"
     assert d.fqn_prefix == "cgis.extractors"
     assert d.expected_pattern == "pure_utility"
-    assert d.drift_tolerance == 0.15
+    assert d.drift_tolerance == pytest.approx(0.15)
 
 
 # ── drift = 0 when perfectly matching ────────────────────────────────────────
@@ -95,7 +95,7 @@ def test_drift_zero_when_actual_matches_ideal(
         unresolved_ratio=0.0,
     )
     report = scorer.score(perfect, pure_util_domain)
-    assert report.drift_score == 0.0
+    assert report.drift_score == pytest.approx(0.0)
     assert report.status == "clean"
     assert report.violations == []
 
@@ -118,7 +118,7 @@ def test_exceeding_min_does_not_penalise(
         unresolved_ratio=0.0,
     )
     report = scorer.score(fp, pure_util_domain)
-    assert report.drift_score == 0.0
+    assert report.drift_score == pytest.approx(0.0)
 
 
 # ── violations list ───────────────────────────────────────────────────────────
@@ -237,7 +237,7 @@ def test_report_contains_domain_metadata(
     assert report.domain == "extraction"
     assert report.fqn_prefix == "cgis.extractors"
     assert report.expected_pattern == "pure_utility"
-    assert report.tolerance == 0.15
+    assert report.tolerance == pytest.approx(0.15)
 
 
 # ── unconstrained components ──────────────────────────────────────────────────
@@ -258,4 +258,4 @@ def test_unconstrained_components_add_no_drift(
         unresolved_ratio=0.0,
     )
     report = scorer.score(fp, pure_util_domain)
-    assert report.drift_score == 0.0
+    assert report.drift_score == pytest.approx(0.0)

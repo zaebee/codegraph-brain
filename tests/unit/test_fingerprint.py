@@ -1,5 +1,7 @@
 """Unit tests for PatternFingerprint and FingerprintExtractor."""
 
+import pytest
+
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
 from cgis.query.fingerprint import FingerprintExtractor, PatternFingerprint
 from cgis.storage.sqlite_store import SQLiteStore
@@ -40,7 +42,7 @@ def test_prefix_boundary_no_false_positive() -> None:
     with _store([n1, n2], []) as store:
         fp = FingerprintExtractor(store).extract("dom")
     assert fp.hub_count == 0
-    assert fp.unresolved_ratio == 0.0
+    assert fp.unresolved_ratio == pytest.approx(0.0)
 
 
 def test_exact_prefix_match_is_included() -> None:
@@ -48,7 +50,7 @@ def test_exact_prefix_match_is_included() -> None:
     n = _node("dom", NodeType.FILE, fp="dom.py")
     with _store([n], []) as store:
         fp = FingerprintExtractor(store).extract("dom")
-    assert fp.cycle_ratio == 0.0  # node exists, no cycles
+    assert fp.cycle_ratio == pytest.approx(0.0)  # node exists, no cycles
 
 
 # ── empty domain ──────────────────────────────────────────────────────────────
@@ -144,7 +146,7 @@ def test_cycle_ratio_is_one_for_fully_cyclic_domain() -> None:
     ]
     with _store([f1, f2], edges) as store:
         fp = FingerprintExtractor(store).extract("dom")
-    assert fp.cycle_ratio == 1.0
+    assert fp.cycle_ratio == pytest.approx(1.0)
 
 
 def test_cycle_ratio_zero_when_no_cycles() -> None:
@@ -154,7 +156,7 @@ def test_cycle_ratio_zero_when_no_cycles() -> None:
     edges = [_edge("dom.a", "dom.b", EdgeType.IMPORTS)]
     with _store([f1, f2], edges) as store:
         fp = FingerprintExtractor(store).extract("dom")
-    assert fp.cycle_ratio == 0.0
+    assert fp.cycle_ratio == pytest.approx(0.0)
 
 
 # ── unresolved_ratio ──────────────────────────────────────────────────────────
@@ -170,7 +172,7 @@ def test_unresolved_ratio_half_when_one_raw_call() -> None:
     ]
     with _store([caller, target], edges) as store:
         fp = FingerprintExtractor(store).extract("dom")
-    assert fp.unresolved_ratio == 0.5
+    assert fp.unresolved_ratio == pytest.approx(0.5)
 
 
 def test_unresolved_ratio_zero_when_no_calls() -> None:
@@ -178,7 +180,7 @@ def test_unresolved_ratio_zero_when_no_calls() -> None:
     n = _node("dom.fn")
     with _store([n], []) as store:
         fp = FingerprintExtractor(store).extract("dom")
-    assert fp.unresolved_ratio == 0.0
+    assert fp.unresolved_ratio == pytest.approx(0.0)
 
 
 # ── chain_len ──────────────────────────────────────────────────────────────────
@@ -190,7 +192,7 @@ def test_chain_len_linear_three_node_chain() -> None:
     edges = [_edge("dom.a", "dom.b"), _edge("dom.b", "dom.c")]
     with _store(nodes, edges) as store:
         fp = FingerprintExtractor(store).extract("dom")
-    assert fp.chain_len == 2.0
+    assert fp.chain_len == pytest.approx(2.0)
 
 
 def test_chain_len_zero_for_single_isolated_node() -> None:
