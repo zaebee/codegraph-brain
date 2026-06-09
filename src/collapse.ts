@@ -7,14 +7,7 @@ export function getCollapsedView(
   parentChildren: Map<string, string[]>
 ): { nodes: any[]; edges: any[] } {
   if (expandedFiles.size === 0) {
-    const fileNodes = nodes.filter(
-      (n: any) => n.data?.nodeType === "FILE" && parentChildren.has(n.id)
-    );
-    const fileNodeIds = new Set(fileNodes.map((n: any) => n.id));
-    const fileEdges = edges.filter(
-      (e: any) => fileNodeIds.has(e.source) && fileNodeIds.has(e.target)
-    );
-    return { nodes: fileNodes, edges: fileEdges };
+    return { nodes, edges };
   }
 
   const visibleIds = new Set<string>();
