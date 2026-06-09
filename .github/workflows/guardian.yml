@@ -4,10 +4,7 @@ on:
   issue_comment:
     types: [created]
 
-permissions:
-  contents: read
-  pull-requests: write
-  issues: read
+permissions: {}
 
 jobs:
   review:
@@ -16,6 +13,10 @@ jobs:
       github.event.issue.pull_request != null &&
       github.event.comment.body == '/guardian review'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
 
     steps:
       - name: Check commenter has write access

@@ -24,6 +24,9 @@ logger = structlog.getLogger(__name__)
 class IngestionPipeline:
     """Orchestrates the full Extract → Resolve → Store pipeline over a source tree."""
 
+    _extractors: Mapping[str, BaseExtractor]
+    _domains_config: str | None
+
     def __init__(
         self,
         extractors: Mapping[str, BaseExtractor],
