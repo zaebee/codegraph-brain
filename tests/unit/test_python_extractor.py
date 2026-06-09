@@ -299,3 +299,53 @@ def test_extract_call_inside_parenthesized_expression(extractor: PythonExtractor
     _nodes, edges = extractor.parse(code, "mod.py")
     call_edges = [e for e in edges if e.type == EdgeType.CALLS]
     assert any("my_func" in e.target for e in call_edges)
+
+
+# --- source_root tests ---
+
+
+def test_file_path_to_module_fqn_with_source_root() -> None:
+    """source_root strips the leading directory before dotting."""
+    assert file_path_to_module_fqn("src/cgis/pipeline.py", source_root="src") == "cgis.pipeline"
+
+
+def test_file_path_to_module_fqn_source_root_init() -> None:
+    """__init__.py suffix is still dropped after source_root stripping."""
+    assert file_path_to_module_fqn("src/cgis/__init__.py", source_root="src") == "cgis"
+
+
+def test_file_path_to_module_fqn_source_root_trailing_slash() -> None:
+    """Trailing slash in source_root is handled gracefully."""
+    assert file_path_to_module_fqn("src/cgis/pipeline.py", source_root="src/") == "cgis.pipeline"
+
+
+def test_file_path_to_module_fqn_source_root_no_match() -> None:
+    """When file_path does not start with source_root, no stripping occurs."""
+    assert file_path_to_module_fqn("lib/utils.py", source_root="src") == "lib.utils"
+
+
+def test_python_extractor_source_roots_strips_prefix() -> None:
+    """PythonExtractor(source_roots=['src']) yields FQNs without the 'src.' prefix."""
+    code = "def hello(): pass\n"
+    ext = PythonExtractor(source_roots=["src"])
+    nodes, _ = ext.parse(code, "src/mymod/utils.py")
+    fqns = [n.id for n in nodes]
+    assert all(not fqn.startswith("src.") for fqn in fqns)
+    assert any(fqn.startswith("mymod.") for fqn in fqns)
+
+
+def test_python_extractor_source_roots_none_is_unchanged() -> None:
+    """PythonExtractor() without source_roots behaves as before."""
+    code = "def hello(): pass\n"
+    nodes, _ = PythonExtractor().parse(code, "src/mymod/utils.py")
+    fqns = [n.id for n in nodes]
+    assert any(fqn.startswith("src.mymod.") for fqn in fqns)
+
+
+def test_python_extractor_source_roots_unmatched_root() -> None:
+    """If no source_root matches the file, FQN is built from the full path."""
+    code = "def hello(): pass\n"
+    ext = PythonExtractor(source_roots=["lib"])
+    nodes, _ = ext.parse(code, "src/mymod/utils.py")
+    fqns = [n.id for n in nodes]
+    assert any(fqn.startswith("src.mymod.") for fqn in fqns)

@@ -30,7 +30,7 @@ def _resolve_relative_module(module_fqn: str, leading_dots: int, relative_path: 
     return base
 
 
-def file_path_to_module_fqn(file_path: str) -> str:
+def file_path_to_module_fqn(file_path: str, source_root: str | None = None) -> str:
     """Convert a file path to a dot-separated module namespace.
 
     Examples:
@@ -38,12 +38,19 @@ def file_path_to_module_fqn(file_path: str) -> str:
         src/cgis/__init__.py  -> src.cgis
         /abs/path/mod.py      -> abs.path.mod
         C:\\path\\to\\mod.py  -> path.to.mod
+
+        With source_root="src":
+        src/cgis/pipeline.py  -> cgis.pipeline
     """
     clean = file_path
     # Strip Windows drive letter (e.g. "C:") before normalising slashes
     if len(clean) >= 2 and clean[1] == ":" and clean[0].isalpha():
         clean = clean[2:]
     clean = clean.replace("\\", "/").lstrip("/")
+    if source_root:
+        sr = source_root.replace("\\", "/").strip("/") + "/"
+        if clean.startswith(sr):
+            clean = clean[len(sr) :]
     if clean.endswith(".py"):
         clean = clean[:-3]
     if clean.endswith("/__init__"):
@@ -58,9 +65,19 @@ class PythonExtractor(BaseExtractor):
 
     LANG: str = "python"
 
-    def __init__(self) -> None:
+    def __init__(self, source_roots: list[str] | None = None) -> None:
         """Initialise the tree-sitter Python parser."""
         self._parser = Parser(Language(tspython.language()))
+        self._source_roots: list[str] = source_roots or []
+
+    def _pick_source_root(self, file_path: str) -> str | None:
+        """Return the first source root that matches file_path as a prefix, or None."""
+        clean = file_path.replace("\\", "/").lstrip("/")
+        for sr in self._source_roots:
+            sr_norm = sr.replace("\\", "/").strip("/") + "/"
+            if clean.startswith(sr_norm):
+                return sr
+        return None
 
     def parse(self, code: str, file_path: str) -> tuple[list[Node], list[Edge]]:
         """
@@ -73,7 +90,7 @@ class PythonExtractor(BaseExtractor):
         nodes: list[Node] = []
         edges: list[Edge] = []
         import_map: dict[str, str] = {}
-        module_fqn = file_path_to_module_fqn(file_path)
+        module_fqn = file_path_to_module_fqn(file_path, self._pick_source_root(file_path))
         local_types_acc: dict[str, dict[str, str]] = {}
 
         self._walk(
@@ -126,7 +143,7 @@ class PythonExtractor(BaseExtractor):
         name = node.child_by_field_name("name")
         node_name = self._extract_node_name(name, code_bytes)
         prefix = self._get_fqn_prefix(node, code_bytes)
-        module = file_path_to_module_fqn(file_path)
+        module = file_path_to_module_fqn(file_path, self._pick_source_root(file_path))
         if not module:
             return f"{prefix}.{node_name}" if prefix else node_name
         return f"{module}.{prefix}.{node_name}" if prefix else f"{module}.{node_name}"
@@ -640,7 +657,9 @@ class PythonExtractor(BaseExtractor):
                 module_part, _, rest = type_name.partition(".")
                 if module_part in import_map:
                     return f"{import_map[module_part]}.{rest}"
-        return f"{file_path_to_module_fqn(file_path)}.{type_name}"
+        return (
+            f"{file_path_to_module_fqn(file_path, self._pick_source_root(file_path))}.{type_name}"
+        )
 
     def _collect_assignment_type(
         self,

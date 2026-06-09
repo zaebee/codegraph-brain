@@ -18,18 +18,25 @@ _EXPORT_UNWRAP_TYPES = frozenset(
 )
 
 
-def file_path_to_module_fqn(file_path: str) -> str:
+def file_path_to_module_fqn(file_path: str, source_root: str | None = None) -> str:
     """Convert a TS/TSX file path to a dot-separated module namespace.
 
     Examples:
         src/api/handler.ts       -> src.api.handler
         src/components/index.tsx -> src.components
         C:\\path\\to\\mod.ts     -> path.to.mod
+
+        With source_root="src":
+        src/api/handler.ts       -> api.handler
     """
     clean = file_path
     if len(clean) >= 2 and clean[1] == ":" and clean[0].isalpha():
         clean = clean[2:]
     clean = clean.replace("\\", "/").lstrip("/")
+    if source_root:
+        sr = source_root.replace("\\", "/").strip("/") + "/"
+        if clean.startswith(sr):
+            clean = clean[len(sr) :]
     for ext in (".tsx", ".ts", ".jsx", ".js"):
         if clean.endswith(ext):
             clean = clean[: -len(ext)]
@@ -95,16 +102,26 @@ def _make_edge(source: str, target: str, edge_type: EdgeType) -> Edge:
 class TypeScriptExtractor(BaseExtractor):
     """Extracts structural nodes and edges from TypeScript/TSX source files."""
 
-    def __init__(self, tsx: bool = False) -> None:
+    def __init__(self, tsx: bool = False, source_roots: list[str] | None = None) -> None:
         """Initialise the tree-sitter TypeScript (or TSX) parser."""
         lang = tsts.language_tsx() if tsx else tsts.language_typescript()
         self._parser = Parser(Language(lang))
+        self._source_roots: list[str] = source_roots or []
+
+    def _pick_source_root(self, file_path: str) -> str | None:
+        """Return the first source root that matches file_path as a prefix, or None."""
+        clean = file_path.replace("\\", "/").lstrip("/")
+        for sr in self._source_roots:
+            sr_norm = sr.replace("\\", "/").strip("/") + "/"
+            if clean.startswith(sr_norm):
+                return sr
+        return None
 
     def parse(self, code: str, file_path: str) -> tuple[list[Node], list[Edge]]:
         """Extract nodes and edges from TypeScript source code."""
         code_bytes = code.encode("utf-8")
         tree = self._parser.parse(code_bytes)
-        module_fqn = file_path_to_module_fqn(file_path)
+        module_fqn = file_path_to_module_fqn(file_path, self._pick_source_root(file_path))
 
         file_node = Node(
             id=module_fqn,

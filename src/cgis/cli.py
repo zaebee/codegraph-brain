@@ -119,14 +119,25 @@ def ingest(
         "-d",
         help="Path to a domains.yaml file for semantic uplift (requires .db output).",
     ),
+    source_roots: list[str] = typer.Option(
+        [],
+        "--source-root",
+        "-s",
+        help=(
+            "Strip this directory prefix when building FQNs "
+            "(e.g. --source-root src makes src/cgis/foo.py → cgis.foo). "
+            "May be repeated for multiple roots."
+        ),
+    ),
 ) -> None:
     """
     Scan a repository, extract code structure, and resolve semantic links.
     """
+    roots = source_roots or []
     extractors = {
-        ".py": PythonExtractor(),
-        ".ts": TypeScriptExtractor(),
-        ".tsx": TypeScriptExtractor(tsx=True),
+        ".py": PythonExtractor(source_roots=roots),
+        ".ts": TypeScriptExtractor(source_roots=roots),
+        ".tsx": TypeScriptExtractor(tsx=True, source_roots=roots),
     }
 
     pipeline = IngestionPipeline(extractors, domains_config=domains)
