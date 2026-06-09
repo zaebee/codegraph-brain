@@ -1,0 +1,1439 @@
+{
+  "metadata": {
+    "source_path": "ideal:all",
+    "node_count": 41,
+    "edge_count": 59
+  },
+  "nodes": [
+    {
+      "id": "hub.utils",
+      "type": "FILE",
+      "name": "utils.py",
+      "file_path": "hub/utils.py",
+      "start_line": 1,
+      "end_line": 30,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 0,
+        "fan_out": 0,
+        "depth": 0,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "hub.utils.format_response",
+      "type": "FUNCTION",
+      "name": "format_response",
+      "file_path": "hub/utils.py",
+      "start_line": 5,
+      "end_line": 13,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 4,
+        "fan_out": 0,
+        "depth": 1,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "hub.utils.validate_input",
+      "type": "FUNCTION",
+      "name": "validate_input",
+      "file_path": "hub/utils.py",
+      "start_line": 15,
+      "end_line": 23,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 4,
+        "fan_out": 0,
+        "depth": 1,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "hub.service_a",
+      "type": "FILE",
+      "name": "service_a.py",
+      "file_path": "hub/service_a.py",
+      "start_line": 1,
+      "end_line": 20,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 0,
+        "fan_out": 0,
+        "depth": 0,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "hub.service_a.handle",
+      "type": "FUNCTION",
+      "name": "handle",
+      "file_path": "hub/service_a.py",
+      "start_line": 5,
+      "end_line": 13,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 0,
+        "fan_out": 2,
+        "depth": 1,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "hub.service_b",
+      "type": "FILE",
+      "name": "service_b.py",
+      "file_path": "hub/service_b.py",
+      "start_line": 1,
+      "end_line": 20,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 0,
+        "fan_out": 0,
+        "depth": 0,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "hub.service_b.handle",
+      "type": "FUNCTION",
+      "name": "handle",
+      "file_path": "hub/service_b.py",
+      "start_line": 5,
+      "end_line": 13,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 0,
+        "fan_out": 2,
+        "depth": 1,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "hub.service_c",
+      "type": "FILE",
+      "name": "service_c.py",
+      "file_path": "hub/service_c.py",
+      "start_line": 1,
+      "end_line": 20,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 0,
+        "fan_out": 0,
+        "depth": 0,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "hub.service_c.handle",
+      "type": "FUNCTION",
+      "name": "handle",
+      "file_path": "hub/service_c.py",
+      "start_line": 5,
+      "end_line": 13,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 0,
+        "fan_out": 2,
+        "depth": 1,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "hub.service_d",
+      "type": "FILE",
+      "name": "service_d.py",
+      "file_path": "hub/service_d.py",
+      "start_line": 1,
+      "end_line": 20,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 0,
+        "fan_out": 0,
+        "depth": 0,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "hub.service_d.handle",
+      "type": "FUNCTION",
+      "name": "handle",
+      "file_path": "hub/service_d.py",
+      "start_line": 5,
+      "end_line": 13,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 0,
+        "fan_out": 2,
+        "depth": 1,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "chain.ingest",
+      "type": "FILE",
+      "name": "ingest.py",
+      "file_path": "chain/ingest.py",
+      "start_line": 1,
+      "end_line": 20,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 0,
+        "fan_out": 0,
+        "depth": 0,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "chain.ingest.fetch_data",
+      "type": "FUNCTION",
+      "name": "fetch_data",
+      "file_path": "chain/ingest.py",
+      "start_line": 5,
+      "end_line": 13,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 0,
+        "fan_out": 1,
+        "depth": 1,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "chain.parse",
+      "type": "FILE",
+      "name": "parse.py",
+      "file_path": "chain/parse.py",
+      "start_line": 1,
+      "end_line": 20,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 0,
+        "fan_out": 0,
+        "depth": 0,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "chain.parse.parse_records",
+      "type": "FUNCTION",
+      "name": "parse_records",
+      "file_path": "chain/parse.py",
+      "start_line": 5,
+      "end_line": 13,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 1,
+        "fan_out": 1,
+        "depth": 1,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "chain.transform",
+      "type": "FILE",
+      "name": "transform.py",
+      "file_path": "chain/transform.py",
+      "start_line": 1,
+      "end_line": 20,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 0,
+        "fan_out": 0,
+        "depth": 0,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "chain.transform.transform_records",
+      "type": "FUNCTION",
+      "name": "transform_records",
+      "file_path": "chain/transform.py",
+      "start_line": 5,
+      "end_line": 13,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 1,
+        "fan_out": 1,
+        "depth": 1,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "chain.emit",
+      "type": "FILE",
+      "name": "emit.py",
+      "file_path": "chain/emit.py",
+      "start_line": 1,
+      "end_line": 20,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 0,
+        "fan_out": 0,
+        "depth": 0,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "chain.emit.emit_results",
+      "type": "FUNCTION",
+      "name": "emit_results",
+      "file_path": "chain/emit.py",
+      "start_line": 5,
+      "end_line": 13,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 1,
+        "fan_out": 0,
+        "depth": 1,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "star.orchestrator",
+      "type": "FILE",
+      "name": "orchestrator.py",
+      "file_path": "star/orchestrator.py",
+      "start_line": 1,
+      "end_line": 40,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 0,
+        "fan_out": 0,
+        "depth": 0,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "star.orchestrator.run_workflow",
+      "type": "FUNCTION",
+      "name": "run_workflow",
+      "file_path": "star/orchestrator.py",
+      "start_line": 5,
+      "end_line": 13,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 0,
+        "fan_out": 4,
+        "depth": 1,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "star.auth_service",
+      "type": "FILE",
+      "name": "auth_service.py",
+      "file_path": "star/auth_service.py",
+      "start_line": 1,
+      "end_line": 20,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 0,
+        "fan_out": 0,
+        "depth": 0,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "star.auth_service.execute",
+      "type": "FUNCTION",
+      "name": "execute",
+      "file_path": "star/auth_service.py",
+      "start_line": 5,
+      "end_line": 13,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 1,
+        "fan_out": 0,
+        "depth": 1,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "star.payment_service",
+      "type": "FILE",
+      "name": "payment_service.py",
+      "file_path": "star/payment_service.py",
+      "start_line": 1,
+      "end_line": 20,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 0,
+        "fan_out": 0,
+        "depth": 0,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "star.payment_service.execute",
+      "type": "FUNCTION",
+      "name": "execute",
+      "file_path": "star/payment_service.py",
+      "start_line": 5,
+      "end_line": 13,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 1,
+        "fan_out": 0,
+        "depth": 1,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "star.notification_service",
+      "type": "FILE",
+      "name": "notification_service.py",
+      "file_path": "star/notification_service.py",
+      "start_line": 1,
+      "end_line": 20,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 0,
+        "fan_out": 0,
+        "depth": 0,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "star.notification_service.execute",
+      "type": "FUNCTION",
+      "name": "execute",
+      "file_path": "star/notification_service.py",
+      "start_line": 5,
+      "end_line": 13,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 1,
+        "fan_out": 0,
+        "depth": 1,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "star.audit_service",
+      "type": "FILE",
+      "name": "audit_service.py",
+      "file_path": "star/audit_service.py",
+      "start_line": 1,
+      "end_line": 20,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 0,
+        "fan_out": 0,
+        "depth": 0,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "star.audit_service.execute",
+      "type": "FUNCTION",
+      "name": "execute",
+      "file_path": "star/audit_service.py",
+      "start_line": 5,
+      "end_line": 13,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 1,
+        "fan_out": 0,
+        "depth": 1,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "dag.db_client",
+      "type": "FILE",
+      "name": "db_client.py",
+      "file_path": "dag/db_client.py",
+      "start_line": 1,
+      "end_line": 20,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 0,
+        "fan_out": 0,
+        "depth": 0,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "dag.db_client.execute_query",
+      "type": "FUNCTION",
+      "name": "execute_query",
+      "file_path": "dag/db_client.py",
+      "start_line": 5,
+      "end_line": 13,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 2,
+        "fan_out": 0,
+        "depth": 1,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "dag.user_repo",
+      "type": "FILE",
+      "name": "user_repo.py",
+      "file_path": "dag/user_repo.py",
+      "start_line": 1,
+      "end_line": 20,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 0,
+        "fan_out": 0,
+        "depth": 0,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "dag.user_repo.find_user",
+      "type": "FUNCTION",
+      "name": "find_user",
+      "file_path": "dag/user_repo.py",
+      "start_line": 5,
+      "end_line": 13,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 1,
+        "fan_out": 1,
+        "depth": 1,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "dag.order_repo",
+      "type": "FILE",
+      "name": "order_repo.py",
+      "file_path": "dag/order_repo.py",
+      "start_line": 1,
+      "end_line": 20,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 0,
+        "fan_out": 0,
+        "depth": 0,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "dag.order_repo.find_order",
+      "type": "FUNCTION",
+      "name": "find_order",
+      "file_path": "dag/order_repo.py",
+      "start_line": 5,
+      "end_line": 13,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 1,
+        "fan_out": 1,
+        "depth": 1,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "dag.user_service",
+      "type": "FILE",
+      "name": "user_service.py",
+      "file_path": "dag/user_service.py",
+      "start_line": 1,
+      "end_line": 20,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 0,
+        "fan_out": 0,
+        "depth": 0,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "dag.user_service.get_user",
+      "type": "FUNCTION",
+      "name": "get_user",
+      "file_path": "dag/user_service.py",
+      "start_line": 5,
+      "end_line": 13,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 1,
+        "fan_out": 1,
+        "depth": 1,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "dag.order_service",
+      "type": "FILE",
+      "name": "order_service.py",
+      "file_path": "dag/order_service.py",
+      "start_line": 1,
+      "end_line": 20,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 0,
+        "fan_out": 0,
+        "depth": 0,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "dag.order_service.get_order",
+      "type": "FUNCTION",
+      "name": "get_order",
+      "file_path": "dag/order_service.py",
+      "start_line": 5,
+      "end_line": 13,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 1,
+        "fan_out": 1,
+        "depth": 1,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "dag.api_layer",
+      "type": "FILE",
+      "name": "api_layer.py",
+      "file_path": "dag/api_layer.py",
+      "start_line": 1,
+      "end_line": 20,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 0,
+        "fan_out": 0,
+        "depth": 0,
+        "in_cycle": false
+      }
+    },
+    {
+      "id": "dag.api_layer.handle_request",
+      "type": "FUNCTION",
+      "name": "handle_request",
+      "file_path": "dag/api_layer.py",
+      "start_line": 5,
+      "end_line": 13,
+      "language": "python",
+      "ontology_class": null,
+      "domains": [],
+      "namespace": "INTERNAL",
+      "confidence_score": 1.0,
+      "metadata": {
+        "fan_in": 0,
+        "fan_out": 2,
+        "depth": 1,
+        "in_cycle": false
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "hub.utils:contains:hub.utils.format_response",
+      "source": "hub.utils",
+      "target": "hub.utils.format_response",
+      "type": "CONTAINS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "hub/utils.py",
+      "line_number": null
+    },
+    {
+      "id": "hub.utils:contains:hub.utils.validate_input",
+      "source": "hub.utils",
+      "target": "hub.utils.validate_input",
+      "type": "CONTAINS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "hub/utils.py",
+      "line_number": null
+    },
+    {
+      "id": "hub.service_a:contains:hub.service_a.handle",
+      "source": "hub.service_a",
+      "target": "hub.service_a.handle",
+      "type": "CONTAINS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "hub/service_a.py",
+      "line_number": null
+    },
+    {
+      "id": "hub.service_a:imports:hub.utils",
+      "source": "hub.service_a",
+      "target": "hub.utils",
+      "type": "IMPORTS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "hub.service_a.handle:calls:hub.utils.format_response",
+      "source": "hub.service_a.handle",
+      "target": "hub.utils.format_response",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "hub.service_a.handle:calls:hub.utils.validate_input",
+      "source": "hub.service_a.handle",
+      "target": "hub.utils.validate_input",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "hub.service_b:contains:hub.service_b.handle",
+      "source": "hub.service_b",
+      "target": "hub.service_b.handle",
+      "type": "CONTAINS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "hub/service_b.py",
+      "line_number": null
+    },
+    {
+      "id": "hub.service_b:imports:hub.utils",
+      "source": "hub.service_b",
+      "target": "hub.utils",
+      "type": "IMPORTS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "hub.service_b.handle:calls:hub.utils.format_response",
+      "source": "hub.service_b.handle",
+      "target": "hub.utils.format_response",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "hub.service_b.handle:calls:hub.utils.validate_input",
+      "source": "hub.service_b.handle",
+      "target": "hub.utils.validate_input",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "hub.service_c:contains:hub.service_c.handle",
+      "source": "hub.service_c",
+      "target": "hub.service_c.handle",
+      "type": "CONTAINS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "hub/service_c.py",
+      "line_number": null
+    },
+    {
+      "id": "hub.service_c:imports:hub.utils",
+      "source": "hub.service_c",
+      "target": "hub.utils",
+      "type": "IMPORTS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "hub.service_c.handle:calls:hub.utils.format_response",
+      "source": "hub.service_c.handle",
+      "target": "hub.utils.format_response",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "hub.service_c.handle:calls:hub.utils.validate_input",
+      "source": "hub.service_c.handle",
+      "target": "hub.utils.validate_input",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "hub.service_d:contains:hub.service_d.handle",
+      "source": "hub.service_d",
+      "target": "hub.service_d.handle",
+      "type": "CONTAINS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "hub/service_d.py",
+      "line_number": null
+    },
+    {
+      "id": "hub.service_d:imports:hub.utils",
+      "source": "hub.service_d",
+      "target": "hub.utils",
+      "type": "IMPORTS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "hub.service_d.handle:calls:hub.utils.format_response",
+      "source": "hub.service_d.handle",
+      "target": "hub.utils.format_response",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "hub.service_d.handle:calls:hub.utils.validate_input",
+      "source": "hub.service_d.handle",
+      "target": "hub.utils.validate_input",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "chain.ingest:contains:chain.ingest.fetch_data",
+      "source": "chain.ingest",
+      "target": "chain.ingest.fetch_data",
+      "type": "CONTAINS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "chain/ingest.py",
+      "line_number": null
+    },
+    {
+      "id": "chain.parse:contains:chain.parse.parse_records",
+      "source": "chain.parse",
+      "target": "chain.parse.parse_records",
+      "type": "CONTAINS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "chain/parse.py",
+      "line_number": null
+    },
+    {
+      "id": "chain.transform:contains:chain.transform.transform_records",
+      "source": "chain.transform",
+      "target": "chain.transform.transform_records",
+      "type": "CONTAINS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "chain/transform.py",
+      "line_number": null
+    },
+    {
+      "id": "chain.emit:contains:chain.emit.emit_results",
+      "source": "chain.emit",
+      "target": "chain.emit.emit_results",
+      "type": "CONTAINS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "chain/emit.py",
+      "line_number": null
+    },
+    {
+      "id": "chain.ingest:imports:chain.parse",
+      "source": "chain.ingest",
+      "target": "chain.parse",
+      "type": "IMPORTS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "chain.ingest.fetch_data:calls:chain.parse.parse_records",
+      "source": "chain.ingest.fetch_data",
+      "target": "chain.parse.parse_records",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "chain.parse:imports:chain.transform",
+      "source": "chain.parse",
+      "target": "chain.transform",
+      "type": "IMPORTS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "chain.parse.parse_records:calls:chain.transform.transform_records",
+      "source": "chain.parse.parse_records",
+      "target": "chain.transform.transform_records",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "chain.transform:imports:chain.emit",
+      "source": "chain.transform",
+      "target": "chain.emit",
+      "type": "IMPORTS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "chain.transform.transform_records:calls:chain.emit.emit_results",
+      "source": "chain.transform.transform_records",
+      "target": "chain.emit.emit_results",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "star.orchestrator:contains:star.orchestrator.run_workflow",
+      "source": "star.orchestrator",
+      "target": "star.orchestrator.run_workflow",
+      "type": "CONTAINS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "star/orchestrator.py",
+      "line_number": null
+    },
+    {
+      "id": "star.auth_service:contains:star.auth_service.execute",
+      "source": "star.auth_service",
+      "target": "star.auth_service.execute",
+      "type": "CONTAINS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "star/auth_service.py",
+      "line_number": null
+    },
+    {
+      "id": "star.orchestrator:imports:star.auth_service",
+      "source": "star.orchestrator",
+      "target": "star.auth_service",
+      "type": "IMPORTS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "star.orchestrator.run_workflow:calls:star.auth_service.execute",
+      "source": "star.orchestrator.run_workflow",
+      "target": "star.auth_service.execute",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "star.payment_service:contains:star.payment_service.execute",
+      "source": "star.payment_service",
+      "target": "star.payment_service.execute",
+      "type": "CONTAINS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "star/payment_service.py",
+      "line_number": null
+    },
+    {
+      "id": "star.orchestrator:imports:star.payment_service",
+      "source": "star.orchestrator",
+      "target": "star.payment_service",
+      "type": "IMPORTS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "star.orchestrator.run_workflow:calls:star.payment_service.execute",
+      "source": "star.orchestrator.run_workflow",
+      "target": "star.payment_service.execute",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "star.notification_service:contains:star.notification_service.execute",
+      "source": "star.notification_service",
+      "target": "star.notification_service.execute",
+      "type": "CONTAINS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "star/notification_service.py",
+      "line_number": null
+    },
+    {
+      "id": "star.orchestrator:imports:star.notification_service",
+      "source": "star.orchestrator",
+      "target": "star.notification_service",
+      "type": "IMPORTS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "star.orchestrator.run_workflow:calls:star.notification_service.execute",
+      "source": "star.orchestrator.run_workflow",
+      "target": "star.notification_service.execute",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "star.audit_service:contains:star.audit_service.execute",
+      "source": "star.audit_service",
+      "target": "star.audit_service.execute",
+      "type": "CONTAINS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "star/audit_service.py",
+      "line_number": null
+    },
+    {
+      "id": "star.orchestrator:imports:star.audit_service",
+      "source": "star.orchestrator",
+      "target": "star.audit_service",
+      "type": "IMPORTS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "star.orchestrator.run_workflow:calls:star.audit_service.execute",
+      "source": "star.orchestrator.run_workflow",
+      "target": "star.audit_service.execute",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "dag.db_client:contains:dag.db_client.execute_query",
+      "source": "dag.db_client",
+      "target": "dag.db_client.execute_query",
+      "type": "CONTAINS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "dag/db_client.py",
+      "line_number": null
+    },
+    {
+      "id": "dag.user_repo:contains:dag.user_repo.find_user",
+      "source": "dag.user_repo",
+      "target": "dag.user_repo.find_user",
+      "type": "CONTAINS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "dag/user_repo.py",
+      "line_number": null
+    },
+    {
+      "id": "dag.order_repo:contains:dag.order_repo.find_order",
+      "source": "dag.order_repo",
+      "target": "dag.order_repo.find_order",
+      "type": "CONTAINS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "dag/order_repo.py",
+      "line_number": null
+    },
+    {
+      "id": "dag.user_service:contains:dag.user_service.get_user",
+      "source": "dag.user_service",
+      "target": "dag.user_service.get_user",
+      "type": "CONTAINS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "dag/user_service.py",
+      "line_number": null
+    },
+    {
+      "id": "dag.order_service:contains:dag.order_service.get_order",
+      "source": "dag.order_service",
+      "target": "dag.order_service.get_order",
+      "type": "CONTAINS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "dag/order_service.py",
+      "line_number": null
+    },
+    {
+      "id": "dag.api_layer:contains:dag.api_layer.handle_request",
+      "source": "dag.api_layer",
+      "target": "dag.api_layer.handle_request",
+      "type": "CONTAINS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "dag/api_layer.py",
+      "line_number": null
+    },
+    {
+      "id": "dag.user_repo:imports:dag.db_client",
+      "source": "dag.user_repo",
+      "target": "dag.db_client",
+      "type": "IMPORTS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "dag.user_repo.find_user:calls:dag.db_client.execute_query",
+      "source": "dag.user_repo.find_user",
+      "target": "dag.db_client.execute_query",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "dag.order_repo:imports:dag.db_client",
+      "source": "dag.order_repo",
+      "target": "dag.db_client",
+      "type": "IMPORTS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "dag.order_repo.find_order:calls:dag.db_client.execute_query",
+      "source": "dag.order_repo.find_order",
+      "target": "dag.db_client.execute_query",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "dag.user_service:imports:dag.user_repo",
+      "source": "dag.user_service",
+      "target": "dag.user_repo",
+      "type": "IMPORTS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "dag.user_service.get_user:calls:dag.user_repo.find_user",
+      "source": "dag.user_service.get_user",
+      "target": "dag.user_repo.find_user",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "dag.order_service:imports:dag.order_repo",
+      "source": "dag.order_service",
+      "target": "dag.order_repo",
+      "type": "IMPORTS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "dag.order_service.get_order:calls:dag.order_repo.find_order",
+      "source": "dag.order_service.get_order",
+      "target": "dag.order_repo.find_order",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "dag.api_layer:imports:dag.user_service",
+      "source": "dag.api_layer",
+      "target": "dag.user_service",
+      "type": "IMPORTS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "dag.api_layer:imports:dag.order_service",
+      "source": "dag.api_layer",
+      "target": "dag.order_service",
+      "type": "IMPORTS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "dag.api_layer.handle_request:calls:dag.user_service.get_user",
+      "source": "dag.api_layer.handle_request",
+      "target": "dag.user_service.get_user",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    },
+    {
+      "id": "dag.api_layer.handle_request:calls:dag.order_service.get_order",
+      "source": "dag.api_layer.handle_request",
+      "target": "dag.order_service.get_order",
+      "type": "CALLS",
+      "weight": 1.0,
+      "confidence": 1.0,
+      "context": null,
+      "file_path": "",
+      "line_number": null
+    }
+  ]
+}
