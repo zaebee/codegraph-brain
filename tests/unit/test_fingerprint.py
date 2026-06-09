@@ -199,7 +199,7 @@ def test_chain_len_zero_for_single_isolated_node() -> None:
     """A domain with a single node and no CALLS edges → chain_len = 0.0."""
     with _store([_node("dom.x")], []) as store:
         fp = FingerprintExtractor(store).extract("dom")
-    assert fp.chain_len == 0.0
+    assert fp.chain_len == pytest.approx(0.0)
 
 
 # ── dag_depth ─────────────────────────────────────────────────────────────────

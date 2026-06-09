@@ -89,27 +89,7 @@ class DriftScorer:
         constraints = self._parse_constraints(template)
 
         if not constraints:
-            ideal_fp = PatternFingerprint(
-                domain=domain.fqn_prefix,
-                hub_count=0,
-                star_count=0,
-                chain_len=0.0,
-                dag_depth=0,
-                router_count=0,
-                cycle_ratio=0.0,
-                unresolved_ratio=0.0,
-            )
-            return DriftReport(
-                domain=domain.name,
-                fqn_prefix=domain.fqn_prefix,
-                expected_pattern=domain.expected_pattern,
-                actual=actual,
-                ideal=ideal_fp,
-                drift_score=0.0,
-                violations=[],
-                status="clean",
-                tolerance=domain.drift_tolerance,
-            )
+            return self._zero_drift_report(actual, domain)
 
         total_weight = sum(self._weights[name] for name in constraints)
         violations: list[str] = []
@@ -118,27 +98,9 @@ class DriftScorer:
 
         for name, (op, value) in constraints.items():
             actual_val = float(getattr(actual, name))
-            fvalue = float(value)
-
-            if op == "min":
-                ideal_val = fvalue
-                norm = max(ideal_val, 1.0)
-                raw = max(0.0, ideal_val - actual_val)
-                if actual_val < fvalue:
-                    violations.append(f"{name} {actual_val} < min {fvalue}")
-            elif op == "max":
-                ideal_val = 0.0
-                norm = max(fvalue, 1.0)
-                raw = max(0.0, actual_val - fvalue)
-                if actual_val > fvalue:
-                    violations.append(f"{name} {actual_val} > max {fvalue}")
-            else:  # exact
-                ideal_val = fvalue
-                norm = max(ideal_val, 1.0)
-                raw = abs(actual_val - ideal_val)
-                if actual_val != fvalue:
-                    violations.append(f"{name} {actual_val} != exact {fvalue}")
-
+            ideal_val, norm, raw, violation = self._score_constraint(name, op, value, actual_val)
+            if violation:
+                violations.append(violation)
             ideal_overrides[name] = ideal_val
             component_drift = min(raw / norm, 1.0)
             weight = (
@@ -168,6 +130,56 @@ class DriftScorer:
             status=_classify(drift_sum),
             tolerance=domain.drift_tolerance,
         )
+
+    def _zero_drift_report(self, actual: PatternFingerprint, domain: DomainConfig) -> DriftReport:
+        """Return a clean zero-drift report for domains with no constraints."""
+        ideal_fp = PatternFingerprint(
+            domain=domain.fqn_prefix,
+            hub_count=0,
+            star_count=0,
+            chain_len=0.0,
+            dag_depth=0,
+            router_count=0,
+            cycle_ratio=0.0,
+            unresolved_ratio=0.0,
+        )
+        return DriftReport(
+            domain=domain.name,
+            fqn_prefix=domain.fqn_prefix,
+            expected_pattern=domain.expected_pattern,
+            actual=actual,
+            ideal=ideal_fp,
+            drift_score=0.0,
+            violations=[],
+            status="clean",
+            tolerance=domain.drift_tolerance,
+        )
+
+    @staticmethod
+    def _score_constraint(
+        name: str, op: str, value: float, actual_val: float
+    ) -> tuple[float, float, float, str | None]:
+        """Compute ideal_val, norm, raw drift, and optional violation message for one constraint."""
+        violation: str | None = None
+        if op == "min":
+            ideal_val = value
+            norm = max(ideal_val, 1.0)
+            raw = max(0.0, ideal_val - actual_val)
+            if actual_val < value:
+                violation = f"{name} {actual_val} < min {value}"
+        elif op == "max":
+            ideal_val = 0.0
+            norm = max(value, 1.0)
+            raw = max(0.0, actual_val - value)
+            if actual_val > value:
+                violation = f"{name} {actual_val} > max {value}"
+        else:  # exact
+            ideal_val = value
+            norm = max(ideal_val, 1.0)
+            raw = abs(actual_val - ideal_val)
+            if actual_val != value:
+                violation = f"{name} {actual_val} != exact {value}"
+        return ideal_val, norm, raw, violation
 
     def _parse_constraints(self, template: dict[str, Any]) -> dict[str, tuple[str, float]]:
         """Extract (operator, value) pairs for each constrained component in a template."""
