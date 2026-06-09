@@ -129,7 +129,6 @@ function App() {
 
   const buildFullGraph = useCallback(async () => {
     if (!graphData?.nodes || !graphData?.edges) return;
-    setExpandedFiles(new Set());
 
     const rawParentChildren = new Map<string, string[]>();
     for (const edge of graphData.edges) {
@@ -147,6 +146,13 @@ function App() {
     const baseEdges = filterValidEdges(graphData.nodes, graphData.edges).map(
       (e: any, i: number) => mapEdgeToReactFlow(e, i)
     );
+
+    const allFileIds = new Set(
+      graphData.nodes
+        .filter((n) => n.type === "FILE" && rawParentChildren.has(n.id))
+        .map((n) => n.id)
+    );
+    setExpandedFiles(allFileIds);
 
     setAllNodes(baseNodes);
     setAllEdges(baseEdges);
