@@ -47,9 +47,11 @@ interface GraphStore {
   viewMode: ViewMode
   hoveredNodeId: string | null
   egoNodeId: string | null
+  colorMode: 'type' | 'health'
   setViewMode: (mode: ViewMode) => void
   setHoveredNodeId: (id: string | null) => void
   setEgoNodeId: (id: string | null) => void
+  setColorMode: (mode: 'type' | 'health') => void
 }
 
 export const useGraphStore = create<GraphStore>((set) => ({
@@ -136,7 +138,9 @@ export const useGraphStore = create<GraphStore>((set) => ({
   viewMode: 'full',
   hoveredNodeId: null,
   egoNodeId: null,
+  colorMode: 'type',
   setViewMode: (mode) => set({ viewMode: mode }),
   setHoveredNodeId: (id) => set({ hoveredNodeId: id }),
   setEgoNodeId: (id) => set({ egoNodeId: id }),
+  setColorMode: (mode) => set({ colorMode: mode }),
 }))
