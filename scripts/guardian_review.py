@@ -69,11 +69,18 @@ async def main() -> None:
         default=Path("guardian_metrics.jsonl"),
         help="Path to the append-only metrics log (default: guardian_metrics.jsonl).",
     )
+    parser.add_argument(
+        "--base-branch",
+        default="main",
+        help="Base branch for git diff (default: main). Use the PR target branch.",
+    )
     args = parser.parse_args()
 
     provider, model = _build_provider()
     project_root = Path(__file__).parent.parent.absolute()
-    collector = ContextCollector(project_root=project_root, db_path=args.db)
+    collector = ContextCollector(
+        project_root=project_root, db_path=args.db, base_branch=args.base_branch
+    )
     reviewer = GuardianReviewer(provider=provider, context_collector=collector)
 
     log.info("Collecting context and building prompts...", model=model)
