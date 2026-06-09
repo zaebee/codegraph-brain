@@ -178,6 +178,7 @@ export class IslandLayoutEngine {
           y: minY - FILE_CONTAINER_PADDING - FILE_HEADER_HEIGHT - FILE_HEADER_GAP,
         },
         style: {
+          ...node.style,
           width: maxX - minX + FILE_CONTAINER_PADDING * 2,
           height: maxY - minY + FILE_CONTAINER_PADDING * 2 + FILE_HEADER_HEIGHT + FILE_HEADER_GAP,
         },
@@ -187,13 +188,13 @@ export class IslandLayoutEngine {
     }
 
     // Containers (island + file) must precede content nodes for correct z-order
-    const containers = result.filter((n) => n.type?.endsWith('Container'))
-    const content = result.filter((n) => !n.type?.endsWith('Container'))
+    const containers = result.filter((n) => n.type === 'islandContainer' || n.type === 'fileContainer')
+    const content = result.filter((n) => n.type !== 'islandContainer' && n.type !== 'fileContainer')
     return [...containers, ...content]
   }
 
   // TODO(PR4): use expandedFiles to highlight the ego-subgraph overlay (issue #30)
-  run(expandedFiles: Set<string>): { nodes: Node[]; edges: Edge[] } {
+  run(expandedFiles: Set<string> = new Set()): { nodes: Node[]; edges: Edge[] } {
     const islands = this.partition()
     const bboxes: IslandBBox[] = []
     const islandResults = new Map<string, { nodes: Node[]; bbox: { width: number; height: number } }>()
