@@ -171,6 +171,7 @@ function GraphCanvas() {
         onNodeMouseLeave={() => setHoveredNodeId(null)}
         onMouseMove={handleMouseMove}
         nodeTypes={nodeTypes}
+        colorMode="dark"
         fitView
       >
         <Background />
