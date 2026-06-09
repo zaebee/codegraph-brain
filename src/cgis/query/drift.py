@@ -82,7 +82,10 @@ class DriftScorer:
 
     def score(self, actual: PatternFingerprint, domain: DomainConfig) -> DriftReport:
         """Compute the drift score and return a DriftReport."""
-        template = self._patterns[domain.expected_pattern]
+        template = self._patterns.get(domain.expected_pattern)
+        if template is None:
+            msg = f"Expected pattern '{domain.expected_pattern}' not found in patterns config."
+            raise ValueError(msg)
         constraints = self._parse_constraints(template)
 
         if not constraints:
@@ -138,7 +141,9 @@ class DriftScorer:
 
             ideal_overrides[name] = ideal_val
             component_drift = min(raw / norm, 1.0)
-            weight = self._weights[name] / total_weight
+            weight = (
+                self._weights[name] / total_weight if total_weight > 0.0 else 1.0 / len(constraints)
+            )
             drift_sum += weight * component_drift
 
         ideal_fp = PatternFingerprint(

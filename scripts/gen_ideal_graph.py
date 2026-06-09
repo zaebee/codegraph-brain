@@ -341,8 +341,8 @@ def generate_from_ontology(patterns_path: str) -> dict[str, Any]:
     For each project_domain, instantiates the expected_pattern template
     using the real fqn_prefix as the node namespace.
     """
-    raw: dict[str, Any] = yaml.safe_load(Path(patterns_path).read_text())
-    domains: list[dict[str, Any]] = raw.get("project_domains", [])
+    raw: dict[str, Any] = yaml.safe_load(Path(patterns_path).read_text()) or {}
+    domains: list[dict[str, Any]] = raw.get("project_domains") or []
 
     all_nodes: list[GraphDict] = []
     all_edges: list[GraphDict] = []

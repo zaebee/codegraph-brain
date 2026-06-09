@@ -1,6 +1,5 @@
 """PatternFingerprint dataclass and FingerprintExtractor."""
 
-from collections import deque
 from dataclasses import dataclass
 
 from cgis.core.models import Edge, EdgeType
@@ -36,7 +35,7 @@ def _in_domain(fqn: str, prefix: str) -> bool:
 
 
 def _avg_chain_length(domain_ids: set[str], internal_calls: list[Edge]) -> float:
-    """Average max-BFS-depth from each source node along CALLS edges within the domain."""
+    """Average longest-path depth from each source node along CALLS edges within the domain."""
     adj: dict[str, list[str]] = {}
     has_incoming: set[str] = set()
     for e in internal_calls:
@@ -48,25 +47,26 @@ def _avg_chain_length(domain_ids: set[str], internal_calls: list[Edge]) -> float
     if not sources:
         return 0.0
 
-    depths: list[int] = []
-    for src in sources:
-        visited: set[str] = {src}
-        queue: deque[tuple[str, int]] = deque([(src, 0)])
-        max_depth = 0
-        while queue:
-            node_id, depth = queue.popleft()
-            max_depth = max(max_depth, depth)
-            for child in adj.get(node_id, []):
-                if child not in visited:
-                    visited.add(child)
-                    queue.append((child, depth + 1))
-        depths.append(max_depth)
+    memo: dict[str, int] = {}
+    visiting: set[str] = set()
 
+    def dfs(u: str) -> int:
+        if u in memo:
+            return memo[u]
+        if u in visiting:
+            return 0
+        visiting.add(u)
+        val = max((1 + dfs(v) for v in adj.get(u, [])), default=0)
+        visiting.remove(u)
+        memo[u] = val
+        return val
+
+    depths = [dfs(src) for src in sources]
     return sum(depths) / len(depths)
 
 
 def _max_dag_depth(domain_ids: set[str], internal_edges: list[Edge]) -> int:
-    """Max BFS depth along IMPORTS edges within the domain (from import-root nodes)."""
+    """Max longest-path depth along IMPORTS edges within the domain (from import-root nodes)."""
     adj: dict[str, list[str]] = {}
     has_incoming: set[str] = set()
     for e in internal_edges:
@@ -78,19 +78,21 @@ def _max_dag_depth(domain_ids: set[str], internal_edges: list[Edge]) -> int:
     if not roots:
         return 0
 
-    max_depth = 0
-    for root in roots:
-        visited: set[str] = {root}
-        queue: deque[tuple[str, int]] = deque([(root, 0)])
-        while queue:
-            node_id, depth = queue.popleft()
-            max_depth = max(max_depth, depth)
-            for child in adj.get(node_id, []):
-                if child not in visited:
-                    visited.add(child)
-                    queue.append((child, depth + 1))
+    memo: dict[str, int] = {}
+    visiting: set[str] = set()
 
-    return max_depth
+    def dfs(u: str) -> int:
+        if u in memo:
+            return memo[u]
+        if u in visiting:
+            return 0
+        visiting.add(u)
+        val = max((1 + dfs(v) for v in adj.get(u, [])), default=0)
+        visiting.remove(u)
+        memo[u] = val
+        return val
+
+    return max(dfs(root) for root in roots)
 
 
 def _count_routers(domain_node_ids: set[str], all_edges: list[Edge]) -> int:

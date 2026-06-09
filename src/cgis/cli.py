@@ -818,15 +818,19 @@ def drift(
         console.print(f"[bold red]❌ Patterns file not found:[/bold red] {patterns}")
         raise typer.Exit(code=1)
 
-    scorer = DriftScorer(patterns)
-    domains = scorer.load_project_domains()
+    try:
+        scorer = DriftScorer(patterns)
+        domains = scorer.load_project_domains()
 
-    reports: list[DriftReport] = []
-    with SQLiteStore(db) as store:
-        extractor = FingerprintExtractor(store)
-        for domain in domains:
-            fp = extractor.extract(domain.fqn_prefix)
-            reports.append(scorer.score(fp, domain))
+        reports: list[DriftReport] = []
+        with SQLiteStore(db) as store:
+            extractor = FingerprintExtractor(store)
+            for domain in domains:
+                fp = extractor.extract(domain.fqn_prefix)
+                reports.append(scorer.score(fp, domain))
+    except Exception as e:
+        console.print(f"[bold red]❌ Error during drift analysis:[/bold red] {e}")
+        raise typer.Exit(code=1) from e
 
     any_critical = any(r.drift_score >= max_drift for r in reports)
 
