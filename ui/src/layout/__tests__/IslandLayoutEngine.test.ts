@@ -51,10 +51,10 @@ describe('IslandLayoutEngine.partition', () => {
 })
 
 describe('IslandLayoutEngine.run', () => {
-  it('produces one islandContainer per namespace', async () => {
+  it('produces one islandContainer per namespace', () => {
     const nodes = [makeNode('a', 'py'), makeNode('b', 'ts')]
     const engine = new IslandLayoutEngine(nodes, [])
-    const { nodes: out } = await engine.run(new Set())
+    const { nodes: out } = engine.run(new Set())
     const containers = out.filter((n) => n.type === 'islandContainer')
     expect(containers).toHaveLength(2)
     expect(containers.map((c) => (c.data as { namespace: string }).namespace).sort()).toEqual([
@@ -63,35 +63,35 @@ describe('IslandLayoutEngine.run', () => {
     ])
   })
 
-  it('container ids are prefixed with island-container-', async () => {
+  it('container ids are prefixed with island-container-', () => {
     const nodes = [makeNode('x', 'ns')]
     const engine = new IslandLayoutEngine(nodes, [])
-    const { nodes: out } = await engine.run(new Set())
+    const { nodes: out } = engine.run(new Set())
     const container = out.find((n) => n.type === 'islandContainer')
     expect(container?.id).toBe('island-container-ns')
   })
 
-  it('content nodes carry islandNamespace in data', async () => {
+  it('content nodes carry islandNamespace in data', () => {
     const nodes = [makeNode('a', 'py')]
     const engine = new IslandLayoutEngine(nodes, [])
-    const { nodes: out } = await engine.run(new Set())
+    const { nodes: out } = engine.run(new Set())
     const content = out.filter((n) => n.type !== 'islandContainer')
     expect(content).toHaveLength(1)
     expect((content[0].data as { islandNamespace: string }).islandNamespace).toBe('py')
   })
 
-  it('cross-namespace edges appear in output edges', async () => {
+  it('cross-namespace edges appear in output edges', () => {
     const nodes = [makeNode('a', 'py'), makeNode('b', 'ts')]
     const edges = [makeEdge('a', 'b')]
     const engine = new IslandLayoutEngine(nodes, edges)
-    const { edges: out } = await engine.run(new Set())
+    const { edges: out } = engine.run(new Set())
     expect(out.some((e) => e.source === 'a' && e.target === 'b')).toBe(true)
   })
 
-  it('container has positive width and height', async () => {
+  it('container has positive width and height', () => {
     const nodes = [makeNode('a', 'py'), makeNode('b', 'py')]
     const engine = new IslandLayoutEngine(nodes, [])
-    const { nodes: out } = await engine.run(new Set())
+    const { nodes: out } = engine.run(new Set())
     const container = out.find((n) => n.type === 'islandContainer')
     expect(Number(container?.style?.width)).toBeGreaterThan(0)
     expect(Number(container?.style?.height)).toBeGreaterThan(0)

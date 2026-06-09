@@ -80,7 +80,7 @@ export function useLayoutComputation(): void {
 
       // Step 6: run island layout
       const engine = new IslandLayoutEngine(labeledNodes as Node[], visibleEdges as Edge[])
-      const { nodes: layoutedNodes, edges: layoutedEdges } = await engine.run(expandedFiles)
+      const { nodes: layoutedNodes, edges: layoutedEdges } = engine.run(expandedFiles)
 
       if (generationRef.current !== gen) return  // stale async, discard
 

@@ -34,12 +34,16 @@ export class IslandLayoutEngine {
     this.edges = edges
   }
 
+  private getNamespace(node: Node): string {
+    return ((node.data as Record<string, unknown>)?.namespace as string) || '_default'
+  }
+
   partition(): Map<string, IslandData> {
     const islands = new Map<string, IslandData>()
     const nodeIndex = new Map(this.nodes.map((n) => [n.id, n]))
 
     for (const node of this.nodes) {
-      const ns = ((node.data as Record<string, unknown>)?.namespace as string) || '_default'
+      const ns = this.getNamespace(node)
       if (!islands.has(ns)) islands.set(ns, { nodes: [], edges: [] })
       islands.get(ns)!.nodes.push(node)
     }
@@ -50,10 +54,8 @@ export class IslandLayoutEngine {
       const tgtNode = nodeIndex.get(edge.target)
       if (!srcNode || !tgtNode) continue
 
-      const srcNs =
-        ((srcNode.data as Record<string, unknown>)?.namespace as string) || '_default'
-      const tgtNs =
-        ((tgtNode.data as Record<string, unknown>)?.namespace as string) || '_default'
+      const srcNs = this.getNamespace(srcNode)
+      const tgtNs = this.getNamespace(tgtNode)
       if (srcNs === tgtNs) {
         islands.get(srcNs)?.edges.push(edge)
       } else {
@@ -133,7 +135,7 @@ export class IslandLayoutEngine {
   }
 
   // TODO(PR4): use _expandedFiles to highlight the ego-subgraph overlay (issue #30)
-  async run(_expandedFiles: Set<string>): Promise<{ nodes: Node[]; edges: Edge[] }> {
+  run(_expandedFiles: Set<string>): { nodes: Node[]; edges: Edge[] } {
     const islands = this.partition()
     const bboxes: IslandBBox[] = []
     const islandResults = new Map<string, { nodes: Node[]; bbox: { width: number; height: number } }>()

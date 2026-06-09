@@ -15,7 +15,7 @@ vi.mock("../layout/IslandLayoutEngine", () => ({
   IslandLayoutEngine: class {
     constructor(public nodes: unknown[], public edges: unknown[]) {}
     run(_expandedFiles: Set<string>) {
-      return Promise.resolve({ nodes: this.nodes, edges: this.edges })
+      return { nodes: this.nodes, edges: this.edges }
     }
   },
 }));

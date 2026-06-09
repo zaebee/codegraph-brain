@@ -42,7 +42,7 @@ export function useFlowNavigation(allowedEdgeTypes: string[] = DEFAULT_ALLOWED) 
       )
       const flowEdges = flow.edges.map((e, i) => mapEdgeToFlowView(e, i))
       const engine = new IslandLayoutEngine(flowNodes, flowEdges)
-      const { nodes: layoutedNodes } = await engine.run(new Set<string>())
+      const { nodes: layoutedNodes } = engine.run(new Set<string>())
 
       setFlow(layoutedNodes, flowEdges)
       setViewMode('flow')
