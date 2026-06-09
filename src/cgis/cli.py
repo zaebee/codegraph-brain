@@ -18,6 +18,7 @@ from cgis.pipeline import IngestionPipeline
 from cgis.query.analyzer import AnalyzerEngine
 from cgis.query.anomaly import AnomalyType, ArchitecturalAnomaly
 from cgis.query.engine import BEHAVIORAL_EDGE_TYPES, QueryEngine
+from cgis.query.health import HealthScorer
 from cgis.query.mermaid import MermaidCompiler
 from cgis.resolver.uplift import SemanticUpliftEngine
 from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
@@ -80,13 +81,14 @@ def _write_graph_output(
 ) -> None:
     """Persist the ingestion result to the given output path (.db or .json)."""
     if output.endswith(".json"):
+        enriched_nodes = HealthScorer(nodes, resolved_edges).enrich()
         graph_data = {
             "metadata": {
                 "source_path": source_path,
-                "node_count": len(nodes),
+                "node_count": len(enriched_nodes),
                 "edge_count": len(resolved_edges),
             },
-            "nodes": [n.model_dump() for n in nodes],
+            "nodes": [n.model_dump() for n in enriched_nodes],
             "edges": [e.model_dump() for e in resolved_edges],
         }
         output_path = Path(output)

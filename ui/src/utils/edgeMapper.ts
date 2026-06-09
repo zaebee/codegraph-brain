@@ -8,6 +8,15 @@ for (const [type, stroke] of Object.entries(EDGE_COLORS)) {
 }
 FULL_EDGE_STYLES.DECLARES = { stroke: EDGE_COLORS.DECLARES, strokeWidth: 1, opacity: 0.6 };
 
+// confidence=1.0 → fully resolved call (thick)
+// confidence=0.8 → resolved to external/builtin (medium)
+// confidence<0.5 → unresolved raw_call (thin)
+function confidenceToWidth(confidence: number | undefined): number {
+  if (confidence == null || confidence >= 0.9) return 2.2
+  if (confidence >= 0.7) return 1.2
+  return 0.6
+}
+
 function stableEdgeId(source: string, target: string, type: string): string {
   return `${source}→${target}:${type}`;
 }
@@ -16,7 +25,8 @@ function stableEdgeId(source: string, target: string, type: string): string {
  * Map a raw edge to a ReactFlow edge for the full graph view.
  */
 export function mapEdgeToReactFlow(edge: GraphEdge, _index: number): Edge {
-  const style = FULL_EDGE_STYLES[edge.type] || FULL_EDGE_STYLES.DECLARES;
+  const base = FULL_EDGE_STYLES[edge.type] || FULL_EDGE_STYLES.DECLARES;
+  const style = { ...base, strokeWidth: confidenceToWidth(edge.confidence) };
   return {
     id: stableEdgeId(edge.source, edge.target, edge.type),
     source: edge.source,

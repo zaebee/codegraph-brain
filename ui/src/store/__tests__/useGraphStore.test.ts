@@ -20,6 +20,7 @@ beforeEach(() => {
     viewMode: 'full',
     hoveredNodeId: null,
     egoNodeId: null,
+    colorMode: 'type',
   })
 })
 
@@ -88,5 +89,12 @@ describe('uiSlice', () => {
   it('setViewMode updates viewMode', () => {
     useGraphStore.getState().setViewMode('flow')
     expect(useGraphStore.getState().viewMode).toBe('flow')
+  })
+
+  it('setColorMode updates colorMode', () => {
+    useGraphStore.getState().setColorMode('health')
+    expect(useGraphStore.getState().colorMode).toBe('health')
+    useGraphStore.getState().setColorMode('type')
+    expect(useGraphStore.getState().colorMode).toBe('type')
   })
 })

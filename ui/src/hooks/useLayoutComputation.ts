@@ -6,6 +6,7 @@ import { useGraphStore } from '../store/useGraphStore'
 import { getCollapsedView } from '../collapse'
 import { IslandLayoutEngine } from '../layout/IslandLayoutEngine'
 import { aggregateEdges } from '../utils/aggregateEdges'
+import { applyHeatmapColors } from '../utils/applyHeatmap'
 
 export function useLayoutComputation(): void {
   const { fitView } = useReactFlow()
@@ -17,6 +18,7 @@ export function useLayoutComputation(): void {
   const activeEdgeTypes = useGraphStore((s) => s.activeEdgeTypes)
   const showExternal = useGraphStore((s) => s.showExternal)
   const viewMode = useGraphStore((s) => s.viewMode)
+  const colorMode = useGraphStore((s) => s.colorMode)
   const setLayout = useGraphStore((s) => s.setLayout)
 
   useEffect(() => {
@@ -78,8 +80,11 @@ export function useLayoutComputation(): void {
         }
       })
 
-      // Step 6: run island layout
-      const engine = new IslandLayoutEngine(labeledNodes as Node[], visibleEdges as Edge[])
+      // Step 6: apply heatmap colors if colorMode is 'health'
+      const coloredNodes = applyHeatmapColors(labeledNodes as Node[], colorMode === 'health')
+
+      // Step 7: run island layout
+      const engine = new IslandLayoutEngine(coloredNodes as Node[], visibleEdges as Edge[])
       const { nodes: layoutedNodes, edges: layoutedEdges } = engine.run(expandedFiles)
 
       if (generationRef.current !== gen) return  // stale async, discard
@@ -87,5 +92,5 @@ export function useLayoutComputation(): void {
       setLayout(layoutedNodes, layoutedEdges)
       fitView({ padding: 0.15, duration: 250 })
     })()
-  }, [rawNodes, rawEdges, expandedFiles, activeEdgeTypes, showExternal, viewMode, setLayout, fitView])
+  }, [rawNodes, rawEdges, expandedFiles, activeEdgeTypes, showExternal, viewMode, colorMode, setLayout, fitView])
 }

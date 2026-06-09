@@ -64,6 +64,8 @@ function GraphCanvas() {
   const showExternal = useGraphStore((s) => s.showExternal)
   const toggleEdgeType = useGraphStore((s) => s.toggleEdgeType)
   const toggleExternal = useGraphStore((s) => s.toggleExternal)
+  const colorMode = useGraphStore((s) => s.colorMode)
+  const setColorMode = useGraphStore((s) => s.setColorMode)
 
   // Layout computation hook — subscribes to filter state, runs dagre
   useLayoutComputation()
@@ -127,6 +129,11 @@ function GraphCanvas() {
   const handleToggleEdgeType = useCallback(
     (type: string) => toggleEdgeType(type as Parameters<typeof toggleEdgeType>[0]),
     [toggleEdgeType]
+  )
+
+  const handleToggleColorMode = useCallback(
+    () => setColorMode(colorMode === 'type' ? 'health' : 'type'),
+    [colorMode, setColorMode]
   )
 
   const onNodeClick = useCallback(
@@ -205,6 +212,9 @@ function GraphCanvas() {
         nodeTypes={nodeTypes}
         colorMode="dark"
         fitView
+        fitViewOptions={{ padding: 0.5 }}
+        minZoom={0.02}
+        maxZoom={2}
       >
         <Background />
         <Controls />
@@ -225,6 +235,8 @@ function GraphCanvas() {
             showExternal={showExternal}
             onToggleExternal={(_show: boolean) => toggleExternal()}
             flowRootId={null}
+            colorMode={colorMode}
+            onToggleColorMode={handleToggleColorMode}
           />
         </Panel>
         {/* LegendPanel renders its own <Panel position="bottom-right"> internally */}
