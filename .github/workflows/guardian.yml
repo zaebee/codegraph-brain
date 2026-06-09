@@ -4,10 +4,7 @@ on:
   issue_comment:
     types: [created]
 
-permissions:
-  contents: read
-  pull-requests: write
-  issues: read
+permissions: {}
 
 jobs:
   review:
@@ -16,6 +13,10 @@ jobs:
       github.event.issue.pull_request != null &&
       github.event.comment.body == '/guardian review'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
 
     steps:
       - name: Check commenter has write access
@@ -60,16 +61,147 @@ jobs:
       - name: Build code graph
         run: uv run cgis ingest ./src --output graph.db
 
+      - name: Restore metrics from data branch
+        run: |
+          git fetch origin data/guardian-metrics 2>/dev/null && \
+            git show origin/data/guardian-metrics:guardian_metrics.jsonl \
+              > guardian_metrics.jsonl 2>/dev/null || true
+
       - name: Run Guardian Review
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           GUARDIAN_PROVIDER: ${{ vars.GUARDIAN_PROVIDER }}
           GUARDIAN_MODEL: ${{ vars.GUARDIAN_MODEL }}
-        run: uv run python scripts/guardian_review.py --output guardian_report.md --db graph.db
+        run: |
+          uv run python scripts/guardian_review.py \
+            --output guardian_report.md \
+            --db graph.db \
+            --pr "$PR_NUMBER" \
+            --metrics guardian_metrics.jsonl
+
+      - name: Upload metrics artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: guardian-metrics-${{ env.PR_NUMBER }}
+          path: guardian_metrics.jsonl
+          retention-days: 7
 
       - name: Post review as PR comment
         uses: peter-evans/create-or-update-comment@a111a2c3bacd7be7898ee22d0d71d9aec2bb972c  # v4
         with:
           issue-number: ${{ env.PR_NUMBER }}
           body-path: guardian_report.md
+
+  save-metrics:
+    needs: review
+    runs-on: ubuntu-latest
+    # contents: write is scoped to this job only — no PR code runs here
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Download metrics artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
+        with:
+          name: guardian-metrics-${{ github.event.issue.number }}
+
+      - name: Push metrics to data branch
+        env:
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code origin data/guardian-metrics > /dev/null 2>&1; then
+            git worktree add /tmp/metrics origin/data/guardian-metrics
+          else
+            git worktree add --orphan -b data/guardian-metrics /tmp/metrics
+          fi
+          cp guardian_metrics.jsonl /tmp/metrics/
+          git -C /tmp/metrics add guardian_metrics.jsonl
+          git -C /tmp/metrics diff --cached --quiet || \
+            git -C /tmp/metrics commit -m "metrics: guardian review PR #${PR_NUMBER} [skip ci]"
+          git -C /tmp/metrics push origin HEAD:data/guardian-metrics
+
+  rate:
+    # Triggered by: /guardian rate <applied> in a PR comment
+    # Example: /guardian rate 2
+    if: |
+      github.event.issue.pull_request != null &&
+      startsWith(github.event.comment.body, '/guardian rate ')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: read
+
+    steps:
+      - name: Check commenter has write access
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea  # v7
+        with:
+          script: |
+            const { data: perm } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              username: context.payload.comment.user.login,
+            });
+            const allowed = ['admin', 'write'];
+            if (!allowed.includes(perm.permission)) {
+              core.setFailed(`@${context.payload.comment.user.login} needs write access (has: ${perm.permission})`);
+            }
+
+      - name: Parse rate command
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "Invalid PR number: $PR_NUMBER" && exit 1
+          fi
+          APPLIED=$(echo "$COMMENT_BODY" | sed -n 's|^/guardian rate \([0-9]*\).*|\1|p')
+          if ! [[ "$APPLIED" =~ ^[0-9]+$ ]]; then
+            echo "Invalid applied count in comment: '$COMMENT_BODY'" && exit 1
+          fi
+          echo "PR_NUMBER=$PR_NUMBER" >> $GITHUB_ENV
+          echo "APPLIED=$APPLIED" >> $GITHUB_ENV
+
+      - name: Checkout main
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39  # v3
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Rate review and push metrics
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git fetch origin data/guardian-metrics
+          git show origin/data/guardian-metrics:guardian_metrics.jsonl \
+            > guardian_metrics.jsonl
+
+          uv run cgis guardian-rate "$PR_NUMBER" "$APPLIED" \
+            --metrics guardian_metrics.jsonl
+
+          if git ls-remote --exit-code origin data/guardian-metrics > /dev/null 2>&1; then
+            git worktree add /tmp/metrics origin/data/guardian-metrics
+          else
+            git worktree add --orphan -b data/guardian-metrics /tmp/metrics
+          fi
+          cp guardian_metrics.jsonl /tmp/metrics/
+          git -C /tmp/metrics add guardian_metrics.jsonl
+          git -C /tmp/metrics diff --cached --quiet || \
+            git -C /tmp/metrics commit \
+              -m "metrics: rate PR #${PR_NUMBER} applied=${APPLIED} [skip ci]"
+          git -C /tmp/metrics push origin HEAD:data/guardian-metrics

@@ -100,10 +100,10 @@ classDef stdlibNode fill:#eceff1,stroke:#607d8b,stroke-width:1px,color:#455a64;
 classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dasharray: 3 3,color:#bf360c;
 
     subgraph n_9881ca900b7c44fd13c9206dbb6b1f1c["pipeline.py"]
-        n_0f875e605375c329869f67b3fb05ca43["_get_extractor (pipeline.py:210)"]:::methodNode
-        n_705d8fa6977288feb6d561fe353917bd["_persist_incremental (pipeline.py:171)"]:::methodNode
-        n_69ab802205de25759be41c9155266b2c["_process_file (pipeline.py:141)"]:::methodNode
-        n_380356b2071cde8dd55ba6287e99bd8a["run (pipeline.py:47)"]:::methodNode
+        n_0f875e605375c329869f67b3fb05ca43["_get_extractor (pipeline.py:216)"]:::methodNode
+        n_705d8fa6977288feb6d561fe353917bd["_persist_incremental (pipeline.py:175)"]:::methodNode
+        n_69ab802205de25759be41c9155266b2c["_process_file (pipeline.py:145)"]:::methodNode
+        n_380356b2071cde8dd55ba6287e99bd8a["run (pipeline.py:51)"]:::methodNode
     end
     subgraph n_724e82bcada88588298dcf4c3336e3f5["engine.py"]
         n_ebda4de8e05ef057deb454e72894302d["ResolverEngine (engine.py:14)"]:::classNode
@@ -124,10 +124,10 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
 
 | Symbol | Type | File |
 |--------|------|------|
-| `run` | METHOD | [`pipeline.py:47`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L47) |
-| `_process_file` | METHOD | [`pipeline.py:141`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L141) |
-| `_persist_incremental` | METHOD | [`pipeline.py:171`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L171) |
-| `_get_extractor` | METHOD | [`pipeline.py:210`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L210) |
+| `run` | METHOD | [`pipeline.py:51`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L51) |
+| `_process_file` | METHOD | [`pipeline.py:145`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L145) |
+| `_persist_incremental` | METHOD | [`pipeline.py:175`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L175) |
+| `_get_extractor` | METHOD | [`pipeline.py:216`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L216) |
 | `ResolverEngine` | CLASS | [`engine.py:14`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L14) |
 | `resolve` | METHOD | [`engine.py:149`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L149) |
 | `SemanticUpliftEngine` | CLASS | [`uplift.py:66`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/uplift.py#L66) |

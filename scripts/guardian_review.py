@@ -9,6 +9,7 @@ import structlog
 
 from cgis.guardian.collector import ContextCollector
 from cgis.guardian.core import GuardianReviewer
+from cgis.guardian.metrics import record_review
 from cgis.guardian.providers.base import BaseProvider
 from cgis.guardian.providers.gemini import GeminiProvider
 from cgis.guardian.providers.mistral import MistralProvider
@@ -56,6 +57,18 @@ async def main() -> None:
         default=None,
         help="Path to graph.db for structural impact context (optional).",
     )
+    parser.add_argument(
+        "--pr",
+        type=int,
+        default=None,
+        help="GitHub PR number being reviewed (used for metrics tracking).",
+    )
+    parser.add_argument(
+        "--metrics",
+        type=Path,
+        default=Path("guardian_metrics.jsonl"),
+        help="Path to the append-only metrics log (default: guardian_metrics.jsonl).",
+    )
     args = parser.parse_args()
 
     provider, model = _build_provider()
@@ -96,6 +109,16 @@ async def main() -> None:
         pct = round(stats["with_graph"] / stats["total"] * 100)
         footer_parts.append(f"graph {stats['with_graph']}/{stats['total']} files ({pct}%)")
     footer = "\n\n---\n> " + " · ".join(footer_parts)
+
+    metrics_path = record_review(
+        model=model,
+        pr=args.pr,
+        prompt_tokens=usage.prompt_tokens,
+        completion_tokens=usage.completion_tokens,
+        review_text=review_result,
+        metrics_path=args.metrics,
+    )
+    log.info("Metrics recorded.", path=str(metrics_path))
 
     if args.output:
         safe_root = Path.cwd().resolve()
