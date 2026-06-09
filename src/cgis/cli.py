@@ -1,6 +1,6 @@
 """ "CLI to run pipeline."""
 
-import json
+import json as _json
 from enum import StrEnum
 from pathlib import Path
 
@@ -14,6 +14,8 @@ from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeNamesp
 from cgis.extractors.python_extractor import PythonExtractor, file_path_to_module_fqn
 from cgis.extractors.typescript_extractor import TypeScriptExtractor
 from cgis.pipeline import IngestionPipeline
+from cgis.query.analyzer import AnalyzerEngine
+from cgis.query.anomaly import AnomalyType, ArchitecturalAnomaly
 from cgis.query.engine import BEHAVIORAL_EDGE_TYPES, QueryEngine
 from cgis.query.mermaid import MermaidCompiler
 from cgis.resolver.uplift import SemanticUpliftEngine
@@ -89,7 +91,7 @@ def _write_graph_output(
         output_path = Path(output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with output_path.open("w", encoding="utf-8") as f:
-            json.dump(graph_data, f, indent=2)
+            _json.dump(graph_data, f, indent=2)
     else:
         with SQLiteStore(output) as store:
             store.save_graph(nodes, resolved_edges, overwrite=True)
@@ -582,6 +584,85 @@ def _build_structure_tree(
         _build_structure_tree(
             child_id, child_branch, nodes_map, children_map, max_depth, current_depth + 1
         )
+
+
+_SEVERITY_COLOUR = {
+    AnomalyType.CIRCULAR_DEPENDENCY: "red",
+    AnomalyType.ZONE_OF_PAIN: "yellow",
+    AnomalyType.GOD_OBJECT: "magenta",
+}
+
+
+@app.command()
+def analyze(
+    db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
+    min_severity: float = typer.Option(
+        0.0,
+        "--min-severity",
+        "-s",
+        min=0.0,
+        max=1.0,
+        help="Only show anomalies at or above this severity score (0.0-1.0)",
+    ),
+    output_format: OutputFormat = typer.Option(
+        OutputFormat.TEXT, "--format", "-f", help="Output format: text or json"
+    ),
+) -> None:
+    """
+    Detect architectural anti-patterns in the ingested code graph.
+
+    Runs three detectors: circular dependencies (Tarjan SCC), Zone of Pain
+    (Uncle Bob's instability / abstractness metrics), and God Objects.
+    Requires a .db graph file produced by the `ingest` command.
+    """
+    path = Path(db)
+    if not path.is_file():
+        console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
+        raise typer.Exit(code=1)
+
+    with SQLiteStore(db) as store:
+        report = AnalyzerEngine(store).run()
+
+    visible = [a for a in report.anomalies if a.severity_score >= min_severity]
+
+    if output_format == OutputFormat.MERMAID:
+        console.print("[bold red]❌ JSON/text only for analyze — mermaid not supported.[/bold red]")
+        raise typer.Exit(code=1)
+
+    if output_format.value == "json":
+        typer.echo(_json.dumps([a.model_dump() for a in visible], indent=2))
+        return
+
+    console.print(
+        f"\n[bold blue]🔍 Architectural Health Report[/bold blue]  "
+        f"[dim]{db}[/dim]\n"
+        f"  Nodes analysed : [cyan]{report.total_nodes_analyzed}[/cyan]\n"
+        f"  Anomalies found: [{'red' if report.total_anomalies else 'green'}]"
+        f"{report.total_anomalies}[/{'red' if report.total_anomalies else 'green'}]\n"
+    )
+
+    if not visible:
+        console.print("[bold green]✅ No anomalies above the severity threshold.[/bold green]")
+        return
+
+    by_type: dict[AnomalyType, list[ArchitecturalAnomaly]] = {}
+    for a in visible:
+        by_type.setdefault(a.type, []).append(a)
+
+    for anomaly_type, items in by_type.items():
+        colour = _SEVERITY_COLOUR.get(anomaly_type, "white")
+        console.print(f"[bold {colour}]{'━' * 60}[/bold {colour}]")
+        console.print(
+            f"[bold {colour}]{anomaly_type.value}[/bold {colour}]  ({len(items)} found)\n"
+        )
+        for a in sorted(items, key=lambda x: x.severity_score, reverse=True):
+            console.print(
+                f"  [yellow]{a.focal_fqn}[/yellow]  "
+                f"severity=[bold {colour}]{a.severity_score:.2f}[/bold {colour}]"
+            )
+            for key, val in a.metrics.items():
+                console.print(f"    [dim]{key}:[/dim] {val}")
+            console.print(f"  [italic]💡 {a.refactoring_hint}[/italic]\n")
 
 
 if __name__ == "__main__":  # pragma: no cover
