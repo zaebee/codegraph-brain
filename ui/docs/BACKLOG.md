@@ -240,3 +240,24 @@
 - [ ] Debounce layout при одновременном раскрытии нескольких FILE
 - [ ] Web Worker для dagre (было в планах, отложено)
 - [ ] Virtualisation для >1000 нод
+
+## 🟣 Backlog (CLI / Backend)
+
+### `--source-root` multi-root ingestion flag
+**Проблема:** при ingest из корня репо Python-импорты `cgis.*` не совпадают с FQN `src.cgis.*` → 2853 phantom cross-island edges без разрешённых связей.
+**Решение:** добавить `--source-root <path>` (можно несколько раз) в `cgis ingest`. `IngestionPipeline` принимает `source_roots: list[str]`; FQN файла строится относительно ближайшего source_root, а не от CWD.
+- [ ] Добавить `source_roots: list[str] | None` в `IngestionPipeline.__init__`
+- [ ] `file_path_to_module_fqn(path, source_root)` — вычислять относительно source_root
+- [ ] CLI: `--source-root / -s` (Multiple=True) в `cgis ingest`
+- [ ] Тесты: ingest `src/cgis` с `--source-root src` → FQN `cgis.*`, без него → `src.cgis.*`
+
+### Ideal / Optimal Synthetic Graph
+**Идея:** генерировать эталонный граф как «абстрактный класс для архитектур» — pure structural reference, как interface в Go или ABC в Python. Полезен для визуального сравнения «наш граф vs ideal» и как фикстура в тестах.
+**Формат:** `graph.json` или `.db` с заданным набором паттернов:
+- Hub node (high fan-in, low fan-out) — как utils/helpers
+- Chain (linear CALLS) — как middleware pipeline
+- Star (one class calls many)
+- Cycle-free DAG
+- [ ] `cgis generate ideal --pattern <hub|chain|star|dag>` → `ideal.json`
+- [ ] Или Python-скрипт `scripts/gen_ideal_graph.py` (проще, не требует CLI команды)
+- [ ] Использовать как эталон в UI для демо-режима
