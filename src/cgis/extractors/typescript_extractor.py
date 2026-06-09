@@ -70,6 +70,23 @@ def _make_node(fqn: str, name: str, node_type: NodeType, file_path: str, ts_node
     )
 
 
+def _resolve_relative_import(namespace: str, raw_source: str) -> str:
+    """Resolve a relative import path to a dot-separated module FQN.
+
+    Walks segments so that ``./utils``, ``../api``, and ``../../lib`` all
+    produce the correct absolute FQN relative to *namespace*.
+    """
+    dir_parts = namespace.split(".")[:-1]
+    for segment in raw_source.replace("\\", "/").split("/"):
+        if segment == ".." and dir_parts:
+            dir_parts.pop()
+        elif segment and segment not in (".", ".."):
+            dir_parts.append(segment)
+    if dir_parts and dir_parts[-1] == "index":
+        dir_parts.pop()
+    return ".".join(dir_parts)
+
+
 def _make_edge(source: str, target: str, edge_type: EdgeType) -> Edge:
     """Construct an Edge with a deterministic id."""
     return Edge(id=f"{source}->{target}", source=source, target=target, type=edge_type)
@@ -241,18 +258,7 @@ class TypeScriptExtractor(BaseExtractor):
         if not raw_source:
             return
         if raw_source.startswith("."):
-            # Walk the path segments to resolve ../.. traversal properly.
-            # Start from the *directory* of the current module (strip the last component).
-            dir_parts = namespace.split(".")[:-1]
-            for segment in raw_source.replace("\\", "/").split("/"):
-                if segment == ".." and dir_parts:
-                    dir_parts.pop()
-                elif segment and segment not in (".", ".."):
-                    dir_parts.append(segment)
-            # Strip "index" suffix — same convention as file_path_to_module_fqn.
-            if dir_parts and dir_parts[-1] == "index":
-                dir_parts.pop()
-            target_fqn = ".".join(dir_parts)
+            target_fqn = _resolve_relative_import(namespace, raw_source)
         else:
             target_fqn = raw_source.replace("/", ".")
         edges.append(
