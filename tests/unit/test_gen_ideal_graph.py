@@ -1,6 +1,7 @@
 """Tests for scripts/gen_ideal_graph.py."""
 
 import json
+import math
 import subprocess
 import sys
 from pathlib import Path
@@ -52,7 +53,7 @@ def test_all_nodes_are_internal(pattern: str) -> None:
     graph = generate(pattern)
     for node in graph["nodes"]:
         assert node["namespace"] == "INTERNAL"
-        assert node["confidence_score"] == pytest.approx(1.0)
+        assert math.isclose(node["confidence_score"], 1.0)
 
 
 def test_hub_has_high_fan_in_utils() -> None:
@@ -99,8 +100,8 @@ def test_dag_has_no_cycles() -> None:
         color[node] = 2
         return False
 
-    for node_id in list(color):
-        if color[node_id] == 0:
+    for node_id, state in color.items():
+        if state == 0:
             assert not has_cycle(node_id), f"Cycle detected in dag pattern at {node_id}"
 
 

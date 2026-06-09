@@ -117,24 +117,17 @@ def build_hub() -> tuple[list[dict], list[dict]]:
 
     # hub: utils
     utils_file = "utils.py"
+    fmt_fqn = "utils.format_response"
+    val_fqn = "utils.validate_input"
     nodes.append(_file_node("utils", utils_file, 30))
     nodes.append(
-        _func_node(
-            "utils.format_response",
-            "format_response",
-            utils_file,
-            5,
-            fan_in=len(callers),
-            fan_out=0,
-        )
+        _func_node(fmt_fqn, "format_response", utils_file, 5, fan_in=len(callers), fan_out=0)
     )
     nodes.append(
-        _func_node(
-            "utils.validate_input", "validate_input", utils_file, 15, fan_in=len(callers), fan_out=0
-        )
+        _func_node(val_fqn, "validate_input", utils_file, 15, fan_in=len(callers), fan_out=0)
     )
-    edges.append(_contains("utils", "utils.format_response", utils_file))
-    edges.append(_contains("utils", "utils.validate_input", utils_file))
+    edges.append(_contains("utils", fmt_fqn, utils_file))
+    edges.append(_contains("utils", val_fqn, utils_file))
 
     # callers
     for svc in callers:
@@ -144,8 +137,8 @@ def build_hub() -> tuple[list[dict], list[dict]]:
         nodes.append(_func_node(handler, "handle", fp, 5, fan_in=0, fan_out=2))
         edges.append(_contains(svc, handler, fp))
         edges.append(_imports(svc, "utils"))
-        edges.append(_calls(handler, "utils.format_response"))
-        edges.append(_calls(handler, "utils.validate_input"))
+        edges.append(_calls(handler, fmt_fqn))
+        edges.append(_calls(handler, val_fqn))
 
     return nodes, edges
 
