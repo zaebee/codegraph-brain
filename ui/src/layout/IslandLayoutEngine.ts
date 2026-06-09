@@ -134,8 +134,11 @@ export class IslandLayoutEngine {
     return offsets
   }
 
-  // Transforms expanded FILE nodes into fileContainer wrapper nodes sized to their children.
-  // Containers are z-ordered before content nodes so React Flow renders them as backgrounds.
+  // Transforms expanded FILE nodes into fileContainer background wrappers sized to their children.
+  // Uses the background-node pattern (same as islandContainer): the container is a non-interactive
+  // node z-ordered before children; all positions remain absolute. We intentionally skip React Flow's
+  // parentNode/extent:'parent' approach because our containers are non-draggable visual-only elements
+  // and absolute coordinates are simpler and sufficient here.
   private applyFileContainers(nodes: Node[], expandedFiles: Set<string>): Node[] {
     // Build fileId → child node indices
     const fileChildIndices = new Map<string, number[]>()
