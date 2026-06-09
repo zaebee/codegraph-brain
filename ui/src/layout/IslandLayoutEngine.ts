@@ -27,7 +27,6 @@ export class IslandLayoutEngine {
   private nodes: Node[]
   private edges: Edge[]
   crossEdges: Edge[] = []
-  private islands: Map<string, IslandData> = new Map()
 
   constructor(nodes: Node[], edges: Edge[]) {
     this.nodes = nodes
@@ -59,7 +58,6 @@ export class IslandLayoutEngine {
       }
     }
 
-    this.islands = islands
     return islands
   }
 

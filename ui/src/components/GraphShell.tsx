@@ -25,6 +25,7 @@ import NodeTooltip from './NodeTooltip'
 import LegendPanel from './LegendPanel'
 import LoadingOverlay from './LoadingOverlay'
 import FileContainerNode from './FileContainerNode'
+import IslandContainerNode from './IslandContainerNode'
 
 import sharedStyles from '../shared.module.css'
 
@@ -106,7 +107,10 @@ function GraphCanvas() {
     [displayedNodes, activeEdges, hoveredNodeId]
   )
 
-  const nodeTypes = useMemo(() => ({ fileContainer: FileContainerNode }), [])
+  const nodeTypes = useMemo(
+    () => ({ fileContainer: FileContainerNode, islandContainer: IslandContainerNode }),
+    []
+  )
 
   // Fix 1: Memoize ALL_EDGE_TYPES spread
   const allEdgeTypesArray = useMemo(() => [...ALL_EDGE_TYPES], [])
@@ -118,7 +122,7 @@ function GraphCanvas() {
   )
 
   const handleToggleEdgeType = useCallback(
-    (type: string) => toggleEdgeType(type),
+    (type: string) => toggleEdgeType(type as Parameters<typeof toggleEdgeType>[0]),
     [toggleEdgeType]
   )
 

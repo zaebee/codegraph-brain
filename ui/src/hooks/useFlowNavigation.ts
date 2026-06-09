@@ -3,7 +3,7 @@
 import { useCallback, useRef, type MouseEvent } from 'react'
 import { useReactFlow, type Node } from '@xyflow/react'
 import { buildExecutionFlow } from '../flow'
-import { layoutGraph } from '../layout'
+import { IslandLayoutEngine } from '../layout/IslandLayoutEngine'
 import { mapNodeToFlowView } from '../utils/nodeMapper'
 import { mapEdgeToFlowView } from '../utils/edgeMapper'
 import { useGraphStore } from '../store/useGraphStore'
@@ -41,7 +41,8 @@ export function useFlowNavigation(allowedEdgeTypes: string[] = DEFAULT_ALLOWED) 
         mapNodeToFlowView(n, { isRoot: n.id === node.id })
       )
       const flowEdges = flow.edges.map((e, i) => mapEdgeToFlowView(e, i))
-      const { nodes: layoutedNodes } = await layoutGraph(flowNodes, flowEdges)
+      const engine = new IslandLayoutEngine(flowNodes, flowEdges)
+      const { nodes: layoutedNodes } = await engine.run(new Set<string>())
 
       setFlow(layoutedNodes, flowEdges)
       setViewMode('flow')

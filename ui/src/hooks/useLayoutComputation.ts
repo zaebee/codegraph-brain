@@ -1,10 +1,10 @@
 // ui/src/hooks/useLayoutComputation.ts
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useRef } from 'react'
-import { useReactFlow } from '@xyflow/react'
+import { useReactFlow, type Node, type Edge } from '@xyflow/react'
 import { useGraphStore } from '../store/useGraphStore'
 import { getCollapsedView } from '../collapse'
-import { layoutGraph } from '../layout'
+import { IslandLayoutEngine } from '../layout/IslandLayoutEngine'
 import { aggregateEdges } from '../utils/aggregateEdges'
 
 export function useLayoutComputation(): void {
@@ -78,13 +78,9 @@ export function useLayoutComputation(): void {
         }
       })
 
-      // Step 6: run dagre layout
-      const { nodes: layoutedNodes, edges: layoutedEdges } = await layoutGraph(
-        labeledNodes,
-        visibleEdges,
-        expandedFiles,
-        parentChildren
-      )
+      // Step 6: run island layout
+      const engine = new IslandLayoutEngine(labeledNodes as Node[], visibleEdges as Edge[])
+      const { nodes: layoutedNodes, edges: layoutedEdges } = await engine.run(expandedFiles)
 
       if (generationRef.current !== gen) return  // stale async, discard
 

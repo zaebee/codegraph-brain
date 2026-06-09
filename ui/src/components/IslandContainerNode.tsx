@@ -1,4 +1,5 @@
-import type { NodeProps } from '@xyflow/react'
+import type { NodeProps, Node } from '@xyflow/react'
+import type { CSSProperties } from 'react'
 import { NAMESPACE_COLORS } from '../theme'
 
 const NAMESPACE_LABEL: Record<string, string> = {
@@ -9,8 +10,10 @@ const NAMESPACE_LABEL: Record<string, string> = {
   _default: '📦 default',
 }
 
-export default function IslandContainerNode({ data, style }: NodeProps) {
-  const ns = (data as { namespace: string }).namespace
+type IslandContainerData = { namespace: string; style?: CSSProperties }
+
+export default function IslandContainerNode({ data }: NodeProps<Node<IslandContainerData>>) {
+  const ns = data.namespace
   const color = (NAMESPACE_COLORS as Record<string, string>)[ns] ?? '#546e7a'
   const label = NAMESPACE_LABEL[ns] ?? ns
 
@@ -23,7 +26,6 @@ export default function IslandContainerNode({ data, style }: NodeProps) {
         borderRadius: 10,
         background: `${color}11`,
         pointerEvents: 'none',
-        ...style,
       }}
     >
       <div
