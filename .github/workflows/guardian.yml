@@ -16,7 +16,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-      issues: read
+      issues: write
 
     steps:
       - name: Check commenter has write access
@@ -32,6 +32,14 @@ jobs:
             if (!allowed.includes(perm.permission)) {
               core.setFailed(`@${context.payload.comment.user.login} needs write access to trigger Guardian Review (has: ${perm.permission})`);
             }
+
+      - name: React to trigger comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+        run: |
+          gh api repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID/reactions \
+            -X POST -f content=eyes
 
       - name: Validate PR number and get base branch
         env:
