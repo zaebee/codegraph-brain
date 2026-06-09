@@ -203,19 +203,40 @@ an honest deviation from Milo's TSP, recorded as a known limitation.
 ### 3.3 Drift as distance
 
 Each template names an **ideal point** in motif space (hand-authored unit
-vectors, e.g. `pipeline_stage → T_imports ∝ e_021C`, `layered_dag → ∝ e_030T`):
+vectors, e.g. `pipeline_stage → T_imports ∝ e_021C`, `layered_dag → ∝ e_030T`).
+
+The distance is **total variation (weighted L1) on the normalized triad
+distributions**, not cosine:
 
 ```
-drift_v2 = w_i · cos_dist(T_imports, ideal_imports)
-         + w_c · cos_dist(T_calls,   ideal_calls) · (1 - unresolved_ratio)
+tv(T, ideal)  = ½ · Σ_i  w_i · |T[i] − ideal[i]|        (i over 13 triads)
+
+drift_v2 = w_imports · tv(T_imports, ideal_imports)
+         + w_calls   · tv(T_calls,   ideal_calls) · (1 - unresolved_ratio)
          + hard-constraint violations (v1 mechanism, kept)
 ```
+
+Why TV and not cosine or Jensen–Shannon (resolves former Open Question 2):
+
+- **Cosine masks small components.** It is dominated by the large coordinates
+  of the vector; a rare-but-critical triad (e.g. a few percent of 030C
+  cycles) barely moves the angle. An angular metric also does not decompose
+  per-component, which contradicts the violation-reporting requirement below.
+- **JSD needs smoothing on sparse vectors.** Our 13-triad vectors are mostly
+  zeros (small domains express 2–4 triad types); the log terms in JSD are
+  undefined at 0 and force an arbitrary epsilon. TV handles zeros exactly.
+- **TV is bounded [0, 1] and decomposes exactly**: each triad's contribution
+  is `½·w_i·|T[i] − ideal[i]|`, so the violation strings fall directly out of
+  the metric instead of being approximated from it.
+
+Per-triad weights `w_i` default to 1 and live in the measurement profile
+(§2.3) — e.g. the TypeScript profile may down-weight CALLS-only triads.
 
 The v1 weighted-violation score survives only for **hard invariants**
 (`cycle_ratio {max: 0}`, `unresolved_ratio {max: X}`) — these are gates, not
 distances. Everything topological moves to the distance term. Violations
-reporting stays: the per-triad deltas with the largest contribution to the
-distance become the human-readable violation strings.
+reporting stays: the per-triad terms with the largest contribution to the
+TV sum become the human-readable violation strings.
 
 ### 3.4 Fractal / quotient drift
 
@@ -346,9 +367,10 @@ Non-goals (explicitly rejected for now):
 
 1. §2.3: should the confidence discount floor at some minimum (e.g. keep 20%
    of CALLS-layer weight even at unresolved_ratio=1.0), or fully zero out?
-2. §3.3: cosine vs. Jensen–Shannon for the distance — cosine is scale-free
-   and cheap; JS is better-behaved on sparse vectors. Proposal: cosine first,
-   revisit with data.
+2. ~~§3.3: cosine vs. Jensen–Shannon for the distance~~ — **resolved in
+   review**: weighted total variation (L1) on the normalized triad
+   distributions. Cosine masks small components and does not decompose
+   per-triad; JSD needs epsilon-smoothing on our sparse vectors. See §3.3.
 3. §3.4: should `project_level` quotient drift be a hard test (like
    per-domain ratchets) from day one, or observe-only for one milestone?
 4. §2.4: single `patterns.yaml` vs. `patterns.yaml` + thin `domains_ui.yaml`
