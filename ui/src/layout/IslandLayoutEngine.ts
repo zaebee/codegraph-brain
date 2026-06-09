@@ -67,11 +67,22 @@ export class IslandLayoutEngine {
   }
 
   private layoutIsland(island: IslandData): { nodes: Node[]; bbox: { width: number; height: number } } {
+    // Separate connected nodes (have at least one edge) from isolated ones.
+    // Dagre with rankdir:LR stacks all isolated nodes in rank-0 as a single
+    // vertical column — instead we grid-layout them separately.
+    const connectedIds = new Set<string>()
+    for (const edge of island.edges) {
+      connectedIds.add(edge.source)
+      connectedIds.add(edge.target)
+    }
+    const connectedNodes = island.nodes.filter((n) => connectedIds.has(n.id))
+    const isolatedNodes = island.nodes.filter((n) => !connectedIds.has(n.id))
+
     const g = new dagre.graphlib.Graph()
     g.setDefaultEdgeLabel(() => ({}))
     g.setGraph({ rankdir: LAYOUT_DIRECTION, nodesep: NODE_SEP, ranksep: RANK_SEP })
 
-    for (const node of island.nodes) {
+    for (const node of connectedNodes) {
       g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT })
     }
     for (const edge of island.edges) {
@@ -80,20 +91,37 @@ export class IslandLayoutEngine {
 
     dagre.layout(g)
 
+    // Position connected nodes from dagre output
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-    const positioned = island.nodes.map((node) => {
+    const dagrePositioned = connectedNodes.map((node) => {
       const pos = g.node(node.id)
-      const x = pos ? pos.x - NODE_WIDTH / 2 : (node.position?.x ?? 0)
-      const y = pos ? pos.y - NODE_HEIGHT / 2 : (node.position?.y ?? 0)
-      minX = Math.min(minX, x)
-      minY = Math.min(minY, y)
-      maxX = Math.max(maxX, x + NODE_WIDTH)
-      maxY = Math.max(maxY, y + NODE_HEIGHT)
+      const x = pos ? pos.x - NODE_WIDTH / 2 : 0
+      const y = pos ? pos.y - NODE_HEIGHT / 2 : 0
+      minX = Math.min(minX, x); minY = Math.min(minY, y)
+      maxX = Math.max(maxX, x + NODE_WIDTH); maxY = Math.max(maxY, y + NODE_HEIGHT)
       return { ...node, position: { x, y } }
     })
 
-    // Offset nodes so they sit inside the container border + below the header
-    const normalised = positioned.map((n) => ({
+    // Grid-layout isolated nodes to the right of (or below) the dagre block.
+    // Use ~4 columns so they form a compact rectangle rather than a column.
+    const GRID_COLS = Math.min(4, Math.max(1, Math.ceil(Math.sqrt(isolatedNodes.length))))
+    const gridOffsetX = connectedNodes.length > 0 ? (maxX - minX) + RANK_SEP : 0
+    const gridOffsetY = 0
+    const gridPositioned = isolatedNodes.map((node, i) => {
+      const col = i % GRID_COLS
+      const row = Math.floor(i / GRID_COLS)
+      const x = gridOffsetX + col * (NODE_WIDTH + NODE_SEP)
+      const y = gridOffsetY + row * (NODE_HEIGHT + NODE_SEP)
+      minX = Math.min(minX, x); minY = Math.min(minY, y)
+      maxX = Math.max(maxX, x + NODE_WIDTH); maxY = Math.max(maxY, y + NODE_HEIGHT)
+      return { ...node, position: { x, y } }
+    })
+
+    if (minX === Infinity) { minX = 0; minY = 0; maxX = 0; maxY = 0 }
+
+    // Offset all nodes so they sit inside the container border + below the header
+    const allPositioned = [...dagrePositioned, ...gridPositioned]
+    const normalised = allPositioned.map((n) => ({
       ...n,
       position: {
         x: n.position.x - minX + FILE_CONTAINER_PADDING,
