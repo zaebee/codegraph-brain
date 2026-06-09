@@ -54,6 +54,9 @@ Use these to identify callers that may be broken or require updates.
 ### EVIDENCE RULE — enforced before every finding:
 Before flagging ANY issue you MUST quote the exact line(s) from the diff that prove the
 problem exists. If you cannot point to a specific line, do not raise the issue.
+- The line(s) you quote MUST appear verbatim in the git diff provided in section 3 above.
+  Do NOT cite lines you infer, reconstruct, or imagine — if you cannot locate the exact text
+  in the diff, do not quote it and do not raise the issue.
 - If the code already handles a case → acknowledge it, do not flag it.
 - If you disagree with a design choice but the code is correct → it is a MINOR at most,
   not a BLOCKER.
