@@ -14,7 +14,7 @@ class ProviderUsage(BaseModel, frozen=True):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def total_tokens(self) -> int:
-        """Sum of prompt and completion tokens."""
+        """Total tokens consumed by this LLM request, used for cost tracking."""
         return self.prompt_tokens + self.completion_tokens
 
 

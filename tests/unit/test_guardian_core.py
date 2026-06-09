@@ -121,6 +121,12 @@ def test_provider_last_usage_defaults_to_zero() -> None:
     assert provider.last_usage.total_tokens == 0
 
 
+def test_provider_usage_total_tokens_computed() -> None:
+    """total_tokens is the sum even when prompt_tokens is zero."""
+    usage = ProviderUsage(prompt_tokens=0, completion_tokens=100)
+    assert usage.total_tokens == 100
+
+
 async def test_provider_last_usage_after_call(collector: ContextCollector) -> None:
     """last_usage reflects values set by the provider after generate_content."""
 
