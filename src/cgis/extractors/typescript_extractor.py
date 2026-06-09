@@ -107,7 +107,7 @@ class TypeScriptExtractor(BaseExtractor):
         module_fqn = file_path_to_module_fqn(file_path)
 
         file_node = Node(
-            id=file_path,
+            id=module_fqn,
             name=file_path.replace("\\", "/").split("/")[-1],
             type=NodeType.FILE,
             file_path=file_path,
@@ -122,7 +122,7 @@ class TypeScriptExtractor(BaseExtractor):
             tree.root_node,
             namespace=module_fqn,
             file_path=file_path,
-            file_id=file_path,
+            file_id=module_fqn,
             active_class_fqn=None,
             nodes=nodes,
             edges=edges,

@@ -1,6 +1,7 @@
 """Implements Pipeline to orcestrate code traversal."""
 
 import hashlib
+import re
 from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -207,8 +208,12 @@ class IngestionPipeline:
         for stale_path in stale_files:
             logger.info("Removed stale file from graph", file_path=stale_path)
 
+    _TEST_FILE_PATTERN = re.compile(r"\.(test|spec)\.(py|ts|tsx|js|jsx)$")
+
     def _get_extractor(self, filename: str) -> BaseExtractor | None:
         """Return the registered extractor for the given filename, or None."""
+        if self._TEST_FILE_PATTERN.search(filename):
+            return None
         for ext, extractor in self._extractors.items():
             if filename.endswith(ext):
                 return extractor
