@@ -12,7 +12,9 @@ from cgis.pipeline import IngestionPipeline
 from cgis.storage.sqlite_store import SQLiteStore
 
 SRC_DIR = Path(__file__).parent.parent.parent / "src" / "cgis"
+SRC_ROOT = Path(__file__).parent.parent.parent / "src"
 TS_SRC = Path(__file__).parent.parent.parent / "ui" / "src"
+ONTOLOGY_DIR = Path(__file__).parent.parent.parent / "docs" / "ontology"
 
 skip_if_no_ui = pytest.mark.skipif(
     not TS_SRC.exists(),
@@ -29,6 +31,22 @@ def graph_data(
     pipeline = IngestionPipeline({".py": PythonExtractor()})
     with SQLiteStore(db_path) as store:
         nodes, _, resolved_edges = pipeline.run(str(SRC_DIR), store=store)
+        yield store, nodes, resolved_edges
+
+
+@pytest.fixture(scope="session")
+def root_graph_data(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Generator[tuple[SQLiteStore, list[Node], list[Edge]], None, None]:
+    """Run the pipeline on src/ (not src/cgis/) so FQNs carry the cgis. prefix.
+
+    Required by drift tests: project_domains in patterns.yaml use cgis.*
+    prefixes, which only match when the ingest root is src/.
+    """
+    db_path = str(tmp_path_factory.mktemp("self_drift") / "graph.db")
+    pipeline = IngestionPipeline({".py": PythonExtractor()})
+    with SQLiteStore(db_path) as store:
+        nodes, _, resolved_edges = pipeline.run(str(SRC_ROOT), store=store)
         yield store, nodes, resolved_edges
 
 
