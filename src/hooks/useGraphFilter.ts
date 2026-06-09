@@ -79,8 +79,10 @@ export function useGraphFilter({
       });
 
       setIsLayouting(true);
-      const reLayouted = await layoutGraph(labeledNodes, externalFilteredEdges);
-      onFiltered(reLayouted, externalFilteredEdges);
+      const { nodes: reLayouted, edges: layoutedEdges } = await layoutGraph(
+        labeledNodes, externalFilteredEdges, expandedFiles, parentChildrenRef.current
+      );
+      onFiltered(reLayouted, layoutedEdges);
       setIsLayouting(false);
       fitView({ padding: 0.15, duration: 250 });
     }

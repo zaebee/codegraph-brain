@@ -39,7 +39,7 @@ export function useFlowNavigation(
       const flowNodes = flow.nodes.map((n) => mapNodeToFlowView(n, { isRoot: n.id === node.id }));
       const flowEdges = flow.edges.map((e, i) => mapEdgeToFlowView(e, i));
 
-      const layoutedNodes = await layoutGraph(flowNodes, flowEdges);
+      const { nodes: layoutedNodes } = await layoutGraph(flowNodes, flowEdges);
 
       setNodes(layoutedNodes);
       setEdges(flowEdges);

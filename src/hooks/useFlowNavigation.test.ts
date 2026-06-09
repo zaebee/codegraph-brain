@@ -11,7 +11,7 @@ vi.mock("@xyflow/react", () => ({
 }));
 
 vi.mock("../layout", () => ({
-  layoutGraph: (nodes: unknown[]) => Promise.resolve(nodes),
+  layoutGraph: (nodes: unknown[], edges: unknown[]) => Promise.resolve({ nodes, edges }),
 }));
 
 const graphData: GraphData = {
