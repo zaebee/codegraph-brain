@@ -180,17 +180,15 @@ export class IslandLayoutEngine {
         style: {
           width: maxX - minX + FILE_CONTAINER_PADDING * 2,
           height: maxY - minY + FILE_CONTAINER_PADDING * 2 + FILE_HEADER_HEIGHT + FILE_HEADER_GAP,
-          pointerEvents: 'none' as const,
         },
         data: { ...node.data, isExpanded: true },
-        selectable: false,
         draggable: false,
       }
     }
 
     // Containers (island + file) must precede content nodes for correct z-order
-    const containers = result.filter((n) => n.type === 'islandContainer' || n.type === 'fileContainer')
-    const content = result.filter((n) => n.type !== 'islandContainer' && n.type !== 'fileContainer')
+    const containers = result.filter((n) => n.type?.endsWith('Container'))
+    const content = result.filter((n) => !n.type?.endsWith('Container'))
     return [...containers, ...content]
   }
 
