@@ -37,6 +37,7 @@ export function mapNodeToReactFlow(n: GraphNode, { groupKey }: MapNodeOptions = 
       namespace: n.namespace,
       // Links non-FILE nodes to their parent FILE node for expand/collapse
       ...(n.type !== 'FILE' ? { groupId: filePathToNodeId(n.file_path) } : {}),
+      metadata: n.metadata,
     },
     position: { x: 0, y: 0 },
     style: {

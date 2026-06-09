@@ -81,6 +81,20 @@ describe("mapNodeToReactFlow", () => {
     const result = mapNodeToReactFlow(file);
     expect(result.data.groupId).toBeUndefined();
   });
+
+  it('passes metadata from GraphNode into RF node data', () => {
+    const n: GraphNode = {
+      id: 'a', type: 'FUNCTION', name: 'fn', file_path: 'a.py',
+      start_line: 1, end_line: 5, language: 'python',
+      namespace: 'INTERNAL', ontology_class: null, domains: [],
+      confidence_score: 1,
+      metadata: { fan_out: 7, fan_in: 2, depth: 1, in_cycle: false },
+    }
+    const rfNode = mapNodeToReactFlow(n)
+    expect((rfNode.data as Record<string, unknown>).metadata).toEqual(
+      { fan_out: 7, fan_in: 2, depth: 1, in_cycle: false }
+    )
+  });
 });
 
 describe("mapNodeToFlowView", () => {
