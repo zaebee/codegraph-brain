@@ -14,7 +14,7 @@ type IslandContainerData = { namespace: string; style?: CSSProperties }
 
 export default function IslandContainerNode({ data }: NodeProps<Node<IslandContainerData>>) {
   const ns = data.namespace
-  const color = (NAMESPACE_COLORS as Record<string, string>)[ns] ?? '#546e7a'
+  const color = NAMESPACE_COLORS[ns] ?? '#546e7a'
   const label = NAMESPACE_LABEL[ns] ?? ns
 
   return (

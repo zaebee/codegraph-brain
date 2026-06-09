@@ -81,8 +81,8 @@ export class IslandLayoutEngine {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
     const positioned = island.nodes.map((node) => {
       const pos = g.node(node.id)
-      const x = pos.x - NODE_WIDTH / 2
-      const y = pos.y - NODE_HEIGHT / 2
+      const x = pos ? pos.x - NODE_WIDTH / 2 : node.position.x
+      const y = pos ? pos.y - NODE_HEIGHT / 2 : node.position.y
       minX = Math.min(minX, x)
       minY = Math.min(minY, y)
       maxX = Math.max(maxX, x + NODE_WIDTH)
@@ -149,7 +149,7 @@ export class IslandLayoutEngine {
     const allNodes: Node[] = []
     for (const [ns, result] of islandResults) {
       const offset = offsets.get(ns) ?? { x: 0, y: 0 }
-      const bbox = bboxes.find((b) => b.namespace === ns) ?? { width: 0, height: 0 }
+      const bbox = result.bbox
 
       allNodes.push({
         id: `island-container-${ns}`,
@@ -172,7 +172,7 @@ export class IslandLayoutEngine {
             x: node.position.x + offset.x,
             y: node.position.y + offset.y,
           },
-          data: { ...node.data as object, islandNamespace: ns },
+          data: { ...node.data, islandNamespace: ns },
         })
       }
     }
