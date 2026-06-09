@@ -58,6 +58,18 @@ def test_count_findings_non_standard_category() -> None:
     assert not lgtm
 
 
+def test_count_findings_ignores_generic_markdown() -> None:
+    """Generic **[Note]** or **[See also]** blocks without '—' separator are not findings."""
+    text = (
+        "**[Note]** This is an informational aside.\n"
+        "**[See also]** Some reference.\n"
+        "**[Missing Tests] — actual finding**\n"
+    )
+    count, lgtm = _count_findings(text)
+    assert count == 1
+    assert not lgtm
+
+
 def test_record_review_creates_file(tmp_path: Path) -> None:
     """record_review creates the file and appends a valid JSON entry."""
     p = tmp_path / "metrics.jsonl"
