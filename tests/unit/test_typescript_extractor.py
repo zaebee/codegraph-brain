@@ -152,12 +152,39 @@ def test_index_file_fqn(extractor: TypeScriptExtractor) -> None:
 
 
 def test_relative_import_edge(extractor: TypeScriptExtractor) -> None:
-    """Relative import emits an IMPORTS edge with resolved FQN."""
+    """./utils from src/api/handler.ts resolves to src.api.utils (not src.api.handler.utils)."""
     code = "import { foo } from './utils';"
     _, edges = extractor.parse(code, "src/api/handler.ts")
 
     imports = _edges_by_type(edges, EdgeType.IMPORTS)
-    assert any("utils" in e.target for e in imports)
+    assert any(e.target == "src.api.utils" for e in imports)
+
+
+def test_parent_dir_import_edge(extractor: TypeScriptExtractor) -> None:
+    """../utils from src/api/sub/handler.ts resolves to src.api.utils."""
+    code = "import { bar } from '../utils';"
+    _, edges = extractor.parse(code, "src/api/sub/handler.ts")
+
+    imports = _edges_by_type(edges, EdgeType.IMPORTS)
+    assert any(e.target == "src.api.utils" for e in imports)
+
+
+def test_grandparent_dir_import_edge(extractor: TypeScriptExtractor) -> None:
+    """../../utils from src/api/sub/deep/handler.ts resolves to src.api.utils."""
+    code = "import { baz } from '../../utils';"
+    _, edges = extractor.parse(code, "src/api/sub/deep/handler.ts")
+
+    imports = _edges_by_type(edges, EdgeType.IMPORTS)
+    assert any(e.target == "src.api.utils" for e in imports)
+
+
+def test_relative_import_index_stripped(extractor: TypeScriptExtractor) -> None:
+    """./utils/index resolves to src.api.utils (index suffix stripped)."""
+    code = "import { x } from './utils/index';"
+    _, edges = extractor.parse(code, "src/api/handler.ts")
+
+    imports = _edges_by_type(edges, EdgeType.IMPORTS)
+    assert any(e.target == "src.api.utils" for e in imports)
 
 
 def test_external_import_edge(extractor: TypeScriptExtractor) -> None:
@@ -209,3 +236,49 @@ def test_file_node_always_present(extractor: TypeScriptExtractor) -> None:
     nodes, _ = extractor.parse("", "src/empty.ts")
     assert nodes[0].type == NodeType.FILE
     assert nodes[0].id == "src/empty.ts"
+
+
+# ---------------------------------------------------------------------------
+# Edge ID uniqueness
+# ---------------------------------------------------------------------------
+
+
+def test_edge_ids_unique(extractor: TypeScriptExtractor) -> None:
+    """Duplicate calls to the same target produce distinct edge IDs."""
+    code = """
+function foo() { bar(); bar(); }
+function baz() { bar(); }
+"""
+    _, edges = extractor.parse(code, "src/test.ts")
+    edge_ids = [e.id for e in edges]
+    assert len(edge_ids) == len(set(edge_ids))
+
+
+# ---------------------------------------------------------------------------
+# Abstract class
+# ---------------------------------------------------------------------------
+
+
+def test_abstract_class(extractor: TypeScriptExtractor) -> None:
+    """Abstract class is extracted as a CLASS node with its methods."""
+    code = "abstract class Base { abstract run(): void; }"
+    nodes, _ = extractor.parse(code, "src/base.ts")
+    assert any(n.id == "src.base.Base" and n.type == NodeType.CLASS for n in nodes)
+    assert any(n.id == "src.base.Base.run" and n.type == NodeType.METHOD for n in nodes)
+
+
+# ---------------------------------------------------------------------------
+# Known limitations
+# ---------------------------------------------------------------------------
+
+
+def test_optional_chain_call_skipped(extractor: TypeScriptExtractor) -> None:
+    """Optional chaining obj?.method() is not extracted (known limitation)."""
+    code = "function foo() { obj?.bar(); }"
+    _, edges = extractor.parse(code, "src/test.ts")
+    calls = _edges_by_type(edges, EdgeType.CALLS)
+    # tree-sitter represents obj?.bar() as call_expression with member_expression
+    # containing an optional chain — _get_call_name may or may not capture it;
+    # this test documents the current behaviour and catches regressions.
+    targets = {e.target for e in calls}
+    assert all(t.startswith("raw_call:") for t in targets)

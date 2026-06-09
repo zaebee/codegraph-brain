@@ -165,7 +165,7 @@ class TypeScriptExtractor(BaseExtractor):
         body = node.child_by_field_name("body")
         if body is not None:
             for child in body.children:
-                if child.type == "method_definition":
+                if child.type in ("method_definition", "abstract_method_signature"):
                     self._handle_method(child, class_fqn, file_path, nodes, edges)
 
     def _handle_method(
@@ -241,11 +241,18 @@ class TypeScriptExtractor(BaseExtractor):
         if not raw_source:
             return
         if raw_source.startswith("."):
-            parts = namespace.split(".")
-            clean = raw_source.lstrip("./").replace("/", ".")
-            dots = len(raw_source) - len(raw_source.lstrip("."))
-            base_parts = parts[: max(0, len(parts) - (dots - 1))]
-            target_fqn = ".".join(base_parts + ([clean] if clean else []))
+            # Walk the path segments to resolve ../.. traversal properly.
+            # Start from the *directory* of the current module (strip the last component).
+            dir_parts = namespace.split(".")[:-1]
+            for segment in raw_source.replace("\\", "/").split("/"):
+                if segment == ".." and dir_parts:
+                    dir_parts.pop()
+                elif segment and segment not in (".", ".."):
+                    dir_parts.append(segment)
+            # Strip "index" suffix — same convention as file_path_to_module_fqn.
+            if dir_parts and dir_parts[-1] == "index":
+                dir_parts.pop()
+            target_fqn = ".".join(dir_parts)
         else:
             target_fqn = raw_source.replace("/", ".")
         edges.append(
@@ -267,7 +274,7 @@ class TypeScriptExtractor(BaseExtractor):
                     target = f"{_RAW_CALL_PREFIX}{call_name}"
                     edges.append(
                         Edge(
-                            id=f"{source_id}->{target}@{node.start_point[0]}",
+                            id=f"{source_id}->{target}@{node.start_point[0]}:{node.start_point[1]}",
                             source=source_id,
                             target=target,
                             type=EdgeType.CALLS,
