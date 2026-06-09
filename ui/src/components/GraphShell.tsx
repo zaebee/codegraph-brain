@@ -17,7 +17,7 @@ import { useSearch } from '../hooks/useSearch'
 import { useExport } from '../hooks/useExport'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { applyContextHighlight } from '../utils/applyHighlight'
-import { ALL_EDGE_TYPES, type EdgeTypeName } from '../constants'
+import { ALL_EDGE_TYPES } from '../constants'
 
 import ControlPanel from './ControlPanel'
 import StatsPanel from './StatsPanel'
@@ -117,9 +117,8 @@ function GraphCanvas() {
     []
   )
 
-  // Fix 5: Memoize handleToggleEdgeType with useCallback
   const handleToggleEdgeType = useCallback(
-    toggleEdgeType as (type: string) => void,
+    (type: string) => toggleEdgeType(type),
     [toggleEdgeType]
   )
 
