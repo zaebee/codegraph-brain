@@ -25,4 +25,9 @@
   --font-size-lg: 13px;
   --font-size-xl: 14px;
   --font-size-2xl: 18px;
+
+  --color-bg-node-file: #1a237e;
+  --color-border-file: #5c6bc0;
+  --color-text-file: #c5cae9;
+  --font-family: inherit;
 }
