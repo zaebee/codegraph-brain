@@ -67,17 +67,8 @@ class PythonExtractor(BaseExtractor):
 
     def __init__(self, source_roots: list[str] | None = None) -> None:
         """Initialise the tree-sitter Python parser."""
+        super().__init__(source_roots=source_roots)
         self._parser = Parser(Language(tspython.language()))
-        self._source_roots: list[str] = source_roots or []
-
-    def _pick_source_root(self, file_path: str) -> str | None:
-        """Return the first source root that matches file_path as a prefix, or None."""
-        clean = file_path.replace("\\", "/").lstrip("/")
-        for sr in self._source_roots:
-            sr_norm = sr.replace("\\", "/").strip("/") + "/"
-            if clean.startswith(sr_norm):
-                return sr
-        return None
 
     def parse(self, code: str, file_path: str) -> tuple[list[Node], list[Edge]]:
         """
