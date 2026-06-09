@@ -128,3 +128,80 @@ jobs:
           git -C /tmp/metrics diff --cached --quiet || \
             git -C /tmp/metrics commit -m "metrics: guardian review PR #${PR_NUMBER} [skip ci]"
           git -C /tmp/metrics push origin HEAD:data/guardian-metrics
+
+  rate:
+    # Triggered by: /guardian rate <applied> in a PR comment
+    # Example: /guardian rate 2
+    if: |
+      github.event.issue.pull_request != null &&
+      startsWith(github.event.comment.body, '/guardian rate ')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: read
+
+    steps:
+      - name: Check commenter has write access
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea  # v7
+        with:
+          script: |
+            const { data: perm } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              username: context.payload.comment.user.login,
+            });
+            const allowed = ['admin', 'write'];
+            if (!allowed.includes(perm.permission)) {
+              core.setFailed(`@${context.payload.comment.user.login} needs write access (has: ${perm.permission})`);
+            }
+
+      - name: Parse rate command
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "Invalid PR number: $PR_NUMBER" && exit 1
+          fi
+          APPLIED=$(echo "$COMMENT_BODY" | sed -n 's|^/guardian rate \([0-9]*\).*|\1|p')
+          if ! [[ "$APPLIED" =~ ^[0-9]+$ ]]; then
+            echo "Invalid applied count in comment: '$COMMENT_BODY'" && exit 1
+          fi
+          echo "PR_NUMBER=$PR_NUMBER" >> $GITHUB_ENV
+          echo "APPLIED=$APPLIED" >> $GITHUB_ENV
+
+      - name: Checkout main
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39  # v3
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Rate review and push metrics
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git fetch origin data/guardian-metrics
+          git show origin/data/guardian-metrics:guardian_metrics.jsonl \
+            > guardian_metrics.jsonl
+
+          uv run cgis guardian-rate "$PR_NUMBER" "$APPLIED" \
+            --metrics guardian_metrics.jsonl
+
+          if git ls-remote --exit-code origin data/guardian-metrics > /dev/null 2>&1; then
+            git worktree add /tmp/metrics origin/data/guardian-metrics
+          else
+            git worktree add --orphan -b data/guardian-metrics /tmp/metrics
+          fi
+          cp guardian_metrics.jsonl /tmp/metrics/
+          git -C /tmp/metrics add guardian_metrics.jsonl
+          git -C /tmp/metrics diff --cached --quiet || \
+            git -C /tmp/metrics commit \
+              -m "metrics: rate PR #${PR_NUMBER} applied=${APPLIED} [skip ci]"
+          git -C /tmp/metrics push origin HEAD:data/guardian-metrics
