@@ -1,3 +1,7 @@
+.PHONY: format lint type-check pytest doc-coverage check \
+        ui-dev ui-build ui-test ui-lint ui-format ui-preview ui-analyze ui-check \
+        all-checks
+
 # ── Python ────────────────────────────────────────────────────────────────────
 
 format:
