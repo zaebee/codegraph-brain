@@ -14,7 +14,7 @@ We prioritize **Correctness, Type Safety, and Determinism** over speed of delive
 We use `mypy` in **strict mode**.
 *   **No `Any`:** The use of `Any` is prohibited unless it is technically impossible to avoid (and even then, it must be accompanied by a comment explaining why).
 *   **Full Annotations:** Every function, method, and class attribute must have complete type annotations, including return types.
-*   **Pydantic Models:** Use Pydantic for all data structures. Use `model_copy(update={...})` for immutable updates.
+*   **Pydantic Models:** Use Pydantic for all shared data structures (anything that crosses module boundaries, is stored, or is returned from public APIs). Use `model_copy(update={...})` for immutable updates. Pure-internal accumulators (local variables, loop state) do not require Pydantic.
 
 ### 2. Linting & Formatting
 We use `ruff` for both linting and formatting.

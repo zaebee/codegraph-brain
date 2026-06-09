@@ -1,16 +1,17 @@
 """Abstract base class for LLM provider implementations."""
 
 import abc
-from dataclasses import dataclass
+
+from pydantic import BaseModel, computed_field
 
 
-@dataclass
-class ProviderUsage:
+class ProviderUsage(BaseModel, frozen=True):
     """Token usage reported by the LLM after a single generate_content call."""
 
     prompt_tokens: int = 0
     completion_tokens: int = 0
 
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def total_tokens(self) -> int:
         """Sum of prompt and completion tokens."""
