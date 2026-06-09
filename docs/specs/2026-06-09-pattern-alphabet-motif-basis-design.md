@@ -137,6 +137,13 @@ the temptation to fork ontologies. IMPORTS-derived components (`dag_depth`,
 extractors. Remaining weights are renormalized after the discount (same
 renormalization rule `score()` already applies to unconstrained components).
 
+**No discount floor.** At `unresolved_ratio = 1.0` the CALLS layer zeroes out
+entirely: no data → no structural claim. A floor would inject a phantom
+signal that masks extractor failures. The pathological case (a domain whose
+drift looks artificially clean because its CALLS layer vanished) is already
+caught by the `unresolved_ratio {max: X}` hard gate — the domain fails
+hygiene regardless of the soft term.
+
 ### 2.4 File layout after A
 
 - `docs/ontology/patterns.yaml` — alphabet (5 templates), profiles, and *all*
@@ -231,6 +238,10 @@ Why TV and not cosine or Jensen–Shannon (resolves former Open Question 2):
 
 Per-triad weights `w_i` default to 1 and live in the measurement profile
 (§2.3) — e.g. the TypeScript profile may down-weight CALLS-only triads.
+The known residual risk of TV is noise sensitivity in the long tail of the
+13-triad distribution; if minor fluctuations in non-dominant triads produce
+false positives, the fix is lowering `w_i` for those triads in the profile —
+a tuning knob — not clipping the metric itself, which stays clean.
 
 The v1 weighted-violation score survives only for **hard invariants**
 (`cycle_ratio {max: 0}`, `unresolved_ratio {max: X}`) — these are gates, not
@@ -259,7 +270,15 @@ quotient graph against a `project_level` binding in `patterns.yaml`:
 project_level:
   expected_pattern: pipeline_stage
   drift_tolerance: 0.15
+  enforce: false   # observe-only for the first milestone
 ```
+
+**Observe-only first** (resolves former Open Question 3): the quotient drift
+is computed and reported in test output but not asserted for one milestone —
+a burn-in period to calibrate `drift_tolerance` against real noise before it
+can break CI. Once a baseline exists, `enforce: true` flips it into the same
+ratchet discipline as per-domain tolerances (and the value may then only
+decrease).
 
 The result is a **fractal drift profile** — a drift score per scale. It
 catches the failure mode invisible to per-domain drift: clean modules, chaotic
@@ -363,15 +382,20 @@ Non-goals (explicitly rejected for now):
 - Any new pattern template motivated by extractor noise — that is the
   ontological drift this spec exists to prevent.
 
-## 6. Open Questions for Review
+## 6. Open Questions — all resolved in review (PR #142)
 
-1. §2.3: should the confidence discount floor at some minimum (e.g. keep 20%
-   of CALLS-layer weight even at unresolved_ratio=1.0), or fully zero out?
-2. ~~§3.3: cosine vs. Jensen–Shannon for the distance~~ — **resolved in
-   review**: weighted total variation (L1) on the normalized triad
-   distributions. Cosine masks small components and does not decompose
-   per-triad; JSD needs epsilon-smoothing on our sparse vectors. See §3.3.
-3. §3.4: should `project_level` quotient drift be a hard test (like
-   per-domain ratchets) from day one, or observe-only for one milestone?
-4. §2.4: single `patterns.yaml` vs. `patterns.yaml` + thin `domains_ui.yaml`
-   binding file — single file proposed for atomicity of the ontology.
+1. ~~§2.3: confidence discount floor vs. full zero-out~~ — **resolved: no
+   floor, zero out**. A floor injects a phantom signal masking extractor
+   failures; the pathological fully-unresolved domain is caught by the
+   `unresolved_ratio` hard gate anyway. See §2.3.
+2. ~~§3.3: cosine vs. Jensen–Shannon for the distance~~ — **resolved:
+   weighted total variation (L1)** on the normalized triad distributions.
+   Cosine masks small components and does not decompose per-triad; JSD needs
+   epsilon-smoothing on our sparse vectors. Long-tail noise is tuned via
+   per-triad `w_i`, not by clipping the metric. See §3.3.
+3. ~~§3.4: quotient drift hard gate vs. observe-only~~ — **resolved:
+   observe-only for one milestone** (`enforce: false`), burn-in to calibrate
+   tolerance against noise, then flips into the ratchet. See §3.4.
+4. ~~§2.4: single `patterns.yaml` vs. split binding files~~ — **resolved:
+   single file**. A "thin" secondary file recreates the drift surface this
+   spec exists to kill; atomicity of the ontology is a feature. See §2.4.
