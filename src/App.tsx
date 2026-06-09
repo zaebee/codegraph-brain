@@ -74,7 +74,6 @@ function App() {
     isLayouting,
     setShowExternal,
     setExpandedFiles,
-    setExpandedClasses,
     setActiveEdgeTypes,
   } = useGraphFilter({
     viewMode,
@@ -134,7 +133,7 @@ function App() {
 
     const rawParentChildren = new Map<string, string[]>();
     for (const edge of graphData.edges) {
-      if (edge.type === "CONTAINS" || edge.type === "DECLARES") {
+      if (edge.type === "CONTAINS") {
         const children = rawParentChildren.get(edge.source) || [];
         children.push(edge.target);
         rawParentChildren.set(edge.source, children);
@@ -176,21 +175,11 @@ function App() {
           }
           return next;
         });
-      } else if (viewMode === "full" && node.data?.nodeType === "CLASS") {
-        setExpandedClasses((prev: Set<string>) => {
-          const next = new Set(prev);
-          if (next.has(node.id)) {
-            next.delete(node.id);
-          } else {
-            next.add(node.id);
-          }
-          return next;
-        });
       } else {
         onNodeClickHandler(_event, node);
       }
     },
-    [viewMode, onNodeClickHandler, setExpandedFiles, setExpandedClasses]
+    [viewMode, onNodeClickHandler, setExpandedFiles]
   );
 
   const onNodeMouseEnter = useCallback((_event: any, node: any) => {

@@ -17,7 +17,6 @@ export async function layoutGraph(
   nodes: Node[],
   edges: Edge[],
   expandedFiles: Set<string> = new Set(),
-  expandedClasses: Set<string> = new Set(),
   parentChildren: Map<string, string[]> = new Map()
 ): Promise<{ nodes: Node[]; edges: Edge[] }> {
   const dagre = await getDagre();
@@ -49,14 +48,9 @@ export async function layoutGraph(
   let resultEdges = edges;
   let resultNodes = nodes.map((n) => ({ ...n, position: positioned.get(n.id) || n.position }));
 
-  const anyExpansion = expandedFiles.size > 0 || expandedClasses.size > 0;
-  if (anyExpansion) {
+  if (expandedFiles.size > 0) {
     resultNodes.forEach((node) => {
-      const nodeType = node.data?.nodeType;
-      const isExpanded =
-        (nodeType === "FILE" && expandedFiles.has(node.id)) ||
-        (nodeType === "CLASS" && expandedClasses.has(node.id));
-      if (isExpanded) {
+      if (node.data?.nodeType === "FILE" && expandedFiles.has(node.id)) {
         const children = parentChildren.get(node.id) || [];
         if (children.length === 0) return;
 
@@ -123,8 +117,8 @@ export async function layoutGraph(
     }
 
     resultEdges = resultEdges.filter((e: any) => {
-      if (e.data?.edgeType === "CONTAINS" && expandedFiles.has(e.source)) return false;
-      if (e.data?.edgeType === "DECLARES" && expandedClasses.has(e.source)) return false;
+      if (e.data?.edgeType !== "CONTAINS") return true;
+      if (expandedFiles.has(e.source)) return false;
       return true;
     });
   }

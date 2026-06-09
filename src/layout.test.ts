@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import { layoutGraph } from "./layout";
 import type { Node, Edge } from "@xyflow/react";
 
@@ -54,7 +52,7 @@ describe("layoutGraph container wrap", () => {
   it("returns {nodes, edges} with same nodes when no expanded files", async () => {
     const nodes = [makeNode("a"), makeNode("b")];
     const edges = [makeEdge("e1", "a", "b")];
-    const result = await layoutGraph(nodes, edges, new Set(), new Set(), new Map());
+    const result = await layoutGraph(nodes, edges, new Set(), new Map());
     expect(result).toHaveProperty("nodes");
     expect(result).toHaveProperty("edges");
     expect(result.nodes).toHaveLength(2);
@@ -71,9 +69,9 @@ describe("layoutGraph container wrap", () => {
       makeEdge("e2", "f1", "c2", "CONTAINS"),
     ];
     const expandedFiles = new Set(["f1"]);
-    const parentChildren = new Map([["f1", ["c1"]]]);
+    const parentChildren = new Map([["f1", ["c1", "c2"]]]);
 
-    const result = await layoutGraph(nodes, edges, expandedFiles, new Set(), parentChildren);
+    const result = await layoutGraph(nodes, edges, expandedFiles, parentChildren);
     const wrappedFile = result.nodes.find((n: Node) => n.id === "f1")!;
     const child1Pos = result.nodes.find((n: Node) => n.id === "c1")!.position;
     const child2Pos = result.nodes.find((n: Node) => n.id === "c2")!.position;
@@ -103,7 +101,7 @@ describe("layoutGraph container wrap", () => {
       ["f2", ["c2"]],
     ]);
 
-    const result = await layoutGraph(nodes, edges, expandedFiles, new Set(), parentChildren);
+    const result = await layoutGraph(nodes, edges, expandedFiles, parentChildren);
     expect(result.edges.find((e: Edge) => e.id === "e1")).toBeUndefined();
     expect(result.edges.find((e: Edge) => e.id === "e2")).toBeDefined();
   });
@@ -112,7 +110,7 @@ describe("layoutGraph container wrap", () => {
     const fileNode = makeNode("f1", "FILE");
     const nodes = [fileNode];
     const edges: Edge[] = [];
-    const result = await layoutGraph(nodes, edges, new Set(["f1"]), new Set(), new Map());
+    const result = await layoutGraph(nodes, edges, new Set(["f1"]), new Map());
     expect(result.nodes[0].id).toBe("f1");
   });
 
@@ -124,46 +122,8 @@ describe("layoutGraph container wrap", () => {
     const expandedFiles = new Set(["f1"]);
     const parentChildren = new Map([["f1", ["c1"]]]);
 
-    const result = await layoutGraph(nodes, edges, expandedFiles, new Set(), parentChildren);
+    const result = await layoutGraph(nodes, edges, expandedFiles, parentChildren);
     const wrappedFile = result.nodes.find((n: Node) => n.id === "f1")!;
     expect(wrappedFile.type).toBe("fileContainer");
-  });
-
-  it("wraps expanded CLASS around its methods", async () => {
-    const classNode = { ...makeNode("c1", "CLASS"), position: { x: 0, y: 100 } };
-    const method1 = { ...makeNode("m1", "METHOD"), position: { x: 50, y: 0 } };
-    const nodes = [classNode, method1];
-    const edges = [makeEdge("e1", "c1", "m1", "DECLARES")];
-    const expandedClasses = new Set(["c1"]);
-    const parentChildren = new Map([["c1", ["m1"]]]);
-
-    const result = await layoutGraph(nodes, edges, new Set(), expandedClasses, parentChildren);
-    const wrappedClass = result.nodes.find((n: Node) => n.id === "c1")!;
-    const method1Pos = result.nodes.find((n: Node) => n.id === "m1")!.position;
-    expect(wrappedClass.type).toBe("fileContainer");
-    expect(wrappedClass.position.y).toBeLessThan(method1Pos.y);
-    expect(wrappedClass.style?.width).toBeGreaterThan(0);
-    expect(result.edges.find((e: Edge) => e.id === "e1")).toBeUndefined();
-  });
-
-  it("removes DECLARES edges for expanded CLASS children only", async () => {
-    const expandedClass = { ...makeNode("c1", "CLASS"), position: { x: 0, y: 100 } };
-    const collapsedClass = { ...makeNode("c2", "CLASS"), position: { x: 500, y: 100 } };
-    const methodOfC1 = { ...makeNode("m1", "METHOD"), position: { x: 50, y: 0 } };
-    const methodOfC2 = { ...makeNode("m2", "METHOD"), position: { x: 550, y: 0 } };
-    const nodes = [expandedClass, collapsedClass, methodOfC1, methodOfC2];
-    const edges = [
-      makeEdge("e1", "c1", "m1", "DECLARES"),
-      makeEdge("e2", "c2", "m2", "DECLARES"),
-    ];
-    const expandedClasses = new Set(["c1"]);
-    const parentChildren = new Map([
-      ["c1", ["m1"]],
-      ["c2", ["m2"]],
-    ]);
-
-    const result = await layoutGraph(nodes, edges, new Set(), expandedClasses, parentChildren);
-    expect(result.edges.find((e: Edge) => e.id === "e1")).toBeUndefined();
-    expect(result.edges.find((e: Edge) => e.id === "e2")).toBeDefined();
   });
 });
