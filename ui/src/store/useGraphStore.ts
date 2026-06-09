@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { Node, Edge } from '@xyflow/react'
+import type { GraphNode, GraphEdge } from '../types'
 
 type EdgeTypeName = 'CALLS' | 'IMPORTS' | 'EXTENDS' | 'CONTAINS' | 'DECLARES'
 type ViewMode = 'full' | 'flow' | 'ego'
@@ -12,9 +13,11 @@ interface GraphStore {
   // graph slice
   rawNodes: Node[]
   rawEdges: Edge[]
+  graphNodes: GraphNode[]
+  graphEdges: GraphEdge[]
   namespaces: string[]
   graphVersion: number
-  setGraphData: (nodes: Node[], edges: Edge[]) => void
+  setGraphData: (nodes: Node[], edges: Edge[], graphNodes?: GraphNode[], graphEdges?: GraphEdge[]) => void
 
   // layout slice
   layoutedNodes: Node[]
@@ -53,19 +56,23 @@ export const useGraphStore = create<GraphStore>((set) => ({
   // graph slice
   rawNodes: [],
   rawEdges: [],
+  graphNodes: [],
+  graphEdges: [],
   namespaces: [],
   graphVersion: 0,
-  setGraphData: (nodes, edges) => {
+  setGraphData: (nodes, edges, graphNodes = [], graphEdges = []) => {
     const namespaces = [
       ...new Set(
-        nodes
-          .map((n) => (n.data as Record<string, unknown>)?.namespace as string | undefined)
+        graphNodes
+          .map((n) => n.namespace)
           .filter((ns): ns is string => typeof ns === 'string' && ns.length > 0)
       ),
     ]
     set((state) => ({
       rawNodes: nodes,
       rawEdges: edges,
+      graphNodes,
+      graphEdges,
       namespaces,
       graphVersion: state.graphVersion + 1,
       activeNamespaces: new Set(namespaces),

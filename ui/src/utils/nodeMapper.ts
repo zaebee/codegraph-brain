@@ -18,6 +18,12 @@ interface MapFlowViewOptions {
  */
 const isDimmed = (n: GraphNode) => n.namespace && n.namespace !== "INTERNAL";
 
+// Mirrors file_path_to_module_fqn() from the Python extractor:
+// "cgis/cli.py" → "cgis.cli", "cgis/__init__.py" → "cgis"
+function filePathToNodeId(filePath: string): string {
+  return filePath.replace(/\//g, '.').replace(/\.py$/, '').replace(/\.__init__$/, '')
+}
+
 export function mapNodeToReactFlow(n: GraphNode, { groupKey }: MapNodeOptions = {}): Node {
   const colors = (NODE_COLORS as any)[n.type] || NODE_COLORS.DEFAULT;
   return {
@@ -29,6 +35,8 @@ export function mapNodeToReactFlow(n: GraphNode, { groupKey }: MapNodeOptions = 
       lines: `${n.start_line}-${n.end_line}`,
       nodeType: n.type,
       namespace: n.namespace,
+      // Links non-FILE nodes to their parent FILE node for expand/collapse
+      ...(n.type !== 'FILE' ? { groupId: filePathToNodeId(n.file_path) } : {}),
     },
     position: { x: 0, y: 0 },
     style: {
