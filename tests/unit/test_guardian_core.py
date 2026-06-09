@@ -113,7 +113,7 @@ async def test_run_review_passes_context_to_prompt(collector: ContextCollector) 
     assert "MY_DIFF" in captured["user"]
 
 
-async def test_provider_last_usage_defaults_to_zero() -> None:
+def test_provider_last_usage_defaults_to_zero() -> None:
     """last_usage is initialised to zero before any call."""
     provider = _FakeProvider()
     assert provider.last_usage.prompt_tokens == 0
