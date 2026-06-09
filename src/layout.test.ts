@@ -125,5 +125,6 @@ describe("layoutGraph container wrap", () => {
     const result = await layoutGraph(nodes, edges, expandedFiles, parentChildren);
     const wrappedFile = result.nodes.find((n: Node) => n.id === "f1")!;
     expect(wrappedFile.type).toBe("fileContainer");
+    expect((wrappedFile as any).data?.isExpanded).toBe(true);
   });
 });

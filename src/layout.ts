@@ -82,6 +82,7 @@ export async function layoutGraph(
         const containerH = maxY - minY + FILE_CONTAINER_PADDING * 2 + FILE_HEADER_HEIGHT + FILE_HEADER_GAP;
 
         node.type = "fileContainer";
+        (node as any).data = { ...node.data, isExpanded: true };
         node.position = {
           x: minX - FILE_CONTAINER_PADDING,
           y: minY - FILE_CONTAINER_PADDING - FILE_HEADER_HEIGHT - FILE_HEADER_GAP,

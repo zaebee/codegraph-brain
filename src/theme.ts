@@ -11,7 +11,7 @@ export interface LegendItem {
 }
 
 export const NODE_COLORS: Record<string, NodeColor> = {
-  FILE: { bg: "#1a237e", border: "#5c6bc0", text: "#c5cae9" },
+  FILE: { bg: "#1c2128", border: "#444c56", text: "#768197" },
   CLASS: { bg: "#1b5e20", border: "#66bb6a", text: "#c8e6c9" },
   FUNCTION: { bg: "#1e3a5f", border: "#4fc3f7", text: "#b3e5fc" },
   METHOD: { bg: "#4a148c", border: "#ce93d8", text: "#e1bee7" },
