@@ -17,6 +17,7 @@ import StatsPanel from "./components/StatsPanel";
 import NodeTooltip from "./components/NodeTooltip";
 import LegendPanel from "./components/LegendPanel";
 import LoadingOverlay from "./components/LoadingOverlay";
+import FileContainerNode from "./components/FileContainerNode";
 
 import { useGraphFetch } from "./hooks/useGraphFetch";
 import { useGraphFilter } from "./hooks/useGraphFilter";
@@ -189,6 +190,8 @@ function App() {
     setHoveredNode(null);
   }, []);
 
+  const nodeTypes = useMemo(() => ({ fileContainer: FileContainerNode }), []);
+
   const { nodes: highlightedNodes, edges: highlightedEdges } = useMemo(
     () => applyContextHighlight(displayedNodes, edges, hoveredNode?.id ?? null),
     [displayedNodes, edges, hoveredNode]
@@ -214,6 +217,7 @@ function App() {
       <ReactFlow
         nodes={highlightedNodes}
         edges={highlightedEdges}
+        nodeTypes={nodeTypes}
         onNodeClick={onNodeClick}
         onNodeMouseEnter={onNodeMouseEnter}
         onNodeMouseLeave={onNodeMouseLeave}

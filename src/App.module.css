@@ -55,18 +55,6 @@
   background-color: var(--color-bg-primary);
 }
 
-:global(.react-flow__node[data-type="group"]) {
-  pointer-events: none;
-  z-index: -1;
-}
-
-:global(.react-flow__node[data-type="group"] > div) {
-  background: transparent;
-  border: none;
-  padding: 0;
-  box-shadow: none;
-}
-
 .error-boundary {
   display: flex;
   flex-direction: column;
