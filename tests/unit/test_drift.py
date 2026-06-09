@@ -259,3 +259,66 @@ def test_unconstrained_components_add_no_drift(
     )
     report = scorer.score(fp, pure_util_domain)
     assert report.drift_score == pytest.approx(0.0)
+
+
+# ── Task 1: extended DomainConfig loading ─────────────────────────────────────
+
+_YAML_EXTENDED = """\
+version: "2.0.0"
+profiles:
+  python:
+    drift_weights:
+      hub_count:        0.15
+      star_count:       0.15
+      chain_len:        0.10
+      dag_depth:        0.10
+      router_count:     0.10
+      cycle_ratio:      0.25
+      unresolved_ratio: 0.15
+patterns:
+  layered_dag:
+    description: "Layered imports"
+    params:
+      min_depth: 3
+    dag_depth:        {min: $min_depth}
+    cycle_ratio:      {max: 0.0}
+project_domains:
+  - name: "components"
+    fqn_prefix: "components"
+    expected_pattern: layered_dag
+    profile: python
+    params: {min_depth: 2}
+    drift_tolerance: 0.15
+  - name: "hooks"
+    fqn_prefix: "hooks"
+    drift_tolerance: 0.15
+"""
+
+
+@pytest.fixture
+def extended_scorer(tmp_path: pytest.TempPathFactory) -> DriftScorer:
+    """Return a DriftScorer loaded from the extended (v2) YAML fixture."""
+    p = tmp_path / "patterns.yaml"  # type: ignore[operator]
+    p.write_text(_YAML_EXTENDED)
+    return DriftScorer(str(p))
+
+
+def test_domain_config_loads_profile_and_params(extended_scorer: DriftScorer) -> None:
+    """profile and params are read from the domain binding."""
+    domains = extended_scorer.load_project_domains()
+    d = domains[0]
+    assert d.profile == "python"
+    assert d.params == {"min_depth": 2.0}
+
+
+def test_domain_config_defaults_for_legacy_yaml(scorer: DriftScorer) -> None:
+    """Bindings without profile/params load with profile=None, params={}."""
+    d = scorer.load_project_domains()[0]
+    assert d.profile is None
+    assert d.params == {}
+
+
+def test_domain_config_expected_pattern_optional(extended_scorer: DriftScorer) -> None:
+    """A binding without expected_pattern loads with expected_pattern=None."""
+    hooks = extended_scorer.load_project_domains()[1]
+    assert hooks.expected_pattern is None

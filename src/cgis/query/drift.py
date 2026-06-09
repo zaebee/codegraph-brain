@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
@@ -30,8 +30,10 @@ class DomainConfig:
 
     name: str
     fqn_prefix: str
-    expected_pattern: str
+    expected_pattern: str | None
     drift_tolerance: float
+    profile: str | None = None
+    params: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -68,6 +70,8 @@ class DriftScorer:
         self._weights: dict[str, float] = raw.get("drift_weights") or {}
         self._patterns: dict[str, dict[str, Any]] = raw.get("patterns") or {}
         self._project_domains: list[dict[str, Any]] = raw.get("project_domains") or []
+        self._profiles: dict[str, dict[str, Any]] = raw.get("profiles") or {}
+        self._hygiene: dict[str, Any] = raw.get("hygiene") or {}
 
     def load_project_domains(self) -> list[DomainConfig]:
         """Return all project domains declared in patterns.yaml."""
@@ -75,25 +79,34 @@ class DriftScorer:
             DomainConfig(
                 name=d["name"],
                 fqn_prefix=d["fqn_prefix"],
-                expected_pattern=d["expected_pattern"],
+                expected_pattern=d.get("expected_pattern"),
                 drift_tolerance=float(d["drift_tolerance"]),
+                profile=d.get("profile"),
+                params={k: float(v) for k, v in (d.get("params") or {}).items()},
             )
             for d in self._project_domains
         ]
 
     def score(self, actual: PatternFingerprint, domain: DomainConfig) -> DriftReport:
         """Compute the drift score and return a DriftReport."""
-        template = self._patterns.get(domain.expected_pattern)
+        expected_pattern = domain.expected_pattern
+        if expected_pattern is None:
+            msg = (
+                f"Domain '{domain.name}' has no expected_pattern "
+                "(hygiene-only domains land in a later commit)."
+            )
+            raise NotImplementedError(msg)
+        template = self._patterns.get(expected_pattern)
         if template is None:
-            msg = f"Expected pattern '{domain.expected_pattern}' not found in patterns config."
+            msg = f"Expected pattern '{expected_pattern}' not found in patterns config."
             raise ValueError(msg)
         if not isinstance(template, dict):
-            msg = f"Pattern '{domain.expected_pattern}' must be a mapping of constraints."
+            msg = f"Pattern '{expected_pattern}' must be a mapping of constraints."
             raise TypeError(msg)
         constraints = self._parse_constraints(template)
 
         if not constraints:
-            return self._zero_drift_report(actual, domain)
+            return self._zero_drift_report(actual, expected_pattern, domain)
 
         total_weight = sum(self._weights.get(name, 0.0) for name in constraints)
         violations: list[str] = []
@@ -128,7 +141,7 @@ class DriftScorer:
         return DriftReport(
             domain=domain.name,
             fqn_prefix=domain.fqn_prefix,
-            expected_pattern=domain.expected_pattern,
+            expected_pattern=expected_pattern,
             actual=actual,
             ideal=ideal_fp,
             drift_score=round(drift_sum, 6),
@@ -137,7 +150,9 @@ class DriftScorer:
             tolerance=domain.drift_tolerance,
         )
 
-    def _zero_drift_report(self, actual: PatternFingerprint, domain: DomainConfig) -> DriftReport:
+    def _zero_drift_report(
+        self, actual: PatternFingerprint, expected_pattern: str, domain: DomainConfig
+    ) -> DriftReport:
         """Return a clean zero-drift report for domains with no constraints."""
         ideal_fp = PatternFingerprint(
             domain=domain.fqn_prefix,
@@ -152,7 +167,7 @@ class DriftScorer:
         return DriftReport(
             domain=domain.name,
             fqn_prefix=domain.fqn_prefix,
-            expected_pattern=domain.expected_pattern,
+            expected_pattern=expected_pattern,
             actual=actual,
             ideal=ideal_fp,
             drift_score=0.0,
