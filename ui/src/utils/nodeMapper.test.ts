@@ -63,6 +63,24 @@ describe("mapNodeToReactFlow", () => {
     const result = mapNodeToReactFlow(ext);
     expect(result.data.namespace).toBe("STDLIB");
   });
+
+  it("sets groupId for non-FILE nodes derived from file_path", () => {
+    const fn: GraphNode = { ...mockNode, type: "FUNCTION", file_path: "src/cgis/pipeline.py" };
+    const result = mapNodeToReactFlow(fn);
+    expect(result.data.groupId).toBe("src.cgis.pipeline");
+  });
+
+  it("strips __init__ suffix from groupId", () => {
+    const fn: GraphNode = { ...mockNode, type: "FUNCTION", file_path: "src/cgis/__init__.py" };
+    const result = mapNodeToReactFlow(fn);
+    expect(result.data.groupId).toBe("src.cgis");
+  });
+
+  it("does not set groupId for FILE nodes", () => {
+    const file: GraphNode = { ...mockNode, type: "FILE", file_path: "src/cgis/pipeline.py" };
+    const result = mapNodeToReactFlow(file);
+    expect(result.data.groupId).toBeUndefined();
+  });
 });
 
 describe("mapNodeToFlowView", () => {

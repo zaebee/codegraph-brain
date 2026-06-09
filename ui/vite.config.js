@@ -16,7 +16,7 @@ export default defineConfig({
         ]
       : []),
   ],
-  server: { port: 3000 },
+  server: { port: 3000, allowedHosts: ['monitoring.zae.life', 'codebrain.zae.life'] },
   test: {
     globals: true,
     environment: 'jsdom',
