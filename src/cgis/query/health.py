@@ -65,10 +65,15 @@ class HealthScorer:
         return depths
 
     def _compute_cycles(self) -> set[str]:
-        """Return the set of FILE node IDs that participate in IMPORTS cycles."""
-        file_ids = {n.id for n in self._nodes if n.type == NodeType.FILE}
+        """Return the set of FILE/MODULE node IDs that participate in IMPORTS cycles."""
+        target_types = {NodeType.FILE, NodeType.MODULE}
+        file_and_module_ids = {n.id for n in self._nodes if n.type in target_types}
         adj = build_adjacency(self._edges, frozenset({EdgeType.IMPORTS}))
-        adj = {k: [v for v in vs if v in file_ids] for k, vs in adj.items() if k in file_ids}
+        adj = {
+            k: [v for v in vs if v in file_and_module_ids]
+            for k, vs in adj.items()
+            if k in file_and_module_ids
+        }
         cyclic: set[str] = set()
         for scc in tarjan_scc(adj):
             if len(scc) > 1:
@@ -76,13 +81,14 @@ class HealthScorer:
         return cyclic
 
     def _compute_file_ancestors(self) -> dict[str, str]:
-        """Map every descendant node ID to the FILE node it belongs to (transitive)."""
+        """Map every descendant node ID to the FILE or MODULE root it belongs to (transitive)."""
         children: dict[str, list[str]] = {}
         for edge in self._edges:
             if edge.type in _STRUCTURAL:
                 children.setdefault(edge.source, []).append(edge.target)
 
-        file_ids = {n.id for n in self._nodes if n.type == NodeType.FILE}
+        root_types = {NodeType.FILE, NodeType.MODULE}
+        file_ids = {n.id for n in self._nodes if n.type in root_types}
         ancestor: dict[str, str] = {}
         queue: deque[tuple[str, str]] = deque((fid, fid) for fid in file_ids)
         while queue:

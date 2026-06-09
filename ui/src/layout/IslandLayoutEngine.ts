@@ -107,11 +107,13 @@ export class IslandLayoutEngine {
       return { ...node, position: { x, y } }
     })
 
-    // Grid-layout isolated nodes to the right of (or below) the dagre block.
+    // Grid-layout isolated nodes to the right of the dagre block.
     // Use ~4 columns so they form a compact rectangle rather than a column.
+    // gridOffsetX uses absolute maxX (not width) so isolated nodes never overlap
+    // connected nodes after normalization. gridOffsetY aligns to the dagre top edge.
     const GRID_COLS = Math.min(4, Math.max(1, Math.ceil(Math.sqrt(isolatedNodes.length))))
-    const gridOffsetX = connectedNodes.length > 0 ? (maxX - minX) + RANK_SEP : 0
-    const gridOffsetY = 0
+    const gridOffsetX = connectedNodes.length > 0 ? maxX + RANK_SEP : 0
+    const gridOffsetY = connectedNodes.length > 0 ? minY : 0
     const gridPositioned = isolatedNodes.map((node, i) => {
       const col = i % GRID_COLS
       const row = Math.floor(i / GRID_COLS)
