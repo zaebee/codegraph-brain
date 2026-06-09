@@ -44,6 +44,44 @@ def test_count_findings_lgtm_false_when_findings_present() -> None:
     assert not lgtm
 
 
+def test_count_findings_non_standard_category() -> None:
+    """Model-invented category names (e.g. Missing Tests) are still counted."""
+    text = (
+        "**[Missing Tests] — run() has no coverage**\n"
+        "Confidence: 90%\n"
+        "\n"
+        "**[Architecture] — something structural**\n"
+        "Confidence: 85%\n"
+    )
+    count, lgtm = _count_findings(text)
+    assert count == 2
+    assert not lgtm
+
+
+def test_count_findings_dash_variants() -> None:
+    """En-dash and hyphen separators are accepted alongside em-dash."""
+    text = (
+        "**[Logic Bug] — em-dash finding**\n"
+        "**[Test Coverage] \u2013 en-dash finding**\n"
+        "**[Type Safety] - hyphen finding**\n"
+    )
+    count, lgtm = _count_findings(text)
+    assert count == 3
+    assert not lgtm
+
+
+def test_count_findings_ignores_generic_markdown() -> None:
+    """Generic **[Note]** or **[See also]** blocks without '—' separator are not findings."""
+    text = (
+        "**[Note]** This is an informational aside.\n"
+        "**[See also]** Some reference.\n"
+        "**[Missing Tests] — actual finding**\n"
+    )
+    count, lgtm = _count_findings(text)
+    assert count == 1
+    assert not lgtm
+
+
 def test_record_review_creates_file(tmp_path: Path) -> None:
     """record_review creates the file and appends a valid JSON entry."""
     p = tmp_path / "metrics.jsonl"
