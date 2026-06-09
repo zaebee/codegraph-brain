@@ -10,7 +10,7 @@ _DEFAULT_METRICS_FILE = Path("guardian_metrics.jsonl")
 
 # Matches **[<Category>] — <title> regardless of dash variant (em/en/hyphen).
 # Unicode escapes avoid ambiguous-character linter warnings (RUF001/RUF002).
-_FINDING_RE = re.compile(r"^\*\*\[.*?\]\s*" + "[\u2014\u2013-]", re.MULTILINE)
+_FINDING_RE = re.compile(r"^\*\*\[[^\]]+\]\s*" + "[\u2014\u2013-]", re.MULTILINE)
 
 
 def _count_findings(review_text: str) -> tuple[int, bool]:
