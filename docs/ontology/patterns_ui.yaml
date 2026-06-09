@@ -1,5 +1,11 @@
 version: "1.0.0"
 
+# DEPRECATED ON ARRIVAL — do not extend this file.
+# Forking the pattern vocabulary per graph is ontological drift; the unified
+# alphabet (single patterns.yaml + parameterized templates + per-graph
+# measurement profiles) replaces this file. See
+# docs/specs/2026-06-09-pattern-alphabet-motif-basis-design.md (Part A).
+
 # Drift weights for the UI graph (must sum exactly to 1.0).
 # The TS extractor resolves fewer CALLS than the Python one (JSX, framework
 # indirection), so structural components carry less weight than hygiene ones.
