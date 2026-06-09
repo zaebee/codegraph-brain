@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from cgis.guardian.collector import ContextCollector
 from cgis.guardian.core import GuardianReviewer
@@ -129,8 +130,6 @@ def test_provider_usage_total_tokens_computed() -> None:
 
 def test_provider_usage_is_immutable() -> None:
     """ProviderUsage is frozen — mutation raises ValidationError."""
-    from pydantic import ValidationError
-
     usage = ProviderUsage(prompt_tokens=100, completion_tokens=50)
     with pytest.raises(ValidationError):
         usage.prompt_tokens = 200  # type: ignore[misc]
