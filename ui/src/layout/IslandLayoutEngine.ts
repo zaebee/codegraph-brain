@@ -35,7 +35,12 @@ export class IslandLayoutEngine {
   }
 
   private getNamespace(node: Node): string {
-    return ((node.data as Record<string, unknown>)?.namespace as string) || '_default'
+    const ns = (node.data as Record<string, unknown>)?.namespace as string
+    // Split INTERNAL nodes by their top-level FQN segment (sub-package / project root).
+    // e.g. "pipeline.IngestionPipeline" → island "pipeline"
+    //      "ui.src.components.GraphShell" → island "ui"
+    if (ns === 'INTERNAL') return node.id.split('.')[0] || 'internal'
+    return ns || '_default'
   }
 
   partition(): Map<string, IslandData> {
