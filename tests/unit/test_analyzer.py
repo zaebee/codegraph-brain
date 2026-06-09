@@ -262,6 +262,31 @@ def test_detect_zone_of_pain_abstract_class_not_flagged(store: SQLiteStore) -> N
     assert not any(a.focal_fqn == "app.BaseService" for a in anomalies)
 
 
+def test_detect_zone_of_pain_high_instability_not_flagged(store: SQLiteStore) -> None:
+    """A class above the instability threshold (I > 0.30) is not in the Zone of Pain."""
+    # 8 callers + 4 callees → I = 4/12 ≈ 0.33, which is > _ZONE_OF_PAIN_MAX_INSTABILITY
+    target = _class_node("app.FlexService")
+    methods = [_method_node(f"app.FlexService.m{i}") for i in range(3)]
+    callers = [_class_node(f"app.Caller{i}") for i in range(8)]
+    caller_methods = [_method_node(f"app.Caller{i}.h") for i in range(8)]
+    callees = [_class_node(f"app.Dep{i}") for i in range(4)]
+    callee_methods = [_method_node(f"app.Dep{i}.op") for i in range(4)]
+
+    nodes = [target, *methods, *callers, *caller_methods, *callees, *callee_methods]
+    edges: list[Edge] = [
+        *[_contains("app.FlexService", m.id) for m in methods],
+        *[_contains(f"app.Dep{i}", cm.id) for i, cm in enumerate(callee_methods)],
+        *[_contains(f"app.Caller{i}", cm.id) for i, cm in enumerate(caller_methods)],
+        *[_calls(cm.id, methods[0].id) for cm in caller_methods],
+        *[_calls(methods[0].id, cm.id) for cm in callee_methods],
+    ]
+    store.save_graph(nodes, edges)
+
+    assert not any(
+        a.focal_fqn == "app.FlexService" for a in AnalyzerEngine(store).detect_zone_of_pain()
+    )
+
+
 def test_detect_zone_of_pain_low_coupling_not_flagged(store: SQLiteStore) -> None:
     """A class with only 1 caller is not in the Zone of Pain."""
     _seed_zone_of_pain(store, caller_count=1)
@@ -308,6 +333,14 @@ def test_detect_god_object_flagged(store: SQLiteStore) -> None:
 def test_detect_god_object_small_class_not_flagged(store: SQLiteStore) -> None:
     """Class with 3 methods is not a God Object regardless of coupling."""
     _seed_god_object(store, method_count=3, efferent_count=6)
+    anomalies = AnalyzerEngine(store).detect_god_objects()
+
+    assert anomalies == []
+
+
+def test_detect_god_object_boundary_methods_not_flagged(store: SQLiteStore) -> None:
+    """Class with exactly 9 methods (one below threshold) is not flagged."""
+    _seed_god_object(store, method_count=9, efferent_count=6)
     anomalies = AnalyzerEngine(store).detect_god_objects()
 
     assert anomalies == []
