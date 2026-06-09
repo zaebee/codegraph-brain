@@ -134,14 +134,65 @@ export class IslandLayoutEngine {
     return offsets
   }
 
-  // TODO(PR3): wrap expanded FILE nodes into fileContainer nodes with React Flow parentNode
-  //   so children are visually grouped inside a container background. Requires:
-  //   1. Detect FILE nodes that are in expandedFiles
-  //   2. Emit a type:'fileContainer' node sized to its children's bbox
-  //   3. Set parentNode + extent:'parent' on each child node
-  //   FileContainerNode component + GraphShell registration already exist.
-  // TODO(PR4): use _expandedFiles to highlight the ego-subgraph overlay (issue #30)
-  run(_expandedFiles: Set<string>): { nodes: Node[]; edges: Edge[] } {
+  // Transforms expanded FILE nodes into fileContainer wrapper nodes sized to their children.
+  // Containers are z-ordered before content nodes so React Flow renders them as backgrounds.
+  private applyFileContainers(nodes: Node[], expandedFiles: Set<string>): Node[] {
+    // Build fileId → child node indices
+    const fileChildIndices = new Map<string, number[]>()
+    for (let i = 0; i < nodes.length; i++) {
+      const groupId = (nodes[i].data as Record<string, unknown>)?.groupId as string | undefined
+      if (groupId) {
+        const list = fileChildIndices.get(groupId) ?? []
+        list.push(i)
+        fileChildIndices.set(groupId, list)
+      }
+    }
+
+    const result = [...nodes]
+
+    for (let i = 0; i < result.length; i++) {
+      const node = result[i]
+      if ((node.data as Record<string, unknown>)?.nodeType !== 'FILE') continue
+      if (!expandedFiles.has(node.id)) continue
+
+      const childIndices = fileChildIndices.get(node.id) ?? []
+      if (childIndices.length === 0) continue
+
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+      for (const ci of childIndices) {
+        const p = nodes[ci].position
+        minX = Math.min(minX, p.x)
+        maxX = Math.max(maxX, p.x + NODE_WIDTH)
+        minY = Math.min(minY, p.y)
+        maxY = Math.max(maxY, p.y + NODE_HEIGHT)
+      }
+
+      result[i] = {
+        ...node,
+        type: 'fileContainer',
+        position: {
+          x: minX - FILE_CONTAINER_PADDING,
+          y: minY - FILE_CONTAINER_PADDING - FILE_HEADER_HEIGHT - FILE_HEADER_GAP,
+        },
+        style: {
+          width: maxX - minX + FILE_CONTAINER_PADDING * 2,
+          height: maxY - minY + FILE_CONTAINER_PADDING * 2 + FILE_HEADER_HEIGHT + FILE_HEADER_GAP,
+          pointerEvents: 'none' as const,
+        },
+        data: { ...node.data, isExpanded: true },
+        selectable: false,
+        draggable: false,
+      }
+    }
+
+    // Containers (island + file) must precede content nodes for correct z-order
+    const containers = result.filter((n) => n.type === 'islandContainer' || n.type === 'fileContainer')
+    const content = result.filter((n) => n.type !== 'islandContainer' && n.type !== 'fileContainer')
+    return [...containers, ...content]
+  }
+
+  // TODO(PR4): use expandedFiles to highlight the ego-subgraph overlay (issue #30)
+  run(expandedFiles: Set<string>): { nodes: Node[]; edges: Edge[] } {
     const islands = this.partition()
     const bboxes: IslandBBox[] = []
     const islandResults = new Map<string, { nodes: Node[]; bbox: { width: number; height: number } }>()
@@ -190,6 +241,16 @@ export class IslandLayoutEngine {
       allEdges.push(...island.edges)
     }
 
-    return { nodes: allNodes, edges: allEdges }
+    if (expandedFiles.size === 0) {
+      return { nodes: allNodes, edges: allEdges }
+    }
+
+    // Filter CONTAINS edges from expanded files — they're implicit via the container
+    const filteredEdges = allEdges.filter((e) => {
+      if ((e.data as Record<string, unknown>)?.edgeType !== 'CONTAINS') return true
+      return !expandedFiles.has(e.source)
+    })
+
+    return { nodes: this.applyFileContainers(allNodes, expandedFiles), edges: filteredEdges }
   }
 }
