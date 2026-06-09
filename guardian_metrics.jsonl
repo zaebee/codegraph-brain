@@ -1,0 +1,1 @@
+{"timestamp": "2026-06-09T15:13:51.191630+00:00", "pr": 136, "model": "gemini-3.5-flash", "prompt_tokens": 23112, "completion_tokens": 1061, "total_tokens": 24173, "findings_total": 0, "findings_applied": null, "lgtm": false}
