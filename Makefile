@@ -1,18 +1,50 @@
-# 1. Format the code
+# ── Python ────────────────────────────────────────────────────────────────────
+
 format:
 	uv run ruff format .
 
-# 2. Lint the code (find unused imports, complexity, etc.)
 lint:
 	uv run ruff check . --fix
 
-# 3. Type check (The most important one!)
 type-check:
 	uv run mypy src
 
 pytest:
 	uv run pytest
 
-# 5. Check docstring coverage (minimum 90%)
 doc-coverage:
 	uv run interrogate src
+
+# Full Python verification (run before every commit/PR)
+check: format lint type-check pytest doc-coverage
+
+# ── UI (ui/) ──────────────────────────────────────────────────────────────────
+
+ui-dev:
+	cd ui && bun dev
+
+ui-build:
+	cd ui && bun run build
+
+ui-test:
+	cd ui && bun run test:run
+
+ui-lint:
+	cd ui && bun lint
+
+ui-format:
+	cd ui && bun run format
+
+ui-preview:
+	cd ui && bun run preview
+
+ui-analyze:
+	cd ui && bun run analyze
+
+# Full UI verification
+ui-check: ui-lint ui-build ui-test
+
+# ── Combined ──────────────────────────────────────────────────────────────────
+
+# Run all checks (Python + UI)
+all-checks: check ui-check
