@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { layoutGraph } from "./layout";
 import type { Node, Edge } from "@xyflow/react";
 

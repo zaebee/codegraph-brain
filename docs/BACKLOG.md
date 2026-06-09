@@ -170,3 +170,73 @@
 - [x] Обобщить DFS в `flow.ts` (один `dfs()` для outgoing/incoming)
 - [x] Удалить мёртвый код: `ErrorFallback.tsx`, `types.js`, неиспользуемые CSS-классы
 - [x] Вынести filter pipeline из App.tsx в хук `useGraphFilter`
+
+## 🎯 Phase 7: UI Stabilization (feat/ui branch — June 2026)
+
+### File Containers — done ✅
+
+- [x] FILE-контейнеры через `fileContainer` type (FileContainerNode)
+- [x] Dagre layout с wrapping children в container по bounding box
+- [x] Greedy overlap resolution между контейнерами (pairwise, сдвиг по Y)
+- [x] Рекурсивный сбор потомков (FILE → CLASS → METHOD)
+- [x] Container сдвигает всех потомков при overlap resolution
+- [x] Стрелки на рёбрах (`markerEnd: MarkerType.ArrowClosed`)
+- [x] FILE свернуты по дефолту (FILE-level view)
+- [x] Collapse/expand через `expandedFiles` Set + `getCollapsedView`
+
+### Layout Direction — done ✅
+
+- [x] `LAYOUT_DIRECTION` в `constants.ts` (TB / LR) — сейчас LR
+
+### Edge Aggregation — done ✅
+
+- [x] `aggregateEdges` — объединение параллельных рёбер
+- [x] Толщина = sqrt(count), лейбл "×N"
+- [x] Context highlighting (dim не-связанных при hover)
+
+## 🔴 Known Bugs
+
+### 1. IMPORTS пропадают при раскрытии FILE
+- **Причина:** IMPORTS-рёбра между нодами внутри разных FILE. Когда FILE_A раскрыт, а FILE_B свёрнут — target (b_method) не попадает в `visibleIds`.
+- **Нужно:** агрегация edge до FILE-уровня: если source видим, а target спрятан внутри свёрнутого FILE — показывать ребро source → parent-FILE.
+
+### 2. Ноды выпадают из контейнера при overlap resolution
+- **Причина:** в редких случаях overlap resolution сдвигает часть потомков, но не все (нерекурсивный обход или edge-case в позициях).
+- **Статус:** частично починено (рекурсивные потомки для bounding box), возможны остаточные кейсы.
+- **Воспроизведение:** раскрыть 3+ FILE с пересекающимися bounding box.
+
+### 3. Стрелки на рёбрах — не сработало (user says)
+- **Причина:** возможно, `markerEnd` конфликтует с кастомным рендерингом или стилями. Проверить SVG defs/marker.
+- **Ещё:** для CONTAINS и DECLARES стрелки не нужны — только для CALLS, IMPORTS, EXTENDS.
+
+### 4. Layout direction — TB vs LR
+- Сейчас стоит LR. Нужно выбрать окончательно.
+- TB лучше для иерархии вызовов (call tree), LR — для чтения потоков данных.
+
+## 🔵 TODO / Feature Requests
+
+### ts_extractor
+- [ ] Влит PR #92 (`feat(extractor): TypeScript/TSX extractor parity`)
+- [ ] Зарегистрировать .ts/.tsx в `cli.py` (dict `extensions → extractor`)
+- [ ] Протестировать: `uv run cgis ingest <ts_project> --output graph.json`
+
+### Перенос UI в основной репозиторий
+- [ ] `cd ../ && git remote add ui ./ui && git fetch ui`
+- [ ] `git merge --allow-unrelated-histories ui/feat/ui` или `git subtree add`
+- [ ] Удалить вложенный `.git` из `ui/`
+- [ ] Перенести CI (bun run build, lint, test:run) в основной workflow
+
+### Edge Improvement
+- [ ] Edge label: отображать `CALLS`, `IMPORTS` и т.д. вдоль ребра
+- [ ] Агрегация IMPORTS до FILE-уровня (см. bug #1)
+- [ ] Стрелки только для направленных рёбер (CALLS, IMPORTS, EXTENDS)
+
+### UX
+- [ ] Поиск по нодам (фильтр по имени/типу)
+- [ ] Semantic zoom: кластеризация на большом удалении
+- [ ] Показать количество свернутых детей на FILE-ноде (например, "▲ 5 functions")
+
+### Performance
+- [ ] Debounce layout при одновременном раскрытии нескольких FILE
+- [ ] Web Worker для dagre (было в планах, отложено)
+- [ ] Virtualisation для >1000 нод
