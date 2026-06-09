@@ -166,6 +166,27 @@ def test_symlink_outside_workspace_is_skipped(pipeline: IngestionPipeline, tmp_p
     assert "external_func" not in names
 
 
+@pytest.mark.parametrize(
+    "test_filename",
+    [
+        "foo.test.py",
+        "bar.spec.py",
+    ],
+)
+def test_pipeline_skips_test_files(
+    pipeline: IngestionPipeline, tmp_path: Path, test_filename: str
+) -> None:
+    """Files matching *.test.* or *.spec.* patterns must be skipped during ingestion."""
+    (tmp_path / test_filename).write_text("def should_be_ignored(): pass\n", encoding="utf-8")
+    (tmp_path / "main.py").write_text("def real_func(): pass\n", encoding="utf-8")
+
+    nodes, _, _ = pipeline.run(str(tmp_path))
+
+    names = {n.name for n in nodes}
+    assert "real_func" in names
+    assert "should_be_ignored" not in names
+
+
 def test_pipeline_logs_and_skips_unparseable_file(
     pipeline: IngestionPipeline, tmp_path: Path
 ) -> None:

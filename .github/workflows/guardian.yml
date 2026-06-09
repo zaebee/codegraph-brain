@@ -4,10 +4,7 @@ on:
   issue_comment:
     types: [created]
 
-permissions:
-  contents: write
-  pull-requests: write
-  issues: read
+permissions: {}
 
 jobs:
   review:
@@ -16,6 +13,10 @@ jobs:
       github.event.issue.pull_request != null &&
       github.event.comment.body == '/guardian review'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
 
     steps:
       - name: Check commenter has write access
@@ -79,7 +80,41 @@ jobs:
             --pr "$PR_NUMBER" \
             --metrics guardian_metrics.jsonl
 
+      - name: Upload metrics artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: guardian-metrics-${{ env.PR_NUMBER }}
+          path: guardian_metrics.jsonl
+          retention-days: 7
+
+      - name: Post review as PR comment
+        uses: peter-evans/create-or-update-comment@a111a2c3bacd7be7898ee22d0d71d9aec2bb972c  # v4
+        with:
+          issue-number: ${{ env.PR_NUMBER }}
+          body-path: guardian_report.md
+
+  save-metrics:
+    needs: review
+    runs-on: ubuntu-latest
+    # contents: write is scoped to this job only — no PR code runs here
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Download metrics artifact
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f6645d986  # v4
+        with:
+          name: guardian-metrics-${{ github.event.issue.number }}
+
       - name: Push metrics to data branch
+        env:
+          PR_NUMBER: ${{ github.event.issue.number }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -93,9 +128,3 @@ jobs:
           git -C /tmp/metrics diff --cached --quiet || \
             git -C /tmp/metrics commit -m "metrics: guardian review PR #${PR_NUMBER} [skip ci]"
           git -C /tmp/metrics push origin HEAD:data/guardian-metrics
-
-      - name: Post review as PR comment
-        uses: peter-evans/create-or-update-comment@a111a2c3bacd7be7898ee22d0d71d9aec2bb972c  # v4
-        with:
-          issue-number: ${{ env.PR_NUMBER }}
-          body-path: guardian_report.md

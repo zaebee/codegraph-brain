@@ -218,4 +218,5 @@ __marimo__/
 .streamlit/secrets.toml
 graph.json
 *.db
+ui/
 guardian_metrics.jsonl
