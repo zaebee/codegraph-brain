@@ -105,6 +105,14 @@ def test_dag_has_no_cycles() -> None:
             assert not has_cycle(node_id), f"Cycle detected in dag pattern at {node_id}"
 
 
+@pytest.mark.parametrize("pattern", [*PATTERNS, "all"])
+def test_edge_ids_match_source_target(pattern: str) -> None:
+    graph = generate(pattern)
+    for edge in graph["edges"]:
+        expected = f"{edge['source']}:{edge['type'].lower()}:{edge['target']}"
+        assert edge["id"] == expected, f"Edge ID mismatch: {edge['id']!r} != {expected!r}"
+
+
 def test_unknown_pattern_raises() -> None:
     with pytest.raises(ValueError, match="Unknown pattern"):
         generate("nonexistent")

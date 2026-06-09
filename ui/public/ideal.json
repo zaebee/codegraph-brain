@@ -787,7 +787,7 @@
   ],
   "edges": [
     {
-      "id": "hub.utils:contains:utils.format_response",
+      "id": "hub.utils:contains:hub.utils.format_response",
       "source": "hub.utils",
       "target": "hub.utils.format_response",
       "type": "CONTAINS",
@@ -798,7 +798,7 @@
       "line_number": null
     },
     {
-      "id": "hub.utils:contains:utils.validate_input",
+      "id": "hub.utils:contains:hub.utils.validate_input",
       "source": "hub.utils",
       "target": "hub.utils.validate_input",
       "type": "CONTAINS",
@@ -809,7 +809,7 @@
       "line_number": null
     },
     {
-      "id": "hub.service_a:contains:service_a.handle",
+      "id": "hub.service_a:contains:hub.service_a.handle",
       "source": "hub.service_a",
       "target": "hub.service_a.handle",
       "type": "CONTAINS",
@@ -820,7 +820,7 @@
       "line_number": null
     },
     {
-      "id": "hub.service_a:imports:utils",
+      "id": "hub.service_a:imports:hub.utils",
       "source": "hub.service_a",
       "target": "hub.utils",
       "type": "IMPORTS",
@@ -831,7 +831,7 @@
       "line_number": null
     },
     {
-      "id": "hub.service_a.handle:calls:utils.format_response",
+      "id": "hub.service_a.handle:calls:hub.utils.format_response",
       "source": "hub.service_a.handle",
       "target": "hub.utils.format_response",
       "type": "CALLS",
@@ -842,7 +842,7 @@
       "line_number": null
     },
     {
-      "id": "hub.service_a.handle:calls:utils.validate_input",
+      "id": "hub.service_a.handle:calls:hub.utils.validate_input",
       "source": "hub.service_a.handle",
       "target": "hub.utils.validate_input",
       "type": "CALLS",
@@ -853,7 +853,7 @@
       "line_number": null
     },
     {
-      "id": "hub.service_b:contains:service_b.handle",
+      "id": "hub.service_b:contains:hub.service_b.handle",
       "source": "hub.service_b",
       "target": "hub.service_b.handle",
       "type": "CONTAINS",
@@ -864,7 +864,7 @@
       "line_number": null
     },
     {
-      "id": "hub.service_b:imports:utils",
+      "id": "hub.service_b:imports:hub.utils",
       "source": "hub.service_b",
       "target": "hub.utils",
       "type": "IMPORTS",
@@ -875,7 +875,7 @@
       "line_number": null
     },
     {
-      "id": "hub.service_b.handle:calls:utils.format_response",
+      "id": "hub.service_b.handle:calls:hub.utils.format_response",
       "source": "hub.service_b.handle",
       "target": "hub.utils.format_response",
       "type": "CALLS",
@@ -886,7 +886,7 @@
       "line_number": null
     },
     {
-      "id": "hub.service_b.handle:calls:utils.validate_input",
+      "id": "hub.service_b.handle:calls:hub.utils.validate_input",
       "source": "hub.service_b.handle",
       "target": "hub.utils.validate_input",
       "type": "CALLS",
@@ -897,7 +897,7 @@
       "line_number": null
     },
     {
-      "id": "hub.service_c:contains:service_c.handle",
+      "id": "hub.service_c:contains:hub.service_c.handle",
       "source": "hub.service_c",
       "target": "hub.service_c.handle",
       "type": "CONTAINS",
@@ -908,7 +908,7 @@
       "line_number": null
     },
     {
-      "id": "hub.service_c:imports:utils",
+      "id": "hub.service_c:imports:hub.utils",
       "source": "hub.service_c",
       "target": "hub.utils",
       "type": "IMPORTS",
@@ -919,7 +919,7 @@
       "line_number": null
     },
     {
-      "id": "hub.service_c.handle:calls:utils.format_response",
+      "id": "hub.service_c.handle:calls:hub.utils.format_response",
       "source": "hub.service_c.handle",
       "target": "hub.utils.format_response",
       "type": "CALLS",
@@ -930,7 +930,7 @@
       "line_number": null
     },
     {
-      "id": "hub.service_c.handle:calls:utils.validate_input",
+      "id": "hub.service_c.handle:calls:hub.utils.validate_input",
       "source": "hub.service_c.handle",
       "target": "hub.utils.validate_input",
       "type": "CALLS",
@@ -941,7 +941,7 @@
       "line_number": null
     },
     {
-      "id": "hub.service_d:contains:service_d.handle",
+      "id": "hub.service_d:contains:hub.service_d.handle",
       "source": "hub.service_d",
       "target": "hub.service_d.handle",
       "type": "CONTAINS",
@@ -952,7 +952,7 @@
       "line_number": null
     },
     {
-      "id": "hub.service_d:imports:utils",
+      "id": "hub.service_d:imports:hub.utils",
       "source": "hub.service_d",
       "target": "hub.utils",
       "type": "IMPORTS",
@@ -963,7 +963,7 @@
       "line_number": null
     },
     {
-      "id": "hub.service_d.handle:calls:utils.format_response",
+      "id": "hub.service_d.handle:calls:hub.utils.format_response",
       "source": "hub.service_d.handle",
       "target": "hub.utils.format_response",
       "type": "CALLS",
@@ -974,7 +974,7 @@
       "line_number": null
     },
     {
-      "id": "hub.service_d.handle:calls:utils.validate_input",
+      "id": "hub.service_d.handle:calls:hub.utils.validate_input",
       "source": "hub.service_d.handle",
       "target": "hub.utils.validate_input",
       "type": "CALLS",
@@ -985,7 +985,7 @@
       "line_number": null
     },
     {
-      "id": "chain.ingest:contains:ingest.fetch_data",
+      "id": "chain.ingest:contains:chain.ingest.fetch_data",
       "source": "chain.ingest",
       "target": "chain.ingest.fetch_data",
       "type": "CONTAINS",
@@ -996,7 +996,7 @@
       "line_number": null
     },
     {
-      "id": "chain.parse:contains:parse.parse_records",
+      "id": "chain.parse:contains:chain.parse.parse_records",
       "source": "chain.parse",
       "target": "chain.parse.parse_records",
       "type": "CONTAINS",
@@ -1007,7 +1007,7 @@
       "line_number": null
     },
     {
-      "id": "chain.transform:contains:transform.transform_records",
+      "id": "chain.transform:contains:chain.transform.transform_records",
       "source": "chain.transform",
       "target": "chain.transform.transform_records",
       "type": "CONTAINS",
@@ -1018,7 +1018,7 @@
       "line_number": null
     },
     {
-      "id": "chain.emit:contains:emit.emit_results",
+      "id": "chain.emit:contains:chain.emit.emit_results",
       "source": "chain.emit",
       "target": "chain.emit.emit_results",
       "type": "CONTAINS",
@@ -1029,7 +1029,7 @@
       "line_number": null
     },
     {
-      "id": "chain.ingest:imports:parse",
+      "id": "chain.ingest:imports:chain.parse",
       "source": "chain.ingest",
       "target": "chain.parse",
       "type": "IMPORTS",
@@ -1040,7 +1040,7 @@
       "line_number": null
     },
     {
-      "id": "chain.ingest.fetch_data:calls:parse.parse_records",
+      "id": "chain.ingest.fetch_data:calls:chain.parse.parse_records",
       "source": "chain.ingest.fetch_data",
       "target": "chain.parse.parse_records",
       "type": "CALLS",
@@ -1051,7 +1051,7 @@
       "line_number": null
     },
     {
-      "id": "chain.parse:imports:transform",
+      "id": "chain.parse:imports:chain.transform",
       "source": "chain.parse",
       "target": "chain.transform",
       "type": "IMPORTS",
@@ -1062,7 +1062,7 @@
       "line_number": null
     },
     {
-      "id": "chain.parse.parse_records:calls:transform.transform_records",
+      "id": "chain.parse.parse_records:calls:chain.transform.transform_records",
       "source": "chain.parse.parse_records",
       "target": "chain.transform.transform_records",
       "type": "CALLS",
@@ -1073,7 +1073,7 @@
       "line_number": null
     },
     {
-      "id": "chain.transform:imports:emit",
+      "id": "chain.transform:imports:chain.emit",
       "source": "chain.transform",
       "target": "chain.emit",
       "type": "IMPORTS",
@@ -1084,7 +1084,7 @@
       "line_number": null
     },
     {
-      "id": "chain.transform.transform_records:calls:emit.emit_results",
+      "id": "chain.transform.transform_records:calls:chain.emit.emit_results",
       "source": "chain.transform.transform_records",
       "target": "chain.emit.emit_results",
       "type": "CALLS",
@@ -1095,7 +1095,7 @@
       "line_number": null
     },
     {
-      "id": "star.orchestrator:contains:orchestrator.run_workflow",
+      "id": "star.orchestrator:contains:star.orchestrator.run_workflow",
       "source": "star.orchestrator",
       "target": "star.orchestrator.run_workflow",
       "type": "CONTAINS",
@@ -1106,7 +1106,7 @@
       "line_number": null
     },
     {
-      "id": "star.auth_service:contains:auth_service.execute",
+      "id": "star.auth_service:contains:star.auth_service.execute",
       "source": "star.auth_service",
       "target": "star.auth_service.execute",
       "type": "CONTAINS",
@@ -1117,7 +1117,7 @@
       "line_number": null
     },
     {
-      "id": "star.orchestrator:imports:auth_service",
+      "id": "star.orchestrator:imports:star.auth_service",
       "source": "star.orchestrator",
       "target": "star.auth_service",
       "type": "IMPORTS",
@@ -1128,7 +1128,7 @@
       "line_number": null
     },
     {
-      "id": "star.orchestrator.run_workflow:calls:auth_service.execute",
+      "id": "star.orchestrator.run_workflow:calls:star.auth_service.execute",
       "source": "star.orchestrator.run_workflow",
       "target": "star.auth_service.execute",
       "type": "CALLS",
@@ -1139,7 +1139,7 @@
       "line_number": null
     },
     {
-      "id": "star.payment_service:contains:payment_service.execute",
+      "id": "star.payment_service:contains:star.payment_service.execute",
       "source": "star.payment_service",
       "target": "star.payment_service.execute",
       "type": "CONTAINS",
@@ -1150,7 +1150,7 @@
       "line_number": null
     },
     {
-      "id": "star.orchestrator:imports:payment_service",
+      "id": "star.orchestrator:imports:star.payment_service",
       "source": "star.orchestrator",
       "target": "star.payment_service",
       "type": "IMPORTS",
@@ -1161,7 +1161,7 @@
       "line_number": null
     },
     {
-      "id": "star.orchestrator.run_workflow:calls:payment_service.execute",
+      "id": "star.orchestrator.run_workflow:calls:star.payment_service.execute",
       "source": "star.orchestrator.run_workflow",
       "target": "star.payment_service.execute",
       "type": "CALLS",
@@ -1172,7 +1172,7 @@
       "line_number": null
     },
     {
-      "id": "star.notification_service:contains:notification_service.execute",
+      "id": "star.notification_service:contains:star.notification_service.execute",
       "source": "star.notification_service",
       "target": "star.notification_service.execute",
       "type": "CONTAINS",
@@ -1183,7 +1183,7 @@
       "line_number": null
     },
     {
-      "id": "star.orchestrator:imports:notification_service",
+      "id": "star.orchestrator:imports:star.notification_service",
       "source": "star.orchestrator",
       "target": "star.notification_service",
       "type": "IMPORTS",
@@ -1194,7 +1194,7 @@
       "line_number": null
     },
     {
-      "id": "star.orchestrator.run_workflow:calls:notification_service.execute",
+      "id": "star.orchestrator.run_workflow:calls:star.notification_service.execute",
       "source": "star.orchestrator.run_workflow",
       "target": "star.notification_service.execute",
       "type": "CALLS",
@@ -1205,7 +1205,7 @@
       "line_number": null
     },
     {
-      "id": "star.audit_service:contains:audit_service.execute",
+      "id": "star.audit_service:contains:star.audit_service.execute",
       "source": "star.audit_service",
       "target": "star.audit_service.execute",
       "type": "CONTAINS",
@@ -1216,7 +1216,7 @@
       "line_number": null
     },
     {
-      "id": "star.orchestrator:imports:audit_service",
+      "id": "star.orchestrator:imports:star.audit_service",
       "source": "star.orchestrator",
       "target": "star.audit_service",
       "type": "IMPORTS",
@@ -1227,7 +1227,7 @@
       "line_number": null
     },
     {
-      "id": "star.orchestrator.run_workflow:calls:audit_service.execute",
+      "id": "star.orchestrator.run_workflow:calls:star.audit_service.execute",
       "source": "star.orchestrator.run_workflow",
       "target": "star.audit_service.execute",
       "type": "CALLS",
@@ -1238,7 +1238,7 @@
       "line_number": null
     },
     {
-      "id": "dag.db_client:contains:db_client.execute_query",
+      "id": "dag.db_client:contains:dag.db_client.execute_query",
       "source": "dag.db_client",
       "target": "dag.db_client.execute_query",
       "type": "CONTAINS",
@@ -1249,7 +1249,7 @@
       "line_number": null
     },
     {
-      "id": "dag.user_repo:contains:user_repo.find_user",
+      "id": "dag.user_repo:contains:dag.user_repo.find_user",
       "source": "dag.user_repo",
       "target": "dag.user_repo.find_user",
       "type": "CONTAINS",
@@ -1260,7 +1260,7 @@
       "line_number": null
     },
     {
-      "id": "dag.order_repo:contains:order_repo.find_order",
+      "id": "dag.order_repo:contains:dag.order_repo.find_order",
       "source": "dag.order_repo",
       "target": "dag.order_repo.find_order",
       "type": "CONTAINS",
@@ -1271,7 +1271,7 @@
       "line_number": null
     },
     {
-      "id": "dag.user_service:contains:user_service.get_user",
+      "id": "dag.user_service:contains:dag.user_service.get_user",
       "source": "dag.user_service",
       "target": "dag.user_service.get_user",
       "type": "CONTAINS",
@@ -1282,7 +1282,7 @@
       "line_number": null
     },
     {
-      "id": "dag.order_service:contains:order_service.get_order",
+      "id": "dag.order_service:contains:dag.order_service.get_order",
       "source": "dag.order_service",
       "target": "dag.order_service.get_order",
       "type": "CONTAINS",
@@ -1293,7 +1293,7 @@
       "line_number": null
     },
     {
-      "id": "dag.api_layer:contains:api_layer.handle_request",
+      "id": "dag.api_layer:contains:dag.api_layer.handle_request",
       "source": "dag.api_layer",
       "target": "dag.api_layer.handle_request",
       "type": "CONTAINS",
@@ -1304,7 +1304,7 @@
       "line_number": null
     },
     {
-      "id": "dag.user_repo:imports:db_client",
+      "id": "dag.user_repo:imports:dag.db_client",
       "source": "dag.user_repo",
       "target": "dag.db_client",
       "type": "IMPORTS",
@@ -1315,7 +1315,7 @@
       "line_number": null
     },
     {
-      "id": "dag.user_repo.find_user:calls:db_client.execute_query",
+      "id": "dag.user_repo.find_user:calls:dag.db_client.execute_query",
       "source": "dag.user_repo.find_user",
       "target": "dag.db_client.execute_query",
       "type": "CALLS",
@@ -1326,7 +1326,7 @@
       "line_number": null
     },
     {
-      "id": "dag.order_repo:imports:db_client",
+      "id": "dag.order_repo:imports:dag.db_client",
       "source": "dag.order_repo",
       "target": "dag.db_client",
       "type": "IMPORTS",
@@ -1337,7 +1337,7 @@
       "line_number": null
     },
     {
-      "id": "dag.order_repo.find_order:calls:db_client.execute_query",
+      "id": "dag.order_repo.find_order:calls:dag.db_client.execute_query",
       "source": "dag.order_repo.find_order",
       "target": "dag.db_client.execute_query",
       "type": "CALLS",
@@ -1348,7 +1348,7 @@
       "line_number": null
     },
     {
-      "id": "dag.user_service:imports:user_repo",
+      "id": "dag.user_service:imports:dag.user_repo",
       "source": "dag.user_service",
       "target": "dag.user_repo",
       "type": "IMPORTS",
@@ -1359,7 +1359,7 @@
       "line_number": null
     },
     {
-      "id": "dag.user_service.get_user:calls:user_repo.find_user",
+      "id": "dag.user_service.get_user:calls:dag.user_repo.find_user",
       "source": "dag.user_service.get_user",
       "target": "dag.user_repo.find_user",
       "type": "CALLS",
@@ -1370,7 +1370,7 @@
       "line_number": null
     },
     {
-      "id": "dag.order_service:imports:order_repo",
+      "id": "dag.order_service:imports:dag.order_repo",
       "source": "dag.order_service",
       "target": "dag.order_repo",
       "type": "IMPORTS",
@@ -1381,7 +1381,7 @@
       "line_number": null
     },
     {
-      "id": "dag.order_service.get_order:calls:order_repo.find_order",
+      "id": "dag.order_service.get_order:calls:dag.order_repo.find_order",
       "source": "dag.order_service.get_order",
       "target": "dag.order_repo.find_order",
       "type": "CALLS",
@@ -1392,7 +1392,7 @@
       "line_number": null
     },
     {
-      "id": "dag.api_layer:imports:user_service",
+      "id": "dag.api_layer:imports:dag.user_service",
       "source": "dag.api_layer",
       "target": "dag.user_service",
       "type": "IMPORTS",
@@ -1403,7 +1403,7 @@
       "line_number": null
     },
     {
-      "id": "dag.api_layer:imports:order_service",
+      "id": "dag.api_layer:imports:dag.order_service",
       "source": "dag.api_layer",
       "target": "dag.order_service",
       "type": "IMPORTS",
@@ -1414,7 +1414,7 @@
       "line_number": null
     },
     {
-      "id": "dag.api_layer.handle_request:calls:user_service.get_user",
+      "id": "dag.api_layer.handle_request:calls:dag.user_service.get_user",
       "source": "dag.api_layer.handle_request",
       "target": "dag.user_service.get_user",
       "type": "CALLS",
@@ -1425,7 +1425,7 @@
       "line_number": null
     },
     {
-      "id": "dag.api_layer.handle_request:calls:order_service.get_order",
+      "id": "dag.api_layer.handle_request:calls:dag.order_service.get_order",
       "source": "dag.api_layer.handle_request",
       "target": "dag.order_service.get_order",
       "type": "CALLS",

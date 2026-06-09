@@ -23,6 +23,10 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
+
+# Type alias for a JSON-like graph node/edge dict
+GraphDict = dict[str, Any]
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -37,7 +41,7 @@ def _node(
     fan_in: int = 0,
     fan_out: int = 0,
     depth: int = 0,
-) -> dict:
+) -> GraphDict:
     return {
         "id": fqn,
         "type": node_type,
@@ -59,13 +63,13 @@ def _node(
     }
 
 
-def _file_node(module: str, filename: str, line_count: int = 20) -> dict:
+def _file_node(module: str, filename: str, line_count: int = 20) -> GraphDict:
     return _node(module, filename, "FILE", filename, 1, line_count)
 
 
 def _func_node(
     fqn: str, name: str, file_path: str, line: int, fan_in: int = 0, fan_out: int = 0
-) -> dict:
+) -> GraphDict:
     return _node(
         fqn, name, "FUNCTION", file_path, line, line + 8, fan_in=fan_in, fan_out=fan_out, depth=1
     )
@@ -73,10 +77,9 @@ def _func_node(
 
 def _edge(
     source: str, target: str, edge_type: str, file_path: str = "", confidence: float = 1.0
-) -> dict:
-    edge_id = f"{source}:{edge_type.lower()}:{target}"
+) -> GraphDict:
     return {
-        "id": edge_id,
+        "id": f"{source}:{edge_type.lower()}:{target}",
         "source": source,
         "target": target,
         "type": edge_type,
@@ -88,22 +91,22 @@ def _edge(
     }
 
 
-def _contains(file_fqn: str, func_fqn: str, file_path: str) -> dict:
+def _contains(file_fqn: str, func_fqn: str, file_path: str) -> GraphDict:
     return _edge(file_fqn, func_fqn, "CONTAINS", file_path)
 
 
-def _calls(src: str, tgt: str) -> dict:
+def _calls(src: str, tgt: str) -> GraphDict:
     return _edge(src, tgt, "CALLS")
 
 
-def _imports(src_file: str, tgt_file: str) -> dict:
+def _imports(src_file: str, tgt_file: str) -> GraphDict:
     return _edge(src_file, tgt_file, "IMPORTS")
 
 
 # ── patterns ─────────────────────────────────────────────────────────────────
 
 
-def build_hub() -> tuple[list[dict], list[dict]]:
+def build_hub() -> tuple[list[GraphDict], list[GraphDict]]:
     """Central utils module called by many consumers; depends on nothing.
 
     utils ←── service_a
@@ -112,8 +115,8 @@ def build_hub() -> tuple[list[dict], list[dict]]:
          ←── service_d
     """
     callers = ["service_a", "service_b", "service_c", "service_d"]
-    nodes: list[dict] = []
-    edges: list[dict] = []
+    nodes: list[GraphDict] = []
+    edges: list[GraphDict] = []
 
     # hub: utils
     utils_file = "utils.py"
@@ -143,7 +146,7 @@ def build_hub() -> tuple[list[dict], list[dict]]:
     return nodes, edges
 
 
-def build_chain() -> tuple[list[dict], list[dict]]:
+def build_chain() -> tuple[list[GraphDict], list[GraphDict]]:
     """Linear pipeline: ingest → parse → transform → emit.
 
     Each stage has exactly one dependency on the next — single-responsibility.
@@ -154,8 +157,8 @@ def build_chain() -> tuple[list[dict], list[dict]]:
         ("transform", "transform.py", "transform_records", "Applies business rules"),
         ("emit", "emit.py", "emit_results", "Writes output to sink"),
     ]
-    nodes: list[dict] = []
-    edges: list[dict] = []
+    nodes: list[GraphDict] = []
+    edges: list[GraphDict] = []
 
     for i, (module, fp, fn, _) in enumerate(stages):
         fan_out = 1 if i < len(stages) - 1 else 0
@@ -173,7 +176,7 @@ def build_chain() -> tuple[list[dict], list[dict]]:
     return nodes, edges
 
 
-def build_star() -> tuple[list[dict], list[dict]]:
+def build_star() -> tuple[list[GraphDict], list[GraphDict]]:
     """One orchestrator dispatches to N independent leaf services.
 
     orchestrator ──► auth_service
@@ -182,8 +185,8 @@ def build_star() -> tuple[list[dict], list[dict]]:
                 ──► audit_service
     """
     leaves = ["auth_service", "payment_service", "notification_service", "audit_service"]
-    nodes: list[dict] = []
-    edges: list[dict] = []
+    nodes: list[GraphDict] = []
+    edges: list[GraphDict] = []
 
     # orchestrator
     orch_fp = "orchestrator.py"
@@ -204,14 +207,14 @@ def build_star() -> tuple[list[dict], list[dict]]:
     return nodes, edges
 
 
-def build_dag() -> tuple[list[dict], list[dict]]:
+def build_dag() -> tuple[list[GraphDict], list[GraphDict]]:
     """Clean layered DAG: api → service → repo → db_client.
 
     api_layer ──► user_service ──► user_repo ──► db_client
               ──► order_service ──► order_repo ─┘
     """
-    nodes: list[dict] = []
-    edges: list[dict] = []
+    nodes: list[GraphDict] = []
+    edges: list[GraphDict] = []
 
     layers = [
         # (module, file, func, fan_in, fan_out)
@@ -256,25 +259,32 @@ def build_dag() -> tuple[list[dict], list[dict]]:
 # ── namespace prefix so multiple patterns don't collide in "all" mode ─────────
 
 
-def _prefix(nodes: list[dict], edges: list[dict], ns: str) -> tuple[list[dict], list[dict]]:
+def _prefix(
+    nodes: list[GraphDict], edges: list[GraphDict], ns: str
+) -> tuple[list[GraphDict], list[GraphDict]]:
     def p(fqn: str) -> str:
         return f"{ns}.{fqn}"
 
     new_nodes = [{**n, "id": p(n["id"]), "file_path": f"{ns}/{n['file_path']}"} for n in nodes]
-    new_edges = [
-        {
-            **e,
-            "id": p(e["id"]),
-            "source": p(e["source"]),
-            "target": p(e["target"]),
-            "file_path": f"{ns}/{e['file_path']}" if e["file_path"] else "",
-        }
-        for e in edges
-    ]
+    # Reconstruct edge ID from the prefixed source and target to keep
+    # ID consistent with the {source}:{type}:{target} contract in _edge().
+    new_edges: list[GraphDict] = []
+    for e in edges:
+        ns_source = p(e["source"])
+        ns_target = p(e["target"])
+        new_edges.append(
+            {
+                **e,
+                "id": f"{ns_source}:{e['type'].lower()}:{ns_target}",
+                "source": ns_source,
+                "target": ns_target,
+                "file_path": f"{ns}/{e['file_path']}" if e["file_path"] else "",
+            }
+        )
     return new_nodes, new_edges
 
 
-PATTERNS = {
+PATTERNS: dict[str, Any] = {
     "hub": build_hub,
     "chain": build_chain,
     "star": build_star,
@@ -282,13 +292,14 @@ PATTERNS = {
 }
 
 
-def generate(pattern: str) -> dict:
+def generate(pattern: str) -> dict[str, Any]:
     """Return a graph dict for the given pattern (or 'all' to combine all four)."""
     if pattern == "all":
-        all_nodes: list[dict] = []
-        all_edges: list[dict] = []
+        all_nodes: list[GraphDict] = []
+        all_edges: list[GraphDict] = []
         for name, builder in PATTERNS.items():
-            ns_nodes, ns_edges = _prefix(*builder(), name)
+            pat_nodes, pat_edges = builder()
+            ns_nodes, ns_edges = _prefix(pat_nodes, pat_edges, name)
             all_nodes.extend(ns_nodes)
             all_edges.extend(ns_edges)
         nodes, edges = all_nodes, all_edges
