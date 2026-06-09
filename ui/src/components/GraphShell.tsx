@@ -119,16 +119,16 @@ function GraphCanvas() {
 
   // Fix 5: Memoize handleToggleEdgeType with useCallback
   const handleToggleEdgeType = useCallback(
-    (type: string) => toggleEdgeType(type as EdgeTypeName),
+    toggleEdgeType as (type: string) => void,
     [toggleEdgeType]
   )
 
   const onNodeClick = useCallback(
-    (event: MouseEvent, node: Parameters<typeof onFlowClick>[1]) => {
+    async (event: MouseEvent, node: Parameters<typeof onFlowClick>[1]) => {
       if (viewMode === 'full' && (node.data as Record<string, unknown>)?.nodeType === 'FILE') {
         toggleExpandedFile(node.id)
       } else {
-        void onFlowClick(event, node)
+        await onFlowClick(event, node)
       }
     },
     [viewMode, toggleExpandedFile, onFlowClick]

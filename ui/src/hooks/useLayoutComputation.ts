@@ -45,7 +45,7 @@ export function useLayoutComputation(): void {
       )
 
       // Step 2: filter edges by active types (always keep CONTAINS for structure)
-      const typeFiltered = (collapsed.edges as any[]).filter((e) => {
+      const typeFiltered = collapsed.edges.filter((e) => {
         const et: string = e.data?.edgeType ?? ''
         return et === 'CONTAINS' || activeEdgeTypes.has(et as any)
       })
@@ -55,8 +55,8 @@ export function useLayoutComputation(): void {
 
       // Step 4: filter external nodes if showExternal is false
       const visibleNodes = showExternal
-        ? (collapsed.nodes as any[])
-        : (collapsed.nodes as any[]).filter(
+        ? collapsed.nodes
+        : collapsed.nodes.filter(
             (n) => !n.data?.namespace || n.data?.namespace === 'INTERNAL'
           )
       const visibleIds = new Set(visibleNodes.map((n) => n.id as string))

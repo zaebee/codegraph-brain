@@ -9,7 +9,7 @@ const edge: GraphEdge = {
   target: 'src.resolver.engine.ResolverEngine.resolve',
   type: 'CALLS',
   weight: 1,
-  confidence: 1.0,
+  confidence: 1,
   context: '',
 }
 

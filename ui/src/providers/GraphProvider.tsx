@@ -7,7 +7,7 @@ import type { GraphData } from '../types'
 const GRAPH_URL =
   (import.meta.env.VITE_GRAPH_DATA_URL as string | undefined) ?? '/graph.json'
 
-export function GraphProvider({ children }: { children: ReactNode }) {
+export function GraphProvider({ children }: Readonly<{ children: ReactNode }>) {
   const setGraphData = useGraphStore((s) => s.setGraphData)
 
   useEffect(() => {
