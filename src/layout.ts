@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { NODE_WIDTH, NODE_HEIGHT, FILE_CONTAINER_PADDING, FILE_HEADER_HEIGHT, FILE_HEADER_GAP } from "./constants";
+import { NODE_WIDTH, NODE_HEIGHT, FILE_CONTAINER_PADDING, FILE_HEADER_HEIGHT, FILE_HEADER_GAP, LAYOUT_DIRECTION, NODE_SEP, RANK_SEP } from "./constants";
 import type { Node, Edge } from "@xyflow/react";
 
 let dagreInstance: any = null;
@@ -22,7 +22,7 @@ export async function layoutGraph(
   const dagre = await getDagre();
 
   const g = new dagre.graphlib.Graph();
-  g.setGraph({ rankdir: "TB", nodesep: 60, ranksep: 100 });
+  g.setGraph({ rankdir: LAYOUT_DIRECTION, nodesep: NODE_SEP, ranksep: RANK_SEP });
   g.setDefaultEdgeLabel(() => ({}));
 
   nodes.forEach((node) => {
@@ -49,9 +49,23 @@ export async function layoutGraph(
   let resultNodes = nodes.map((n) => ({ ...n, position: positioned.get(n.id) || n.position }));
 
   if (expandedFiles.size > 0) {
+    const allFileDescendants = new Map<string, string[]>();
+    function collectDescendants(id: string): string[] {
+      const cached = allFileDescendants.get(id);
+      if (cached) return cached;
+      const direct = parentChildren.get(id) || [];
+      const all: string[] = [];
+      for (const c of direct) {
+        all.push(c);
+        all.push(...collectDescendants(c));
+      }
+      allFileDescendants.set(id, all);
+      return all;
+    }
+
     resultNodes.forEach((node) => {
       if (node.data?.nodeType === "FILE" && expandedFiles.has(node.id)) {
-        const children = parentChildren.get(node.id) || [];
+        const children = collectDescendants(node.id);
         if (children.length === 0) return;
 
         const childPositions = children
@@ -113,6 +127,11 @@ export async function layoutGraph(
           a.y += shiftY;
           const node = resultNodes.find((n: any) => n.id === a.id) as any;
           if (node) node.position.y += shiftY;
+          const descendants = allFileDescendants.get(a.id) || [];
+          for (const descId of descendants) {
+            const desc = resultNodes.find((n: any) => n.id === descId) as any;
+            if (desc) desc.position.y += shiftY;
+          }
         }
       }
     }

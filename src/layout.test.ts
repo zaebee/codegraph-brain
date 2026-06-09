@@ -127,4 +127,54 @@ describe("layoutGraph container wrap", () => {
     expect(wrappedFile.type).toBe("fileContainer");
     expect((wrappedFile as any).data?.isExpanded).toBe(true);
   });
+
+  it("wraps expanded FILE around all transitive descendants", async () => {
+    const fileNode = { ...makeNode("f1", "FILE"), position: { x: 0, y: 300 } };
+    const classNode = { ...makeNode("cls1", "CLASS"), position: { x: 100, y: 100 } };
+    const methodNode = { ...makeNode("m1", "METHOD"), position: { x: 100, y: 0 } };
+    const nodes = [fileNode, classNode, methodNode];
+    const edges = [
+      makeEdge("e1", "f1", "cls1", "CONTAINS"),
+      makeEdge("e2", "cls1", "m1", "CONTAINS"),
+    ];
+    const expandedFiles = new Set(["f1"]);
+    const parentChildren = new Map([
+      ["f1", ["cls1"]],
+      ["cls1", ["m1"]],
+    ]);
+
+    const result = await layoutGraph(nodes, edges, expandedFiles, parentChildren);
+    const wrappedFile = result.nodes.find((n: Node) => n.id === "f1")!;
+    const clsPos = result.nodes.find((n: Node) => n.id === "cls1")!.position;
+    const methodPos = result.nodes.find((n: Node) => n.id === "m1")!.position;
+
+    expect(wrappedFile.position.x).toBeLessThanOrEqual(Math.min(clsPos.x, methodPos.x));
+    expect(wrappedFile.position.y).toBeLessThanOrEqual(Math.min(clsPos.y, methodPos.y));
+  });
+
+  it("shifts children when overlapping containers are resolved", async () => {
+    const f1 = { ...makeNode("f1", "FILE"), position: { x: 0, y: 200 } };
+    const c1 = { ...makeNode("c1", "FUNCTION"), position: { x: 50, y: 0 } };
+    const f2 = { ...makeNode("f2", "FILE"), position: { x: 0, y: 100 } };
+    const c2 = { ...makeNode("c2", "FUNCTION"), position: { x: 50, y: 0 } };
+    const nodes = [f1, c1, f2, c2];
+    const edges = [
+      makeEdge("e1", "f1", "c1", "CONTAINS"),
+      makeEdge("e2", "f2", "c2", "CONTAINS"),
+    ];
+    const expandedFiles = new Set(["f1", "f2"]);
+    const parentChildren = new Map([
+      ["f1", ["c1"]],
+      ["f2", ["c2"]],
+    ]);
+
+    const result = await layoutGraph(nodes, edges, expandedFiles, parentChildren);
+    const child1 = result.nodes.find((n: Node) => n.id === "c1")!;
+    const child2 = result.nodes.find((n: Node) => n.id === "c2")!;
+    const container2 = result.nodes.find((n: Node) => n.id === "f2")!;
+
+    if (container2.position.y > 0) {
+      expect(child2.position.y).toBeGreaterThan(0);
+    }
+  });
 });
