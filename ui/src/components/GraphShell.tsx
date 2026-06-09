@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState, type MouseEvent } from 'react'
 import {
   ReactFlow,
   Background,
@@ -113,7 +113,7 @@ function GraphCanvas() {
 
   // Fix 4: Memoize handleMouseMove with useCallback
   const handleMouseMove = useCallback(
-    (e: React.MouseEvent) => setMousePos({ x: e.clientX, y: e.clientY }),
+    (e: MouseEvent) => setMousePos({ x: e.clientX, y: e.clientY }),
     []
   )
 
@@ -124,7 +124,7 @@ function GraphCanvas() {
   )
 
   const onNodeClick = useCallback(
-    (event: React.MouseEvent, node: Parameters<typeof onFlowClick>[1]) => {
+    (event: MouseEvent, node: Parameters<typeof onFlowClick>[1]) => {
       if (viewMode === 'full' && (node.data as Record<string, unknown>)?.nodeType === 'FILE') {
         toggleExpandedFile(node.id)
       } else {

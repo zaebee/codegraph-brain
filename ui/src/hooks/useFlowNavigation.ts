@@ -1,5 +1,6 @@
 // ui/src/hooks/useFlowNavigation.ts
-import { useCallback, useRef } from 'react'
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { useCallback, useRef, type MouseEvent } from 'react'
 import { useReactFlow, type Node } from '@xyflow/react'
 import { buildExecutionFlow } from '../flow'
 import { layoutGraph } from '../layout'
@@ -22,7 +23,7 @@ export function useFlowNavigation(allowedEdgeTypes: string[] = DEFAULT_ALLOWED) 
   const cacheRef = useRef<Map<string, { nodes: any[]; edges: any[] }>>(new Map())
 
   const onNodeClick = useCallback(
-    async (_event: React.MouseEvent, node: Node) => {
+    async (_event: MouseEvent, node: Node) => {
       if (node.type === 'group' || node.type === 'fileContainer') return
 
       const cacheKey = `${node.id}:${FLOW_DEPTH}:${allowedEdgeTypes.join(',')}:${graphVersion}`

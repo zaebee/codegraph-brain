@@ -38,7 +38,7 @@ describe('graphSlice', () => {
       { id: 'a', data: { namespace: 'owner-api' }, position: { x: 0, y: 0 } },
       { id: 'b', data: { namespace: 'owner-web' }, position: { x: 0, y: 0 } },
       { id: 'c', data: { namespace: 'owner-api' }, position: { x: 0, y: 0 } },
-    ] as any[]
+    ] as any[] // eslint-disable-line @typescript-eslint/no-explicit-any
     useGraphStore.getState().setGraphData(nodes, [])
     expect(useGraphStore.getState().namespaces).toEqual(
       expect.arrayContaining(['owner-api', 'owner-web'])

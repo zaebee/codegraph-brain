@@ -1,4 +1,5 @@
 // ui/src/hooks/useLayoutComputation.ts
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useRef } from 'react'
 import { useReactFlow } from '@xyflow/react'
 import { useGraphStore } from '../store/useGraphStore'

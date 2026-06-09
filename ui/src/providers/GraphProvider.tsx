@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { useGraphStore } from '../store/useGraphStore'
 import { mapNodeToReactFlow } from '../utils/nodeMapper'
 import { mapEdgeToReactFlow } from '../utils/edgeMapper'
@@ -7,7 +7,7 @@ import type { GraphData } from '../types'
 const GRAPH_URL =
   (import.meta.env.VITE_GRAPH_DATA_URL as string | undefined) ?? '/graph.json'
 
-export function GraphProvider({ children }: { children: React.ReactNode }) {
+export function GraphProvider({ children }: { children: ReactNode }) {
   const setGraphData = useGraphStore((s) => s.setGraphData)
 
   useEffect(() => {
