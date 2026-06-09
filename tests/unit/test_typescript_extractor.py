@@ -2,7 +2,7 @@
 
 import pytest
 
-from cgis.core.models import EdgeType, NodeType
+from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.extractors.typescript_extractor import TypeScriptExtractor, file_path_to_module_fqn
 
 # ---------------------------------------------------------------------------
@@ -46,11 +46,11 @@ def extractor() -> TypeScriptExtractor:
     return TypeScriptExtractor()
 
 
-def _nodes_by_type(nodes: list, node_type: NodeType) -> list:  # type: ignore[type-arg]
+def _nodes_by_type(nodes: list[Node], node_type: NodeType) -> list[Node]:
     return [n for n in nodes if n.type == node_type]
 
 
-def _edges_by_type(edges: list, edge_type: EdgeType) -> list:  # type: ignore[type-arg]
+def _edges_by_type(edges: list[Edge], edge_type: EdgeType) -> list[Edge]:
     return [e for e in edges if e.type == edge_type]
 
 
