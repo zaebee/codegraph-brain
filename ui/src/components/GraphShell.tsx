@@ -212,6 +212,9 @@ function GraphCanvas() {
         nodeTypes={nodeTypes}
         colorMode="dark"
         fitView
+        fitViewOptions={{ padding: 0.5 }}
+        minZoom={0.02}
+        maxZoom={2}
       >
         <Background />
         <Controls />
