@@ -8,9 +8,11 @@ function FileContainerNode({ data }: NodeProps) {
   const indicator = isExpanded ? "\u25BC" : "\u25B6";
   const cleanLabel = label.replace(/^[▶▼]\s/, "");
 
+  const nodeType = data?.nodeType || "FILE";
+
   return (
-    <div className={`${styles.container} ${isExpanded ? styles.expanded : styles.collapsed}`}>
-      <div className={styles.header}>
+    <div className={`${styles.container} ${isExpanded ? styles.expanded : styles.collapsed}`} data-type={nodeType}>
+      <div className={styles.header} data-type={nodeType}>
         <span className={styles.indicator}>{indicator}</span>
         <span className={styles.title}>{cleanLabel}</span>
       </div>

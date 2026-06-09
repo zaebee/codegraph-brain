@@ -18,10 +18,12 @@ interface UseGraphFilterParams {
 interface UseGraphFilterResult {
   showExternal: boolean;
   expandedFiles: Set<string>;
+  expandedClasses: Set<string>;
   activeEdgeTypes: string[];
   isLayouting: boolean;
   setShowExternal: Dispatch<SetStateAction<boolean>>;
   setExpandedFiles: Dispatch<SetStateAction<Set<string>>>;
+  setExpandedClasses: Dispatch<SetStateAction<Set<string>>>;
   setActiveEdgeTypes: Dispatch<SetStateAction<string[]>>;
 }
 
@@ -36,6 +38,7 @@ export function useGraphFilter({
   const { fitView } = useReactFlow();
   const [showExternal, setShowExternal] = useState(false);
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
+  const [expandedClasses, setExpandedClasses] = useState<Set<string>>(new Set());
   const [activeEdgeTypes, setActiveEdgeTypes] = useState<string[]>([...ALL_EDGE_TYPES]);
   const [isLayouting, setIsLayouting] = useState(false);
 
@@ -43,11 +46,12 @@ export function useGraphFilter({
     async function applyFilters() {
       if (viewMode !== "full") return;
 
-      const collapsed = getCollapsedView(allNodes, allEdges, expandedFiles, parentChildrenRef.current);
+      const collapsed = getCollapsedView(allNodes, allEdges, expandedFiles, expandedClasses, parentChildrenRef.current);
 
       const typeFilteredEdges = collapsed.edges.filter((e: any) => {
         if (!e.data?.edgeType) return false;
         if (e.data.edgeType === "CONTAINS") return true;
+        if (e.data.edgeType === "DECLARES") return true;
         return activeEdgeTypes.includes(e.data.edgeType);
       });
 
@@ -75,12 +79,22 @@ export function useGraphFilter({
             },
           };
         }
+        if (n.data?.nodeType === "CLASS") {
+          const indicator = expandedClasses.has(n.id) ? "▼ " : "▶ ";
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              label: indicator + n.data.label.replace(/^[▶▼]\s/, ""),
+            },
+          };
+        }
         return n;
       });
 
       setIsLayouting(true);
       const { nodes: reLayouted, edges: layoutedEdges } = await layoutGraph(
-        labeledNodes, externalFilteredEdges, expandedFiles, parentChildrenRef.current
+        labeledNodes, externalFilteredEdges, expandedFiles, expandedClasses, parentChildrenRef.current
       );
       onFiltered(reLayouted, layoutedEdges);
       setIsLayouting(false);
@@ -88,15 +102,17 @@ export function useGraphFilter({
     }
     applyFilters();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showExternal, allNodes, allEdges, viewMode, expandedFiles, activeEdgeTypes]);
+  }, [showExternal, allNodes, allEdges, viewMode, expandedFiles, expandedClasses, activeEdgeTypes]);
 
   return {
     showExternal,
     expandedFiles,
+    expandedClasses,
     activeEdgeTypes,
     isLayouting,
     setShowExternal,
     setExpandedFiles,
+    setExpandedClasses,
     setActiveEdgeTypes,
   };
 }
