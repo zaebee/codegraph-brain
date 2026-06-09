@@ -87,7 +87,7 @@ def _tarjan_scc(adj: dict[str, list[str]]) -> list[list[str]]:
     sccs: list[list[str]] = []
     counter = [0]
 
-    for start in adj:
+    for start in sorted(adj):
         if start in index:
             continue
         index[start] = counter[0]
@@ -135,18 +135,13 @@ def _compute_class_coupling(
     return ca, ce
 
 
-def _get_abstract_fqns(
-    internal_classes: set[str], nodes: list[Node], edges: list[Edge]
-) -> set[str]:
-    """Return FQNs of internal classes that are abstract (via EXTENDS or metadata)."""
-    abstract: set[str] = set()
-    for edge in edges:
-        if edge.type == EdgeType.EXTENDS and edge.source in internal_classes:
-            abstract.add(edge.source)
-    for node in nodes:
-        if node.id in internal_classes and node.metadata.get("is_abstract"):
-            abstract.add(node.id)
-    return abstract
+def _get_abstract_fqns(internal_classes: set[str], nodes: list[Node]) -> set[str]:
+    """Return FQNs of internal classes that are abstract (metadata only).
+
+    Only metadata-flagged classes qualify; using EXTENDS would misclassify
+    concrete subclasses (e.g. UserService(Base)) as abstract.
+    """
+    return {n.id for n in nodes if n.id in internal_classes and n.metadata.get("is_abstract")}
 
 
 def _build_class_method_map(
@@ -216,7 +211,7 @@ class AnalyzerEngine:
         """Detect classes in Uncle Bob's Zone of Pain (stable + concrete).
 
         Uses afferent/efferent coupling from CALLS edges to compute instability I,
-        and checks EXTENDS edges to approximate abstractness A.
+        and node metadata to determine abstractness A.
         High stability (I->0) + low abstractness (A=0) means D-distance approaches 1.0.
         """
         internal_classes = {
@@ -229,7 +224,7 @@ class AnalyzerEngine:
 
         method_to_class = _build_method_to_class(self._nodes, self._edges)
         ca, ce = _compute_class_coupling(internal_classes, self._edges, method_to_class)
-        abstract_fqns = _get_abstract_fqns(internal_classes, self._nodes, self._edges)
+        abstract_fqns = _get_abstract_fqns(internal_classes, self._nodes)
 
         anomalies: list[ArchitecturalAnomaly] = []
         for fqn in internal_classes:

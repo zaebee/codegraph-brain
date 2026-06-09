@@ -125,6 +125,11 @@ def test_tarjan_self_loop() -> None:
     assert len(cycles) == 0
 
 
+def test_tarjan_empty_graph() -> None:
+    """Empty adjacency list produces no SCCs."""
+    assert _tarjan_scc({}) == []
+
+
 # ---------------------------------------------------------------------------
 # detect_cycles (integration with store)
 # ---------------------------------------------------------------------------
@@ -185,6 +190,18 @@ def test_detect_cycles_ignores_external(store: SQLiteStore) -> None:
     assert AnalyzerEngine(store).detect_cycles() == []
 
 
+def test_detect_cycles_ignores_unresolved_imports(store: SQLiteStore) -> None:
+    """Unresolved (raw_import:) edges are skipped and never form a cycle."""
+    nodes = [_file_node("a"), _file_node("b")]
+    edges = [
+        Edge(id="a->raw->B", source="a", target="raw_import:B", type=EdgeType.IMPORTS),
+        _imports("b", "a"),
+    ]
+    store.save_graph(nodes, edges)
+
+    assert AnalyzerEngine(store).detect_cycles() == []
+
+
 def test_detect_cycles_empty_graph(store: SQLiteStore) -> None:
     """Empty graph produces no anomalies."""
     assert AnalyzerEngine(store).detect_cycles() == []
@@ -223,16 +240,14 @@ def test_detect_zone_of_pain_flags_stable_concrete(store: SQLiteStore) -> None:
 
 
 def test_detect_zone_of_pain_abstract_class_not_flagged(store: SQLiteStore) -> None:
-    """An abstract class (has EXTENDS edge) is not flagged even with high Ca."""
-    target = _class_node("app.BaseService")
-    abstract_base = _class_node("abc.ABC")
+    """A class flagged is_abstract in metadata is not flagged even with high Ca."""
+    target = _class_node("app.BaseService", metadata={"is_abstract": True})
     methods = [_method_node(f"app.BaseService.m{i}") for i in range(3)]
     callers = [_class_node(f"app.C{i}") for i in range(8)]
     caller_methods = [_method_node(f"app.C{i}.h") for i in range(8)]
 
-    nodes = [target, abstract_base, *methods, *callers, *caller_methods]
+    nodes = [target, *methods, *callers, *caller_methods]
     edges: list[Edge] = [
-        Edge(id="extends", source="app.BaseService", target="abc.ABC", type=EdgeType.EXTENDS),
         *[_contains("app.BaseService", m.id) for m in methods],
         *[
             e
