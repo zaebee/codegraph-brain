@@ -142,7 +142,7 @@ def test_detect_cycles_two_node(store: SQLiteStore) -> None:
     anomaly = report[0]
     assert anomaly.type == AnomalyType.CIRCULAR_DEPENDENCY
     assert set(anomaly.metrics["cycle_members"]) == {"pkg.a", "pkg.b"}  # type: ignore[arg-type]
-    assert anomaly.severity_score == 0.25
+    assert anomaly.severity_score == pytest.approx(0.25)
 
 
 def test_detect_cycles_three_node(store: SQLiteStore) -> None:

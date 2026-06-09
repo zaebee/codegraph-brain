@@ -22,10 +22,22 @@ def _build_adjacency(edges: list[Edge], allowed_types: frozenset[EdgeType]) -> d
     for edge in edges:
         if edge.type not in allowed_types:
             continue
-        if edge.target.startswith("raw_call:") or edge.target.startswith("raw_import:"):
+        if edge.target.startswith(("raw_call:", "raw_import:")):
             continue
         adj.setdefault(edge.source, []).append(edge.target)
     return adj
+
+
+def _pop_scc(v: str, stack: list[str], on_stack: dict[str, bool]) -> list[str]:
+    """Pop nodes from stack until v is reached, forming one SCC."""
+    scc: list[str] = []
+    while True:
+        w = stack.pop()
+        on_stack[w] = False
+        scc.append(w)
+        if w == v:
+            break
+    return scc
 
 
 def _tarjan_step(
@@ -59,14 +71,7 @@ def _tarjan_step(
         if work:
             lowlink[work[-1][0]] = min(lowlink[work[-1][0]], lowlink[v])
         if lowlink[v] == index[v]:
-            scc: list[str] = []
-            while True:
-                w = stack.pop()
-                on_stack[w] = False
-                scc.append(w)
-                if w == v:
-                    break
-            sccs.append(scc)
+            sccs.append(_pop_scc(v, stack, on_stack))
 
 
 def _tarjan_scc(adj: dict[str, list[str]]) -> list[list[str]]:
