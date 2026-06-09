@@ -147,12 +147,7 @@ function App() {
       (e: any, i: number) => mapEdgeToReactFlow(e, i)
     );
 
-    const allFileIds = new Set(
-      graphData.nodes
-        .filter((n) => n.type === "FILE" && rawParentChildren.has(n.id))
-        .map((n) => n.id)
-    );
-    setExpandedFiles(allFileIds);
+    setExpandedFiles(new Set());
 
     setAllNodes(baseNodes);
     setAllEdges(baseEdges);

@@ -140,23 +140,32 @@ describe("useGraphFilter", () => {
 
   it("filters out non-INTERNAL nodes when showExternal is false", async () => {
     const onFiltered = vi.fn();
+    const fileNode = makeNode("test_file", "FILE", "test.py", "INTERNAL");
     const nodes = [
+      fileNode,
       makeNode("internal", "FUNCTION", "func", "INTERNAL"),
       makeNode("external", "FUNCTION", "ext", "EXTERNAL"),
     ];
-    renderHook(() =>
+    const parentChildren = new Map([["test_file", ["internal", "external"]]]);
+    const { result } = renderHook(() =>
       useGraphFilter({
         viewMode: "full",
         allNodes: nodes,
         allEdges: [],
-        parentChildrenRef: { current: new Map() } as any,
+        parentChildrenRef: { current: parentChildren } as any,
         ALL_EDGE_TYPES,
         onFiltered,
       })
     );
-    await waitFor(() => expect(onFiltered).toHaveBeenCalled());
-    const [filteredNodes] = onFiltered.mock.calls[0];
-    expect(filteredNodes).toHaveLength(1);
-    expect(filteredNodes[0].id).toBe("internal");
+    act(() => {
+      result.current.setExpandedFiles(new Set(["test_file"]));
+    });
+    await waitFor(() => {
+      const calls = onFiltered.mock.calls;
+      const lastCall = calls[calls.length - 1];
+      const ids = lastCall[0].map((n: any) => n.id);
+      expect(ids).not.toContain("external");
+      expect(ids).toContain("internal");
+    });
   });
 });
