@@ -127,6 +127,7 @@ export class IslandLayoutEngine {
     return offsets
   }
 
+  // TODO(PR4): use _expandedFiles to highlight the ego-subgraph overlay (issue #30)
   async run(_expandedFiles: Set<string>): Promise<{ nodes: Node[]; edges: Edge[] }> {
     const islands = this.partition()
     const bboxes: IslandBBox[] = []
