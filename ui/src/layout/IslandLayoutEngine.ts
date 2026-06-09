@@ -5,6 +5,7 @@ import {
   NODE_HEIGHT,
   NODE_SEP,
   RANK_SEP,
+  LAYOUT_DIRECTION,
   CANVAS_MAX_WIDTH,
   ISLAND_GAP,
   FILE_CONTAINER_PADDING,
@@ -66,7 +67,7 @@ export class IslandLayoutEngine {
   private layoutIsland(island: IslandData): { nodes: Node[]; bbox: { width: number; height: number } } {
     const g = new dagre.graphlib.Graph()
     g.setDefaultEdgeLabel(() => ({}))
-    g.setGraph({ rankdir: 'TB', nodesep: NODE_SEP, ranksep: RANK_SEP })
+    g.setGraph({ rankdir: LAYOUT_DIRECTION, nodesep: NODE_SEP, ranksep: RANK_SEP })
 
     for (const node of island.nodes) {
       g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT })
