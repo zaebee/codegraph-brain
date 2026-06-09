@@ -13,9 +13,10 @@ class PromptBuilder:
             "that exists in the actual diff. A false positive wastes engineering time just "
             "as much as a missed bug. Quality of findings beats quantity. "
             "You prioritise: (1) Logic correctness — wrong output, crashes, data corruption; "
-            "(2) Missing test coverage for real edge cases in the diff; "
-            "(3) Type safety violations that mypy strict would catch; "
-            "(4) Ontology compliance — wrong NodeType/EdgeType mappings corrupt the graph. "
+            "(2) Library boundary contracts — convention mismatches at third-party API calls; "
+            "(3) Missing test coverage for real edge cases in the diff; "
+            "(4) Type safety violations that mypy strict would catch; "
+            "(5) Ontology compliance — wrong NodeType/EdgeType mappings corrupt the graph. "
             "You do NOT flag style preferences, naming conventions, or design disagreements "
             "unless they cause a concrete defect. If the code is correct and tested, say so."
         )
@@ -80,6 +81,15 @@ that could silently return wrong results (not just "coverage for coverage's sake
 **Type safety** — implicit `Any`, missing return type annotations, unsafe casts, Pydantic
 models constructed with wrong field types.
 
+**Library boundary contracts** — for each call into a third-party library, verify that
+the data passed in matches the library's expected convention:
+  - Units and coordinate systems (e.g. center vs top-left, row/col vs x/y,
+    naive vs timezone-aware datetimes)
+  - Ordering assumptions (e.g. does array order affect rendering or sort stability?)
+  - Ownership and mutation (e.g. does the library mutate its input?)
+Trace the value from where it's produced to where it's consumed across the library call.
+If the producing code and consuming code have different assumptions, that's a bug.
+
 **Ontology compliance** — wrong NodeType/EdgeType assignments, FQNs not derived from file
 paths, unresolved calls not using `raw_call:` prefix.
 
@@ -88,7 +98,7 @@ paths, unresolved calls not using `raw_call:` prefix.
 
 For each finding (max 5):
 
-**[Logic Bug | Test Coverage | Type Safety | Ontology] — short title**
+**[Logic Bug | Library Contract | Test Coverage | Type Safety | Ontology] — short title**
 Confidence: N% (must be ≥ 80% to include)
 Lines: `<quoted verbatim from diff>`
 Problem: one sentence.

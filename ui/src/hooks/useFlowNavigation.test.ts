@@ -11,8 +11,13 @@ vi.mock("@xyflow/react", () => ({
   useReactFlow: () => ({ fitView: mockFitView }),
 }));
 
-vi.mock("../layout", () => ({
-  layoutGraph: (nodes: unknown[], edges: unknown[]) => Promise.resolve({ nodes, edges }),
+vi.mock("../layout/IslandLayoutEngine", () => ({
+  IslandLayoutEngine: class {
+    constructor(public nodes: unknown[], public edges: unknown[]) {}
+    run(_expandedFiles: Set<string>) {
+      return { nodes: this.nodes, edges: this.edges }
+    }
+  },
 }));
 
 vi.mock("../utils/edgeMapper", () => ({
