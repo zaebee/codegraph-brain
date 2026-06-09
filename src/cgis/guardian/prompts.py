@@ -51,6 +51,16 @@ Use these to identify callers that may be broken or require updates.
 {diff}
 {graph_section}
 ---
+### EVIDENCE RULE — enforced before every finding:
+Before flagging ANY issue you MUST quote the exact line(s) from the diff that prove the
+problem exists. If you cannot point to a specific line, do not raise the issue.
+- If the code already handles a case → acknowledge it, do not flag it.
+- If you disagree with a design choice but the code is correct → it is a MINOR at most,
+  not a BLOCKER.
+- Only cite ontology or standard violations that are **explicitly written** in the provided
+  CONTRIBUTING.md or ontology files. Do not invent rules.
+
+---
 ### REVIEW CHECKLIST — work through every item:
 
 **Correctness**
@@ -86,8 +96,8 @@ Use these to identify callers that may be broken or require updates.
 
 ---
 ### OUTPUT FORMAT:
-- For each real issue: state the file+line, the problem, and the fix.
+- For each real issue: quote the exact line(s), state the problem, and the fix.
 - Severity: **BLOCKER** (wrong behavior/data corruption) | **MAJOR** (missing tests/type gaps)
-  | **MINOR** (style/docs).
+  | **MINOR** (style/docs/design preference).
 - Only write "LGTM" at the end if you found zero blockers and zero majors — and even then, list
   what you chose NOT to flag and why."""
