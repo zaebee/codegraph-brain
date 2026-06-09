@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { useEffect, useState, type RefObject, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useRef, useState, type RefObject, type Dispatch, type SetStateAction } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { getCollapsedView } from "../collapse";
 import { layoutGraph } from "../layout";
@@ -38,8 +38,10 @@ export function useGraphFilter({
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
   const [activeEdgeTypes, setActiveEdgeTypes] = useState<string[]>([...ALL_EDGE_TYPES]);
   const [isLayouting, setIsLayouting] = useState(false);
+  const generationRef = useRef(0);
 
   useEffect(() => {
+    const gen = ++generationRef.current;
     async function applyFilters() {
       if (viewMode !== "full") return;
 
@@ -82,6 +84,7 @@ export function useGraphFilter({
       const { nodes: reLayouted, edges: layoutedEdges } = await layoutGraph(
         labeledNodes, externalFilteredEdges, expandedFiles, parentChildrenRef.current
       );
+      if (generationRef.current !== gen) return;
       onFiltered(reLayouted, layoutedEdges);
       setIsLayouting(false);
       fitView({ padding: 0.15, duration: 250 });

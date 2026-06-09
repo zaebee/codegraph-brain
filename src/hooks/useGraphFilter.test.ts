@@ -15,10 +15,10 @@ vi.mock("../layout", () => ({
 
 const ALL_EDGE_TYPES = ["CALLS", "IMPORTS", "EXTENDS", "DECLARES"];
 
-function makeNode(id: string, nodeType: string, label: string) {
+function makeNode(id: string, nodeType: string, label: string, namespace = "INTERNAL") {
   return {
     id,
-    data: { nodeType, label, namespace: "INTERNAL" },
+    data: { nodeType, label, namespace },
     style: {},
   };
 }
@@ -136,5 +136,27 @@ describe("useGraphFilter", () => {
       );
     });
     expect(result.current.activeEdgeTypes).not.toContain("CALLS");
+  });
+
+  it("filters out non-INTERNAL nodes when showExternal is false", async () => {
+    const onFiltered = vi.fn();
+    const nodes = [
+      makeNode("internal", "FUNCTION", "func", "INTERNAL"),
+      makeNode("external", "FUNCTION", "ext", "EXTERNAL"),
+    ];
+    renderHook(() =>
+      useGraphFilter({
+        viewMode: "full",
+        allNodes: nodes,
+        allEdges: [],
+        parentChildrenRef: { current: new Map() } as any,
+        ALL_EDGE_TYPES,
+        onFiltered,
+      })
+    );
+    await waitFor(() => expect(onFiltered).toHaveBeenCalled());
+    const [filteredNodes] = onFiltered.mock.calls[0];
+    expect(filteredNodes).toHaveLength(1);
+    expect(filteredNodes[0].id).toBe("internal");
   });
 });
