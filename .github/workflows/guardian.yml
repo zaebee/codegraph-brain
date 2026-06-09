@@ -5,7 +5,7 @@ on:
     types: [created]
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
   issues: read
 
@@ -60,13 +60,39 @@ jobs:
       - name: Build code graph
         run: uv run cgis ingest ./src --output graph.db
 
+      - name: Restore metrics from data branch
+        run: |
+          git fetch origin data/guardian-metrics 2>/dev/null && \
+            git show origin/data/guardian-metrics:guardian_metrics.jsonl \
+              > guardian_metrics.jsonl 2>/dev/null || true
+
       - name: Run Guardian Review
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           GUARDIAN_PROVIDER: ${{ vars.GUARDIAN_PROVIDER }}
           GUARDIAN_MODEL: ${{ vars.GUARDIAN_MODEL }}
-        run: uv run python scripts/guardian_review.py --output guardian_report.md --db graph.db
+        run: |
+          uv run python scripts/guardian_review.py \
+            --output guardian_report.md \
+            --db graph.db \
+            --pr "$PR_NUMBER" \
+            --metrics guardian_metrics.jsonl
+
+      - name: Push metrics to data branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code origin data/guardian-metrics > /dev/null 2>&1; then
+            git worktree add /tmp/metrics origin/data/guardian-metrics
+          else
+            git worktree add --orphan -b data/guardian-metrics /tmp/metrics
+          fi
+          cp guardian_metrics.jsonl /tmp/metrics/
+          git -C /tmp/metrics add guardian_metrics.jsonl
+          git -C /tmp/metrics diff --cached --quiet || \
+            git -C /tmp/metrics commit -m "metrics: guardian review PR #${PR_NUMBER} [skip ci]"
+          git -C /tmp/metrics push origin HEAD:data/guardian-metrics
 
       - name: Post review as PR comment
         uses: peter-evans/create-or-update-comment@a111a2c3bacd7be7898ee22d0d71d9aec2bb972c  # v4

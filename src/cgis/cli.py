@@ -13,6 +13,7 @@ from cgis import __app_name__, __version__
 from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeNamespace
 from cgis.extractors.python_extractor import PythonExtractor, file_path_to_module_fqn
 from cgis.extractors.typescript_extractor import TypeScriptExtractor
+from cgis.guardian.metrics import load_reviews, rate_review
 from cgis.pipeline import IngestionPipeline
 from cgis.query.analyzer import AnalyzerEngine
 from cgis.query.anomaly import AnomalyType, ArchitecturalAnomaly
@@ -663,6 +664,83 @@ def analyze(
             for key, val in a.metrics.items():
                 console.print(f"    [dim]{key}:[/dim] {val}")
             console.print(f"  [italic]💡 {a.refactoring_hint}[/italic]\n")
+
+
+_DEFAULT_METRICS = "guardian_metrics.jsonl"
+
+
+@app.command()
+def guardian_rate(
+    pr: int = typer.Argument(..., help="GitHub PR number to rate."),
+    applied: int = typer.Argument(..., help="Number of findings actually applied."),
+    metrics: str = typer.Option(_DEFAULT_METRICS, "--metrics", "-m", help="Path to metrics file."),
+) -> None:
+    """Record how many Guardian findings were applied for a given PR."""
+    updated = rate_review(pr=pr, applied=applied, metrics_path=Path(metrics))
+    if updated:
+        console.print(f"[green]✅ PR #{pr}: recorded {applied} applied findings.[/green]")
+    else:
+        console.print(f"[red]❌ No unrated entry found for PR #{pr} in {metrics}.[/red]")
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def guardian_stats(
+    metrics: str = typer.Option(_DEFAULT_METRICS, "--metrics", "-m", help="Path to metrics file."),
+    last: int = typer.Option(20, "--last", "-n", help="Show only the last N reviews."),
+) -> None:
+    """Show Guardian review quality metrics trend."""
+    reviews = load_reviews(Path(metrics))
+    if not reviews:
+        console.print(f"[yellow]No metrics found in {metrics}.[/yellow]")
+        raise typer.Exit
+
+    reviews = reviews[-last:]
+
+    table = Table(title=f"Guardian Review Metrics (last {len(reviews)})")
+    table.add_column("PR", style="cyan", justify="right")
+    table.add_column("Model", style="dim")
+    table.add_column("Tokens", justify="right")
+    table.add_column("Findings", justify="right")
+    table.add_column("Applied", justify="right")
+    table.add_column("Precision", justify="right")
+    table.add_column("LGTM")
+
+    total_tokens = 0
+    rated = [r for r in reviews if r.get("findings_applied") is not None]
+
+    for r in reviews:
+        pr_str = f"#{r['pr']}" if r.get("pr") else "—"
+        tokens = int(r.get("total_tokens", 0))
+        total_tokens += tokens
+        findings = int(r.get("findings_total", 0))
+        applied = r.get("findings_applied")
+        if applied is not None:
+            applied_str = str(applied)
+            precision = f"{int(applied) / findings * 100:.0f}%" if findings else "—"
+        else:
+            applied_str = "[dim]?[/dim]"
+            precision = "[dim]?[/dim]"
+        lgtm = "✅" if r.get("lgtm") else ""
+        table.add_row(
+            pr_str,
+            str(r.get("model", "")),
+            f"{tokens:,}",
+            str(findings),
+            applied_str,
+            precision,
+            lgtm,
+        )
+
+    console.print(table)
+
+    if rated:
+        total_findings = sum(int(r["findings_total"]) for r in rated)
+        total_applied = sum(int(r["findings_applied"]) for r in rated)
+        avg_precision = f"{total_applied / total_findings * 100:.0f}%" if total_findings else "—"
+        console.print(f"\n  Avg tokens/review : [cyan]{total_tokens // len(reviews):,}[/cyan]")
+        rated_label = f"rated {len(rated)}/{len(reviews)} reviews"
+        console.print(f"  Overall precision : [cyan]{avg_precision}[/cyan]  ({rated_label})")
 
 
 if __name__ == "__main__":  # pragma: no cover
