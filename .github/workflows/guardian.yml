@@ -42,7 +42,7 @@ jobs:
             echo "Invalid PR number: $PR_NUMBER" && exit 1
           fi
           echo "PR_NUMBER=$PR_NUMBER" >> $GITHUB_ENV
-          BASE_BRANCH=$(gh pr view "$PR_NUMBER" --json baseRefName --jq '.baseRefName')
+          BASE_BRANCH=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json baseRefName --jq '.baseRefName')
           echo "BASE_BRANCH=$BASE_BRANCH" >> $GITHUB_ENV
 
       - name: Checkout PR branch
