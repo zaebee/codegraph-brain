@@ -47,3 +47,11 @@ export const EDGE_LEGEND_ITEMS: LegendItem[] = [
   { type: "CONTAINS", label: "Contains", color: EDGE_COLORS.CONTAINS },
   { type: "DECLARES", label: "Declares", color: EDGE_COLORS.DECLARES },
 ];
+
+export const NAMESPACE_COLORS: Record<string, string> = {
+  'owner-api': '#2d6a2d',
+  'owner-web': '#2d2d6a',
+  'ownima-admin': '#5a2d6a',
+  'rider-web': '#1a5a5a',
+  _default: '#546e7a',
+};
