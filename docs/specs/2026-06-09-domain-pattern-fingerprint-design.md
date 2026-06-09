@@ -4,7 +4,7 @@
 
 **Goal:** Measure how far a real codebase's domain structure drifts from its declared ideal architectural patterns, producing a quantitative drift score per domain.
 
-**Architecture:** `patterns.yaml` declares expected pattern templates per domain prefix → `FingerprintExtractor` computes actual fingerprint vectors from the graph → `DriftScorer` computes weighted cosine distance between ideal and actual → `cgis drift` CLI reports per-domain health.
+**Architecture:** `patterns.yaml` declares expected pattern templates per domain prefix → `FingerprintExtractor` computes actual fingerprint vectors from the graph → `DriftScorer` computes per-component normalized weighted deviation between ideal and actual → `cgis drift` CLI reports per-domain health.
 
 **Tech Stack:** Python 3.12, Pydantic v2, PyYAML, existing `SQLiteStore` + `HealthScorer`, Typer CLI.
 
@@ -49,9 +49,17 @@ class PatternFingerprint:
 ### Drift score
 
 ```
-drift(ideal, actual) = weighted_cosine_distance(ideal_vector, actual_vector)
+drift(ideal, actual) = sum(w_i * clip(|actual_i - ideal_i| / norm_i, 0, 1))
                      ∈ [0.0, 1.0]
 ```
+
+Where:
+- Sum runs over **constrained components only** (those with `min`/`max`/`exact` in the pattern template)
+- `norm_i = max(ideal_i, 1)` by default — overridable per-component in `patterns.yaml`
+- `w_i` are re-normalized to sum 1.0 after excluding unconstrained components
+- Unconstrained components contribute 0 by construction (excluded, not zeroed out)
+
+Rationale: cosine distance measures direction, not magnitude — `hub_count` ideal=1/actual=5 and ideal=1/actual=100 look the same to cosine. Per-component normalized deviation captures *how much* each structural constraint is violated independently.
 
 - `0.0` — actual perfectly matches ideal
 - `1.0` — complete divergence
@@ -165,7 +173,9 @@ class FingerprintExtractor:
     def __init__(self, store: SQLiteStore) -> None: ...
 
     def extract(self, fqn_prefix: str) -> PatternFingerprint:
-        # 1. Load nodes WHERE id STARTS WITH fqn_prefix
+        # 1. Load nodes where _in_domain(node.id, fqn_prefix)
+        #    _in_domain(fqn, prefix) = fqn == prefix or fqn.startswith(prefix + ".")
+        #    (avoids false positives: "cgis.extractors_alt" ≠ "cgis.extractors")
         # 2. Load edges WHERE source OR target in domain node set
         # 3. Reuse HealthScorer.enrich() for fan_in, fan_out, in_cycle per node
         # 4. hub_count   = nodes with fan_in > 2 AND fan_out == 0
@@ -184,7 +194,7 @@ Thresholds for hub/star detection are configurable, defaulting to:
 
 ### `DriftScorer`
 
-Loads `patterns.yaml`, constructs ideal fingerprint from template constraints (using `min`/`max`/`exact` midpoints as ideal values), computes weighted cosine distance.
+Loads `patterns.yaml`, constructs ideal fingerprint from template constraints, computes per-component normalized weighted deviation (weighted MAE on constrained components only).
 
 ```python
 class DriftScorer:
@@ -210,7 +220,7 @@ class DriftReport:
     tolerance: float                 # from patterns.yaml domain config
 ```
 
-**Ideal vector construction:** For each component, if constraint is `{min: X}` → ideal = X, `{max: X}` → ideal = 0, `{exact: X}` → ideal = X. Unconstrained components use the actual value (contribute zero drift).
+**Ideal vector construction:** For each component, if constraint is `{min: X}` → ideal = X, `{max: X}` → ideal = 0, `{exact: X}` → ideal = X. Unconstrained components are **excluded from the sum entirely** — their weight is set to 0 and `w_i` values are re-normalized over constrained components only.
 
 ### `cgis drift` CLI command
 
