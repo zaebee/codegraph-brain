@@ -19,7 +19,9 @@ export function GraphProvider({ children }: Readonly<{ children: ReactNode }>) {
       .then((data) =>
         setGraphData(
           data.nodes.map((n) => mapNodeToReactFlow(n)),
-          data.edges.map((e, i) => mapEdgeToReactFlow(e, i))
+          data.edges.map((e, i) => mapEdgeToReactFlow(e, i)),
+          data.nodes,
+          data.edges
         )
       )
       .catch((err) => console.error('GraphProvider: failed to load graph', err))

@@ -12,8 +12,8 @@ const FLOW_DEPTH = 3
 const DEFAULT_ALLOWED = ['CALLS', 'IMPORTS', 'CONTAINS']
 
 export function useFlowNavigation(allowedEdgeTypes: string[] = DEFAULT_ALLOWED) {
-  const rawNodes = useGraphStore((s) => s.rawNodes)
-  const rawEdges = useGraphStore((s) => s.rawEdges)
+  const rawNodes = useGraphStore((s) => s.graphNodes)
+  const rawEdges = useGraphStore((s) => s.graphEdges)
   const graphVersion = useGraphStore((s) => s.graphVersion)
   const setFlow = useGraphStore((s) => s.setFlow)
   const setViewMode = useGraphStore((s) => s.setViewMode)
@@ -32,7 +32,7 @@ export function useFlowNavigation(allowedEdgeTypes: string[] = DEFAULT_ALLOWED) 
       if (cacheRef.current.has(cacheKey)) {
         flow = cacheRef.current.get(cacheKey)!
       } else {
-        const graphData = { nodes: rawNodes as any[], edges: rawEdges as any[] }
+        const graphData = { nodes: rawNodes, edges: rawEdges }
         flow = buildExecutionFlow(graphData, node.id, FLOW_DEPTH, 'both', allowedEdgeTypes)
         cacheRef.current.set(cacheKey, flow)
       }

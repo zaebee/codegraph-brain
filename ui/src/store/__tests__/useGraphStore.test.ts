@@ -33,13 +33,13 @@ describe('graphSlice', () => {
     expect(useGraphStore.getState().graphVersion).toBe(2)
   })
 
-  it('setGraphData extracts namespaces from node data', () => {
-    const nodes = [
-      { id: 'a', data: { namespace: 'owner-api' }, position: { x: 0, y: 0 } },
-      { id: 'b', data: { namespace: 'owner-web' }, position: { x: 0, y: 0 } },
-      { id: 'c', data: { namespace: 'owner-api' }, position: { x: 0, y: 0 } },
+  it('setGraphData extracts namespaces from graphNodes', () => {
+    const graphNodes = [
+      { id: 'a', type: 'FILE', name: 'a', file_path: 'a.py', start_line: 1, end_line: 1, language: 'python', namespace: 'owner-api', ontology_class: null, domains: [], confidence_score: 1, metadata: {} },
+      { id: 'b', type: 'FILE', name: 'b', file_path: 'b.py', start_line: 1, end_line: 1, language: 'python', namespace: 'owner-web', ontology_class: null, domains: [], confidence_score: 1, metadata: {} },
+      { id: 'c', type: 'FILE', name: 'c', file_path: 'c.py', start_line: 1, end_line: 1, language: 'python', namespace: 'owner-api', ontology_class: null, domains: [], confidence_score: 1, metadata: {} },
     ] as any[] // eslint-disable-line @typescript-eslint/no-explicit-any
-    useGraphStore.getState().setGraphData(nodes, [])
+    useGraphStore.getState().setGraphData([], [], graphNodes, [])
     expect(useGraphStore.getState().namespaces).toEqual(
       expect.arrayContaining(['owner-api', 'owner-web'])
     )

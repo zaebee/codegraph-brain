@@ -178,9 +178,12 @@ export class IslandLayoutEngine {
           y: minY - FILE_CONTAINER_PADDING - FILE_HEADER_HEIGHT - FILE_HEADER_GAP,
         },
         style: {
-          ...node.style,
           width: maxX - minX + FILE_CONTAINER_PADDING * 2,
           height: maxY - minY + FILE_CONTAINER_PADDING * 2 + FILE_HEADER_HEIGHT + FILE_HEADER_GAP,
+          border: 'none',
+          background: 'transparent',
+          boxShadow: 'none',
+          padding: 0,
         },
         data: { ...node.data, isExpanded: true },
         draggable: false,

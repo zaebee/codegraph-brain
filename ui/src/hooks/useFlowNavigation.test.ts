@@ -43,6 +43,8 @@ vi.mock("../store/useGraphStore", () => ({
     selector({
       rawNodes,
       rawEdges,
+      graphNodes: rawNodes,
+      graphEdges: rawEdges,
       graphVersion: 1,
       setFlow: mockSetFlow,
       setViewMode: mockSetViewMode,
