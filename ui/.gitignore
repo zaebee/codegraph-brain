@@ -24,3 +24,4 @@ dist/
 # brainstorming companion server
 .superpowers/
 docs/superpowers/
+docs/session-*.md
