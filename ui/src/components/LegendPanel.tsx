@@ -7,7 +7,7 @@ export default function LegendPanel({ visible = true }: { visible: boolean }) {
   if (!visible) return null;
 
   return (
-    <Panel position="bottom-right" style={{ marginRight: '210px' }} className={styles["legend-panel"]}>
+    <Panel position="top-right" style={{ marginTop: '50px' }} className={styles["legend-panel"]}>
       <div className={styles["legend-header"]}>Legend</div>
       <div className={styles["legend-columns"]}>
         <div className={styles["legend-col"]}>
