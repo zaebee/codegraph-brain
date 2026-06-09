@@ -10,3 +10,6 @@ export const RANK_SEP = 100;
 // All edge type names — module-level constant, never re-created on render
 export const ALL_EDGE_TYPES = ['CALLS', 'IMPORTS', 'EXTENDS', 'DECLARES'] as const
 export type EdgeTypeName = (typeof ALL_EDGE_TYPES)[number]
+
+export const CANVAS_MAX_WIDTH = 3200
+export const ISLAND_GAP = 80  // padding between islands in bin-packing
