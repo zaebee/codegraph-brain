@@ -25,6 +25,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 # Type alias for a JSON-like graph node/edge dict
 GraphDict = dict[str, Any]
 
@@ -322,6 +324,49 @@ def generate(pattern: str) -> dict[str, Any]:
     }
 
 
+# Pattern name → existing builder function.
+# Patterns not listed here fall back to build_hub as a generic scaffold.
+_PATTERN_TO_BUILDER: dict[str, Any] = {
+    "pure_utility": build_hub,
+    "pipeline_stage": build_chain,
+    "orchestrator": build_star,
+    "layered_dag": build_dag,
+    "dispatcher": build_star,
+}
+
+
+def generate_from_ontology(patterns_path: str) -> dict[str, Any]:
+    """Generate an ideal graph from a patterns.yaml file.
+
+    For each project_domain, instantiates the expected_pattern template
+    using the real fqn_prefix as the node namespace.
+    """
+    raw: dict[str, Any] = yaml.safe_load(Path(patterns_path).read_text())
+    domains: list[dict[str, Any]] = raw.get("project_domains", [])
+
+    all_nodes: list[GraphDict] = []
+    all_edges: list[GraphDict] = []
+
+    for domain in domains:
+        fqn_prefix: str = domain["fqn_prefix"]
+        pattern_name: str = domain["expected_pattern"]
+        builder = _PATTERN_TO_BUILDER.get(pattern_name, build_hub)
+        pat_nodes, pat_edges = builder()
+        ns_nodes, ns_edges = _prefix(pat_nodes, pat_edges, fqn_prefix)
+        all_nodes.extend(ns_nodes)
+        all_edges.extend(ns_edges)
+
+    return {
+        "metadata": {
+            "source_path": patterns_path,
+            "node_count": len(all_nodes),
+            "edge_count": len(all_edges),
+        },
+        "nodes": all_nodes,
+        "edges": all_edges,
+    }
+
+
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 
@@ -334,8 +379,14 @@ def main() -> None:
         "--pattern",
         "-p",
         choices=[*PATTERNS, "all"],
-        default="all",
-        help="Graph pattern to generate (default: all)",
+        default=None,
+        help="Graph pattern to generate.",
+    )
+    parser.add_argument(
+        "--from-ontology",
+        metavar="PATTERNS_YAML",
+        default=None,
+        help="Generate ideal graph from a patterns.yaml file (project_domains).",
     )
     parser.add_argument(
         "--output",
@@ -345,7 +396,12 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    graph = generate(args.pattern)
+    if args.from_ontology:
+        graph = generate_from_ontology(args.from_ontology)
+    elif args.pattern:
+        graph = generate(args.pattern)
+    else:
+        graph = generate("all")
 
     if args.output == "-":
         json.dump(graph, sys.stdout, indent=2)
