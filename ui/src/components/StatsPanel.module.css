@@ -1,0 +1,22 @@
+.stats-panel {
+  background: var(--color-bg-surface);
+  padding: var(--spacing-md);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.stats {
+  display: flex;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-md);
+  color: var(--color-text-primary);
+  flex-wrap: wrap;
+}
+
+.stats-sep {
+  color: #484f58;
+}
+
+.stats-ext {
+  color: var(--color-text-accent);
+}
