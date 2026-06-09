@@ -12,7 +12,7 @@ const mockEdge: GraphEdge = {
 describe("mapEdgeToReactFlow", () => {
   it("maps edge with default styling", () => {
     const result = mapEdgeToReactFlow(mockEdge, 0);
-    expect(result.id).toBe("e-0");
+    expect(result.id).toBe("a→b:CALLS");
     expect(result.source).toBe("a");
     expect(result.target).toBe("b");
     expect(result.style!.stroke).toBe("#4fc3f7");
@@ -43,7 +43,7 @@ describe("mapEdgeToReactFlow", () => {
 describe("mapEdgeToFlowView", () => {
   it("maps edge with flow styling", () => {
     const result = mapEdgeToFlowView(mockEdge, 0);
-    expect(result.id).toBe("flow-0");
+    expect(result.id).toBe("a→b:CALLS");
     expect(result.source).toBe("a");
     expect(result.target).toBe("b");
     expect(result.style!.stroke).toBe("#ff9800");
