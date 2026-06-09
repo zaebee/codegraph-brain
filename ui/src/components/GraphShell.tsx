@@ -6,6 +6,8 @@ import {
   MiniMap,
   useReactFlow,
   Panel,
+  applyNodeChanges,
+  type NodeChange,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { ErrorBoundary, type FallbackProps } from 'react-error-boundary'
@@ -57,6 +59,7 @@ function GraphCanvas() {
   const setViewMode = useGraphStore((s) => s.setViewMode)
   const setHoveredNodeId = useGraphStore((s) => s.setHoveredNodeId)
   const toggleExpandedFile = useGraphStore((s) => s.toggleExpandedFile)
+  const setLayout = useGraphStore((s) => s.setLayout)
   const activeEdgeTypes = useGraphStore((s) => s.activeEdgeTypes)
   const showExternal = useGraphStore((s) => s.showExternal)
   const toggleEdgeType = useGraphStore((s) => s.toggleEdgeType)
@@ -137,6 +140,34 @@ function GraphCanvas() {
     [viewMode, toggleExpandedFile, onFlowClick]
   )
 
+  // Persist dragged positions back to the store (controlled-mode requirement).
+  // For fileContainer drags, also move all child nodes by the same delta.
+  const handleNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      const expandedChanges = [...changes]
+      for (const change of changes) {
+        if (change.type !== 'position' || change.position == null) continue
+        const node = layoutedNodes.find((n) => n.id === change.id)
+        if (!node || node.type !== 'fileContainer') continue
+        const dx = change.position.x - node.position.x
+        const dy = change.position.y - node.position.y
+        for (const child of layoutedNodes) {
+          const groupId = (child.data as Record<string, unknown>)?.groupId as string | undefined
+          if (groupId === change.id) {
+            expandedChanges.push({
+              type: 'position',
+              id: child.id,
+              position: { x: child.position.x + dx, y: child.position.y + dy },
+              dragging: change.dragging,
+            })
+          }
+        }
+      }
+      setLayout(applyNodeChanges(expandedChanges, layoutedNodes), layoutedEdges)
+    },
+    [layoutedNodes, layoutedEdges, setLayout]
+  )
+
   const graphLoading = graphVersion === 0
 
   // Adapt store Set to ControlPanel's string[] expectation
@@ -166,6 +197,7 @@ function GraphCanvas() {
       <ReactFlow
         nodes={highlightedNodes}
         edges={highlightedEdges}
+        onNodesChange={handleNodesChange}
         onNodeClick={onNodeClick}
         onNodeMouseEnter={(_, node) => setHoveredNodeId(node.id)}
         onNodeMouseLeave={() => setHoveredNodeId(null)}

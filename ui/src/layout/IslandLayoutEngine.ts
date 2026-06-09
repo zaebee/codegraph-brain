@@ -186,7 +186,6 @@ export class IslandLayoutEngine {
           padding: 0,
         },
         data: { ...node.data, isExpanded: true },
-        draggable: false,
       }
     }
 
