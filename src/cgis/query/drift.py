@@ -91,7 +91,7 @@ class DriftScorer:
         if not constraints:
             return self._zero_drift_report(actual, domain)
 
-        total_weight = sum(self._weights[name] for name in constraints)
+        total_weight = sum(self._weights.get(name, 0.0) for name in constraints)
         violations: list[str] = []
         drift_sum = 0.0
         ideal_overrides: dict[str, float] = {}
@@ -104,7 +104,9 @@ class DriftScorer:
             ideal_overrides[name] = ideal_val
             component_drift = min(raw / norm, 1.0)
             weight = (
-                self._weights[name] / total_weight if total_weight > 0.0 else 1.0 / len(constraints)
+                self._weights.get(name, 0.0) / total_weight
+                if total_weight > 0.0
+                else 1.0 / len(constraints)
             )
             drift_sum += weight * component_drift
 

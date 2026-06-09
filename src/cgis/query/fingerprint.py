@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from cgis.core.models import Edge, EdgeType
+from cgis.core.models import Edge, EdgeType, Node
 from cgis.query.health import HealthScorer
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -98,15 +98,16 @@ def _max_dag_depth(domain_ids: set[str], internal_edges: list[Edge]) -> int:
 def _count_routers(domain_node_ids: set[str], all_edges: list[Edge]) -> int:
     """Count domain nodes with fan_out > 2 whose CALLS targets don't import them."""
     imported_by: dict[str, set[str]] = {}
+    calls_by_source: dict[str, list[str]] = {}
     for e in all_edges:
         if e.type == EdgeType.IMPORTS:
             imported_by.setdefault(e.target, set()).add(e.source)
+        elif e.type == EdgeType.CALLS:
+            calls_by_source.setdefault(e.source, []).append(e.target)
 
     router_count = 0
     for node_id in domain_node_ids:
-        calls_targets = [
-            e.target for e in all_edges if e.source == node_id and e.type == EdgeType.CALLS
-        ]
+        calls_targets = calls_by_source.get(node_id, [])
         if len(calls_targets) <= _ROUTER_FAN_OUT_THRESHOLD:
             continue
         node_importers = imported_by.get(node_id, set())
@@ -122,13 +123,19 @@ class FingerprintExtractor:
     def __init__(self, store: SQLiteStore) -> None:
         """Accept an open SQLiteStore (must already be connected)."""
         self._store = store
+        self._cache: tuple[list[Node], list[Edge]] | None = None
+
+    def _loaded(self) -> tuple[list[Node], list[Edge]]:
+        """Return (enriched_nodes, all_edges), fetching from the store once and caching."""
+        if self._cache is None:
+            all_nodes = self._store.get_all_nodes()
+            all_edges = self._store.get_all_edges()
+            self._cache = (HealthScorer(all_nodes, all_edges).enrich(), all_edges)
+        return self._cache
 
     def extract(self, fqn_prefix: str) -> PatternFingerprint:
         """Return the structural fingerprint for all nodes under fqn_prefix."""
-        all_nodes = self._store.get_all_nodes()
-        all_edges = self._store.get_all_edges()
-
-        enriched_all = HealthScorer(all_nodes, all_edges).enrich()
+        enriched_all, all_edges = self._loaded()
 
         domain_nodes = [n for n in enriched_all if _in_domain(n.id, fqn_prefix)]
         if not domain_nodes:

@@ -50,6 +50,13 @@ class OutputFormat(StrEnum):
     MERMAID = "mermaid"
 
 
+class DriftOutputFormat(StrEnum):
+    """Supported output formats for the drift command."""
+
+    TEXT = "text"
+    JSON = "json"
+
+
 console = Console()
 app = typer.Typer(help="CGIS: Code Graph Intelligence System CLI")
 
@@ -794,8 +801,8 @@ def drift(
         "-p",
         help="Path to a patterns.yaml file with domain expectations.",
     ),
-    output_format: OutputFormat = typer.Option(
-        OutputFormat.TEXT, "--format", "-f", help="Output format: text or json"
+    output_format: DriftOutputFormat = typer.Option(
+        DriftOutputFormat.TEXT, "--format", "-f", help="Output format: text or json"
     ),
     max_drift: float = typer.Option(
         0.50,
@@ -834,7 +841,7 @@ def drift(
 
     any_critical = any(r.drift_score >= max_drift for r in reports)
 
-    if output_format.value == "json":
+    if output_format == DriftOutputFormat.JSON:
         typer.echo(_json.dumps([dataclasses.asdict(r) for r in reports], indent=2))
         if any_critical:
             raise typer.Exit(code=1)
