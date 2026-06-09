@@ -63,10 +63,10 @@ class DriftScorer:
 
     def __init__(self, patterns_config: str) -> None:
         """Load and parse the patterns YAML file at patterns_config path."""
-        raw: dict[str, Any] = yaml.safe_load(Path(patterns_config).read_text())
-        self._weights: dict[str, float] = raw["drift_weights"]
-        self._patterns: dict[str, dict[str, Any]] = raw["patterns"]
-        self._project_domains: list[dict[str, Any]] = raw["project_domains"]
+        raw: dict[str, Any] = yaml.safe_load(Path(patterns_config).read_text()) or {}
+        self._weights: dict[str, float] = raw.get("drift_weights") or {}
+        self._patterns: dict[str, dict[str, Any]] = raw.get("patterns") or {}
+        self._project_domains: list[dict[str, Any]] = raw.get("project_domains") or []
 
     def load_project_domains(self) -> list[DomainConfig]:
         """Return all project domains declared in patterns.yaml."""

@@ -43,7 +43,7 @@ def _avg_chain_length(domain_ids: set[str], internal_calls: list[Edge]) -> float
             adj.setdefault(e.source, []).append(e.target)
             has_incoming.add(e.target)
 
-    sources = [n for n in domain_ids if n not in has_incoming and n in adj]
+    sources = sorted(n for n in domain_ids if n not in has_incoming and n in adj)
     if not sources:
         return 0.0
 
@@ -74,7 +74,7 @@ def _max_dag_depth(domain_ids: set[str], internal_edges: list[Edge]) -> int:
             adj.setdefault(e.source, []).append(e.target)
             has_incoming.add(e.target)
 
-    roots = [n for n in domain_ids if n not in has_incoming and n in adj]
+    roots = sorted(n for n in domain_ids if n not in has_incoming and n in adj)
     if not roots:
         return 0
 
