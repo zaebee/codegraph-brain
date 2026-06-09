@@ -1,5 +1,6 @@
 """PatternFingerprint dataclass and FingerprintExtractor."""
 
+from collections import Counter
 from dataclasses import dataclass
 
 from cgis.core.models import Edge, EdgeType, Node
@@ -140,17 +141,16 @@ class FingerprintExtractor:
         internal_edges = [e for e in all_edges if e.source in domain_ids and e.target in domain_ids]
         domain_outgoing = [e for e in all_edges if e.source in domain_ids]
 
+        # Fan-in/fan-out over intra-domain CALLS only — external targets
+        # (stdlib, other domains) would otherwise inflate star/hub counts.
+        fan_in = Counter(e.target for e in internal_edges if e.type == EdgeType.CALLS)
+        fan_out = Counter(e.source for e in internal_edges if e.type == EdgeType.CALLS)
+
         hub_count = sum(
-            1
-            for n in domain_nodes
-            if n.metadata.get("fan_in", 0) > _HUB_FAN_IN_THRESHOLD
-            and n.metadata.get("fan_out", 0) == 0
+            1 for n in domain_nodes if fan_in[n.id] > _HUB_FAN_IN_THRESHOLD and fan_out[n.id] == 0
         )
         star_count = sum(
-            1
-            for n in domain_nodes
-            if n.metadata.get("fan_out", 0) > _STAR_FAN_OUT_THRESHOLD
-            and n.metadata.get("fan_in", 0) <= 1
+            1 for n in domain_nodes if fan_out[n.id] > _STAR_FAN_OUT_THRESHOLD and fan_in[n.id] <= 1
         )
         chain_len = _avg_chain_length(domain_ids, internal_edges)
         dag_depth = _max_dag_depth(domain_ids, internal_edges)

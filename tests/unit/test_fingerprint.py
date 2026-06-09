@@ -124,6 +124,38 @@ def test_star_count_detects_high_fan_out_low_fan_in() -> None:
     assert fp.star_count == 1
 
 
+def test_star_count_ignores_external_calls() -> None:
+    """Calls to targets outside the domain (stdlib, other domains) must not create a star."""
+    nodes = [_node("dom.fn")]
+    edges = [
+        _edge("dom.fn", "pathlib.Path"),
+        _edge("dom.fn", "json.dumps"),
+        _edge("dom.fn", "other.helper"),
+        _edge("dom.fn", "os.getcwd"),
+    ]
+    with _store(nodes, edges) as store:
+        fp = FingerprintExtractor(store).extract("dom")
+    assert fp.star_count == 0
+
+
+def test_hub_count_ignores_external_callers() -> None:
+    """Incoming calls from outside the domain must not create a hub."""
+    nodes = [
+        _node("dom.util"),
+        _node("other.c1"),
+        _node("other.c2"),
+        _node("other.c3"),
+    ]
+    edges = [
+        _edge("other.c1", "dom.util"),
+        _edge("other.c2", "dom.util"),
+        _edge("other.c3", "dom.util"),
+    ]
+    with _store(nodes, edges) as store:
+        fp = FingerprintExtractor(store).extract("dom")
+    assert fp.hub_count == 0
+
+
 def test_star_count_zero_when_fan_out_is_three() -> None:
     """fan_out == 3 does not qualify as a star (threshold is > 3)."""
     nodes = [_node("dom.n"), _node("dom.l1"), _node("dom.l2"), _node("dom.l3")]

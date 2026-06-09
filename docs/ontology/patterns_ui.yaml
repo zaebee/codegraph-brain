@@ -1,0 +1,71 @@
+version: "1.0.0"
+
+# DEPRECATED ON ARRIVAL — do not extend this file.
+# Forking the pattern vocabulary per graph is ontological drift; the unified
+# alphabet (single patterns.yaml + parameterized templates + per-graph
+# measurement profiles) replaces this file. See
+# docs/specs/2026-06-09-pattern-alphabet-motif-basis-design.md (Part A).
+
+# Drift weights for the UI graph (must sum exactly to 1.0).
+# The TS extractor resolves fewer CALLS than the Python one (JSX, framework
+# indirection), so structural components carry less weight than hygiene ones.
+drift_weights:
+  hub_count:        0.10
+  star_count:       0.10
+  chain_len:        0.10
+  dag_depth:        0.15
+  router_count:     0.10
+  cycle_ratio:      0.30
+  unresolved_ratio: 0.15
+
+# UI-specific pattern templates.
+patterns:
+  leaf_module:
+    description: "Self-contained module — hygiene only: acyclic, mostly resolved"
+    cycle_ratio:      {max: 0.0}
+    unresolved_ratio: {max: 0.2}
+
+  pure_utility:
+    description: "Shared module with at least one internal hub; depends on nothing"
+    hub_count:        {min: 1}
+    star_count:       {exact: 0}
+    cycle_ratio:      {max: 0.0}
+    unresolved_ratio: {max: 0.1}
+
+  shallow_dag:
+    description: "Component tree — layered imports at least two levels deep, acyclic"
+    dag_depth:        {min: 2}
+    cycle_ratio:      {max: 0.0}
+
+# UI domain expectations. FQN prefixes are relative to ui/src
+# (cgis ingest ui/src → components/Foo.tsx becomes components.Foo).
+project_domains:
+  - name: "components"
+    fqn_prefix: "components"
+    expected_pattern: shallow_dag
+    drift_tolerance: 0.15
+
+  - name: "layout"
+    fqn_prefix: "layout"
+    expected_pattern: pure_utility
+    drift_tolerance: 0.15
+
+  - name: "hooks"
+    fqn_prefix: "hooks"
+    expected_pattern: leaf_module
+    drift_tolerance: 0.15
+
+  - name: "store"
+    fqn_prefix: "store"
+    expected_pattern: leaf_module
+    drift_tolerance: 0.15
+
+  - name: "providers"
+    fqn_prefix: "providers"
+    expected_pattern: leaf_module
+    drift_tolerance: 0.15
+
+  - name: "utils"
+    fqn_prefix: "utils"
+    expected_pattern: leaf_module
+    drift_tolerance: 0.15
