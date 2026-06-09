@@ -37,9 +37,11 @@ def test_ts_file_nodes_exist(ts_graph_data: tuple[SQLiteStore, list[Node], list[
     """Known .ts and .tsx files must be present as FILE nodes."""
     store, _, _ = ts_graph_data
     expected_files = [
-        "App.tsx",
-        "hooks/useGraphFilter.ts",
+        "store/useGraphStore.ts",
+        "providers/GraphProvider.tsx",
+        "hooks/useLayoutComputation.ts",
         "hooks/useFlowNavigation.ts",
+        "components/GraphShell.tsx",
         "components/ControlPanel.tsx",
         "components/FileContainerNode.tsx",
     ]
@@ -54,12 +56,11 @@ def test_ts_function_nodes_exist(ts_graph_data: tuple[SQLiteStore, list[Node], l
     """Known exported functions must be present as FUNCTION/METHOD nodes."""
     store, _, _ = ts_graph_data
     expected = [
-        _fqn("hooks/useGraphFilter.ts", "useGraphFilter"),
+        _fqn("providers/GraphProvider.tsx", "GraphProvider"),
+        _fqn("hooks/useLayoutComputation.ts", "useLayoutComputation"),
         _fqn("hooks/useFlowNavigation.ts", "useFlowNavigation"),
         _fqn("hooks/useSearch.ts", "useSearch"),
-        _fqn("hooks/useGraphFetch.ts", "useGraphFetch"),
         _fqn("hooks/useExport.ts", "useExport"),
-        _fqn("utils.ts", "aggregateEdges"),
         _fqn("utils.ts", "filterValidEdges"),
     ]
     for fqn in expected:

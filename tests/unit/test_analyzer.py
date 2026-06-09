@@ -6,7 +6,8 @@ from typing import Any
 import pytest
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
-from cgis.query.analyzer import AnalyzerEngine, _tarjan_scc
+from cgis.query._scc import tarjan_scc as _tarjan_scc  # alias keeps call-sites unchanged
+from cgis.query.analyzer import AnalyzerEngine
 from cgis.query.anomaly import AnomalyType
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -80,7 +81,7 @@ def _contains(parent: str, child: str) -> Edge:
 
 
 # ---------------------------------------------------------------------------
-# _tarjan_scc (unit tests — no DB)
+# tarjan_scc (unit tests — no DB)
 # ---------------------------------------------------------------------------
 
 

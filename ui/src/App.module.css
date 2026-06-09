@@ -1,0 +1,106 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:global(body) {
+  background: var(--color-bg-primary);
+}
+
+.app-root {
+  width: 100vw;
+  height: 100vh;
+  background: var(--color-bg-primary);
+}
+
+:global(.react-flow__node[data-id]) {
+  transition: box-shadow 0.3s, transform 0.5s ease, opacity 0.7s ease-in-out;
+  cursor: pointer;
+}
+
+:global(.react-flow__node[data-id]:hover) {
+  box-shadow: 0 4px 20px rgba(79, 195, 247, 0.3);
+}
+
+:global(.react-flow__edge-text) {
+  font-size: var(--font-size-xs);
+  fill: var(--color-text-muted);
+}
+
+:global(.react-flow__edge-path) {
+  transition: opacity 0.7s ease-in-out;
+}
+
+:global(.react-flow__controls) {
+  overflow: hidden;
+}
+
+:global(.react-flow__controls .react-flow__controls-button) {
+  background: var(--color-bg-control);
+  border-bottom: 1px solid var(--color-border);
+  fill: var(--color-text-secondary);
+}
+
+:global(.react-flow__controls .react-flow__controls-button:hover) {
+  background: var(--color-bg-elevated);
+  fill: #e6edf3;
+}
+
+:global(.react-flow__minimap) {
+  overflow: hidden;
+}
+
+:global(.react-flow__background) {
+  background-color: var(--color-bg-primary);
+}
+
+.error-boundary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: var(--color-bg-primary);
+  color: #c9d1d9;
+  gap: var(--spacing-lg);
+}
+
+.error-boundary h2 {
+  font-size: var(--font-size-2xl);
+  color: var(--color-danger);
+}
+
+.error-boundary p {
+  font-size: var(--font-size-lg);
+  color: var(--color-text-secondary);
+  max-width: 400px;
+  text-align: center;
+}
+
+.loading-indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  background: rgba(13, 17, 23, 0.9);
+  border: 1px solid #333;
+  border-radius: var(--radius-md);
+  padding: var(--spacing-sm) var(--spacing-lg);
+  color: #b0bec5;
+  font-size: var(--font-size-lg);
+}
+
+.loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #333;
+  border-top-color: #4fc3f7;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
