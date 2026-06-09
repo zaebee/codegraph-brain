@@ -282,3 +282,56 @@ def test_optional_chain_call_skipped(extractor: TypeScriptExtractor) -> None:
     # this test documents the current behaviour and catches regressions.
     targets = {e.target for e in calls}
     assert all(t.startswith("raw_call:") for t in targets)
+
+
+# ---------------------------------------------------------------------------
+# source_root
+# ---------------------------------------------------------------------------
+
+
+def test_fqn_with_source_root() -> None:
+    """source_root strips the leading directory before dotting."""
+    assert file_path_to_module_fqn("src/api/handler.ts", source_root="src") == "api.handler"
+
+
+def test_fqn_source_root_index_stripped() -> None:
+    """index suffix is still dropped after source_root stripping."""
+    assert file_path_to_module_fqn("src/components/index.tsx", source_root="src") == "components"
+
+
+def test_fqn_source_root_trailing_slash() -> None:
+    """Trailing slash in source_root is handled gracefully."""
+    assert file_path_to_module_fqn("src/api/handler.ts", source_root="src/") == "api.handler"
+
+
+def test_fqn_source_root_no_match() -> None:
+    """When file_path does not start with source_root, no stripping occurs."""
+    assert file_path_to_module_fqn("lib/utils.ts", source_root="src") == "lib.utils"
+
+
+def test_typescript_extractor_source_roots_strips_prefix() -> None:
+    """TypeScriptExtractor(source_roots=['src']) yields FQNs without the 'src.' prefix."""
+    ext = TypeScriptExtractor(source_roots=["src"])
+    code = "export function hello() {}"
+    nodes, _ = ext.parse(code, "src/api/handler.ts")
+    fqns = [n.id for n in nodes]
+    assert all(not fqn.startswith("src.") for fqn in fqns)
+    assert any(fqn.startswith("api.") for fqn in fqns)
+
+
+def test_typescript_extractor_source_roots_none_is_unchanged() -> None:
+    """TypeScriptExtractor() without source_roots behaves as before."""
+    ext = TypeScriptExtractor()
+    code = "export function hello() {}"
+    nodes, _ = ext.parse(code, "src/api/handler.ts")
+    fqns = [n.id for n in nodes]
+    assert any(fqn.startswith("src.api.") for fqn in fqns)
+
+
+def test_typescript_extractor_source_roots_unmatched_root() -> None:
+    """If no source_root matches the file, FQN is built from the full path."""
+    ext = TypeScriptExtractor(source_roots=["lib"])
+    code = "export function hello() {}"
+    nodes, _ = ext.parse(code, "src/api/handler.ts")
+    fqns = [n.id for n in nodes]
+    assert any(fqn.startswith("src.api.") for fqn in fqns)
