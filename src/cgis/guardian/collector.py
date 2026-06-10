@@ -12,6 +12,22 @@ from cgis.storage.sqlite_store import SQLiteStore
 
 log = structlog.getLogger(__name__)
 
+VALID_FEATURES = frozenset({"full_files", "flow", "drift"})
+
+
+def parse_features(raw: str) -> frozenset[str]:
+    """Parse a GUARDIAN_FEATURES value ('full_files,flow,drift') into a validated set.
+
+    Raises ValueError on unknown names: a typo silently disabling an ablation
+    arm would corrupt the benchmark comparison.
+    """
+    items = {item.strip() for item in raw.split(",") if item.strip()}
+    unknown = items - VALID_FEATURES
+    if unknown:
+        _msg = f"Unknown GUARDIAN_FEATURES: {sorted(unknown)}; valid: {sorted(VALID_FEATURES)}"
+        raise ValueError(_msg)
+    return frozenset(items)
+
 
 class ContextCollector:
     """Gathers all necessary context for the review."""
@@ -23,6 +39,7 @@ class ContextCollector:
         db_path: Path | None = None,
         base_ref: str | None = None,
         source_root: str = "src",
+        features: frozenset[str] = frozenset(),
     ) -> None:
         """Set project root, diff base (branch or explicit ref), and optional graph DB.
 
@@ -32,12 +49,15 @@ class ContextCollector:
         source_root must match the ingest root used to build the graph DB
         (CI runs `cgis ingest ./src`): node FQNs are relative to that root,
         so changed-file paths are stripped of it before lookup.
+
+        features gates the optional context sections (spec §4): "full_files", "flow", "drift".
         """
         self.project_root = project_root
         self.base_branch = base_branch
         self.db_path = db_path
         self.base_ref = base_ref
         self.source_root = source_root
+        self.features = features
         self.graph_stats: dict[str, int] = {"total": 0, "with_graph": 0}
 
     def _diff_range(self) -> str:

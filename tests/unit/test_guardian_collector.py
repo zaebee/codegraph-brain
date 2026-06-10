@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
-from cgis.guardian.collector import ContextCollector
+from cgis.guardian.collector import ContextCollector, parse_features
 
 
 def _make_node(fqn: str, file_path: str = "src/cgis/pipeline.py") -> Node:
@@ -150,3 +150,21 @@ def test_base_ref_overrides_origin_prefix(tmp_path: Path) -> None:
     diff = collector.get_git_diff()
     assert "x = 2" in diff
     assert collector.get_changed_py_files() == ["a.py"]
+
+
+def test_parse_features_valid_and_empty() -> None:
+    """parse_features splits, strips, validates; empty string means no features."""
+    assert parse_features("") == frozenset()
+    assert parse_features("full_files, drift") == frozenset({"full_files", "drift"})
+
+
+def test_parse_features_unknown_raises() -> None:
+    """An unknown feature name fails loud — silent typos would skew ablations."""
+    with pytest.raises(ValueError, match="Unknown GUARDIAN_FEATURES"):
+        parse_features("full_files,typo")
+
+
+def test_collector_default_features_empty(tmp_path: Path) -> None:
+    """Default ContextCollector has no features enabled (baseline behavior)."""
+    collector = ContextCollector(project_root=tmp_path)
+    assert collector.features == frozenset()
