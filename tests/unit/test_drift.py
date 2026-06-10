@@ -485,3 +485,87 @@ def test_unresolvable_placeholder_raises(tmp_path: Path) -> None:
     domain = scorer.load_project_domains()[0]
     with pytest.raises(ValueError, match="min_depth"):
         scorer.score(_fp_with_dag(2), domain)
+
+
+# ── Task 4: hygiene block ─────────────────────────────────────────────────────
+
+_YAML_HYGIENE = """\
+version: "2.0.0"
+drift_weights:
+  hub_count:        0.15
+  star_count:       0.15
+  chain_len:        0.10
+  dag_depth:        0.10
+  router_count:     0.10
+  cycle_ratio:      0.25
+  unresolved_ratio: 0.15
+hygiene:
+  cycle_ratio:      {max: 0.0}
+  unresolved_ratio: {max: 0.2}
+patterns:
+  pure_utility:
+    description: "Hub"
+    hub_count:        {min: 1}
+    unresolved_ratio: {max: 0.1}
+project_domains:
+  - name: "hygiene_only"
+    fqn_prefix: "hooks"
+    drift_tolerance: 0.15
+  - name: "templated"
+    fqn_prefix: "lib"
+    expected_pattern: pure_utility
+    drift_tolerance: 0.15
+"""
+
+
+@pytest.fixture
+def hygiene_scorer(tmp_path: Path) -> DriftScorer:
+    """Return a DriftScorer with a global hygiene block."""
+    p = tmp_path / "patterns.yaml"
+    p.write_text(_YAML_HYGIENE)
+    return DriftScorer(str(p))
+
+
+def _hygiene_fp(cycle: float = 0.0, unresolved: float = 0.0, hub: int = 1) -> PatternFingerprint:
+    """Fingerprint helper for hygiene tests."""
+    return PatternFingerprint(
+        domain="hooks",
+        hub_count=hub,
+        star_count=0,
+        chain_len=0.0,
+        dag_depth=0,
+        router_count=0,
+        cycle_ratio=cycle,
+        unresolved_ratio=unresolved,
+    )
+
+
+def test_hygiene_only_domain_clean_when_hygienic(hygiene_scorer: DriftScorer) -> None:
+    """No expected_pattern + clean cycles/resolution → zero drift."""
+    domain = hygiene_scorer.load_project_domains()[0]
+    report = hygiene_scorer.score(_hygiene_fp(), domain)
+    assert report.drift_score == pytest.approx(0.0)
+    assert report.expected_pattern is None
+
+
+def test_hygiene_only_domain_flags_cycles(hygiene_scorer: DriftScorer) -> None:
+    """A cycle in a hygiene-only domain violates the global invariant."""
+    domain = hygiene_scorer.load_project_domains()[0]
+    report = hygiene_scorer.score(_hygiene_fp(cycle=0.5), domain)
+    assert report.drift_score > 0.0
+    assert any("cycle_ratio" in v for v in report.violations)
+
+
+def test_template_constraint_wins_over_hygiene(hygiene_scorer: DriftScorer) -> None:
+    """pure_utility's unresolved max:0.1 overrides hygiene's max:0.2."""
+    domain = hygiene_scorer.load_project_domains()[1]
+    report = hygiene_scorer.score(_hygiene_fp(unresolved=0.15), domain)
+    # 0.15 is legal under hygiene (0.2) but violates the template (0.1)
+    assert any("unresolved_ratio" in v for v in report.violations)
+
+
+def test_hygiene_applies_to_templated_domain(hygiene_scorer: DriftScorer) -> None:
+    """pure_utility has no cycle constraint of its own — hygiene's max:0.0 still applies."""
+    domain = hygiene_scorer.load_project_domains()[1]
+    report = hygiene_scorer.score(_hygiene_fp(cycle=0.3), domain)
+    assert any("cycle_ratio" in v for v in report.violations)

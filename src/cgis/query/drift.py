@@ -42,7 +42,7 @@ class DriftReport:
 
     domain: str
     fqn_prefix: str
-    expected_pattern: str
+    expected_pattern: str | None
     actual: PatternFingerprint
     ideal: PatternFingerprint
     drift_score: float
@@ -152,25 +152,25 @@ class DriftScorer:
 
     def score(self, actual: PatternFingerprint, domain: DomainConfig) -> DriftReport:
         """Compute the drift score and return a DriftReport."""
-        expected_pattern = domain.expected_pattern
-        if expected_pattern is None:
-            msg = (
-                f"Domain '{domain.name}' has no expected_pattern "
-                "(hygiene-only domains land in a later commit)."
-            )
-            raise NotImplementedError(msg)
-        template = self._patterns.get(expected_pattern)
-        if template is None:
-            msg = f"Expected pattern '{expected_pattern}' not found in patterns config."
-            raise ValueError(msg)
-        if not isinstance(template, dict):
-            msg = f"Pattern '{expected_pattern}' must be a mapping of constraints."
-            raise TypeError(msg)
-        params = self._merge_params(template, domain)
-        constraints = self._parse_constraints(template, params)
+        if domain.expected_pattern is None:
+            template: dict[str, Any] = {}
+            params: dict[str, float] = {}
+        else:
+            found = self._patterns.get(domain.expected_pattern)
+            if found is None:
+                msg = f"Expected pattern '{domain.expected_pattern}' not found in patterns config."
+                raise ValueError(msg)
+            if not isinstance(found, dict):
+                msg = f"Pattern '{domain.expected_pattern}' must be a mapping of constraints."
+                raise TypeError(msg)
+            template = found
+            params = self._merge_params(template, domain)
+
+        hygiene = self._parse_constraints(self._hygiene, {})
+        constraints = {**hygiene, **self._parse_constraints(template, params)}
 
         if not constraints:
-            return self._zero_drift_report(actual, expected_pattern, domain)
+            return self._zero_drift_report(actual, domain)
 
         weights = self._weights_for(domain)
         total_weight = sum(weights.get(name, 0.0) for name in constraints)
@@ -206,7 +206,7 @@ class DriftScorer:
         return DriftReport(
             domain=domain.name,
             fqn_prefix=domain.fqn_prefix,
-            expected_pattern=expected_pattern,
+            expected_pattern=domain.expected_pattern,
             actual=actual,
             ideal=ideal_fp,
             drift_score=round(drift_sum, 6),
@@ -215,9 +215,7 @@ class DriftScorer:
             tolerance=domain.drift_tolerance,
         )
 
-    def _zero_drift_report(
-        self, actual: PatternFingerprint, expected_pattern: str, domain: DomainConfig
-    ) -> DriftReport:
+    def _zero_drift_report(self, actual: PatternFingerprint, domain: DomainConfig) -> DriftReport:
         """Return a clean zero-drift report for domains with no constraints."""
         ideal_fp = PatternFingerprint(
             domain=domain.fqn_prefix,
@@ -232,7 +230,7 @@ class DriftScorer:
         return DriftReport(
             domain=domain.name,
             fqn_prefix=domain.fqn_prefix,
-            expected_pattern=expected_pattern,
+            expected_pattern=domain.expected_pattern,
             actual=actual,
             ideal=ideal_fp,
             drift_score=0.0,
