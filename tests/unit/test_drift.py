@@ -635,6 +635,10 @@ def test_full_unresolved_zeroes_calls_layer(discount_scorer: DriftScorer) -> Non
     )
     report = discount_scorer.score(fp_imports_clean, domain)
     assert report.drift_score == pytest.approx(0.0)
+    # Violations are still REPORTED for discounted components — only the
+    # score honors the discount (plan: Out of Scope / violation suppression).
+    assert any("hub_count" in v for v in report.violations)
+    assert any("star_count" in v for v in report.violations)
 
 
 def test_discount_scales_calls_contribution(discount_scorer: DriftScorer) -> None:
