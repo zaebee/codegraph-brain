@@ -20,6 +20,8 @@ _COMPONENT_NAMES = (
     "unresolved_ratio",
 )
 
+_CALLS_LAYER = frozenset({"hub_count", "star_count", "chain_len", "router_count"})
+
 _STATUS_WARNING = 0.20
 _STATUS_CRITICAL = 0.50
 
@@ -61,7 +63,12 @@ def _classify(score: float) -> Literal["clean", "warning", "critical"]:
 
 
 class DriftScorer:
-    """Load patterns.yaml and score actual PatternFingerprints against ideal templates."""
+    """Load patterns.yaml and score actual PatternFingerprints against ideal templates.
+
+    Global hygiene invariants apply to every domain (template constraints win per
+    component); CALLS-derived component weights are discounted by
+    (1 - unresolved_ratio) before renormalization.
+    """
 
     def __init__(self, patterns_config: str) -> None:
         """Load and parse the patterns YAML file at patterns_config path."""
@@ -70,7 +77,7 @@ class DriftScorer:
         self._weights: dict[str, float] = raw.get("drift_weights") or {}
         self._patterns: dict[str, dict[str, Any]] = raw.get("patterns") or {}
         self._project_domains: list[dict[str, Any]] = raw.get("project_domains") or []
-        # Read by profile selection and hygiene merging (Tasks 2 and 4 of Part A).
+        # Used by profile selection (Task 2) and hygiene merging (Task 4).
         self._profiles: dict[str, dict[str, Any]] = raw.get("profiles") or {}
         self._hygiene: dict[str, Any] = raw.get("hygiene") or {}
 
@@ -173,7 +180,13 @@ class DriftScorer:
             return self._zero_drift_report(actual, domain)
 
         weights = self._weights_for(domain)
-        total_weight = sum(weights.get(name, 0.0) for name in constraints)
+        discount = 1.0 - actual.unresolved_ratio
+        raw_weights = {name: weights.get(name, 0.0) for name in constraints}
+        eff_weights = {
+            name: w * discount if name in _CALLS_LAYER else w for name, w in raw_weights.items()
+        }
+        raw_total = sum(raw_weights.values())
+        eff_total = sum(eff_weights.values())
         violations: list[str] = []
         drift_sum = 0.0
         ideal_overrides: dict[str, float] = {}
@@ -185,11 +198,10 @@ class DriftScorer:
                 violations.append(violation)
             ideal_overrides[name] = ideal_val
             component_drift = min(raw / norm, 1.0)
-            weight = (
-                weights.get(name, 0.0) / total_weight
-                if total_weight > 0.0
-                else 1.0 / len(constraints)
-            )
+            if raw_total > 0.0:
+                weight = eff_weights[name] / eff_total if eff_total > 0.0 else 0.0
+            else:
+                weight = 1.0 / len(constraints)
             drift_sum += weight * component_drift
 
         ideal_fp = PatternFingerprint(

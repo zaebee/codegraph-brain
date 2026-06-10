@@ -569,3 +569,106 @@ def test_hygiene_applies_to_templated_domain(hygiene_scorer: DriftScorer) -> Non
     domain = hygiene_scorer.load_project_domains()[1]
     report = hygiene_scorer.score(_hygiene_fp(cycle=0.3), domain)
     assert any("cycle_ratio" in v for v in report.violations)
+
+
+# ── Task 5: confidence discount ───────────────────────────────────────────────
+
+_YAML_DISCOUNT = """\
+version: "2.0.0"
+drift_weights:
+  hub_count:        0.25
+  star_count:       0.25
+  chain_len:        0.0
+  dag_depth:        0.25
+  router_count:     0.0
+  cycle_ratio:      0.25
+  unresolved_ratio: 0.0
+patterns:
+  mixed:
+    description: "CALLS + IMPORTS constraints"
+    hub_count:   {min: 2}
+    star_count:  {exact: 0}
+    dag_depth:   {min: 2}
+    cycle_ratio: {max: 0.0}
+project_domains:
+  - name: "m"
+    fqn_prefix: "m"
+    expected_pattern: mixed
+    drift_tolerance: 0.5
+"""
+
+
+@pytest.fixture
+def discount_scorer(tmp_path: Path) -> DriftScorer:
+    """Return a DriftScorer for confidence-discount tests."""
+    p = tmp_path / "patterns.yaml"
+    p.write_text(_YAML_DISCOUNT)
+    return DriftScorer(str(p))
+
+
+def _violating_fp(unresolved: float) -> PatternFingerprint:
+    """All four constraints violated; only unresolved_ratio varies."""
+    return PatternFingerprint(
+        domain="m",
+        hub_count=0,  # violates min:2
+        star_count=3,  # violates exact:0
+        chain_len=0.0,
+        dag_depth=0,  # violates min:2
+        router_count=0,
+        cycle_ratio=1.0,  # violates max:0.0
+        unresolved_ratio=unresolved,
+    )
+
+
+def test_full_unresolved_zeroes_calls_layer(discount_scorer: DriftScorer) -> None:
+    """At unresolved=1.0 CALLS components carry zero weight; clean IMPORTS → zero drift."""
+    domain = discount_scorer.load_project_domains()[0]
+    fp_imports_clean = PatternFingerprint(
+        domain="m",
+        hub_count=0,  # violates min:2 (CALLS) — but fully discounted
+        star_count=3,  # violates exact:0 (CALLS) — but fully discounted
+        chain_len=0.0,
+        dag_depth=2,  # satisfies (IMPORTS)
+        router_count=0,
+        cycle_ratio=0.0,  # satisfies (IMPORTS)
+        unresolved_ratio=1.0,
+    )
+    report = discount_scorer.score(fp_imports_clean, domain)
+    assert report.drift_score == pytest.approx(0.0)
+
+
+def test_discount_scales_calls_contribution(discount_scorer: DriftScorer) -> None:
+    """All components violated: discount renormalizes but everything is drift 1.0.
+
+    Pins the invariant: the discount changes *relative weights*; it must not
+    deflate a uniformly-violated domain below 1.0.
+    """
+    domain = discount_scorer.load_project_domains()[0]
+    assert discount_scorer.score(_violating_fp(0.0), domain).drift_score == pytest.approx(1.0)
+    assert discount_scorer.score(_violating_fp(0.6), domain).drift_score == pytest.approx(1.0)
+
+
+def test_discount_scaling_visible_when_only_calls_violated(
+    discount_scorer: DriftScorer,
+) -> None:
+    """With only CALLS components violated, drift falls as unresolved rises."""
+    domain = discount_scorer.load_project_domains()[0]
+
+    def fp(unresolved: float) -> PatternFingerprint:
+        return PatternFingerprint(
+            domain="m",
+            hub_count=0,  # violated (CALLS)
+            star_count=3,  # violated (CALLS)
+            chain_len=0.0,
+            dag_depth=2,  # clean (IMPORTS)
+            router_count=0,
+            cycle_ratio=0.0,  # clean (IMPORTS)
+            unresolved_ratio=unresolved,
+        )
+
+    d0 = discount_scorer.score(fp(0.0), domain).drift_score
+    d6 = discount_scorer.score(fp(0.6), domain).drift_score
+    # u=0.0: eff = (.25,.25,.25,.25), violated share = 0.5 → drift 0.5
+    # u=0.6: eff = (.1,.1,.25,.25) tot .7, violated share = .2/.7 ≈ 0.2857
+    assert d0 == pytest.approx(0.5)
+    assert d6 == pytest.approx(0.2 / 0.7, abs=1e-6)
