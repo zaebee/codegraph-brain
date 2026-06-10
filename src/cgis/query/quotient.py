@@ -26,9 +26,12 @@ def build_quotient(
     the quotient's unresolved_ratio is 0 for the observe-only milestone —
     recorded in tests/self_parsing/test_drift.py).
     """
+    # Longest-prefix match: if one domain's prefix nests inside another's,
+    # the most specific binding wins regardless of declaration order.
+    by_specificity = sorted(domains, key=lambda d: len(d.fqn_prefix), reverse=True)
     domain_of: dict[str, str] = {}
     for n in nodes:
-        for d in domains:
+        for d in by_specificity:
             if n.id == d.fqn_prefix or n.id.startswith(d.fqn_prefix + "."):
                 domain_of[n.id] = d.name
                 break
@@ -64,6 +67,8 @@ def build_quotient(
             weight=float(count),
             confidence=1.0,
         )
-        for (src, dst, etype), count in sorted(counts.items(), key=lambda kv: kv[0][:2])
+        for (src, dst, etype), count in sorted(
+            counts.items(), key=lambda kv: (kv[0][0], kv[0][1], kv[0][2].value)
+        )
     ]
     return qnodes, qedges
