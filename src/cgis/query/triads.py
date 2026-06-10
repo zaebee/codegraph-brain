@@ -7,6 +7,8 @@ unit tests pin one hand-built graph per class, which is the correctness anchor
 for the table.
 """
 
+from collections.abc import Iterator
+
 from cgis.core.models import Edge, EdgeType
 
 #: The 13 connected triad classes, canonical vector order for fingerprints.
@@ -131,12 +133,12 @@ def _classify(succ: dict[str, set[str]], v: str, u: str, w: str) -> str:
     return _TRIAD_NAMES[_TRICODES[code] - 1]
 
 
-def triad_census(node_ids: set[str], edges: list[Edge], edge_type: EdgeType) -> dict[str, int]:
-    """Count connected triads over intra-set edges of edge_type.
+def _adjacency(
+    node_ids: set[str], edges: list[Edge], edge_type: EdgeType
+) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
+    """Build (successor, undirected-neighbor) maps over intra-set edges of edge_type.
 
     Self-loops and edges touching nodes outside node_ids are ignored.
-    Each unordered triple is counted exactly once. O(Σ deg(v)²) — fine at
-    our scale (spec §3.6.3).
     """
     succ: dict[str, set[str]] = {n: set() for n in node_ids}
     nbrs: dict[str, set[str]] = {n: set() for n in node_ids}
@@ -147,21 +149,37 @@ def triad_census(node_ids: set[str], edges: list[Edge], edge_type: EdgeType) -> 
             succ[e.source].add(e.target)
             nbrs[e.source].add(e.target)
             nbrs[e.target].add(e.source)
+    return succ, nbrs
 
-    counts: dict[str, int] = dict.fromkeys(TRIAD_ORDER, 0)
-    seen: set[tuple[str, ...]] = set()
+
+def _connected_triples(
+    node_ids: set[str], nbrs: dict[str, set[str]]
+) -> Iterator[tuple[str, str, str]]:
+    """Yield each connected unordered triple exactly once, as a sorted 3-tuple."""
+    seen: set[tuple[str, str, str]] = set()
     for v in node_ids:
         for u in nbrs[v]:
             for w in nbrs[v] | nbrs[u]:
                 if w in (v, u):
                     continue
-                key = tuple(sorted((v, u, w)))
-                if key in seen:
-                    continue
-                seen.add(key)
-                # v-u adjacent and w adjacent to one of them => the triple is
-                # connected, so the class is always one of the 13.
-                counts[_classify(succ, key[0], key[1], key[2])] += 1
+                a, b, c = sorted((v, u, w))
+                if (a, b, c) not in seen:
+                    seen.add((a, b, c))
+                    yield a, b, c
+
+
+def triad_census(node_ids: set[str], edges: list[Edge], edge_type: EdgeType) -> dict[str, int]:
+    """Count connected triads over intra-set edges of edge_type.
+
+    Each unordered triple is counted exactly once. O(Σ deg(v)²) — fine at
+    our scale (spec §3.6.3).
+    """
+    succ, nbrs = _adjacency(node_ids, edges, edge_type)
+    counts: dict[str, int] = dict.fromkeys(TRIAD_ORDER, 0)
+    # Every yielded triple has v-u adjacent and w adjacent to one of them,
+    # so it is connected and the class is always one of the 13.
+    for a, b, c in _connected_triples(node_ids, nbrs):
+        counts[_classify(succ, a, b, c)] += 1
     return counts
 
 

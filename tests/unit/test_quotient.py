@@ -65,7 +65,7 @@ def test_quotient_edges_aggregated_cross_domain_only() -> None:
     _, qedges = build_quotient(_NODES, _EDGES, _DOMAINS)
     by_key = {(e.source, e.target, e.type): e for e in qedges}
     calls = by_key[(f"{QUOTIENT_PREFIX}.ext", f"{QUOTIENT_PREFIX}.res", EdgeType.CALLS)]
-    assert calls.weight == 2.0  # the duplicate aggregated
+    assert calls.weight == pytest.approx(2.0)  # the duplicate aggregated
     assert (f"{QUOTIENT_PREFIX}.ext", f"{QUOTIENT_PREFIX}.res", EdgeType.IMPORTS) in by_key
     assert len(qedges) == 3  # intra-domain and out-of-domain edges never appear
 

@@ -161,7 +161,7 @@ def test_tv_identical_vectors_zero() -> None:
     t = (1.0,) + (0.0,) * 12
     tv, contribs = tv_distance(t, t, (1.0,) * 13)
     assert tv == pytest.approx(0.0)
-    assert all(c == 0.0 for _, c in contribs)
+    assert all(c == pytest.approx(0.0) for _, c in contribs)
 
 
 def test_tv_disjoint_unit_vectors_one() -> None:

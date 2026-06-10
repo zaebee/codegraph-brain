@@ -77,16 +77,23 @@ def _classify(score: float) -> Literal["clean", "warning", "critical"]:
     return "critical"
 
 
+def _validate_mapping(node: object, owner: str) -> dict[str, Any]:
+    """Return node unchanged after validating it is a mapping.
+
+    Raises TypeError otherwise (e.g. a YAML block hand-edited into a list).
+    """
+    if not isinstance(node, dict):
+        msg = f"{owner} must be a mapping, got {type(node).__name__}."
+        raise TypeError(msg)
+    return node
+
+
 def _params_mapping(container: dict[str, Any], owner: str) -> dict[str, Any]:
     """Return the container's params block, validating it is a mapping.
 
     Raises TypeError if params is present but not a mapping (e.g. a list).
     """
-    node = container.get("params") or {}
-    if not isinstance(node, dict):
-        msg = f"{owner} params must be a mapping, got {type(node).__name__}."
-        raise TypeError(msg)
-    return node
+    return _validate_mapping(container.get("params") or {}, f"{owner} params")
 
 
 class DriftScorer:
@@ -182,6 +189,7 @@ class DriftScorer:
     @staticmethod
     def _ideal_layer(pattern_name: str, layer: dict[str, Any]) -> tuple[float, ...]:
         """Convert one {triad: share} mapping into a TRIAD_ORDER-aligned tuple."""
+        _validate_mapping(layer, f"Pattern '{pattern_name}' ideal layer")
         unknown = set(layer) - set(TRIAD_ORDER)
         if unknown:
             msg = f"Pattern '{pattern_name}' ideal names unknown triad(s) {sorted(unknown)}."
@@ -198,10 +206,14 @@ class DriftScorer:
         layers = profile.get("layers")
         if layers is None:
             return None
+        _validate_mapping(layers, f"Profile '{profile_name}' layers")
         if set(layers) != {"imports", "calls", "gates"}:
             msg = f"Profile '{profile_name}' layers must declare imports, calls, gates."
             raise ValueError(msg)
         result = {k: float(v) for k, v in layers.items()}
+        if any(v < 0.0 for v in result.values()):
+            msg = f"Profile '{profile_name}' layers must be non-negative, got {result}."
+            raise ValueError(msg)
         if abs(sum(result.values()) - 1.0) > 1e-9:
             msg = f"Profile '{profile_name}' layers must sum to 1.0, got {sum(result.values())}."
             raise ValueError(msg)
@@ -210,14 +222,20 @@ class DriftScorer:
     def triad_weights_for(self, profile_name: str) -> tuple[float, ...]:
         """Per-triad w_i for a profile; unlisted triads default to 1.0 (spec §3.3)."""
         profile = self._profiles.get(profile_name) or {}
-        declared: dict[str, Any] = profile.get("triad_weights") or {}
+        declared: dict[str, Any] = _validate_mapping(
+            profile.get("triad_weights") or {}, f"Profile '{profile_name}' triad_weights"
+        )
         unknown = set(declared) - set(TRIAD_ORDER)
         if unknown:
             msg = (
                 f"Profile '{profile_name}' triad_weights names unknown triad(s) {sorted(unknown)}."
             )
             raise ValueError(msg)
-        return tuple(float(declared.get(name, 1.0)) for name in TRIAD_ORDER)
+        weights = tuple(float(declared.get(name, 1.0)) for name in TRIAD_ORDER)
+        if any(w < 0.0 for w in weights):
+            msg = f"Profile '{profile_name}' triad_weights must be non-negative."
+            raise ValueError(msg)
+        return weights
 
     @staticmethod
     def _merge_params(template: dict[str, Any], domain: DomainConfig) -> dict[str, float]:

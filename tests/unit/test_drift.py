@@ -835,6 +835,60 @@ def test_triad_weights_default_one(v2_scorer: DriftScorer) -> None:
     assert w[TRIAD_ORDER.index("021C")] == pytest.approx(1.0)
 
 
+def test_ideal_layer_not_a_mapping_raises_type_error(tmp_path: Path) -> None:
+    """An ideal layer hand-edited into a list raises TypeError, not AttributeError."""
+    bad = _YAML_V2.replace('imports: {"021C": 1.0}', 'imports: ["021C"]')
+    assert bad != _YAML_V2
+    p = tmp_path / "patterns.yaml"
+    p.write_text(bad)
+    with pytest.raises(TypeError, match="mapping"):
+        DriftScorer(str(p)).ideal_for("pipeline_stage")
+
+
+def test_layers_not_a_mapping_raises_type_error(tmp_path: Path) -> None:
+    """A layers block hand-edited into a list raises TypeError, not AttributeError."""
+    bad = _YAML_V2.replace(
+        "layers:\n      imports: 0.35\n      calls:   0.35\n      gates:   0.30",
+        "layers: [0.35, 0.35, 0.30]",
+    )
+    assert bad != _YAML_V2
+    p = tmp_path / "patterns.yaml"
+    p.write_text(bad)
+    with pytest.raises(TypeError, match="mapping"):
+        DriftScorer(str(p)).layers_for("python")
+
+
+def test_layers_must_be_non_negative(tmp_path: Path) -> None:
+    """A negative layer weight raises ValueError even when the sum is 1.0."""
+    bad = _YAML_V2.replace("imports: 0.35\n      calls:   0.35\n      gates:   0.30", "")
+    bad = bad.replace("layers:", "layers: {imports: 1.5, calls: -0.5, gates: 0.0}")
+    assert bad != _YAML_V2
+    p = tmp_path / "patterns.yaml"
+    p.write_text(bad)
+    with pytest.raises(ValueError, match="non-negative"):
+        DriftScorer(str(p)).layers_for("python")
+
+
+def test_triad_weights_not_a_mapping_raises_type_error(tmp_path: Path) -> None:
+    """A triad_weights block hand-edited into a list raises TypeError."""
+    bad = _YAML_V2.replace('triad_weights:\n      "030C": 0.5', 'triad_weights: ["030C"]')
+    assert bad != _YAML_V2
+    p = tmp_path / "patterns.yaml"
+    p.write_text(bad)
+    with pytest.raises(TypeError, match="mapping"):
+        DriftScorer(str(p)).triad_weights_for("python")
+
+
+def test_triad_weights_must_be_non_negative(tmp_path: Path) -> None:
+    """A negative triad weight raises ValueError at load time."""
+    bad = _YAML_V2.replace('"030C": 0.5', '"030C": -0.5')
+    assert bad != _YAML_V2
+    p = tmp_path / "patterns.yaml"
+    p.write_text(bad)
+    with pytest.raises(ValueError, match="non-negative"):
+        DriftScorer(str(p)).triad_weights_for("python")
+
+
 def test_domain_config_enforce_defaults_true(v2_scorer: DriftScorer) -> None:
     """enforce defaults to True on every binding; explicit false is read."""
     domains = v2_scorer.load_project_domains()
