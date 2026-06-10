@@ -497,3 +497,11 @@ def test_build_user_prompt_lgtm_example_is_valid_json() -> None:
     parsed = json.loads(example)
     assert parsed["findings"] == []
     assert isinstance(parsed["summary"], str)
+
+
+def test_user_prompt_includes_full_files_section() -> None:
+    """The FULL FILE CONTENTS section appears iff the context provides it."""
+    with_files = PromptBuilder.build_user_prompt({"diff": "d", "full_files": "#### `a.py`"})
+    without = PromptBuilder.build_user_prompt({"diff": "d"})
+    assert "FULL FILE CONTENTS (HEAD)" in with_files
+    assert "FULL FILE CONTENTS" not in without

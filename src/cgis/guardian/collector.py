@@ -14,6 +14,9 @@ log = structlog.getLogger(__name__)
 
 VALID_FEATURES = frozenset({"full_files", "flow", "drift"})
 
+_MAX_FILE_LINES = 1200
+_MAX_TOTAL_CHARS = 120_000
+
 
 def parse_features(raw: str) -> frozenset[str]:
     """Parse a GUARDIAN_FEATURES value ('full_files,flow,drift') into a validated set.
@@ -101,6 +104,35 @@ class ContextCollector:
             return f"Error: File {relative_path} not found."
         return file_path.read_text()
 
+    def collect_full_files(self) -> str:
+        """Full HEAD text of changed .py files, smallest-first under budgets (spec §4.1).
+
+        Per-file cap ~1200 lines and a global ~120K-char budget; omitted files get
+        an explicit note so the model never reads absence-of-file as absence-of-code.
+        """
+        changed = self.get_changed_py_files()
+        sized: list[tuple[int, str, str]] = []
+        omitted: list[str] = []
+        for rel_path in changed:
+            path = self.project_root / rel_path
+            if not path.exists():  # deleted in this PR — nothing to show at HEAD
+                continue
+            text = path.read_text()
+            if text.count("\n") + 1 > _MAX_FILE_LINES:
+                omitted.append(f"file omitted: too large ({rel_path})")
+                continue
+            sized.append((len(text), rel_path, text))
+
+        sections: list[str] = []
+        used = 0
+        for size, rel_path, text in sorted(sized):
+            if used + size > _MAX_TOTAL_CHARS:
+                omitted.append(f"file omitted: budget exhausted ({rel_path})")
+                continue
+            used += size
+            sections.append(f"#### `{rel_path}`\n```python\n{text}\n```")
+        return "\n\n".join(sections + omitted)
+
     def collect_graph_context(self) -> str:
         """Query graph.db for impact graphs of changed files; return Mermaid blocks."""
         if self.db_path is None or not self.db_path.exists():
@@ -146,4 +178,8 @@ class ContextCollector:
         graph_context = self.collect_graph_context()
         if graph_context:
             context["graph_context"] = graph_context
+        if "full_files" in self.features:
+            full_files = self.collect_full_files()
+            if full_files:
+                context["full_files"] = full_files
         return context

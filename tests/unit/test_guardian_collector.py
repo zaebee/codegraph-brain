@@ -168,3 +168,57 @@ def test_collector_default_features_empty(tmp_path: Path) -> None:
     """Default ContextCollector has no features enabled (baseline behavior)."""
     collector = ContextCollector(project_root=tmp_path)
     assert collector.features == frozenset()
+
+
+def test_collect_full_files_reads_changed_files(tmp_path: Path) -> None:
+    """Full HEAD text of each changed .py file appears in a fenced block."""
+    (tmp_path / "small.py").write_text("x = 1\n")
+    collector = ContextCollector(project_root=tmp_path, features=frozenset({"full_files"}))
+    with patch.object(collector, "get_changed_py_files", return_value=["small.py"]):
+        result = collector.collect_full_files()
+    assert "#### `small.py`" in result
+    assert "x = 1" in result
+
+
+def test_collect_full_files_per_file_line_cap(tmp_path: Path) -> None:
+    """A file over the per-file line cap is omitted with an explicit note."""
+    (tmp_path / "big.py").write_text("x = 1\n" * 1300)
+    collector = ContextCollector(project_root=tmp_path, features=frozenset({"full_files"}))
+    with patch.object(collector, "get_changed_py_files", return_value=["big.py"]):
+        result = collector.collect_full_files()
+    assert "file omitted: too large (big.py)" in result
+    assert "```python" not in result
+
+
+def test_collect_full_files_global_budget_smallest_first(tmp_path: Path) -> None:
+    """The global char budget fills smallest-first; the overflow file gets a note."""
+    (tmp_path / "tiny.py").write_text("a = 1\n")
+    (tmp_path / "mid.py").write_text(("y" * 200 + "\n") * 1000)  # ~201K chars, 1000 lines
+    collector = ContextCollector(project_root=tmp_path, features=frozenset({"full_files"}))
+    with patch.object(collector, "get_changed_py_files", return_value=["mid.py", "tiny.py"]):
+        result = collector.collect_full_files()
+    assert "#### `tiny.py`" in result
+    assert "file omitted: budget exhausted (mid.py)" in result
+
+
+def test_collect_full_files_skips_deleted(tmp_path: Path) -> None:
+    """A changed file that no longer exists on HEAD (deleted) is skipped silently."""
+    collector = ContextCollector(project_root=tmp_path, features=frozenset({"full_files"}))
+    with patch.object(collector, "get_changed_py_files", return_value=["gone.py"]):
+        assert collector.collect_full_files() == ""
+
+
+def test_collect_all_full_files_gated_by_feature(tmp_path: Path) -> None:
+    """collect_all adds 'full_files' only when the feature flag is on."""
+    (tmp_path / "a.py").write_text("z = 3\n")
+    base = {"get_git_diff": "diff", "read_file": "content"}
+    off = ContextCollector(project_root=tmp_path)
+    on = ContextCollector(project_root=tmp_path, features=frozenset({"full_files"}))
+    for collector in (off, on):
+        with (
+            patch.object(collector, "get_git_diff", return_value=base["get_git_diff"]),
+            patch.object(collector, "read_file", return_value=base["read_file"]),
+            patch.object(collector, "get_changed_py_files", return_value=["a.py"]),
+        ):
+            context = collector.collect_all()
+        assert ("full_files" in context) == (collector is on)

@@ -39,6 +39,17 @@ Use these to identify callers that may be broken or require updates.
 {graph_context}
 """
 
+        full_files = context.get("full_files", "")
+        full_files_section = ""
+        if full_files:
+            full_files_section = f"""
+### 5. FULL FILE CONTENTS (HEAD)
+Complete current text of the changed files (oversized files carry an explicit
+omission note — treat a note as missing context, not missing code).
+
+{full_files}
+"""
+
         return f"""Review the following Pull Request diff for real defects.
 
 ### 1. ENGINEERING STANDARDS (from CONTRIBUTING.md)
@@ -49,7 +60,7 @@ Use these to identify callers that may be broken or require updates.
 
 ### 3. CHANGES TO REVIEW (git diff)
 {diff}
-{graph_section}
+{graph_section}{full_files_section}
 ---
 ### PRECISION RULES — read before writing a single finding:
 
