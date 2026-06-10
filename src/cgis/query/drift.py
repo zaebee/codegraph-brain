@@ -59,6 +59,15 @@ class DriftReport:
     tv_calls: float | None = None
 
 
+def _clip_discount(actual: PatternFingerprint) -> float:
+    """Confidence discount clip(1 - unresolved_ratio) to [0, 1].
+
+    Clipped defensively: a hand-built fingerprint could carry a ratio outside
+    [0, 1]; negative effective weights must never occur.
+    """
+    return max(0.0, min(1.0 - actual.unresolved_ratio, 1.0))
+
+
 def _classify(score: float) -> Literal["clean", "warning", "critical"]:
     """Return status label based on drift score thresholds."""
     if score < _STATUS_WARNING:
@@ -298,7 +307,7 @@ class DriftScorer:
             expected_pattern=domain.expected_pattern,
             actual=actual,
             ideal=ideal_fp,
-            drift_score=round(drift_sum, 6),
+            drift_score=drift_sum,
             violations=violations,
             status=_classify(drift_sum),
             tolerance=domain.drift_tolerance,
@@ -317,9 +326,7 @@ class DriftScorer:
         discount defaults to clip(1 - actual.unresolved_ratio) when not supplied.
         """
         if discount is None:
-            # Clip defensively: a hand-built fingerprint could carry a ratio outside
-            # [0, 1]; negative effective weights must never occur.
-            discount = max(0.0, min(1.0 - actual.unresolved_ratio, 1.0))
+            discount = _clip_discount(actual)
 
         raw_weights = {name: weights.get(name, 0.0) for name in constraints}
         eff_weights = {
@@ -370,12 +377,16 @@ class DriftScorer:
         ideal: tuple[tuple[float, ...], tuple[float, ...]],
         layers: dict[str, float],
     ) -> DriftReport:
-        """Fingerprint v2 drift: layered TV distance + hard gates (spec §3.3)."""
+        """Fingerprint v2 drift: layered TV distance + hard gates (spec §3.3).
+
+        Every constraint reaching this path is treated as a hard gate — the
+        topological shape itself is measured by the TV terms, not constraints.
+        """
         if domain.profile is None:  # layers presence implies a profile
             msg = "v2 scoring requires a profile on the domain binding."
             raise RuntimeError(msg)
         triad_w = self.triad_weights_for(domain.profile)
-        discount = max(0.0, min(1.0 - actual.unresolved_ratio, 1.0))
+        discount = _clip_discount(actual)
         violations: list[str] = []
 
         tv_imp: float | None = None
@@ -397,7 +408,11 @@ class DriftScorer:
             "calls": layers["calls"] * discount if tv_cal is not None else 0.0,
             "gates": layers["gates"] if gates else 0.0,
         }
-        terms = {"imports": tv_imp or 0.0, "calls": tv_cal or 0.0, "gates": gate_drift}
+        terms = {
+            "imports": 0.0 if tv_imp is None else tv_imp,
+            "calls": 0.0 if tv_cal is None else tv_cal,
+            "gates": gate_drift,
+        }
         total = sum(eff.values())
         drift = sum(eff[k] * terms[k] for k in eff) / total if total > 0.0 else 0.0
 
