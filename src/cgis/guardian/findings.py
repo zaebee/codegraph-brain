@@ -13,7 +13,8 @@ class Finding(BaseModel, frozen=True):
     """One reviewed defect, anchored to a file (and optionally a line)."""
 
     file: str
-    line: int | None = Field(default=None, gt=0)
+    # ge (not gt): gemini's response Schema rejects exclusiveMinimum
+    line: int | None = Field(default=None, ge=1)
     severity: Severity
     category: Category
     title: str

@@ -1,5 +1,7 @@
 """Tests for the structured findings contract (spec §2.1)."""
 
+import json
+
 import pytest
 from pydantic import ValidationError
 
@@ -108,3 +110,9 @@ def test_extract_json_unclosed_fence_returns_body() -> None:
 def test_extract_json_lone_fence_returns_empty() -> None:
     """A bare ``` with no payload yields an empty string."""
     assert extract_json("```") == ""
+
+
+def test_finding_schema_has_no_exclusive_minimum() -> None:
+    """gemini's response Schema rejects exclusiveMinimum — line must use ge, not gt."""
+    schema = json.dumps(ReviewResult.model_json_schema())
+    assert "exclusiveMinimum" not in schema
