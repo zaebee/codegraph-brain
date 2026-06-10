@@ -1,5 +1,6 @@
 """Unit tests for GuardianReviewer, PromptBuilder, and providers."""
 
+import json
 import subprocess
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -420,3 +421,23 @@ async def test_mistral_generate_structured_sets_json_object() -> None:
     assert result == '{"findings": [], "summary": "ok"}'
     call_kwargs = inst.chat.complete_async.call_args.kwargs
     assert call_kwargs["response_format"] == {"type": "json_object"}
+
+
+def test_build_user_prompt_demands_json_output() -> None:
+    """OUTPUT FORMAT section requests raw JSON matching the findings schema."""
+    prompt = PromptBuilder.build_user_prompt({"diff": "d"})
+    assert '"findings"' in prompt
+    assert '"summary"' in prompt
+    assert "ONLY a JSON object" in prompt
+    assert "**[Logic Bug" not in prompt  # old markdown template is gone
+
+
+def test_build_user_prompt_lgtm_example_is_valid_json() -> None:
+    """The inline LGTM example must itself parse — it teaches the model the format."""
+    prompt = PromptBuilder.build_user_prompt({"diff": "d"})
+    marker = "Example LGTM response: "
+    start = prompt.index(marker) + len(marker)
+    example = prompt[start:].split("\n", 1)[0].strip()
+    parsed = json.loads(example)
+    assert parsed["findings"] == []
+    assert isinstance(parsed["summary"], str)

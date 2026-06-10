@@ -96,15 +96,24 @@ paths, unresolved calls not using `raw_call:` prefix.
 ---
 ### OUTPUT FORMAT:
 
-For each finding (max 5):
+Return ONLY a JSON object — no prose, no markdown fences — with this exact shape:
 
-**[Logic Bug | Library Contract | Test Coverage | Type Safety | Ontology] — short title**
-Confidence: N% (must be ≥ 80% to include)
-Lines: `<quoted verbatim from diff>`
-Problem: one sentence.
-Fix: concrete suggestion.
+{{"findings": [{{"file": "src/path/to/file.py", "line": 123,
+  "severity": "critical|major|minor",
+  "category": "logic|contract|tests|types|ontology",
+  "title": "short headline",
+  "evidence": "<verbatim quote from the diff>",
+  "problem": "one sentence.", "fix": "concrete suggestion.",
+  "confidence": 85}}],
+  "summary": "2-3 most important things you checked and found correct."}}
 
----
+Rules:
+- "severity": exactly one of "critical", "major", "minor". "confidence" is an integer 0-100.
+- "category" maps to the focus areas: logic = Logic Bug, contract = Library Contract,
+  tests = Test Coverage, types = Type Safety, ontology = Ontology.
+- "line" is the line number in the HEAD version of the file, or null for file-level findings.
+- "confidence" must be >= 80 to include a finding (the gate above).
+- max 5 findings; fewer is fine; an empty list means LGTM.
+- "summary" is mandatory; for an LGTM it lists what you checked and found correct.
 
-If you find no real issues: write "LGTM — no defects found in this diff." and briefly list
-the 2-3 most important things you checked and found correct."""
+Example LGTM response: {{"findings": [], "summary": "Checked diff for logic and types; ok."}}"""
