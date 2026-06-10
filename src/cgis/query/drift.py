@@ -70,8 +70,23 @@ class DriftScorer:
         self._weights: dict[str, float] = raw.get("drift_weights") or {}
         self._patterns: dict[str, dict[str, Any]] = raw.get("patterns") or {}
         self._project_domains: list[dict[str, Any]] = raw.get("project_domains") or []
+        # Read by profile selection and hygiene merging (Tasks 2 and 4 of Part A).
         self._profiles: dict[str, dict[str, Any]] = raw.get("profiles") or {}
         self._hygiene: dict[str, Any] = raw.get("hygiene") or {}
+
+    @staticmethod
+    def _load_params(d: dict[str, Any]) -> dict[str, float]:
+        """Parse a domain binding's params block; non-numeric values fail loud.
+
+        Raises TypeError if any param value is not numeric (int, float, or bool).
+        """
+        params: dict[str, float] = {}
+        for k, v in (d.get("params") or {}).items():
+            if not isinstance(v, (int, float)):
+                msg = f"Domain '{d.get('name', '?')}' param '{k}' must be numeric, got {v!r}."
+                raise TypeError(msg)
+            params[k] = float(v)
+        return params
 
     def load_project_domains(self) -> list[DomainConfig]:
         """Return all project domains declared in patterns.yaml."""
@@ -82,7 +97,7 @@ class DriftScorer:
                 expected_pattern=d.get("expected_pattern"),
                 drift_tolerance=float(d["drift_tolerance"]),
                 profile=d.get("profile"),
-                params={k: float(v) for k, v in (d.get("params") or {}).items()},
+                params=self._load_params(d),
             )
             for d in self._project_domains
         ]

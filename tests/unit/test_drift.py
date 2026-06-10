@@ -1,5 +1,7 @@
 """Unit tests for DriftScorer and DriftReport."""
 
+from pathlib import Path
+
 import pytest
 
 from cgis.query.drift import DomainConfig, DriftScorer
@@ -41,9 +43,9 @@ project_domains:
 
 
 @pytest.fixture
-def scorer(tmp_path: pytest.TempPathFactory) -> DriftScorer:
+def scorer(tmp_path: Path) -> DriftScorer:
     """Return a DriftScorer loaded from the minimal YAML fixture."""
-    p = tmp_path / "patterns.yaml"  # type: ignore[operator]
+    p = tmp_path / "patterns.yaml"
     p.write_text(_YAML)
     return DriftScorer(str(p))
 
@@ -296,9 +298,9 @@ project_domains:
 
 
 @pytest.fixture
-def extended_scorer(tmp_path: pytest.TempPathFactory) -> DriftScorer:
+def extended_scorer(tmp_path: Path) -> DriftScorer:
     """Return a DriftScorer loaded from the extended (v2) YAML fixture."""
-    p = tmp_path / "patterns.yaml"  # type: ignore[operator]
+    p = tmp_path / "patterns.yaml"
     p.write_text(_YAML_EXTENDED)
     return DriftScorer(str(p))
 
@@ -322,3 +324,16 @@ def test_domain_config_expected_pattern_optional(extended_scorer: DriftScorer) -
     """A binding without expected_pattern loads with expected_pattern=None."""
     hooks = extended_scorer.load_project_domains()[1]
     assert hooks.expected_pattern is None
+
+
+# ── param value validation ────────────────────────────────────────────────────
+
+
+def test_load_params_rejects_null_values(tmp_path: Path) -> None:
+    """A YAML entry with params: {min_depth: } (null) raises TypeError with domain name."""
+    yaml_with_null_param = _YAML_EXTENDED.replace("params: {min_depth: 2}", "params: {min_depth: }")
+    p = tmp_path / "patterns.yaml"
+    p.write_text(yaml_with_null_param)
+    scorer = DriftScorer(str(p))
+    with pytest.raises(TypeError, match="min_depth"):
+        scorer.load_project_domains()
