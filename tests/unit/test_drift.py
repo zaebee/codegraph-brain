@@ -839,3 +839,23 @@ def test_domain_config_enforce_defaults_true(v2_scorer: DriftScorer) -> None:
     """enforce defaults to True on every binding; explicit false is read."""
     domains = v2_scorer.load_project_domains()
     assert all(d.enforce for d in domains)
+
+
+def test_domain_config_enforce_explicit_false_is_read(tmp_path: Path) -> None:
+    """A binding carrying `enforce: false` loads with enforce False."""
+    yaml_off = _YAML_V2.replace(
+        'fqn_prefix: "quotient"',
+        'fqn_prefix: "quotient"\n    enforce: false',
+    )
+    assert yaml_off != _YAML_V2
+    p = tmp_path / "patterns.yaml"
+    p.write_text(yaml_off)
+    by_name = {d.name: d for d in DriftScorer(str(p)).load_project_domains()}
+    assert by_name["proj"].enforce is False
+    assert by_name["res"].enforce is True
+
+
+def test_layers_and_triad_weights_undeclared_defaults(v2_scorer: DriftScorer) -> None:
+    """A profile without layers yields None; without triad_weights, all-ones."""
+    assert v2_scorer.layers_for("missing_profile") is None
+    assert v2_scorer.triad_weights_for("missing_profile") == (1.0,) * 13
