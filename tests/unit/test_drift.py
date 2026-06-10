@@ -476,6 +476,7 @@ def test_unknown_param_key_raises(tmp_path: Path) -> None:
 def test_unresolvable_placeholder_raises(tmp_path: Path) -> None:
     """A $placeholder with no declared parameter is a config error."""
     yaml_text = _YAML_EXTENDED.replace("    params:\n      min_depth: 3\n", "")
+    assert yaml_text != _YAML_EXTENDED, "replace failed: template params block not found"
     yaml_no_override = yaml_text.replace("    params: {min_depth: 2}\n", "")
     assert yaml_no_override != yaml_text, "replace failed: domain params override line not found"
     p = tmp_path / "patterns.yaml"
