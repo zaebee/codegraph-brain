@@ -149,14 +149,13 @@ def triad_census(node_ids: set[str], edges: list[Edge], edge_type: EdgeType) -> 
             nbrs[e.target].add(e.source)
 
     counts: dict[str, int] = dict.fromkeys(TRIAD_ORDER, 0)
-    seen: set[tuple[str, str, str]] = set()
+    seen: set[tuple[str, ...]] = set()
     for v in node_ids:
         for u in nbrs[v]:
             for w in nbrs[v] | nbrs[u]:
                 if w in (v, u):
                     continue
-                key_list = sorted((v, u, w))
-                key = (key_list[0], key_list[1], key_list[2])
+                key = tuple(sorted((v, u, w)))
                 if key in seen:
                     continue
                 seen.add(key)
@@ -192,4 +191,4 @@ def tv_distance(
         (name, 0.5 * w * abs(a - b))
         for name, a, b, w in zip(TRIAD_ORDER, t, ideal, weights, strict=True)
     ]
-    return sum(c for _, c in contribs), contribs
+    return sum((c for _, c in contribs), 0.0), contribs

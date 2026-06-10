@@ -110,7 +110,7 @@ def test_triad_order_has_13_classes() -> None:
 
 
 def test_each_triple_counted_once() -> None:
-    """A 4-node star b→{a,c,d} has exactly C(3,2)=3 connected triples, all 021D."""
+    """A 4-node star b→{a,c,d} has 3 triads (one per pair from {a,c,d}, each sharing b)."""
     nodes = {"a", "b", "c", "d"}
     edges = [_e("b", "a"), _e("b", "c"), _e("b", "d")]
     counts = triad_census(nodes, edges, EdgeType.CALLS)
