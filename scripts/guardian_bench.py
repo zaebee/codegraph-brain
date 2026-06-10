@@ -75,7 +75,13 @@ async def _run_one(truth: GroundTruth, run_idx: int, results_path: Path) -> None
     """Replay one PR once: worktree → ingest → review → score → JSONL line."""
     provider, model = build_provider(os.environ)
     primary = "mistral" if isinstance(provider, MistralProvider) else "gemini"
-    skeptic = build_skeptic_provider(os.environ, primary=primary)
+    # Bench requires explicit opt-in: an implicit skeptic default would silently
+    # change scoring vs the committed baseline (review runs keep the implicit default).
+    skeptic = (
+        build_skeptic_provider(os.environ, primary=primary)
+        if os.environ.get("GUARDIAN_SKEPTIC")
+        else None
+    )
     features = parse_features(os.environ.get("GUARDIAN_FEATURES", ""))
     _git("fetch", "origin", f"pull/{truth.pr}/head")
     with tempfile.TemporaryDirectory(prefix=f"bench-pr{truth.pr}-") as tmp:
