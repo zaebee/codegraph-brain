@@ -81,8 +81,29 @@ def test_collect_graph_context_injects_mermaid(tmp_db: Path) -> None:
         result = collector.collect_graph_context()
 
     assert "```mermaid" in result
-    assert "src.cgis.pipeline" in result
-    mock_engine.get_impact_graph.assert_called_once_with("src.cgis.pipeline", max_depth=2)
+    assert "cgis.pipeline" in result
+    # FQN lookup must strip the ingest source root: `cgis ingest ./src`
+    # stores node ids relative to src/, not the repo root.
+    mock_engine.get_impact_graph.assert_called_once_with("cgis.pipeline", max_depth=2)
+
+
+def test_collect_graph_context_custom_source_root(tmp_db: Path) -> None:
+    """A non-default source_root is stripped from changed-file paths before lookup."""
+    mock_engine = MagicMock()
+    mock_engine.get_impact_graph.return_value = ([], [])
+
+    collector = ContextCollector(project_root=tmp_db.parent, db_path=tmp_db, source_root="lib")
+
+    with (
+        patch.object(collector, "get_changed_py_files", return_value=["lib/pkg/mod.py"]),
+        patch("cgis.guardian.collector.SQLiteStore") as mock_store_cls,
+        patch("cgis.guardian.collector.QueryEngine", return_value=mock_engine),
+    ):
+        mock_store_cls.return_value.__enter__ = MagicMock(return_value=MagicMock())
+        mock_store_cls.return_value.__exit__ = MagicMock(return_value=False)
+        collector.collect_graph_context()
+
+    mock_engine.get_impact_graph.assert_called_once_with("pkg.mod", max_depth=2)
 
 
 def test_collect_all_includes_graph_key(tmp_db: Path) -> None:
