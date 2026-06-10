@@ -62,6 +62,18 @@ def _classify(score: float) -> Literal["clean", "warning", "critical"]:
     return "critical"
 
 
+def _params_mapping(container: dict[str, Any], owner: str) -> dict[str, Any]:
+    """Return the container's params block, validating it is a mapping.
+
+    Raises TypeError if params is present but not a mapping (e.g. a list).
+    """
+    node = container.get("params") or {}
+    if not isinstance(node, dict):
+        msg = f"{owner} params must be a mapping, got {type(node).__name__}."
+        raise TypeError(msg)
+    return node
+
+
 class DriftScorer:
     """Load patterns.yaml and score actual PatternFingerprints against ideal templates.
 
@@ -88,7 +100,7 @@ class DriftScorer:
         Raises TypeError if any param value is not numeric (int, float, or bool).
         """
         params: dict[str, float] = {}
-        for k, v in (d.get("params") or {}).items():
+        for k, v in _params_mapping(d, f"Domain '{d.get('name', '?')}'").items():
             if not isinstance(v, (int, float)):
                 msg = f"Domain '{d.get('name', '?')}' param '{k}' must be numeric, got {v!r}."
                 raise TypeError(msg)
@@ -133,7 +145,10 @@ class DriftScorer:
 
         Raises ValueError if domain.params contains keys not declared in template.params.
         """
-        declared = {k: float(v) for k, v in (template.get("params") or {}).items()}
+        declared = {
+            k: float(v)
+            for k, v in _params_mapping(template, f"Pattern '{domain.expected_pattern}'").items()
+        }
         unknown = set(domain.params) - set(declared)
         if unknown:
             msg = (
@@ -184,7 +199,9 @@ class DriftScorer:
             return self._zero_drift_report(actual, domain)
 
         weights = self._weights_for(domain)
-        discount = 1.0 - actual.unresolved_ratio
+        # Clip defensively: a hand-built fingerprint could carry a ratio outside
+        # [0, 1]; negative effective weights must never occur.
+        discount = max(0.0, min(1.0 - actual.unresolved_ratio, 1.0))
         raw_weights = {name: weights.get(name, 0.0) for name in constraints}
         eff_weights = {
             name: w * discount if name in _CALLS_LAYER else w for name, w in raw_weights.items()

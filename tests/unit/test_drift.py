@@ -339,6 +339,38 @@ def test_load_params_rejects_null_values(tmp_path: Path) -> None:
         scorer.load_project_domains()
 
 
+def test_load_params_rejects_non_mapping_domain_params(tmp_path: Path) -> None:
+    """A domain whose params block is a list (not a mapping) raises TypeError."""
+    yaml_bad = _YAML_EXTENDED.replace("params: {min_depth: 2}", "params: [1, 2]")
+    assert yaml_bad != _YAML_EXTENDED
+    p = tmp_path / "patterns.yaml"
+    p.write_text(yaml_bad)
+    with pytest.raises(TypeError, match="mapping"):
+        DriftScorer(str(p)).load_project_domains()
+
+
+def test_merge_params_rejects_non_mapping_template_params(tmp_path: Path) -> None:
+    """A template whose params block is a list raises TypeError at score() time."""
+    yaml_bad = _YAML_EXTENDED.replace("params:\n      min_depth: 3", "params: [3]")
+    assert yaml_bad != _YAML_EXTENDED
+    p = tmp_path / "patterns.yaml"
+    p.write_text(yaml_bad)
+    scorer = DriftScorer(str(p))
+    domain = scorer.load_project_domains()[0]
+    fp = PatternFingerprint(
+        domain="components",
+        hub_count=0,
+        star_count=0,
+        chain_len=0.0,
+        dag_depth=3,
+        router_count=0,
+        cycle_ratio=0.0,
+        unresolved_ratio=0.0,
+    )
+    with pytest.raises(TypeError, match="mapping"):
+        scorer.score(fp, domain)
+
+
 # ── §2.3 measurement profiles ─────────────────────────────────────────────────
 
 _YAML_PROFILES = """\
@@ -675,3 +707,24 @@ def test_discount_scaling_visible_when_only_calls_violated(
     # u=0.6: eff = (.1,.1,.25,.25) tot .7, violated share = .2/.7 ≈ 0.2857
     assert d0 == pytest.approx(0.5)
     assert d6 == pytest.approx(0.2 / 0.7, abs=1e-6)
+
+
+def test_anomalous_unresolved_ratio_is_clipped(discount_scorer: DriftScorer) -> None:
+    """A ratio > 1.0 (hand-built fingerprint) clips like 1.0 — drift never goes negative.
+
+    Without clipping, discount = 1 - 1.5 = -0.5 yields negative effective
+    weights for the violated CALLS components and a drift score of -1.0.
+    """
+    domain = discount_scorer.load_project_domains()[0]
+    fp = PatternFingerprint(
+        domain="m",
+        hub_count=0,  # violated (CALLS) — fully discounted after clip
+        star_count=3,  # violated (CALLS) — fully discounted after clip
+        chain_len=0.0,
+        dag_depth=2,  # clean (IMPORTS)
+        router_count=0,
+        cycle_ratio=0.0,  # clean (IMPORTS)
+        unresolved_ratio=1.5,
+    )
+    report = discount_scorer.score(fp, domain)
+    assert report.drift_score == pytest.approx(0.0)
