@@ -1,6 +1,8 @@
 """Tests for the guardian script runner (provider selection + orchestration)."""
 
+import subprocess
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from pydantic import BaseModel
@@ -157,7 +159,7 @@ async def test_run_guardian_smoke(tmp_path: Path) -> None:
     """
     metrics = tmp_path / "m.jsonl"
     collector = ContextCollector(project_root=tmp_path)
-    report = await run_guardian(
+    report, posted_inline = await run_guardian(
         provider=_FakeProvider(),
         model="fake-model",
         collector=collector,
@@ -166,3 +168,111 @@ async def test_run_guardian_smoke(tmp_path: Path) -> None:
     )
     assert report.startswith("LGTM — no defects found in this diff.")
     assert metrics.exists()
+    assert posted_inline is False
+
+
+# ---------------------------------------------------------------------------
+# Inline review path tests (spec §6.5, §8)
+# ---------------------------------------------------------------------------
+
+_CANNED = (
+    '{"findings": [{"file": "a.py", "line": 1, "severity": "major", "category": "logic",'
+    ' "title": "t", "evidence": "e", "problem": "p", "fix": "f", "confidence": 90}],'
+    ' "summary": "s"}'
+)
+
+
+class _StubProvider(BaseProvider):
+    """Returns canned JSON per call; records prompts."""
+
+    def __init__(self, responses: list[str]) -> None:
+        """Store canned responses and initialise prompt log."""
+        super().__init__()
+        self._responses = list(responses)
+        self.prompts: list[str] = []
+
+    async def generate_content(self, system_prompt: str, user_prompt: str) -> str:
+        """Not used in these tests."""
+        raise NotImplementedError
+
+    async def generate_structured(
+        self,
+        system_prompt: str,  # noqa: ARG002
+        user_prompt: str,
+        schema: type[BaseModel],  # noqa: ARG002
+    ) -> str:
+        """Record the prompt and return the next canned response."""
+        self.prompts.append(user_prompt)
+        return self._responses.pop(0)
+
+
+@pytest.mark.asyncio
+async def test_run_guardian_posts_inline_and_reports_success(tmp_path: Path) -> None:
+    """Smoke test (spec §8): canned JSON → ReviewResult → inline post; posted=True."""
+    provider = _StubProvider([_CANNED])
+    collector = ContextCollector(project_root=tmp_path)
+    with (
+        patch.object(collector, "collect_all", return_value={"diff": "d"}),
+        patch.object(
+            collector,
+            "get_git_diff",
+            return_value="diff --git a/a.py b/a.py\n+++ b/a.py\n@@ -0,0 +1,1 @@\n+x = 1\n",
+        ),
+        patch("cgis.guardian.runner.post_inline_review") as mock_post,
+    ):
+        report, posted = await run_guardian(
+            provider=provider,
+            model="m",
+            collector=collector,
+            pr=153,
+            metrics_path=tmp_path / "m.jsonl",
+            inline_repo="zaebee/codegraph-brain",
+        )
+    assert posted is True
+    mock_post.assert_called_once()
+    assert "**[Logic Bug]" in report  # report still rendered for the artifact
+
+
+@pytest.mark.asyncio
+async def test_run_guardian_inline_failure_falls_back(tmp_path: Path) -> None:
+    """API rejection → posted=False, report intact (peter-evans fallback, spec §6.5)."""
+    provider = _StubProvider([_CANNED])
+    collector = ContextCollector(project_root=tmp_path)
+    with (
+        patch.object(collector, "collect_all", return_value={"diff": "d"}),
+        patch.object(collector, "get_git_diff", return_value=""),
+        patch(
+            "cgis.guardian.runner.post_inline_review",
+            side_effect=subprocess.CalledProcessError(1, "gh"),
+        ),
+    ):
+        report, posted = await run_guardian(
+            provider=provider,
+            model="m",
+            collector=collector,
+            pr=153,
+            metrics_path=tmp_path / "m.jsonl",
+            inline_repo="zaebee/codegraph-brain",
+        )
+    assert posted is False
+    assert "**[Logic Bug]" in report
+
+
+@pytest.mark.asyncio
+async def test_run_guardian_no_inline_repo_skips_posting(tmp_path: Path) -> None:
+    """inline_repo=None (local runs, bench) → no posting attempted, posted=False."""
+    provider = _StubProvider([_CANNED])
+    collector = ContextCollector(project_root=tmp_path)
+    with (
+        patch.object(collector, "collect_all", return_value={"diff": "d"}),
+        patch("cgis.guardian.runner.post_inline_review") as mock_post,
+    ):
+        _, posted = await run_guardian(
+            provider=provider,
+            model="m",
+            collector=collector,
+            pr=None,
+            metrics_path=tmp_path / "m.jsonl",
+        )
+    assert posted is False
+    mock_post.assert_not_called()

@@ -7,6 +7,8 @@ import structlog
 
 from cgis.guardian.collector import ContextCollector
 from cgis.guardian.core import GuardianReviewer
+from cgis.guardian.diff_index import diff_line_index
+from cgis.guardian.github_poster import post_inline_review
 from cgis.guardian.metrics import record_review
 from cgis.guardian.providers.base import BaseProvider, ProviderUsage
 from cgis.guardian.providers.gemini import GeminiProvider
@@ -107,11 +109,37 @@ async def run_guardian(
     collector: ContextCollector,
     pr: int | None,
     metrics_path: Path,
-) -> str:
-    """Run the review, record metrics, and return the rendered report + footer."""
-    reviewer = GuardianReviewer(provider=provider, context_collector=collector)
+    skeptic: tuple[BaseProvider, str] | None = None,
+    inline_repo: str | None = None,
+) -> tuple[str, bool]:
+    """Run the review; try the inline path when configured.
+
+    Returns (rendered report + footer, posted_inline). posted_inline=False
+    covers both "not configured" and "API rejected" — the caller posts the
+    big comment in either case (spec §6.5).
+    """
+    reviewer = GuardianReviewer(
+        provider=provider,
+        context_collector=collector,
+        skeptic_provider=skeptic[0] if skeptic else None,
+    )
     result = await reviewer.run_review()
     report = render_report(result)
+
+    posted = False
+    if inline_repo is not None and pr is not None:
+        try:
+            index = diff_line_index(collector.get_git_diff())
+            post_inline_review(
+                repo=inline_repo,
+                pr=pr,
+                result=result,
+                diff_index=index,
+                skeptic_model=skeptic[1] if skeptic else None,
+            )
+            posted = True
+        except Exception:
+            log.warning("Inline review failed; falling back to comment.", exc_info=True)
 
     record_review(
         model=model,
@@ -121,8 +149,9 @@ async def run_guardian(
         findings_total=len(result.findings),
         lgtm=not result.findings and not result.parse_failed,
         parse_failed=result.parse_failed,
+        skeptic_model=skeptic[1] if skeptic else None,
+        skeptic_status=result.skeptic_status,
         metrics_path=metrics_path,
     )
-    return report + build_footer(
-        model=model, usage=provider.last_usage, stats=collector.graph_stats
-    )
+    footer = build_footer(model=model, usage=provider.last_usage, stats=collector.graph_stats)
+    return report + footer, posted
