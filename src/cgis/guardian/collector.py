@@ -21,18 +21,29 @@ class ContextCollector:
         project_root: Path,
         base_branch: str = "main",
         db_path: Path | None = None,
+        base_ref: str | None = None,
     ) -> None:
-        """Set project root, the base branch used for git diff, and optional graph DB."""
+        """Set project root, diff base (branch or explicit ref), and optional graph DB.
+
+        base_ref, when given, is used verbatim (e.g. a SHA for benchmark
+        replays); otherwise the diff base is origin/<base_branch>.
+        """
         self.project_root = project_root
         self.base_branch = base_branch
         self.db_path = db_path
+        self.base_ref = base_ref
         self.graph_stats: dict[str, int] = {"total": 0, "with_graph": 0}
+
+    def _diff_range(self) -> str:
+        """Return the git range argument for diff commands."""
+        base = self.base_ref or f"origin/{self.base_branch}"
+        return f"{base}...HEAD"
 
     def get_git_diff(self) -> str:
         """Returns diff between HEAD and the base branch on origin."""
         try:
             result = subprocess.run(
-                ["git", "diff", f"origin/{self.base_branch}...HEAD"],
+                ["git", "diff", self._diff_range()],
                 capture_output=True,
                 text=True,
                 check=True,
@@ -47,7 +58,7 @@ class ContextCollector:
         """Returns relative paths of .py files changed vs the base branch."""
         try:
             result = subprocess.run(
-                ["git", "diff", "--name-only", f"origin/{self.base_branch}...HEAD"],
+                ["git", "diff", "--name-only", self._diff_range()],
                 capture_output=True,
                 text=True,
                 check=True,

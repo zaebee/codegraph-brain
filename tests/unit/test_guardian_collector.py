@@ -1,5 +1,6 @@
 """Unit tests for graph-aware ContextCollector."""
 
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -108,3 +109,23 @@ def test_collect_all_omits_graph_key_when_empty(tmp_path: Path) -> None:
         context = collector.collect_all()
 
     assert "graph_context" not in context
+
+
+def test_base_ref_overrides_origin_prefix(tmp_path: Path) -> None:
+    """base_ref diffs <ref>...HEAD instead of origin/<branch>...HEAD."""
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.email", "t@t"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=tmp_path, check=True)
+    (tmp_path / "a.py").write_text("x = 1\n")
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-qm", "one"], cwd=tmp_path, check=True)
+    base_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=tmp_path, capture_output=True, text=True, check=True
+    ).stdout.strip()
+    (tmp_path / "a.py").write_text("x = 2\n")
+    subprocess.run(["git", "commit", "-aqm", "two"], cwd=tmp_path, check=True)
+
+    collector = ContextCollector(project_root=tmp_path, base_ref=base_sha)
+    diff = collector.get_git_diff()
+    assert "x = 2" in diff
+    assert collector.get_changed_py_files() == ["a.py"]
