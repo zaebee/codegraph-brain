@@ -6,6 +6,7 @@ import pytest
 
 from cgis.query.drift import DomainConfig, DriftScorer
 from cgis.query.fingerprint import PatternFingerprint
+from cgis.query.triads import TRIAD_ORDER
 
 # ── minimal YAML for tests ────────────────────────────────────────────────────
 
@@ -728,3 +729,113 @@ def test_anomalous_unresolved_ratio_is_clipped(discount_scorer: DriftScorer) -> 
     )
     report = discount_scorer.score(fp, domain)
     assert report.drift_score == pytest.approx(0.0)
+
+
+# ── §3.3 v2 config: ideal points, layers, triad weights ──────────────────────
+
+_YAML_V2 = """\
+version: "2.1.0"
+profiles:
+  python:
+    drift_weights:
+      hub_count:        0.15
+      star_count:       0.15
+      chain_len:        0.10
+      dag_depth:        0.10
+      router_count:     0.10
+      cycle_ratio:      0.25
+      unresolved_ratio: 0.15
+    layers:
+      imports: 0.35
+      calls:   0.35
+      gates:   0.30
+    triad_weights:
+      "030C": 0.5
+hygiene:
+  cycle_ratio:      {max: 0.0}
+  unresolved_ratio: {max: 0.2}
+patterns:
+  pipeline_stage:
+    description: "chain"
+    ideal:
+      imports: {"021C": 1.0}
+      calls:   {"021C": 1.0}
+project_domains:
+  - name: "res"
+    fqn_prefix: "res"
+    expected_pattern: pipeline_stage
+    profile: python
+    drift_tolerance: 0.40
+  - name: "proj"
+    fqn_prefix: "quotient"
+    expected_pattern: pipeline_stage
+    profile: python
+    drift_tolerance: 0.15
+"""
+
+
+@pytest.fixture
+def v2_scorer(tmp_path: Path) -> DriftScorer:
+    """Return a DriftScorer loaded from the v2 YAML fixture."""
+    p = tmp_path / "patterns.yaml"
+    p.write_text(_YAML_V2)
+    return DriftScorer(str(p))
+
+
+def test_ideal_point_loaded_as_13_tuple(v2_scorer: DriftScorer) -> None:
+    """The template's ideal block parses into TRIAD_ORDER-aligned tuples."""
+    ideal = v2_scorer.ideal_for("pipeline_stage")
+    assert ideal is not None
+    imp, cal = ideal
+    assert imp[TRIAD_ORDER.index("021C")] == pytest.approx(1.0)
+    assert sum(imp) == pytest.approx(1.0)
+    assert cal == imp
+
+
+def test_ideal_unknown_triad_key_fails_loud(tmp_path: Path) -> None:
+    """An ideal entry naming a non-existent triad class raises ValueError."""
+    bad = _YAML_V2.replace('"021C": 1.0', '"999X": 1.0')
+    assert bad != _YAML_V2
+    p = tmp_path / "patterns.yaml"
+    p.write_text(bad)
+    with pytest.raises(ValueError, match="999X"):
+        DriftScorer(str(p)).ideal_for("pipeline_stage")
+
+
+def test_ideal_must_sum_to_one(tmp_path: Path) -> None:
+    """An ideal layer whose values do not sum to 1.0 raises ValueError."""
+    bad = _YAML_V2.replace('imports: {"021C": 1.0}', 'imports: {"021C": 0.7}')
+    assert bad != _YAML_V2
+    p = tmp_path / "patterns.yaml"
+    p.write_text(bad)
+    with pytest.raises(ValueError, match="sum"):
+        DriftScorer(str(p)).ideal_for("pipeline_stage")
+
+
+def test_layers_loaded_and_validated(v2_scorer: DriftScorer) -> None:
+    """Profile layers parse; missing keys or bad sums raise."""
+    layers = v2_scorer.layers_for("python")
+    assert layers == {"imports": 0.35, "calls": 0.35, "gates": 0.30}
+
+
+def test_layers_must_sum_to_one(tmp_path: Path) -> None:
+    """Layer weights that do not sum to 1.0 raise ValueError."""
+    bad = _YAML_V2.replace("gates:   0.30", "gates:   0.40")
+    assert bad != _YAML_V2
+    p = tmp_path / "patterns.yaml"
+    p.write_text(bad)
+    with pytest.raises(ValueError, match="sum"):
+        DriftScorer(str(p)).layers_for("python")
+
+
+def test_triad_weights_default_one(v2_scorer: DriftScorer) -> None:
+    """Unlisted triads weigh 1.0; listed ones take the declared value."""
+    w = v2_scorer.triad_weights_for("python")
+    assert w[TRIAD_ORDER.index("030C")] == pytest.approx(0.5)
+    assert w[TRIAD_ORDER.index("021C")] == pytest.approx(1.0)
+
+
+def test_domain_config_enforce_defaults_true(v2_scorer: DriftScorer) -> None:
+    """enforce defaults to True on every binding; explicit false is read."""
+    domains = v2_scorer.load_project_domains()
+    assert all(d.enforce for d in domains)

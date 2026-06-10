@@ -9,6 +9,7 @@ from typing import Any, Literal
 import yaml
 
 from cgis.query.fingerprint import PatternFingerprint
+from cgis.query.triads import TRIAD_ORDER
 
 _COMPONENT_NAMES = (
     "hub_count",
@@ -36,6 +37,8 @@ class DomainConfig:
     drift_tolerance: float
     profile: str | None = None
     params: dict[str, float] = field(default_factory=dict)
+    # When False the domain is audited but violations never block CI.
+    enforce: bool = True
 
 
 @dataclass(frozen=True)
@@ -117,6 +120,7 @@ class DriftScorer:
                 drift_tolerance=float(d["drift_tolerance"]),
                 profile=d.get("profile"),
                 params=self._load_params(d),
+                enforce=bool(d.get("enforce", True)),
             )
             for d in self._project_domains
         ]
@@ -138,6 +142,64 @@ class DriftScorer:
             raise ValueError(msg)
         weights: dict[str, float] = profile.get("drift_weights") or {}
         return weights
+
+    def ideal_for(self, pattern_name: str) -> tuple[tuple[float, ...], tuple[float, ...]] | None:
+        """Return (ideal_imports, ideal_calls) 13-tuples for a template, or None.
+
+        None means the template declares no ideal block — the domain scores on
+        the v1 path. Raises ValueError on unknown triad keys, layers other
+        than imports/calls, or a layer that does not sum to 1.0.
+        """
+        template = self._patterns.get(pattern_name) or {}
+        ideal = template.get("ideal")
+        if ideal is None:
+            return None
+        if not isinstance(ideal, dict) or set(ideal) != {"imports", "calls"}:
+            msg = f"Pattern '{pattern_name}' ideal must declare exactly imports and calls."
+            raise ValueError(msg)
+        return self._ideal_layer(pattern_name, ideal["imports"]), self._ideal_layer(
+            pattern_name, ideal["calls"]
+        )
+
+    @staticmethod
+    def _ideal_layer(pattern_name: str, layer: dict[str, Any]) -> tuple[float, ...]:
+        """Convert one {triad: share} mapping into a TRIAD_ORDER-aligned tuple."""
+        unknown = set(layer) - set(TRIAD_ORDER)
+        if unknown:
+            msg = f"Pattern '{pattern_name}' ideal names unknown triad(s) {sorted(unknown)}."
+            raise ValueError(msg)
+        values = tuple(float(layer.get(name, 0.0)) for name in TRIAD_ORDER)
+        if abs(sum(values) - 1.0) > 1e-9:
+            msg = f"Pattern '{pattern_name}' ideal layer must sum to 1.0, got {sum(values)}."
+            raise ValueError(msg)
+        return values
+
+    def layers_for(self, profile_name: str) -> dict[str, float] | None:
+        """Return validated layer weights for a profile, or None when undeclared."""
+        profile = self._profiles.get(profile_name) or {}
+        layers = profile.get("layers")
+        if layers is None:
+            return None
+        if set(layers) != {"imports", "calls", "gates"}:
+            msg = f"Profile '{profile_name}' layers must declare imports, calls, gates."
+            raise ValueError(msg)
+        result = {k: float(v) for k, v in layers.items()}
+        if abs(sum(result.values()) - 1.0) > 1e-9:
+            msg = f"Profile '{profile_name}' layers must sum to 1.0, got {sum(result.values())}."
+            raise ValueError(msg)
+        return result
+
+    def triad_weights_for(self, profile_name: str) -> tuple[float, ...]:
+        """Per-triad w_i for a profile; unlisted triads default to 1.0 (spec §3.3)."""
+        profile = self._profiles.get(profile_name) or {}
+        declared: dict[str, Any] = profile.get("triad_weights") or {}
+        unknown = set(declared) - set(TRIAD_ORDER)
+        if unknown:
+            msg = (
+                f"Profile '{profile_name}' triad_weights names unknown triad(s) {sorted(unknown)}."
+            )
+            raise ValueError(msg)
+        return tuple(float(declared.get(name, 1.0)) for name in TRIAD_ORDER)
 
     @staticmethod
     def _merge_params(template: dict[str, Any], domain: DomainConfig) -> dict[str, float]:
