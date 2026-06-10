@@ -123,35 +123,25 @@ class DriftScorer:
             params[k] = float(v)
         return params
 
+    def _build_domain_config(self, d: dict[str, Any], *, enforce_default: bool) -> DomainConfig:
+        """Build one DomainConfig from a YAML binding dict."""
+        return DomainConfig(
+            name=d["name"],
+            fqn_prefix=d["fqn_prefix"],
+            expected_pattern=d.get("expected_pattern"),
+            drift_tolerance=float(d["drift_tolerance"]),
+            profile=d.get("profile"),
+            params=self._load_params(d),
+            enforce=bool(d.get("enforce", enforce_default)),
+        )
+
     def load_project_domains(self) -> list[DomainConfig]:
         """Return all project domains declared in patterns.yaml."""
-        return [
-            DomainConfig(
-                name=d["name"],
-                fqn_prefix=d["fqn_prefix"],
-                expected_pattern=d.get("expected_pattern"),
-                drift_tolerance=float(d["drift_tolerance"]),
-                profile=d.get("profile"),
-                params=self._load_params(d),
-                enforce=bool(d.get("enforce", True)),
-            )
-            for d in self._project_domains
-        ]
+        return [self._build_domain_config(d, enforce_default=True) for d in self._project_domains]
 
     def load_project_level(self) -> list[DomainConfig]:
         """Return project-level quotient bindings (spec §3.4); enforce defaults False here."""
-        return [
-            DomainConfig(
-                name=d["name"],
-                fqn_prefix=d["fqn_prefix"],
-                expected_pattern=d.get("expected_pattern"),
-                drift_tolerance=float(d["drift_tolerance"]),
-                profile=d.get("profile"),
-                params=self._load_params(d),
-                enforce=bool(d.get("enforce", False)),
-            )
-            for d in self._project_level
-        ]
+        return [self._build_domain_config(d, enforce_default=False) for d in self._project_level]
 
     def _weights_for(self, domain: DomainConfig) -> dict[str, float]:
         """Return the drift weights for a domain: its profile's, or the top-level default.
