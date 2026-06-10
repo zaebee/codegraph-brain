@@ -40,7 +40,7 @@ def test_finding_is_frozen() -> None:
 
 
 def test_finding_line_must_be_positive() -> None:
-    """line=0 violates gt=0 (gemini round-2 constraint)."""
+    """line=0 violates ge=1 (gemini Schema rejects exclusiveMinimum, so ge not gt)."""
     with pytest.raises(ValidationError):
         _finding(line=0)
 

@@ -48,7 +48,8 @@ def file_path_to_module_fqn(file_path: str, source_root: str | None = None) -> s
         clean = clean[2:]
     clean = clean.replace("\\", "/").lstrip("/")
     if source_root:
-        sr = source_root.replace("\\", "/").strip("/") + "/"
+        # removeprefix("./") so CI-style roots ("cgis ingest ./src") strip too
+        sr = source_root.replace("\\", "/").removeprefix("./").strip("/") + "/"
         if clean.startswith(sr):
             clean = clean[len(sr) :]
     if clean.endswith(".py"):

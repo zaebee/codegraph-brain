@@ -349,3 +349,8 @@ def test_python_extractor_source_roots_unmatched_root() -> None:
     nodes, _ = ext.parse(code, "src/mymod/utils.py")
     fqns = [n.id for n in nodes]
     assert any(fqn.startswith("src.mymod.") for fqn in fqns)
+
+
+def test_file_path_to_module_fqn_dot_slash_source_root() -> None:
+    """CI ingests with `./src` — the ./ prefix must not defeat root stripping."""
+    assert file_path_to_module_fqn("src/cgis/pipeline.py", "./src") == "cgis.pipeline"
