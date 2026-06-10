@@ -28,6 +28,15 @@ def _load() -> dict:  # type: ignore[type-arg]
     return yaml.safe_load(PATTERNS_PATH.read_text())
 
 
+def _constraint_items(template: dict) -> list[tuple[str, dict]]:  # type: ignore[type-arg]
+    """Return (component, constraint-dict) pairs, skipping description/params keys."""
+    return [
+        (key, value)
+        for key, value in template.items()
+        if key not in ("description", "params") and isinstance(value, dict)
+    ]
+
+
 def test_patterns_yaml_exists() -> None:
     """The patterns.yaml file must exist at docs/ontology/patterns.yaml."""
     assert PATTERNS_PATH.exists()
@@ -82,9 +91,7 @@ def test_each_constraint_has_exactly_one_operator() -> None:
     data = _load()
     blocks = [*data["patterns"].values(), data["hygiene"]]
     for template in blocks:
-        for key, value in template.items():
-            if key in ("description", "params") or not isinstance(value, dict):
-                continue
+        for key, value in _constraint_items(template):
             ops = set(value.keys()) & {"min", "max", "exact"}
             assert len(ops) == 1, f"Constraint '{key}' needs exactly one operator, got {ops}"
 
@@ -92,16 +99,16 @@ def test_each_constraint_has_exactly_one_operator() -> None:
 def test_placeholders_resolve_to_declared_params() -> None:
     """Every $name in a template resolves to that template's params block."""
     data = _load()
-    for pattern_name, template in data["patterns"].items():
-        declared = set((template.get("params") or {}).keys())
-        for key, value in template.items():
-            if key in ("description", "params") or not isinstance(value, dict):
-                continue
-            for op_value in value.values():
-                if isinstance(op_value, str) and op_value.startswith("$"):
-                    assert op_value[1:] in declared, (
-                        f"'{op_value}' in '{pattern_name}.{key}' is undeclared"
-                    )
+    undeclared = [
+        f"'{op_value}' in '{pattern_name}.{key}' is undeclared"
+        for pattern_name, template in data["patterns"].items()
+        for key, value in _constraint_items(template)
+        for op_value in value.values()
+        if isinstance(op_value, str)
+        and op_value.startswith("$")
+        and op_value[1:] not in set((template.get("params") or {}).keys())
+    ]
+    assert not undeclared, "\n".join(undeclared)
 
 
 def test_project_domains_have_required_fields() -> None:

@@ -157,22 +157,26 @@ class DriftScorer:
             return params[key]
         return float(value)
 
+    def _resolve_template(self, domain: DomainConfig) -> tuple[dict[str, Any], dict[str, float]]:
+        """Return the domain's bound template and merged params; ({}, {}) when hygiene-only.
+
+        Raises ValueError if the named pattern is missing and TypeError if it
+        is not a mapping of constraints.
+        """
+        if domain.expected_pattern is None:
+            return {}, {}
+        found = self._patterns.get(domain.expected_pattern)
+        if found is None:
+            msg = f"Expected pattern '{domain.expected_pattern}' not found in patterns config."
+            raise ValueError(msg)
+        if not isinstance(found, dict):
+            msg = f"Pattern '{domain.expected_pattern}' must be a mapping of constraints."
+            raise TypeError(msg)
+        return found, self._merge_params(found, domain)
+
     def score(self, actual: PatternFingerprint, domain: DomainConfig) -> DriftReport:
         """Compute the drift score and return a DriftReport."""
-        if domain.expected_pattern is None:
-            template: dict[str, Any] = {}
-            params: dict[str, float] = {}
-        else:
-            found = self._patterns.get(domain.expected_pattern)
-            if found is None:
-                msg = f"Expected pattern '{domain.expected_pattern}' not found in patterns config."
-                raise ValueError(msg)
-            if not isinstance(found, dict):
-                msg = f"Pattern '{domain.expected_pattern}' must be a mapping of constraints."
-                raise TypeError(msg)
-            template = found
-            params = self._merge_params(template, domain)
-
+        template, params = self._resolve_template(domain)
         hygiene = self._parse_constraints(self._hygiene, {})
         constraints = {**hygiene, **self._parse_constraints(template, params)}
 

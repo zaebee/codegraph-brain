@@ -23,11 +23,8 @@ _EXCEEDED = (
 
 
 def _selected_domains(scorer: DriftScorer, graph: str) -> list[DomainConfig]:
-    """Return the project domains belonging to one graph: 'python' or 'typescript'."""
-    domains = scorer.load_project_domains()
-    if graph == "python":
-        return [d for d in domains if d.fqn_prefix.startswith("cgis.")]
-    return [d for d in domains if not d.fqn_prefix.startswith("cgis.")]
+    """Return the project domains measured under one profile: 'python' or 'typescript'."""
+    return [d for d in scorer.load_project_domains() if d.profile == graph]
 
 
 def _assert_within_tolerance(store: SQLiteStore, patterns_path: str, graph: str) -> None:
