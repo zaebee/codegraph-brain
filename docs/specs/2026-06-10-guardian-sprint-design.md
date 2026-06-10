@@ -75,14 +75,14 @@ convention):
 ```python
 class Finding(BaseModel, frozen=True):
     file: str                  # path relative to repo root
-    line: int | None           # line in the HEAD version; None = file-level
+    line: int | None = Field(default=None, gt=0)  # HEAD line; None = file-level
     severity: Literal["critical", "major", "minor"]
     category: Literal["logic", "contract", "tests", "types", "ontology"]
     title: str                 # short headline
     evidence: str              # verbatim quote from the diff (existing rule)
     problem: str               # one sentence
     fix: str                   # concrete suggestion
-    confidence: int            # 0–100; the >= 80 gate stays
+    confidence: int = Field(ge=0, le=100)  # the >= 80 gate stays
     verdict: Literal["confirmed", "refuted", "uncertain"] | None = None
     skeptic_note: str | None = None   # filled by multi-pass (section 5)
 
@@ -294,6 +294,11 @@ class SkepticResult(BaseModel, frozen=True):
     verdicts: list[SkepticVerdict]
 ```
 
+The merge step validates `finding_index` against the pass-1 findings list:
+out-of-range or duplicate indices are discarded and logged. A finding the
+skeptic never ruled on keeps `verdict=None` and is **not** filtered — absence
+of a verdict is not a refutation.
+
 ### 5.3 Filtering
 
 - `refuted` → dropped from the report, **but recorded in metrics JSONL** —
@@ -302,8 +307,12 @@ class SkepticResult(BaseModel, frozen=True):
 - `confirmed` → kept; the rendered finding gains a `Verified by <provider>`
   line.
 - `uncertain` → kept with a note and an integer confidence discount
-  (`round(confidence * 0.7)` — the field is `int`); if the result drops below
-  80, treated as refuted.
+  (`round(confidence * 0.9)` — the field is `int`); if the result drops below
+  80, treated as refuted. The multiplier is 0.9, not lower: the finder's gate
+  guarantees confidence ∈ [80, 100], so ×0.9 keeps exactly the
+  originally-high-confidence findings (≥ 89) and refutes the rest — a smaller
+  multiplier would refute *every* uncertain finding and make this branch dead
+  code.
 
 Verdicts are written via `Finding.model_copy(update={...})` — the model is
 frozen, so the skeptic pass produces new `Finding` instances rather than
@@ -347,7 +356,9 @@ GitHub only accepts inline comments on lines present in the diff. With
 full-file context (section 4.1), findings may legitimately point outside the
 hunks — a feature, not a bug. Solution: a pure function
 `diff_line_index(diff_text) -> dict[str, set[int]]` parsing hunk headers into
-valid RIGHT-side lines (unit-tested, no network). A finding whose line is in
+valid RIGHT-side lines (unit-tested, no network). The parser strips git's
+`a/`/`b/` prefixes and keys renames by the *new* path, so keys match
+`Finding.file` (repo-relative) exactly. A finding whose line is in
 the index → inline comment; outside the index or `line=None` → a "Findings
 outside the diff" section in the review body. Nothing is lost, nothing
 crashes.
