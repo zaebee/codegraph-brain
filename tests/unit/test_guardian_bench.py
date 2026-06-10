@@ -1,0 +1,153 @@
+"""Tests for benchmark ground-truth matching and scoring (spec §3.2-3.3)."""
+
+from pathlib import Path
+
+import pytest
+from pydantic import ValidationError
+
+from cgis.guardian.bench import (
+    GroundTruth,
+    GroundTruthEntry,
+    load_ground_truth,
+    match_findings,
+    score,
+)
+from cgis.guardian.findings import Finding
+
+_TRUTH = GroundTruth.model_validate(
+    {
+        "pr": 144,
+        "base": "aaa",
+        "head": "bbb",
+        "findings": [
+            {
+                "id": "float-eq",
+                "file": "tests/unit/test_quotient.py",
+                "lines": [60, 75],
+                "severity": "major",
+                "category": "tests",
+                "summary": "float ==",
+                "source": "sonar",
+            },
+            {
+                "id": "no-lines",
+                "file": "src/cgis/query/drift.py",
+                "severity": "minor",
+                "category": "types",
+                "summary": "anywhere in file",
+                "source": "gemini",
+            },
+        ],
+        "ambiguous": [{"file": "src/cgis/query/triads.py", "summary": "clip debate"}],
+    }
+)
+
+
+def _pred(file: str, line: int | None, confidence: int = 90) -> Finding:
+    return Finding(
+        file=file,
+        line=line,
+        severity="major",
+        category="logic",
+        title="t",
+        evidence="e",
+        problem="p",
+        fix="f",
+        confidence=confidence,
+    )
+
+
+def test_match_in_line_range() -> None:
+    """Same file + line inside [lo, hi] matches; category is NOT required."""
+    m = match_findings([_pred("tests/unit/test_quotient.py", 68)], _TRUTH)
+    assert m.matched == {"float-eq": 0}
+    assert m.noise == []
+
+
+def test_match_outside_line_range_is_noise() -> None:
+    """Same file but line outside the range → noise."""
+    m = match_findings([_pred("tests/unit/test_quotient.py", 10)], _TRUTH)
+    assert m.matched == {}
+    assert m.noise == [0]
+
+
+def test_match_entry_without_lines_accepts_any_line() -> None:
+    """A GT entry without lines matches any line (and None) in that file."""
+    assert match_findings([_pred("src/cgis/query/drift.py", 999)], _TRUTH).matched
+    assert match_findings([_pred("src/cgis/query/drift.py", None)], _TRUTH).matched
+
+
+def test_ambiguous_is_neither_match_nor_noise() -> None:
+    """Predictions on ambiguous files are tracked separately."""
+    m = match_findings([_pred("src/cgis/query/triads.py", 5)], _TRUTH)
+    assert m.matched == {}
+    assert m.noise == []
+    assert m.ambiguous_hits == [0]
+
+
+def test_each_entry_matches_once_greedy_by_confidence() -> None:
+    """Two predictions on one entry: the higher-confidence one wins, other is noise."""
+    preds = [
+        _pred("tests/unit/test_quotient.py", 61, confidence=80),
+        _pred("tests/unit/test_quotient.py", 62, confidence=95),
+    ]
+    m = match_findings(preds, _TRUTH)
+    assert m.matched == {"float-eq": 1}
+    assert m.noise == [0]
+
+
+def test_score_metrics() -> None:
+    """recall = matched/GT, precision = matched/preds, noise = count."""
+    preds = [
+        _pred("tests/unit/test_quotient.py", 68),
+        _pred("src/cgis/other.py", 1),
+    ]
+    m = match_findings(preds, _TRUTH)
+    s = score(m, _TRUTH)
+    assert s.recall == 0.5
+    assert s.precision == 0.5
+    assert s.noise == 1
+    assert s.missed == ["no-lines"]
+
+
+def test_score_empty_ground_truth_perfect_recall() -> None:
+    """No GT entries → recall 1.0 (a clean PR replayed with zero findings)."""
+    truth = GroundTruth(pr=1, base="a", head="b", findings=[], ambiguous=[])
+    s = score(match_findings([], truth), truth)
+    assert s.recall == 1.0
+    assert s.precision == 1.0
+
+
+def test_load_ground_truth_yaml(tmp_path: Path) -> None:
+    """YAML file loads into the GroundTruth model."""
+    p = tmp_path / "pr-1.yaml"
+    p.write_text(
+        "pr: 1\nbase: aaa\nhead: bbb\n"
+        "findings:\n"
+        "  - id: x\n    file: f.py\n    lines: [1, 2]\n    severity: major\n"
+        "    category: logic\n    summary: s\n    source: human\n"
+    )
+    gt = load_ground_truth(p)
+    assert gt.pr == 1
+    assert gt.findings[0].lines == (1, 2)
+    assert gt.ambiguous == []
+
+
+def test_inverted_lines_range_rejected() -> None:
+    """A transposed lines range fails validation instead of silently never matching."""
+    with pytest.raises(ValidationError, match="inverted"):
+        GroundTruthEntry(
+            id="x",
+            file="f.py",
+            lines=(75, 60),
+            severity="major",
+            category="logic",
+            summary="s",
+            source="human",
+        )
+
+
+def test_match_result_records_total_predictions() -> None:
+    """total_predictions is captured by the matcher, not supplied by the caller."""
+    preds = [_pred("tests/unit/test_quotient.py", 68), _pred("src/cgis/other.py", 1)]
+    assert match_findings(preds, _TRUTH).total_predictions == 2
