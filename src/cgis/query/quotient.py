@@ -5,6 +5,8 @@ module-level domains — that closure under coarsening is the point, not an
 implementation convenience.
 """
 
+from collections import Counter
+
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.query.drift import DomainConfig
 
@@ -48,15 +50,14 @@ def build_quotient(
         for d in domains
     ]
 
-    counts: dict[tuple[str, str, EdgeType], int] = {}
-    for e in edges:
-        if e.type not in _QUOTIENT_EDGE_TYPES:
-            continue
-        src = domain_of.get(e.source)
-        dst = domain_of.get(e.target)
-        if src is None or dst is None or src == dst:
-            continue
-        counts[(src, dst, e.type)] = counts.get((src, dst, e.type), 0) + 1
+    counts: Counter[tuple[str, str, EdgeType]] = Counter(
+        (domain_of[e.source], domain_of[e.target], e.type)
+        for e in edges
+        if e.type in _QUOTIENT_EDGE_TYPES
+        and e.source in domain_of
+        and e.target in domain_of
+        and domain_of[e.source] != domain_of[e.target]
+    )
 
     qedges = [
         Edge(
