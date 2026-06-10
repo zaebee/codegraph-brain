@@ -1,30 +1,11 @@
 """Guardian review quality metrics: append-only JSONL log with precision tracking."""
 
 import json
-import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 _DEFAULT_METRICS_FILE = Path("guardian_metrics.jsonl")
-
-# Matches **[<Category>] — <title> regardless of dash variant (em/en/hyphen).
-# Unicode escapes avoid ambiguous-character linter warnings (RUF001/RUF002).
-_FINDING_RE = re.compile(r"^\*\*\[[^\]]+\]\s*" + "[\u2014\u2013-]", re.MULTILINE)
-
-
-def _count_findings(review_text: str) -> tuple[int, bool]:
-    """Parse finding count and LGTM flag from review text.
-
-    Returns (findings_total, lgtm).
-    Matches finding headers in the format: **[<Category>] — <title>
-    Requiring the closing bracket + separator prevents generic markdown like
-    **[Note]** from being counted. Accepts em-dash (U+2014), en-dash (U+2013),
-    or hyphen since LLMs don't always follow the prompt's exact dash character.
-    """
-    findings = len(_FINDING_RE.findall(review_text))
-    lgtm = findings == 0 and "lgtm" in review_text.lower()
-    return findings, lgtm
 
 
 def record_review(
@@ -33,15 +14,16 @@ def record_review(
     pr: int | None,
     prompt_tokens: int,
     completion_tokens: int,
-    review_text: str,
+    findings_total: int,
+    lgtm: bool,
+    parse_failed: bool = False,
     metrics_path: Path = _DEFAULT_METRICS_FILE,
 ) -> Path:
     """Append one review entry to the metrics JSONL file and return the path.
 
-    The file is created if it does not exist. Each line is a self-contained
-    JSON object so the file can be streamed line-by-line without loading it all.
+    Counts come from the structured ReviewResult — no text parsing.
+    Note: lgtm is False on parse_failed runs even though findings_total == 0.
     """
-    findings_total, lgtm = _count_findings(review_text)
     entry = {
         "timestamp": datetime.now(UTC).isoformat(),
         "pr": pr,
@@ -52,6 +34,7 @@ def record_review(
         "findings_total": findings_total,
         "findings_applied": None,
         "lgtm": lgtm,
+        "parse_failed": parse_failed,
     }
     with metrics_path.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(entry) + "\n")
