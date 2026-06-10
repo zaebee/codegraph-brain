@@ -877,7 +877,8 @@ def drift(
     for b, qr in zip(level_bindings, quotient_reports, strict=True):
         marker = "" if b.enforce else " [dim](observe-only)[/dim]"
         console.print(
-            f"Quotient k=1 [{b.name}] vs {qr.expected_pattern}: drift={qr.drift_score:.2f}{marker}"
+            f"Quotient k=1 \\[{b.name}] vs {qr.expected_pattern}: "
+            f"drift={qr.drift_score:.2f}{marker}"
         )
 
     if any_critical:
