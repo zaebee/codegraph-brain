@@ -5,10 +5,11 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from cgis.guardian.collector import ContextCollector
 from cgis.guardian.core import GuardianReviewer
+from cgis.guardian.findings import ReviewResult
 from cgis.guardian.prompts import PromptBuilder
 from cgis.guardian.providers.base import BaseProvider, ProviderUsage
 from cgis.guardian.providers.gemini import GeminiProvider
@@ -72,6 +73,15 @@ class _FakeProvider(BaseProvider):
         """Return the canned response."""
         return self._response
 
+    async def generate_structured(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        schema: type[BaseModel],  # noqa: ARG002
+    ) -> str:
+        """Structured variant — same canned behaviour as generate_content."""
+        return await self.generate_content(system_prompt, user_prompt)
+
 
 @pytest.fixture
 def collector(tmp_path: Path) -> ContextCollector:
@@ -102,6 +112,15 @@ async def test_run_review_passes_context_to_prompt(collector: ContextCollector) 
             """Capture the user prompt and return ok."""
             captured["user"] = user_prompt
             return "ok"
+
+        async def generate_structured(
+            self,
+            system_prompt: str,
+            user_prompt: str,
+            schema: type[BaseModel],  # noqa: ARG002
+        ) -> str:
+            """Structured variant — same canned behaviour as generate_content."""
+            return await self.generate_content(system_prompt, user_prompt)
 
     with patch.object(
         collector,
@@ -143,6 +162,15 @@ async def test_provider_last_usage_after_call(collector: ContextCollector) -> No
             """Return ok and set fake usage."""
             self.last_usage = ProviderUsage(prompt_tokens=100, completion_tokens=50)
             return "ok"
+
+        async def generate_structured(
+            self,
+            system_prompt: str,
+            user_prompt: str,
+            schema: type[BaseModel],  # noqa: ARG002
+        ) -> str:
+            """Structured variant — same canned behaviour as generate_content."""
+            return await self.generate_content(system_prompt, user_prompt)
 
     p = _UsageProvider()
     with patch.object(
@@ -345,3 +373,32 @@ async def test_mistral_provider_null_content() -> None:
         pytest.raises(ValueError, match="null message content"),
     ):
         await provider.generate_content("sys", "user")
+
+
+async def test_gemini_generate_structured_sets_json_mode() -> None:
+    """generate_structured passes response_mime_type + response_schema to the SDK."""
+    mock_response = MagicMock()
+    mock_response.text = '{"findings": [], "summary": "ok"}'
+    mock_client = MagicMock()
+    mock_client.aio.models.generate_content = AsyncMock(return_value=mock_response)
+    mock_genai = MagicMock()
+    mock_genai.Client.return_value = mock_client
+
+    provider = GeminiProvider(api_key="fake")
+    with patch.dict(
+        "sys.modules",
+        {
+            "google": MagicMock(genai=mock_genai),
+            "google.genai": mock_genai,
+            "google.genai.types": MagicMock(),
+        },
+    ):
+        result = await provider.generate_structured("sys", "user", ReviewResult)
+
+    # `from google.genai import types` resolves via mock_genai.types (attribute lookup),
+    # not via sys.modules["google.genai.types"], so we assert on mock_genai.types.
+    assert result == '{"findings": [], "summary": "ok"}'
+    config_kwargs = mock_genai.types.GenerateContentConfig.call_args.kwargs
+    assert config_kwargs["response_mime_type"] == "application/json"
+    assert config_kwargs["response_schema"] is ReviewResult
+    assert config_kwargs["system_instruction"] == "sys"

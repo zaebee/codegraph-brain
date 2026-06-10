@@ -1,5 +1,7 @@
 """Mistral AI LLM provider for Guardian."""
 
+from pydantic import BaseModel
+
 from cgis.guardian.providers.base import BaseProvider, ProviderUsage
 
 
@@ -41,3 +43,12 @@ class MistralProvider(BaseProvider):
                 completion_tokens=getattr(usage, "completion_tokens", 0),
             )
         return str(content)
+
+    async def generate_structured(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        schema: type[BaseModel],  # noqa: ARG002
+    ) -> str:
+        """Send a structured prompt; delegates to generate_content (JSON mode in Task 3)."""
+        return await self.generate_content(system_prompt, user_prompt)
