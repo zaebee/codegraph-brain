@@ -102,6 +102,24 @@ class DriftScorer:
             for d in self._project_domains
         ]
 
+    def _weights_for(self, domain: DomainConfig) -> dict[str, float]:
+        """Return the drift weights for a domain: its profile's, or the top-level default.
+
+        If domain.profile is set, look it up in self._profiles and return its
+        drift_weights. If profile is not found, raise ValueError. If domain.profile
+        is None, return the top-level self._weights.
+
+        Raises ValueError if the named profile does not exist in the config.
+        """
+        if domain.profile is None:
+            return self._weights
+        profile = self._profiles.get(domain.profile)
+        if profile is None:
+            msg = f"Domain '{domain.name}' names unknown profile '{domain.profile}'."
+            raise ValueError(msg)
+        weights: dict[str, float] = profile.get("drift_weights") or {}
+        return weights
+
     def score(self, actual: PatternFingerprint, domain: DomainConfig) -> DriftReport:
         """Compute the drift score and return a DriftReport."""
         expected_pattern = domain.expected_pattern
@@ -123,7 +141,8 @@ class DriftScorer:
         if not constraints:
             return self._zero_drift_report(actual, expected_pattern, domain)
 
-        total_weight = sum(self._weights.get(name, 0.0) for name in constraints)
+        weights = self._weights_for(domain)
+        total_weight = sum(weights.get(name, 0.0) for name in constraints)
         violations: list[str] = []
         drift_sum = 0.0
         ideal_overrides: dict[str, float] = {}
@@ -136,7 +155,7 @@ class DriftScorer:
             ideal_overrides[name] = ideal_val
             component_drift = min(raw / norm, 1.0)
             weight = (
-                self._weights.get(name, 0.0) / total_weight
+                weights.get(name, 0.0) / total_weight
                 if total_weight > 0.0
                 else 1.0 / len(constraints)
             )

@@ -337,3 +337,88 @@ def test_load_params_rejects_null_values(tmp_path: Path) -> None:
     scorer = DriftScorer(str(p))
     with pytest.raises(TypeError, match="min_depth"):
         scorer.load_project_domains()
+
+
+# ── Task 2: profile-based weights ─────────────────────────────────────────────
+# Dedicated YAML without $params so this task does not depend on Task 3.
+
+_YAML_PROFILES = """\
+version: "2.0.0"
+profiles:
+  python:
+    drift_weights:
+      hub_count:        0.40
+      star_count:       0.20
+      chain_len:        0.10
+      dag_depth:        0.10
+      router_count:     0.05
+      cycle_ratio:      0.10
+      unresolved_ratio: 0.05
+patterns:
+  pure_utility:
+    description: "Hub"
+    hub_count:   {min: 1}
+    star_count:  {exact: 0}
+project_domains:
+  - name: "lib"
+    fqn_prefix: "lib"
+    expected_pattern: pure_utility
+    profile: python
+    drift_tolerance: 0.15
+"""
+
+
+def _profile_fp(hub: int, star: int) -> PatternFingerprint:
+    """Fingerprint helper for profile-weight tests."""
+    return PatternFingerprint(
+        domain="lib",
+        hub_count=hub,
+        star_count=star,
+        chain_len=0.0,
+        dag_depth=0,
+        router_count=0,
+        cycle_ratio=0.0,
+        unresolved_ratio=0.0,
+    )
+
+
+def test_profile_weights_used_when_domain_names_profile(tmp_path: Path) -> None:
+    """A domain naming a profile is scored with that profile's drift_weights."""
+    p = tmp_path / "patterns.yaml"
+    p.write_text(_YAML_PROFILES)
+    scorer = DriftScorer(str(p))
+    domain = scorer.load_project_domains()[0]
+    # hub violated, star clean. Profile weights hub .40 / star .20 → drift = .4/.6 = 2/3.
+    # (Asymmetric weights on purpose: the equal-split fallback would give 0.5,
+    # so 2/3 proves the profile weights were actually used.)
+    report = scorer.score(_profile_fp(hub=0, star=0), domain)
+    assert report.drift_score == pytest.approx(2 / 3, abs=1e-6)
+
+
+def test_unknown_profile_raises(tmp_path: Path) -> None:
+    """A domain naming an undeclared profile is a config error."""
+    yaml_text = _YAML_PROFILES.replace("profile: python", "profile: golang")
+    p = tmp_path / "patterns.yaml"
+    p.write_text(yaml_text)
+    scorer = DriftScorer(str(p))
+    domain = scorer.load_project_domains()[0]
+    with pytest.raises(ValueError, match="golang"):
+        scorer.score(_profile_fp(hub=1, star=0), domain)
+
+
+def test_top_level_weights_remain_default(
+    scorer: DriftScorer, pure_util_domain: DomainConfig
+) -> None:
+    """Domains without a profile keep using top-level drift_weights (legacy layout)."""
+    fp = PatternFingerprint(
+        domain="cgis.extractors",
+        hub_count=0,  # violates min:1 → nonzero drift proves weights were found
+        star_count=0,
+        chain_len=0.0,
+        dag_depth=0,
+        router_count=0,
+        cycle_ratio=0.0,
+        unresolved_ratio=0.0,
+    )
+    report = scorer.score(fp, pure_util_domain)
+    assert report.drift_score > 0.0
