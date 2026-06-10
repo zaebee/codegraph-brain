@@ -3,6 +3,7 @@
 from cgis.guardian.findings import Finding, ReviewResult
 
 _SEVERITY_MARKER = {"critical": "🔴", "major": "🟠", "minor": "🟡"}
+_SEVERITY_ORDER = {"critical": 0, "major": 1, "minor": 2}
 _CATEGORY_LABEL = {
     "logic": "Logic Bug",
     "contract": "Library Contract",
@@ -40,5 +41,6 @@ def render_report(result: ReviewResult) -> str:
         )
     if not result.findings:
         return f"LGTM — no defects found in this diff.\n\n{result.summary}"
-    blocks = [render_finding(f) for f in result.findings]
+    ordered = sorted(result.findings, key=lambda f: _SEVERITY_ORDER[f.severity])
+    blocks = [render_finding(f) for f in ordered]
     return "\n\n".join(blocks) + f"\n\n---\n**Summary:** {result.summary}"

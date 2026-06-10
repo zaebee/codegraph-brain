@@ -69,3 +69,17 @@ def test_render_report_findings_and_summary() -> None:
     assert "**[Logic Bug] — off-by-one in pagination**" in text
     assert "**Summary:** checked X" in text
     assert "\n\n---\n**Summary:** checked X" in text
+
+
+def test_render_report_sorts_by_severity() -> None:
+    """Findings render critical -> major -> minor regardless of LLM order."""
+    result = ReviewResult(
+        findings=[
+            _FINDING.model_copy(update={"severity": "minor", "title": "m3"}),
+            _FINDING.model_copy(update={"severity": "critical", "title": "m1"}),
+            _FINDING.model_copy(update={"severity": "major", "title": "m2"}),
+        ],
+        summary="s",
+    )
+    report = render_report(result)
+    assert report.index("m1") < report.index("m2") < report.index("m3")

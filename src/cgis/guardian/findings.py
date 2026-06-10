@@ -51,4 +51,6 @@ def extract_json(text: str) -> str:
     closing = body.find("\n```")
     if closing != -1:
         return body[:closing].strip()
-    return body.strip()
+    # No newline before the closing fence (e.g. `{...}```` on one line):
+    # valid JSON never ends with backticks, so stripping the suffix is safe.
+    return body.strip().removesuffix("```").strip()

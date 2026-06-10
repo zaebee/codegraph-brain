@@ -116,3 +116,9 @@ def test_finding_schema_has_no_exclusive_minimum() -> None:
     """gemini's response Schema rejects exclusiveMinimum — line must use ge, not gt."""
     schema = json.dumps(ReviewResult.model_json_schema())
     assert "exclusiveMinimum" not in schema
+
+
+def test_extract_json_inline_closing_fence() -> None:
+    """Closing fence on the same line as the JSON must still be stripped."""
+    text = '```json\n{"findings": [], "summary": "ok"}```'
+    assert json.loads(extract_json(text)) == {"findings": [], "summary": "ok"}
