@@ -72,13 +72,13 @@ def test_201() -> None:
 
 
 def test_120d() -> None:
-    """Mutual dyad, third node receives from both: A↔B, A→C, B→C."""
-    _single([("a", "b"), ("b", "a"), ("a", "c"), ("b", "c")], "120D")
+    """Mutual dyad, third node points at both: A↔B, C→A, C→B."""
+    _single([("a", "b"), ("b", "a"), ("c", "a"), ("c", "b")], "120D")
 
 
 def test_120u() -> None:
-    """Mutual dyad, third node points at both: A↔B, C→A, C→B."""
-    _single([("a", "b"), ("b", "a"), ("c", "a"), ("c", "b")], "120U")
+    """Mutual dyad, both members point at the third: A↔B, A→C, B→C."""
+    _single([("a", "b"), ("b", "a"), ("a", "c"), ("b", "c")], "120U")
 
 
 def test_120c() -> None:
