@@ -9,7 +9,7 @@ from typing import Any, Literal
 import yaml
 
 from cgis.query.fingerprint import PatternFingerprint
-from cgis.query.triads import TRIAD_ORDER
+from cgis.query.triads import TRIAD_ORDER, ZERO_TRIADS, tv_distance
 
 _COMPONENT_NAMES = (
     "hub_count",
@@ -25,6 +25,7 @@ _CALLS_LAYER = frozenset({"hub_count", "star_count", "chain_len", "router_count"
 
 _STATUS_WARNING = 0.20
 _STATUS_CRITICAL = 0.50
+_TRIAD_VIOLATION_THRESHOLD = 0.05
 
 
 @dataclass(frozen=True)
@@ -54,6 +55,8 @@ class DriftReport:
     violations: list[str]
     status: Literal["clean", "warning", "critical"]
     tolerance: float
+    tv_imports: float | None = None
+    tv_calls: float | None = None
 
 
 def _classify(score: float) -> Literal["clean", "warning", "critical"]:
@@ -252,18 +255,72 @@ class DriftScorer:
         return found, self._merge_params(found, domain)
 
     def score(self, actual: PatternFingerprint, domain: DomainConfig) -> DriftReport:
-        """Compute the drift score and return a DriftReport."""
+        """Compute the drift score and return a DriftReport (v2 when configured)."""
         template, params = self._resolve_template(domain)
         hygiene = self._parse_constraints(self._hygiene, {})
         constraints = {**hygiene, **self._parse_constraints(template, params)}
 
+        ideal = None if domain.expected_pattern is None else self.ideal_for(domain.expected_pattern)
+        layers = None if domain.profile is None else self.layers_for(domain.profile)
+        if ideal is None or layers is None:
+            return self._score_v1(actual, domain, constraints, self._weights_for(domain))
+        return self._score_v2(actual, domain, constraints, ideal, layers)
+
+    def _score_v1(
+        self,
+        actual: PatternFingerprint,
+        domain: DomainConfig,
+        constraints: dict[str, tuple[str, float]],
+        weights: dict[str, float],
+    ) -> DriftReport:
+        """V1 scoring: per-constraint weighted drift with CALLS-layer discount."""
         if not constraints:
             return self._zero_drift_report(actual, domain)
 
-        weights = self._weights_for(domain)
-        # Clip defensively: a hand-built fingerprint could carry a ratio outside
-        # [0, 1]; negative effective weights must never occur.
-        discount = max(0.0, min(1.0 - actual.unresolved_ratio, 1.0))
+        drift_sum, violations, ideal_overrides = self._weighted_constraint_drift(
+            actual, constraints, weights
+        )
+
+        ideal_fp = PatternFingerprint(
+            domain=domain.fqn_prefix,
+            hub_count=int(ideal_overrides.get("hub_count", 0)),
+            star_count=int(ideal_overrides.get("star_count", 0)),
+            chain_len=float(ideal_overrides.get("chain_len", 0.0)),
+            dag_depth=int(ideal_overrides.get("dag_depth", 0)),
+            router_count=int(ideal_overrides.get("router_count", 0)),
+            cycle_ratio=float(ideal_overrides.get("cycle_ratio", 0.0)),
+            unresolved_ratio=float(ideal_overrides.get("unresolved_ratio", 0.0)),
+        )
+
+        return DriftReport(
+            domain=domain.name,
+            fqn_prefix=domain.fqn_prefix,
+            expected_pattern=domain.expected_pattern,
+            actual=actual,
+            ideal=ideal_fp,
+            drift_score=round(drift_sum, 6),
+            violations=violations,
+            status=_classify(drift_sum),
+            tolerance=domain.drift_tolerance,
+        )
+
+    def _weighted_constraint_drift(
+        self,
+        actual: PatternFingerprint,
+        constraints: dict[str, tuple[str, float]],
+        weights: dict[str, float],
+        discount: float | None = None,
+    ) -> tuple[float, list[str], dict[str, float]]:
+        """Shared per-constraint loop: CALLS-layer discount, renorm, violation strings.
+
+        Returns (drift_sum, violations, ideal_overrides).
+        discount defaults to clip(1 - actual.unresolved_ratio) when not supplied.
+        """
+        if discount is None:
+            # Clip defensively: a hand-built fingerprint could carry a ratio outside
+            # [0, 1]; negative effective weights must never occur.
+            discount = max(0.0, min(1.0 - actual.unresolved_ratio, 1.0))
+
         raw_weights = {name: weights.get(name, 0.0) for name in constraints}
         eff_weights = {
             name: w * discount if name in _CALLS_LAYER else w for name, w in raw_weights.items()
@@ -287,27 +344,108 @@ class DriftScorer:
                 weight = 1.0 / len(constraints)
             drift_sum += weight * component_drift
 
-        ideal_fp = PatternFingerprint(
-            domain=domain.fqn_prefix,
-            hub_count=int(ideal_overrides.get("hub_count", 0)),
-            star_count=int(ideal_overrides.get("star_count", 0)),
-            chain_len=float(ideal_overrides.get("chain_len", 0.0)),
-            dag_depth=int(ideal_overrides.get("dag_depth", 0)),
-            router_count=int(ideal_overrides.get("router_count", 0)),
-            cycle_ratio=float(ideal_overrides.get("cycle_ratio", 0.0)),
-            unresolved_ratio=float(ideal_overrides.get("unresolved_ratio", 0.0)),
+        return drift_sum, violations, ideal_overrides
+
+    def _gate_drift(
+        self,
+        actual: PatternFingerprint,
+        domain: DomainConfig,
+        gates: dict[str, tuple[str, float]],
+        discount: float,
+    ) -> tuple[float, list[str]]:
+        """Compute drift for gate constraints only (v2 path), reusing the shared mechanism."""
+        if not gates:
+            return 0.0, []
+        weights = self._weights_for(domain)
+        gate_drift, violations, _ = self._weighted_constraint_drift(
+            actual, gates, weights, discount=discount
         )
+        return gate_drift, violations
+
+    def _score_v2(
+        self,
+        actual: PatternFingerprint,
+        domain: DomainConfig,
+        gates: dict[str, tuple[str, float]],
+        ideal: tuple[tuple[float, ...], tuple[float, ...]],
+        layers: dict[str, float],
+    ) -> DriftReport:
+        """Fingerprint v2 drift: layered TV distance + hard gates (spec §3.3)."""
+        if domain.profile is None:  # layers presence implies a profile
+            msg = "v2 scoring requires a profile on the domain binding."
+            raise RuntimeError(msg)
+        triad_w = self.triad_weights_for(domain.profile)
+        discount = max(0.0, min(1.0 - actual.unresolved_ratio, 1.0))
+        violations: list[str] = []
+
+        tv_imp: float | None = None
+        if actual.t_imports != ZERO_TRIADS:
+            tv_imp, contribs = tv_distance(actual.t_imports, ideal[0], triad_w)
+            violations.extend(
+                self._triad_violations("T_imports", actual.t_imports, ideal[0], contribs)
+            )
+        tv_cal: float | None = None
+        if actual.t_calls != ZERO_TRIADS:
+            tv_cal, contribs = tv_distance(actual.t_calls, ideal[1], triad_w)
+            violations.extend(self._triad_violations("T_calls", actual.t_calls, ideal[1], contribs))
+
+        gate_drift, gate_violations = self._gate_drift(actual, domain, gates, discount)
+        violations.extend(gate_violations)
+
+        eff = {
+            "imports": layers["imports"] if tv_imp is not None else 0.0,
+            "calls": layers["calls"] * discount if tv_cal is not None else 0.0,
+            "gates": layers["gates"] if gates else 0.0,
+        }
+        terms = {"imports": tv_imp or 0.0, "calls": tv_cal or 0.0, "gates": gate_drift}
+        total = sum(eff.values())
+        drift = sum(eff[k] * terms[k] for k in eff) / total if total > 0.0 else 0.0
 
         return DriftReport(
             domain=domain.name,
             fqn_prefix=domain.fqn_prefix,
             expected_pattern=domain.expected_pattern,
             actual=actual,
-            ideal=ideal_fp,
-            drift_score=round(drift_sum, 6),
+            ideal=self._ideal_fingerprint_v2(domain, ideal),
+            drift_score=drift,
             violations=violations,
-            status=_classify(drift_sum),
+            status=_classify(drift),
             tolerance=domain.drift_tolerance,
+            tv_imports=tv_imp,
+            tv_calls=tv_cal,
+        )
+
+    @staticmethod
+    def _triad_violations(
+        layer: str,
+        actual: tuple[float, ...],
+        ideal: tuple[float, ...],
+        contribs: list[tuple[str, float]],
+    ) -> list[str]:
+        """Render triad terms contributing ≥ threshold as violation strings."""
+        return [
+            f"{layer}[{name}]={actual[i]:.2f} vs ideal {ideal[i]:.2f} (+{c:.2f})"
+            for i, (name, c) in enumerate(contribs)
+            if c >= _TRIAD_VIOLATION_THRESHOLD
+        ]
+
+    @staticmethod
+    def _ideal_fingerprint_v2(
+        domain: DomainConfig,
+        ideal: tuple[tuple[float, ...], tuple[float, ...]],
+    ) -> PatternFingerprint:
+        """Ideal fingerprint carrying the template's triad points (v1 fields zero)."""
+        return PatternFingerprint(
+            domain=domain.fqn_prefix,
+            hub_count=0,
+            star_count=0,
+            chain_len=0.0,
+            dag_depth=0,
+            router_count=0,
+            cycle_ratio=0.0,
+            unresolved_ratio=0.0,
+            t_imports=ideal[0],
+            t_calls=ideal[1],
         )
 
     def _zero_drift_report(self, actual: PatternFingerprint, domain: DomainConfig) -> DriftReport:

@@ -859,3 +859,124 @@ def test_layers_and_triad_weights_undeclared_defaults(v2_scorer: DriftScorer) ->
     """A profile without layers yields None; without triad_weights, all-ones."""
     assert v2_scorer.layers_for("missing_profile") is None
     assert v2_scorer.triad_weights_for("missing_profile") == (1.0,) * 13
+
+
+# ── §3.3 v2 scoring: TV distance + gates + empty-layer exclusion ─────────────
+
+
+def _v2_fp(
+    t_imports: tuple[float, ...],
+    t_calls: tuple[float, ...],
+    unresolved: float = 0.0,
+    cycle: float = 0.0,
+) -> PatternFingerprint:
+    """Fingerprint with explicit census vectors; v1 counting fields irrelevant in v2."""
+    return PatternFingerprint(
+        domain="res",
+        hub_count=0,
+        star_count=0,
+        chain_len=0.0,
+        dag_depth=0,
+        router_count=0,
+        cycle_ratio=cycle,
+        unresolved_ratio=unresolved,
+        t_imports=t_imports,
+        t_calls=t_calls,
+    )
+
+
+def _unit(name: str) -> tuple[float, ...]:
+    """13-dim unit vector on the named triad class."""
+    return tuple(1.0 if n == name else 0.0 for n in TRIAD_ORDER)
+
+
+def test_v2_perfect_match_zero_drift(v2_scorer: DriftScorer) -> None:
+    """Both layers exactly on the ideal point, clean gates → drift 0."""
+    domain = v2_scorer.load_project_domains()[0]
+    report = v2_scorer.score(_v2_fp(_unit("021C"), _unit("021C")), domain)
+    assert report.drift_score == pytest.approx(0.0)
+    assert report.tv_imports == pytest.approx(0.0)
+    assert report.tv_calls == pytest.approx(0.0)
+
+
+def test_v2_arithmetic_pinned(v2_scorer: DriftScorer) -> None:
+    """drift = (L_imp·tv_imp + L_cal·tv_cal + L_gate·0) with all layers present.
+
+    imports: measured 021D vs ideal 021C → tv 1.0
+    calls:   60/40 split 021C/021D vs ideal 021C → tv 0.4
+    gates clean → 0. drift = .35·1.0 + .35·0.4 + .30·0 = 0.49
+    """
+    domain = v2_scorer.load_project_domains()[0]
+    t_calls = tuple(0.6 if n == "021C" else (0.4 if n == "021D" else 0.0) for n in TRIAD_ORDER)
+    report = v2_scorer.score(_v2_fp(_unit("021D"), t_calls), domain)
+    assert report.tv_imports == pytest.approx(1.0)
+    assert report.tv_calls == pytest.approx(0.4)
+    assert report.drift_score == pytest.approx(0.49)
+
+
+def test_v2_empty_layer_excluded_not_drifted(v2_scorer: DriftScorer) -> None:
+    """Zero-census imports layer drops out with renormalization (decision #3).
+
+    Only calls carries signal: drift = (.35·0.4)/(.35+.30) ≈ 0.2154 — NOT
+    .35·0.5 + ... which would treat 'no data' as half-drifted.
+    """
+    domain = v2_scorer.load_project_domains()[0]
+    t_calls = tuple(0.6 if n == "021C" else (0.4 if n == "021D" else 0.0) for n in TRIAD_ORDER)
+    report = v2_scorer.score(_v2_fp((0.0,) * 13, t_calls), domain)
+    assert report.tv_imports is None  # excluded, not 0.5
+    assert report.drift_score == pytest.approx(0.35 * 0.4 / 0.65)
+
+
+def test_v2_discount_scales_calls_layer(v2_scorer: DriftScorer) -> None:
+    """unresolved=0.5 halves the calls layer weight before renormalization.
+
+    eff = (imports .35, calls .175, gates .30), total .825.
+    Gate arithmetic (v1 mechanism): unresolved max 0.2, actual 0.5 →
+    raw=.3, norm=max(.2, 1.0)=1.0 → component drift .3; gate weights
+    cycle .25 / unresolved .15 (unresolved is NOT in _CALLS_LAYER, so no
+    discount on its weight) → gate_drift = (.15/.40)·.3 = .1125.
+    drift = (.35·1.0 + .175·0.4 + .30·.1125) / .825
+    """
+    domain = v2_scorer.load_project_domains()[0]
+    t_calls = tuple(0.6 if n == "021C" else (0.4 if n == "021D" else 0.0) for n in TRIAD_ORDER)
+    report = v2_scorer.score(_v2_fp(_unit("021D"), t_calls, unresolved=0.5), domain)
+    expected = (0.35 * 1.0 + 0.175 * 0.4 + 0.30 * 0.1125) / (0.35 + 0.175 + 0.30)
+    assert report.drift_score == pytest.approx(expected)
+    assert any("unresolved_ratio" in v for v in report.violations)
+
+
+def test_v2_triad_weight_damps_contribution(v2_scorer: DriftScorer) -> None:
+    """030C carries w=0.5 in the fixture profile → its TV term is halved."""
+    domain = v2_scorer.load_project_domains()[0]
+    report = v2_scorer.score(_v2_fp(_unit("030C"), _unit("021C")), domain)
+    # imports: |1-0|*0.5(w)*0.5 on 030C + |0-1|*1.0*0.5 on 021C = 0.25 + 0.5 = 0.75
+    assert report.tv_imports == pytest.approx(0.75)
+
+
+def test_v2_violations_name_top_triads(v2_scorer: DriftScorer) -> None:
+    """Triad terms contributing ≥0.05 appear as human-readable violations."""
+    domain = v2_scorer.load_project_domains()[0]
+    report = v2_scorer.score(_v2_fp(_unit("021D"), _unit("021C")), domain)
+    assert any("T_imports[021D]" in v for v in report.violations)
+    assert any("T_imports[021C]" in v for v in report.violations)
+    assert not any("T_calls" in v for v in report.violations)  # calls is on-ideal
+
+
+def test_v1_path_untouched_without_ideal(
+    scorer: DriftScorer, pure_util_domain: DomainConfig
+) -> None:
+    """Legacy YAML (no ideal/layers) scores exactly as before; tv fields are None."""
+    fp = PatternFingerprint(
+        domain="cgis.extractors",
+        hub_count=1,
+        star_count=0,
+        chain_len=0.0,
+        dag_depth=0,
+        router_count=0,
+        cycle_ratio=0.0,
+        unresolved_ratio=0.0,
+    )
+    report = scorer.score(fp, pure_util_domain)
+    assert report.drift_score == pytest.approx(0.0)
+    assert report.tv_imports is None
+    assert report.tv_calls is None
