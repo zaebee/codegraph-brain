@@ -505,3 +505,10 @@ def test_user_prompt_includes_full_files_section() -> None:
     without = PromptBuilder.build_user_prompt({"diff": "d"})
     assert "FULL FILE CONTENTS (HEAD)" in with_files
     assert "FULL FILE CONTENTS" not in without
+
+
+def test_user_prompt_includes_drift_section() -> None:
+    """The ARCHITECTURAL DRIFT section appears iff the context provides it."""
+    with_drift = PromptBuilder.build_user_prompt({"diff": "d", "drift": "| domain |"})
+    assert "ARCHITECTURAL DRIFT (motif-basis)" in with_drift
+    assert "ontology" in with_drift  # the reading instruction names the category

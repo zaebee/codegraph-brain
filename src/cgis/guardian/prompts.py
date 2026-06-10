@@ -50,6 +50,18 @@ omission note — treat a note as missing context, not missing code).
 {full_files}
 """
 
+        drift = context.get("drift", "")
+        drift_section = ""
+        if drift:
+            drift_section = f"""
+### 6. ARCHITECTURAL DRIFT (motif-basis)
+Per-domain drift vs the declared ideal pattern. A PR pushing a domain past its
+tolerance (⚠) is an `ontology`-category finding. The quotient line is
+observe-only — do NOT flag it.
+
+{drift}
+"""
+
         return f"""Review the following Pull Request diff for real defects.
 
 ### 1. ENGINEERING STANDARDS (from CONTRIBUTING.md)
@@ -60,7 +72,7 @@ omission note — treat a note as missing context, not missing code).
 
 ### 3. CHANGES TO REVIEW (git diff)
 {diff}
-{graph_section}{full_files_section}
+{graph_section}{full_files_section}{drift_section}
 ---
 ### PRECISION RULES — read before writing a single finding:
 

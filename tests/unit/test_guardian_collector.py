@@ -265,3 +265,56 @@ def test_no_flow_fallback_without_feature(tmp_db: Path) -> None:
 
     mock_engine.get_flow_graph.assert_not_called()
     assert collector.graph_stats["flow_fallback"] == 0
+
+
+def test_collect_drift_renders_table(tmp_db: Path, tmp_path: Path) -> None:
+    """Drift section renders a markdown table row per domain plus quotient lines."""
+    patterns = tmp_path / "docs" / "ontology" / "patterns.yaml"
+    patterns.parent.mkdir(parents=True)
+    patterns.write_text("patterns: {}\n")
+
+    fake_report = MagicMock()
+    fake_report.fqn_prefix = "cgis.query"
+    fake_report.expected_pattern = "layered_dag"
+    fake_report.drift_score = 0.61
+    fake_report.tolerance = 0.50
+
+    fake_scorer = MagicMock()
+    fake_domain = MagicMock()
+    fake_scorer.load_project_domains.return_value = [fake_domain]
+    fake_scorer.load_project_level.return_value = []
+    fake_scorer.score.return_value = fake_report
+
+    collector = ContextCollector(
+        project_root=tmp_path, db_path=tmp_db, features=frozenset({"drift"})
+    )
+    with (
+        patch("cgis.guardian.collector.DriftScorer", return_value=fake_scorer),
+        patch("cgis.guardian.collector.FingerprintExtractor"),
+        patch("cgis.guardian.collector.SQLiteStore") as mock_store_cls,
+    ):
+        mock_store_cls.return_value.__enter__ = MagicMock(return_value=MagicMock())
+        mock_store_cls.return_value.__exit__ = MagicMock(return_value=False)
+        result = collector.collect_drift()
+
+    assert "| cgis.query | layered_dag | 0.61 | 0.50 | ⚠ |" in result
+
+
+def test_collect_drift_missing_patterns_returns_empty(tmp_db: Path, tmp_path: Path) -> None:
+    """No patterns.yaml → empty string, never an exception (spec §4.4)."""
+    collector = ContextCollector(
+        project_root=tmp_path, db_path=tmp_db, features=frozenset({"drift"})
+    )
+    assert collector.collect_drift() == ""
+
+
+def test_collect_drift_swallows_scorer_errors(tmp_db: Path, tmp_path: Path) -> None:
+    """A DriftScorer crash degrades to an empty section — guardian never fails a review."""
+    patterns = tmp_path / "docs" / "ontology" / "patterns.yaml"
+    patterns.parent.mkdir(parents=True)
+    patterns.write_text("patterns: {}\n")
+    collector = ContextCollector(
+        project_root=tmp_path, db_path=tmp_db, features=frozenset({"drift"})
+    )
+    with patch("cgis.guardian.collector.DriftScorer", side_effect=RuntimeError("boom")):
+        assert collector.collect_drift() == ""

@@ -6,8 +6,11 @@ from pathlib import Path
 import structlog
 
 from cgis.extractors.python_extractor import file_path_to_module_fqn
+from cgis.query.drift import DriftScorer
 from cgis.query.engine import QueryEngine
+from cgis.query.fingerprint import FingerprintExtractor
 from cgis.query.mermaid import MermaidCompiler
+from cgis.query.quotient import build_quotient
 from cgis.storage.sqlite_store import SQLiteStore
 
 log = structlog.getLogger(__name__)
@@ -178,6 +181,51 @@ class ContextCollector:
             )
         return "\n\n".join(sections)
 
+    def collect_drift(self) -> str:
+        """Compact per-domain drift table + quotient k=1 lines (spec §4.3).
+
+        First real consumer of drift v2 outside tests — the soft enforcement
+        channel deferred in #146/#151. Any failure degrades to an empty section.
+        """
+        if self.db_path is None or not self.db_path.exists():
+            return ""
+        patterns = self.project_root / "docs" / "ontology" / "patterns.yaml"
+        if not patterns.exists():
+            return ""
+        try:
+            scorer = DriftScorer(str(patterns))
+            domains = scorer.load_project_domains()
+            quotient_lines: list[str] = []
+            with SQLiteStore(str(self.db_path)) as store:
+                extractor = FingerprintExtractor(store)
+                reports = [scorer.score(extractor.extract(d.fqn_prefix), d) for d in domains]
+                level = scorer.load_project_level()
+                if level:
+                    qnodes, qedges = build_quotient(
+                        store.get_all_nodes(), store.get_all_edges(), domains
+                    )
+                    q_extractor = FingerprintExtractor.from_graph(qnodes, qedges)
+                    quotient_lines = [
+                        f"Quotient k=1 [{b.name}] vs {qr.expected_pattern}: "
+                        f"drift={qr.drift_score:.2f} (observe-only)"
+                        for b in level
+                        for qr in [scorer.score(q_extractor.extract(b.fqn_prefix), b)]
+                    ]
+        except Exception:
+            log.warning("Drift section skipped.", exc_info=True)
+            return ""
+
+        rows = [
+            f"| {r.fqn_prefix} | {r.expected_pattern or '(hygiene)'} "
+            f"| {r.drift_score:.2f} | {r.tolerance:.2f} "
+            f"| {'⚠' if r.drift_score > r.tolerance else ''} |"
+            for r in reports
+        ]
+        table = "| domain | expected | drift | tolerance | over |\n|---|---|---|---|---|\n"
+        return (
+            table + "\n".join(rows) + ("\n" + "\n".join(quotient_lines) if quotient_lines else "")
+        )
+
     def collect_all(self) -> dict[str, str]:
         """Collects all relevant files, git diff, and optional graph context."""
         context: dict[str, str] = {
@@ -192,4 +240,8 @@ class ContextCollector:
             full_files = self.collect_full_files()
             if full_files:
                 context["full_files"] = full_files
+        if "drift" in self.features:
+            drift = self.collect_drift()
+            if drift:
+                context["drift"] = drift
         return context
