@@ -222,3 +222,46 @@ def test_collect_all_full_files_gated_by_feature(tmp_path: Path) -> None:
         ):
             context = collector.collect_all()
         assert ("full_files" in context) == (collector is on)
+
+
+def test_flow_fallback_on_empty_impact(tmp_db: Path) -> None:
+    """Empty impact graph + 'flow' feature falls back to the outbound flow graph."""
+    node = _make_node("cgis.newmod.func", "src/cgis/newmod.py")
+    mock_engine = MagicMock()
+    mock_engine.get_impact_graph.return_value = ([], [])
+    mock_engine.get_flow_graph.return_value = ([node], [])
+
+    collector = ContextCollector(
+        project_root=tmp_db.parent, db_path=tmp_db, features=frozenset({"flow"})
+    )
+    with (
+        patch.object(collector, "get_changed_py_files", return_value=["src/cgis/newmod.py"]),
+        patch("cgis.guardian.collector.SQLiteStore") as mock_store_cls,
+        patch("cgis.guardian.collector.QueryEngine", return_value=mock_engine),
+    ):
+        mock_store_cls.return_value.__enter__ = MagicMock(return_value=MagicMock())
+        mock_store_cls.return_value.__exit__ = MagicMock(return_value=False)
+        result = collector.collect_graph_context()
+
+    assert "Dependency graph (outbound) for `cgis.newmod`" in result
+    mock_engine.get_flow_graph.assert_called_once_with("cgis.newmod", max_depth=2)
+    assert collector.graph_stats["flow_fallback"] == 1
+
+
+def test_no_flow_fallback_without_feature(tmp_db: Path) -> None:
+    """Without the 'flow' feature the fallback is never attempted (baseline behavior)."""
+    mock_engine = MagicMock()
+    mock_engine.get_impact_graph.return_value = ([], [])
+
+    collector = ContextCollector(project_root=tmp_db.parent, db_path=tmp_db)
+    with (
+        patch.object(collector, "get_changed_py_files", return_value=["src/cgis/newmod.py"]),
+        patch("cgis.guardian.collector.SQLiteStore") as mock_store_cls,
+        patch("cgis.guardian.collector.QueryEngine", return_value=mock_engine),
+    ):
+        mock_store_cls.return_value.__enter__ = MagicMock(return_value=MagicMock())
+        mock_store_cls.return_value.__exit__ = MagicMock(return_value=False)
+        collector.collect_graph_context()
+
+    mock_engine.get_flow_graph.assert_not_called()
+    assert collector.graph_stats["flow_fallback"] == 0

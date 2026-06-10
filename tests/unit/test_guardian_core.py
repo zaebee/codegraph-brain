@@ -243,14 +243,14 @@ async def test_provider_last_usage_after_call(collector: ContextCollector) -> No
 def test_graph_stats_initialised_to_zero(tmp_path: Path) -> None:
     """graph_stats starts at zero before collect_graph_context is called."""
     c = ContextCollector(project_root=tmp_path)
-    assert c.graph_stats == {"total": 0, "with_graph": 0}
+    assert c.graph_stats == {"total": 0, "with_graph": 0, "flow_fallback": 0}
 
 
 def test_graph_stats_updated_when_no_db(tmp_path: Path) -> None:
     """graph_stats stays at zero when db_path is None."""
     c = ContextCollector(project_root=tmp_path)
     c.collect_graph_context()
-    assert c.graph_stats == {"total": 0, "with_graph": 0}
+    assert c.graph_stats == {"total": 0, "with_graph": 0, "flow_fallback": 0}
 
 
 def test_graph_stats_empty_changed_files(tmp_path: Path) -> None:
@@ -260,7 +260,7 @@ def test_graph_stats_empty_changed_files(tmp_path: Path) -> None:
     c = ContextCollector(project_root=tmp_path, db_path=db)
     with patch("cgis.guardian.collector.ContextCollector.get_changed_py_files", return_value=[]):
         c.collect_graph_context()
-    assert c.graph_stats == {"total": 0, "with_graph": 0}
+    assert c.graph_stats == {"total": 0, "with_graph": 0, "flow_fallback": 0}
 
 
 # ---------------------------------------------------------------------------

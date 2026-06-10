@@ -61,7 +61,7 @@ class ContextCollector:
         self.base_ref = base_ref
         self.source_root = source_root
         self.features = features
-        self.graph_stats: dict[str, int] = {"total": 0, "with_graph": 0}
+        self.graph_stats: dict[str, int] = {"total": 0, "with_graph": 0, "flow_fallback": 0}
 
     def _diff_range(self) -> str:
         """Return the git range argument for diff commands."""
@@ -145,21 +145,31 @@ class ContextCollector:
         compiler = MermaidCompiler()
         sections: list[str] = []
         total_changed = len(changed_files)
+        flow_fallbacks = 0
 
         with SQLiteStore(str(self.db_path)) as store:
             engine = QueryEngine(store)
             for rel_path in changed_files:
                 module_fqn = file_path_to_module_fqn(rel_path, self.source_root)
                 nodes, edges = engine.get_impact_graph(module_fqn, max_depth=2)
+                title = "Impact graph"
+                if not nodes and "flow" in self.features:
+                    # New file: nothing references it yet (#94) — show what it calls.
+                    nodes, edges = engine.get_flow_graph(module_fqn, max_depth=2)
+                    title = "Dependency graph (outbound)"
+                    if nodes:
+                        flow_fallbacks += 1
                 if not nodes:
                     log.debug("No impact graph for module", fqn=module_fqn)
                     continue
                 mermaid = compiler.compile(nodes, edges)
-                sections.append(
-                    f"#### Impact graph for `{module_fqn}`:\n```mermaid\n{mermaid}\n```"
-                )
+                sections.append(f"#### {title} for `{module_fqn}`:\n```mermaid\n{mermaid}\n```")
 
-        self.graph_stats = {"total": total_changed, "with_graph": len(sections)}
+        self.graph_stats = {
+            "total": total_changed,
+            "with_graph": len(sections),
+            "flow_fallback": flow_fallbacks,
+        }
         if total_changed > 0 and len(sections) == 0:
             log.warning(
                 "No graph context found for any changed file.",
