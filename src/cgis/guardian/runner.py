@@ -53,6 +53,39 @@ def build_provider(env: Mapping[str, str]) -> tuple[BaseProvider, str]:
     raise RuntimeError(_msg)
 
 
+def build_skeptic_provider(
+    env: Mapping[str, str], *, primary: str
+) -> tuple[BaseProvider, str] | None:
+    """Return (skeptic_provider, model) or None for single-pass (spec §5.5).
+
+    Default skeptic = the provider opposite to the primary; GUARDIAN_SKEPTIC
+    overrides ('gemini'|'mistral'|'off'); GUARDIAN_SKEPTIC_MODEL overrides the
+    model, enabling same-provider/different-model pairs. A missing API key
+    degrades to None — a review never fails because of the skeptic.
+    """
+    choice = env.get("GUARDIAN_SKEPTIC", "").lower()
+    if choice == "off":
+        return None
+    if choice not in ("", "gemini", "mistral"):
+        log.warning("Unknown GUARDIAN_SKEPTIC; skeptic disabled.", value=choice)
+        return None
+    name = choice or ("mistral" if primary == "gemini" else "gemini")
+    model_override = env.get("GUARDIAN_SKEPTIC_MODEL")
+    if name == "mistral":
+        key = env.get("MISTRAL_API_KEY")
+        if not key:
+            log.warning("Skeptic disabled: MISTRAL_API_KEY not set.")
+            return None
+        model = model_override or DEFAULT_MISTRAL_MODEL
+        return MistralProvider(api_key=key, model_name=model), model
+    key = env.get("GEMINI_API_KEY")
+    if not key:
+        log.warning("Skeptic disabled: GEMINI_API_KEY not set.")
+        return None
+    model = model_override or DEFAULT_GEMINI_MODEL
+    return GeminiProvider(api_key=key, model_name=model), model
+
+
 def build_footer(*, model: str, usage: ProviderUsage, stats: dict[str, int]) -> str:
     """Build the markdown footer with model, token usage, and graph coverage."""
     parts = [f"🤖 **{model}**"]

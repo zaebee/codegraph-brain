@@ -17,6 +17,8 @@ def record_review(
     findings_total: int,
     lgtm: bool,
     parse_failed: bool = False,
+    skeptic_model: str | None = None,
+    skeptic_status: str = "off",
     metrics_path: Path = _DEFAULT_METRICS_FILE,
 ) -> Path:
     """Append one review entry to the metrics JSONL file and return the path.
@@ -35,6 +37,8 @@ def record_review(
         "findings_applied": None,
         "lgtm": lgtm,
         "parse_failed": parse_failed,
+        "skeptic_model": skeptic_model,
+        "skeptic_status": skeptic_status,
     }
     with metrics_path.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(entry) + "\n")

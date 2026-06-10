@@ -512,3 +512,85 @@ def test_user_prompt_includes_drift_section() -> None:
     with_drift = PromptBuilder.build_user_prompt({"diff": "d", "drift": "| domain |"})
     assert "ARCHITECTURAL DRIFT (motif-basis)" in with_drift
     assert "ontology" in with_drift  # the reading instruction names the category
+
+
+# ---------------------------------------------------------------------------
+# Skeptic pass
+# ---------------------------------------------------------------------------
+
+_FINDING_JSON = (
+    '{"findings": [{"file": "a.py", "line": 1, "severity": "major", "category": "logic",'
+    ' "title": "t", "evidence": "e", "problem": "p", "fix": "f", "confidence": 90}],'
+    ' "summary": "s"}'
+)
+
+
+class _StubProvider(BaseProvider):
+    """Returns canned JSON per call; records prompts."""
+
+    def __init__(self, responses: list[str]) -> None:
+        """Store canned responses and initialise prompt log."""
+        super().__init__()
+        self._responses = list(responses)
+        self.prompts: list[str] = []
+
+    async def generate_content(self, system_prompt: str, user_prompt: str) -> str:
+        """Not used in these tests."""
+        raise NotImplementedError
+
+    async def generate_structured(
+        self,
+        system_prompt: str,  # noqa: ARG002
+        user_prompt: str,
+        schema: type[BaseModel],  # noqa: ARG002
+    ) -> str:
+        """Record the prompt and return the next canned response."""
+        self.prompts.append(user_prompt)
+        return self._responses.pop(0)
+
+
+@pytest.mark.asyncio
+async def test_skeptic_pass_merges_verdicts(tmp_path: Path) -> None:
+    """With a skeptic provider, verdicts land on findings and status is 'ok'."""
+    finder = _StubProvider([_FINDING_JSON])
+    skeptic = _StubProvider(
+        ['{"verdicts": [{"finding_index": 0, "verdict": "confirmed", "rationale": "r"}]}']
+    )
+    collector = ContextCollector(project_root=tmp_path)
+    reviewer = GuardianReviewer(
+        provider=finder, context_collector=collector, skeptic_provider=skeptic
+    )
+    with patch.object(collector, "collect_all", return_value={"diff": "d"}):
+        result = await reviewer.run_review()
+    assert result.skeptic_status == "ok"
+    assert result.findings[0].verdict == "confirmed"
+
+
+@pytest.mark.asyncio
+async def test_skeptic_not_called_on_lgtm(tmp_path: Path) -> None:
+    """An empty pass 1 has nothing to refute — the skeptic is never called (spec §5.4)."""
+    finder = _StubProvider(['{"findings": [], "summary": "ok"}'])
+    skeptic = _StubProvider([])  # would raise IndexError if called
+    collector = ContextCollector(project_root=tmp_path)
+    reviewer = GuardianReviewer(
+        provider=finder, context_collector=collector, skeptic_provider=skeptic
+    )
+    with patch.object(collector, "collect_all", return_value={"diff": "d"}):
+        result = await reviewer.run_review()
+    assert result.skeptic_status == "off"
+    assert skeptic.prompts == []
+
+
+@pytest.mark.asyncio
+async def test_skeptic_failure_degrades_to_single_pass(tmp_path: Path) -> None:
+    """Skeptic crash → single-pass findings, skeptic_status='failed' (spec §5.5)."""
+    finder = _StubProvider([_FINDING_JSON])
+    skeptic = _StubProvider(["not json at all {{{"])
+    collector = ContextCollector(project_root=tmp_path)
+    reviewer = GuardianReviewer(
+        provider=finder, context_collector=collector, skeptic_provider=skeptic
+    )
+    with patch.object(collector, "collect_all", return_value={"diff": "d"}):
+        result = await reviewer.run_review()
+    assert result.skeptic_status == "failed"
+    assert result.findings[0].verdict is None

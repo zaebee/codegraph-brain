@@ -7,7 +7,13 @@ from pydantic import BaseModel
 
 from cgis.guardian.collector import ContextCollector
 from cgis.guardian.providers.base import BaseProvider, ProviderUsage
-from cgis.guardian.runner import build_footer, build_provider, run_guardian
+from cgis.guardian.runner import (
+    DEFAULT_MISTRAL_MODEL,
+    build_footer,
+    build_provider,
+    build_skeptic_provider,
+    run_guardian,
+)
 
 _VALID_JSON = '{"findings": [], "summary": "all good"}'
 
@@ -88,6 +94,40 @@ def test_build_footer_includes_model_and_tokens() -> None:
     assert "m1" in footer
     assert "12" in footer
     assert "2/4" in footer
+
+
+def test_build_skeptic_provider_default_is_other_provider() -> None:
+    """Primary gemini -> skeptic mistral by default (spec §5.5), when its key exists."""
+    env = {"GEMINI_API_KEY": "g", "MISTRAL_API_KEY": "m"}
+    built = build_skeptic_provider(env, primary="gemini")
+    assert built is not None
+    _provider, model = built
+    assert model == DEFAULT_MISTRAL_MODEL
+
+
+def test_build_skeptic_provider_off() -> None:
+    """GUARDIAN_SKEPTIC=off disables the pass."""
+    env = {"GUARDIAN_SKEPTIC": "off", "GEMINI_API_KEY": "g", "MISTRAL_API_KEY": "m"}
+    assert build_skeptic_provider(env, primary="gemini") is None
+
+
+def test_build_skeptic_provider_same_provider_model_override() -> None:
+    """GUARDIAN_SKEPTIC=gemini + GUARDIAN_SKEPTIC_MODEL allows a gemini+gemini pair."""
+    env = {
+        "GUARDIAN_SKEPTIC": "gemini",
+        "GUARDIAN_SKEPTIC_MODEL": "gemini-2.5-flash",
+        "GEMINI_API_KEY": "g",
+    }
+    built = build_skeptic_provider(env, primary="gemini")
+    assert built is not None
+    _, model = built
+    assert model == "gemini-2.5-flash"
+
+
+def test_build_skeptic_provider_missing_key_degrades_to_none() -> None:
+    """No API key for the chosen skeptic → None (graceful single-pass), not an error."""
+    env = {"GEMINI_API_KEY": "g"}  # default skeptic for gemini primary is mistral — no key
+    assert build_skeptic_provider(env, primary="gemini") is None
 
 
 async def test_run_guardian_smoke(tmp_path: Path) -> None:
