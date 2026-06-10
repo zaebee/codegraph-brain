@@ -119,7 +119,8 @@ class Edge(BaseModel):
     type: EdgeType
 
     # Strength and certainty
-    weight: float = Field(default=1.0, ge=0.0, le=1.0)
+    # weight is unbounded above 1.0 to allow aggregated counts in quotient edges
+    weight: float = Field(default=1.0, ge=0.0)
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
 
     # Contextual info (e.g., the code snippet or line number of the call)
