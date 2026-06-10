@@ -169,6 +169,15 @@ The `ambiguous` section is essential: suggestions we declined with technical
 reasoning are not ground truth, but penalizing guardian for raising them as
 noise would be unfair.
 
+**Erratum (Task 10):** `head` is the **review head** — the parent of the first
+review-fix commit on the PR's first-parent chain — NOT the final
+`refs/pull/N/head`. The final head already contains the fixes, so replaying it
+would make every fixed finding unfindable (verified empirically on #122/#140).
+`refs/pull/N/head` remains the fetch mechanism; the review head is reachable
+from it. For multi-wave reviews (e.g. #143, where feature commits landed
+between review rounds), pick the round's head that contains the curated
+defects — one snapshot per YAML.
+
 ### 3.2 Matching (deterministic, pure, unit-tested)
 
 A predicted finding matches a ground-truth entry iff same `file` AND (`line`

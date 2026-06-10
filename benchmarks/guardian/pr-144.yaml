@@ -1,0 +1,52 @@
+# PR 144 — feat: motif-basis fingerprint v2 (Part B). See CURATION.md.
+# head = review head (parent of round-1 fix 4bad004); polish commits predate it.
+# quotient-counter-comprehension moved to ambiguous: Counter-idiom preference,
+# same class as PR 141's counter-fan-metrics (style policy applied consistently).
+pr: 144
+base: d9ca22a64aa83c0764710acd7a40c6284bb773ed
+head: 30d616681938d3a7effcaa09e395f05de3e12d87
+findings:
+  - id: yaml-mapping-guard-ideal-layer
+    file: src/cgis/query/drift.py
+    lines: [180, 196]
+    severity: major
+    category: types
+    summary: _ideal_layer never validates its layer argument is a mapping before set(layer)
+    source: gemini
+  - id: yaml-mapping-guard-layers-for
+    file: src/cgis/query/drift.py
+    lines: [192, 211]
+    severity: major
+    category: types
+    summary: layers_for checks only for None; a non-dict truthy value slips through to set()
+    source: gemini
+  - id: yaml-mapping-guard-triad-weights
+    file: src/cgis/query/drift.py
+    lines: [207, 223]
+    severity: major
+    category: types
+    summary: triad_weights_for `or {}` idiom misses non-dict values; no negative-weight validation
+    source: gemini
+  - id: triad-census-cognitive-complexity
+    file: src/cgis/query/triads.py
+    lines: [131, 168]
+    severity: minor
+    category: logic
+    summary: triad_census cognitive complexity ~21, monolithic with no helpers
+    source: sonar
+  - id: float-equality-in-tests
+    file: tests/unit/test_triads.py
+    lines: [161, 167]
+    severity: minor
+    category: tests
+    summary: bare == comparison on floats (also test_quotient.py line 68)
+    source: sonar
+ambiguous:
+  - file: src/cgis/query/quotient.py
+    summary: manual counts accumulator vs Counter comprehension (idiom preference, fixed in round 2)
+  - file: src/cgis/query/triads.py
+    summary: clip tv_distance to [0,1] — declined, would violate tv == sum(contribs) invariant
+  - file: src/cgis/query/drift.py
+    summary: clip drift_sum (v1) and layered drift_score — declined, would mask config bugs; convex combination already non-negative
+  - file: tests/unit/test_quotient.py
+    summary: bare float == on integer-valued weight assertion (line 68)

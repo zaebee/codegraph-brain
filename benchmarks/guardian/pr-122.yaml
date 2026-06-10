@@ -1,0 +1,83 @@
+# PR 122 — feat(ui): IslandLayoutEngine (PR 2/4). See CURATION.md.
+# head = review head (parent of first review-fix commit 9fec0454), NOT final pull head.
+pr: 122
+base: 33c31455f9f3914b5542dfcd94c42a10b8482b2d
+head: 27ccbcc4a62358298b02cf97860dd1bf046807dd
+findings:
+  - id: dagre-center-topleft
+    file: ui/src/layout/IslandLayoutEngine.ts
+    lines: [77, 88]
+    severity: critical
+    category: contract
+    summary: dagre returns center coords but React Flow expects top-left; direct assignment shifts every node by +w/2,+h/2
+    source: gemini
+  - id: dagre-pos-null
+    file: ui/src/layout/IslandLayoutEngine.ts
+    lines: [77, 88]
+    severity: major
+    category: contract
+    summary: g.node() result used unguarded; undefined position would throw TypeError
+    source: gemini
+  - id: layout-direction-constant
+    file: ui/src/layout/IslandLayoutEngine.ts
+    lines: [64, 68]
+    severity: major
+    category: contract
+    summary: rankdir 'TB' hardcoded while LAYOUT_DIRECTION constant says 'LR'
+    source: fix-commit
+  - id: sort-instability
+    file: ui/src/layout/IslandLayoutEngine.ts
+    lines: [107, 112]
+    severity: major
+    category: logic
+    summary: area-based island sort is unstable; islands swap places on expand/collapse
+    source: gemini
+  - id: dangling-edges
+    file: ui/src/layout/IslandLayoutEngine.ts
+    lines: [44, 61]
+    severity: major
+    category: logic
+    summary: edges referencing absent nodes are passed through to React Flow
+    source: gemini
+  - id: container-zorder
+    file: ui/src/layout/IslandLayoutEngine.ts
+    lines: [144, 172]
+    severity: major
+    category: logic
+    summary: islandContainer pushed after its children, rendering on top and obscuring them
+    source: gemini
+  - id: file-container-regression
+    file: ui/src/layout/IslandLayoutEngine.ts
+    severity: major
+    category: logic
+    summary: fileContainer wrapping behavior from the old layout.ts is omitted entirely (file-level regression)
+    source: gemini
+  - id: run-async-unnecessary
+    file: ui/src/layout/IslandLayoutEngine.ts
+    lines: [128, 135]
+    severity: minor
+    category: contract
+    summary: run() declared async though dagre layout is fully synchronous
+    source: gemini
+  - id: namespace-dedup
+    file: ui/src/layout/IslandLayoutEngine.ts
+    lines: [36, 62]
+    severity: minor
+    category: logic
+    summary: namespace extraction logic duplicated three times inside partition()
+    source: gemini
+  - id: bbox-find-perf
+    file: ui/src/layout/IslandLayoutEngine.ts
+    lines: [145, 172]
+    severity: minor
+    category: logic
+    summary: O(N) bboxes.find() called per iteration instead of a keyed lookup
+    source: gemini
+  - id: redundant-casts
+    file: ui/src/layout/IslandLayoutEngine.ts
+    lines: [151, 156]
+    severity: minor
+    category: types
+    summary: redundant `as object` / `as Record` casts (also in IslandContainerNode.tsx)
+    source: gemini
+ambiguous: []

@@ -1,0 +1,12 @@
+# PR 141 — feat(query): intra-domain fan metrics. See CURATION.md.
+# Zero ground-truth findings: every review comment was style/idiom-only,
+# which guardian's precision rules forbid. This PR measures noise on a clean PR.
+pr: 141
+base: 74fe052a70c29cce23aa8c64a4a8af34986df2b4
+head: 176569e6a9a11044eb7844856ded3dd7c390cd47
+findings: []
+ambiguous:
+  - file: src/cgis/query/fingerprint.py
+    summary: manual dict.get(k,0) accumulation vs Counter idiom; single-pass fan computation (declined for readability)
+  - file: tests/self_parsing/conftest.py
+    summary: '"graph.db" literal repeated in three fixtures vs a shared constant'

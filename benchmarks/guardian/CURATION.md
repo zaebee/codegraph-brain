@@ -1,0 +1,163 @@
+# Ground-truth curation notes (Task 10, 2026-06-10)
+
+Provenance for `pr-*.yaml`. Mined from gemini inline threads, Sonar, and
+review-fix commits by 6 mining subagents; line coords re-anchored to the
+**review head** (parent of the first review-fix commit — the snapshot the
+first review actually ran on; the final `refs/pull/N/head` contains the
+FIXES, so replaying it would make every fixed finding unfindable).
+Spec §3.1 erratum: `head` = review head, not final pull head.
+
+## Curation policy
+
+- Style/idiom-only findings → `ambiguous` (guardian's PRECISION RULES forbid
+  style nits; penalizing recall for them would measure the wrong thing).
+- Review-dialogue resolutions (open questions answered during review) →
+  `ambiguous` (not defects present in the diff).
+- Declined-with-reason suggestions → `ambiguous` (per spec §3.1).
+- `lines` required wherever the source provides line provenance (quality
+  review I3: rangeless entries are gameable by file-level predictions).
+- Sonar quality-gate findings (cognitive complexity, float equality) stay in
+  GT: machine-verified, objectively fixed. Pure idiom preferences (Counter,
+  literal dedup) → `ambiguous` — applied consistently across all PRs.
+- Same-site duplicates merged into one entry (one defect site = one GT entry);
+  distinct defects sharing a range stay separate (greedy matcher handles it).
+
+## PR 122 — feat(ui): IslandLayoutEngine (PR 2/4)
+
+- merge-base (replay base): 33c31455f9f3914b5542dfcd94c42a10b8482b2d
+- final pull head: 0d888c9ba482b7d4936454381afa09d0416ed80f
+- fix commits chronological: 9fec0454 (r1) → acc5e1ba (r2) → 565ea84 (r3) → 0d888c9 (r4); 061b755c = guardian LAYOUT_DIRECTION fix
+- **review_head = 27ccbcc4a62358298b02cf97860dd1bf046807dd** (parent of 9fec0454);
+  all coords below re-anchored and verified present at this snapshot.
+
+Findings (all gemini unless noted; coords in pr-122.yaml):
+| id | file | sev | cat | summary |
+|---|---|---|---|---|
+| dagre-center-topleft | ui/src/layout/IslandLayoutEngine.ts | critical | contract | dagre returns center coords, RF expects top-left; direct assignment shifts all nodes +w/2,+h/2 |
+| container-zorder | same | major | logic | islandContainer pushed after children → renders on top, obscures them |
+| sort-instability | same | major | logic | area-sort makes islands swap on expand/collapse |
+| dangling-edges | same | major | logic | edges to absent nodes passed to React Flow |
+| dagre-pos-null | same | major | contract | g.node() undefined unguarded → TypeError |
+| layout-direction-constant | same | major | contract | rankdir 'TB' hardcoded vs LAYOUT_DIRECTION='LR' (source: fix-commit 061b755c, guardian-caught) |
+| file-container-regression | same | major | logic | fileContainer wrapping from old layout.ts omitted (file-level) |
+| run-async-unnecessary | same | minor | contract | async run() though dagre is sync (G-9/10/11) |
+| namespace-dedup | same | minor | logic | namespace extraction ×3 in partition() |
+| bbox-find-perf | same | minor | logic | O(N) bboxes.find() per iteration |
+| redundant-casts | same (+IslandContainerNode.tsx) | minor | types | `as object` / `as Record` redundant casts |
+
+Dropped: G-12 (test mock returns Promise — only valid AFTER sync refactor).
+Ambiguous: none.
+
+## PR 140 — feat(#139): fingerprint & drift engine
+
+- merge-base: d4a89bd3d46a411b2cdf30655793d2586ed411d8
+- final pull head: 32e613b0157b533e639bdd506eba8898a82cfc7a
+- fix commits chronological: 67cdfe5 (w1) → 8b8e567 (w2) → fc609fa7 (w3) → 2793e557 (sonar float) → bde6c304 (sonar CC) → 32e613b (dedup)
+- **review_head = d6b7eb6c84e893684721df652d0938e6621e3da6** (parent of 67cdfe5);
+  all wave-2/3 findings verified present at this snapshot.
+- Merged: `pattern-template-none-or-dict` absorbed into `keyerror-unknown-pattern`
+  (same site drift.py [83,88] — one defect site, one entry).
+- Split: `float-equality-tests` → two entries (test_drift.py [96,101],
+  test_fingerprint.py [41,44]) — matcher entries are single-file.
+- Dropped: `dfs-code-duplication` — the duplicated DFS was introduced BY the
+  wave-1 fix; review_head still has BFS.
+
+| id | file | sev | cat | src | summary |
+|---|---|---|---|---|---|
+| dag-bfs-wrong-visited | src/cgis/query/fingerprint.py | critical | logic | gemini | BFS global visited underestimates DAG longest path (2 sites) |
+| zero-division-eff-total | src/cgis/query/drift.py | major | contract | gemini | ZeroDivisionError when total_weight==0 |
+| keyerror-unknown-pattern | drift.py | major | contract | gemini | raw KeyError for unknown expected_pattern |
+| drift-no-try-except | src/cgis/cli.py | major | contract | gemini | drift cmd leaks raw tracebacks |
+| yaml-safe-load-none-gen-ideal | scripts/gen_ideal_graph.py | major | contract | gemini | safe_load None → .get TypeError |
+| missing-drift-output-format | src/cgis/cli.py | major | contract | gemini | wrong enum: --format json rejected |
+| count-routers-on-squared | fingerprint.py | major | logic | gemini | O(N×E) nested scan in _count_routers |
+| fingerprint-extractor-no-cache | fingerprint.py | major | logic | gemini | refetch+enrich per domain, no cache |
+| weights-keyerror-custom-yaml | drift.py | major | contract | gemini | _weights[name] KeyError on custom yaml |
+| nondeterministic-set-traversal | fingerprint.py | major | logic | gemini | set iteration unsorted → irreproducible metrics |
+| yaml-none-dict-drift-init | drift.py | major | contract | gemini | DriftScorer.__init__ safe_load no isinstance guard |
+| pattern-template-none-or-dict | drift.py | major | contract | gemini | patterns.get result not isinstance-guarded |
+| float-equality-tests | tests/unit/test_drift.py, test_fingerprint.py | minor | tests | sonar | bare == on floats |
+| cognitive-complexity-score | drift.py | minor | logic | sonar | score() CC 18 |
+| dfs-code-duplication | fingerprint.py | minor | logic | sonar | duplicate DFS blocks 13.6% |
+
+Ambiguous: none.
+
+## PR 141 — feat(query): intra-domain fan metrics
+
+- merge-base: 74fe052a70c29cce23aa8c64a4a8af34986df2b4
+- final pull head: aeb0da01320d1dd73a1042d6f07055a7133af993
+- fix commit: da99dba; **review_head = 176569e6a9a11044eb7844856ded3dd7c390cd47**
+
+ALL findings → ambiguous (style/maintainability only; guardian precision rules forbid):
+- counter-fan-metrics (src/cgis/query/fingerprint.py, gemini): manual dict.get(k,0) → Counter idiom
+- db-literal-duplication (tests/self_parsing/conftest.py, sonar): "graph.db" ×3
+- single-pass-fan (fingerprint.py, gemini DECLINED): O(2E)→O(E), declined for readability
+
+GT findings: NONE → recall vacuously 1.0; PR measures noise on a clean-ish PR.
+
+## PR 142 — docs(spec): pattern alphabet (docs-only)
+
+- merge-base: 74fe052a70c29cce23aa8c64a4a8af34986df2b4
+- final pull head: 6294c872faadc9d5b09a02375d746d87f06702c3
+- fix commits: cc327f40 (cosine→TV) → 6294c872 (open questions);
+  **review_head = b545a883d8747b3e65581ccb3d73d9c74295721e** (parent of cc327f40)
+- Coords verified: §3.3 block [200,221], OQ2 block [346,355].
+
+GT:
+- cosine-component-masking (docs/specs/2026-06-09-pattern-alphabet-motif-basis-design.md, major, logic, gemini): cosine distance masks small components, no per-triad decomposition; fixed → weighted TV (§3.3 block)
+- cosine-oq2 (same file, major, logic, gemini): second occurrence in Open Question 2 block
+
+Ambiguous: Q1 (discount floor), Q3 (quotient gate burn-in), Q4 (single yaml layout) — review-dialogue resolutions, not diff defects.
+
+## PR 143 — feat: unified pattern alphabet (Part A)
+
+- merge-base: aac47113d0fdb5ef2ffa9aed6c0c6d50aac3d792
+- final pull head: 5e935d653dec2c6e1e789b56b7181b55670fcdff
+- **TWO-WAVE REVIEW.** Chronology: aa27993 → bede5c9 → 7f9a05b → 2394bd5 →
+  d5c7e89 → 8b19262 → 9a5a29ac (fix r2a) → 5e935d653 (fix r2b = final head).
+  At the first-round head (39990e5, parent of 86a3784) four of the six defects
+  did not exist yet — they were introduced by later feature commits (b6fd830,
+  7f9a05b) and caught by the SECOND review round.
+- **review_head = 8b1926273f1f14640c34c8658c3f0737b4209e34** (parent of
+  9a5a29ac): all six defects verified present there — _load_params [85,96],
+  _merge_params [131,144], unclipped discount line 183 → [180,186], hardcoded
+  "cgis." prefix test_drift.py [25,30], monolithic score() [160,228],
+  nested-loop tests test_patterns_yaml.py [70,90] (CC fixes landed only in
+  9a5a29ac, so they too are still present at 8b19262).
+
+| id | file | sev | cat | src | summary |
+|---|---|---|---|---|---|
+| params-mapping-domain | src/cgis/query/drift.py | major | contract | gemini | domain params list/scalar → opaque AttributeError on .items() |
+| params-mapping-template | drift.py | major | contract | gemini | same for template params |
+| confidence-discount-clip | drift.py | major | logic | gemini | 1-unresolved_ratio unclipped → negative weights |
+| selected-domains-profile | tests/self_parsing/test_drift.py | major | logic | gemini | hardcoded "cgis." prefix instead of profile field |
+| cognitive-complexity-score | drift.py | minor | logic | sonar | score() CC 17 |
+| cognitive-complexity-test-patterns-yaml | tests/unit/test_patterns_yaml.py | minor | tests | sonar | two tests CC 17/16 |
+
+Ambiguous: none.
+
+## PR 144 — feat: motif-basis fingerprint v2 (Part B)
+
+- merge-base: d9ca22a64aa83c0764710acd7a40c6284bb773ed
+- final pull head: 3f25b0a7aea5d9c1ea15199045fd5e00c6186f3b
+- fix commits: 4bad004 (r1: guards+CC+float-eq) → 3f25b0a (r2: Counter);
+  **review_head = 30d616681938d3a7effcaa09e395f05de3e12d87** (parent of 4bad004;
+  polish commits 530c864/a072b2c/82129f2/2b743b9/566b202 confirmed earlier in
+  the log, so they are included in this snapshot).
+- Moved to ambiguous: `quotient-counter-comprehension` — Counter-idiom
+  preference, same class as PR 141's counter-fan-metrics (style policy applied
+  consistently). Also ambiguous: test_quotient.py bare float == (integer-valued).
+
+| id | file | sev | cat | src | summary |
+|---|---|---|---|---|---|
+| yaml-mapping-guard-ideal-layer | src/cgis/query/drift.py | major | types | gemini | _ideal_layer no mapping guard |
+| yaml-mapping-guard-layers-for | drift.py | major | types | gemini | layers_for no guard/sum-to-1 |
+| yaml-mapping-guard-triad-weights | drift.py | major | types | gemini | triad_weights_for no guard/negatives |
+| triad-census-cognitive-complexity | src/cgis/query/triads.py | minor | logic | sonar | triad_census CC ~21 |
+| float-equality-in-tests | tests/unit/test_triads.py (+test_quotient, test_drift) | minor | tests | sonar | bare == floats |
+| quotient-counter-comprehension | src/cgis/query/quotient.py | minor | logic | gemini | manual accumulator → Counter (fix in r2; verify present at review_head) |
+
+Ambiguous (3 declined clips, gemini agreed with rationale):
+- src/cgis/query/triads.py: clip tv_distance to [0,1] — violates tv==sum(contribs) invariant
+- src/cgis/query/drift.py: clip drift_sum (v1) — would mask config bugs
+- src/cgis/query/drift.py: clip layered drift_score — convex combo already non-negative
