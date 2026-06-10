@@ -43,6 +43,32 @@ def _ensure_full_history() -> None:
         sys.exit("guardian_bench requires full git history; run: git fetch --unshallow")
 
 
+def _ingest_worktree(worktree: Path) -> None:
+    """Blocking `cgis ingest` inside the worktree (called via asyncio.to_thread).
+
+    Runs in the worktree on purpose: the PR's own cgis version ingests
+    itself, mirroring what guardian CI does on a live PR. uv builds an
+    ephemeral venv per worktree (cheap with a warm uv cache).
+    """
+    try:
+        subprocess.run(
+            ["uv", "run", "cgis", "ingest", "src", "--output", "graph.db"],
+            cwd=worktree,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        _msg = f"cgis ingest failed (rc={exc.returncode}):\n{exc.stderr}"
+        raise RuntimeError(_msg) from exc
+
+
+def _append_jsonl(path: Path, entry: dict[str, object]) -> None:
+    """Blocking JSONL append (called via asyncio.to_thread)."""
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(entry) + "\n")
+
+
 async def _run_one(truth: GroundTruth, run_idx: int, results_path: Path) -> None:
     """Replay one PR once: worktree → ingest → review → score → JSONL line."""
     provider, model = build_provider(os.environ)
@@ -51,20 +77,7 @@ async def _run_one(truth: GroundTruth, run_idx: int, results_path: Path) -> None
         worktree = Path(tmp) / "wt"
         _git("worktree", "add", "--detach", str(worktree), truth.head)
         try:
-            try:
-                # Runs in the worktree on purpose: the PR's own cgis version ingests
-                # itself, mirroring what guardian CI does on a live PR. uv builds an
-                # ephemeral venv per worktree (cheap with a warm uv cache).
-                subprocess.run(  # noqa: ASYNC221 — intentional blocking ingest, no async alternative
-                    ["uv", "run", "cgis", "ingest", "src", "--output", "graph.db"],
-                    cwd=worktree,
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                )
-            except subprocess.CalledProcessError as exc:
-                _msg = f"cgis ingest failed (rc={exc.returncode}):\n{exc.stderr}"
-                raise RuntimeError(_msg) from exc
+            await asyncio.to_thread(_ingest_worktree, worktree)
             collector = ContextCollector(
                 project_root=worktree,
                 db_path=worktree / "graph.db",
@@ -95,8 +108,7 @@ async def _run_one(truth: GroundTruth, run_idx: int, results_path: Path) -> None
         "completion_tokens": provider.last_usage.completion_tokens,
         "findings": [f.model_dump() for f in result.findings],
     }
-    with results_path.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(entry) + "\n")
+    await asyncio.to_thread(_append_jsonl, results_path, entry)
     log.info(
         "Scored.",
         pr=truth.pr,
@@ -137,18 +149,16 @@ async def main() -> None:
             except Exception as exc:  # isolate per-PR failures (spec §7)
                 failures += 1
                 log.error("PR replay failed.", pr=truth.pr, run=run_idx, error=str(exc))  # noqa: TRY400
-                with args.results.open("a", encoding="utf-8") as fh:
-                    fh.write(
-                        json.dumps(
-                            {
-                                "timestamp": datetime.now(UTC).isoformat(),
-                                "pr": truth.pr,
-                                "run": run_idx,
-                                "error": str(exc),
-                            }
-                        )
-                        + "\n"
-                    )
+                await asyncio.to_thread(
+                    _append_jsonl,
+                    args.results,
+                    {
+                        "timestamp": datetime.now(UTC).isoformat(),
+                        "pr": truth.pr,
+                        "run": run_idx,
+                        "error": str(exc),
+                    },
+                )
     if failures:
         log.warning("Some replays failed.", failures=failures)
 

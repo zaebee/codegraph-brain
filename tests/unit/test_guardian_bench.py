@@ -97,15 +97,15 @@ def test_each_entry_matches_once_greedy_by_confidence() -> None:
 
 
 def test_score_metrics() -> None:
-    """recall = matched/GT, precision = matched/preds, noise = count."""
+    """recall = matched/GT, precision = TP/(TP+FP), noise = count."""
     preds = [
         _pred("tests/unit/test_quotient.py", 68),
         _pred("src/cgis/other.py", 1),
     ]
     m = match_findings(preds, _TRUTH)
     s = score(m, _TRUTH)
-    assert s.recall == 0.5
-    assert s.precision == 0.5
+    assert s.recall == pytest.approx(0.5)
+    assert s.precision == pytest.approx(0.5)
     assert s.noise == 1
     assert s.missed == ["no-lines"]
 
@@ -114,8 +114,21 @@ def test_score_empty_ground_truth_perfect_recall() -> None:
     """No GT entries → recall 1.0 (a clean PR replayed with zero findings)."""
     truth = GroundTruth(pr=1, base="a", head="b", findings=[], ambiguous=[])
     s = score(match_findings([], truth), truth)
-    assert s.recall == 1.0
-    assert s.precision == 1.0
+    assert s.recall == pytest.approx(1.0)
+    assert s.precision == pytest.approx(1.0)
+
+
+def test_score_ambiguous_hits_do_not_depress_precision() -> None:
+    """A prediction on an ambiguous file is neither TP nor FP for precision."""
+    preds = [
+        _pred("tests/unit/test_quotient.py", 68),  # matches GT
+        _pred("src/cgis/query/triads.py", 5),  # ambiguous file
+    ]
+    m = match_findings(preds, _TRUTH)
+    s = score(m, _TRUTH)
+    assert m.ambiguous_hits == [1]
+    assert s.precision == pytest.approx(1.0)
+    assert s.noise == 0
 
 
 def test_load_ground_truth_yaml(tmp_path: Path) -> None:

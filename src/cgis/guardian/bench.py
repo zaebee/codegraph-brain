@@ -119,10 +119,16 @@ def match_findings(predictions: Sequence[Finding], truth: GroundTruth) -> MatchR
 
 
 def score(match: MatchResult, truth: GroundTruth) -> BenchScore:
-    """Compute recall / precision / noise for one PR."""
+    """Compute recall / precision / noise for one PR.
+
+    Precision is TP / (TP + FP): ambiguous hits are excluded from the
+    denominator — they are neither correct nor noise (spec §3.1), so they
+    must not depress precision.
+    """
     gt_total = len(truth.findings)
     recall = len(match.matched) / gt_total if gt_total else 1.0
-    precision = len(match.matched) / match.total_predictions if match.total_predictions else 1.0
+    relevant = len(match.matched) + len(match.noise)
+    precision = len(match.matched) / relevant if relevant else 1.0
     return BenchScore(
         recall=recall, precision=precision, noise=len(match.noise), missed=match.missed
     )

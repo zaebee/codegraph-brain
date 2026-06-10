@@ -191,7 +191,9 @@ at most once (greedy, descending predicted confidence).
 - `recall` = matched / total ground truth (overall + per severity)
 - `noise` = predictions matching neither ground truth nor `ambiguous`
   (absolute count — the primary noise metric)
-- `precision` = matched / predictions
+- `precision` = matched / (matched + noise) — ambiguous hits excluded from
+  the denominator (they are neither correct nor noise, so they must not
+  depress precision)
 
 Reported per PR and aggregated.
 
