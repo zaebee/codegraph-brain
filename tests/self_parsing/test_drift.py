@@ -10,6 +10,7 @@ consciously re-negotiated in the YAML, with a comment).
 from cgis.core.models import Edge, Node
 from cgis.query.drift import DomainConfig, DriftScorer
 from cgis.query.fingerprint import FingerprintExtractor
+from cgis.query.quotient import build_quotient
 from cgis.storage.sqlite_store import SQLiteStore
 
 from .conftest import ONTOLOGY_DIR, skip_if_no_ui
@@ -110,3 +111,41 @@ def test_ts_self_drift_within_tolerance(
     """Every UI domain's drift score stays within its declared ratchet tolerance."""
     store, _, _ = ts_graph_data
     _assert_within_tolerance(store, _PATTERNS, graph="typescript")
+
+
+# ---------------------------------------------------------------------------
+# Quotient (k=1) drift — OBSERVE-ONLY burn-in (spec §3.4)
+# ---------------------------------------------------------------------------
+
+
+def test_py_quotient_drift_observed_not_enforced(
+    root_graph_data: tuple[SQLiteStore, list[Node], list[Edge]],
+) -> None:
+    """Score the domain-quotient graph against project_level; report, never fail.
+
+    enforce is false for the burn-in milestone: the assertion here is only
+    that the machinery runs end-to-end and the binding stays observe-only.
+    Known gap, recorded: quotient unresolved_ratio is 0 by construction
+    (raw_call targets belong to no domain), so the k=1 CALLS layer is
+    undiscounted until enforcement flips.
+    """
+    store, _, _ = root_graph_data
+    scorer = DriftScorer(_PATTERNS)
+    bindings = scorer.load_project_level()
+    assert bindings, "project_level binding missing from patterns.yaml"
+
+    domains = _selected_domains(scorer, graph="python")
+    qnodes, qedges = build_quotient(store.get_all_nodes(), store.get_all_edges(), domains)
+    extractor = FingerprintExtractor.from_graph(qnodes, qedges)
+
+    for binding in bindings:
+        assert binding.enforce is False, (
+            "project_level flipped to enforce: true — this test must become a "
+            "tolerance assertion like _assert_within_tolerance (see spec §3.4)"
+        )
+        report = scorer.score(extractor.extract(binding.fqn_prefix), binding)
+        print(
+            f"\n[quotient observe-only] {binding.name}: drift={report.drift_score:.3f} "
+            f"(tolerance {binding.drift_tolerance:.2f}, tv_imports={report.tv_imports}, "
+            f"tv_calls={report.tv_calls})\n  violations: {report.violations}"
+        )
