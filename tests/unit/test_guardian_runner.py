@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from cgis.guardian.collector import ContextCollector
 from cgis.guardian.providers.base import BaseProvider, ProviderUsage
 from cgis.guardian.runner import (
+    DEFAULT_GEMINI_MODEL,
     DEFAULT_MISTRAL_MODEL,
     build_footer,
     build_provider,
@@ -122,6 +123,21 @@ def test_build_skeptic_provider_same_provider_model_override() -> None:
     assert built is not None
     _, model = built
     assert model == "gemini-2.5-flash"
+
+
+def test_build_skeptic_provider_mistral_primary_defaults_to_gemini() -> None:
+    """Primary mistral -> skeptic gemini by default (spec §5.5), when its key exists."""
+    env = {"GEMINI_API_KEY": "g", "MISTRAL_API_KEY": "m"}
+    built = build_skeptic_provider(env, primary="mistral")
+    assert built is not None
+    _provider, model = built
+    assert model == DEFAULT_GEMINI_MODEL
+
+
+def test_build_skeptic_provider_unknown_value_disabled() -> None:
+    """GUARDIAN_SKEPTIC=<unknown> returns None (graceful single-pass), not an error."""
+    env = {"GUARDIAN_SKEPTIC": "claude", "GEMINI_API_KEY": "g", "MISTRAL_API_KEY": "m"}
+    assert build_skeptic_provider(env, primary="gemini") is None
 
 
 def test_build_skeptic_provider_missing_key_degrades_to_none() -> None:
