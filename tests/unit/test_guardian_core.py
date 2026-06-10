@@ -16,6 +16,13 @@ from cgis.guardian.providers.base import BaseProvider, ProviderUsage
 from cgis.guardian.providers.gemini import GeminiProvider
 from cgis.guardian.providers.mistral import MistralProvider
 
+_VALID_JSON = '{"findings": [], "summary": "all good"}'
+_VALID_FINDING_JSON = (
+    '{"findings": [{"file": "a.py", "line": 1, "severity": "major", "category": "logic",'
+    ' "title": "t", "evidence": "e", "problem": "p", "fix": "f", "confidence": 90}],'
+    ' "summary": "s"}'
+)
+
 # ---------------------------------------------------------------------------
 # PromptBuilder
 # ---------------------------------------------------------------------------
@@ -84,24 +91,73 @@ class _FakeProvider(BaseProvider):
         return await self.generate_content(system_prompt, user_prompt)
 
 
+class _SequenceProvider(BaseProvider):
+    """Returns queued responses; records structured-call prompts."""
+
+    def __init__(self, responses: list[str]) -> None:
+        """Queue the canned responses."""
+        super().__init__()
+        self._responses = list(responses)
+        self.structured_prompts: list[str] = []
+
+    async def generate_content(self, system_prompt: str, user_prompt: str) -> str:  # noqa: ARG002
+        """Pop and return the next queued response."""
+        return self._responses.pop(0)
+
+    async def generate_structured(
+        self,
+        system_prompt: str,  # noqa: ARG002
+        user_prompt: str,
+        schema: type[BaseModel],  # noqa: ARG002
+    ) -> str:
+        """Record the prompt, then pop and return the next queued response."""
+        self.structured_prompts.append(user_prompt)
+        return self._responses.pop(0)
+
+
 @pytest.fixture
 def collector(tmp_path: Path) -> ContextCollector:
     """Return a ContextCollector rooted at tmp_path."""
     return ContextCollector(project_root=tmp_path)
 
 
-async def test_run_review_returns_provider_response(collector: ContextCollector) -> None:
-    """GuardianReviewer.run_review() returns whatever the provider returns."""
-    with patch.object(
-        collector,
-        "collect_all",
-        return_value={"diff": "d", "contributing": "c", "ontology": "o"},
-    ):
-        reviewer = GuardianReviewer(
-            provider=_FakeProvider("looks good"), context_collector=collector
-        )
-        result = await reviewer.run_review()
-    assert result == "looks good"
+async def test_run_review_parses_valid_json(collector: ContextCollector) -> None:
+    """A valid JSON response becomes a ReviewResult on the first pass."""
+    reviewer = GuardianReviewer(
+        provider=_SequenceProvider([_VALID_FINDING_JSON]), context_collector=collector
+    )
+    result = await reviewer.run_review()
+    assert result.parse_failed is False
+    assert len(result.findings) == 1
+    assert result.findings[0].file == "a.py"
+
+
+async def test_run_review_strips_markdown_fences(collector: ContextCollector) -> None:
+    """A fenced ```json response still parses."""
+    fenced = f"```json\n{_VALID_JSON}\n```"
+    reviewer = GuardianReviewer(provider=_SequenceProvider([fenced]), context_collector=collector)
+    result = await reviewer.run_review()
+    assert result.summary == "all good"
+
+
+async def test_run_review_retries_once_on_invalid_json(collector: ContextCollector) -> None:
+    """First invalid response triggers one retry whose prompt cites the error."""
+    provider = _SequenceProvider(["not json at all", _VALID_JSON])
+    reviewer = GuardianReviewer(provider=provider, context_collector=collector)
+    result = await reviewer.run_review()
+    assert result.parse_failed is False
+    assert len(provider.structured_prompts) == 2
+    assert "failed validation" in provider.structured_prompts[1].lower()
+
+
+async def test_run_review_falls_back_after_two_failures(collector: ContextCollector) -> None:
+    """Two invalid responses → raw text in summary, parse_failed=True."""
+    provider = _SequenceProvider(["garbage one", "garbage two"])
+    reviewer = GuardianReviewer(provider=provider, context_collector=collector)
+    result = await reviewer.run_review()
+    assert result.parse_failed is True
+    assert result.findings == []
+    assert result.summary == "garbage two"
 
 
 async def test_run_review_passes_context_to_prompt(collector: ContextCollector) -> None:
@@ -110,9 +166,9 @@ async def test_run_review_passes_context_to_prompt(collector: ContextCollector) 
 
     class _CapturingProvider(BaseProvider):
         async def generate_content(self, system_prompt: str, user_prompt: str) -> str:  # noqa: ARG002
-            """Capture the user prompt and return ok."""
+            """Capture the user prompt and return valid JSON so parsing succeeds."""
             captured["user"] = user_prompt
-            return "ok"
+            return _VALID_JSON
 
         async def generate_structured(
             self,
@@ -160,9 +216,9 @@ async def test_provider_last_usage_after_call(collector: ContextCollector) -> No
 
     class _UsageProvider(BaseProvider):
         async def generate_content(self, system_prompt: str, user_prompt: str) -> str:  # noqa: ARG002
-            """Return ok and set fake usage."""
+            """Return valid JSON and set fake usage (single-call semantics)."""
             self.last_usage = ProviderUsage(prompt_tokens=100, completion_tokens=50)
-            return "ok"
+            return _VALID_JSON
 
         async def generate_structured(
             self,
