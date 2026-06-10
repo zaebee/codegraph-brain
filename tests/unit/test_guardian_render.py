@@ -1,7 +1,12 @@
 """Golden tests for ReviewResult → markdown rendering (spec §2.5)."""
 
 from cgis.guardian.findings import Finding, ReviewResult
-from cgis.guardian.render import render_finding, render_report
+from cgis.guardian.render import (
+    render_finding,
+    render_inline_comment,
+    render_report,
+    render_review_body,
+)
 
 _FINDING = Finding(
     file="src/cgis/cli.py",
@@ -106,3 +111,36 @@ def test_render_report_notes_skeptic_failure() -> None:
     """skeptic_status='failed' adds a visible degradation note (spec §7: never silent)."""
     text = render_report(ReviewResult(findings=[_FINDING], summary="s", skeptic_status="failed"))
     assert "Skeptic pass failed; findings are single-pass." in text
+
+
+def test_render_inline_comment_fields() -> None:
+    """One inline comment = marker, category, problem, fix, verified line."""
+    f = _FINDING.model_copy(update={"verdict": "confirmed", "skeptic_note": "checked"})
+    text = render_inline_comment(f, skeptic_model="gemini-2.5-flash")
+    assert text.startswith("🟠 **[Logic Bug] — off-by-one in pagination**")
+    assert "iterates one element past the end." in text
+    assert "Fix: use range(n)." in text
+    assert "Verified by gemini-2.5-flash" in text
+
+
+def test_render_inline_comment_unverified_has_no_verified_line() -> None:
+    """No confirmed verdict → no Verified line."""
+    text = render_inline_comment(_FINDING, skeptic_model=None)
+    assert "Verified by" not in text
+
+
+def test_render_review_body_with_out_of_diff_findings() -> None:
+    """Out-of-diff findings land in a dedicated section of the review body."""
+    outside = _FINDING.model_copy(update={"line": None, "title": "file-level issue"})
+    body = render_review_body(
+        ReviewResult(findings=[outside], summary="checked X"), outside=[outside]
+    )
+    assert "Findings outside the diff" in body
+    assert "file-level issue" in body
+    assert "checked X" in body
+
+
+def test_render_review_body_lgtm() -> None:
+    """No findings at all → the canonical LGTM body."""
+    body = render_review_body(ReviewResult(findings=[], summary="all good"), outside=[])
+    assert body.startswith("LGTM")

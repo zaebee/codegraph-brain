@@ -33,6 +33,32 @@ def render_finding(finding: Finding) -> str:
     return "\n".join(lines)
 
 
+def render_inline_comment(finding: Finding, *, skeptic_model: str | None) -> str:
+    """One finding as a standalone inline comment body (spec §6.3)."""
+    lines = [
+        f"{_SEVERITY_MARKER[finding.severity]} "
+        f"**[{_CATEGORY_LABEL[finding.category]}] — {finding.title}**",
+        f"{finding.problem}",
+        f"Fix: {finding.fix}",
+    ]
+    if finding.verdict == "confirmed" and skeptic_model:
+        lines.append(f"_Verified by {skeptic_model}_")
+    return "\n\n".join(lines)
+
+
+def render_review_body(result: ReviewResult, *, outside: list[Finding]) -> str:
+    """The review's top-level body: summary plus any out-of-diff findings (spec §6.3)."""
+    if not visible_findings(result.findings):
+        return render_report(result)
+    parts: list[str] = []
+    if outside:
+        ordered = sorted(outside, key=lambda f: _SEVERITY_ORDER[f.severity])
+        blocks = "\n\n".join(render_finding(f) for f in ordered)
+        parts.append(f"### Findings outside the diff\n\n{blocks}")
+    parts.append(f"**Summary:** {result.summary}")
+    return "\n\n".join(parts)
+
+
 def render_report(result: ReviewResult) -> str:
     """Render the full review; refuted findings are hidden but never silently."""
     if result.parse_failed:
