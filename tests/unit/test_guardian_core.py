@@ -343,6 +343,7 @@ async def test_mistral_provider_returns_text() -> None:
         result = await provider.generate_content("sys", "user")
 
     assert result == "mistral says LGTM"
+    assert "response_format" not in inst.chat.complete_async.call_args.kwargs
 
 
 async def test_mistral_provider_empty_choices() -> None:
@@ -402,3 +403,20 @@ async def test_gemini_generate_structured_sets_json_mode() -> None:
     assert config_kwargs["response_mime_type"] == "application/json"
     assert config_kwargs["response_schema"] is ReviewResult
     assert config_kwargs["system_instruction"] == "sys"
+
+
+async def test_mistral_generate_structured_sets_json_object() -> None:
+    """generate_structured passes response_format=json_object to the SDK."""
+    mock_choice = MagicMock()
+    mock_choice.message.content = '{"findings": [], "summary": "ok"}'
+    mock_response = MagicMock()
+    mock_response.choices = [mock_choice]
+
+    inst = _make_mistral_client(mock_response)
+    provider = MistralProvider(api_key="fake")
+    with patch.dict("sys.modules", _mistral_modules(inst)):
+        result = await provider.generate_structured("sys", "user", ReviewResult)
+
+    assert result == '{"findings": [], "summary": "ok"}'
+    call_kwargs = inst.chat.complete_async.call_args.kwargs
+    assert call_kwargs["response_format"] == {"type": "json_object"}
