@@ -422,3 +422,65 @@ def test_top_level_weights_remain_default(
     )
     report = scorer.score(fp, pure_util_domain)
     assert report.drift_score > 0.0
+
+
+# ── Task 3: parameterized templates ───────────────────────────────────────────
+
+
+def _fp_with_dag(depth: int) -> PatternFingerprint:
+    """Fingerprint with only dag_depth set — helper for param tests."""
+    return PatternFingerprint(
+        domain="components",
+        hub_count=0,
+        star_count=0,
+        chain_len=0.0,
+        dag_depth=depth,
+        router_count=0,
+        cycle_ratio=0.0,
+        unresolved_ratio=0.0,
+    )
+
+
+def test_domain_params_override_template_default(extended_scorer: DriftScorer) -> None:
+    """components overrides min_depth to 2 — dag_depth=2 is clean."""
+    domain = extended_scorer.load_project_domains()[0]
+    report = extended_scorer.score(_fp_with_dag(2), domain)
+    assert report.drift_score == pytest.approx(0.0)
+    assert report.violations == []
+
+
+def test_template_param_default_applies_without_override(tmp_path: Path) -> None:
+    """Without a domain override, the template default min_depth=3 governs."""
+    yaml_text = _YAML_EXTENDED.replace("    params: {min_depth: 2}\n", "")
+    assert yaml_text != _YAML_EXTENDED, "replace failed: domain params override line not found"
+    p = tmp_path / "patterns.yaml"
+    p.write_text(yaml_text)
+    scorer = DriftScorer(str(p))
+    domain = scorer.load_project_domains()[0]
+    report = scorer.score(_fp_with_dag(2), domain)
+    assert any("dag_depth" in v for v in report.violations)  # 2 < min 3
+
+
+def test_unknown_param_key_raises(tmp_path: Path) -> None:
+    """Overriding a parameter the template never declared is a config error."""
+    yaml_text = _YAML_EXTENDED.replace("params: {min_depth: 2}", "params: {max_fanout: 5}")
+    assert yaml_text != _YAML_EXTENDED, "replace failed: domain params override line not found"
+    p = tmp_path / "patterns.yaml"
+    p.write_text(yaml_text)
+    scorer = DriftScorer(str(p))
+    domain = scorer.load_project_domains()[0]
+    with pytest.raises(ValueError, match="max_fanout"):
+        scorer.score(_fp_with_dag(2), domain)
+
+
+def test_unresolvable_placeholder_raises(tmp_path: Path) -> None:
+    """A $placeholder with no declared parameter is a config error."""
+    yaml_text = _YAML_EXTENDED.replace("    params:\n      min_depth: 3\n", "")
+    yaml_no_override = yaml_text.replace("    params: {min_depth: 2}\n", "")
+    assert yaml_no_override != yaml_text, "replace failed: domain params override line not found"
+    p = tmp_path / "patterns.yaml"
+    p.write_text(yaml_no_override)
+    scorer = DriftScorer(str(p))
+    domain = scorer.load_project_domains()[0]
+    with pytest.raises(ValueError, match="min_depth"):
+        scorer.score(_fp_with_dag(2), domain)

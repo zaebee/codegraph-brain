@@ -120,6 +120,36 @@ class DriftScorer:
         weights: dict[str, float] = profile.get("drift_weights") or {}
         return weights
 
+    @staticmethod
+    def _merge_params(template: dict[str, Any], domain: DomainConfig) -> dict[str, float]:
+        """Merge template parameter defaults with domain overrides; unknown keys fail loud.
+
+        Raises ValueError if domain.params contains keys not declared in template.params.
+        """
+        declared = {k: float(v) for k, v in (template.get("params") or {}).items()}
+        unknown = set(domain.params) - set(declared)
+        if unknown:
+            msg = (
+                f"Domain '{domain.name}' overrides undeclared parameter(s) "
+                f"{sorted(unknown)} for pattern '{domain.expected_pattern}'."
+            )
+            raise ValueError(msg)
+        return {**declared, **domain.params}
+
+    @staticmethod
+    def _resolve_value(value: str | float | int, params: dict[str, float]) -> float:
+        """Return a numeric constraint value, substituting a $name placeholder if present.
+
+        Raises ValueError if a $placeholder references an undeclared parameter.
+        """
+        if isinstance(value, str) and value.startswith("$"):
+            key = value[1:]
+            if key not in params:
+                msg = f"Constraint placeholder '${key}' has no declared parameter."
+                raise ValueError(msg)
+            return params[key]
+        return float(value)
+
     def score(self, actual: PatternFingerprint, domain: DomainConfig) -> DriftReport:
         """Compute the drift score and return a DriftReport."""
         expected_pattern = domain.expected_pattern
@@ -136,7 +166,8 @@ class DriftScorer:
         if not isinstance(template, dict):
             msg = f"Pattern '{expected_pattern}' must be a mapping of constraints."
             raise TypeError(msg)
-        constraints = self._parse_constraints(template)
+        params = self._merge_params(template, domain)
+        constraints = self._parse_constraints(template, params)
 
         if not constraints:
             return self._zero_drift_report(actual, expected_pattern, domain)
@@ -236,8 +267,10 @@ class DriftScorer:
                 violation = f"{name} {actual_val} != exact {value}"
         return ideal_val, norm, raw, violation
 
-    def _parse_constraints(self, template: dict[str, Any]) -> dict[str, tuple[str, float]]:
-        """Extract (operator, value) pairs for each constrained component in a template."""
+    def _parse_constraints(
+        self, template: dict[str, Any], params: dict[str, float]
+    ) -> dict[str, tuple[str, float]]:
+        """Extract (operator, value) pairs for each constrained component, resolving $params."""
         result: dict[str, tuple[str, float]] = {}
         for name in _COMPONENT_NAMES:
             constraint = template.get(name)
@@ -245,6 +278,6 @@ class DriftScorer:
                 continue
             for op in ("min", "max", "exact"):
                 if op in constraint:
-                    result[name] = (op, float(constraint[op]))
+                    result[name] = (op, self._resolve_value(constraint[op], params))
                     break
         return result

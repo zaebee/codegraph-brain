@@ -183,6 +183,7 @@ _KNOWN_GOD_OBJECTS = frozenset(
         "extractors.python_extractor.PythonExtractor",  # complex AST visitor
         "extractors.typescript_extractor.TypeScriptExtractor",  # complex AST visitor
         "resolver.engine.ResolverEngine",  # multi-pass symbol resolution
+        "query.drift.DriftScorer",  # drift scoring — multiple constraint/weight/param operations
     }
 )
 
