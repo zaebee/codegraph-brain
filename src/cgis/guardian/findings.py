@@ -32,6 +32,9 @@ class ReviewResult(BaseModel, frozen=True):
     findings: list[Finding]
     summary: str
     parse_failed: bool = False
+    # "off" = skeptic not configured; "ok" = verdicts merged; "failed" = skeptic
+    # call errored, single-pass results returned (spec §5.5 — never silent).
+    skeptic_status: Literal["off", "ok", "failed"] = "off"
 
 
 def extract_json(text: str) -> str:
