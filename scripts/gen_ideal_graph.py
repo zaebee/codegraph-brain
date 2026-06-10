@@ -353,8 +353,11 @@ def generate_from_ontology(patterns_path: str) -> dict[str, Any]:
     all_edges: list[GraphDict] = []
 
     for domain in domains:
+        pattern_name: str | None = domain.get("expected_pattern")
+        if pattern_name is None:
+            print(f"  (skip) {domain['name']}: hygiene-only domain, no ideal topology")
+            continue
         fqn_prefix: str = domain["fqn_prefix"]
-        pattern_name: str = domain["expected_pattern"]
         builder = _PATTERN_TO_BUILDER.get(pattern_name, build_hub)
         pat_nodes, pat_edges = builder()
         ns_nodes, ns_edges = _prefix(pat_nodes, pat_edges, fqn_prefix)

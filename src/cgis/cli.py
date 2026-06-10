@@ -785,7 +785,7 @@ def _render_drift_table(reports: list[DriftReport], max_drift: float) -> None:
     for r in reports:
         table.add_row(
             r.fqn_prefix,
-            r.expected_pattern,
+            r.expected_pattern or "(hygiene)",
             f"{r.drift_score:.2f}",
             _drift_status_label(r.drift_score, max_drift),
         )

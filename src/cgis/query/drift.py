@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
@@ -20,6 +20,8 @@ _COMPONENT_NAMES = (
     "unresolved_ratio",
 )
 
+_CALLS_LAYER = frozenset({"hub_count", "star_count", "chain_len", "router_count"})
+
 _STATUS_WARNING = 0.20
 _STATUS_CRITICAL = 0.50
 
@@ -30,8 +32,10 @@ class DomainConfig:
 
     name: str
     fqn_prefix: str
-    expected_pattern: str
+    expected_pattern: str | None
     drift_tolerance: float
+    profile: str | None = None
+    params: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -40,7 +44,7 @@ class DriftReport:
 
     domain: str
     fqn_prefix: str
-    expected_pattern: str
+    expected_pattern: str | None
     actual: PatternFingerprint
     ideal: PatternFingerprint
     drift_score: float
@@ -58,8 +62,25 @@ def _classify(score: float) -> Literal["clean", "warning", "critical"]:
     return "critical"
 
 
+def _params_mapping(container: dict[str, Any], owner: str) -> dict[str, Any]:
+    """Return the container's params block, validating it is a mapping.
+
+    Raises TypeError if params is present but not a mapping (e.g. a list).
+    """
+    node = container.get("params") or {}
+    if not isinstance(node, dict):
+        msg = f"{owner} params must be a mapping, got {type(node).__name__}."
+        raise TypeError(msg)
+    return node
+
+
 class DriftScorer:
-    """Load patterns.yaml and score actual PatternFingerprints against ideal templates."""
+    """Load patterns.yaml and score actual PatternFingerprints against ideal templates.
+
+    Global hygiene invariants apply to every domain (template constraints win per
+    component); CALLS-derived component weights are discounted by
+    (1 - unresolved_ratio) before renormalization.
+    """
 
     def __init__(self, patterns_config: str) -> None:
         """Load and parse the patterns YAML file at patterns_config path."""
@@ -68,6 +89,23 @@ class DriftScorer:
         self._weights: dict[str, float] = raw.get("drift_weights") or {}
         self._patterns: dict[str, dict[str, Any]] = raw.get("patterns") or {}
         self._project_domains: list[dict[str, Any]] = raw.get("project_domains") or []
+        # Measurement profiles (spec §2.3) and global hygiene invariants (§2.1).
+        self._profiles: dict[str, dict[str, Any]] = raw.get("profiles") or {}
+        self._hygiene: dict[str, Any] = raw.get("hygiene") or {}
+
+    @staticmethod
+    def _load_params(d: dict[str, Any]) -> dict[str, float]:
+        """Parse a domain binding's params block; non-numeric values fail loud.
+
+        Raises TypeError if any param value is not numeric (int, float, or bool).
+        """
+        params: dict[str, float] = {}
+        for k, v in _params_mapping(d, f"Domain '{d.get('name', '?')}'").items():
+            if not isinstance(v, (int, float)):
+                msg = f"Domain '{d.get('name', '?')}' param '{k}' must be numeric, got {v!r}."
+                raise TypeError(msg)
+            params[k] = float(v)
+        return params
 
     def load_project_domains(self) -> list[DomainConfig]:
         """Return all project domains declared in patterns.yaml."""
@@ -75,27 +113,101 @@ class DriftScorer:
             DomainConfig(
                 name=d["name"],
                 fqn_prefix=d["fqn_prefix"],
-                expected_pattern=d["expected_pattern"],
+                expected_pattern=d.get("expected_pattern"),
                 drift_tolerance=float(d["drift_tolerance"]),
+                profile=d.get("profile"),
+                params=self._load_params(d),
             )
             for d in self._project_domains
         ]
 
-    def score(self, actual: PatternFingerprint, domain: DomainConfig) -> DriftReport:
-        """Compute the drift score and return a DriftReport."""
-        template = self._patterns.get(domain.expected_pattern)
-        if template is None:
+    def _weights_for(self, domain: DomainConfig) -> dict[str, float]:
+        """Return the drift weights for a domain: its profile's, or the top-level default.
+
+        If domain.profile is set, look it up in self._profiles and return its
+        drift_weights. If profile is not found, raise ValueError. If domain.profile
+        is None, return the top-level self._weights.
+
+        Raises ValueError if the named profile does not exist in the config.
+        """
+        if domain.profile is None:
+            return self._weights
+        profile = self._profiles.get(domain.profile)
+        if profile is None:
+            msg = f"Domain '{domain.name}' names unknown profile '{domain.profile}'."
+            raise ValueError(msg)
+        weights: dict[str, float] = profile.get("drift_weights") or {}
+        return weights
+
+    @staticmethod
+    def _merge_params(template: dict[str, Any], domain: DomainConfig) -> dict[str, float]:
+        """Merge template parameter defaults with domain overrides; unknown keys fail loud.
+
+        Raises ValueError if domain.params contains keys not declared in template.params.
+        """
+        declared = {
+            k: float(v)
+            for k, v in _params_mapping(template, f"Pattern '{domain.expected_pattern}'").items()
+        }
+        unknown = set(domain.params) - set(declared)
+        if unknown:
+            msg = (
+                f"Domain '{domain.name}' overrides undeclared parameter(s) "
+                f"{sorted(unknown)} for pattern '{domain.expected_pattern}'."
+            )
+            raise ValueError(msg)
+        return {**declared, **domain.params}
+
+    @staticmethod
+    def _resolve_value(value: str | float | int, params: dict[str, float]) -> float:
+        """Return a numeric constraint value, substituting a $name placeholder if present.
+
+        Raises ValueError if a $placeholder references an undeclared parameter.
+        """
+        if isinstance(value, str) and value.startswith("$"):
+            key = value[1:]
+            if key not in params:
+                msg = f"Constraint placeholder '${key}' has no declared parameter."
+                raise ValueError(msg)
+            return params[key]
+        return float(value)
+
+    def _resolve_template(self, domain: DomainConfig) -> tuple[dict[str, Any], dict[str, float]]:
+        """Return the domain's bound template and merged params; ({}, {}) when hygiene-only.
+
+        Raises ValueError if the named pattern is missing and TypeError if it
+        is not a mapping of constraints.
+        """
+        if domain.expected_pattern is None:
+            return {}, {}
+        found = self._patterns.get(domain.expected_pattern)
+        if found is None:
             msg = f"Expected pattern '{domain.expected_pattern}' not found in patterns config."
             raise ValueError(msg)
-        if not isinstance(template, dict):
+        if not isinstance(found, dict):
             msg = f"Pattern '{domain.expected_pattern}' must be a mapping of constraints."
             raise TypeError(msg)
-        constraints = self._parse_constraints(template)
+        return found, self._merge_params(found, domain)
+
+    def score(self, actual: PatternFingerprint, domain: DomainConfig) -> DriftReport:
+        """Compute the drift score and return a DriftReport."""
+        template, params = self._resolve_template(domain)
+        hygiene = self._parse_constraints(self._hygiene, {})
+        constraints = {**hygiene, **self._parse_constraints(template, params)}
 
         if not constraints:
             return self._zero_drift_report(actual, domain)
 
-        total_weight = sum(self._weights.get(name, 0.0) for name in constraints)
+        weights = self._weights_for(domain)
+        # Clip defensively: a hand-built fingerprint could carry a ratio outside
+        # [0, 1]; negative effective weights must never occur.
+        discount = max(0.0, min(1.0 - actual.unresolved_ratio, 1.0))
+        raw_weights = {name: weights.get(name, 0.0) for name in constraints}
+        eff_weights = {
+            name: w * discount if name in _CALLS_LAYER else w for name, w in raw_weights.items()
+        }
+        raw_total = sum(raw_weights.values())
+        eff_total = sum(eff_weights.values())
         violations: list[str] = []
         drift_sum = 0.0
         ideal_overrides: dict[str, float] = {}
@@ -107,11 +219,10 @@ class DriftScorer:
                 violations.append(violation)
             ideal_overrides[name] = ideal_val
             component_drift = min(raw / norm, 1.0)
-            weight = (
-                self._weights.get(name, 0.0) / total_weight
-                if total_weight > 0.0
-                else 1.0 / len(constraints)
-            )
+            if raw_total > 0.0:
+                weight = eff_weights[name] / eff_total if eff_total > 0.0 else 0.0
+            else:
+                weight = 1.0 / len(constraints)
             drift_sum += weight * component_drift
 
         ideal_fp = PatternFingerprint(
@@ -187,8 +298,10 @@ class DriftScorer:
                 violation = f"{name} {actual_val} != exact {value}"
         return ideal_val, norm, raw, violation
 
-    def _parse_constraints(self, template: dict[str, Any]) -> dict[str, tuple[str, float]]:
-        """Extract (operator, value) pairs for each constrained component in a template."""
+    def _parse_constraints(
+        self, template: dict[str, Any], params: dict[str, float]
+    ) -> dict[str, tuple[str, float]]:
+        """Extract (operator, value) pairs for each constrained component, resolving $params."""
         result: dict[str, tuple[str, float]] = {}
         for name in _COMPONENT_NAMES:
             constraint = template.get(name)
@@ -196,6 +309,6 @@ class DriftScorer:
                 continue
             for op in ("min", "max", "exact"):
                 if op in constraint:
-                    result[name] = (op, float(constraint[op]))
+                    result[name] = (op, self._resolve_value(constraint[op], params))
                     break
         return result
