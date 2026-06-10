@@ -83,3 +83,26 @@ def test_render_report_sorts_by_severity() -> None:
     )
     report = render_report(result)
     assert report.index("m1") < report.index("m2") < report.index("m3")
+
+
+def test_render_report_hides_refuted_findings() -> None:
+    """Refuted findings stay in the model (for metrics) but vanish from the report."""
+    refuted = _FINDING.model_copy(update={"verdict": "refuted", "title": "killed"})
+    kept = _FINDING.model_copy(update={"verdict": "confirmed"})
+    text = render_report(ReviewResult(findings=[refuted, kept], summary="s"))
+    assert "killed" not in text
+    assert "off-by-one in pagination" in text
+
+
+def test_render_report_all_refuted_is_lgtm_with_note() -> None:
+    """All findings refuted → LGTM line plus an explicit skeptic note (never silent)."""
+    refuted = _FINDING.model_copy(update={"verdict": "refuted"})
+    text = render_report(ReviewResult(findings=[refuted], summary="s", skeptic_status="ok"))
+    assert text.startswith("LGTM")
+    assert "1 finding was refuted by the skeptic pass" in text
+
+
+def test_render_report_notes_skeptic_failure() -> None:
+    """skeptic_status='failed' adds a visible degradation note (spec §7: never silent)."""
+    text = render_report(ReviewResult(findings=[_FINDING], summary="s", skeptic_status="failed"))
+    assert "Skeptic pass failed; findings are single-pass." in text
