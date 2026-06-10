@@ -291,3 +291,9 @@ def test_from_graph_skips_store() -> None:
     edges = [_edge("q.a", "q.b"), _edge("q.a", "q.c")]
     fp = FingerprintExtractor.from_graph(nodes, edges).extract("q")
     assert fp.t_calls[TRIAD_ORDER.index("021D")] == pytest.approx(1.0)
+
+
+def test_extractor_without_store_or_preload_raises() -> None:
+    """Constructing with store=None and no from_graph() preload fails loud."""
+    with pytest.raises(RuntimeError, match="store or a from_graph"):
+        FingerprintExtractor(None).extract("m")

@@ -17,7 +17,7 @@ _ROUTER_FAN_OUT_THRESHOLD = 2
 
 @dataclass(frozen=True)
 class PatternFingerprint:
-    """Seven-component structural fingerprint for a domain."""
+    """Structural fingerprint for a domain: seven v1 counters plus two v2 census vectors."""
 
     domain: str
 
@@ -119,9 +119,14 @@ class FingerprintExtractor:
 
     @classmethod
     def from_graph(cls, nodes: list[Node], edges: list[Edge]) -> "FingerprintExtractor":
-        """Build an extractor over an in-memory graph (used for the quotient graph)."""
+        """Build an extractor over an in-memory graph — no SQLiteStore involved.
+
+        The inputs are copied defensively, so later mutation of the caller's
+        lists cannot change what extract() measures (matches the store path,
+        which returns fresh lists on every fetch).
+        """
         inst = cls(None)
-        inst._cache = (HealthScorer(nodes, edges).enrich(), edges)
+        inst._cache = (HealthScorer(nodes, edges).enrich(), list(edges))
         return inst
 
     def _loaded(self) -> tuple[list[Node], list[Edge]]:
