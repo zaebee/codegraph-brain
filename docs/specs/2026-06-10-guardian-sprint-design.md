@@ -191,7 +191,9 @@ Reported per PR and aggregated.
 `scripts/guardian_bench.py` (entry); matching/scoring logic in
 `src/cgis/guardian/bench.py` under unit tests. Per PR:
 
-1. `git fetch origin pull/N/head` → detached worktree at `head`.
+1. `git fetch origin pull/N/head` → detached worktree at `head`. The runner
+   requires full history (it refuses to run in a shallow clone): the
+   merge-base `base` must be resolvable locally or step 2 fails.
 2. diff = `git diff base...head` — exactly what CI would have seen.
 3. `cgis ingest src` inside the worktree → `graph.db` (replicating the
    workflow's conditions).
@@ -299,11 +301,14 @@ class SkepticResult(BaseModel, frozen=True):
   multi-pass risk).
 - `confirmed` → kept; the rendered finding gains a `Verified by <provider>`
   line.
-- `uncertain` → kept with a note and a confidence discount (×0.7); if the
-  result drops below 80, treated as refuted.
+- `uncertain` → kept with a note and an integer confidence discount
+  (`round(confidence * 0.7)` — the field is `int`); if the result drops below
+  80, treated as refuted.
 
-Verdicts land on `Finding.verdict` / `Finding.skeptic_note` (default `None` —
-single-pass results remain valid).
+Verdicts are written via `Finding.model_copy(update={...})` — the model is
+frozen, so the skeptic pass produces new `Finding` instances rather than
+mutating pass-1 results (fields default to `None`, so single-pass results
+remain valid).
 
 ### 5.4 What the skeptic does NOT do
 
