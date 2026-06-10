@@ -980,3 +980,20 @@ def test_v1_path_untouched_without_ideal(
     assert report.drift_score == pytest.approx(0.0)
     assert report.tv_imports is None
     assert report.tv_calls is None
+
+
+def test_load_project_level_observe_only(tmp_path: Path) -> None:
+    """project_level bindings load with enforce defaulting to False."""
+    yaml_pl = _YAML_V2 + (
+        "project_level:\n"
+        "  - name: 'proj-level'\n"
+        "    fqn_prefix: 'quotient'\n"
+        "    expected_pattern: pipeline_stage\n"
+        "    profile: python\n"
+        "    drift_tolerance: 0.15\n"
+    )
+    p = tmp_path / "patterns.yaml"
+    p.write_text(yaml_pl)
+    levels = DriftScorer(str(p)).load_project_level()
+    assert len(levels) == 1
+    assert levels[0].enforce is False

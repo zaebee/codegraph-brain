@@ -107,6 +107,7 @@ class DriftScorer:
         # Measurement profiles (spec §2.3) and global hygiene invariants (§2.1).
         self._profiles: dict[str, dict[str, Any]] = raw.get("profiles") or {}
         self._hygiene: dict[str, Any] = raw.get("hygiene") or {}
+        self._project_level: list[dict[str, Any]] = raw.get("project_level") or []
 
     @staticmethod
     def _load_params(d: dict[str, Any]) -> dict[str, float]:
@@ -135,6 +136,21 @@ class DriftScorer:
                 enforce=bool(d.get("enforce", True)),
             )
             for d in self._project_domains
+        ]
+
+    def load_project_level(self) -> list[DomainConfig]:
+        """Return project-level quotient bindings (spec §3.4); enforce defaults False here."""
+        return [
+            DomainConfig(
+                name=d["name"],
+                fqn_prefix=d["fqn_prefix"],
+                expected_pattern=d.get("expected_pattern"),
+                drift_tolerance=float(d["drift_tolerance"]),
+                profile=d.get("profile"),
+                params=self._load_params(d),
+                enforce=bool(d.get("enforce", False)),
+            )
+            for d in self._project_level
         ]
 
     def _weights_for(self, domain: DomainConfig) -> dict[str, float]:

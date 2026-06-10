@@ -23,17 +23,37 @@ _ALPHABET = frozenset(
     {"pure_utility", "pipeline_stage", "orchestrator", "layered_dag", "dispatcher"}
 )
 
+_TRIAD_ORDER = frozenset(
+    {
+        "021D",
+        "021U",
+        "021C",
+        "111D",
+        "111U",
+        "030T",
+        "030C",
+        "201",
+        "120D",
+        "120U",
+        "120C",
+        "210",
+        "300",
+    }
+)
+
+_COUNTING_COMPONENTS = frozenset({"hub_count", "star_count", "chain_len", "router_count"})
+
 
 def _load() -> dict:  # type: ignore[type-arg]
     return yaml.safe_load(PATTERNS_PATH.read_text())
 
 
 def _constraint_items(template: dict) -> list[tuple[str, dict]]:  # type: ignore[type-arg]
-    """Return (component, constraint-dict) pairs, skipping description/params keys."""
+    """Return (component, constraint-dict) pairs, skipping description/params/ideal keys."""
     return [
         (key, value)
         for key, value in template.items()
-        if key not in ("description", "params") and isinstance(value, dict)
+        if key not in ("description", "params", "ideal") and isinstance(value, dict)
     ]
 
 
@@ -77,11 +97,11 @@ def test_hygiene_uses_known_components() -> None:
 
 
 def test_all_pattern_constraints_use_known_components() -> None:
-    """No template references an unknown component (params/description excluded)."""
+    """No template references an unknown component (params/description/ideal excluded)."""
     data = _load()
     for pattern_name, template in data["patterns"].items():
         for key in template:
-            if key in ("description", "params"):
+            if key in ("description", "params", "ideal"):
                 continue
             assert key in _COMPONENT_NAMES, f"Unknown component '{key}' in '{pattern_name}'"
 
@@ -139,3 +159,44 @@ def test_domain_params_override_only_declared_params() -> None:
         template = data["patterns"][domain["expected_pattern"]]
         declared = set((template.get("params") or {}).keys())
         assert set(domain["params"].keys()) <= declared, domain["name"]
+
+
+def test_every_template_has_ideal_with_both_layers() -> None:
+    """Each of the 5 templates declares ideal.imports and ideal.calls summing to 1."""
+    data = _load()
+    for name, template in data["patterns"].items():
+        ideal = template.get("ideal")
+        assert isinstance(ideal, dict), name
+        assert set(ideal) == {"imports", "calls"}, name
+        for layer, point in ideal.items():
+            assert set(point) <= _TRIAD_ORDER, f"{name}.{layer}"
+            assert abs(sum(point.values()) - 1.0) < 1e-9, f"{name}.{layer}"
+
+
+def test_templates_carry_no_counting_constraints() -> None:
+    """Counting components moved to the distance term — gates only (spec §3.3)."""
+    data = _load()
+    for name, template in data["patterns"].items():
+        for key, _ in _constraint_items(template):
+            msg = f"'{key}' in '{name}' must be an ideal, not a gate"
+            assert key not in _COUNTING_COMPONENTS, msg
+
+
+def test_profiles_declare_layers_summing_to_one() -> None:
+    """Both profiles declare imports/calls/gates layer weights summing to 1."""
+    data = _load()
+    for name, profile in data["profiles"].items():
+        layers = profile["layers"]
+        assert set(layers) == {"imports", "calls", "gates"}, name
+        assert abs(sum(layers.values()) - 1.0) < 1e-9, name
+
+
+def test_project_level_binding_observe_only() -> None:
+    """project_level exists, matches the quotient prefix, and is enforce: false."""
+    data = _load()
+    bindings = data["project_level"]
+    assert len(bindings) == 1
+    b = bindings[0]
+    assert b["fqn_prefix"] == "quotient"
+    assert b["enforce"] is False
+    assert b["expected_pattern"] in data["patterns"]

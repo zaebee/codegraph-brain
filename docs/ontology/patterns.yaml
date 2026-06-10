@@ -1,13 +1,12 @@
-version: "2.0.0"
+version: "2.1.0"
 
-# ── Measurement profiles (spec §2.3) ─────────────────────────────────────────
-# The pattern alphabet is single and closed; graphs differ only in how they
-# are *measured*. Each domain binding names its profile. Weights per profile
-# must sum exactly to 1.0.
-#
-# CALLS-derived components (hub_count, star_count, chain_len, router_count)
-# are additionally discounted at scoring time by (1 - unresolved_ratio) —
-# the noisier the call resolution, the less the call topology asserts.
+# ── Measurement profiles (spec §2.3, §3.3) ───────────────────────────────────
+# drift_weights: v1 per-component weights — now used ONLY for the gate term
+#   (hygiene + template-declared non-triad constraints).
+# layers: fingerprint v2 layer weights (imports TV / calls TV / gates),
+#   must sum to 1.0. The calls layer is discounted by (1 - unresolved_ratio);
+#   a layer with zero connected triples is excluded and the rest renormalize.
+# triad_weights: per-triad w_i for the TV metric; unlisted triads weigh 1.0.
 profiles:
   python:
     drift_weights:
@@ -18,6 +17,11 @@ profiles:
       router_count:     0.10
       cycle_ratio:      0.25
       unresolved_ratio: 0.15
+    layers:
+      imports: 0.35
+      calls:   0.35
+      gates:   0.30
+    triad_weights: {}
   typescript:
     drift_weights:
       hub_count:        0.10
@@ -27,83 +31,96 @@ profiles:
       router_count:     0.10
       cycle_ratio:      0.30
       unresolved_ratio: 0.15
+    layers:
+      imports: 0.45   # IMPORTS is the reliable layer in TS (spec §3.6.2)
+      calls:   0.25
+      gates:   0.30
+    triad_weights: {}
 
-# ── Global hygiene invariants (spec §2.1) ────────────────────────────────────
-# Applied to EVERY domain, template-bound or not. A domain that wants
-# "hygiene only" simply declares no expected_pattern. Template constraints
-# win over hygiene on the same component.
+# ── Global hygiene invariants (spec §2.1) — hard gates, never distances ──────
 hygiene:
   cycle_ratio:      {max: 0.0}
   unresolved_ratio: {max: 0.2}
 
-# ── The closed alphabet: five templates (spec §2.1) ──────────────────────────
-# Each component key accepts exactly one of: {min: X}, {max: X}, {exact: X}.
-# Values may reference template parameters as $name; parameters live in the
-# params block and may be overridden per-domain (unknown keys fail loud).
+# ── The closed alphabet: five templates (spec §2.1, §3.3) ────────────────────
+# ideal: hand-authored points in 13-triad space, one per layer, each summing
+# to 1.0. Counting constraints (hub/star/chain/router) are GONE — topology is
+# measured as TV distance to the ideal. Non-triad structural gates (dag_depth)
+# and template-specific hygiene remain as constraints.
 patterns:
   pure_utility:
     description: "Shared library called by many; depends on nothing"
-    hub_count:        {min: 1}
-    star_count:       {exact: 0}
+    ideal:
+      imports: {"021U": 1.0}   # many modules import the one utility
+      calls:   {"021U": 1.0}   # in-join: many callers, no fan-out
     unresolved_ratio: {max: 0.1}
 
   pipeline_stage:
     description: "Sequential transformer — one input domain, one output domain"
-    chain_len:        {min: 2.0}
-    star_count:       {max: 1}
+    ideal:
+      imports: {"021C": 1.0}   # A→B→C chain
+      calls:   {"021C": 1.0}
 
   orchestrator:
     description: "Coordinates N independent services; no leaf-to-leaf edges"
-    star_count:       {min: 1}
-    hub_count:        {max: 1}
+    ideal:
+      imports: {"021D": 1.0}   # out-fork from the coordinator
+      calls:   {"021D": 1.0}
 
   layered_dag:
+    # Ideal deliberately EXCLUDES 030T: the transitive triangle is a
+    # layer-skipping shortcut, not clean layering (spec §3.3 example amended
+    # in this PR; measured: components IMPORTS = {021D .778, 021C .222}, 030T 0).
     description: "Clean layered architecture; no upward dependencies"
     params:
       min_depth: 3
-    dag_depth:        {min: $min_depth}
+    ideal:
+      imports: {"021D": 0.5, "021C": 0.5}
+      calls:   {"021D": 0.5, "021C": 0.5}
+    dag_depth: {min: $min_depth}   # triads are local — depth needs its own gate
 
   dispatcher:
     # Planned — requires ResolverEngine split (#115).
     description: "Routes to the first matching strategy; mutually exclusive paths"
-    router_count:     {min: 1}
-    star_count:       {exact: 0}
+    ideal:
+      imports: {"021D": 1.0}
+      calls:   {"021D": 1.0}
 
 # ── Project domain bindings ──────────────────────────────────────────────────
-# drift_tolerance is a ratchet: it captures the accepted drift of the current
-# codebase (measured by tests/self_parsing/test_drift.py) and must only go
-# DOWN as the structure improves. Raising it requires a review discussion.
+# drift_tolerance is a ratchet and may only go DOWN — but fingerprint v2 is a
+# NEW metric, so every tolerance below is re-baselined from the 2026-06-10
+# measurement (see plan: docs/specs/plans/2026-06-10-motif-basis-part-b.md).
 project_domains:
   # Python graph (ingest root: src/ → FQNs carry the cgis. prefix)
   - name: "extraction"
     fqn_prefix: "cgis.extractors"
     expected_pattern: pure_utility
     profile: python
-    drift_tolerance: 0.25 # measured 0.21 (11 internal stars)
+    drift_tolerance: 0.30 # v2 measured ≈0.26 (tv_calls .75: extractors call each other in forks/chains)
 
   - name: "resolution"
     fqn_prefix: "cgis.resolver"
     expected_pattern: pipeline_stage
     profile: python
-    drift_tolerance: 0.35 # measured 0.30 (6 internal stars)
+    drift_tolerance: 0.40 # v2 measured ≈0.35 (tv_calls .65; IMPORTS layer empty → excluded)
 
   - name: "pipeline"
     fqn_prefix: "cgis.pipeline"
     expected_pattern: orchestrator
     profile: python
-    drift_tolerance: 0.25 # measured 0.00
+    drift_tolerance: 0.25 # v2 measured ≈0.20 (tv_calls .36)
 
   - name: "storage"
     fqn_prefix: "cgis.storage"
     expected_pattern: pure_utility
     profile: python
-    drift_tolerance: 0.25 # measured 0.21 (1 internal star)
+    drift_tolerance: 0.20 # v2 measured ≈0.17 (tv_calls .31 — closest fit in the codebase)
 
   - name: "query"
     fqn_prefix: "cgis.query"
     expected_pattern: layered_dag
     profile: python
-    drift_tolerance: 0.20 # measured 0.00
+    drift_tolerance: 0.18 # v2 measured ≈0.14 (tv_imp .25, tv_calls .14)
 
   # TypeScript graph (ingest root: ui/src → components/Foo.tsx = components.Foo)
   - name: "components"
@@ -111,15 +128,15 @@ project_domains:
     expected_pattern: layered_dag
     profile: typescript
     params: {min_depth: 2} # JSX component trees are legitimately shallower
-    drift_tolerance: 0.15 # measured 0.00
+    drift_tolerance: 0.20 # v2 measured ≈0.17 (tv_imp .28; CALLS layer empty → excluded)
 
   - name: "layout"
     fqn_prefix: "layout"
     expected_pattern: pure_utility
     profile: typescript
-    drift_tolerance: 0.15 # measured 0.00
+    drift_tolerance: 0.50 # v2 measured ≈0.46 — 4 CALLS triples (small-N, spec §3.6.1); revisit with TS resolver
 
-  # Hygiene-only domains (no expected_pattern): acyclic + mostly resolved.
+  # Hygiene-only domains (no expected_pattern → v1 gate path): acyclic + resolved.
   - name: "hooks"
     fqn_prefix: "hooks"
     profile: typescript
@@ -139,3 +156,16 @@ project_domains:
     fqn_prefix: "utils"
     profile: typescript
     drift_tolerance: 0.15 # measured 0.00
+
+# ── Project-level quotient binding (spec §3.4) — OBSERVE-ONLY burn-in ────────
+# Measured quotient IMPORTS census {021D .4, 021U .4, 030T .2}: the domain
+# graph is an orchestrator star out of `pipeline`, NOT the chain the spec
+# example claimed. enforce stays false until the burn-in settles whether to
+# rebind to orchestrator or restructure; flipping to true makes it a ratchet.
+project_level:
+  - name: "cgis-project"
+    fqn_prefix: "quotient"
+    expected_pattern: pipeline_stage
+    profile: python
+    drift_tolerance: 0.15
+    enforce: false
