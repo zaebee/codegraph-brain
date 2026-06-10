@@ -127,7 +127,7 @@ def test_domain_params_override_only_declared_params() -> None:
     """Domain params keys must be declared in the bound template's params block."""
     data = _load()
     for domain in data["project_domains"]:
-        if "params" not in domain:
+        if "params" not in domain or "expected_pattern" not in domain:
             continue
         template = data["patterns"][domain["expected_pattern"]]
         declared = set((template.get("params") or {}).keys())

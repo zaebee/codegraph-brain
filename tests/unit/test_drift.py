@@ -263,7 +263,7 @@ def test_unconstrained_components_add_no_drift(
     assert report.drift_score == pytest.approx(0.0)
 
 
-# ── Task 1: extended DomainConfig loading ─────────────────────────────────────
+# ── extended DomainConfig loading (spec §2.2/§2.3 bindings) ───────────────────
 
 _YAML_EXTENDED = """\
 version: "2.0.0"
@@ -339,8 +339,7 @@ def test_load_params_rejects_null_values(tmp_path: Path) -> None:
         scorer.load_project_domains()
 
 
-# ── Task 2: profile-based weights ─────────────────────────────────────────────
-# Dedicated YAML without $params so this task does not depend on Task 3.
+# ── §2.3 measurement profiles ─────────────────────────────────────────────────
 
 _YAML_PROFILES = """\
 version: "2.0.0"
@@ -424,7 +423,7 @@ def test_top_level_weights_remain_default(
     assert report.drift_score > 0.0
 
 
-# ── Task 3: parameterized templates ───────────────────────────────────────────
+# ── §2.2 parameterized templates ──────────────────────────────────────────────
 
 
 def _fp_with_dag(depth: int) -> PatternFingerprint:
@@ -487,7 +486,7 @@ def test_unresolvable_placeholder_raises(tmp_path: Path) -> None:
         scorer.score(_fp_with_dag(2), domain)
 
 
-# ── Task 4: hygiene block ─────────────────────────────────────────────────────
+# ── §2.1 global hygiene invariants ────────────────────────────────────────────
 
 _YAML_HYGIENE = """\
 version: "2.0.0"
@@ -571,7 +570,7 @@ def test_hygiene_applies_to_templated_domain(hygiene_scorer: DriftScorer) -> Non
     assert any("cycle_ratio" in v for v in report.violations)
 
 
-# ── Task 5: confidence discount ───────────────────────────────────────────────
+# ── §2.3 confidence discount ──────────────────────────────────────────────────
 
 _YAML_DISCOUNT = """\
 version: "2.0.0"

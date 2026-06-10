@@ -77,7 +77,7 @@ class DriftScorer:
         self._weights: dict[str, float] = raw.get("drift_weights") or {}
         self._patterns: dict[str, dict[str, Any]] = raw.get("patterns") or {}
         self._project_domains: list[dict[str, Any]] = raw.get("project_domains") or []
-        # Used by profile selection (Task 2) and hygiene merging (Task 4).
+        # Measurement profiles (spec §2.3) and global hygiene invariants (§2.1).
         self._profiles: dict[str, dict[str, Any]] = raw.get("profiles") or {}
         self._hygiene: dict[str, Any] = raw.get("hygiene") or {}
 
