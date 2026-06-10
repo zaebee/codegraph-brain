@@ -209,8 +209,12 @@ an honest deviation from Milo's TSP, recorded as a known limitation.
 
 ### 3.3 Drift as distance
 
-Each template names an **ideal point** in motif space (hand-authored unit
-vectors, e.g. `pipeline_stage → T_imports ∝ e_021C`, `layered_dag → ∝ e_030T`).
+Each template names an **ideal point** in motif space (hand-authored points,
+e.g. `pipeline_stage → T_imports ∝ e_021C`; `layered_dag → {021D: 0.5, 021C: 0.5}`
+— NOT `e_030T` as an earlier draft said: 030T is the transitive layer-skipping
+triangle, which clean layering minimizes. Confirmed by measurement during
+Part B implementation: the layered_dag-bound `components` domain measures
+021D .778 / 021C .222 with zero 030T).
 
 The distance is **total variation (weighted L1) on the normalized triad
 distributions**, not cosine:

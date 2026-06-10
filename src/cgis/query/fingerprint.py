@@ -1,10 +1,11 @@
 """PatternFingerprint dataclass and FingerprintExtractor."""
 
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from cgis.core.models import Edge, EdgeType, Node
 from cgis.query.health import HealthScorer
+from cgis.query.triads import ZERO_TRIADS, normalized_census, triad_census
 from cgis.storage.sqlite_store import SQLiteStore
 
 RAW_CALL_PREFIX = "raw_call:"
@@ -16,7 +17,7 @@ _ROUTER_FAN_OUT_THRESHOLD = 2
 
 @dataclass(frozen=True)
 class PatternFingerprint:
-    """Seven-component structural fingerprint for a domain."""
+    """Structural fingerprint for a domain: seven v1 counters plus two v2 census vectors."""
 
     domain: str
 
@@ -28,6 +29,11 @@ class PatternFingerprint:
 
     cycle_ratio: float
     unresolved_ratio: float
+
+    # Fingerprint v2 (spec §3.2): normalized 13-triad census per layer,
+    # ordered by triads.TRIAD_ORDER. Zero vector = empty layer ("no data").
+    t_imports: tuple[float, ...] = field(default=ZERO_TRIADS)
+    t_calls: tuple[float, ...] = field(default=ZERO_TRIADS)
 
 
 def _in_domain(fqn: str, prefix: str) -> bool:
@@ -106,14 +112,29 @@ def _count_routers(domain_node_ids: set[str], all_edges: list[Edge]) -> int:
 class FingerprintExtractor:
     """Compute a PatternFingerprint for a given FQN domain prefix from a SQLiteStore."""
 
-    def __init__(self, store: SQLiteStore) -> None:
-        """Accept an open SQLiteStore (must already be connected)."""
+    def __init__(self, store: SQLiteStore | None) -> None:
+        """Accept an open SQLiteStore, or None when built via from_graph()."""
         self._store = store
         self._cache: tuple[list[Node], list[Edge]] | None = None
+
+    @classmethod
+    def from_graph(cls, nodes: list[Node], edges: list[Edge]) -> "FingerprintExtractor":
+        """Build an extractor over an in-memory graph — no SQLiteStore involved.
+
+        The inputs are copied defensively, so later mutation of the caller's
+        lists cannot change what extract() measures (matches the store path,
+        which returns fresh lists on every fetch).
+        """
+        inst = cls(None)
+        inst._cache = (HealthScorer(nodes, edges).enrich(), list(edges))
+        return inst
 
     def _loaded(self) -> tuple[list[Node], list[Edge]]:
         """Return (enriched_nodes, all_edges), fetching from the store once and caching."""
         if self._cache is None:
+            if self._store is None:
+                msg = "FingerprintExtractor needs a store or a from_graph() preload."
+                raise RuntimeError(msg)
             all_nodes = self._store.get_all_nodes()
             all_edges = self._store.get_all_edges()
             self._cache = (HealthScorer(all_nodes, all_edges).enrich(), all_edges)
@@ -163,6 +184,9 @@ class FingerprintExtractor:
         raw_calls = [e for e in calls_edges if e.target.startswith(RAW_CALL_PREFIX)]
         unresolved_ratio = len(raw_calls) / len(calls_edges) if calls_edges else 0.0
 
+        t_imports = normalized_census(triad_census(domain_ids, internal_edges, EdgeType.IMPORTS))
+        t_calls = normalized_census(triad_census(domain_ids, internal_edges, EdgeType.CALLS))
+
         return PatternFingerprint(
             domain=fqn_prefix,
             hub_count=hub_count,
@@ -172,4 +196,6 @@ class FingerprintExtractor:
             router_count=router_count,
             cycle_ratio=cycle_ratio,
             unresolved_ratio=unresolved_ratio,
+            t_imports=t_imports,
+            t_calls=t_calls,
         )

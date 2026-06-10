@@ -4,6 +4,7 @@ import pytest
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
 from cgis.query.fingerprint import FingerprintExtractor, PatternFingerprint
+from cgis.query.triads import TRIAD_ORDER
 from cgis.storage.sqlite_store import SQLiteStore
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -251,3 +252,48 @@ def test_dag_depth_three_level_import_chain() -> None:
     with _store(nodes, edges) as store:
         fp = FingerprintExtractor(store).extract("dom")
     assert fp.dag_depth == 2
+
+
+# ── fingerprint v2: triad census vectors (spec §3.2) ─────────────────────────
+
+
+def test_fingerprint_defaults_zero_census() -> None:
+    """t_imports/t_calls default to the 13-dim zero vector (back-compat)."""
+    fp = PatternFingerprint(
+        domain="d",
+        hub_count=0,
+        star_count=0,
+        chain_len=0.0,
+        dag_depth=0,
+        router_count=0,
+        cycle_ratio=0.0,
+        unresolved_ratio=0.0,
+    )
+    assert fp.t_imports == (0.0,) * 13
+    assert fp.t_calls == (0.0,) * 13
+
+
+def test_extract_populates_calls_census() -> None:
+    """A domain with an internal A→B→C CALLS path measures t_calls ∝ e_021C."""
+    nodes = [_node("m.a"), _node("m.b"), _node("m.c")]
+    edges = [_edge("m.a", "m.b"), _edge("m.b", "m.c")]
+    with _store(nodes, edges) as store:
+        fp = FingerprintExtractor(store).extract("m")
+    idx = TRIAD_ORDER.index("021C")
+    assert fp.t_calls[idx] == pytest.approx(1.0)
+    assert sum(fp.t_calls) == pytest.approx(1.0)
+    assert fp.t_imports == (0.0,) * 13  # no IMPORTS edges
+
+
+def test_from_graph_skips_store() -> None:
+    """from_graph() builds an extractor over in-memory nodes/edges (quotient path)."""
+    nodes = [_node("q.a"), _node("q.b"), _node("q.c")]
+    edges = [_edge("q.a", "q.b"), _edge("q.a", "q.c")]
+    fp = FingerprintExtractor.from_graph(nodes, edges).extract("q")
+    assert fp.t_calls[TRIAD_ORDER.index("021D")] == pytest.approx(1.0)
+
+
+def test_extractor_without_store_or_preload_raises() -> None:
+    """Constructing with store=None and no from_graph() preload fails loud."""
+    with pytest.raises(RuntimeError, match="store or a from_graph"):
+        FingerprintExtractor(None).extract("m")

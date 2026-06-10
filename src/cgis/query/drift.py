@@ -9,6 +9,7 @@ from typing import Any, Literal
 import yaml
 
 from cgis.query.fingerprint import PatternFingerprint
+from cgis.query.triads import TRIAD_ORDER, ZERO_TRIADS, tv_distance
 
 _COMPONENT_NAMES = (
     "hub_count",
@@ -24,6 +25,7 @@ _CALLS_LAYER = frozenset({"hub_count", "star_count", "chain_len", "router_count"
 
 _STATUS_WARNING = 0.20
 _STATUS_CRITICAL = 0.50
+_TRIAD_VIOLATION_THRESHOLD = 0.05
 
 
 @dataclass(frozen=True)
@@ -36,6 +38,8 @@ class DomainConfig:
     drift_tolerance: float
     profile: str | None = None
     params: dict[str, float] = field(default_factory=dict)
+    # When False the domain is audited but violations never block CI.
+    enforce: bool = True
 
 
 @dataclass(frozen=True)
@@ -51,6 +55,17 @@ class DriftReport:
     violations: list[str]
     status: Literal["clean", "warning", "critical"]
     tolerance: float
+    tv_imports: float | None = None
+    tv_calls: float | None = None
+
+
+def _clip_discount(actual: PatternFingerprint) -> float:
+    """Confidence discount clip(1 - unresolved_ratio) to [0, 1].
+
+    Clipped defensively: a hand-built fingerprint could carry a ratio outside
+    [0, 1]; negative effective weights must never occur.
+    """
+    return max(0.0, min(1.0 - actual.unresolved_ratio, 1.0))
 
 
 def _classify(score: float) -> Literal["clean", "warning", "critical"]:
@@ -62,16 +77,23 @@ def _classify(score: float) -> Literal["clean", "warning", "critical"]:
     return "critical"
 
 
+def _validate_mapping(node: object, owner: str) -> dict[str, Any]:
+    """Return node unchanged after validating it is a mapping.
+
+    Raises TypeError otherwise (e.g. a YAML block hand-edited into a list).
+    """
+    if not isinstance(node, dict):
+        msg = f"{owner} must be a mapping, got {type(node).__name__}."
+        raise TypeError(msg)
+    return node
+
+
 def _params_mapping(container: dict[str, Any], owner: str) -> dict[str, Any]:
     """Return the container's params block, validating it is a mapping.
 
     Raises TypeError if params is present but not a mapping (e.g. a list).
     """
-    node = container.get("params") or {}
-    if not isinstance(node, dict):
-        msg = f"{owner} params must be a mapping, got {type(node).__name__}."
-        raise TypeError(msg)
-    return node
+    return _validate_mapping(container.get("params") or {}, f"{owner} params")
 
 
 class DriftScorer:
@@ -92,6 +114,7 @@ class DriftScorer:
         # Measurement profiles (spec §2.3) and global hygiene invariants (§2.1).
         self._profiles: dict[str, dict[str, Any]] = raw.get("profiles") or {}
         self._hygiene: dict[str, Any] = raw.get("hygiene") or {}
+        self._project_level: list[dict[str, Any]] = raw.get("project_level") or []
 
     @staticmethod
     def _load_params(d: dict[str, Any]) -> dict[str, float]:
@@ -107,19 +130,25 @@ class DriftScorer:
             params[k] = float(v)
         return params
 
+    def _build_domain_config(self, d: dict[str, Any], *, enforce_default: bool) -> DomainConfig:
+        """Build one DomainConfig from a YAML binding dict."""
+        return DomainConfig(
+            name=d["name"],
+            fqn_prefix=d["fqn_prefix"],
+            expected_pattern=d.get("expected_pattern"),
+            drift_tolerance=float(d["drift_tolerance"]),
+            profile=d.get("profile"),
+            params=self._load_params(d),
+            enforce=bool(d.get("enforce", enforce_default)),
+        )
+
     def load_project_domains(self) -> list[DomainConfig]:
         """Return all project domains declared in patterns.yaml."""
-        return [
-            DomainConfig(
-                name=d["name"],
-                fqn_prefix=d["fqn_prefix"],
-                expected_pattern=d.get("expected_pattern"),
-                drift_tolerance=float(d["drift_tolerance"]),
-                profile=d.get("profile"),
-                params=self._load_params(d),
-            )
-            for d in self._project_domains
-        ]
+        return [self._build_domain_config(d, enforce_default=True) for d in self._project_domains]
+
+    def load_project_level(self) -> list[DomainConfig]:
+        """Return project-level quotient bindings (spec §3.4); enforce defaults False here."""
+        return [self._build_domain_config(d, enforce_default=False) for d in self._project_level]
 
     def _weights_for(self, domain: DomainConfig) -> dict[str, float]:
         """Return the drift weights for a domain: its profile's, or the top-level default.
@@ -137,6 +166,75 @@ class DriftScorer:
             msg = f"Domain '{domain.name}' names unknown profile '{domain.profile}'."
             raise ValueError(msg)
         weights: dict[str, float] = profile.get("drift_weights") or {}
+        return weights
+
+    def ideal_for(self, pattern_name: str) -> tuple[tuple[float, ...], tuple[float, ...]] | None:
+        """Return (ideal_imports, ideal_calls) 13-tuples for a template, or None.
+
+        None means the template declares no ideal block — the domain scores on
+        the v1 path. Raises ValueError on unknown triad keys, layers other
+        than imports/calls, or a layer that does not sum to 1.0.
+        """
+        template = self._patterns.get(pattern_name) or {}
+        ideal = template.get("ideal")
+        if ideal is None:
+            return None
+        if not isinstance(ideal, dict) or set(ideal) != {"imports", "calls"}:
+            msg = f"Pattern '{pattern_name}' ideal must declare exactly imports and calls."
+            raise ValueError(msg)
+        return self._ideal_layer(pattern_name, ideal["imports"]), self._ideal_layer(
+            pattern_name, ideal["calls"]
+        )
+
+    @staticmethod
+    def _ideal_layer(pattern_name: str, layer: dict[str, Any]) -> tuple[float, ...]:
+        """Convert one {triad: share} mapping into a TRIAD_ORDER-aligned tuple."""
+        _validate_mapping(layer, f"Pattern '{pattern_name}' ideal layer")
+        unknown = set(layer) - set(TRIAD_ORDER)
+        if unknown:
+            msg = f"Pattern '{pattern_name}' ideal names unknown triad(s) {sorted(unknown)}."
+            raise ValueError(msg)
+        values = tuple(float(layer.get(name, 0.0)) for name in TRIAD_ORDER)
+        if abs(sum(values) - 1.0) > 1e-9:
+            msg = f"Pattern '{pattern_name}' ideal layer must sum to 1.0, got {sum(values)}."
+            raise ValueError(msg)
+        return values
+
+    def layers_for(self, profile_name: str) -> dict[str, float] | None:
+        """Return validated layer weights for a profile, or None when undeclared."""
+        profile = self._profiles.get(profile_name) or {}
+        layers = profile.get("layers")
+        if layers is None:
+            return None
+        _validate_mapping(layers, f"Profile '{profile_name}' layers")
+        if set(layers) != {"imports", "calls", "gates"}:
+            msg = f"Profile '{profile_name}' layers must declare imports, calls, gates."
+            raise ValueError(msg)
+        result = {k: float(v) for k, v in layers.items()}
+        if any(v < 0.0 for v in result.values()):
+            msg = f"Profile '{profile_name}' layers must be non-negative, got {result}."
+            raise ValueError(msg)
+        if abs(sum(result.values()) - 1.0) > 1e-9:
+            msg = f"Profile '{profile_name}' layers must sum to 1.0, got {sum(result.values())}."
+            raise ValueError(msg)
+        return result
+
+    def triad_weights_for(self, profile_name: str) -> tuple[float, ...]:
+        """Per-triad w_i for a profile; unlisted triads default to 1.0 (spec §3.3)."""
+        profile = self._profiles.get(profile_name) or {}
+        declared: dict[str, Any] = _validate_mapping(
+            profile.get("triad_weights") or {}, f"Profile '{profile_name}' triad_weights"
+        )
+        unknown = set(declared) - set(TRIAD_ORDER)
+        if unknown:
+            msg = (
+                f"Profile '{profile_name}' triad_weights names unknown triad(s) {sorted(unknown)}."
+            )
+            raise ValueError(msg)
+        weights = tuple(float(declared.get(name, 1.0)) for name in TRIAD_ORDER)
+        if any(w < 0.0 for w in weights):
+            msg = f"Profile '{profile_name}' triad_weights must be non-negative."
+            raise ValueError(msg)
         return weights
 
     @staticmethod
@@ -190,18 +288,70 @@ class DriftScorer:
         return found, self._merge_params(found, domain)
 
     def score(self, actual: PatternFingerprint, domain: DomainConfig) -> DriftReport:
-        """Compute the drift score and return a DriftReport."""
+        """Compute the drift score and return a DriftReport (v2 when configured)."""
         template, params = self._resolve_template(domain)
         hygiene = self._parse_constraints(self._hygiene, {})
         constraints = {**hygiene, **self._parse_constraints(template, params)}
 
+        ideal = None if domain.expected_pattern is None else self.ideal_for(domain.expected_pattern)
+        layers = None if domain.profile is None else self.layers_for(domain.profile)
+        if ideal is None or layers is None:
+            return self._score_v1(actual, domain, constraints, self._weights_for(domain))
+        return self._score_v2(actual, domain, constraints, ideal, layers)
+
+    def _score_v1(
+        self,
+        actual: PatternFingerprint,
+        domain: DomainConfig,
+        constraints: dict[str, tuple[str, float]],
+        weights: dict[str, float],
+    ) -> DriftReport:
+        """V1 scoring: per-constraint weighted drift with CALLS-layer discount."""
         if not constraints:
             return self._zero_drift_report(actual, domain)
 
-        weights = self._weights_for(domain)
-        # Clip defensively: a hand-built fingerprint could carry a ratio outside
-        # [0, 1]; negative effective weights must never occur.
-        discount = max(0.0, min(1.0 - actual.unresolved_ratio, 1.0))
+        drift_sum, violations, ideal_overrides = self._weighted_constraint_drift(
+            actual, constraints, weights
+        )
+
+        ideal_fp = PatternFingerprint(
+            domain=domain.fqn_prefix,
+            hub_count=int(ideal_overrides.get("hub_count", 0)),
+            star_count=int(ideal_overrides.get("star_count", 0)),
+            chain_len=float(ideal_overrides.get("chain_len", 0.0)),
+            dag_depth=int(ideal_overrides.get("dag_depth", 0)),
+            router_count=int(ideal_overrides.get("router_count", 0)),
+            cycle_ratio=float(ideal_overrides.get("cycle_ratio", 0.0)),
+            unresolved_ratio=float(ideal_overrides.get("unresolved_ratio", 0.0)),
+        )
+
+        return DriftReport(
+            domain=domain.name,
+            fqn_prefix=domain.fqn_prefix,
+            expected_pattern=domain.expected_pattern,
+            actual=actual,
+            ideal=ideal_fp,
+            drift_score=drift_sum,
+            violations=violations,
+            status=_classify(drift_sum),
+            tolerance=domain.drift_tolerance,
+        )
+
+    def _weighted_constraint_drift(
+        self,
+        actual: PatternFingerprint,
+        constraints: dict[str, tuple[str, float]],
+        weights: dict[str, float],
+        discount: float | None = None,
+    ) -> tuple[float, list[str], dict[str, float]]:
+        """Shared per-constraint loop: CALLS-layer discount, renorm, violation strings.
+
+        Returns (drift_sum, violations, ideal_overrides).
+        discount defaults to clip(1 - actual.unresolved_ratio) when not supplied.
+        """
+        if discount is None:
+            discount = _clip_discount(actual)
+
         raw_weights = {name: weights.get(name, 0.0) for name in constraints}
         eff_weights = {
             name: w * discount if name in _CALLS_LAYER else w for name, w in raw_weights.items()
@@ -225,27 +375,116 @@ class DriftScorer:
                 weight = 1.0 / len(constraints)
             drift_sum += weight * component_drift
 
-        ideal_fp = PatternFingerprint(
-            domain=domain.fqn_prefix,
-            hub_count=int(ideal_overrides.get("hub_count", 0)),
-            star_count=int(ideal_overrides.get("star_count", 0)),
-            chain_len=float(ideal_overrides.get("chain_len", 0.0)),
-            dag_depth=int(ideal_overrides.get("dag_depth", 0)),
-            router_count=int(ideal_overrides.get("router_count", 0)),
-            cycle_ratio=float(ideal_overrides.get("cycle_ratio", 0.0)),
-            unresolved_ratio=float(ideal_overrides.get("unresolved_ratio", 0.0)),
+        return drift_sum, violations, ideal_overrides
+
+    def _gate_drift(
+        self,
+        actual: PatternFingerprint,
+        domain: DomainConfig,
+        gates: dict[str, tuple[str, float]],
+        discount: float,
+    ) -> tuple[float, list[str]]:
+        """Compute drift for gate constraints only (v2 path), reusing the shared mechanism."""
+        if not gates:
+            return 0.0, []
+        weights = self._weights_for(domain)
+        gate_drift, violations, _ = self._weighted_constraint_drift(
+            actual, gates, weights, discount=discount
         )
+        return gate_drift, violations
+
+    def _score_v2(
+        self,
+        actual: PatternFingerprint,
+        domain: DomainConfig,
+        gates: dict[str, tuple[str, float]],
+        ideal: tuple[tuple[float, ...], tuple[float, ...]],
+        layers: dict[str, float],
+    ) -> DriftReport:
+        """Fingerprint v2 drift: layered TV distance + hard gates (spec §3.3).
+
+        Every constraint reaching this path is treated as a hard gate — the
+        topological shape itself is measured by the TV terms, not constraints.
+        """
+        if domain.profile is None:  # layers presence implies a profile
+            msg = "v2 scoring requires a profile on the domain binding."
+            raise RuntimeError(msg)
+        triad_w = self.triad_weights_for(domain.profile)
+        discount = _clip_discount(actual)
+        violations: list[str] = []
+
+        tv_imp: float | None = None
+        if actual.t_imports != ZERO_TRIADS:
+            tv_imp, contribs = tv_distance(actual.t_imports, ideal[0], triad_w)
+            violations.extend(
+                self._triad_violations("T_imports", actual.t_imports, ideal[0], contribs)
+            )
+        tv_cal: float | None = None
+        if actual.t_calls != ZERO_TRIADS:
+            tv_cal, contribs = tv_distance(actual.t_calls, ideal[1], triad_w)
+            violations.extend(self._triad_violations("T_calls", actual.t_calls, ideal[1], contribs))
+
+        gate_drift, gate_violations = self._gate_drift(actual, domain, gates, discount)
+        violations.extend(gate_violations)
+
+        eff = {
+            "imports": layers["imports"] if tv_imp is not None else 0.0,
+            "calls": layers["calls"] * discount if tv_cal is not None else 0.0,
+            "gates": layers["gates"] if gates else 0.0,
+        }
+        terms = {
+            "imports": 0.0 if tv_imp is None else tv_imp,
+            "calls": 0.0 if tv_cal is None else tv_cal,
+            "gates": gate_drift,
+        }
+        total = sum(eff.values())
+        drift = sum(eff[k] * terms[k] for k in eff) / total if total > 0.0 else 0.0
 
         return DriftReport(
             domain=domain.name,
             fqn_prefix=domain.fqn_prefix,
             expected_pattern=domain.expected_pattern,
             actual=actual,
-            ideal=ideal_fp,
-            drift_score=round(drift_sum, 6),
+            ideal=self._ideal_fingerprint_v2(domain, ideal),
+            drift_score=drift,
             violations=violations,
-            status=_classify(drift_sum),
+            status=_classify(drift),
             tolerance=domain.drift_tolerance,
+            tv_imports=tv_imp,
+            tv_calls=tv_cal,
+        )
+
+    @staticmethod
+    def _triad_violations(
+        layer: str,
+        actual: tuple[float, ...],
+        ideal: tuple[float, ...],
+        contribs: list[tuple[str, float]],
+    ) -> list[str]:
+        """Render triad terms contributing ≥ threshold as violation strings."""
+        return [
+            f"{layer}[{name}]={actual[i]:.2f} vs ideal {ideal[i]:.2f} (+{c:.2f})"
+            for i, (name, c) in enumerate(contribs)
+            if c >= _TRIAD_VIOLATION_THRESHOLD
+        ]
+
+    @staticmethod
+    def _ideal_fingerprint_v2(
+        domain: DomainConfig,
+        ideal: tuple[tuple[float, ...], tuple[float, ...]],
+    ) -> PatternFingerprint:
+        """Ideal fingerprint carrying the template's triad points (v1 fields zero)."""
+        return PatternFingerprint(
+            domain=domain.fqn_prefix,
+            hub_count=0,
+            star_count=0,
+            chain_len=0.0,
+            dag_depth=0,
+            router_count=0,
+            cycle_ratio=0.0,
+            unresolved_ratio=0.0,
+            t_imports=ideal[0],
+            t_calls=ideal[1],
         )
 
     def _zero_drift_report(self, actual: PatternFingerprint, domain: DomainConfig) -> DriftReport:

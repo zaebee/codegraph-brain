@@ -6,6 +6,7 @@ import pytest
 
 from cgis.query.drift import DomainConfig, DriftScorer
 from cgis.query.fingerprint import PatternFingerprint
+from cgis.query.triads import TRIAD_ORDER
 
 # ── minimal YAML for tests ────────────────────────────────────────────────────
 
@@ -728,3 +729,325 @@ def test_anomalous_unresolved_ratio_is_clipped(discount_scorer: DriftScorer) -> 
     )
     report = discount_scorer.score(fp, domain)
     assert report.drift_score == pytest.approx(0.0)
+
+
+# ── §3.3 v2 config: ideal points, layers, triad weights ──────────────────────
+
+_YAML_V2 = """\
+version: "2.1.0"
+profiles:
+  python:
+    drift_weights:
+      hub_count:        0.15
+      star_count:       0.15
+      chain_len:        0.10
+      dag_depth:        0.10
+      router_count:     0.10
+      cycle_ratio:      0.25
+      unresolved_ratio: 0.15
+    layers:
+      imports: 0.35
+      calls:   0.35
+      gates:   0.30
+    triad_weights:
+      "030C": 0.5
+hygiene:
+  cycle_ratio:      {max: 0.0}
+  unresolved_ratio: {max: 0.2}
+patterns:
+  pipeline_stage:
+    description: "chain"
+    ideal:
+      imports: {"021C": 1.0}
+      calls:   {"021C": 1.0}
+project_domains:
+  - name: "res"
+    fqn_prefix: "res"
+    expected_pattern: pipeline_stage
+    profile: python
+    drift_tolerance: 0.40
+  - name: "proj"
+    fqn_prefix: "quotient"
+    expected_pattern: pipeline_stage
+    profile: python
+    drift_tolerance: 0.15
+"""
+
+
+@pytest.fixture
+def v2_scorer(tmp_path: Path) -> DriftScorer:
+    """Return a DriftScorer loaded from the v2 YAML fixture."""
+    p = tmp_path / "patterns.yaml"
+    p.write_text(_YAML_V2)
+    return DriftScorer(str(p))
+
+
+def test_ideal_point_loaded_as_13_tuple(v2_scorer: DriftScorer) -> None:
+    """The template's ideal block parses into TRIAD_ORDER-aligned tuples."""
+    ideal = v2_scorer.ideal_for("pipeline_stage")
+    assert ideal is not None
+    imp, cal = ideal
+    assert imp[TRIAD_ORDER.index("021C")] == pytest.approx(1.0)
+    assert sum(imp) == pytest.approx(1.0)
+    assert cal == imp
+
+
+def test_ideal_unknown_triad_key_fails_loud(tmp_path: Path) -> None:
+    """An ideal entry naming a non-existent triad class raises ValueError."""
+    bad = _YAML_V2.replace('"021C": 1.0', '"999X": 1.0')
+    assert bad != _YAML_V2
+    p = tmp_path / "patterns.yaml"
+    p.write_text(bad)
+    with pytest.raises(ValueError, match="999X"):
+        DriftScorer(str(p)).ideal_for("pipeline_stage")
+
+
+def test_ideal_must_sum_to_one(tmp_path: Path) -> None:
+    """An ideal layer whose values do not sum to 1.0 raises ValueError."""
+    bad = _YAML_V2.replace('imports: {"021C": 1.0}', 'imports: {"021C": 0.7}')
+    assert bad != _YAML_V2
+    p = tmp_path / "patterns.yaml"
+    p.write_text(bad)
+    with pytest.raises(ValueError, match="sum"):
+        DriftScorer(str(p)).ideal_for("pipeline_stage")
+
+
+def test_layers_loaded_and_validated(v2_scorer: DriftScorer) -> None:
+    """Profile layers parse; missing keys or bad sums raise."""
+    layers = v2_scorer.layers_for("python")
+    assert layers == {"imports": 0.35, "calls": 0.35, "gates": 0.30}
+
+
+def test_layers_must_sum_to_one(tmp_path: Path) -> None:
+    """Layer weights that do not sum to 1.0 raise ValueError."""
+    bad = _YAML_V2.replace("gates:   0.30", "gates:   0.40")
+    assert bad != _YAML_V2
+    p = tmp_path / "patterns.yaml"
+    p.write_text(bad)
+    with pytest.raises(ValueError, match="sum"):
+        DriftScorer(str(p)).layers_for("python")
+
+
+def test_triad_weights_default_one(v2_scorer: DriftScorer) -> None:
+    """Unlisted triads weigh 1.0; listed ones take the declared value."""
+    w = v2_scorer.triad_weights_for("python")
+    assert w[TRIAD_ORDER.index("030C")] == pytest.approx(0.5)
+    assert w[TRIAD_ORDER.index("021C")] == pytest.approx(1.0)
+
+
+def test_ideal_layer_not_a_mapping_raises_type_error(tmp_path: Path) -> None:
+    """An ideal layer hand-edited into a list raises TypeError, not AttributeError."""
+    bad = _YAML_V2.replace('imports: {"021C": 1.0}', 'imports: ["021C"]')
+    assert bad != _YAML_V2
+    p = tmp_path / "patterns.yaml"
+    p.write_text(bad)
+    with pytest.raises(TypeError, match="mapping"):
+        DriftScorer(str(p)).ideal_for("pipeline_stage")
+
+
+def test_layers_not_a_mapping_raises_type_error(tmp_path: Path) -> None:
+    """A layers block hand-edited into a list raises TypeError, not AttributeError."""
+    bad = _YAML_V2.replace(
+        "layers:\n      imports: 0.35\n      calls:   0.35\n      gates:   0.30",
+        "layers: [0.35, 0.35, 0.30]",
+    )
+    assert bad != _YAML_V2
+    p = tmp_path / "patterns.yaml"
+    p.write_text(bad)
+    with pytest.raises(TypeError, match="mapping"):
+        DriftScorer(str(p)).layers_for("python")
+
+
+def test_layers_must_be_non_negative(tmp_path: Path) -> None:
+    """A negative layer weight raises ValueError even when the sum is 1.0."""
+    bad = _YAML_V2.replace("imports: 0.35\n      calls:   0.35\n      gates:   0.30", "")
+    bad = bad.replace("layers:", "layers: {imports: 1.5, calls: -0.5, gates: 0.0}")
+    assert bad != _YAML_V2
+    p = tmp_path / "patterns.yaml"
+    p.write_text(bad)
+    with pytest.raises(ValueError, match="non-negative"):
+        DriftScorer(str(p)).layers_for("python")
+
+
+def test_triad_weights_not_a_mapping_raises_type_error(tmp_path: Path) -> None:
+    """A triad_weights block hand-edited into a list raises TypeError."""
+    bad = _YAML_V2.replace('triad_weights:\n      "030C": 0.5', 'triad_weights: ["030C"]')
+    assert bad != _YAML_V2
+    p = tmp_path / "patterns.yaml"
+    p.write_text(bad)
+    with pytest.raises(TypeError, match="mapping"):
+        DriftScorer(str(p)).triad_weights_for("python")
+
+
+def test_triad_weights_must_be_non_negative(tmp_path: Path) -> None:
+    """A negative triad weight raises ValueError at load time."""
+    bad = _YAML_V2.replace('"030C": 0.5', '"030C": -0.5')
+    assert bad != _YAML_V2
+    p = tmp_path / "patterns.yaml"
+    p.write_text(bad)
+    with pytest.raises(ValueError, match="non-negative"):
+        DriftScorer(str(p)).triad_weights_for("python")
+
+
+def test_domain_config_enforce_defaults_true(v2_scorer: DriftScorer) -> None:
+    """enforce defaults to True on every binding; explicit false is read."""
+    domains = v2_scorer.load_project_domains()
+    assert all(d.enforce for d in domains)
+
+
+def test_domain_config_enforce_explicit_false_is_read(tmp_path: Path) -> None:
+    """A binding carrying `enforce: false` loads with enforce False."""
+    yaml_off = _YAML_V2.replace(
+        'fqn_prefix: "quotient"',
+        'fqn_prefix: "quotient"\n    enforce: false',
+    )
+    assert yaml_off != _YAML_V2
+    p = tmp_path / "patterns.yaml"
+    p.write_text(yaml_off)
+    by_name = {d.name: d for d in DriftScorer(str(p)).load_project_domains()}
+    assert by_name["proj"].enforce is False
+    assert by_name["res"].enforce is True
+
+
+def test_layers_and_triad_weights_undeclared_defaults(v2_scorer: DriftScorer) -> None:
+    """A profile without layers yields None; without triad_weights, all-ones."""
+    assert v2_scorer.layers_for("missing_profile") is None
+    assert v2_scorer.triad_weights_for("missing_profile") == (1.0,) * 13
+
+
+# ── §3.3 v2 scoring: TV distance + gates + empty-layer exclusion ─────────────
+
+
+def _v2_fp(
+    t_imports: tuple[float, ...],
+    t_calls: tuple[float, ...],
+    unresolved: float = 0.0,
+    cycle: float = 0.0,
+) -> PatternFingerprint:
+    """Fingerprint with explicit census vectors; v1 counting fields irrelevant in v2."""
+    return PatternFingerprint(
+        domain="res",
+        hub_count=0,
+        star_count=0,
+        chain_len=0.0,
+        dag_depth=0,
+        router_count=0,
+        cycle_ratio=cycle,
+        unresolved_ratio=unresolved,
+        t_imports=t_imports,
+        t_calls=t_calls,
+    )
+
+
+def _unit(name: str) -> tuple[float, ...]:
+    """13-dim unit vector on the named triad class."""
+    return tuple(1.0 if n == name else 0.0 for n in TRIAD_ORDER)
+
+
+def test_v2_perfect_match_zero_drift(v2_scorer: DriftScorer) -> None:
+    """Both layers exactly on the ideal point, clean gates → drift 0."""
+    domain = v2_scorer.load_project_domains()[0]
+    report = v2_scorer.score(_v2_fp(_unit("021C"), _unit("021C")), domain)
+    assert report.drift_score == pytest.approx(0.0)
+    assert report.tv_imports == pytest.approx(0.0)
+    assert report.tv_calls == pytest.approx(0.0)
+
+
+def test_v2_arithmetic_pinned(v2_scorer: DriftScorer) -> None:
+    """drift = (L_imp·tv_imp + L_cal·tv_cal + L_gate·0) with all layers present.
+
+    imports: measured 021D vs ideal 021C → tv 1.0
+    calls:   60/40 split 021C/021D vs ideal 021C → tv 0.4
+    gates clean → 0. drift = .35·1.0 + .35·0.4 + .30·0 = 0.49
+    """
+    domain = v2_scorer.load_project_domains()[0]
+    t_calls = tuple(0.6 if n == "021C" else (0.4 if n == "021D" else 0.0) for n in TRIAD_ORDER)
+    report = v2_scorer.score(_v2_fp(_unit("021D"), t_calls), domain)
+    assert report.tv_imports == pytest.approx(1.0)
+    assert report.tv_calls == pytest.approx(0.4)
+    assert report.drift_score == pytest.approx(0.49)
+
+
+def test_v2_empty_layer_excluded_not_drifted(v2_scorer: DriftScorer) -> None:
+    """Zero-census imports layer drops out with renormalization (decision #3).
+
+    Only calls carries signal: drift = (.35·0.4)/(.35+.30) ≈ 0.2154 — NOT
+    .35·0.5 + ... which would treat 'no data' as half-drifted.
+    """
+    domain = v2_scorer.load_project_domains()[0]
+    t_calls = tuple(0.6 if n == "021C" else (0.4 if n == "021D" else 0.0) for n in TRIAD_ORDER)
+    report = v2_scorer.score(_v2_fp((0.0,) * 13, t_calls), domain)
+    assert report.tv_imports is None  # excluded, not 0.5
+    assert report.drift_score == pytest.approx(0.35 * 0.4 / 0.65)
+
+
+def test_v2_discount_scales_calls_layer(v2_scorer: DriftScorer) -> None:
+    """unresolved=0.5 halves the calls layer weight before renormalization.
+
+    eff = (imports .35, calls .175, gates .30), total .825.
+    Gate arithmetic (v1 mechanism): unresolved max 0.2, actual 0.5 →
+    raw=.3, norm=max(.2, 1.0)=1.0 → component drift .3; gate weights
+    cycle .25 / unresolved .15 (unresolved is NOT in _CALLS_LAYER, so no
+    discount on its weight) → gate_drift = (.15/.40)·.3 = .1125.
+    drift = (.35·1.0 + .175·0.4 + .30·.1125) / .825
+    """
+    domain = v2_scorer.load_project_domains()[0]
+    t_calls = tuple(0.6 if n == "021C" else (0.4 if n == "021D" else 0.0) for n in TRIAD_ORDER)
+    report = v2_scorer.score(_v2_fp(_unit("021D"), t_calls, unresolved=0.5), domain)
+    expected = (0.35 * 1.0 + 0.175 * 0.4 + 0.30 * 0.1125) / (0.35 + 0.175 + 0.30)
+    assert report.drift_score == pytest.approx(expected)
+    assert any("unresolved_ratio" in v for v in report.violations)
+
+
+def test_v2_triad_weight_damps_contribution(v2_scorer: DriftScorer) -> None:
+    """030C carries w=0.5 in the fixture profile → its TV term is halved."""
+    domain = v2_scorer.load_project_domains()[0]
+    report = v2_scorer.score(_v2_fp(_unit("030C"), _unit("021C")), domain)
+    # imports: |1-0|*0.5(w)*0.5 on 030C + |0-1|*1.0*0.5 on 021C = 0.25 + 0.5 = 0.75
+    assert report.tv_imports == pytest.approx(0.75)
+
+
+def test_v2_violations_name_top_triads(v2_scorer: DriftScorer) -> None:
+    """Triad terms contributing ≥0.05 appear as human-readable violations."""
+    domain = v2_scorer.load_project_domains()[0]
+    report = v2_scorer.score(_v2_fp(_unit("021D"), _unit("021C")), domain)
+    assert any("T_imports[021D]" in v for v in report.violations)
+    assert any("T_imports[021C]" in v for v in report.violations)
+    assert not any("T_calls" in v for v in report.violations)  # calls is on-ideal
+
+
+def test_v1_path_untouched_without_ideal(
+    scorer: DriftScorer, pure_util_domain: DomainConfig
+) -> None:
+    """Legacy YAML (no ideal/layers) scores exactly as before; tv fields are None."""
+    fp = PatternFingerprint(
+        domain="cgis.extractors",
+        hub_count=1,
+        star_count=0,
+        chain_len=0.0,
+        dag_depth=0,
+        router_count=0,
+        cycle_ratio=0.0,
+        unresolved_ratio=0.0,
+    )
+    report = scorer.score(fp, pure_util_domain)
+    assert report.drift_score == pytest.approx(0.0)
+    assert report.tv_imports is None
+    assert report.tv_calls is None
+
+
+def test_load_project_level_observe_only(tmp_path: Path) -> None:
+    """project_level bindings load with enforce defaulting to False."""
+    yaml_pl = _YAML_V2 + (
+        "project_level:\n"
+        "  - name: 'proj-level'\n"
+        "    fqn_prefix: 'quotient'\n"
+        "    expected_pattern: pipeline_stage\n"
+        "    profile: python\n"
+        "    drift_tolerance: 0.15\n"
+    )
+    p = tmp_path / "patterns.yaml"
+    p.write_text(yaml_pl)
+    levels = DriftScorer(str(p)).load_project_level()
+    assert len(levels) == 1
+    assert levels[0].enforce is False
