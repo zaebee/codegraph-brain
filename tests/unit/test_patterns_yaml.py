@@ -1,10 +1,11 @@
-"""Structural validation for docs/ontology/patterns.yaml."""
+"""Structural validation for docs/ontology/patterns.yaml (unified alphabet, spec §2)."""
 
 from pathlib import Path
 
 import yaml
 
 PATTERNS_PATH = Path(__file__).parent.parent.parent / "docs" / "ontology" / "patterns.yaml"
+PATTERNS_UI_PATH = PATTERNS_PATH.parent / "patterns_ui.yaml"
 
 _COMPONENT_NAMES = frozenset(
     {
@@ -18,6 +19,10 @@ _COMPONENT_NAMES = frozenset(
     }
 )
 
+_ALPHABET = frozenset(
+    {"pure_utility", "pipeline_stage", "orchestrator", "layered_dag", "dispatcher"}
+)
+
 
 def _load() -> dict:  # type: ignore[type-arg]
     return yaml.safe_load(PATTERNS_PATH.read_text())
@@ -28,66 +33,102 @@ def test_patterns_yaml_exists() -> None:
     assert PATTERNS_PATH.exists()
 
 
+def test_patterns_ui_yaml_deleted() -> None:
+    """The forked UI ontology must not exist — the alphabet is single (spec §2.4)."""
+    assert not PATTERNS_UI_PATH.exists()
+
+
 def test_required_top_level_keys() -> None:
-    """Top-level keys: version, drift_weights, patterns, project_domains."""
+    """Top-level keys: version, profiles, hygiene, patterns, project_domains."""
     data = _load()
-    assert "version" in data
-    assert "drift_weights" in data
-    assert "patterns" in data
-    assert "project_domains" in data
+    for key in ("version", "profiles", "hygiene", "patterns", "project_domains"):
+        assert key in data, f"Missing top-level key '{key}'"
 
 
-def test_drift_weights_cover_exactly_all_components() -> None:
-    """drift_weights must have exactly the 7 component names."""
+def test_alphabet_is_closed() -> None:
+    """Exactly the five templates of the closed alphabet — no more, no less."""
     data = _load()
-    assert set(data["drift_weights"].keys()) == _COMPONENT_NAMES
+    assert set(data["patterns"].keys()) == _ALPHABET
 
 
-def test_drift_weights_sum_to_one() -> None:
-    """Weights must sum to 1.0 (within floating-point tolerance)."""
+def test_each_profile_weights_cover_all_components_and_sum_to_one() -> None:
+    """Every profile's drift_weights has exactly the 7 components, summing to 1.0."""
     data = _load()
-    total = sum(data["drift_weights"].values())
-    assert abs(total - 1.0) < 1e-9
+    assert set(data["profiles"].keys()) >= {"python", "typescript"}
+    for name, profile in data["profiles"].items():
+        weights = profile["drift_weights"]
+        assert set(weights.keys()) == _COMPONENT_NAMES, f"profile '{name}'"
+        assert abs(sum(weights.values()) - 1.0) < 1e-9, f"profile '{name}'"
+
+
+def test_hygiene_uses_known_components() -> None:
+    """The hygiene block constrains only known components."""
+    data = _load()
+    assert set(data["hygiene"].keys()) <= _COMPONENT_NAMES
 
 
 def test_all_pattern_constraints_use_known_components() -> None:
-    """No pattern template may reference an unknown component name."""
+    """No template references an unknown component (params/description excluded)."""
     data = _load()
     for pattern_name, template in data["patterns"].items():
         for key in template:
-            if key == "description":
+            if key in ("description", "params"):
                 continue
-            assert key in _COMPONENT_NAMES, f"Unknown component '{key}' in pattern '{pattern_name}'"
+            assert key in _COMPONENT_NAMES, f"Unknown component '{key}' in '{pattern_name}'"
 
 
 def test_each_constraint_has_exactly_one_operator() -> None:
-    """Each component constraint must have exactly one of: min, max, exact."""
+    """Each constraint (templates and hygiene) has exactly one of min/max/exact."""
     data = _load()
-    for pattern_name, template in data["patterns"].items():
+    blocks = [*data["patterns"].values(), data["hygiene"]]
+    for template in blocks:
         for key, value in template.items():
-            if key == "description" or not isinstance(value, dict):
+            if key in ("description", "params") or not isinstance(value, dict):
                 continue
             ops = set(value.keys()) & {"min", "max", "exact"}
-            assert len(ops) == 1, (
-                f"Constraint '{key}' in '{pattern_name}' must have exactly one operator, got {ops}"
-            )
+            assert len(ops) == 1, f"Constraint '{key}' needs exactly one operator, got {ops}"
+
+
+def test_placeholders_resolve_to_declared_params() -> None:
+    """Every $name in a template resolves to that template's params block."""
+    data = _load()
+    for pattern_name, template in data["patterns"].items():
+        declared = set((template.get("params") or {}).keys())
+        for key, value in template.items():
+            if key in ("description", "params") or not isinstance(value, dict):
+                continue
+            for op_value in value.values():
+                if isinstance(op_value, str) and op_value.startswith("$"):
+                    assert op_value[1:] in declared, (
+                        f"'{op_value}' in '{pattern_name}.{key}' is undeclared"
+                    )
 
 
 def test_project_domains_have_required_fields() -> None:
-    """Each project domain must have name, fqn_prefix, expected_pattern, drift_tolerance."""
+    """Each domain has name, fqn_prefix, profile, drift_tolerance (expected_pattern optional)."""
     data = _load()
     for domain in data["project_domains"]:
-        assert "name" in domain
-        assert "fqn_prefix" in domain
-        assert "expected_pattern" in domain
-        assert "drift_tolerance" in domain
+        for key in ("name", "fqn_prefix", "profile", "drift_tolerance"):
+            assert key in domain, f"Domain '{domain.get('name', '?')}' missing '{key}'"
 
 
-def test_project_domains_reference_known_patterns() -> None:
-    """expected_pattern in each domain must refer to a defined pattern."""
+def test_project_domains_reference_known_patterns_and_profiles() -> None:
+    """expected_pattern (when present) and profile must reference declared entries."""
     data = _load()
-    known = set(data["patterns"].keys())
+    known_patterns = set(data["patterns"].keys())
+    known_profiles = set(data["profiles"].keys())
     for domain in data["project_domains"]:
-        assert domain["expected_pattern"] in known, (
-            f"Domain '{domain['name']}' references unknown pattern '{domain['expected_pattern']}'"
-        )
+        if "expected_pattern" in domain:
+            assert domain["expected_pattern"] in known_patterns, domain["name"]
+        assert domain["profile"] in known_profiles, domain["name"]
+
+
+def test_domain_params_override_only_declared_params() -> None:
+    """Domain params keys must be declared in the bound template's params block."""
+    data = _load()
+    for domain in data["project_domains"]:
+        if "params" not in domain:
+            continue
+        template = data["patterns"][domain["expected_pattern"]]
+        declared = set((template.get("params") or {}).keys())
+        assert set(domain["params"].keys()) <= declared, domain["name"]
