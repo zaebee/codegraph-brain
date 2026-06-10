@@ -1,0 +1,23 @@
+# PR 142 — docs(spec): pattern alphabet (docs-only PR). See CURATION.md.
+# head = review head (parent of cc327f40 "cosine→TV").
+pr: 142
+base: 74fe052a70c29cce23aa8c64a4a8af34986df2b4
+head: b545a883d8747b3e65581ccb3d73d9c74295721e
+findings:
+  - id: cosine-component-masking
+    file: docs/specs/2026-06-09-pattern-alphabet-motif-basis-design.md
+    lines: [200, 221]
+    severity: major
+    category: logic
+    summary: cosine distance masks small components and gives no per-triad decomposition (§3.3 drift formula)
+    source: gemini
+  - id: cosine-oq2
+    file: docs/specs/2026-06-09-pattern-alphabet-motif-basis-design.md
+    lines: [346, 355]
+    severity: major
+    category: logic
+    summary: same cosine-distance flaw restated in Open Question 2
+    source: gemini
+ambiguous:
+  - file: docs/specs/2026-06-09-pattern-alphabet-motif-basis-design.md
+    summary: open questions Q1 (discount floor), Q3 (quotient gate burn-in), Q4 (single yaml layout) — review-dialogue resolutions, not diff defects

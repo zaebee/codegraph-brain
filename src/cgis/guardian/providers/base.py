@@ -22,9 +22,18 @@ class BaseProvider(abc.ABC):
     """Abstract base class for LLM providers."""
 
     def __init__(self) -> None:
-        """Initialise last_usage to zero; updated after each generate_content call."""
+        """Initialise last_usage to zero.
+
+        Updated after each LLM call (`generate_content` or `generate_structured`).
+        """
         self.last_usage: ProviderUsage = ProviderUsage()
 
     @abc.abstractmethod
     async def generate_content(self, system_prompt: str, user_prompt: str) -> str:
-        """Sends a prompt to the LLM and returns the text response."""
+        """Send a prompt to the LLM and return the text response."""
+
+    @abc.abstractmethod
+    async def generate_structured(
+        self, system_prompt: str, user_prompt: str, schema: type[BaseModel]
+    ) -> str:
+        """Send a prompt requesting JSON conforming to schema; return raw JSON text."""

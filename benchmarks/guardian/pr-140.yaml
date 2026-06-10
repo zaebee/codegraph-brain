@@ -1,0 +1,113 @@
+# PR 140 — feat(#139): fingerprint & drift engine. See CURATION.md.
+# head = review head (parent of first review-fix commit 67cdfe54).
+# keyerror-unknown-pattern absorbs pattern-template-none-or-dict (same site).
+pr: 140
+base: d4a89bd3d46a411b2cdf30655793d2586ed411d8
+head: d6b7eb6c84e893684721df652d0938e6621e3da6
+findings:
+  - id: dag-bfs-wrong-visited
+    file: src/cgis/query/fingerprint.py
+    lines: [48, 65]
+    severity: critical
+    category: logic
+    summary: BFS with a global visited set underestimates DAG longest path
+    source: gemini
+  - id: dag-bfs-wrong-visited-depth
+    file: src/cgis/query/fingerprint.py
+    lines: [80, 93]
+    severity: critical
+    category: logic
+    summary: same global-visited BFS defect in the max-depth computation
+    source: gemini
+  - id: nondeterministic-set-traversal
+    file: src/cgis/query/fingerprint.py
+    lines: [44, 48]
+    severity: major
+    category: logic
+    summary: unsorted set iteration makes fingerprint metrics irreproducible
+    source: gemini
+  - id: count-routers-on-squared
+    file: src/cgis/query/fingerprint.py
+    lines: [103, 113]
+    severity: major
+    category: logic
+    summary: O(N×E) nested scan in _count_routers
+    source: gemini
+  - id: fingerprint-extractor-no-cache
+    file: src/cgis/query/fingerprint.py
+    lines: [117, 130]
+    severity: major
+    category: logic
+    summary: nodes/edges refetched and re-enriched per domain with no cache
+    source: gemini
+  - id: yaml-none-dict-drift-init
+    file: src/cgis/query/drift.py
+    lines: [64, 70]
+    severity: major
+    category: contract
+    summary: DriftScorer.__init__ uses yaml.safe_load result without None/isinstance guard
+    source: gemini
+  - id: keyerror-unknown-pattern
+    file: src/cgis/query/drift.py
+    lines: [83, 88]
+    severity: major
+    category: contract
+    summary: unknown expected_pattern raises raw KeyError; patterns.get result also not isinstance-guarded
+    source: gemini
+  - id: zero-division-eff-total
+    file: src/cgis/query/drift.py
+    lines: [109, 143]
+    severity: major
+    category: contract
+    summary: ZeroDivisionError when effective total_weight is 0
+    source: gemini
+  - id: weights-keyerror-custom-yaml
+    file: src/cgis/query/drift.py
+    lines: [109, 143]
+    severity: major
+    category: contract
+    summary: _weights[name] raises KeyError for custom yaml with unknown component names
+    source: gemini
+  - id: drift-no-try-except
+    file: src/cgis/cli.py
+    lines: [819, 832]
+    severity: major
+    category: contract
+    summary: drift command leaks raw tracebacks instead of a friendly error
+    source: gemini
+  - id: missing-drift-output-format
+    file: src/cgis/cli.py
+    lines: [789, 808]
+    severity: major
+    category: contract
+    summary: --format json rejected because the output-format enum is wrong
+    source: gemini
+  - id: yaml-safe-load-none-gen-ideal
+    file: scripts/gen_ideal_graph.py
+    lines: [341, 347]
+    severity: major
+    category: contract
+    summary: yaml.safe_load may return None, then .get raises TypeError
+    source: gemini
+  - id: float-equality-test-drift
+    file: tests/unit/test_drift.py
+    lines: [96, 101]
+    severity: minor
+    category: tests
+    summary: bare == comparison on floats
+    source: sonar
+  - id: float-equality-test-fingerprint
+    file: tests/unit/test_fingerprint.py
+    lines: [41, 44]
+    severity: minor
+    category: tests
+    summary: bare == comparison on floats
+    source: sonar
+  - id: cognitive-complexity-score
+    file: src/cgis/query/drift.py
+    lines: [83, 165]
+    severity: minor
+    category: logic
+    summary: score() cognitive complexity 18 exceeds the 15 threshold
+    source: sonar
+ambiguous: []

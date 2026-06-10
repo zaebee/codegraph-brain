@@ -1,18 +1,27 @@
 """Unit tests for GuardianReviewer, PromptBuilder, and providers."""
 
+import json
 import subprocess
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from cgis.guardian.collector import ContextCollector
 from cgis.guardian.core import GuardianReviewer
+from cgis.guardian.findings import ReviewResult
 from cgis.guardian.prompts import PromptBuilder
 from cgis.guardian.providers.base import BaseProvider, ProviderUsage
 from cgis.guardian.providers.gemini import GeminiProvider
 from cgis.guardian.providers.mistral import MistralProvider
+
+_VALID_JSON = '{"findings": [], "summary": "all good"}'
+_VALID_FINDING_JSON = (
+    '{"findings": [{"file": "a.py", "line": 1, "severity": "major", "category": "logic",'
+    ' "title": "t", "evidence": "e", "problem": "p", "fix": "f", "confidence": 90}],'
+    ' "summary": "s"}'
+)
 
 # ---------------------------------------------------------------------------
 # PromptBuilder
@@ -72,6 +81,39 @@ class _FakeProvider(BaseProvider):
         """Return the canned response."""
         return self._response
 
+    async def generate_structured(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        schema: type[BaseModel],  # noqa: ARG002
+    ) -> str:
+        """Structured variant — same canned behaviour as generate_content."""
+        return await self.generate_content(system_prompt, user_prompt)
+
+
+class _SequenceProvider(BaseProvider):
+    """Returns queued responses; records structured-call prompts."""
+
+    def __init__(self, responses: list[str]) -> None:
+        """Queue the canned responses."""
+        super().__init__()
+        self._responses = list(responses)
+        self.structured_prompts: list[str] = []
+
+    async def generate_content(self, system_prompt: str, user_prompt: str) -> str:  # noqa: ARG002
+        """Pop and return the next queued response."""
+        return self._responses.pop(0)
+
+    async def generate_structured(
+        self,
+        system_prompt: str,  # noqa: ARG002
+        user_prompt: str,
+        schema: type[BaseModel],  # noqa: ARG002
+    ) -> str:
+        """Record the prompt, then pop and return the next queued response."""
+        self.structured_prompts.append(user_prompt)
+        return self._responses.pop(0)
+
 
 @pytest.fixture
 def collector(tmp_path: Path) -> ContextCollector:
@@ -79,18 +121,43 @@ def collector(tmp_path: Path) -> ContextCollector:
     return ContextCollector(project_root=tmp_path)
 
 
-async def test_run_review_returns_provider_response(collector: ContextCollector) -> None:
-    """GuardianReviewer.run_review() returns whatever the provider returns."""
-    with patch.object(
-        collector,
-        "collect_all",
-        return_value={"diff": "d", "contributing": "c", "ontology": "o"},
-    ):
-        reviewer = GuardianReviewer(
-            provider=_FakeProvider("looks good"), context_collector=collector
-        )
-        result = await reviewer.run_review()
-    assert result == "looks good"
+async def test_run_review_parses_valid_json(collector: ContextCollector) -> None:
+    """A valid JSON response becomes a ReviewResult on the first pass."""
+    reviewer = GuardianReviewer(
+        provider=_SequenceProvider([_VALID_FINDING_JSON]), context_collector=collector
+    )
+    result = await reviewer.run_review()
+    assert result.parse_failed is False
+    assert len(result.findings) == 1
+    assert result.findings[0].file == "a.py"
+
+
+async def test_run_review_strips_markdown_fences(collector: ContextCollector) -> None:
+    """A fenced ```json response still parses."""
+    fenced = f"```json\n{_VALID_JSON}\n```"
+    reviewer = GuardianReviewer(provider=_SequenceProvider([fenced]), context_collector=collector)
+    result = await reviewer.run_review()
+    assert result.summary == "all good"
+
+
+async def test_run_review_retries_once_on_invalid_json(collector: ContextCollector) -> None:
+    """First invalid response triggers one retry whose prompt cites the error."""
+    provider = _SequenceProvider(["not json at all", _VALID_JSON])
+    reviewer = GuardianReviewer(provider=provider, context_collector=collector)
+    result = await reviewer.run_review()
+    assert result.parse_failed is False
+    assert len(provider.structured_prompts) == 2
+    assert "failed validation" in provider.structured_prompts[1].lower()
+
+
+async def test_run_review_falls_back_after_two_failures(collector: ContextCollector) -> None:
+    """Two invalid responses → raw text in summary, parse_failed=True."""
+    provider = _SequenceProvider(["garbage one", "garbage two"])
+    reviewer = GuardianReviewer(provider=provider, context_collector=collector)
+    result = await reviewer.run_review()
+    assert result.parse_failed is True
+    assert result.findings == []
+    assert result.summary == "garbage two"
 
 
 async def test_run_review_passes_context_to_prompt(collector: ContextCollector) -> None:
@@ -99,9 +166,18 @@ async def test_run_review_passes_context_to_prompt(collector: ContextCollector) 
 
     class _CapturingProvider(BaseProvider):
         async def generate_content(self, system_prompt: str, user_prompt: str) -> str:  # noqa: ARG002
-            """Capture the user prompt and return ok."""
+            """Capture the user prompt and return valid JSON so parsing succeeds."""
             captured["user"] = user_prompt
-            return "ok"
+            return _VALID_JSON
+
+        async def generate_structured(
+            self,
+            system_prompt: str,
+            user_prompt: str,
+            schema: type[BaseModel],  # noqa: ARG002
+        ) -> str:
+            """Structured variant — same canned behaviour as generate_content."""
+            return await self.generate_content(system_prompt, user_prompt)
 
     with patch.object(
         collector,
@@ -140,9 +216,18 @@ async def test_provider_last_usage_after_call(collector: ContextCollector) -> No
 
     class _UsageProvider(BaseProvider):
         async def generate_content(self, system_prompt: str, user_prompt: str) -> str:  # noqa: ARG002
-            """Return ok and set fake usage."""
+            """Return valid JSON and set fake usage (single-call semantics)."""
             self.last_usage = ProviderUsage(prompt_tokens=100, completion_tokens=50)
-            return "ok"
+            return _VALID_JSON
+
+        async def generate_structured(
+            self,
+            system_prompt: str,
+            user_prompt: str,
+            schema: type[BaseModel],  # noqa: ARG002
+        ) -> str:
+            """Structured variant — same canned behaviour as generate_content."""
+            return await self.generate_content(system_prompt, user_prompt)
 
     p = _UsageProvider()
     with patch.object(
@@ -315,6 +400,7 @@ async def test_mistral_provider_returns_text() -> None:
         result = await provider.generate_content("sys", "user")
 
     assert result == "mistral says LGTM"
+    assert "response_format" not in inst.chat.complete_async.call_args.kwargs
 
 
 async def test_mistral_provider_empty_choices() -> None:
@@ -345,3 +431,69 @@ async def test_mistral_provider_null_content() -> None:
         pytest.raises(ValueError, match="null message content"),
     ):
         await provider.generate_content("sys", "user")
+
+
+async def test_gemini_generate_structured_sets_json_mode() -> None:
+    """generate_structured passes response_mime_type + response_schema to the SDK."""
+    mock_response = MagicMock()
+    mock_response.text = '{"findings": [], "summary": "ok"}'
+    mock_client = MagicMock()
+    mock_client.aio.models.generate_content = AsyncMock(return_value=mock_response)
+    mock_genai = MagicMock()
+    mock_genai.Client.return_value = mock_client
+
+    provider = GeminiProvider(api_key="fake")
+    with patch.dict(
+        "sys.modules",
+        {
+            "google": MagicMock(genai=mock_genai),
+            "google.genai": mock_genai,
+            "google.genai.types": MagicMock(),
+        },
+    ):
+        result = await provider.generate_structured("sys", "user", ReviewResult)
+
+    # `from google.genai import types` resolves via mock_genai.types (attribute lookup),
+    # not via sys.modules["google.genai.types"], so we assert on mock_genai.types.
+    assert result == '{"findings": [], "summary": "ok"}'
+    config_kwargs = mock_genai.types.GenerateContentConfig.call_args.kwargs
+    assert config_kwargs["response_mime_type"] == "application/json"
+    assert config_kwargs["response_schema"] is ReviewResult
+    assert config_kwargs["system_instruction"] == "sys"
+
+
+async def test_mistral_generate_structured_sets_json_object() -> None:
+    """generate_structured passes response_format=json_object to the SDK."""
+    mock_choice = MagicMock()
+    mock_choice.message.content = '{"findings": [], "summary": "ok"}'
+    mock_response = MagicMock()
+    mock_response.choices = [mock_choice]
+
+    inst = _make_mistral_client(mock_response)
+    provider = MistralProvider(api_key="fake")
+    with patch.dict("sys.modules", _mistral_modules(inst)):
+        result = await provider.generate_structured("sys", "user", ReviewResult)
+
+    assert result == '{"findings": [], "summary": "ok"}'
+    call_kwargs = inst.chat.complete_async.call_args.kwargs
+    assert call_kwargs["response_format"] == {"type": "json_object"}
+
+
+def test_build_user_prompt_demands_json_output() -> None:
+    """OUTPUT FORMAT section requests raw JSON matching the findings schema."""
+    prompt = PromptBuilder.build_user_prompt({"diff": "d"})
+    assert '"findings"' in prompt
+    assert '"summary"' in prompt
+    assert "ONLY a JSON object" in prompt
+    assert "**[Logic Bug" not in prompt  # old markdown template is gone
+
+
+def test_build_user_prompt_lgtm_example_is_valid_json() -> None:
+    """The inline LGTM example must itself parse — it teaches the model the format."""
+    prompt = PromptBuilder.build_user_prompt({"diff": "d"})
+    marker = "Example LGTM response: "
+    start = prompt.index(marker) + len(marker)
+    example = prompt[start:].split("\n", 1)[0].strip()
+    parsed = json.loads(example)
+    assert parsed["findings"] == []
+    assert isinstance(parsed["summary"], str)

@@ -1,0 +1,95 @@
+"""Testable orchestration for the guardian review script."""
+
+from collections.abc import Mapping
+from pathlib import Path
+
+import structlog
+
+from cgis.guardian.collector import ContextCollector
+from cgis.guardian.core import GuardianReviewer
+from cgis.guardian.metrics import record_review
+from cgis.guardian.providers.base import BaseProvider, ProviderUsage
+from cgis.guardian.providers.gemini import GeminiProvider
+from cgis.guardian.providers.mistral import MistralProvider
+from cgis.guardian.render import render_report
+
+log = structlog.getLogger(__name__)
+
+DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
+DEFAULT_MISTRAL_MODEL = "mistral-medium-latest"
+
+
+def build_provider(env: Mapping[str, str]) -> tuple[BaseProvider, str]:
+    """Return (provider, model_name) from GUARDIAN_PROVIDER / available API keys."""
+    model_override = env.get("GUARDIAN_MODEL")
+    provider_name = env.get("GUARDIAN_PROVIDER", "").lower()
+
+    if provider_name == "mistral" or (not provider_name and env.get("MISTRAL_API_KEY")):
+        mistral_key = env.get("MISTRAL_API_KEY")
+        if not mistral_key:
+            _msg = "MISTRAL_API_KEY must be set when GUARDIAN_PROVIDER=mistral"
+            raise RuntimeError(_msg)
+        model = model_override or DEFAULT_MISTRAL_MODEL
+        return MistralProvider(api_key=mistral_key, model_name=model), model
+
+    if provider_name == "gemini":
+        gemini_key = env.get("GEMINI_API_KEY")
+        if not gemini_key:
+            _msg = "GEMINI_API_KEY must be set when GUARDIAN_PROVIDER=gemini"
+            raise RuntimeError(_msg)
+        model = model_override or DEFAULT_GEMINI_MODEL
+        return GeminiProvider(api_key=gemini_key, model_name=model), model
+
+    if provider_name and provider_name != "mistral":
+        _msg = f"Unknown GUARDIAN_PROVIDER={provider_name!r}. Use 'mistral' or 'gemini'."
+        raise RuntimeError(_msg)
+
+    gemini_key = env.get("GEMINI_API_KEY")
+    if gemini_key:
+        model = model_override or DEFAULT_GEMINI_MODEL
+        return GeminiProvider(api_key=gemini_key, model_name=model), model
+
+    _msg = "Set MISTRAL_API_KEY or GEMINI_API_KEY to run Guardian."
+    raise RuntimeError(_msg)
+
+
+def build_footer(*, model: str, usage: ProviderUsage, stats: dict[str, int]) -> str:
+    """Build the markdown footer with model, token usage, and graph coverage."""
+    parts = [f"🤖 **{model}**"]
+    if usage.total_tokens > 0:
+        parts.append(
+            f"{usage.prompt_tokens:,} prompt + {usage.completion_tokens:,} completion"
+            f" = **{usage.total_tokens:,} tokens**"
+        )
+    if stats.get("total", 0) > 0:
+        pct = round(stats.get("with_graph", 0) / stats["total"] * 100)
+        parts.append(f"graph {stats.get('with_graph', 0)}/{stats['total']} files ({pct}%)")
+    return "\n\n---\n> " + " · ".join(parts)
+
+
+async def run_guardian(
+    *,
+    provider: BaseProvider,
+    model: str,
+    collector: ContextCollector,
+    pr: int | None,
+    metrics_path: Path,
+) -> str:
+    """Run the review, record metrics, and return the rendered report + footer."""
+    reviewer = GuardianReviewer(provider=provider, context_collector=collector)
+    result = await reviewer.run_review()
+    report = render_report(result)
+
+    record_review(
+        model=model,
+        pr=pr,
+        prompt_tokens=provider.last_usage.prompt_tokens,
+        completion_tokens=provider.last_usage.completion_tokens,
+        findings_total=len(result.findings),
+        lgtm=not result.findings and not result.parse_failed,
+        parse_failed=result.parse_failed,
+        metrics_path=metrics_path,
+    )
+    return report + build_footer(
+        model=model, usage=provider.last_usage, stats=collector.graph_stats
+    )

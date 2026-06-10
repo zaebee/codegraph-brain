@@ -1,0 +1,51 @@
+# PR 143 — feat: unified pattern alphabet (Part A). See CURATION.md.
+# Two-wave review: head = SECOND-round review head (parent of 9a5a29ac).
+# At the first-round head (39990e5) four of the six defects did not exist yet;
+# at 8b19262 all six are present (CC fixes landed only in 9a5a29ac).
+pr: 143
+base: aac47113d0fdb5ef2ffa9aed6c0c6d50aac3d792
+head: 8b1926273f1f14640c34c8658c3f0737b4209e34
+findings:
+  - id: params-mapping-domain
+    file: src/cgis/query/drift.py
+    lines: [85, 96]
+    severity: major
+    category: contract
+    summary: domain params list/scalar passes through _load_params and dies with opaque AttributeError on .items()
+    source: gemini
+  - id: params-mapping-template
+    file: src/cgis/query/drift.py
+    lines: [131, 144]
+    severity: major
+    category: contract
+    summary: template params not isinstance-guarded in _merge_params, same .items() failure
+    source: gemini
+  - id: confidence-discount-clip
+    file: src/cgis/query/drift.py
+    lines: [180, 186]
+    severity: major
+    category: logic
+    summary: discount = 1 - unresolved_ratio is unclipped and can go negative
+    source: gemini
+  - id: selected-domains-profile
+    file: tests/self_parsing/test_drift.py
+    lines: [25, 30]
+    severity: major
+    category: logic
+    summary: _selected_domains filters by hardcoded "cgis." prefix instead of the domain profile field
+    source: gemini
+  - id: cognitive-complexity-score
+    file: src/cgis/query/drift.py
+    lines: [160, 228]
+    severity: minor
+    category: logic
+    summary: score() cognitive complexity 17 exceeds the 15 threshold
+    source: sonar
+  - id: cognitive-complexity-test-patterns-yaml
+    file: tests/unit/test_patterns_yaml.py
+    lines: [70, 90]
+    severity: minor
+    category: tests
+    summary: two constraint tests with nested loops exceed cognitive-complexity threshold
+    source: sonar
+ambiguous: []
