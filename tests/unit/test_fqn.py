@@ -90,3 +90,11 @@ def test_empty_fqn_returns_unresolved(tmp_path: Path) -> None:
     assert res_empty.candidates == []
     assert res_blank.resolved is None
     assert res_blank.candidates == []
+
+
+def test_surrounding_whitespace_is_stripped(tmp_path: Path) -> None:
+    """Leading/trailing whitespace must not break exact or suffix lookups."""
+    db = _seed_store(tmp_path / "fqn.db", ["a.b.fn"])
+    with SQLiteStore(db) as store:
+        assert resolve_fqn(store, " a.b.fn ").resolved == "a.b.fn"
+        assert resolve_fqn(store, "\tfn\n").resolved == "a.b.fn"

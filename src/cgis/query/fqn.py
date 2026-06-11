@@ -49,7 +49,8 @@ def resolve_fqn(store: SQLiteStore, fqn: str) -> FqnResolution:
     so the storage layer stays a pure suffix search with no intra-domain call
     chain (enforced by the pure_utility self-drift guardrail, #145).
     """
-    if not fqn.strip():
+    fqn = fqn.strip()
+    if not fqn:
         return FqnResolution(resolved=None)
     exact = store.get_node(fqn)
     if exact:
