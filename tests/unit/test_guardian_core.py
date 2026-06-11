@@ -10,7 +10,7 @@ from guardian_stubs import FINDING_JSON, StubProvider
 from pydantic import BaseModel, ValidationError
 
 from cgis.guardian.collector import ContextCollector
-from cgis.guardian.core import GuardianReviewer
+from cgis.guardian.core import GuardianReviewer, finder_pass
 from cgis.guardian.findings import ReviewResult
 from cgis.guardian.prompts import PromptBuilder
 from cgis.guardian.providers.base import BaseProvider, ProviderUsage
@@ -491,6 +491,37 @@ async def test_mistral_generate_structured_sets_json_object() -> None:
     assert result == '{"findings": [], "summary": "ok"}'
     call_kwargs = inst.chat.complete_async.call_args.kwargs
     assert call_kwargs["response_format"] == {"type": "json_object"}
+
+
+@pytest.mark.asyncio
+async def test_finder_pass_is_module_level() -> None:
+    """finder_pass works standalone, without a GuardianReviewer instance."""
+    provider = _SequenceProvider([FINDING_JSON])
+    result = await finder_pass(provider, {"diff": "d"})
+    assert len(result.findings) == 1
+    assert result.findings[0].file == "a.py"
+
+
+@pytest.mark.asyncio
+async def test_finder_retry_accumulates_usage() -> None:
+    """A parse retry makes TWO calls; cumulative_usage must count both (spec §4.7)."""
+
+    class _UsageSequenceProvider(_SequenceProvider):
+        """_SequenceProvider that records fixed usage on every call."""
+
+        async def generate_structured(
+            self, system_prompt: str, user_prompt: str, schema: type[BaseModel]
+        ) -> str:
+            """Record usage, then answer from the canned sequence."""
+            self._record_usage(ProviderUsage(prompt_tokens=10, completion_tokens=2))
+            return await super().generate_structured(system_prompt, user_prompt, schema)
+
+    provider = _UsageSequenceProvider(["not json", FINDING_JSON])
+    result = await finder_pass(provider, {"diff": "d"})
+    assert len(result.findings) == 1
+    assert provider.last_usage.prompt_tokens == 10  # last call only
+    assert provider.cumulative_usage.prompt_tokens == 20  # both calls
+    assert provider.cumulative_usage.completion_tokens == 4
 
 
 def test_build_user_prompt_demands_json_output() -> None:

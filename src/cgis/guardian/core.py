@@ -38,6 +38,33 @@ def _sanitize_finder_result(result: ReviewResult) -> ReviewResult:
     return result.model_copy(update={"findings": findings, "skeptic_status": "off"})
 
 
+async def finder_pass(provider: BaseProvider, context: dict[str, str]) -> ReviewResult:
+    """Run the finder (pass 1) with parse-retry semantics.
+
+    Parse policy (spec §2.3): one retry with the validation error appended;
+    on a second failure the raw text becomes the summary with parse_failed=True.
+    Module-level so the chunked orchestrator reuses it per chunk (slice 2).
+    """
+    builder = PromptBuilder()
+    system_prompt = builder.build_system_prompt()
+    user_prompt = builder.build_user_prompt(context)
+    raw = await provider.generate_structured(system_prompt, user_prompt, ReviewResult)
+    try:
+        return _sanitize_finder_result(ReviewResult.model_validate_json(extract_json(raw)))
+    except ValidationError as exc:
+        log.warning(
+            "Structured output failed validation; retrying once.",
+            validation_error=str(exc),
+        )
+        retry_prompt = user_prompt + _RETRY_SUFFIX.format(error=exc)
+        raw = await provider.generate_structured(system_prompt, retry_prompt, ReviewResult)
+        try:
+            return _sanitize_finder_result(ReviewResult.model_validate_json(extract_json(raw)))
+        except ValidationError:
+            log.exception("Structured output failed twice; falling back to raw text.")
+            return ReviewResult(findings=[], summary=raw, parse_failed=True)
+
+
 class GuardianReviewer:
     """Orchestrates the entire review process."""
 
@@ -47,35 +74,14 @@ class GuardianReviewer:
         context_collector: ContextCollector,
         skeptic_provider: BaseProvider | None = None,
     ) -> None:
-        """Wire up the LLM provider, context collector, prompt builder, and optional skeptic."""
+        """Wire up the LLM provider, context collector, and optional skeptic."""
         self.provider = provider
         self.context_collector = context_collector
-        self.prompt_builder = PromptBuilder()
         self.skeptic_provider = skeptic_provider
 
     async def _finder_pass(self, context: dict[str, str]) -> ReviewResult:
-        """Run the finder (pass 1) with parse-retry semantics.
-
-        Parse policy (spec §2.3): one retry with the validation error appended;
-        on a second failure the raw text becomes the summary with parse_failed=True.
-        """
-        system_prompt = self.prompt_builder.build_system_prompt()
-        user_prompt = self.prompt_builder.build_user_prompt(context)
-        raw = await self.provider.generate_structured(system_prompt, user_prompt, ReviewResult)
-        try:
-            return _sanitize_finder_result(ReviewResult.model_validate_json(extract_json(raw)))
-        except ValidationError as exc:
-            log.warning(
-                "Structured output failed validation; retrying once.",
-                validation_error=str(exc),
-            )
-            retry_prompt = user_prompt + _RETRY_SUFFIX.format(error=exc)
-            raw = await self.provider.generate_structured(system_prompt, retry_prompt, ReviewResult)
-            try:
-                return _sanitize_finder_result(ReviewResult.model_validate_json(extract_json(raw)))
-            except ValidationError:
-                log.exception("Structured output failed twice; falling back to raw text.")
-                return ReviewResult(findings=[], summary=raw, parse_failed=True)
+        """Delegate to the module-level finder_pass (kept for call-site stability)."""
+        return await finder_pass(self.provider, context)
 
     async def run_review(self) -> ReviewResult:
         """Run the review; optionally verify findings with the skeptic pass (spec §5)."""
