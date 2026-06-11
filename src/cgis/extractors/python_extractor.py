@@ -187,6 +187,17 @@ class PythonExtractor(BaseExtractor):
                 node, code_bytes, import_map, current_func_node, local_types_acc
             )
         elif (
+            node.type == "assignment"
+            and current_func_node is None
+            and self._get_fqn_prefix(node, code_bytes) is None
+        ):
+            # True module level: not in a function (current_func_node) and not
+            # in a class body (_get_fqn_prefix). Class-body DI aliases are out
+            # of scope (spec §6).
+            self._process_module_assignment(
+                node, code_bytes, file_path, nodes, edges, module_fqn or ""
+            )
+        elif (
             node.type in ("typed_parameter", "typed_default_parameter")
             and current_func_node
             and local_types_acc is not None
@@ -667,6 +678,73 @@ class PythonExtractor(BaseExtractor):
                 return name if name != "unknown" else None
             return None
         return None
+
+    def _find_di_calls(self, node: BaseNode, code_bytes: bytes) -> list[BaseNode]:
+        """Return all call nodes in the subtree whose callee is a DI name (spec §3.2a)."""
+        found: list[BaseNode] = []
+        stack = [node]
+        while stack:
+            curr = stack.pop()
+            if curr.type == "call":
+                fn = curr.child_by_field_name("function")
+                if fn and self._get_identifier(fn, code_bytes) in self._DI_CALL_NAMES:
+                    found.append(curr)
+            stack.extend(curr.children)
+        return found
+
+    def _process_module_assignment(
+        self,
+        node: BaseNode,
+        code_bytes: bytes,
+        file_path: str,
+        nodes: list[Node],
+        edges: list[Edge],
+        module_fqn: str,
+    ) -> None:
+        """Emit a VARIABLE alias node + DEPENDS_ON edges for module-level DI assignments.
+
+        Only fires for `Name = <RHS containing Depends/Security>` with a plain
+        identifier LHS at true module level (class bodies excluded by the
+        caller). Plain constants never reach the node list (spec §3.2a).
+        """
+        left = node.child_by_field_name("left")
+        right = node.child_by_field_name("right")
+        if not left or not right or left.type != "identifier":
+            return
+        di_calls = self._find_di_calls(right, code_bytes)
+        if not di_calls:
+            return
+        name = self._get_identifier(left, code_bytes)
+        if name == "unknown":
+            return
+        alias_id = f"{module_fqn}.{name}" if module_fqn else name
+        nodes.append(
+            Node(
+                id=alias_id,
+                type=NodeType.VARIABLE,
+                name=name,
+                file_path=file_path,
+                start_line=node.start_point.row + 1,
+                end_line=node.end_point.row + 1,
+                language=self.LANG,
+            )
+        )
+        for call in di_calls:
+            provider = self._di_provider_name(call, code_bytes)
+            if not provider:
+                continue
+            edges.append(
+                Edge(
+                    id=f"{file_path}:dep_{call.start_byte}_{call.end_byte}",
+                    type=EdgeType.DEPENDS_ON,
+                    source=alias_id,
+                    target=f"raw_call:{provider}",
+                    confidence=0.5,
+                    context=f"DI alias for {provider}",
+                    file_path=file_path,
+                    line_number=node.start_point.row + 1,
+                )
+            )
 
     def _resolve_type_fqn(
         self,
