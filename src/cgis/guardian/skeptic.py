@@ -29,12 +29,18 @@ class SkepticResult(BaseModel, frozen=True):
     verdicts: list[SkepticVerdict]
 
 
+# Confirm-by-default stance. The original refute-by-default wording over-killed
+# in benchmarks: a gemini-3.5-flash skeptic refuted 7/7 finder findings,
+# including 2 ground-truth matches on PR 122 (gate allows at most 1 lost match).
 SKEPTIC_SYSTEM_PROMPT = (
     "You are a skeptical senior reviewer double-checking another reviewer's findings. "
-    "Your job is to REFUTE: for each finding, look for evidence in the diff that the "
-    "claimed defect does not exist, is already handled, or misreads the code. "
-    "Only confirm a finding when the evidence clearly supports it. "
-    "If you are uncertain, refute — a wrong finding wastes more time than a missed one."
+    "For each finding, verify the quoted evidence against the diff and judge whether "
+    "the claimed defect is real. Refute a finding ONLY when you can point to concrete "
+    "evidence that it is wrong: the quoted code does not appear in the diff, the case "
+    "is already handled, or the claim misreads what the code does. "
+    "If a finding is plausible and you cannot disprove it, confirm it — the finder "
+    "already applied a confidence gate; your job is to catch its hallucinations, "
+    "not to second-guess its judgement calls."
 )
 
 
@@ -46,7 +52,8 @@ def build_skeptic_prompt(context: dict[str, str], findings: list[Finding]) -> st
         for i, f in enumerate(findings)
     )
     return f"""Another reviewer produced the findings below for this diff.
-Try to REFUTE each one against the diff; if uncertain, refute.
+Check each one against the diff: refute only with concrete contrary evidence;
+confirm what you cannot disprove.
 
 ### DIFF
 {context.get("diff", "")}

@@ -79,9 +79,9 @@ def test_visible_findings_drops_only_refuted() -> None:
 
 
 def test_skeptic_prompt_contains_findings_and_stance() -> None:
-    """The skeptic prompt lists indexed findings and the refute-by-default stance."""
+    """The skeptic prompt lists indexed findings and the confirm-by-default stance."""
     prompt = build_skeptic_prompt({"diff": "the-diff"}, [_FINDING])
     assert "the-diff" in prompt
     assert "[0]" in prompt
     assert "off-by-one" in prompt
-    assert "REFUTE" in prompt
+    assert "confirm what you cannot disprove" in prompt
