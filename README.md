@@ -106,8 +106,8 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
         n_380356b2071cde8dd55ba6287e99bd8a["run (pipeline.py:51)"]:::methodNode
     end
     subgraph n_724e82bcada88588298dcf4c3336e3f5["engine.py"]
-        n_ebda4de8e05ef057deb454e72894302d["ResolverEngine (engine.py:14)"]:::classNode
-        n_e75ca2e29418d9c85a1a14b7069c25d9["resolve (engine.py:149)"]:::methodNode
+        n_ebda4de8e05ef057deb454e72894302d["ResolverEngine (engine.py:15)"]:::classNode
+        n_e75ca2e29418d9c85a1a14b7069c25d9["resolve (engine.py:161)"]:::methodNode
     end
     subgraph n_b64d9821d81a859afcf762f9892f0b4a["uplift.py"]
         n_2dda32fbe79232f92feae85b97527aff["SemanticUpliftEngine (uplift.py:66)"]:::classNode
@@ -128,8 +128,8 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
 | `_process_file` | METHOD | [`pipeline.py:145`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L145) |
 | `_persist_incremental` | METHOD | [`pipeline.py:175`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L175) |
 | `_get_extractor` | METHOD | [`pipeline.py:216`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L216) |
-| `ResolverEngine` | CLASS | [`engine.py:14`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L14) |
-| `resolve` | METHOD | [`engine.py:149`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L149) |
+| `ResolverEngine` | CLASS | [`engine.py:15`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L15) |
+| `resolve` | METHOD | [`engine.py:161`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L161) |
 | `SemanticUpliftEngine` | CLASS | [`uplift.py:66`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/uplift.py#L66) |
 | `execute_uplift` | METHOD | [`uplift.py:91`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/uplift.py#L91) |
 <!-- END_CGIS_GRAPH -->
