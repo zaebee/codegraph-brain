@@ -13,11 +13,15 @@ def build_review(
     *,
     diff_index: dict[str, set[int]],
     skeptic_model: str | None,
+    footer: str = "",
 ) -> tuple[str, list[dict[str, object]]]:
     """Split findings into inline comments vs body text (pure, spec §6.2).
 
     A finding whose line is commentable becomes an inline comment; line=None
-    or out-of-diff findings land in the review body. Nothing is lost.
+    or out-of-diff findings land in the review body. Nothing is lost. The
+    footer (model/tokens/coverage) is appended to the body: before inline
+    posting existed it always reached the PR via the fallback comment, but a
+    successful inline post skips that comment — so it must travel here too.
     """
     inline: list[Finding] = []
     outside: list[Finding] = []
@@ -35,7 +39,7 @@ def build_review(
         }
         for f in inline
     ]
-    return render_review_body(result, outside=outside), comments
+    return render_review_body(result, outside=outside) + footer, comments
 
 
 def post_inline_review(
@@ -45,6 +49,7 @@ def post_inline_review(
     result: ReviewResult,
     diff_index: dict[str, set[int]],
     skeptic_model: str | None,
+    footer: str = "",
 ) -> None:
     """POST one COMMENT review via `gh api` (auto-auth in Actions, spec §6.4).
 
@@ -52,7 +57,9 @@ def post_inline_review(
     not a gate. Raises CalledProcessError on API rejection; the caller
     decides the fallback (spec §6.5).
     """
-    body, comments = build_review(result, diff_index=diff_index, skeptic_model=skeptic_model)
+    body, comments = build_review(
+        result, diff_index=diff_index, skeptic_model=skeptic_model, footer=footer
+    )
     payload = {"event": "COMMENT", "body": body, "comments": comments}
     subprocess.run(
         ["gh", "api", f"repos/{repo}/pulls/{pr}/reviews", "-X", "POST", "--input", "-"],

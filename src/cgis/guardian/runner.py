@@ -126,6 +126,10 @@ async def run_guardian(
     )
     result = await reviewer.run_review()
     report = render_report(result)
+    # Built BEFORE the inline attempt: a successful inline post skips the
+    # fallback comment, so the footer must ride inside the review body too
+    # (live finding on PR #157 — inline reviews arrived footerless).
+    footer = build_footer(model=model, usage=provider.last_usage, stats=collector.graph_stats)
 
     posted = False
     if inline_repo is not None and pr is not None:
@@ -138,6 +142,7 @@ async def run_guardian(
                 result=result,
                 diff_index=index,
                 skeptic_model=skeptic[1] if skeptic else None,
+                footer=footer,
             )
             posted = True
         except Exception:
@@ -157,5 +162,4 @@ async def run_guardian(
         skeptic_status=result.skeptic_status,
         metrics_path=metrics_path,
     )
-    footer = build_footer(model=model, usage=provider.last_usage, stats=collector.graph_stats)
     return report + footer, posted
