@@ -228,6 +228,26 @@ class SQLiteStore:
             return None
         return self._row_to_node(row)
 
+    def find_nodes_by_suffix(self, name: str, limit: int = 10) -> list[Node]:
+        """Find nodes whose FQN equals ``name`` or ends with ``.name``.
+
+        An exact match wins and is returned alone. Otherwise dot-boundary
+        suffix matches are returned ordered by id, capped at ``limit``.
+        LIKE wildcards in ``name`` (``%``, ``_``) are escaped — they are
+        literal characters in FQNs.
+        """
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        exact = self.get_node(name)
+        if exact:
+            return [exact]
+        escaped = name.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        cursor = self._conn.execute(
+            "SELECT * FROM nodes WHERE id LIKE ? ESCAPE '\\' ORDER BY id LIMIT ?",
+            (f"%.{escaped}", limit),
+        )
+        return [self._row_to_node(row) for row in cursor.fetchall()]
+
     def get_nodes(self, node_ids: list[str]) -> list[Node]:
         """Return nodes matching the given FQN list, fetched in 999-item chunks."""
         if not self._conn:
