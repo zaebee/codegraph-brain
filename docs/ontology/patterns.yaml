@@ -102,7 +102,7 @@ project_domains:
     fqn_prefix: "cgis.resolver"
     expected_pattern: pipeline_stage
     profile: python
-    drift_tolerance: 0.40 # v2 measured ≈0.25 post-#115 split (tv_imp 0.00 — 021C chain engine→symbols→indices; residual is tv_calls .72)
+    drift_tolerance: 0.40 # v2 measured ≈0.25 post-#115 split (tv_imp 0.00 — real 021C chain engine→symbols→indices; residual is tv_calls)
 
   - name: "pipeline"
     fqn_prefix: "cgis.pipeline"

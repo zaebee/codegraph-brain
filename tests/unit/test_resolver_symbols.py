@@ -1,7 +1,6 @@
 """Unit tests for SymbolResolver (direct, without the ResolverEngine facade)."""
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
-from cgis.resolver.indices import IndexBuilder
 from cgis.resolver.symbols import SymbolResolver
 
 
@@ -19,7 +18,7 @@ def _node(fqn: str, node_type: NodeType, file_path: str = "mod.py") -> Node:
 
 def _resolver(nodes: list[Node], edges: list[Edge] | None = None) -> SymbolResolver:
     """Build a SymbolResolver over a fresh index."""
-    return SymbolResolver(IndexBuilder().build(nodes), edges or [])
+    return SymbolResolver(nodes, edges or [])
 
 
 def test_resolve_self_call_via_inheritance() -> None:

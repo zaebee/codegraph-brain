@@ -5,11 +5,9 @@ import os
 import sys
 from dataclasses import dataclass
 
-from cgis.core.models import Node, NodeNamespace, NodeType
+from cgis.core.models import SELF_PREFIX, Node, NodeNamespace, NodeType
 
 _BUILTINS: frozenset[str] = frozenset(dir(builtins))
-_SELF_PREFIX = "self."
-_RAW_CLASS_PREFIX = "raw_class:"
 
 
 @dataclass(frozen=True)
@@ -73,7 +71,7 @@ class SymbolIndex:
         UNKNOWN means the root segment was not found in internal roots,
         stdlib/builtins, or any known import-map external root.
         """
-        if fqn.startswith((".", _SELF_PREFIX)):
+        if fqn.startswith((".", SELF_PREFIX)):
             return NodeNamespace.INTERNAL
         root = fqn.split(".", maxsplit=1)[0]
         if root in self.internal_roots:

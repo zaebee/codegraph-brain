@@ -1,17 +1,7 @@
 """Symbol resolution strategies over a SymbolIndex."""
 
-from cgis.core.models import Edge, EdgeType, Node
-
-# Re-exported via ``as``-form so ResolverEngine imports only *this* module,
-# keeping the resolver domain's IMPORTS layer a 021C chain
-# (engine → symbols → indices) instead of a 030T triangle, per spec §3.3.
-# ``noqa: PLC0414`` suppresses Ruff's PLC0414 (Pylint-derived rule:
-# "alias does not rename") — the redundant alias is intentional:
-# mypy strict's no_implicit_reexport requires it.
-from cgis.resolver.indices import _RAW_CLASS_PREFIX as _RAW_CLASS_PREFIX  # noqa: PLC0414
-from cgis.resolver.indices import _SELF_PREFIX as _SELF_PREFIX  # noqa: PLC0414
-from cgis.resolver.indices import IndexBuilder as IndexBuilder  # noqa: PLC0414
-from cgis.resolver.indices import SymbolIndex
+from cgis.core.models import RAW_CLASS_PREFIX, Edge, EdgeType, Node
+from cgis.resolver.indices import IndexBuilder, SymbolIndex
 
 
 class SymbolResolver:
@@ -21,16 +11,21 @@ class SymbolResolver:
     import map, then the global symbol index with same-file preference.
     Holds the inheritance tree (a resolution product built from EXTENDS
     edges — not an index, see spec §2.4).
+
+    The constructor accepts nodes and edges directly; it builds the
+    SymbolIndex internally via IndexBuilder and exposes it as the public
+    ``index`` attribute so callers (e.g. ResolverEngine) can read the index
+    without building it themselves.
     """
 
-    def __init__(self, index: SymbolIndex, edges: list[Edge]) -> None:
-        """Store the index and build the class→parents tree from EXTENDS edges."""
-        self._index = index
+    def __init__(self, nodes: list[Node], edges: list[Edge]) -> None:
+        """Build the symbol index from nodes, then the inheritance tree from EXTENDS edges."""
+        self.index: SymbolIndex = IndexBuilder().build(nodes)
         # class_fqn -> [resolved parent FQNs] built from EXTENDS edges
         self._inheritance_tree: dict[str, list[str]] = {}
         for edge in edges:
             if edge.type == EdgeType.EXTENDS:
-                raw = edge.target.removeprefix(_RAW_CLASS_PREFIX)
+                raw = edge.target.removeprefix(RAW_CLASS_PREFIX)
                 resolved = self.resolve_class_ref(raw, edge.source, edge.file_path)
                 self._inheritance_tree.setdefault(edge.source, []).append(resolved or raw)
 
@@ -38,7 +33,7 @@ class SymbolResolver:
         self, name: str, source_fqn: str, edge_file_path: str | None
     ) -> str | None:
         """Resolve a class name from an EXTENDS edge target to a graph FQN."""
-        file_path = self._index.normalized_file_path(source_fqn, edge_file_path)
+        file_path = self.index.normalized_file_path(source_fqn, edge_file_path)
         if file_path:
             result = self._resolve_via_import_map(name, file_path)
             if result:
@@ -59,7 +54,7 @@ class SymbolResolver:
         parts = source_fqn.split(".")
         for i in range(len(parts) - 1, 0, -1):
             candidate = ".".join(parts[:i])
-            if candidate in self._index.class_methods:
+            if candidate in self.index.class_methods:
                 return self._resolve_method_on_class_hierarchy(candidate, method_name, set())
         return None
 
@@ -67,8 +62,8 @@ class SymbolResolver:
         self, name: str, source_fqn: str, edge_file_path: str | None = None
     ) -> str | None:
         """Resolve a global call using local types, import map, then global symbol index."""
-        source_node = self._index.nodes.get(source_fqn)
-        file_path = self._index.normalized_file_path(source_fqn, edge_file_path)
+        source_node = self.index.nodes.get(source_fqn)
+        file_path = self.index.normalized_file_path(source_fqn, edge_file_path)
 
         if source_node:
             result = self._resolve_local_type_call(name, source_node)
@@ -99,16 +94,16 @@ class SymbolResolver:
         ``variable_symbols`` index.  This prevents an explicitly imported
         class from being shadowed by a same-named DI alias in another module.
         """
-        file_path = self._index.normalized_file_path(source_fqn, edge_file_path)
+        file_path = self.index.normalized_file_path(source_fqn, edge_file_path)
         if file_path:
             via_import = self._resolve_via_import_map(name, file_path)
             if via_import:
-                return via_import if self._index.is_variable_node(via_import) else None
-        candidates = self._index.variable_symbols.get(name, [])
+                return via_import if self.index.is_variable_node(via_import) else None
+        candidates = self.index.variable_symbols.get(name, [])
         if len(candidates) == 1:
             return candidates[0]
         if candidates and file_path:
-            same_file = self._index.file_variable_symbols.get((file_path, name), [])
+            same_file = self.index.file_variable_symbols.get((file_path, name), [])
             if len(same_file) == 1:
                 return same_file[0]
         return None
@@ -120,7 +115,7 @@ class SymbolResolver:
         if class_fqn in visited:
             return None
         visited.add(class_fqn)
-        direct = self._index.class_methods.get(class_fqn, {}).get(method_name)
+        direct = self.index.class_methods.get(class_fqn, {}).get(method_name)
         if direct:
             return direct
         for parent_fqn in self._inheritance_tree.get(class_fqn, []):
@@ -131,17 +126,17 @@ class SymbolResolver:
 
     def _resolve_via_import_map(self, name: str, file_path: str) -> str | None:
         """Look up name in the file's import map (direct and module-prefixed calls)."""
-        file_import_map = self._index.file_imports.get(file_path, {})
+        file_import_map = self.index.file_imports.get(file_path, {})
 
         if name in file_import_map:
             target_fqn = file_import_map[name]
-            return self._index.map_to_node_fqn(target_fqn) or target_fqn
+            return self.index.map_to_node_fqn(target_fqn) or target_fqn
 
         first_part = name.split(".", maxsplit=1)[0]
         if first_part in file_import_map and "." in name:
             rest = name[len(first_part) + 1 :]
             target_fqn = f"{file_import_map[first_part]}.{rest}"
-            return self._index.map_to_node_fqn(target_fqn) or target_fqn
+            return self.index.map_to_node_fqn(target_fqn) or target_fqn
 
         return None
 
@@ -155,17 +150,17 @@ class SymbolResolver:
         if not class_fqn:
             return None
         candidate = f"{class_fqn}.{method_name}"
-        return self._index.map_to_node_fqn(candidate) or candidate
+        return self.index.map_to_node_fqn(candidate) or candidate
 
     def _resolve_via_global_symbols(self, name: str, file_path: str | None) -> str | None:
         """Look up name in the global symbol index, preferring same-file candidates."""
-        candidates = self._index.global_symbols.get(name, [])
+        candidates = self.index.global_symbols.get(name, [])
         if not candidates:
             return None
         if len(candidates) == 1:
             return candidates[0]
         if file_path:
-            same_file = self._index.file_global_symbols.get((file_path, name), [])
+            same_file = self.index.file_global_symbols.get((file_path, name), [])
             if len(same_file) == 1:
                 return same_file[0]
         return None

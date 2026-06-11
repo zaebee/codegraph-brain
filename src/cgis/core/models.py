@@ -17,6 +17,12 @@ class NodeNamespace(StrEnum):
 
 VIRTUAL_FILE_PATH = "EXTERNAL"
 
+# Edge-target encoding conventions for raw (pre-resolution) targets.
+# These mirror the raw_call: / raw_dep: prefixes used by extractors and the
+# resolver, but apply to self-method dispatch and class-inheritance edges.
+SELF_PREFIX = "self."
+RAW_CLASS_PREFIX = "raw_class:"
+
 
 class NodeType(StrEnum):
     """All possible node types in the Code Graph."""

@@ -1,7 +1,15 @@
 """Implements ResolverEngine class."""
 
-from cgis.core.models import VIRTUAL_FILE_PATH, Edge, Node, NodeNamespace, NodeType
-from cgis.resolver.symbols import _RAW_CLASS_PREFIX, _SELF_PREFIX, IndexBuilder, SymbolResolver
+from cgis.core.models import (
+    RAW_CLASS_PREFIX,
+    SELF_PREFIX,
+    VIRTUAL_FILE_PATH,
+    Edge,
+    Node,
+    NodeNamespace,
+    NodeType,
+)
+from cgis.resolver.symbols import SymbolResolver
 
 RAW_DEP_PREFIX = "raw_dep:"
 
@@ -11,16 +19,17 @@ class ResolverEngine:
     The 'Brain' of the CGIS.
     Transforms 'raw' semantic edges into resolved, high-confidence edges.
 
-    Thin facade: IndexBuilder builds the SymbolIndex, SymbolResolver maps raw
-    names to FQNs, and this class keeps edge finalization — confidence policy,
-    edge rewrites, and virtual-node creation (spec §2.5).
+    Thin facade: SymbolResolver builds the SymbolIndex internally (via
+    IndexBuilder), maps raw names to FQNs, and this class keeps edge
+    finalization — confidence policy, edge rewrites, and virtual-node
+    creation (spec §2.5).
     """
 
     def __init__(self, nodes: list[Node], edges: list[Edge]) -> None:
-        """Build the symbol index and resolver from the extracted graph."""
+        """Build the symbol resolver (which builds the index) from the extracted graph."""
         self.edges = edges
-        self._index = IndexBuilder().build(nodes)
-        self._resolver = SymbolResolver(self._index, edges)
+        self._resolver = SymbolResolver(nodes, edges)
+        self._index = self._resolver.index
 
     def resolve(self) -> tuple[list[Edge], list[Node]]:
         """
@@ -35,7 +44,7 @@ class ResolverEngine:
         virtual_nodes: dict[str, Node] = {}
 
         for edge in self.edges:
-            if edge.target.startswith(_RAW_CLASS_PREFIX):
+            if edge.target.startswith(RAW_CLASS_PREFIX):
                 class_edge = self._resolved_class_edge(edge)
                 resolved_edges.append(class_edge)
                 self._ensure_virtual_node(class_edge.target, virtual_nodes)
@@ -60,7 +69,7 @@ class ResolverEngine:
         returns a copy of the edge with the resolved target (confidence 1.0) or
         the bare name as fallback (confidence 0.5).
         """
-        raw = edge.target.removeprefix(_RAW_CLASS_PREFIX)
+        raw = edge.target.removeprefix(RAW_CLASS_PREFIX)
         resolved = self._resolver.resolve_class_ref(raw, edge.source, edge.file_path)
         final_target = resolved or raw
         confidence = 1.0 if resolved else 0.5
@@ -75,9 +84,9 @@ class ResolverEngine:
         min(edge.confidence + 0.5, 1.0) on success, 0.8 on failure.
         """
         raw_name = edge.target.removeprefix("raw_call:")
-        if raw_name.startswith(_SELF_PREFIX):
+        if raw_name.startswith(SELF_PREFIX):
             new_target = self._resolver.resolve_self_call(
-                edge.source, raw_name.removeprefix(_SELF_PREFIX)
+                edge.source, raw_name.removeprefix(SELF_PREFIX)
             )
         else:
             new_target = self._resolver.resolve_global_call(raw_name, edge.source, edge.file_path)
