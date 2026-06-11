@@ -93,9 +93,16 @@ Scope of emission:
   stays module-level only — the imported name IS the module, already covered.
 - Relative imports reuse the existing `_resolve_relative_module` result
   (`base_module`), no new logic.
-- `from X import *`: no symbol list exists — nothing is emitted (verify
-  `_collect_imported_symbols` yields nothing for `wildcard_import`; add a
-  guard if it does).
+- `from X import *`: nothing is emitted — **verified**:
+  `_collect_imported_symbols` explicitly skips `wildcard_import` nodes (the
+  loop handles only `dotted_name`/`identifier`/`aliased_import`), so the
+  symbol list is empty and the loop body never runs. No guard needed; the §4
+  test locks it.
+- Submodule-as-symbol (`from app import services`): emitted like any other
+  symbol — `raw_import:app.services` resolves to the submodule's FILE node
+  (FILE ids are module FQNs). This is **complementary**, not duplicate: the
+  module-level edge targets `app`, the symbol edge targets `app.services` —
+  finer information, intended.
 - The module-level `IMPORTS` edge emission is untouched — both edges coexist.
 
 Edge id embeds the target FQN, so multiple symbols from one statement get
@@ -126,9 +133,32 @@ def _resolved_import_edge(self, edge: Edge) -> Edge | None:
   (≥10), no `_KNOWN_GOD_OBJECTS` change.
 - No virtual node is ever created for this edge type (drop on miss; on hit
   the target exists by definition).
-- `resolve()` branch order: `raw_class:` → `raw_dep:` → `raw_import:` →
-  passthrough → `raw_call:`. The prefixes are mutually exclusive, so order
-  among the raw branches is cosmetic; the new check sits next to `raw_dep:`.
+- **Placement is load-bearing, NOT cosmetic** (colleague-review catch): the
+  third branch of today's chain is a passthrough catch-all
+  (`elif not edge.target.startswith("raw_call:")`) that would swallow a
+  `raw_import:` target — appending it unresolved (leak) AND minting a virtual
+  node, violating both §2.2 and §3. The `raw_import:` branch MUST precede the
+  passthrough. The resulting chain, with drop-on-None handling:
+
+```python
+for edge in self.edges:
+    if edge.target.startswith(RAW_CLASS_PREFIX):
+        ...
+    elif edge.target.startswith(RAW_DEP_PREFIX):
+        ...
+    elif edge.target.startswith(RAW_IMPORT_PREFIX):
+        import_edge = self._resolved_import_edge(edge)
+        if import_edge is not None:
+            resolved_edges.append(import_edge)
+        # no _ensure_virtual_node: target exists on hit, edge dies on miss
+    elif not edge.target.startswith("raw_call:"):
+        ...  # passthrough — unchanged
+    else:
+        ...  # raw_call — unchanged
+```
+
+  The no-leak negative test (§4.2) is the regression guard for this exact
+  mistake.
 
 ### 2.5 Known accepted limitations
 
@@ -157,7 +187,13 @@ statements. Safety still holds:
   must exist in the self-graph — added as a new test next to
   `test_pipeline_run_calls_resolver`.
 - A no-leak negative test asserts no `raw_import:` target survives in output
-  (mirror of slice 1's raw_dep test).
+  (mirror of slice 1's raw_dep test) — also the regression guard for the §2.4
+  dispatch-placement constraint.
+- Cost note: symbol edges add roughly one edge per imported name on top of
+  the module edge (owner-api ≈37k edges today), and impact/flow traverse
+  them. Census cost is zero (type-blind); BFS fan-out grows proportionally —
+  acceptable at current scales, revisit alongside #185 if traversal ever
+  measures hot.
 
 ## 4. Testing
 
@@ -183,12 +219,26 @@ statements. Safety still holds:
 ## 5. Acceptance (live, post-merge)
 
 Re-run the #161 MCP scenario on owner-api: `analyze_impact` on
-`PublishedOwnerDep` (or its provider chain) must now surface `test_routes.py`
-alongside `test_routes_extended.py` via the symbol-level import edge.
+`PublishedOwnerDep` must now show `routes` as a direct importer via the
+symbol-level edge (`routes —IMPORTS_SYMBOL→ PublishedOwnerDep`) — today it
+appears only transitively through the DEPENDS_ON chain.
+
+**Honest scoping of the §1 test_routes.py case** (colleague-review catch):
+`test_routes.py` imports the **`router` symbol**, and `router = APIRouter()`
+is a plain (non-DI) module-level assignment — slice 1 deliberately does not
+index those (#166 spec §6), so there is no `router` node and that symbol
+edge **drops**. Surfacing test_routes.py via the router import therefore
+requires indexing non-DI module-level assignments — a separate decision with
+its own node-count and drift implications (candidate slice 3), NOT promised
+by this slice. What IS promised live: imports of functions, classes, and DI
+aliases gain symbol edges (covers the issue's gap-3 example verbatim).
 
 ## 6. Out of scope
 
 - `from X import *` modeling; `import X.Y` sub-module symbol granularity.
+- Indexing non-DI module-level assignments (`router = APIRouter()`) — needed
+  for the §5 test_routes.py-via-router case; candidate slice 3 with its own
+  node-count/drift analysis.
 - Re-export resolution through `__init__.py` chains (see §2.5, #182).
 - TypeScript extractor parity (#18).
 - Fixing the inherited `map_to_node_fqn` uniqueness gap (#183).
