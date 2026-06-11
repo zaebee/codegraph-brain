@@ -199,3 +199,43 @@ def test_raw_call_target_skipped(tmp_path: Path) -> None:
     )
     diff = fdiff("src/cgis/a.py") + fdiff("src/cgis/b.py")
     assert len(build_chunks(diff, store)) == 2
+
+
+def test_test_file_attaches_to_its_module(tmp_path: Path) -> None:
+    """tests/unit/test_guardian_core.py joins the chunk of src/cgis/guardian/core.py."""
+    store = _make_store(
+        tmp_path, [_node("src.cgis.guardian.core", "src/cgis/guardian/core.py")], []
+    )
+    diff = fdiff("src/cgis/guardian/core.py") + fdiff("tests/unit/test_guardian_core.py")
+    chunks = build_chunks(diff, store)
+    assert [c.files for c in chunks] == [
+        ("src/cgis/guardian/core.py", "tests/unit/test_guardian_core.py")
+    ]
+
+
+def test_test_pairing_needs_underscore_boundary() -> None:
+    """'core' must not match score.py — suffix only counts at an underscore boundary."""
+    diff = fdiff("src/cgis/score.py") + fdiff("tests/unit/test_core.py")
+    chunks = build_chunks(diff, store=None)
+    assert [c.files for c in chunks] == [
+        ("src/cgis/score.py",),
+        ("tests/unit/test_core.py",),
+    ]
+
+
+def test_ambiguous_test_pairing_stays_isolated() -> None:
+    """test_engine.py with two engine.py candidates changed → isolated."""
+    diff = (
+        fdiff("src/cgis/resolver/engine.py")
+        + fdiff("src/cgis/query/engine.py")
+        + fdiff("tests/unit/test_engine.py")
+    )
+    chunks = build_chunks(diff, store=None)
+    assert ("tests/unit/test_engine.py",) in [c.files for c in chunks]
+
+
+def test_non_tests_dir_file_not_paired() -> None:
+    """Only files under tests/ participate in pairing (spec §4.2.5)."""
+    diff = fdiff("scripts/test_helper.py") + fdiff("src/cgis/helper.py")
+    chunks = build_chunks(diff, store=None)
+    assert len(chunks) == 2

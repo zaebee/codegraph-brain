@@ -112,6 +112,9 @@ def build_chunks(
     for a, b in _graph_pairs(store, set(files), source_root):
         union(a, b)
 
+    for test_file, impl_file in _test_pairs(files):
+        union(test_file, impl_file)
+
     groups: dict[str, list[str]] = {}
     for f in files:  # files is sorted → each group list is sorted
         groups.setdefault(find(f), []).append(f)
@@ -153,4 +156,31 @@ def _graph_pairs(
     except Exception:
         log.warning("Graph connectivity skipped; falling back to isolated chunks.", exc_info=True)
         return []
+    return pairs
+
+
+_TEST_FILE_RE = re.compile(r"^tests/(?:.+/)?test_(?P<name>[^/]+)\.py$")
+
+
+def _test_pairs(files: list[str]) -> list[tuple[str, str]]:
+    """Pair each changed tests/**/test_X.py with its unique implementation file.
+
+    Candidate = changed non-test .py whose path normalized to underscores
+    (src/cgis/guardian/core.py → src_cgis_guardian_core) equals X or ends
+    with "_X" — a bare suffix match would let test_index.py capture
+    diff_index.py. Zero or several candidates → the test stays isolated.
+    """
+    impl = [f for f in files if f.endswith(".py") and not _TEST_FILE_RE.match(f)]
+    norm = {f: f.removesuffix(".py").replace("/", "_") for f in impl}
+    pairs: list[tuple[str, str]] = []
+    for f in files:
+        match = _TEST_FILE_RE.match(f)
+        if not match:
+            continue
+        name = match.group("name")
+        candidates = [i for i in impl if norm[i] == name or norm[i].endswith("_" + name)]
+        if len(candidates) == 1:
+            pairs.append((f, candidates[0]))
+        elif candidates:
+            log.debug("Ambiguous test pairing; left isolated.", test=f, candidates=candidates)
     return pairs
