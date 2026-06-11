@@ -61,6 +61,11 @@ EXPECTED_NODES = [
     # resolver
     _fqn("resolver/engine.py",             "ResolverEngine"),
     _fqn("resolver/engine.py",             "ResolverEngine", "resolve"),
+    _fqn("resolver/indices.py",            "SymbolIndex"),
+    _fqn("resolver/indices.py",            "IndexBuilder"),
+    _fqn("resolver/indices.py",            "IndexBuilder", "build"),
+    _fqn("resolver/symbols.py",            "SymbolResolver"),
+    _fqn("resolver/symbols.py",            "SymbolResolver", "resolve_global_call"),
     # extractor
     _fqn("extractors/python_extractor.py", "PythonExtractor"),
     _fqn("extractors/python_extractor.py", "PythonExtractor", "parse"),

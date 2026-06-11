@@ -245,3 +245,24 @@ assumed**:
 - `uplift.py` and `resolver/__init__.py` re-export changes beyond what the
   new modules need.
 - Slice 2 of #161 (symbol-level imports) — separate effort.
+
+## Amendment 1 (2026-06-11): honest import chain instead of re-exports
+
+PR #180 review and issue #182 established that §3.3's pre-authorized fix
+("symbols re-exports what the facade needs") merely laundered the
+engine→indices dependency through a passthrough re-export — the IMPORTS layer
+measured as a 021C chain while the real dependency graph stayed a triangle.
+
+Superseding §2.1/§2.4/§2.5 details:
+
+- `SELF_PREFIX` / `RAW_CLASS_PREFIX` are public constants in `core/models.py`
+  (Edge-target encoding conventions, same family as `VIRTUAL_FILE_PATH`).
+- `SymbolResolver.__init__(nodes, edges)` builds its own index via
+  `IndexBuilder` and exposes it as the public `index` attribute. The
+  "index complete before resolution" ordering invariant is now structural.
+- `ResolverEngine` imports only `cgis.resolver.symbols` (+ core) — the
+  021C chain engine→symbols→indices is the true dependency graph, not a
+  measurement artifact. No re-exports, no `noqa: PLC0414`.
+- `RAW_DEP_PREFIX` remains in `engine.py` (#161 contract).
+
+Metric-hardening against passthrough re-exports in general is tracked in #182.
