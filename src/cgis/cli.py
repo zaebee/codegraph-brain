@@ -21,6 +21,7 @@ from cgis.query.anomaly import AnomalyType, ArchitecturalAnomaly
 from cgis.query.drift import DriftReport
 from cgis.query.drift_service import analyze_drift
 from cgis.query.engine import BEHAVIORAL_EDGE_TYPES, QueryEngine
+from cgis.query.fqn import resolve_fqn
 from cgis.query.health import HealthScorer
 from cgis.query.mermaid import MermaidCompiler
 from cgis.resolver.uplift import SemanticUpliftEngine
@@ -215,6 +216,22 @@ def _filter_internal(
     return filtered_nodes, filtered_edges
 
 
+def _resolve_cli_fqn(store: SQLiteStore, target: str, kind: str) -> str:
+    """Resolve a possibly-partial FQN for a CLI command or exit with code 1."""
+    resolution = resolve_fqn(store, target)
+    if resolution.resolved is None:
+        if resolution.candidates:
+            console.print(f"[bold red]❌ Ambiguous FQN:[/bold red] {target}")
+            for candidate in resolution.candidates:
+                console.print(f"  [dim]- {candidate}[/dim]")
+        else:
+            console.print(f"[bold red]❌ {kind} not found in graph:[/bold red] {target}")
+        raise typer.Exit(code=1)
+    if resolution.via_suffix:
+        console.print(f"[dim]Resolved '{target}' → '{resolution.resolved}'[/dim]")
+    return resolution.resolved
+
+
 def build_trace_tree(
     store: SQLiteStore,
     current_id: str,
@@ -299,9 +316,9 @@ def trace(
     allowed: frozenset[EdgeType] | None = None if show_structure else BEHAVIORAL_EDGE_TYPES
 
     with SQLiteStore(db) as store:
+        start = _resolve_cli_fqn(store, start, "Start entity")
         start_node = store.get_node(start)
-        if not start_node:
-            console.print(f"[bold red]❌ Start entity not found in graph:[/bold red] {start}")
+        if not start_node:  # pragma: no cover — resolved FQNs always exist
             raise typer.Exit(code=1)
 
         if output_format == OutputFormat.MERMAID:
@@ -421,9 +438,9 @@ def impact(
     allowed: frozenset[EdgeType] | None = None if show_structure else BEHAVIORAL_EDGE_TYPES
 
     with SQLiteStore(db) as store:
+        target = _resolve_cli_fqn(store, target, "Target entity")
         target_node = store.get_node(target)
-        if not target_node:
-            console.print(f"[bold red]❌ Target entity not found in graph:[/bold red] {target}")
+        if not target_node:  # pragma: no cover — resolved FQNs always exist
             raise typer.Exit(code=1)
 
         if output_format == OutputFormat.MERMAID:
@@ -561,9 +578,9 @@ def structure(
         console.print(f"[dim]→ FQN: {target}[/dim]")
 
     with SQLiteStore(db) as store:
+        target = _resolve_cli_fqn(store, target, "Node")
         target_node = store.get_node(target)
-        if not target_node:
-            console.print(f"[bold red]❌ Node not found in graph:[/bold red] {target}")
+        if not target_node:  # pragma: no cover — resolved FQNs always exist
             raise typer.Exit(code=1)
 
         nodes, edges = QueryEngine(store).get_structural_graph(target, max_depth=depth)

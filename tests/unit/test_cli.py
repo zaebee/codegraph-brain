@@ -752,3 +752,72 @@ def test_drift_json_shape_unchanged(tmp_path: Path) -> None:
     payload = json.loads(result.stdout)
     assert isinstance(payload, list)
     assert payload[0]["fqn_prefix"] == "cgis.extractors"
+
+
+# --- suffix FQN resolution in CLI commands (#145) ---
+
+
+def _fqn_db(tmp_path: Path) -> str:
+    """A db with one caller→callee pair under a deep module path."""
+    db = str(tmp_path / "g.db")
+    nodes = [
+        Node(
+            id="src.app.mod.caller",
+            type=NodeType.FUNCTION,
+            name="caller",
+            file_path="mod.py",
+            start_line=1,
+            end_line=2,
+        ),
+        Node(
+            id="src.app.mod.callee",
+            type=NodeType.FUNCTION,
+            name="callee",
+            file_path="mod.py",
+            start_line=3,
+            end_line=4,
+        ),
+    ]
+    edges = [
+        Edge(id="e", source="src.app.mod.caller", target="src.app.mod.callee", type=EdgeType.CALLS)
+    ]
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)
+    return db
+
+
+def test_impact_resolves_suffix_with_note(tmp_path: Path) -> None:
+    """impact resolves a bare suffix FQN and prints a note about it."""
+    db = _fqn_db(tmp_path)
+    result = runner.invoke(app, ["impact", "callee", "--db", db])
+    assert result.exit_code == 0
+    assert "Resolved 'callee'" in result.stdout
+    assert "src.app.mod.caller" in result.stdout
+
+
+def test_trace_ambiguous_exits_with_candidates(tmp_path: Path) -> None:
+    """trace exits 1 with an ambiguous error and lists candidates."""
+    db = str(tmp_path / "g.db")
+    nodes = [
+        Node(
+            id="a.fn", type=NodeType.FUNCTION, name="fn", file_path="a.py", start_line=1, end_line=2
+        ),
+        Node(
+            id="b.fn", type=NodeType.FUNCTION, name="fn", file_path="b.py", start_line=1, end_line=2
+        ),
+    ]
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, [])
+    result = runner.invoke(app, ["trace", "fn", "--db", db])
+    assert result.exit_code == 1
+    assert "Ambiguous" in result.stdout
+    assert "a.fn" in result.stdout
+    assert "b.fn" in result.stdout
+
+
+def test_structure_resolves_suffix(tmp_path: Path) -> None:
+    """structure resolves a partial suffix FQN to the full FQN."""
+    db = _fqn_db(tmp_path)
+    result = runner.invoke(app, ["structure", "mod.caller", "--db", db])
+    assert result.exit_code == 0
+    assert "src.app.mod.caller" in result.stdout
