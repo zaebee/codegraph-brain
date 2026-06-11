@@ -52,6 +52,40 @@ def _cap_chunks(chunks: list[Chunk]) -> list[Chunk]:
     return [*sorted(keep, key=lambda c: c.files[0]), overflow]
 
 
+def _normalize_path(path: str) -> str:
+    """Strip LLM path artifacts (leading ./, diff-header a/ b/ prefixes).
+
+    Used only as a fallback after an exact match fails, so a real directory
+    literally named `a/` or `b/` can never be corrupted by the stripping
+    (gemini review, PR #159).
+    """
+    p = path.removeprefix("./")
+    if p.startswith(("a/", "b/")):
+        p = p[2:]
+    return p
+
+
+def _chunk_survivors(chunk: Chunk, findings: list[Finding]) -> list[Finding]:
+    """Keep findings inside the chunk's files; drop out-of-chunk hallucinations.
+
+    Exact match first; then a normalized fallback so an LLM path artifact
+    ("./x.py", "a/x.py") doesn't drop a real finding. Fallback survivors are
+    canonicalized so inline-comment anchoring still works downstream.
+    """
+    allowed = set(chunk.files)
+    survivors: list[Finding] = []
+    for finding in findings:
+        if finding.file in allowed:
+            survivors.append(finding)
+            continue
+        normalized = _normalize_path(finding.file)
+        if normalized in allowed:
+            survivors.append(finding.model_copy(update={"file": normalized}))
+            continue
+        log.warning("Out-of-chunk finding dropped.", file=finding.file, title=finding.title)
+    return survivors
+
+
 def _dedup(findings: list[Finding]) -> list[Finding]:
     """Drop duplicate (file, line, category) findings, keeping the higher confidence.
 
@@ -122,10 +156,7 @@ async def run_chunked_review(
             failed += 1
             bullets.append(f"- [{label}]: ⚠ finder output unparsable")
             continue
-        allowed = set(chunk.files)
-        survivors = [f for f in result.findings if f.file in allowed]
-        for dropped in (f for f in result.findings if f.file not in allowed):
-            log.warning("Out-of-chunk finding dropped.", file=dropped.file, title=dropped.title)
+        survivors = _chunk_survivors(chunk, result.findings)
         if survivors:
             finding_contexts.append(context)
         kept.extend(survivors)

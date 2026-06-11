@@ -182,6 +182,50 @@ async def test_chunked_out_of_chunk_finding_dropped(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_chunked_llm_path_artifacts_normalized(tmp_path: Path) -> None:
+    """Findings with './' or diff-header 'a/' prefixes are kept and canonicalized."""
+    diff = fdiff("src/a.py")
+    provider = StubProvider(
+        [
+            json.dumps(
+                {
+                    "findings": [
+                        {
+                            "file": "a/src/a.py",
+                            "line": 1,
+                            "severity": "major",
+                            "category": "logic",
+                            "title": "prefixed",
+                            "evidence": "e",
+                            "problem": "p",
+                            "fix": "f",
+                            "confidence": 90,
+                        },
+                        {
+                            "file": "./src/a.py",
+                            "line": 2,
+                            "severity": "minor",
+                            "category": "tests",
+                            "title": "dotted",
+                            "evidence": "e",
+                            "problem": "p",
+                            "fix": "f",
+                            "confidence": 85,
+                        },
+                    ],
+                    "summary": "s",
+                }
+            )
+        ]
+    )
+    routed = await run_chunked_review(
+        provider=provider, collector=_collector(tmp_path, diff), skeptic_provider=None
+    )
+    assert [f.file for f in routed.result.findings] == ["src/a.py", "src/a.py"]
+    assert {f.title for f in routed.result.findings} == {"prefixed", "dotted"}
+
+
+@pytest.mark.asyncio
 async def test_chunked_one_chunk_raises_others_survive(tmp_path: Path) -> None:
     """A failing chunk contributes a ⚠ bullet; the other chunk still reviews."""
 
