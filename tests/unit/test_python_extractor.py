@@ -354,3 +354,253 @@ def test_python_extractor_source_roots_unmatched_root() -> None:
 def test_file_path_to_module_fqn_dot_slash_source_root() -> None:
     """CI ingests with `./src` — the ./ prefix must not defeat root stripping."""
     assert file_path_to_module_fqn("src/cgis/pipeline.py", "./src") == "cgis.pipeline"
+
+
+def test_depends_in_param_default_emits_depends_on(extractor: PythonExtractor) -> None:
+    """Depends(fn) as a plain default value emits one DEPENDS_ON edge from the handler."""
+    code = """
+from fastapi import Depends
+
+def get_db():
+    pass
+
+def handler(db = Depends(get_db)):
+    pass
+"""
+    _nodes, edges = extractor.parse(code, "api.py")
+
+    dep_edges = [e for e in edges if e.type == EdgeType.DEPENDS_ON]
+    assert len(dep_edges) == 1
+    assert dep_edges[0].source == "api.handler"
+    assert dep_edges[0].target == "raw_call:get_db"
+    # The plain CALLS edge to Depends itself is unchanged (regression guard)
+    assert any(e.type == EdgeType.CALLS and e.target == "raw_call:Depends" for e in edges)
+
+
+def test_depends_inside_annotated_emits_depends_on(extractor: PythonExtractor) -> None:
+    """Depends(fn) nested inside Annotated[...] type annotation emits a DEPENDS_ON edge."""
+    code = """
+from typing import Annotated
+from fastapi import Depends
+
+def resolve_owner():
+    pass
+
+def handler(owner: Annotated[object, Depends(resolve_owner)]):
+    pass
+"""
+    _nodes, edges = extractor.parse(code, "api.py")
+
+    dep_edges = [e for e in edges if e.type == EdgeType.DEPENDS_ON]
+    assert any(
+        e.source == "api.handler" and e.target == "raw_call:resolve_owner" for e in dep_edges
+    )
+
+
+def test_depends_under_union_wrapper_emits_depends_on(extractor: PythonExtractor) -> None:
+    """Depends(fn) inside Annotated[...] | None still emits a DEPENDS_ON edge."""
+    code = """
+from typing import Annotated
+from fastapi import Depends
+
+def resolve_owner():
+    pass
+
+def handler(owner: Annotated[object, Depends(resolve_owner)] | None = None):
+    pass
+"""
+    _nodes, edges = extractor.parse(code, "api.py")
+
+    assert any(
+        e.type == EdgeType.DEPENDS_ON and e.target == "raw_call:resolve_owner" for e in edges
+    )
+
+
+def test_security_call_emits_depends_on(extractor: PythonExtractor) -> None:
+    """Security(fn) as a parameter default emits a DEPENDS_ON edge, same as Depends."""
+    code = """
+from fastapi import Security
+
+def get_scopes():
+    pass
+
+def handler(scopes = Security(get_scopes)):
+    pass
+"""
+    _nodes, edges = extractor.parse(code, "api.py")
+
+    assert any(e.type == EdgeType.DEPENDS_ON and e.target == "raw_call:get_scopes" for e in edges)
+
+
+def test_argless_depends_emits_no_depends_on(extractor: PythonExtractor) -> None:
+    """Depends() with no argument emits no DEPENDS_ON edge (no provider to link)."""
+    code = """
+from fastapi import Depends
+
+def handler(db = Depends()):
+    pass
+"""
+    _nodes, edges = extractor.parse(code, "api.py")
+
+    assert not any(e.type == EdgeType.DEPENDS_ON for e in edges)
+
+
+def test_depends_with_lambda_arg_emits_no_depends_on(extractor: PythonExtractor) -> None:
+    """Depends(lambda: ...) with a non-name first arg emits no DEPENDS_ON edge (spec §3.2b)."""
+    code = """
+from fastapi import Depends
+
+def handler(db = Depends(lambda: None)):
+    pass
+"""
+    _nodes, edges = extractor.parse(code, "api.py")
+
+    assert not any(e.type == EdgeType.DEPENDS_ON for e in edges)
+
+
+def test_module_level_di_alias_annotated_form(extractor: PythonExtractor) -> None:
+    """Module-level Annotated[..., Depends(...)] emits VARIABLE node and DEPENDS_ON edge."""
+    code = """
+from typing import Annotated
+from fastapi import Depends
+
+def resolve_owner():
+    pass
+
+ResolvedOwnerDep = Annotated[object, Depends(resolve_owner)]
+"""
+    nodes, edges = extractor.parse(code, "deps.py")
+
+    alias = next(n for n in nodes if n.name == "ResolvedOwnerDep")
+    assert alias.type == NodeType.VARIABLE
+    assert alias.id == "deps.ResolvedOwnerDep"
+
+    dep_edges = [e for e in edges if e.type == EdgeType.DEPENDS_ON]
+    assert len(dep_edges) == 1
+    assert dep_edges[0].source == "deps.ResolvedOwnerDep"
+    assert dep_edges[0].target == "raw_call:resolve_owner"
+
+
+def test_module_level_di_alias_direct_form(extractor: PythonExtractor) -> None:
+    """Module-level DbDep = Depends(get_db) emits VARIABLE node and DEPENDS_ON edge."""
+    code = """
+from fastapi import Depends
+
+def get_db():
+    pass
+
+DbDep = Depends(get_db)
+"""
+    nodes, edges = extractor.parse(code, "deps.py")
+
+    alias = next(n for n in nodes if n.name == "DbDep")
+    assert alias.type == NodeType.VARIABLE
+    assert any(
+        e.type == EdgeType.DEPENDS_ON and e.source == "deps.DbDep" and e.target == "raw_call:get_db"
+        for e in edges
+    )
+
+
+def test_plain_module_constants_emit_no_nodes(extractor: PythonExtractor) -> None:
+    """Plain module-level constants without DI calls produce no VARIABLE nodes or DEPENDS_ON."""
+    code = """
+LIMIT = 10
+NAMES = ["a", "b"]
+ALIAS = SomeType
+"""
+    nodes, edges = extractor.parse(code, "consts.py")
+
+    assert not any(n.type == NodeType.VARIABLE for n in nodes)
+    assert not any(e.type == EdgeType.DEPENDS_ON for e in edges)
+
+
+def test_argless_depends_alias_node_without_edge(extractor: PythonExtractor) -> None:
+    """Module-level Annotated[..., Depends()] emits a VARIABLE node but no DEPENDS_ON edge."""
+    code = """
+from typing import Annotated
+from fastapi import Depends
+
+AutoDep = Annotated[object, Depends()]
+"""
+    nodes, edges = extractor.parse(code, "deps.py")
+
+    assert any(n.type == NodeType.VARIABLE and n.name == "AutoDep" for n in nodes)
+    assert not any(e.type == EdgeType.DEPENDS_ON for e in edges)
+
+
+def test_typed_param_emits_raw_dep_candidate(extractor: PythonExtractor) -> None:
+    """Typed parameter annotation emits a speculative raw_dep: DEPENDS_ON candidate edge."""
+    code = """
+def handler(owner: PublishedOwnerDep):
+    pass
+"""
+    _nodes, edges = extractor.parse(code, "routes.py")
+
+    cands = [e for e in edges if e.target == "raw_dep:PublishedOwnerDep"]
+    assert len(cands) == 1
+    assert cands[0].type == EdgeType.DEPENDS_ON
+    assert cands[0].source == "routes.handler"
+    assert cands[0].confidence == pytest.approx(0.1)
+
+
+def test_untyped_param_emits_no_raw_dep_candidate(extractor: PythonExtractor) -> None:
+    """Untyped parameter produces no raw_dep: candidate edge."""
+    code = """
+def handler(owner):
+    pass
+"""
+    _nodes, edges = extractor.parse(code, "routes.py")
+
+    assert not any(e.target.startswith("raw_dep:") for e in edges)
+
+
+def test_tuple_target_di_assignment_skipped(extractor: PythonExtractor) -> None:
+    """Tuple-target assignments like `a, b = ...` are skipped (no VARIABLE node or DEPENDS_ON)."""
+    code = """
+from fastapi import Depends
+
+def get_db():
+    pass
+
+a, b = Depends(get_db), None
+"""
+    nodes, edges = extractor.parse(code, "deps.py")
+
+    assert not any(n.type == NodeType.VARIABLE for n in nodes)
+    assert not any(e.type == EdgeType.DEPENDS_ON for e in edges)
+
+
+def test_annotated_module_assignment_di_alias(extractor: PythonExtractor) -> None:
+    """An annotated module assignment (X: T = Depends(f)) still yields an alias node + edge."""
+    code = """
+from fastapi import Depends
+
+def get_db():
+    pass
+
+DbDep: object = Depends(get_db)
+"""
+    nodes, edges = extractor.parse(code, "deps.py")
+
+    assert any(n.type == NodeType.VARIABLE and n.id == "deps.DbDep" for n in nodes)
+    assert any(
+        e.type == EdgeType.DEPENDS_ON and e.source == "deps.DbDep" and e.target == "raw_call:get_db"
+        for e in edges
+    )
+
+
+def test_class_body_di_assignment_skipped(extractor: PythonExtractor) -> None:
+    """Class-body DI assignments are out of scope and must not produce nodes or edges."""
+    code = """
+from fastapi import Depends
+
+def get_db():
+    pass
+
+class Config:
+    db = Depends(get_db)
+"""
+    nodes, edges = extractor.parse(code, "deps.py")
+
+    assert not any(n.type == NodeType.VARIABLE for n in nodes)
+    assert not any(e.type == EdgeType.DEPENDS_ON for e in edges)

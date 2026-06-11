@@ -9,6 +9,7 @@ from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeNamesp
 _BUILTINS: frozenset[str] = frozenset(dir(builtins))
 _SELF_PREFIX = "self."
 _RAW_CLASS_PREFIX = "raw_class:"
+RAW_DEP_PREFIX = "raw_dep:"
 
 
 class ResolverEngine:
@@ -29,6 +30,10 @@ class ResolverEngine:
         self._file_global_symbols: dict[tuple[str, str], list[str]] = {}
         # class_fqn -> {method_name -> method_fqn}
         self._class_methods: dict[str, dict[str, str]] = {}
+        # DI-alias (VARIABLE) indices for raw_dep: resolution; kept separate
+        # from _global_symbols so call resolution behavior does not change.
+        self._variable_symbols: dict[str, list[str]] = {}
+        self._file_variable_symbols: dict[tuple[str, str], list[str]] = {}
         # normalized file_path -> {local_alias: target_fqn}  (from FILE node import_map)
         self._file_imports: dict[str, dict[str, str]] = {}
         # suffix_fqn -> [full_node_ids]  (handles src/ layout prefix mismatch)
@@ -60,6 +65,13 @@ class ResolverEngine:
                 class_fqn, sep, _ = node.id.rpartition(".")
                 if sep:
                     self._class_methods.setdefault(class_fqn, {})[node.name] = node.id
+
+            # Index DI aliases for raw_dep: candidate resolution
+            if node.type == NodeType.VARIABLE:
+                self._variable_symbols.setdefault(node.name, []).append(node.id)
+                self._file_variable_symbols.setdefault(
+                    (os.path.normpath(node.file_path), node.name), []
+                ).append(node.id)
 
             # Build suffix map for src/-layout prefix normalization:
             # "src.cgis.pipeline.X" → suffix "cgis.pipeline.X" also points to the node
@@ -160,38 +172,52 @@ class ResolverEngine:
 
         for edge in self.edges:
             if edge.target.startswith(_RAW_CLASS_PREFIX):
-                raw = edge.target.removeprefix(_RAW_CLASS_PREFIX)
-                resolved = self._resolve_class_ref(raw, edge.source, edge.file_path)
-                final_target = resolved or raw
-                confidence = 1.0 if resolved else 0.5
-                resolved_edges.append(
-                    edge.model_copy(update={"target": final_target, "confidence": confidence})
-                )
-                self._ensure_virtual_node(final_target, virtual_nodes)
-                continue
-
-            if not edge.target.startswith("raw_call:"):
+                class_edge = self._resolved_class_edge(edge)
+                resolved_edges.append(class_edge)
+                self._ensure_virtual_node(class_edge.target, virtual_nodes)
+            elif edge.target.startswith(RAW_DEP_PREFIX):
+                dep_edge = self._resolved_dep_edge(edge)
+                if dep_edge is not None:
+                    resolved_edges.append(dep_edge)
+            elif not edge.target.startswith("raw_call:"):
                 resolved_edges.append(edge)
                 self._ensure_virtual_node(edge.target, virtual_nodes)
-                continue
-
-            raw_name = edge.target.removeprefix("raw_call:")
-
-            if raw_name.startswith(_SELF_PREFIX):
-                new_target = self._resolve_self_call(
-                    edge.source, raw_name.removeprefix(_SELF_PREFIX)
-                )
             else:
-                new_target = self._resolve_global_call(raw_name, edge.source, edge.file_path)
-
-            final_target = new_target or raw_name
-            confidence = min(edge.confidence + 0.5, 1.0) if new_target else 0.8
-            resolved_edges.append(
-                edge.model_copy(update={"target": final_target, "confidence": confidence})
-            )
-            self._ensure_virtual_node(final_target, virtual_nodes)
+                call_edge = self._resolved_call_edge(edge)
+                resolved_edges.append(call_edge)
+                self._ensure_virtual_node(call_edge.target, virtual_nodes)
 
         return resolved_edges, list(virtual_nodes.values())
+
+    def _resolved_class_edge(self, edge: Edge) -> Edge:
+        """Resolve a raw_class: edge to its final class FQN.
+
+        Strips the raw_class: prefix, resolves via _resolve_class_ref, then
+        returns a copy of the edge with the resolved target (confidence 1.0) or
+        the bare name as fallback (confidence 0.5).
+        """
+        raw = edge.target.removeprefix(_RAW_CLASS_PREFIX)
+        resolved = self._resolve_class_ref(raw, edge.source, edge.file_path)
+        final_target = resolved or raw
+        confidence = 1.0 if resolved else 0.5
+        return edge.model_copy(update={"target": final_target, "confidence": confidence})
+
+    def _resolved_call_edge(self, edge: Edge) -> Edge:
+        """Resolve a raw_call: edge to its final call target FQN.
+
+        Strips the raw_call: prefix, dispatches to _resolve_self_call for
+        self.* calls or _resolve_global_call otherwise, then returns a copy of
+        the edge with the resolved target and adjusted confidence:
+        min(edge.confidence + 0.5, 1.0) on success, 0.8 on failure.
+        """
+        raw_name = edge.target.removeprefix("raw_call:")
+        if raw_name.startswith(_SELF_PREFIX):
+            new_target = self._resolve_self_call(edge.source, raw_name.removeprefix(_SELF_PREFIX))
+        else:
+            new_target = self._resolve_global_call(raw_name, edge.source, edge.file_path)
+        final_target = new_target or raw_name
+        confidence = min(edge.confidence + 0.5, 1.0) if new_target else 0.8
+        return edge.model_copy(update={"target": final_target, "confidence": confidence})
 
     def _ensure_virtual_node(self, target: str, virtual_nodes: dict[str, Node]) -> None:
         """Create a virtual boundary node for target if it is not already in the graph."""
@@ -304,6 +330,52 @@ class ResolverEngine:
                 return result
 
         return self._resolve_via_global_symbols(name, file_path)
+
+    def _resolved_dep_edge(self, edge: Edge) -> Edge | None:
+        """Resolve a raw_dep: candidate edge, or None when it must be dropped (spec §3.3)."""
+        dep_name = edge.target.removeprefix(RAW_DEP_PREFIX)
+        dep_target = self._resolve_dep_candidate(dep_name, edge.source, edge.file_path)
+        if dep_target is None:
+            # Speculative candidate that is not a DI alias: drop the edge
+            # entirely — raw_dep: must never leak into output (spec §3.3).
+            return None
+        return edge.model_copy(update={"target": dep_target, "confidence": 1.0})
+
+    def _resolve_dep_candidate(
+        self, name: str, source_fqn: str, edge_file_path: str | None
+    ) -> str | None:
+        """Resolve a raw_dep: candidate to a VARIABLE (DI alias) node, or None.
+
+        Order: the consuming file's import map first, then the VARIABLE-only
+        symbol index with same-file preference. Returns None for anything that
+        is not an existing VARIABLE node — the caller drops the edge.
+        A globally-unique match is accepted even when the name is not importable
+        in the consuming file — matching _resolve_global_call's behavior.
+
+        When ``name`` is present in the file's import map, the import is
+        authoritative: return the hit only if it is a VARIABLE node, otherwise
+        return ``None`` immediately — never fall through to the global
+        ``_variable_symbols`` index.  This prevents an explicitly imported
+        class from being shadowed by a same-named DI alias in another module.
+        """
+        file_path = self._get_normalized_file_path(source_fqn, edge_file_path)
+        if file_path:
+            via_import = self._resolve_via_import_map(name, file_path)
+            if via_import:
+                return via_import if self._is_variable_node(via_import) else None
+        candidates = self._variable_symbols.get(name, [])
+        if len(candidates) == 1:
+            return candidates[0]
+        if candidates and file_path:
+            same_file = self._file_variable_symbols.get((file_path, name), [])
+            if len(same_file) == 1:
+                return same_file[0]
+        return None
+
+    def _is_variable_node(self, fqn: str) -> bool:
+        """Return True when fqn names an existing VARIABLE node in the graph."""
+        node = self.nodes.get(fqn)
+        return node is not None and node.type == NodeType.VARIABLE
 
     def _resolve_via_global_symbols(self, name: str, file_path: str | None) -> str | None:
         """Look up name in the global symbol index, preferring same-file candidates."""

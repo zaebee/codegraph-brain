@@ -62,6 +62,7 @@ class EdgeType(StrEnum):
     TRIGGERS = "TRIGGERS"
     EMITS = "EMITS"
     CONSUMES = "CONSUMES"
+    DEPENDS_ON = "DEPENDS_ON"
 
     # Semantic (The OWL-Lite Layer)
     HANDLES = "HANDLES"

@@ -186,13 +186,20 @@ class PythonExtractor(BaseExtractor):
             self._collect_assignment_type(
                 node, code_bytes, import_map, current_func_node, local_types_acc
             )
+        elif self._is_module_level_assignment(node, code_bytes, current_func_node):
+            # True module level: not in a function (current_func_node) and not
+            # in a class body (_get_fqn_prefix). Class-body DI aliases are out
+            # of scope (spec §6).
+            self._process_module_assignment(
+                node, code_bytes, file_path, nodes, edges, module_fqn or ""
+            )
         elif (
             node.type in ("typed_parameter", "typed_default_parameter")
             and current_func_node
             and local_types_acc is not None
         ):
             self._collect_param_type(
-                node, code_bytes, import_map, current_func_node, local_types_acc
+                node, code_bytes, import_map, current_func_node, local_types_acc, edges
             )
 
         for child in node.children:
@@ -634,6 +641,123 @@ class PythonExtractor(BaseExtractor):
                     line_number=node.start_point.row + 1,
                 )
             )
+            if call_name in self._DI_CALL_NAMES:
+                provider = self._di_provider_name(node, code_bytes)
+                if provider:
+                    edges.append(
+                        Edge(
+                            id=f"{file_path}:dep_{node.start_byte}_{node.end_byte}",
+                            type=EdgeType.DEPENDS_ON,
+                            source=source_id,
+                            target=f"raw_call:{provider}",
+                            confidence=0.5,
+                            context=f"DI dependency on {provider}",
+                            file_path=file_path,
+                            line_number=node.start_point.row + 1,
+                        )
+                    )
+
+    def _di_provider_name(self, call_node: BaseNode, code_bytes: bytes) -> str | None:
+        """Return the first positional argument's identifier/dotted name, or None.
+
+        None for argless calls, keyword-only calls, and non-name arguments
+        (lambdas, calls, subscripts) — those emit no DEPENDS_ON edge (spec §3.2a/b).
+
+        Note: ``child_by_field_name("arguments")`` returns a truthy
+        ``argument_list`` node even for ``Depends()`` (argless), so the
+        ``if not args`` guard here only covers a *missing* arguments field
+        (should not occur in practice).  The argless case — where
+        ``args.named_children`` is empty — is handled by the loop falling
+        through to the final ``return None``.
+        """
+        args = call_node.child_by_field_name("arguments")
+        if not args:
+            return None
+        for child in args.named_children:
+            if child.type == "keyword_argument":
+                continue
+            if child.type in ("identifier", "attribute"):
+                name = self._get_identifier(child, code_bytes)
+                return name if name != "unknown" else None
+            return None
+        return None
+
+    def _find_di_calls(self, node: BaseNode, code_bytes: bytes) -> list[BaseNode]:
+        """Return all call nodes in the subtree whose callee is a DI name (spec §3.2a)."""
+        found: list[BaseNode] = []
+        stack = [node]
+        while stack:
+            curr = stack.pop()
+            if curr.type == "call":
+                fn = curr.child_by_field_name("function")
+                if fn and self._get_identifier(fn, code_bytes) in self._DI_CALL_NAMES:
+                    found.append(curr)
+            stack.extend(curr.children)
+        return found
+
+    def _is_module_level_assignment(
+        self, node: BaseNode, code_bytes: bytes, current_func_node: Node | None
+    ) -> bool:
+        """True for assignments at true module level (not function, not class body)."""
+        return (
+            node.type == "assignment"
+            and current_func_node is None
+            and self._get_fqn_prefix(node, code_bytes) is None
+        )
+
+    def _process_module_assignment(
+        self,
+        node: BaseNode,
+        code_bytes: bytes,
+        file_path: str,
+        nodes: list[Node],
+        edges: list[Edge],
+        module_fqn: str,
+    ) -> None:
+        """Emit a VARIABLE alias node + DEPENDS_ON edges for module-level DI assignments.
+
+        Only fires for `Name = <RHS containing Depends/Security>` with a plain
+        identifier LHS at true module level (class bodies excluded by the
+        caller). Plain constants never reach the node list (spec §3.2a).
+        """
+        left = node.child_by_field_name("left")
+        right = node.child_by_field_name("right")
+        if not left or not right or left.type != "identifier":
+            return
+        di_calls = self._find_di_calls(right, code_bytes)
+        if not di_calls:
+            return
+        name = self._get_identifier(left, code_bytes)
+        if name == "unknown":
+            return
+        alias_id = f"{module_fqn}.{name}" if module_fqn else name
+        nodes.append(
+            Node(
+                id=alias_id,
+                type=NodeType.VARIABLE,
+                name=name,
+                file_path=file_path,
+                start_line=node.start_point.row + 1,
+                end_line=node.end_point.row + 1,
+                language=self.LANG,
+            )
+        )
+        for call in di_calls:
+            provider = self._di_provider_name(call, code_bytes)
+            if not provider:
+                continue
+            edges.append(
+                Edge(
+                    id=f"{file_path}:dep_{call.start_byte}_{call.end_byte}",
+                    type=EdgeType.DEPENDS_ON,
+                    source=alias_id,
+                    target=f"raw_call:{provider}",
+                    confidence=0.5,
+                    context=f"DI alias for {provider}",
+                    file_path=file_path,
+                    line_number=node.start_point.row + 1,
+                )
+            )
 
     def _resolve_type_fqn(
         self,
@@ -692,8 +816,14 @@ class PythonExtractor(BaseExtractor):
         import_map: dict[str, str] | None,
         func_node: Node,
         acc: dict[str, dict[str, str]],
+        edges: list[Edge],
     ) -> None:
-        """Populate acc with param→FQN for typed parameter annotations."""
+        """Populate acc with param→FQN for typed parameter annotations.
+
+        Also emits a speculative `raw_dep:` DEPENDS_ON candidate per typed
+        parameter; the resolver keeps it only when it resolves to a DI alias
+        (VARIABLE node) and drops it otherwise (spec §3.2c).
+        """
         if not node.named_children:
             return
         name_node = node.named_children[0]
@@ -713,8 +843,21 @@ class PythonExtractor(BaseExtractor):
         acc.setdefault(func_node.id, {})[var_name] = self._resolve_type_fqn(
             clean_type, import_map, func_node.file_path
         )
+        edges.append(
+            Edge(
+                id=f"{func_node.file_path}:rawdep_{node.start_byte}_{node.end_byte}",
+                type=EdgeType.DEPENDS_ON,
+                source=func_node.id,
+                target=f"raw_dep:{clean_type}",
+                confidence=0.1,
+                context=f"Annotation candidate {clean_type}",
+                file_path=func_node.file_path,
+                line_number=node.start_point.row + 1,
+            )
+        )
 
     _GENERIC_WRAPPERS: frozenset[str] = frozenset({"Optional", "Union"})
+    _DI_CALL_NAMES: frozenset[str] = frozenset({"Depends", "Security"})
 
     def _clean_python_type_string(self, type_str: str) -> str:
         """

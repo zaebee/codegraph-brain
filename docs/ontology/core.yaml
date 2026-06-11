@@ -37,6 +37,7 @@ edge_types:
     - TRIGGERS      # Node triggers an event or side-effect
     - EMITS         # Node emits a domain event
     - CONSUMES      # Node consumes a domain event
+    - DEPENDS_ON    # Dependency-injection wiring — consumer depends on a DI provider/alias (FastAPI Depends/Security)
   semantic:
     - HANDLES          # Handler is responsible for a domain concept
     - TRANSFORMS       # Node transforms data from one shape to another

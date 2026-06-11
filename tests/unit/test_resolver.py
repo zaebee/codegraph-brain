@@ -1012,3 +1012,161 @@ def test_resolve_self_call_nested_function_finds_class() -> None:
 
     call_edge = next(e for e in resolved_edges if e.id == "e_nested_call")
     assert call_edge.target == "mod.MyClass.run"
+
+
+# ============================================================================
+# Test suite: raw_dep: DI alias resolution (Issue #161 slice 1, Task 4)
+# ============================================================================
+
+
+def _alias_node(fqn: str, file_path: str) -> Node:
+    """Helper: build a VARIABLE node representing a DI alias."""
+    return Node(
+        id=fqn,
+        type=NodeType.VARIABLE,
+        name=fqn.rsplit(".", maxsplit=1)[-1],
+        file_path=file_path,
+        start_line=5,
+        end_line=5,
+    )
+
+
+def _raw_dep_edge(source: str, name: str, file_path: str) -> Edge:
+    """Helper: build a speculative raw_dep: candidate edge."""
+    return Edge(
+        id=f"{file_path}:rawdep_1",
+        source=source,
+        target=f"raw_dep:{name}",
+        type=EdgeType.DEPENDS_ON,
+        confidence=0.1,
+        file_path=file_path,
+    )
+
+
+def test_raw_dep_resolves_to_same_file_variable() -> None:
+    """A raw_dep: candidate matching a VARIABLE node in the graph is kept."""
+    nodes = [
+        _func_node("deps.resolve_published_owner", "deps.py"),
+        _alias_node("deps.ResolvedOwnerDep", "deps.py"),
+    ]
+    edges = [_raw_dep_edge("deps.resolve_published_owner", "ResolvedOwnerDep", "deps.py")]
+
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+
+    assert len(resolved) == 1
+    assert resolved[0].target == "deps.ResolvedOwnerDep"
+    assert resolved[0].confidence == pytest.approx(1.0)
+
+
+def test_raw_dep_resolves_cross_file_via_import_map() -> None:
+    """A raw_dep: candidate resolves through the consuming file's import map."""
+    nodes = [
+        _file_node("routes.py", {"PublishedOwnerDep": "deps.PublishedOwnerDep"}),
+        _func_node("routes.get_vehicle", "routes.py"),
+        _alias_node("deps.PublishedOwnerDep", "deps.py"),
+    ]
+    edges = [_raw_dep_edge("routes.get_vehicle", "PublishedOwnerDep", "routes.py")]
+
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+
+    assert len(resolved) == 1
+    assert resolved[0].target == "deps.PublishedOwnerDep"
+
+
+def test_raw_dep_to_class_is_dropped() -> None:
+    """A raw_dep: candidate resolving to a non-VARIABLE node is dropped."""
+    nodes = [
+        _func_node("routes.get_vehicle", "routes.py"),
+        Node(
+            id="models.User",
+            type=NodeType.CLASS,
+            name="User",
+            file_path="models.py",
+            start_line=1,
+            end_line=5,
+        ),
+    ]
+    edges = [_raw_dep_edge("routes.get_vehicle", "User", "routes.py")]
+
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+
+    assert resolved == []
+
+
+def test_raw_dep_unresolved_is_dropped_and_never_leaks() -> None:
+    """An unresolved raw_dep: target never appears in the resolved edge set."""
+    nodes = [_func_node("routes.get_vehicle", "routes.py")]
+    edges = [
+        _raw_dep_edge("routes.get_vehicle", "TotallyUnknown", "routes.py"),
+        Edge(
+            id="edge_call",
+            source="routes.get_vehicle",
+            target="raw_call:unknown_fn",
+            type=EdgeType.CALLS,
+            confidence=0.5,
+        ),
+    ]
+
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+
+    assert not any(e.target.startswith("raw_dep:") for e in resolved)
+    # raw_call: keeps unresolved targets (regression guard for the asymmetry)
+    assert any(e.target == "unknown_fn" for e in resolved)
+
+
+def test_raw_dep_ambiguous_across_files_is_dropped() -> None:
+    """Two same-named aliases in different files, no import map: candidate is dropped."""
+    nodes = [
+        _func_node("routes.get_vehicle", "routes.py"),
+        _alias_node("deps.OwnerDep", "deps.py"),
+        _alias_node("other.OwnerDep", "other.py"),
+    ]
+    edges = [_raw_dep_edge("routes.get_vehicle", "OwnerDep", "routes.py")]
+
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+
+    assert resolved == []
+
+
+def test_raw_dep_explicit_import_shadows_global_alias() -> None:
+    """An explicitly imported non-VARIABLE name never falls back to a same-named alias elsewhere."""
+    nodes = [
+        _file_node("routes.py", {"User": "models.User"}),
+        _func_node("routes.get_vehicle", "routes.py"),
+        Node(
+            id="models.User",
+            type=NodeType.CLASS,
+            name="User",
+            file_path="models.py",
+            start_line=1,
+            end_line=5,
+        ),
+        _alias_node("other.User", "other.py"),
+    ]
+    edges = [_raw_dep_edge("routes.get_vehicle", "User", "routes.py")]
+
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+
+    assert resolved == []
+
+
+def test_variable_nodes_do_not_pollute_call_resolution() -> None:
+    """VARIABLE nodes are not in _global_symbols: raw_call: never lands on them."""
+    nodes = [
+        _func_node("app.caller", "app.py"),
+        _alias_node("deps.OwnerDep", "deps.py"),
+    ]
+    edges = [
+        Edge(
+            id="edge_call",
+            source="app.caller",
+            target="raw_call:OwnerDep",
+            type=EdgeType.CALLS,
+            confidence=0.5,
+        )
+    ]
+
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+
+    # Unresolved (kept as bare name), NOT resolved to deps.OwnerDep
+    assert resolved[0].target == "OwnerDep"
