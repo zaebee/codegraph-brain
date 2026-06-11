@@ -5,9 +5,9 @@ from cgis.core.models import Edge, EdgeType, Node
 # Re-exported via ``as``-form so ResolverEngine imports only *this* module,
 # keeping the resolver domain's IMPORTS layer a 021C chain
 # (engine → symbols → indices) instead of a 030T triangle, per spec §3.3.
-# ``noqa: PLC0414`` suppresses pylint's "alias does not rename" — the
-# redundant alias is intentional: mypy strict's no_implicit_reexport
-# requires it.
+# ``noqa: PLC0414`` suppresses Ruff's PLC0414 (Pylint-derived rule:
+# "alias does not rename") — the redundant alias is intentional:
+# mypy strict's no_implicit_reexport requires it.
 from cgis.resolver.indices import _RAW_CLASS_PREFIX as _RAW_CLASS_PREFIX  # noqa: PLC0414
 from cgis.resolver.indices import _SELF_PREFIX as _SELF_PREFIX  # noqa: PLC0414
 from cgis.resolver.indices import IndexBuilder as IndexBuilder  # noqa: PLC0414
