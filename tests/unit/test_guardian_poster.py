@@ -72,3 +72,31 @@ def test_post_inline_review_payload() -> None:
     assert payload["event"] == "COMMENT"
     assert payload["comments"][0]["line"] == 11
     assert kwargs["check"] is True
+
+
+def test_footer_rides_in_review_body() -> None:
+    """The footer reaches the inline review body — a successful inline post
+    skips the fallback comment, so this is the only way it gets to the PR."""
+    result = ReviewResult(findings=[_IN_DIFF], summary="s")
+    footer = "\n\n---\n> 🤖 **gemini-2.5-flash** · 1,000 prompt"
+    body, _ = build_review(result, diff_index={"src/x.py": {11}}, skeptic_model=None, footer=footer)
+    assert body.endswith(footer)
+    with patch("cgis.guardian.github_poster.subprocess.run") as mock_run:
+        post_inline_review(
+            repo="zaebee/codegraph-brain",
+            pr=157,
+            result=result,
+            diff_index={"src/x.py": {11}},
+            skeptic_model=None,
+            footer=footer,
+        )
+    payload = json.loads(mock_run.call_args.kwargs["input"])
+    assert payload["body"].endswith(footer)
+
+
+def test_footer_default_empty_keeps_body_unchanged() -> None:
+    """Omitting the footer must not alter the rendered body (back-compat)."""
+    result = ReviewResult(findings=[_IN_DIFF], summary="s")
+    with_default, _ = build_review(result, diff_index={}, skeptic_model=None)
+    with_empty, _ = build_review(result, diff_index={}, skeptic_model=None, footer="")
+    assert with_default == with_empty
