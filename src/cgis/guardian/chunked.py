@@ -103,8 +103,11 @@ async def run_chunked_review(
     failed = 0
     for chunk in chunks:
         label = ", ".join(chunk.files)
-        context = collector.collect_for_chunk(chunk)
         try:
+            # Context collection is inside the guard on purpose: it opens the
+            # graph DB per chunk, and a flaky DB must cost one chunk, not the
+            # whole review (opus quality review on slice 2).
+            context = collector.collect_for_chunk(chunk)
             result = await finder_pass(provider, context)
         except Exception:
             log.warning(

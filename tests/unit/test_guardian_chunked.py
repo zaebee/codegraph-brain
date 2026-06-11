@@ -208,6 +208,27 @@ async def test_chunked_one_chunk_raises_others_survive(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_chunked_context_collection_failure_costs_one_chunk(tmp_path: Path) -> None:
+    """A flaky graph DB during collect_for_chunk skips that chunk, not the review."""
+    collector = _collector(tmp_path, fdiff("src/a.py") + fdiff("src/b.py"))
+    original = collector.collect_for_chunk
+
+    def _flaky(chunk: Chunk) -> dict[str, str]:
+        """Blow up on the a.py chunk's context only."""
+        if "src/a.py" in chunk.files:
+            _msg = "db locked"
+            raise RuntimeError(_msg)
+        return original(chunk)
+
+    collector.collect_for_chunk = _flaky  # type: ignore[method-assign]
+    provider = StubProvider([_finder_json("src/b.py")])
+    routed = await run_chunked_review(provider=provider, collector=collector, skeptic_provider=None)
+    assert "⚠ finder call failed" in routed.result.summary
+    assert {f.file for f in routed.result.findings} == {"src/b.py"}
+    assert not routed.result.parse_failed
+
+
+@pytest.mark.asyncio
 async def test_chunked_all_chunks_fail_sets_parse_failed(tmp_path: Path) -> None:
     """Every chunk failing -> parse_failed=True on the merged result."""
     diff = fdiff("src/a.py") + fdiff("src/b.py")
