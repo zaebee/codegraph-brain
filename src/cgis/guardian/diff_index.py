@@ -6,6 +6,12 @@ _HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 _NEW_FILE_RE = re.compile(r"^\+\+\+ (?:b/)?(.+)$")
 
 
+def _new_file_path(header: re.Match[str]) -> str | None:
+    """New-side path from a matched `+++` header; None for deletions (/dev/null)."""
+    path = header.group(1)
+    return None if path == "/dev/null" else path
+
+
 def diff_line_index(diff_text: str) -> dict[str, set[int]]:
     """Map each changed file (new path) to the set of RIGHT-side line numbers.
 
@@ -23,30 +29,20 @@ def diff_line_index(diff_text: str) -> dict[str, set[int]]:
             current = None
             in_hunk = False
             continue
-        if not in_hunk:
-            # Real `+++` headers only appear between hunks (after `diff --git`
-            # resets in_hunk); inside a hunk a `+++ ...` line is added CONTENT
-            # whose text starts with `++` — counting it as a header would both
-            # drop the rest of the file and shift line numbers.
-            file_match = _NEW_FILE_RE.match(line)
-            if file_match:
-                path = file_match.group(1)
-                current = None if path == "/dev/null" else path
-                continue
-        hunk_match = _HUNK_RE.match(line)
-        if hunk_match and current is not None:
-            new_line = int(hunk_match.group(1))
+        # Real `+++` headers only appear between hunks (after `diff --git`
+        # resets in_hunk); inside a hunk a `+++ ...` line is added CONTENT
+        # whose text starts with `++` — counting it as a header would both
+        # drop the rest of the file and shift line numbers.
+        if not in_hunk and (header := _NEW_FILE_RE.match(line)):
+            current = _new_file_path(header)
+            continue
+        if (hunk := _HUNK_RE.match(line)) and current is not None:
+            new_line = int(hunk.group(1))
             in_hunk = True
             index.setdefault(current, set())
             continue
-        if current is None or not in_hunk:
-            continue
-        if line.startswith("+"):
-            index[current].add(new_line)
-            new_line += 1
-        elif line.startswith(("-", "\\")):
-            continue  # removed line / "\ No newline" marker: no RIGHT-side line
-        else:
-            index[current].add(new_line)  # context line
-            new_line += 1
+        if not in_hunk or current is None or line.startswith(("-", "\\")):
+            continue  # outside a hunk / removed line / "\ No newline" marker
+        index[current].add(new_line)  # added or context line: has a RIGHT-side number
+        new_line += 1
     return {path: lines for path, lines in index.items() if lines}
