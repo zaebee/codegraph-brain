@@ -614,11 +614,16 @@ def _suffix_store(tmp_path: Path, ids: list[str]) -> SQLiteStore:
     return store
 
 
-def test_find_nodes_by_suffix_exact_match_wins(tmp_path: Path) -> None:
-    """Exact FQN match is returned alone, ignoring longer matches."""
+def test_find_nodes_by_suffix_pure_suffix_semantics(tmp_path: Path) -> None:
+    """The id itself is NOT its own dot-boundary suffix — only longer FQNs match.
+
+    Exact-match policy lives in resolve_fqn (query layer), not here.
+    Seeding ["a.b.run", "c.a.b.run"] and querying "a.b.run" returns only
+    "c.a.b.run" (the one whose FQN ends with ".a.b.run").
+    """
     store = _suffix_store(tmp_path, ["a.b.run", "c.a.b.run"])
     result = store.find_nodes_by_suffix("a.b.run")
-    assert [n.id for n in result] == ["a.b.run"]
+    assert [n.id for n in result] == ["c.a.b.run"]
     store.disconnect()
 
 

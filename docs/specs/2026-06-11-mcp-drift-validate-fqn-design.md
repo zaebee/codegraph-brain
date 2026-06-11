@@ -38,13 +38,13 @@ Two gaps, both confirmed by dogfooding during the PR #144 review session:
 
 ```python
 def find_nodes_by_suffix(self, name: str, limit: int = 10) -> list[Node]:
-    """Find nodes whose FQN equals `name` or ends with `.name`."""
+    """Find nodes whose FQN ends with `.name` at a dot boundary."""
 ```
 
-- Exact match first: `SELECT * FROM nodes WHERE id = ?` — if found, return
-  just that node (even if other suffix matches exist).
-- Else suffix match **on a dot boundary**:
-  `SELECT * FROM nodes WHERE id LIKE '%.' || ? ORDER BY id LIMIT ?`
+- **Pure suffix search** — the id itself is NOT its own dot-boundary suffix.
+  Exact-match policy lives in `resolve_fqn` (query layer), not here.
+- Suffix match **on a dot boundary**:
+  `SELECT * FROM nodes WHERE id LIKE '%.name' ORDER BY id LIMIT ?`
   with `name` escaped for LIKE wildcards (`%`, `_` are literal characters in
   FQNs — escape with `ESCAPE '\'`). The dot boundary means `tv_distance`
   matches `src.cgis.query.triads.tv_distance` but **not**
@@ -54,6 +54,14 @@ def find_nodes_by_suffix(self, name: str, limit: int = 10) -> list[Node]:
 - Deterministic: `ORDER BY id`. `limit` caps pathological fan-out.
 - Raises `RuntimeError` when the store is not connected (same `_error_message`
   convention as every other store method).
+- **Design note (self-drift guardrail, #145):** the original design had an
+  exact-match short-circuit (`exact = self.get_node(name)`) inside this method.
+  During implementation, the self-parsing drift test (`tests/self_parsing/
+  test_drift.py`) caught a real coupling smell: the intra-storage CALLS chain
+  (`find_nodes_by_suffix` → `get_node`) added a 021D triad to the
+  `cgis.storage` domain, pushing its score from ~0.17 to 0.22 — above the
+  declared `pure_utility` tolerance of 0.20. The fix is a layering improvement,
+  not a ratchet change: exact-match policy moved to the query layer.
 
 ### 3.2 `resolve_fqn` helper (`src/cgis/query/fqn.py`, new module)
 
@@ -67,6 +75,10 @@ class FqnResolution:
 
 def resolve_fqn(store: SQLiteStore, fqn: str) -> FqnResolution: ...
 ```
+
+**Exact-match policy lives here** (not in `find_nodes_by_suffix`): `resolve_fqn`
+calls `store.get_node(fqn)` first; only on a miss does it call
+`store.find_nodes_by_suffix(fqn)` for suffix candidates.
 
 Resolution table:
 

@@ -229,18 +229,21 @@ class SQLiteStore:
         return self._row_to_node(row)
 
     def find_nodes_by_suffix(self, name: str, limit: int = 10) -> list[Node]:
-        """Find nodes whose FQN equals ``name`` or ends with ``.name``.
+        """Find nodes whose FQN ends with ``.name`` at a dot boundary.
 
-        An exact match wins and is returned alone. Otherwise dot-boundary
-        suffix matches are returned ordered by id, capped at ``limit``.
-        LIKE wildcards in ``name`` (``%``, ``_``) are escaped — they are
-        literal characters in FQNs.
+        Returns only dot-boundary suffix matches ordered by id, capped at
+        ``limit``. The id itself is NOT its own dot-boundary suffix — exact
+        match policy (``get_node`` short-circuit) lives in the caller
+        (``resolve_fqn``). LIKE wildcards in ``name`` (``%``, ``_``) are
+        escaped — they are literal characters in FQNs.
+
+        This method was intentionally kept pure (no intra-storage ``get_node``
+        call) to avoid a CALLS chain inside the ``cgis.storage`` domain that
+        would violate the pure_utility pattern's 021D triad constraint — the
+        self-drift guardrail caught this coupling smell during development.
         """
         if not self._conn:
             raise RuntimeError(self._error_message)
-        exact = self.get_node(name)
-        if exact:
-            return [exact]
         escaped = name.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         cursor = self._conn.execute(
             "SELECT * FROM nodes WHERE id LIKE ? ESCAPE '\\' ORDER BY id LIMIT ?",
