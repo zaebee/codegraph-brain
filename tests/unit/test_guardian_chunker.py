@@ -239,3 +239,27 @@ def test_non_tests_dir_file_not_paired() -> None:
     diff = fdiff("scripts/test_helper.py") + fdiff("src/cgis/helper.py")
     chunks = build_chunks(diff, store=None)
     assert len(chunks) == 2
+
+
+def test_broken_store_degrades_to_isolated_chunks() -> None:
+    """A store that raises on read → isolated chunks, no exception escapes."""
+
+    class _BrokenStore(SQLiteStore):
+        def get_all_nodes(self) -> list[Node]:
+            msg = "corrupt db"
+            raise RuntimeError(msg)
+
+    diff = fdiff("src/cgis/a.py") + fdiff("src/cgis/b.py")
+    chunks = build_chunks(diff, _BrokenStore(":memory:"))
+    assert [c.files for c in chunks] == [("src/cgis/a.py",), ("src/cgis/b.py",)]
+
+
+def test_build_chunks_deterministic(tmp_path: Path) -> None:
+    """Same inputs twice → byte-identical output."""
+    store = _make_store(
+        tmp_path,
+        [_node("src.cgis.a", "src/cgis/a.py"), _node("src.cgis.b", "src/cgis/b.py")],
+        [_edge("src.cgis.a", "src.cgis.b")],
+    )
+    diff = fdiff("src/cgis/c.py") + fdiff("src/cgis/a.py") + fdiff("src/cgis/b.py")
+    assert build_chunks(diff, store) == build_chunks(diff, store)
