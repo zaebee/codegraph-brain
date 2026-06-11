@@ -42,9 +42,11 @@ class MistralProvider(BaseProvider):
             raise ValueError(_msg)
         usage = getattr(response, "usage", None)
         if usage is not None:
-            self.last_usage = ProviderUsage(
-                prompt_tokens=getattr(usage, "prompt_tokens", 0),
-                completion_tokens=getattr(usage, "completion_tokens", 0),
+            self._record_usage(
+                ProviderUsage(
+                    prompt_tokens=getattr(usage, "prompt_tokens", 0),
+                    completion_tokens=getattr(usage, "completion_tokens", 0),
+                )
             )
         return str(content)
 

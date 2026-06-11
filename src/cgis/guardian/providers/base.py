@@ -22,11 +22,23 @@ class BaseProvider(abc.ABC):
     """Abstract base class for LLM providers."""
 
     def __init__(self) -> None:
-        """Initialise last_usage to zero.
+        """Initialise usage counters to zero.
 
-        Updated after each LLM call (`generate_content` or `generate_structured`).
+        last_usage reflects the most recent LLM call; cumulative_usage sums
+        every call this provider instance has made (a chunked review makes
+        N finder calls — and even a single-pass review makes 2 on a parse
+        retry, whose first call last_usage used to silently drop).
         """
         self.last_usage: ProviderUsage = ProviderUsage()
+        self.cumulative_usage: ProviderUsage = ProviderUsage()
+
+    def _record_usage(self, usage: ProviderUsage) -> None:
+        """Record one call's token usage: set last_usage, add to cumulative."""
+        self.last_usage = usage
+        self.cumulative_usage = ProviderUsage(
+            prompt_tokens=self.cumulative_usage.prompt_tokens + usage.prompt_tokens,
+            completion_tokens=self.cumulative_usage.completion_tokens + usage.completion_tokens,
+        )
 
     @abc.abstractmethod
     async def generate_content(self, system_prompt: str, user_prompt: str) -> str:

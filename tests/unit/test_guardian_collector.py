@@ -7,7 +7,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
+from cgis.guardian.chunker import Chunk
 from cgis.guardian.collector import ContextCollector, parse_features
+from cgis.storage.sqlite_store import SQLiteStore
 
 
 def _make_node(fqn: str, file_path: str = "src/cgis/pipeline.py") -> Node:
@@ -360,3 +362,67 @@ def test_collect_drift_swallows_scorer_errors(tmp_db: Path, tmp_path: Path) -> N
     )
     with patch("cgis.guardian.collector.DriftScorer", side_effect=RuntimeError("boom")):
         assert collector.collect_drift() == ""
+
+
+def test_parse_features_accepts_chunked() -> None:
+    """'chunked' is a valid feature name."""
+    assert parse_features("chunked") == frozenset({"chunked"})
+
+
+def test_collect_for_chunk_diff_is_chunk_diff(tmp_path: Path) -> None:
+    """The chunk's own diff slice rides in the context, not the full PR diff."""
+    collector = ContextCollector(project_root=tmp_path)
+    chunk = Chunk(files=("src/a.py",), diff="diff --git a/src/a.py b/src/a.py\n+x\n")
+    context = collector.collect_for_chunk(chunk)
+    assert context["diff"] == chunk.diff
+
+
+def test_collect_for_chunk_full_files_restricted_to_chunk(tmp_path: Path) -> None:
+    """Only the chunk's .py files appear in full_files — not other changed files."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "a.py").write_text("a = 1\n")
+    (tmp_path / "src" / "b.py").write_text("b = 2\n")
+    collector = ContextCollector(project_root=tmp_path)
+    chunk = Chunk(files=("src/a.py", "README.md"), diff="d")
+    context = collector.collect_for_chunk(chunk)
+    assert "src/a.py" in context["full_files"]
+    assert "src/b.py" not in context["full_files"]
+
+
+def test_collect_for_chunk_graph_and_stats_accumulate(tmp_path: Path) -> None:
+    """Graph context is chunk-scoped (flow fallback ON) and stats sum across chunks."""
+    db = tmp_path / "graph.db"
+    nodes = [
+        Node(
+            id="pkg.mod",
+            type=NodeType.MODULE,
+            name="mod",
+            file_path="pkg/mod.py",
+            start_line=1,
+            end_line=1,
+        ),
+        Node(
+            id="pkg.other",
+            type=NodeType.MODULE,
+            name="other",
+            file_path="pkg/other.py",
+            start_line=1,
+            end_line=1,
+        ),
+    ]
+    edges = [Edge(id="e1", source="pkg.other", target="pkg.mod", type=EdgeType.CALLS)]
+    with SQLiteStore(str(db)) as store:
+        store.save_graph(nodes, edges, overwrite=True)
+    collector = ContextCollector(project_root=tmp_path, db_path=db, source_root="src")
+    ctx1 = collector.collect_for_chunk(Chunk(files=("src/pkg/mod.py",), diff="d1"))
+    assert "graph_context" in ctx1  # impact graph: pkg.other -> pkg.mod
+    collector.collect_for_chunk(Chunk(files=("src/pkg/ghost.py",), diff="d2"))
+    assert collector.graph_stats["total"] == 2  # accumulated, not overwritten
+    assert collector.graph_stats["with_graph"] == 1
+
+
+def test_collect_graph_context_unchanged_without_db(tmp_path: Path) -> None:
+    """Regression: the global path still leaves stats at zero when db is missing."""
+    collector = ContextCollector(project_root=tmp_path)
+    assert collector.collect_graph_context() == ""
+    assert collector.graph_stats == {"total": 0, "with_graph": 0, "flow_fallback": 0}
