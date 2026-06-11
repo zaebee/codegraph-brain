@@ -18,12 +18,12 @@ from cgis.guardian.metrics import load_reviews, rate_review
 from cgis.pipeline import IngestionPipeline
 from cgis.query.analyzer import AnalyzerEngine
 from cgis.query.anomaly import AnomalyType, ArchitecturalAnomaly
-from cgis.query.drift import DomainConfig, DriftReport, DriftScorer
+from cgis.query.drift import DriftReport
+from cgis.query.drift_service import analyze_drift
 from cgis.query.engine import BEHAVIORAL_EDGE_TYPES, QueryEngine
-from cgis.query.fingerprint import FingerprintExtractor
+from cgis.query.fqn import resolve_fqn
 from cgis.query.health import HealthScorer
 from cgis.query.mermaid import MermaidCompiler
-from cgis.query.quotient import build_quotient
 from cgis.resolver.uplift import SemanticUpliftEngine
 from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 
@@ -216,6 +216,24 @@ def _filter_internal(
     return filtered_nodes, filtered_edges
 
 
+def _resolve_cli_fqn(store: SQLiteStore, target: str, kind: str) -> str:
+    """Resolve a possibly-partial FQN for a CLI command or exit with code 1."""
+    resolution = resolve_fqn(store, target)
+    if resolution.resolved is None:
+        if resolution.candidates:
+            console.print(f"[bold red]❌ Ambiguous FQN:[/bold red] {target}")
+            for candidate in resolution.candidates:
+                console.print(f"  [dim]- {candidate}[/dim]")
+            if resolution.truncated:
+                console.print("  [dim]… (more matches exist; refine the name)[/dim]")
+        else:
+            console.print(f"[bold red]❌ {kind} not found in graph:[/bold red] {target}")
+        raise typer.Exit(code=1)
+    if resolution.via_suffix:
+        console.print(f"[dim]Resolved '{target}' → '{resolution.resolved}'[/dim]")
+    return resolution.resolved
+
+
 def build_trace_tree(
     store: SQLiteStore,
     current_id: str,
@@ -300,9 +318,9 @@ def trace(
     allowed: frozenset[EdgeType] | None = None if show_structure else BEHAVIORAL_EDGE_TYPES
 
     with SQLiteStore(db) as store:
+        start = _resolve_cli_fqn(store, start, "Start entity")
         start_node = store.get_node(start)
-        if not start_node:
-            console.print(f"[bold red]❌ Start entity not found in graph:[/bold red] {start}")
+        if not start_node:  # pragma: no cover — resolved FQNs always exist
             raise typer.Exit(code=1)
 
         if output_format == OutputFormat.MERMAID:
@@ -422,9 +440,9 @@ def impact(
     allowed: frozenset[EdgeType] | None = None if show_structure else BEHAVIORAL_EDGE_TYPES
 
     with SQLiteStore(db) as store:
+        target = _resolve_cli_fqn(store, target, "Target entity")
         target_node = store.get_node(target)
-        if not target_node:
-            console.print(f"[bold red]❌ Target entity not found in graph:[/bold red] {target}")
+        if not target_node:  # pragma: no cover — resolved FQNs always exist
             raise typer.Exit(code=1)
 
         if output_format == OutputFormat.MERMAID:
@@ -562,9 +580,9 @@ def structure(
         console.print(f"[dim]→ FQN: {target}[/dim]")
 
     with SQLiteStore(db) as store:
+        target = _resolve_cli_fqn(store, target, "Node")
         target_node = store.get_node(target)
-        if not target_node:
-            console.print(f"[bold red]❌ Node not found in graph:[/bold red] {target}")
+        if not target_node:  # pragma: no cover — resolved FQNs always exist
             raise typer.Exit(code=1)
 
         nodes, edges = QueryEngine(store).get_structural_graph(target, max_depth=depth)
@@ -830,58 +848,30 @@ def drift(
         console.print(f"[bold red]❌ Patterns file not found:[/bold red] {patterns}")
         raise typer.Exit(code=1)
 
-    level_bindings: list[DomainConfig] = []
-    quotient_reports: list[DriftReport] = []
     try:
-        scorer = DriftScorer(patterns)
-        domains = scorer.load_project_domains()
-
-        reports: list[DriftReport] = []
-        with SQLiteStore(db) as store:
-            extractor = FingerprintExtractor(store)
-            for domain in domains:
-                fp = extractor.extract(domain.fqn_prefix)
-                reports.append(scorer.score(fp, domain))
-            level_bindings = scorer.load_project_level()
-            if level_bindings:
-                qnodes, qedges = build_quotient(
-                    store.get_all_nodes(), store.get_all_edges(), domains
-                )
-                q_extractor = FingerprintExtractor.from_graph(qnodes, qedges)
-                quotient_reports = [
-                    scorer.score(q_extractor.extract(b.fqn_prefix), b) for b in level_bindings
-                ]
+        analysis = analyze_drift(db, patterns, max_drift=max_drift)
     except Exception as e:
         console.print(f"[bold red]❌ Error during drift analysis:[/bold red] {e}")
         raise typer.Exit(code=1) from e
 
-    any_critical = any(r.drift_score >= max_drift for r in reports) or any(
-        r.drift_score >= max_drift
-        for b, r in zip(level_bindings, quotient_reports, strict=True)
-        if b.enforce
-    )
-
     if output_format == DriftOutputFormat.JSON:
-        payload = [dataclasses.asdict(r) for r in reports]
-        payload += [
-            {**dataclasses.asdict(r), "enforce": b.enforce}
-            for b, r in zip(level_bindings, quotient_reports, strict=True)
-        ]
+        payload = [dataclasses.asdict(r) for r in analysis.reports]
+        payload += [{**dataclasses.asdict(r), "enforce": b.enforce} for b, r in analysis.quotient]
         typer.echo(_json.dumps(payload, indent=2))
-        if any_critical:
+        if analysis.any_critical:
             raise typer.Exit(code=1)
         return
 
-    _render_drift_table(reports, max_drift)
+    _render_drift_table(analysis.reports, max_drift)
 
-    for b, qr in zip(level_bindings, quotient_reports, strict=True):
+    for b, qr in analysis.quotient:
         marker = "" if b.enforce else " [dim](observe-only)[/dim]"
         console.print(
             f"Quotient k=1 \\[{b.name}] vs {qr.expected_pattern}: "
             f"drift={qr.drift_score:.2f}{marker}"
         )
 
-    if any_critical:
+    if analysis.any_critical:
         console.print("[bold red]❌ One or more domains exceed the drift threshold.[/bold red]")
         raise typer.Exit(code=1)
 

@@ -716,3 +716,108 @@ def test_drift_missing_patterns_exits_1(tmp_path: Path) -> None:
         store.save_graph([], [], overwrite=True)
     result = runner.invoke(app, ["drift", "--db", db_path, "--patterns", "no_such.yaml"])
     assert result.exit_code == 1
+
+
+def test_drift_json_shape_unchanged(tmp_path: Path) -> None:
+    """The --format json payload stays a flat list of report dicts."""
+    db = str(tmp_path / "g.db")
+    with SQLiteStore(db) as store:
+        store.save_graph(
+            [
+                Node(
+                    id="cgis.extractors.a",
+                    type=NodeType.FUNCTION,
+                    name="a",
+                    file_path="a.py",
+                    start_line=1,
+                    end_line=2,
+                )
+            ],
+            [],
+        )
+    patterns = tmp_path / "patterns.yaml"
+    patterns.write_text(
+        'version: "1.0.0"\n'
+        "drift_weights:\n  cycle_ratio: 1.0\n"
+        "patterns:\n  pure_utility:\n    description: x\n"
+        "    cycle_ratio: {max: 0.0}\n"
+        "project_domains:\n"
+        '  - name: extraction\n    fqn_prefix: "cgis.extractors"\n'
+        "    expected_pattern: pure_utility\n    drift_tolerance: 0.15\n"
+    )
+    result = runner.invoke(
+        app, ["drift", "--db", db, "--patterns", str(patterns), "--format", "json"]
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert isinstance(payload, list)
+    assert payload[0]["fqn_prefix"] == "cgis.extractors"
+
+
+# --- suffix FQN resolution in CLI commands (#145) ---
+
+
+def _fqn_db(tmp_path: Path) -> str:
+    """A db with one caller→callee pair under a deep module path."""
+    db = str(tmp_path / "g.db")
+    nodes = [
+        Node(
+            id="src.app.mod.caller",
+            type=NodeType.FUNCTION,
+            name="caller",
+            file_path="mod.py",
+            start_line=1,
+            end_line=2,
+        ),
+        Node(
+            id="src.app.mod.callee",
+            type=NodeType.FUNCTION,
+            name="callee",
+            file_path="mod.py",
+            start_line=3,
+            end_line=4,
+        ),
+    ]
+    edges = [
+        Edge(id="e", source="src.app.mod.caller", target="src.app.mod.callee", type=EdgeType.CALLS)
+    ]
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)
+    return db
+
+
+def test_impact_resolves_suffix_with_note(tmp_path: Path) -> None:
+    """impact resolves a bare suffix FQN and prints a note about it."""
+    db = _fqn_db(tmp_path)
+    result = runner.invoke(app, ["impact", "callee", "--db", db])
+    assert result.exit_code == 0
+    assert "Resolved 'callee'" in result.stdout
+    assert "src.app.mod.caller" in result.stdout
+
+
+def test_trace_ambiguous_exits_with_candidates(tmp_path: Path) -> None:
+    """trace exits 1 with an ambiguous error and lists candidates."""
+    db = str(tmp_path / "g.db")
+    nodes = [
+        Node(
+            id="a.fn", type=NodeType.FUNCTION, name="fn", file_path="a.py", start_line=1, end_line=2
+        ),
+        Node(
+            id="b.fn", type=NodeType.FUNCTION, name="fn", file_path="b.py", start_line=1, end_line=2
+        ),
+    ]
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, [])
+    result = runner.invoke(app, ["trace", "fn", "--db", db])
+    assert result.exit_code == 1
+    assert "Ambiguous" in result.stdout
+    assert "a.fn" in result.stdout
+    assert "b.fn" in result.stdout
+
+
+def test_structure_resolves_suffix(tmp_path: Path) -> None:
+    """structure resolves a partial suffix FQN to the full FQN."""
+    db = _fqn_db(tmp_path)
+    result = runner.invoke(app, ["structure", "mod.caller", "--db", db])
+    assert result.exit_code == 0
+    assert "src.app.mod.caller" in result.stdout

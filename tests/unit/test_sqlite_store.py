@@ -590,3 +590,84 @@ def test_flow_graph_prunes_disconnected_internal_nodes(temp_store: SQLiteStore) 
     assert "B" not in node_ids
     assert "C" not in node_ids  # disconnected after external hop removed
     assert len(filt_edges) == 0
+
+
+# --- find_nodes_by_suffix tests (#145) ---
+
+
+def _seed_suffix_store(tmp_path: Path, ids: list[str]) -> Path:
+    """Seed a SQLite store with FUNCTION nodes for the given FQNs and return the db path."""
+    db_path = tmp_path / "suffix.db"
+    nodes = [
+        Node(
+            id=i,
+            type=NodeType.FUNCTION,
+            name=i.rsplit(".", 1)[-1],
+            file_path="f.py",
+            start_line=1,
+            end_line=2,
+        )
+        for i in ids
+    ]
+    with SQLiteStore(str(db_path)) as store:
+        store.save_graph(nodes, [])
+    return db_path
+
+
+def test_find_nodes_by_suffix_pure_suffix_semantics(tmp_path: Path) -> None:
+    """The id itself is NOT its own dot-boundary suffix — only longer FQNs match.
+
+    Exact-match policy lives in resolve_fqn (query layer), not here.
+    Seeding ["a.b.run", "c.a.b.run"] and querying "a.b.run" returns only
+    "c.a.b.run" (the one whose FQN ends with ".a.b.run").
+    """
+    db = _seed_suffix_store(tmp_path, ["a.b.run", "c.a.b.run"])
+    with SQLiteStore(str(db)) as store:
+        result = store.find_nodes_by_suffix("a.b.run")
+    assert [n.id for n in result] == ["c.a.b.run"]
+
+
+def test_find_nodes_by_suffix_dot_boundary(tmp_path: Path) -> None:
+    """Suffix match respects dot boundaries — does not match mid-name."""
+    db = _seed_suffix_store(tmp_path, ["a.b.run", "c.run", "x.dry_run"])
+    with SQLiteStore(str(db)) as store:
+        result = store.find_nodes_by_suffix("run")
+    assert [n.id for n in result] == ["a.b.run", "c.run"]  # NOT x.dry_run
+
+
+def test_find_nodes_by_suffix_escapes_like_wildcards(tmp_path: Path) -> None:
+    """Underscores in FQNs are treated as literals, not LIKE wildcards."""
+    db = _seed_suffix_store(tmp_path, ["a.tv_distance", "a.tvxdistance"])
+    with SQLiteStore(str(db)) as store:
+        result = store.find_nodes_by_suffix("tv_distance")
+    assert [n.id for n in result] == ["a.tv_distance"]  # _ is literal
+
+
+def test_find_nodes_by_suffix_dotted_partial(tmp_path: Path) -> None:
+    """Multi-segment suffix (e.g. triads.tv_distance) resolves correctly."""
+    db = _seed_suffix_store(tmp_path, ["src.cgis.query.triads.tv_distance"])
+    with SQLiteStore(str(db)) as store:
+        result = store.find_nodes_by_suffix("triads.tv_distance")
+    assert [n.id for n in result] == ["src.cgis.query.triads.tv_distance"]
+
+
+def test_find_nodes_by_suffix_orders_and_limits(tmp_path: Path) -> None:
+    """Results are ordered by id and capped at the limit parameter."""
+    db = _seed_suffix_store(tmp_path, [f"m{i}.go" for i in range(5)])
+    with SQLiteStore(str(db)) as store:
+        result = store.find_nodes_by_suffix("go", limit=3)
+    assert [n.id for n in result] == ["m0.go", "m1.go", "m2.go"]
+
+
+def test_find_nodes_by_suffix_no_match_returns_empty(tmp_path: Path) -> None:
+    """No matching suffix returns an empty list."""
+    db = _seed_suffix_store(tmp_path, ["a.b"])
+    with SQLiteStore(str(db)) as store:
+        assert store.find_nodes_by_suffix("zzz") == []
+
+
+def test_find_nodes_by_suffix_closed_store_raises(tmp_path: Path) -> None:
+    """Calling find_nodes_by_suffix on a disconnected store raises RuntimeError."""
+    store = SQLiteStore(str(tmp_path / "closed.db"))
+    with pytest.raises(RuntimeError):
+        store.find_nodes_by_suffix("x")
