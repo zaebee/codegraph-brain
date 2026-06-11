@@ -23,6 +23,21 @@ _RETRY_SUFFIX = (
 )
 
 
+def _sanitize_finder_result(result: ReviewResult) -> ReviewResult:
+    """Reset skeptic-owned fields the finder LLM may have hallucinated.
+
+    ReviewResult doubles as the finder's structured-output schema, so the
+    model sees `skeptic_status` and per-finding `verdict`/`skeptic_note` and
+    sometimes fills them in. A hallucinated `verdict="refuted"` would make
+    visible_findings() silently drop a finder finding — only the skeptic
+    pass may set these.
+    """
+    findings = [
+        f.model_copy(update={"verdict": None, "skeptic_note": None}) for f in result.findings
+    ]
+    return result.model_copy(update={"findings": findings, "skeptic_status": "off"})
+
+
 class GuardianReviewer:
     """Orchestrates the entire review process."""
 
@@ -48,7 +63,7 @@ class GuardianReviewer:
         user_prompt = self.prompt_builder.build_user_prompt(context)
         raw = await self.provider.generate_structured(system_prompt, user_prompt, ReviewResult)
         try:
-            return ReviewResult.model_validate_json(extract_json(raw))
+            return _sanitize_finder_result(ReviewResult.model_validate_json(extract_json(raw)))
         except ValidationError as exc:
             log.warning(
                 "Structured output failed validation; retrying once.",
@@ -57,7 +72,7 @@ class GuardianReviewer:
             retry_prompt = user_prompt + _RETRY_SUFFIX.format(error=exc)
             raw = await self.provider.generate_structured(system_prompt, retry_prompt, ReviewResult)
             try:
-                return ReviewResult.model_validate_json(extract_json(raw))
+                return _sanitize_finder_result(ReviewResult.model_validate_json(extract_json(raw)))
             except ValidationError:
                 log.exception("Structured output failed twice; falling back to raw text.")
                 return ReviewResult(findings=[], summary=raw, parse_failed=True)

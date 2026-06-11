@@ -65,6 +65,7 @@ class ContextCollector:
         self.source_root = source_root
         self.features = features
         self.graph_stats: dict[str, int] = {"total": 0, "with_graph": 0, "flow_fallback": 0}
+        self._diff_cache: str | None = None
 
     def _diff_range(self) -> str:
         """Return the git range argument for diff commands."""
@@ -72,7 +73,14 @@ class ContextCollector:
         return f"{base}...HEAD"
 
     def get_git_diff(self) -> str:
-        """Returns diff between HEAD and the base branch on origin."""
+        """Returns diff between HEAD and the base branch on origin.
+
+        The diff is cached after the first successful call: within one review
+        run it is needed twice (LLM context and inline-comment line index),
+        and the working tree does not change in between.
+        """
+        if self._diff_cache is not None:
+            return self._diff_cache
         try:
             result = subprocess.run(
                 ["git", "diff", self._diff_range()],
@@ -84,7 +92,8 @@ class ContextCollector:
         except subprocess.CalledProcessError as e:
             return f"Error getting git diff: {e.stderr}"
         else:
-            return result.stdout
+            self._diff_cache = result.stdout
+            return self._diff_cache
 
     def get_changed_py_files(self) -> list[str]:
         """Returns relative paths of .py files changed vs the base branch."""
@@ -105,7 +114,7 @@ class ContextCollector:
         file_path = self.project_root / relative_path
         if not file_path.exists():
             return f"Error: File {relative_path} not found."
-        return file_path.read_text()
+        return file_path.read_text(encoding="utf-8")
 
     def collect_full_files(self) -> str:
         """Full HEAD text of changed .py files, smallest-first under budgets (spec §4.1).
@@ -120,8 +129,8 @@ class ContextCollector:
             path = self.project_root / rel_path
             if not path.exists():  # deleted in this PR — nothing to show at HEAD
                 continue
-            text = path.read_text()
-            if text.count("\n") + 1 > _MAX_FILE_LINES:
+            text = path.read_text(encoding="utf-8")
+            if len(text.splitlines()) > _MAX_FILE_LINES:
                 omitted.append(f"file omitted: too large ({rel_path})")
                 continue
             sized.append((len(text), rel_path, text))
@@ -213,6 +222,9 @@ class ContextCollector:
                     ]
         except Exception:
             log.warning("Drift section skipped.", exc_info=True)
+            return ""
+
+        if not reports and not quotient_lines:  # no domains declared — skip the empty table
             return ""
 
         rows = [

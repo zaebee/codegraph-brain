@@ -39,6 +39,16 @@ def tmp_db(tmp_path: Path) -> Path:
     return db
 
 
+def test_get_git_diff_cached_single_subprocess(tmp_path: Path) -> None:
+    """A second get_git_diff() call reuses the cache — one review run needs it twice."""
+    collector = ContextCollector(project_root=tmp_path)
+    completed = subprocess.CompletedProcess(args=["git"], returncode=0, stdout="DIFF", stderr="")
+    with patch("cgis.guardian.collector.subprocess.run", return_value=completed) as mock_run:
+        assert collector.get_git_diff() == "DIFF"
+        assert collector.get_git_diff() == "DIFF"
+    assert mock_run.call_count == 1
+
+
 def test_collect_graph_context_no_db(tmp_path: Path) -> None:
     """When db_path is None, collect_graph_context returns empty string."""
     collector = ContextCollector(project_root=tmp_path, db_path=None)
@@ -190,6 +200,16 @@ def test_collect_full_files_per_file_line_cap(tmp_path: Path) -> None:
     assert "```python" not in result
 
 
+def test_collect_full_files_exact_cap_included(tmp_path: Path) -> None:
+    """A file with exactly _MAX_FILE_LINES lines is included (boundary, not off-by-one)."""
+    (tmp_path / "edge.py").write_text("x = 1\n" * 1200)
+    collector = ContextCollector(project_root=tmp_path, features=frozenset({"full_files"}))
+    with patch.object(collector, "get_changed_py_files", return_value=["edge.py"]):
+        result = collector.collect_full_files()
+    assert "#### `edge.py`" in result
+    assert "file omitted" not in result
+
+
 def test_collect_full_files_global_budget_smallest_first(tmp_path: Path) -> None:
     """The global char budget fills smallest-first; the overflow file gets a note."""
     (tmp_path / "tiny.py").write_text("a = 1\n")
@@ -298,6 +318,28 @@ def test_collect_drift_renders_table(tmp_db: Path, tmp_path: Path) -> None:
         result = collector.collect_drift()
 
     assert "| cgis.query | layered_dag | 0.61 | 0.50 | ⚠ |" in result
+
+
+def test_collect_drift_no_domains_returns_empty(tmp_db: Path, tmp_path: Path) -> None:
+    """patterns.yaml without domain bindings → empty section, not a header-only table."""
+    patterns = tmp_path / "docs" / "ontology" / "patterns.yaml"
+    patterns.parent.mkdir(parents=True)
+    patterns.write_text("patterns: {}\n")
+
+    fake_scorer = MagicMock()
+    fake_scorer.load_project_domains.return_value = []
+    fake_scorer.load_project_level.return_value = []
+
+    collector = ContextCollector(
+        project_root=tmp_path, db_path=tmp_db, features=frozenset({"drift"})
+    )
+    with (
+        patch("cgis.guardian.collector.DriftScorer", return_value=fake_scorer),
+        patch("cgis.guardian.collector.SQLiteStore") as mock_store_cls,
+    ):
+        mock_store_cls.return_value.__enter__ = MagicMock(return_value=MagicMock())
+        mock_store_cls.return_value.__exit__ = MagicMock(return_value=False)
+        assert collector.collect_drift() == ""
 
 
 def test_collect_drift_missing_patterns_returns_empty(tmp_db: Path, tmp_path: Path) -> None:

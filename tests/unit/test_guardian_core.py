@@ -550,6 +550,30 @@ class _StubProvider(BaseProvider):
 
 
 @pytest.mark.asyncio
+async def test_finder_hallucinated_skeptic_fields_are_reset(tmp_path: Path) -> None:
+    """Skeptic-owned fields the finder LLM fills in are wiped (they're in its schema).
+
+    A hallucinated verdict="refuted" would make visible_findings() silently
+    drop a finder finding; skeptic_status="ok" without a skeptic is a lie.
+    Observed in the wild: gemini-3.5-flash bench rows with skeptic off.
+    """
+    hallucinated = (
+        '{"findings": [{"file": "a.py", "line": 1, "severity": "major", "category": "logic",'
+        ' "title": "t", "evidence": "e", "problem": "p", "fix": "f", "confidence": 90,'
+        ' "verdict": "refuted", "skeptic_note": "made up"}],'
+        ' "summary": "s", "skeptic_status": "ok"}'
+    )
+    finder = _StubProvider([hallucinated])
+    collector = ContextCollector(project_root=tmp_path)
+    reviewer = GuardianReviewer(provider=finder, context_collector=collector)
+    with patch.object(collector, "collect_all", return_value={"diff": "d"}):
+        result = await reviewer.run_review()
+    assert result.skeptic_status == "off"
+    assert result.findings[0].verdict is None
+    assert result.findings[0].skeptic_note is None
+
+
+@pytest.mark.asyncio
 async def test_skeptic_pass_merges_verdicts(tmp_path: Path) -> None:
     """With a skeptic provider, verdicts land on findings and status is 'ok'."""
     finder = _StubProvider([_FINDING_JSON])

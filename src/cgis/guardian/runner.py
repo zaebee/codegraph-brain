@@ -1,5 +1,6 @@
 """Testable orchestration for the guardian review script."""
 
+import asyncio
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -130,7 +131,8 @@ async def run_guardian(
     if inline_repo is not None and pr is not None:
         try:
             index = diff_line_index(collector.get_git_diff())
-            post_inline_review(
+            await asyncio.to_thread(  # subprocess `gh api` call — keep the loop responsive
+                post_inline_review,
                 repo=inline_repo,
                 pr=pr,
                 result=result,
@@ -147,6 +149,8 @@ async def run_guardian(
         prompt_tokens=provider.last_usage.prompt_tokens,
         completion_tokens=provider.last_usage.completion_tokens,
         findings_total=len(result.findings),
+        # lgtm counts pre-skeptic findings on purpose: all-refuted is "finder
+        # flagged something, skeptic killed it" — not a clean LGTM.
         lgtm=not result.findings and not result.parse_failed,
         parse_failed=result.parse_failed,
         skeptic_model=skeptic[1] if skeptic else None,
