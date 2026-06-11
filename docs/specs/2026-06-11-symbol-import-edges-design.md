@@ -24,6 +24,15 @@ should too.
 `edge_types.structural` in `docs/ontology/core.yaml` (slice-1 lesson:
 `test_ontology_compliance` gates this).
 
+The ontology `conventions:` block documents `unresolved_call_prefix` but was
+never updated for slice 1's `raw_dep:` — the implementation adds both missing
+prefix conventions (guardian catch on the spec PR):
+
+```yaml
+  unresolved_dep_prefix: "raw_dep:"        # slice 1 backfill — dropped on miss
+  unresolved_import_prefix: "raw_import:"  # this slice — dropped on miss
+```
+
 Why a new type instead of extending `IMPORTS` semantics:
 
 - The drift census (`query/fingerprint.py`) filters explicitly on
@@ -72,7 +81,7 @@ for local_name, sym in symbols:
             type=EdgeType.IMPORTS_SYMBOL,
             source=module_fqn,
             target=f"raw_import:{target_fqn}",
-            confidence=0.5,
+            confidence=0.1,
             file_path=file_path,
         )
     )
