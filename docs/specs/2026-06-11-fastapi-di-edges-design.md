@@ -63,6 +63,10 @@ Three observed failures, mapped to extractor mechanics:
 ### 3.1 Models (`src/cgis/core/models.py`)
 
 - New `EdgeType.DEPENDS_ON = "DEPENDS_ON"` in the Behavioral/Execution group.
+  Distinct from the existing semantic `DOMAIN_DEPENDS_ON` (L3, emitted by the
+  quotient builder between *domain* nodes): `DEPENDS_ON` is code-level DI
+  wiring between functions/aliases. No consumer treats edge types by name
+  pattern, so the similar names cannot collide in queries or Mermaid output.
 - No NodeType changes.
 
 New raw-target prefix constant `RAW_DEP_PREFIX = "raw_dep:"` lives next to the
@@ -75,14 +79,17 @@ existing prefix conventions (see §3.3 for ownership).
 Three new emissions:
 
 **a) Module-level DI alias nodes.** In `_walk`, an `assignment` reached with
-`current_func_node is None` (module level; an assignment inside a class body
-also reaches this branch — its FQN then carries the class prefix via the
-existing `_get_id` mechanics) is scanned for a
-`Depends`/`Security` call anywhere in its RHS (covers both
+`current_func_node is None` **at module level only** (assignments inside class
+bodies are out of scope, §6 — FastAPI DI aliases are module-level by
+convention) is scanned for a
+`Depends`/`Security` call anywhere in its RHS subtree (covers both
 `X = Annotated[User, Depends(fn)]` and `X = Depends(fn)`). When found:
 
-- Emit a `VARIABLE` node: `id = <module_fqn>.<Name>`, `name = <Name>`,
-  `file_path`, `start_line`/`end_line` from the assignment node.
+- Emit a `VARIABLE` node: `id = f"{module_fqn}.{Name}"`, `name = <Name>`,
+  `file_path`, `start_line`/`end_line` from the assignment node. The FQN is
+  built directly from the module FQN plus the LHS identifier — **not** via
+  `_get_id` (that helper reads `child_by_field_name("name")`, which an
+  `assignment` node does not have).
 - For each DI call with at least one positional argument, emit
   `alias —DEPENDS_ON→ raw_call:<arg>` where `<arg>` is the first positional
   argument's identifier or dotted name (`resolve_owner`,
@@ -93,25 +100,34 @@ existing `_get_id` mechanics) is scanned for a
 
 Assignments whose RHS contains no DI call are skipped exactly as today.
 
-**b) Direct DI in parameters.** Inside a function definition's parameter list:
+**b) Direct DI in parameters — a single hook in `_process_call_node`.**
+`_walk` already recurses into every child subtree with `current_func_node`
+set, so any `Depends(fn)`/`Security(fn)` call inside a parameter default
+(`param = Depends(fn)`), inside an `Annotated[...]` subscript, or under
+further wrappers (`Annotated[X, Depends(fn)] | None`) reaches
+`_process_call_node` as an ordinary `call` node. The implementation is one
+addition there: when the callee identifier is in `_DI_CALL_NAMES`,
+additionally emit `func —DEPENDS_ON→ raw_call:<first positional arg>` (same
+name-extraction rules as §3.2a; no edge for argless or non-name arguments).
+No separate annotation-walking code — subtree robustness comes from the
+existing recursion.
 
-- `param = Depends(fn)` / `param = Security(fn)` (default value) →
-  `func —DEPENDS_ON→ raw_call:<fn>`.
-- `param: Annotated[X, Depends(fn)]` (call inside the `Annotated` subscript)
-  → `func —DEPENDS_ON→ raw_call:<fn>`.
-
-Both resolve through the standard `raw_call:` path (import map → global
+The edge resolves through the standard `raw_call:` path (import map → global
 symbols). `Depends(SomeClass)` is valid — the edge lands on a CLASS node.
-Note: today these `Depends(...)` calls already emit
-`func —CALLS→ raw_call:Depends` edges via `_process_call_node`; those keep
-being emitted unchanged (Depends is an external symbol, resolved with the
-usual external classification). The DEPENDS_ON edge is *additional* signal.
+Today these calls already emit `func —CALLS→ raw_call:Depends` via the same
+hook; that edge keeps being emitted unchanged (external classification), the
+DEPENDS_ON edge is *additional* signal. At module level `_process_call_node`
+is gated on `current_func_node`, so alias RHS calls do not double-fire —
+§3.2a is the sole emitter there.
 
 **c) Annotation candidates (approach A).** For every
 `typed_parameter` / `typed_default_parameter` whose cleaned annotation
 (`_clean_python_type_string` output) is a plain or dotted name — i.e. the
 existing `_collect_param_type` path — additionally emit
 `func —DEPENDS_ON→ raw_dep:<TypeName>` with `confidence=0.1` (candidate).
+This requires threading the `edges` list into `_collect_param_type` (its
+current signature has no `edges` parameter) or emitting from the calling
+`_walk` branch — an explicit signature change, not a drive-by.
 No filtering at the extractor: builtins, classes, externals all emit
 candidates; the resolver drops everything that is not a DI alias. When the
 parameter also matched case (b) (an explicit `Depends` inside its
@@ -140,12 +156,20 @@ will resolve to a CLASS/external and be dropped; no dedup logic needed.
   4. **Resolved to a VARIABLE node** → append edge with
      `target=<alias FQN>, confidence=1.0`.
   5. **Anything else** (unresolved, or resolved to non-VARIABLE) → the edge is
-     **dropped entirely** — it was an ordinary type annotation, not DI.
+     **dropped entirely** via an explicit `continue` — the literal
+     `raw_dep:...` target must never leak into the resolved edge set (it was
+     an ordinary type annotation, not DI).
 
   This drop policy intentionally differs from `raw_call:` (which keeps
   unresolved targets at low confidence): `raw_dep:` candidates are speculative
   by construction, and keeping them would flood the graph with one junk edge
   per typed parameter.
+
+  Cost note: candidates add O(typed-params) transient edges and index lookups
+  to the resolve pass (on a 10K-node FastAPI codebase: thousands of
+  candidates, nearly all dropped). Each lookup is two dict probes — expected
+  overhead is negligible next to extraction; the §7 live re-run will confirm
+  at real scale.
 
 ### 3.4 Query / MCP / storage / pipeline
 
@@ -193,13 +217,19 @@ All on real fixtures (project convention; no mocked stores).
   - `Depends()` argless → node, no edge;
   - param default `= Depends(fn)` → direct DEPENDS_ON;
   - param `Annotated[X, Depends(fn)]` → direct DEPENDS_ON;
+  - wrapped annotation `Annotated[X, Depends(fn)] | None` → direct DEPENDS_ON
+    (subtree recursion robustness);
   - typed param → `raw_dep:` candidate edge with confidence 0.1;
-  - tuple-target assignment with Depends in RHS → skipped.
+  - tuple-target assignment with Depends in RHS → skipped;
+  - class-body assignment with Depends in RHS → no node, no edge (out of
+    scope, §6).
 - `tests/unit/test_resolver.py` (extend):
   - `raw_dep:` → VARIABLE node (same file, no import) → kept, confidence 1.0;
   - `raw_dep:` cross-file via import map → kept;
   - `raw_dep:` resolves to CLASS → dropped;
   - `raw_dep:` unresolved → dropped;
+  - negative assertion: no `raw_dep:`-prefixed target ever appears in the
+    resolved edge set;
   - existing `raw_call:` behavior unchanged (regression guard).
 - **Acceptance test (the issue's check, end-to-end)**: fixture replicating
   `owner.py` + `routes.py` (2 providers, 2 aliases, 4 endpoints) ingested
@@ -223,6 +253,8 @@ make doc-coverage` (mypy strict, interrogate ≥90%).
 - Callable-instance dependencies (`__call__` objects), generator dependencies.
 - Non-FastAPI DI frameworks; configurable DI-name list.
 - Indexing non-DI module-level assignments (constants, plain type aliases).
+- DI aliases defined inside class bodies (FastAPI aliases are module-level by
+  convention; class-body assignments stay invisible as today).
 
 ## 7. Acceptance (live)
 
