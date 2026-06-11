@@ -634,6 +634,39 @@ class PythonExtractor(BaseExtractor):
                     line_number=node.start_point.row + 1,
                 )
             )
+            if call_name in self._DI_CALL_NAMES:
+                provider = self._di_provider_name(node, code_bytes)
+                if provider:
+                    edges.append(
+                        Edge(
+                            id=f"{file_path}:dep_{node.start_byte}_{node.end_byte}",
+                            type=EdgeType.DEPENDS_ON,
+                            source=source_id,
+                            target=f"raw_call:{provider}",
+                            confidence=0.5,
+                            context=f"DI dependency on {provider}",
+                            file_path=file_path,
+                            line_number=node.start_point.row + 1,
+                        )
+                    )
+
+    def _di_provider_name(self, call_node: BaseNode, code_bytes: bytes) -> str | None:
+        """Return the first positional argument's identifier/dotted name, or None.
+
+        None for argless calls, keyword-only calls, and non-name arguments
+        (lambdas, calls, subscripts) — those emit no DEPENDS_ON edge (spec §3.2a/b).
+        """
+        args = call_node.child_by_field_name("arguments")
+        if not args:
+            return None
+        for child in args.named_children:
+            if child.type == "keyword_argument":
+                continue
+            if child.type in ("identifier", "attribute"):
+                name = self._get_identifier(child, code_bytes)
+                return name if name != "unknown" else None
+            return None
+        return None
 
     def _resolve_type_fqn(
         self,
@@ -715,6 +748,7 @@ class PythonExtractor(BaseExtractor):
         )
 
     _GENERIC_WRAPPERS: frozenset[str] = frozenset({"Optional", "Union"})
+    _DI_CALL_NAMES: frozenset[str] = frozenset({"Depends", "Security"})
 
     def _clean_python_type_string(self, type_str: str) -> str:
         """

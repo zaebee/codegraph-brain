@@ -354,3 +354,99 @@ def test_python_extractor_source_roots_unmatched_root() -> None:
 def test_file_path_to_module_fqn_dot_slash_source_root() -> None:
     """CI ingests with `./src` — the ./ prefix must not defeat root stripping."""
     assert file_path_to_module_fqn("src/cgis/pipeline.py", "./src") == "cgis.pipeline"
+
+
+def test_depends_in_param_default_emits_depends_on(extractor: PythonExtractor) -> None:
+    code = """
+from fastapi import Depends
+
+def get_db():
+    pass
+
+def handler(db = Depends(get_db)):
+    pass
+"""
+    _nodes, edges = extractor.parse(code, "api.py")
+
+    dep_edges = [e for e in edges if e.type == EdgeType.DEPENDS_ON]
+    assert len(dep_edges) == 1
+    assert dep_edges[0].source == "api.handler"
+    assert dep_edges[0].target == "raw_call:get_db"
+    # The plain CALLS edge to Depends itself is unchanged (regression guard)
+    assert any(e.type == EdgeType.CALLS and e.target == "raw_call:Depends" for e in edges)
+
+
+def test_depends_inside_annotated_emits_depends_on(extractor: PythonExtractor) -> None:
+    code = """
+from typing import Annotated
+from fastapi import Depends
+
+def resolve_owner():
+    pass
+
+def handler(owner: Annotated[object, Depends(resolve_owner)]):
+    pass
+"""
+    _nodes, edges = extractor.parse(code, "api.py")
+
+    dep_edges = [e for e in edges if e.type == EdgeType.DEPENDS_ON]
+    assert any(
+        e.source == "api.handler" and e.target == "raw_call:resolve_owner" for e in dep_edges
+    )
+
+
+def test_depends_under_union_wrapper_emits_depends_on(extractor: PythonExtractor) -> None:
+    code = """
+from typing import Annotated
+from fastapi import Depends
+
+def resolve_owner():
+    pass
+
+def handler(owner: Annotated[object, Depends(resolve_owner)] | None = None):
+    pass
+"""
+    _nodes, edges = extractor.parse(code, "api.py")
+
+    assert any(
+        e.type == EdgeType.DEPENDS_ON and e.target == "raw_call:resolve_owner" for e in edges
+    )
+
+
+def test_security_call_emits_depends_on(extractor: PythonExtractor) -> None:
+    code = """
+from fastapi import Security
+
+def get_scopes():
+    pass
+
+def handler(scopes = Security(get_scopes)):
+    pass
+"""
+    _nodes, edges = extractor.parse(code, "api.py")
+
+    assert any(e.type == EdgeType.DEPENDS_ON and e.target == "raw_call:get_scopes" for e in edges)
+
+
+def test_argless_depends_emits_no_depends_on(extractor: PythonExtractor) -> None:
+    code = """
+from fastapi import Depends
+
+def handler(db = Depends()):
+    pass
+"""
+    _nodes, edges = extractor.parse(code, "api.py")
+
+    assert not any(e.type == EdgeType.DEPENDS_ON for e in edges)
+
+
+def test_depends_with_lambda_arg_emits_no_depends_on(extractor: PythonExtractor) -> None:
+    code = """
+from fastapi import Depends
+
+def handler(db = Depends(lambda: None)):
+    pass
+"""
+    _nodes, edges = extractor.parse(code, "api.py")
+
+    assert not any(e.type == EdgeType.DEPENDS_ON for e in edges)
