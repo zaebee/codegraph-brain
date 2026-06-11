@@ -280,3 +280,12 @@ def test_build_chunks_deterministic(tmp_path: Path) -> None:
     )
     diff = fdiff("src/cgis/c.py") + fdiff("src/cgis/a.py") + fdiff("src/cgis/b.py")
     assert build_chunks(diff, store) == build_chunks(diff, store)
+
+
+def test_split_duplicate_path_blocks_merged() -> None:
+    """Two blocks for the same path merge losslessly instead of silently overwriting."""
+    diff = fdiff("src/cgis/a.py") + fdiff("src/cgis/a.py", "+y = 2")
+    blocks = split_diff_by_file(diff)
+    assert set(blocks) == {"src/cgis/a.py"}
+    assert "+x = 1" in blocks["src/cgis/a.py"]
+    assert "+y = 2" in blocks["src/cgis/a.py"]

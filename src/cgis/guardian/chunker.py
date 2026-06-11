@@ -63,7 +63,12 @@ def split_diff_by_file(diff_text: str) -> dict[str, str]:
         if path is None:
             log.warning("Diff block without parsable path skipped.", head=current[0])
         else:
-            blocks[path] = "\n".join(current) + "\n"
+            block = "\n".join(current) + "\n"
+            if path in blocks:
+                log.warning("Duplicate diff block for path; merging.", path=path)
+                blocks[path] += block
+            else:
+                blocks[path] = block
         current.clear()
 
     for line in diff_text.splitlines():
@@ -166,9 +171,12 @@ def _test_pairs(files: list[str]) -> list[tuple[str, str]]:
     """Pair each changed tests/**/test_X.py with its unique implementation file.
 
     Candidate = changed non-test .py whose path normalized to underscores
-    (src/cgis/guardian/core.py → src_cgis_guardian_core) equals X or ends
-    with "_X" — a bare suffix match would let test_index.py capture
-    diff_index.py. Zero or several candidates → the test stays isolated.
+    (src/cgis/guardian/core.py -> src_cgis_guardian_core) equals X or ends
+    with "_X". The underscore boundary stops cross-word bleed (test_core.py
+    must not capture score.py); same-suffix module names can still collide
+    (test_index.py would match diff_index.py) — accepted per spec §4.2.5,
+    and the unique-candidate rule below limits the blast radius. Zero or
+    several candidates -> the test stays isolated.
     """
     impl = [f for f in files if f.endswith(".py") and not _TEST_FILE_RE.match(f)]
     norm = {f: f.removesuffix(".py").replace("/", "_") for f in impl}
