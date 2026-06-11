@@ -21,8 +21,8 @@ from pathlib import Path
 import structlog
 
 from cgis.guardian.bench import GroundTruth, load_ground_truth, match_findings, score
+from cgis.guardian.chunked import run_review_routed
 from cgis.guardian.collector import ContextCollector, parse_features
-from cgis.guardian.core import GuardianReviewer
 from cgis.guardian.providers.mistral import MistralProvider
 from cgis.guardian.runner import build_provider, build_skeptic_provider
 from cgis.guardian.skeptic import visible_findings
@@ -95,12 +95,12 @@ async def _run_one(truth: GroundTruth, run_idx: int, results_path: Path) -> None
                 base_ref=truth.base,
                 features=features,
             )
-            reviewer = GuardianReviewer(
+            routed = await run_review_routed(
                 provider=provider,
-                context_collector=collector,
+                collector=collector,
                 skeptic_provider=skeptic[0] if skeptic else None,
             )
-            result = await reviewer.run_review()
+            result = routed.result
         finally:
             _git("worktree", "remove", "--force", str(worktree))
 
@@ -121,8 +121,9 @@ async def _run_one(truth: GroundTruth, run_idx: int, results_path: Path) -> None
         "matched": matches.matched,
         "missed": matches.missed,
         "ambiguous_hits": matches.ambiguous_hits,
-        "prompt_tokens": provider.last_usage.prompt_tokens,
-        "completion_tokens": provider.last_usage.completion_tokens,
+        "prompt_tokens": provider.cumulative_usage.prompt_tokens,
+        "completion_tokens": provider.cumulative_usage.completion_tokens,
+        "chunks": routed.chunk_count,
         "skeptic_model": skeptic[1] if skeptic else None,
         "skeptic_status": result.skeptic_status,
         "findings": [f.model_dump() for f in result.findings],
