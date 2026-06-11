@@ -28,7 +28,16 @@ def _block_path(lines: list[str]) -> str | None:
             old = None if m.group(1) == "/dev/null" else m.group(1)
         elif new is None and (m := _NEW_FILE_RE.match(line)):
             new = None if m.group(1) == "/dev/null" else m.group(1)
-    return new or old
+    return new or old or _git_header_path(lines[0])
+
+
+def _git_header_path(header: str) -> str | None:
+    """Fallback for blocks without ---/+++ headers (binary, mode-only): b/ side."""
+    marker = " b/"
+    idx = header.rfind(marker)
+    if idx == -1:
+        return None
+    return header[idx + len(marker) :] or None
 
 
 def split_diff_by_file(diff_text: str) -> dict[str, str]:
