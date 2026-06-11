@@ -716,3 +716,39 @@ def test_drift_missing_patterns_exits_1(tmp_path: Path) -> None:
         store.save_graph([], [], overwrite=True)
     result = runner.invoke(app, ["drift", "--db", db_path, "--patterns", "no_such.yaml"])
     assert result.exit_code == 1
+
+
+def test_drift_json_shape_unchanged(tmp_path: Path) -> None:
+    """The --format json payload stays a flat list of report dicts."""
+    db = str(tmp_path / "g.db")
+    with SQLiteStore(db) as store:
+        store.save_graph(
+            [
+                Node(
+                    id="cgis.extractors.a",
+                    type=NodeType.FUNCTION,
+                    name="a",
+                    file_path="a.py",
+                    start_line=1,
+                    end_line=2,
+                )
+            ],
+            [],
+        )
+    patterns = tmp_path / "patterns.yaml"
+    patterns.write_text(
+        'version: "1.0.0"\n'
+        "drift_weights:\n  cycle_ratio: 1.0\n"
+        "patterns:\n  pure_utility:\n    description: x\n"
+        "    cycle_ratio: {max: 0.0}\n"
+        "project_domains:\n"
+        '  - name: extraction\n    fqn_prefix: "cgis.extractors"\n'
+        "    expected_pattern: pure_utility\n    drift_tolerance: 0.15\n"
+    )
+    result = runner.invoke(
+        app, ["drift", "--db", db, "--patterns", str(patterns), "--format", "json"]
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert isinstance(payload, list)
+    assert payload[0]["fqn_prefix"] == "cgis.extractors"
