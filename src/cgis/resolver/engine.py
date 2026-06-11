@@ -1,8 +1,7 @@
 """Implements ResolverEngine class."""
 
 from cgis.core.models import VIRTUAL_FILE_PATH, Edge, Node, NodeNamespace, NodeType
-from cgis.resolver.indices import _RAW_CLASS_PREFIX, _SELF_PREFIX, IndexBuilder
-from cgis.resolver.symbols import SymbolResolver
+from cgis.resolver.symbols import _RAW_CLASS_PREFIX, _SELF_PREFIX, IndexBuilder, SymbolResolver
 
 RAW_DEP_PREFIX = "raw_dep:"
 

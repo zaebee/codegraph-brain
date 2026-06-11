@@ -182,7 +182,6 @@ _KNOWN_GOD_OBJECTS = frozenset(
         "storage.sqlite_store.SQLiteStore",  # data-access layer — many CRUD methods by design
         "extractors.python_extractor.PythonExtractor",  # complex AST visitor
         "extractors.typescript_extractor.TypeScriptExtractor",  # complex AST visitor
-        "resolver.engine.ResolverEngine",  # multi-pass symbol resolution
         "query.drift.DriftScorer",  # drift scoring — multiple constraint/weight/param operations
         "guardian.collector.ContextCollector",  # slice-2 chunked: _graph_sections + collect_for_chunk  # noqa: E501
     }

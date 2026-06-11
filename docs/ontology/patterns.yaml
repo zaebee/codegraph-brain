@@ -102,7 +102,7 @@ project_domains:
     fqn_prefix: "cgis.resolver"
     expected_pattern: pipeline_stage
     profile: python
-    drift_tolerance: 0.40 # v2 measured ≈0.35 (tv_calls .65; IMPORTS layer empty → excluded)
+    drift_tolerance: 0.40 # v2 measured ≈0.25 post-#115 split (IMPORTS layer now 021C chain: engine→symbols→indices)
 
   - name: "pipeline"
     fqn_prefix: "cgis.pipeline"
