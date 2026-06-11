@@ -6,6 +6,9 @@ Slice 1 of #154: pure logic, no LLM calls; not wired into the review loop yet.
 import re
 
 import structlog
+from pydantic import BaseModel
+
+from cgis.storage.sqlite_store import SQLiteStore
 
 log = structlog.getLogger(__name__)
 
@@ -68,3 +71,59 @@ def split_diff_by_file(diff_text: str) -> dict[str, str]:
         current.append(line)
     _flush()
     return blocks
+
+
+class Chunk(BaseModel, frozen=True):
+    """One connected group of changed files and its slice of the diff."""
+
+    files: tuple[str, ...]
+    diff: str
+
+
+def build_chunks(
+    diff_text: str,
+    store: SQLiteStore | None,
+    source_root: str = "",
+) -> list[Chunk]:
+    """Group changed files into connected-component chunks via IMPORTS/CALLS.
+
+    Degrades honestly: no store / file absent from the graph / store errors →
+    isolated single-file chunks, never worse than the unchunked status quo.
+    Deterministic: files sorted inside a chunk, chunks sorted by first file.
+    """
+    blocks = split_diff_by_file(diff_text)
+    if not blocks:
+        return []
+    files = sorted(blocks)
+    parent: dict[str, str] = {f: f for f in files}
+
+    def find(x: str) -> str:
+        """Find root of union-find tree with path halving."""
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]  # path halving
+            x = parent[x]
+        return x
+
+    def union(a: str, b: str) -> None:
+        """Merge two sets in the union-find structure."""
+        parent[find(a)] = find(b)
+
+    for a, b in _graph_pairs(store, set(files), source_root):
+        union(a, b)
+
+    groups: dict[str, list[str]] = {}
+    for f in files:  # files is sorted → each group list is sorted
+        groups.setdefault(find(f), []).append(f)
+    return [
+        Chunk(files=tuple(group), diff="".join(blocks[f] for f in group))
+        for group in sorted(groups.values())
+    ]
+
+
+def _graph_pairs(
+    store: SQLiteStore | None,  # noqa: ARG001
+    changed: set[str],  # noqa: ARG001
+    source_root: str,  # noqa: ARG001
+) -> list[tuple[str, str]]:
+    """File pairs joined by an IMPORTS/CALLS edge with both endpoints changed."""
+    return []  # graph connectivity lands in the next task

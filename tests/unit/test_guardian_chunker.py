@@ -1,6 +1,9 @@
 """Unit tests for the guardian chunker (spec: 2026-06-11-guardian-chunker-design.md)."""
 
-from cgis.guardian.chunker import split_diff_by_file
+import pytest
+from pydantic import ValidationError
+
+from cgis.guardian.chunker import Chunk, build_chunks, split_diff_by_file
 
 
 def fdiff(path: str, body: str = "+x = 1") -> str:
@@ -71,3 +74,23 @@ def test_split_binary_block_keyed_via_git_header() -> None:
 def test_split_unparsable_block_skipped() -> None:
     """A block with no parsable path is skipped (logged), never raised on (spec §5)."""
     assert split_diff_by_file("diff --git\ngarbage\n") == {}
+
+
+def test_build_chunks_no_store_isolated() -> None:
+    """store=None → every file is its own chunk, sorted by path."""
+    diff = fdiff("src/cgis/b.py") + fdiff("src/cgis/a.py")
+    chunks = build_chunks(diff, store=None)
+    assert [c.files for c in chunks] == [("src/cgis/a.py",), ("src/cgis/b.py",)]
+    assert "+x = 1" in chunks[0].diff
+
+
+def test_build_chunks_empty_diff() -> None:
+    """Empty diff → no chunks."""
+    assert build_chunks("", store=None) == []
+
+
+def test_chunk_is_frozen() -> None:
+    """Chunk follows the project's immutable-model convention."""
+    chunk = Chunk(files=("a.py",), diff="d")
+    with pytest.raises(ValidationError):
+        chunk.diff = "x"  # type: ignore[misc]
