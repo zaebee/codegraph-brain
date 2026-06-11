@@ -6,6 +6,7 @@ from pathlib import Path
 import structlog
 
 from cgis.extractors.python_extractor import file_path_to_module_fqn
+from cgis.guardian.chunker import Chunk
 from cgis.query.drift import DriftScorer
 from cgis.query.engine import QueryEngine
 from cgis.query.fingerprint import FingerprintExtractor
@@ -15,7 +16,7 @@ from cgis.storage.sqlite_store import SQLiteStore
 
 log = structlog.getLogger(__name__)
 
-VALID_FEATURES = frozenset({"full_files", "flow", "drift"})
+VALID_FEATURES = frozenset({"full_files", "flow", "drift", "chunked"})
 
 _MAX_FILE_LINES = 1200
 _MAX_TOTAL_CHARS = 120_000
@@ -116,13 +117,14 @@ class ContextCollector:
             return f"Error: File {relative_path} not found."
         return file_path.read_text(encoding="utf-8")
 
-    def collect_full_files(self) -> str:
-        """Full HEAD text of changed .py files, smallest-first under budgets (spec §4.1).
+    def collect_full_files(self, files: list[str] | None = None) -> str:
+        """Full HEAD text of given (default: changed) .py files, smallest-first under budgets.
 
         Per-file cap ~1200 lines and a global ~120K-char budget; omitted files get
         an explicit note so the model never reads absence-of-file as absence-of-code.
+        In chunked mode the budget applies per chunk (spec §4.2).
         """
-        changed = self.get_changed_py_files()
+        changed = files if files is not None else self.get_changed_py_files()
         sized: list[tuple[int, str, str]] = []
         omitted: list[str] = []
         for rel_path in changed:
@@ -145,47 +147,53 @@ class ContextCollector:
             sections.append(f"#### `{rel_path}`\n```python\n{text}\n```")
         return "\n\n".join(sections + omitted)
 
-    def collect_graph_context(self) -> str:
-        """Query graph.db for impact graphs of changed files; return Mermaid blocks."""
-        if self.db_path is None or not self.db_path.exists():
-            return ""
+    def _graph_sections(
+        self, changed_files: list[str], *, flow: bool
+    ) -> tuple[list[str], dict[str, int]]:
+        """Impact-graph Mermaid sections + local stats for the given files.
 
-        changed_files = self.get_changed_py_files()
-        if not changed_files:
-            return ""
-
+        Pure with respect to self.graph_stats — callers decide whether to
+        overwrite (global path) or accumulate (per-chunk path).
+        """
+        stats = {"total": 0, "with_graph": 0, "flow_fallback": 0}
+        if self.db_path is None or not self.db_path.exists() or not changed_files:
+            return [], stats
+        stats["total"] = len(changed_files)
         compiler = MermaidCompiler()
         sections: list[str] = []
-        total_changed = len(changed_files)
-        flow_fallbacks = 0
-
         with SQLiteStore(str(self.db_path)) as store:
             engine = QueryEngine(store)
             for rel_path in changed_files:
                 module_fqn = file_path_to_module_fqn(rel_path, self.source_root)
                 nodes, edges = engine.get_impact_graph(module_fqn, max_depth=2)
                 title = "Impact graph"
-                if not nodes and "flow" in self.features:
+                if not nodes and flow:
                     # New file: nothing references it yet (#94) — show what it calls.
                     nodes, edges = engine.get_flow_graph(module_fqn, max_depth=2)
                     title = "Dependency graph (outbound)"
                     if nodes:
-                        flow_fallbacks += 1
+                        stats["flow_fallback"] += 1
                 if not nodes:
                     log.debug("No impact graph for module", fqn=module_fqn)
                     continue
                 mermaid = compiler.compile(nodes, edges)
                 sections.append(f"#### {title} for `{module_fqn}`:\n```mermaid\n{mermaid}\n```")
+        stats["with_graph"] = len(sections)
+        return sections, stats
 
-        self.graph_stats = {
-            "total": total_changed,
-            "with_graph": len(sections),
-            "flow_fallback": flow_fallbacks,
-        }
-        if total_changed > 0 and len(sections) == 0:
+    def collect_graph_context(self) -> str:
+        """Query graph.db for impact graphs of changed files; return Mermaid blocks."""
+        if self.db_path is None or not self.db_path.exists():
+            return ""
+        changed_files = self.get_changed_py_files()
+        if not changed_files:
+            return ""
+        sections, stats = self._graph_sections(changed_files, flow="flow" in self.features)
+        self.graph_stats = stats
+        if stats["total"] > 0 and stats["with_graph"] == 0:
             log.warning(
                 "No graph context found for any changed file.",
-                changed_files=total_changed,
+                changed_files=stats["total"],
                 project_root=str(self.project_root),
             )
         return "\n\n".join(sections)
@@ -256,4 +264,27 @@ class ContextCollector:
             drift = self.collect_drift()
             if drift:
                 context["drift"] = drift
+        return context
+
+    def collect_for_chunk(self, chunk: Chunk) -> dict[str, str]:
+        """Per-chunk context: the chunk's diff, full files, and impact graphs (spec §4.2).
+
+        chunked implies per-chunk full_files, graph context, AND the flow
+        fallback — each chunk gets a small, complete world. graph_stats
+        ACCUMULATE across chunks so the footer coverage stays truthful.
+        """
+        py_files = [f for f in chunk.files if f.endswith(".py")]
+        context: dict[str, str] = {
+            "diff": chunk.diff,
+            "contributing": self.read_file("CONTRIBUTING.md"),
+            "ontology": self.read_file("docs/ontology/core.yaml"),
+        }
+        sections, stats = self._graph_sections(py_files, flow=True)
+        for key, value in stats.items():
+            self.graph_stats[key] = self.graph_stats.get(key, 0) + value
+        if sections:
+            context["graph_context"] = "\n\n".join(sections)
+        full_files = self.collect_full_files(py_files)
+        if full_files:
+            context["full_files"] = full_files
         return context
