@@ -183,16 +183,9 @@ class ResolverEngine:
                 continue
 
             if edge.target.startswith(RAW_DEP_PREFIX):
-                dep_name = edge.target.removeprefix(RAW_DEP_PREFIX)
-                dep_target = self._resolve_dep_candidate(dep_name, edge.source, edge.file_path)
-                if dep_target is None:
-                    # Speculative candidate that is not a DI alias: drop the
-                    # edge entirely — raw_dep: must never leak into output
-                    # (spec §3.3).
-                    continue
-                resolved_edges.append(
-                    edge.model_copy(update={"target": dep_target, "confidence": 1.0})
-                )
+                dep_edge = self._resolved_dep_edge(edge)
+                if dep_edge is not None:
+                    resolved_edges.append(dep_edge)
                 continue
 
             if not edge.target.startswith("raw_call:"):
@@ -330,6 +323,16 @@ class ResolverEngine:
 
         return self._resolve_via_global_symbols(name, file_path)
 
+    def _resolved_dep_edge(self, edge: Edge) -> Edge | None:
+        """Resolve a raw_dep: candidate edge, or None when it must be dropped (spec §3.3)."""
+        dep_name = edge.target.removeprefix(RAW_DEP_PREFIX)
+        dep_target = self._resolve_dep_candidate(dep_name, edge.source, edge.file_path)
+        if dep_target is None:
+            # Speculative candidate that is not a DI alias: drop the edge
+            # entirely — raw_dep: must never leak into output (spec §3.3).
+            return None
+        return edge.model_copy(update={"target": dep_target, "confidence": 1.0})
+
     def _resolve_dep_candidate(
         self, name: str, source_fqn: str, edge_file_path: str | None
     ) -> str | None:
@@ -340,12 +343,18 @@ class ResolverEngine:
         is not an existing VARIABLE node — the caller drops the edge.
         A globally-unique match is accepted even when the name is not importable
         in the consuming file — matching _resolve_global_call's behavior.
+
+        When ``name`` is present in the file's import map, the import is
+        authoritative: return the hit only if it is a VARIABLE node, otherwise
+        return ``None`` immediately — never fall through to the global
+        ``_variable_symbols`` index.  This prevents an explicitly imported
+        class from being shadowed by a same-named DI alias in another module.
         """
         file_path = self._get_normalized_file_path(source_fqn, edge_file_path)
         if file_path:
             via_import = self._resolve_via_import_map(name, file_path)
-            if via_import and self._is_variable_node(via_import):
-                return via_import
+            if via_import:
+                return via_import if self._is_variable_node(via_import) else None
         candidates = self._variable_symbols.get(name, [])
         if len(candidates) == 1:
             return candidates[0]

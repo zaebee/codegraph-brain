@@ -1055,7 +1055,7 @@ def test_raw_dep_resolves_to_same_file_variable() -> None:
 
     assert len(resolved) == 1
     assert resolved[0].target == "deps.ResolvedOwnerDep"
-    assert resolved[0].confidence == 1.0
+    assert resolved[0].confidence == pytest.approx(1.0)
 
 
 def test_raw_dep_resolves_cross_file_via_import_map() -> None:
@@ -1122,6 +1122,28 @@ def test_raw_dep_ambiguous_across_files_is_dropped() -> None:
         _alias_node("other.OwnerDep", "other.py"),
     ]
     edges = [_raw_dep_edge("routes.get_vehicle", "OwnerDep", "routes.py")]
+
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+
+    assert resolved == []
+
+
+def test_raw_dep_explicit_import_shadows_global_alias() -> None:
+    """An explicitly imported non-VARIABLE name never falls back to a same-named alias elsewhere."""
+    nodes = [
+        _file_node("routes.py", {"User": "models.User"}),
+        _func_node("routes.get_vehicle", "routes.py"),
+        Node(
+            id="models.User",
+            type=NodeType.CLASS,
+            name="User",
+            file_path="models.py",
+            start_line=1,
+            end_line=5,
+        ),
+        _alias_node("other.User", "other.py"),
+    ]
+    edges = [_raw_dep_edge("routes.get_vehicle", "User", "routes.py")]
 
     resolved, _ = ResolverEngine(nodes, edges).resolve()
 
