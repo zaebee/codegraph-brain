@@ -82,3 +82,22 @@ def test_multiple_files_and_hunks() -> None:
     """Two files in one diff each get their own line set."""
     index = diff_line_index(_SIMPLE + _NEW_FILE)
     assert set(index) == {"src/x.py", "brand.py"}
+
+
+def test_plus_plus_plus_content_line_inside_hunk() -> None:
+    """An added line whose content starts with `++ ` is NOT a file header.
+
+    Inside a hunk, `+++ b/x` is added content (e.g. a diff quoted in a
+    markdown file). Misreading it as a header dropped the rest of the file
+    and shifted line numbers. Fix suggested by review on PR #156.
+    """
+    diff = (
+        "diff --git a/notes.md b/notes.md\n"
+        "--- a/notes.md\n"
+        "+++ b/notes.md\n"
+        "@@ -0,0 +1,3 @@\n"
+        "+first\n"
+        "+++ b/inner.py\n"
+        "+third\n"
+    )
+    assert diff_line_index(diff) == {"notes.md": {1, 2, 3}}

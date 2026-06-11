@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from guardian_stubs import FINDING_JSON, StubProvider
 from pydantic import BaseModel
 
 from cgis.guardian.collector import ContextCollector
@@ -175,41 +176,11 @@ async def test_run_guardian_smoke(tmp_path: Path) -> None:
 # Inline review path tests (spec §6.5, §8)
 # ---------------------------------------------------------------------------
 
-_CANNED = (
-    '{"findings": [{"file": "a.py", "line": 1, "severity": "major", "category": "logic",'
-    ' "title": "t", "evidence": "e", "problem": "p", "fix": "f", "confidence": 90}],'
-    ' "summary": "s"}'
-)
-
-
-class _StubProvider(BaseProvider):
-    """Returns canned JSON per call; records prompts."""
-
-    def __init__(self, responses: list[str]) -> None:
-        """Store canned responses and initialise prompt log."""
-        super().__init__()
-        self._responses = list(responses)
-        self.prompts: list[str] = []
-
-    async def generate_content(self, system_prompt: str, user_prompt: str) -> str:
-        """Not used in these tests."""
-        raise NotImplementedError
-
-    async def generate_structured(
-        self,
-        system_prompt: str,  # noqa: ARG002
-        user_prompt: str,
-        schema: type[BaseModel],  # noqa: ARG002
-    ) -> str:
-        """Record the prompt and return the next canned response."""
-        self.prompts.append(user_prompt)
-        return self._responses.pop(0)
-
 
 @pytest.mark.asyncio
 async def test_run_guardian_posts_inline_and_reports_success(tmp_path: Path) -> None:
     """Smoke test (spec §8): canned JSON → ReviewResult → inline post; posted=True."""
-    provider = _StubProvider([_CANNED])
+    provider = StubProvider([FINDING_JSON])
     collector = ContextCollector(project_root=tmp_path)
     with (
         patch.object(collector, "collect_all", return_value={"diff": "d"}),
@@ -236,7 +207,7 @@ async def test_run_guardian_posts_inline_and_reports_success(tmp_path: Path) -> 
 @pytest.mark.asyncio
 async def test_run_guardian_inline_failure_falls_back(tmp_path: Path) -> None:
     """API rejection → posted=False, report intact (peter-evans fallback, spec §6.5)."""
-    provider = _StubProvider([_CANNED])
+    provider = StubProvider([FINDING_JSON])
     collector = ContextCollector(project_root=tmp_path)
     with (
         patch.object(collector, "collect_all", return_value={"diff": "d"}),
@@ -261,7 +232,7 @@ async def test_run_guardian_inline_failure_falls_back(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_run_guardian_no_inline_repo_skips_posting(tmp_path: Path) -> None:
     """inline_repo=None (local runs, bench) → no posting attempted, posted=False."""
-    provider = _StubProvider([_CANNED])
+    provider = StubProvider([FINDING_JSON])
     collector = ContextCollector(project_root=tmp_path)
     with (
         patch.object(collector, "collect_all", return_value={"diff": "d"}),

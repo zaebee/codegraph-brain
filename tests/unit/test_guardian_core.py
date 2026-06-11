@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from guardian_stubs import FINDING_JSON, StubProvider
 from pydantic import BaseModel, ValidationError
 
 from cgis.guardian.collector import ContextCollector
@@ -17,11 +18,6 @@ from cgis.guardian.providers.gemini import GeminiProvider
 from cgis.guardian.providers.mistral import MistralProvider
 
 _VALID_JSON = '{"findings": [], "summary": "all good"}'
-_VALID_FINDING_JSON = (
-    '{"findings": [{"file": "a.py", "line": 1, "severity": "major", "category": "logic",'
-    ' "title": "t", "evidence": "e", "problem": "p", "fix": "f", "confidence": 90}],'
-    ' "summary": "s"}'
-)
 
 # ---------------------------------------------------------------------------
 # PromptBuilder
@@ -124,7 +120,7 @@ def collector(tmp_path: Path) -> ContextCollector:
 async def test_run_review_parses_valid_json(collector: ContextCollector) -> None:
     """A valid JSON response becomes a ReviewResult on the first pass."""
     reviewer = GuardianReviewer(
-        provider=_SequenceProvider([_VALID_FINDING_JSON]), context_collector=collector
+        provider=_SequenceProvider([FINDING_JSON]), context_collector=collector
     )
     result = await reviewer.run_review()
     assert result.parse_failed is False
@@ -518,36 +514,6 @@ def test_user_prompt_includes_drift_section() -> None:
 # Skeptic pass
 # ---------------------------------------------------------------------------
 
-_FINDING_JSON = (
-    '{"findings": [{"file": "a.py", "line": 1, "severity": "major", "category": "logic",'
-    ' "title": "t", "evidence": "e", "problem": "p", "fix": "f", "confidence": 90}],'
-    ' "summary": "s"}'
-)
-
-
-class _StubProvider(BaseProvider):
-    """Returns canned JSON per call; records prompts."""
-
-    def __init__(self, responses: list[str]) -> None:
-        """Store canned responses and initialise prompt log."""
-        super().__init__()
-        self._responses = list(responses)
-        self.prompts: list[str] = []
-
-    async def generate_content(self, system_prompt: str, user_prompt: str) -> str:
-        """Not used in these tests."""
-        raise NotImplementedError
-
-    async def generate_structured(
-        self,
-        system_prompt: str,  # noqa: ARG002
-        user_prompt: str,
-        schema: type[BaseModel],  # noqa: ARG002
-    ) -> str:
-        """Record the prompt and return the next canned response."""
-        self.prompts.append(user_prompt)
-        return self._responses.pop(0)
-
 
 @pytest.mark.asyncio
 async def test_finder_hallucinated_skeptic_fields_are_reset(tmp_path: Path) -> None:
@@ -563,7 +529,7 @@ async def test_finder_hallucinated_skeptic_fields_are_reset(tmp_path: Path) -> N
         ' "verdict": "refuted", "skeptic_note": "made up"}],'
         ' "summary": "s", "skeptic_status": "ok"}'
     )
-    finder = _StubProvider([hallucinated])
+    finder = StubProvider([hallucinated])
     collector = ContextCollector(project_root=tmp_path)
     reviewer = GuardianReviewer(provider=finder, context_collector=collector)
     with patch.object(collector, "collect_all", return_value={"diff": "d"}):
@@ -576,8 +542,8 @@ async def test_finder_hallucinated_skeptic_fields_are_reset(tmp_path: Path) -> N
 @pytest.mark.asyncio
 async def test_skeptic_pass_merges_verdicts(tmp_path: Path) -> None:
     """With a skeptic provider, verdicts land on findings and status is 'ok'."""
-    finder = _StubProvider([_FINDING_JSON])
-    skeptic = _StubProvider(
+    finder = StubProvider([FINDING_JSON])
+    skeptic = StubProvider(
         ['{"verdicts": [{"finding_index": 0, "verdict": "confirmed", "rationale": "r"}]}']
     )
     collector = ContextCollector(project_root=tmp_path)
@@ -593,8 +559,8 @@ async def test_skeptic_pass_merges_verdicts(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_skeptic_not_called_on_lgtm(tmp_path: Path) -> None:
     """An empty pass 1 has nothing to refute — the skeptic is never called (spec §5.4)."""
-    finder = _StubProvider(['{"findings": [], "summary": "ok"}'])
-    skeptic = _StubProvider([])  # would raise IndexError if called
+    finder = StubProvider(['{"findings": [], "summary": "ok"}'])
+    skeptic = StubProvider([])  # would raise IndexError if called
     collector = ContextCollector(project_root=tmp_path)
     reviewer = GuardianReviewer(
         provider=finder, context_collector=collector, skeptic_provider=skeptic
@@ -608,8 +574,8 @@ async def test_skeptic_not_called_on_lgtm(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_skeptic_failure_degrades_to_single_pass(tmp_path: Path) -> None:
     """Skeptic crash → single-pass findings, skeptic_status='failed' (spec §5.5)."""
-    finder = _StubProvider([_FINDING_JSON])
-    skeptic = _StubProvider(["not json at all {{{"])
+    finder = StubProvider([FINDING_JSON])
+    skeptic = StubProvider(["not json at all {{{"])
     collector = ContextCollector(project_root=tmp_path)
     reviewer = GuardianReviewer(
         provider=finder, context_collector=collector, skeptic_provider=skeptic

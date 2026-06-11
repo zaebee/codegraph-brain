@@ -23,12 +23,16 @@ def diff_line_index(diff_text: str) -> dict[str, set[int]]:
             current = None
             in_hunk = False
             continue
-        file_match = _NEW_FILE_RE.match(line)
-        if file_match:
-            path = file_match.group(1)
-            current = None if path == "/dev/null" else path
-            in_hunk = False
-            continue
+        if not in_hunk:
+            # Real `+++` headers only appear between hunks (after `diff --git`
+            # resets in_hunk); inside a hunk a `+++ ...` line is added CONTENT
+            # whose text starts with `++` — counting it as a header would both
+            # drop the rest of the file and shift line numbers.
+            file_match = _NEW_FILE_RE.match(line)
+            if file_match:
+                path = file_match.group(1)
+                current = None if path == "/dev/null" else path
+                continue
         hunk_match = _HUNK_RE.match(line)
         if hunk_match and current is not None:
             new_line = int(hunk_match.group(1))
