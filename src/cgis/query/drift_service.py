@@ -37,7 +37,7 @@ def analyze_drift(db_path: str, patterns_path: str, max_drift: float = 0.50) -> 
         msg = f"Graph database not found: {db_path}"
         raise FileNotFoundError(msg)
     resolved = Path(patterns_path).resolve()
-    if resolved.suffix not in _ALLOWED_PATTERN_SUFFIXES:
+    if resolved.suffix.lower() not in _ALLOWED_PATTERN_SUFFIXES:
         msg = f"patterns_path must be a .yaml or .yml file, got: {patterns_path!r}"
         raise ValueError(msg)
     if not resolved.is_file():

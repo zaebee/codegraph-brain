@@ -154,6 +154,15 @@ def test_analyze_drift_bad_suffix_raises(graph_db: str, tmp_path: Path) -> None:
         analyze_drift(graph_db, str(bad))
 
 
+def test_analyze_drift_uppercase_suffix_accepted(graph_db: str, tmp_path: Path) -> None:
+    """analyze_drift matches the suffix case-insensitively (.YAML is valid)."""
+    p = tmp_path / "patterns.YAML"
+    p.write_text(_YAML)
+    analysis = analyze_drift(graph_db, str(p))
+    assert isinstance(analysis, DriftAnalysis)
+    assert len(analysis.reports) == 1
+
+
 def test_analyze_drift_resolved_path_works(graph_db: str, tmp_path: Path) -> None:
     """analyze_drift accepts a valid .yaml file and returns correct results."""
     p = tmp_path / "patterns.yaml"
