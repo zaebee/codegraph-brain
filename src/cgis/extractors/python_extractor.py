@@ -186,11 +186,7 @@ class PythonExtractor(BaseExtractor):
             self._collect_assignment_type(
                 node, code_bytes, import_map, current_func_node, local_types_acc
             )
-        elif (
-            node.type == "assignment"
-            and current_func_node is None
-            and self._get_fqn_prefix(node, code_bytes) is None
-        ):
+        elif self._is_module_level_assignment(node, code_bytes, current_func_node):
             # True module level: not in a function (current_func_node) and not
             # in a class body (_get_fqn_prefix). Class-body DI aliases are out
             # of scope (spec §6).
@@ -698,6 +694,16 @@ class PythonExtractor(BaseExtractor):
                     found.append(curr)
             stack.extend(curr.children)
         return found
+
+    def _is_module_level_assignment(
+        self, node: BaseNode, code_bytes: bytes, current_func_node: Node | None
+    ) -> bool:
+        """True for assignments at true module level (not function, not class body)."""
+        return (
+            node.type == "assignment"
+            and current_func_node is None
+            and self._get_fqn_prefix(node, code_bytes) is None
+        )
 
     def _process_module_assignment(
         self,

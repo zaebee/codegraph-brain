@@ -570,6 +570,25 @@ a, b = Depends(get_db), None
     assert not any(e.type == EdgeType.DEPENDS_ON for e in edges)
 
 
+def test_annotated_module_assignment_di_alias(extractor: PythonExtractor) -> None:
+    """An annotated module assignment (X: T = Depends(f)) still yields an alias node + edge."""
+    code = """
+from fastapi import Depends
+
+def get_db():
+    pass
+
+DbDep: object = Depends(get_db)
+"""
+    nodes, edges = extractor.parse(code, "deps.py")
+
+    assert any(n.type == NodeType.VARIABLE and n.id == "deps.DbDep" for n in nodes)
+    assert any(
+        e.type == EdgeType.DEPENDS_ON and e.source == "deps.DbDep" and e.target == "raw_call:get_db"
+        for e in edges
+    )
+
+
 def test_class_body_di_assignment_skipped(extractor: PythonExtractor) -> None:
     """Class-body DI assignments are out of scope and must not produce nodes or edges."""
     code = """
