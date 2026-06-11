@@ -224,6 +224,8 @@ def _resolve_cli_fqn(store: SQLiteStore, target: str, kind: str) -> str:
             console.print(f"[bold red]❌ Ambiguous FQN:[/bold red] {target}")
             for candidate in resolution.candidates:
                 console.print(f"  [dim]- {candidate}[/dim]")
+            if resolution.truncated:
+                console.print("  [dim]… (more matches exist; refine the name)[/dim]")
         else:
             console.print(f"[bold red]❌ {kind} not found in graph:[/bold red] {target}")
         raise typer.Exit(code=1)

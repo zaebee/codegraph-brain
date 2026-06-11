@@ -18,10 +18,11 @@ from cgis.storage.sqlite_store import SQLiteStore
 
 @pytest.fixture
 def repo_with_calls(tmp_path: Path) -> tuple[Path, Path]:
-    """Two-file repo where caller() calls callee()."""
+    """Two-file repo: caller() calls callee() (resolves); extra.py calls ghost_fn() (unresolved)."""
     (tmp_path / "mod.py").write_text(
         "def caller():\n    callee()\n\ndef callee(): pass\n", encoding="utf-8"
     )
+    (tmp_path / "extra.py").write_text("def x():\n    ghost_fn()\n", encoding="utf-8")
     db = tmp_path / "graph.db"
     return tmp_path, db
 
@@ -226,7 +227,12 @@ def test_cgis_drift_missing_patterns_returns_error(
 
 
 def test_cgis_validate_returns_json(repo_with_calls: tuple[Path, Path]) -> None:
-    """cgis_validate returns valid JSON with edge stats and health verdict."""
+    """cgis_validate returns valid JSON with edge stats and health verdict.
+
+    The repo_with_calls fixture includes extra.py which calls ghost_fn() — an
+    undefined name that cannot be resolved.  top_unresolved must therefore be
+    non-empty and each entry must have the raw_call: prefix stripped.
+    """
     repo, db = repo_with_calls
     cgis_ingest(str(repo), str(db))
 
@@ -237,6 +243,8 @@ def test_cgis_validate_returns_json(repo_with_calls: tuple[Path, Path]) -> None:
     assert payload["threshold"] == 0.30
     assert isinstance(payload["healthy"], bool)
     assert isinstance(payload["top_unresolved"], list)
+    # ghost_fn() cannot be resolved — at least one unresolved entry expected
+    assert len(payload["top_unresolved"]) > 0
     for name, _count in payload["top_unresolved"]:
         assert not name.startswith("raw_call:")
 

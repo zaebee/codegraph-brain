@@ -35,11 +35,14 @@ _EXTRACTORS = {
 _DEFAULT_DB = "graph.db"
 
 
-def _resolution_error(fqn: str, candidates: list[str]) -> str:
+def _resolution_error(fqn: str, candidates: list[str], truncated: bool = False) -> str:
     """Render a not-found / ambiguous FQN error for tool output."""
     if candidates:
         listing = "\n".join(f"- {c}" for c in candidates)
-        return f"❌ Ambiguous FQN '{fqn}'. Candidates:\n{listing}"
+        msg = f"❌ Ambiguous FQN '{fqn}'. Candidates:\n{listing}"
+        if truncated:
+            msg += "\n… (more matches exist; refine the name)"
+        return msg
     return f"❌ FQN not found in graph: {fqn}"
 
 
@@ -80,13 +83,10 @@ def cgis_trace_flow(fqn: str, db_path: str = _DEFAULT_DB, depth: int = 3) -> str
         with SQLiteStore(db_path) as store:
             res = resolve_fqn(store, fqn)
             if res.resolved is None:
-                return _resolution_error(fqn, res.candidates)
+                return _resolution_error(fqn, res.candidates, res.truncated)
             nodes, edges = QueryEngine(store).get_flow_graph(res.resolved, max_depth=depth)
     except Exception as exc:
         return f"❌ {exc}"
-
-    if not nodes:
-        return f"❌ FQN not found in graph: {fqn}"
 
     note = f"> Resolved '{fqn}' → '{res.resolved}'\n\n" if res.via_suffix else ""
     diagram = MermaidCompiler().compile(nodes, edges)
@@ -106,13 +106,10 @@ def cgis_analyze_impact(fqn: str, db_path: str = _DEFAULT_DB, depth: int = 3) ->
         with SQLiteStore(db_path) as store:
             res = resolve_fqn(store, fqn)
             if res.resolved is None:
-                return _resolution_error(fqn, res.candidates)
+                return _resolution_error(fqn, res.candidates, res.truncated)
             nodes, edges = QueryEngine(store).get_impact_graph(res.resolved, max_depth=depth)
     except Exception as exc:
         return f"❌ {exc}"
-
-    if not nodes:
-        return f"❌ FQN not found in graph: {fqn}"
 
     note = f"> Resolved '{fqn}' → '{res.resolved}'\n\n" if res.via_suffix else ""
     diagram = MermaidCompiler().compile(nodes, edges)
@@ -132,13 +129,10 @@ def cgis_get_structure(fqn: str, db_path: str = _DEFAULT_DB, depth: int = 2) -> 
         with SQLiteStore(db_path) as store:
             res = resolve_fqn(store, fqn)
             if res.resolved is None:
-                return _resolution_error(fqn, res.candidates)
+                return _resolution_error(fqn, res.candidates, res.truncated)
             nodes, edges = QueryEngine(store).get_flow_graph(res.resolved, max_depth=depth)
     except Exception as exc:
         return f"❌ {exc}"
-
-    if not nodes:
-        return f"❌ FQN not found in graph: {fqn}"
 
     note = f"> Resolved '{fqn}' → '{res.resolved}'\n\n" if res.via_suffix else ""
     diagram = MermaidCompiler().compile(nodes, edges)
@@ -163,15 +157,17 @@ def cgis_drift(
         return f"❌ Patterns file not found: {patterns_path}"
     try:
         analysis = analyze_drift(db_path, patterns_path, max_drift=max_drift)
+        payload = {
+            "any_critical": analysis.any_critical,
+            "max_drift": max_drift,
+            "domains": [dataclasses.asdict(r) for r in analysis.reports],
+            "quotient": [
+                {**dataclasses.asdict(r), "enforce": b.enforce} for b, r in analysis.quotient
+            ],
+        }
+        return json.dumps(payload, indent=2)
     except Exception as exc:
         return f"❌ {exc}"
-    payload = {
-        "any_critical": analysis.any_critical,
-        "max_drift": max_drift,
-        "domains": [dataclasses.asdict(r) for r in analysis.reports],
-        "quotient": [{**dataclasses.asdict(r), "enforce": b.enforce} for b, r in analysis.quotient],
-    }
-    return json.dumps(payload, indent=2)
 
 
 @mcp.tool()
@@ -186,17 +182,19 @@ def cgis_validate(db_path: str = _DEFAULT_DB, threshold: float = 0.30) -> str:
     try:
         with SQLiteStore(db_path) as store:
             stats = store.get_edge_stats()
+        payload = {
+            "total": stats.total,
+            "resolved": stats.resolved,
+            "stdlib": stats.stdlib,
+            "external": stats.external,
+            "unresolved": stats.unresolved,
+            "unresolved_ratio": stats.unresolved_ratio,
+            "top_unresolved": [
+                [t.removeprefix(RAW_CALL_PREFIX), c] for t, c in stats.top_unresolved
+            ],
+            "threshold": threshold,
+            "healthy": stats.unresolved_ratio <= threshold,
+        }
+        return json.dumps(payload, indent=2)
     except Exception as exc:
         return f"❌ {exc}"
-    payload = {
-        "total": stats.total,
-        "resolved": stats.resolved,
-        "stdlib": stats.stdlib,
-        "external": stats.external,
-        "unresolved": stats.unresolved,
-        "unresolved_ratio": stats.unresolved_ratio,
-        "top_unresolved": [[t.removeprefix(RAW_CALL_PREFIX), c] for t, c in stats.top_unresolved],
-        "threshold": threshold,
-        "healthy": stats.unresolved_ratio <= threshold,
-    }
-    return json.dumps(payload, indent=2)

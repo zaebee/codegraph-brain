@@ -595,10 +595,9 @@ def test_flow_graph_prunes_disconnected_internal_nodes(temp_store: SQLiteStore) 
 # --- find_nodes_by_suffix tests (#145) ---
 
 
-def _suffix_store(tmp_path: Path, ids: list[str]) -> SQLiteStore:
-    """Open a store seeded with FUNCTION nodes for the given FQNs."""
-    store = SQLiteStore(str(tmp_path / "suffix.db"))
-    store.connect()
+def _seed_suffix_store(tmp_path: Path, ids: list[str]) -> Path:
+    """Seed a SQLite store with FUNCTION nodes for the given FQNs and return the db path."""
+    db_path = tmp_path / "suffix.db"
     nodes = [
         Node(
             id=i,
@@ -610,8 +609,9 @@ def _suffix_store(tmp_path: Path, ids: list[str]) -> SQLiteStore:
         )
         for i in ids
     ]
-    store.save_graph(nodes, [])
-    return store
+    with SQLiteStore(str(db_path)) as store:
+        store.save_graph(nodes, [])
+    return db_path
 
 
 def test_find_nodes_by_suffix_pure_suffix_semantics(tmp_path: Path) -> None:
@@ -621,49 +621,49 @@ def test_find_nodes_by_suffix_pure_suffix_semantics(tmp_path: Path) -> None:
     Seeding ["a.b.run", "c.a.b.run"] and querying "a.b.run" returns only
     "c.a.b.run" (the one whose FQN ends with ".a.b.run").
     """
-    store = _suffix_store(tmp_path, ["a.b.run", "c.a.b.run"])
-    result = store.find_nodes_by_suffix("a.b.run")
+    db = _seed_suffix_store(tmp_path, ["a.b.run", "c.a.b.run"])
+    with SQLiteStore(str(db)) as store:
+        result = store.find_nodes_by_suffix("a.b.run")
     assert [n.id for n in result] == ["c.a.b.run"]
-    store.disconnect()
 
 
 def test_find_nodes_by_suffix_dot_boundary(tmp_path: Path) -> None:
     """Suffix match respects dot boundaries — does not match mid-name."""
-    store = _suffix_store(tmp_path, ["a.b.run", "c.run", "x.dry_run"])
-    result = store.find_nodes_by_suffix("run")
+    db = _seed_suffix_store(tmp_path, ["a.b.run", "c.run", "x.dry_run"])
+    with SQLiteStore(str(db)) as store:
+        result = store.find_nodes_by_suffix("run")
     assert [n.id for n in result] == ["a.b.run", "c.run"]  # NOT x.dry_run
-    store.disconnect()
 
 
 def test_find_nodes_by_suffix_escapes_like_wildcards(tmp_path: Path) -> None:
     """Underscores in FQNs are treated as literals, not LIKE wildcards."""
-    store = _suffix_store(tmp_path, ["a.tv_distance", "a.tvxdistance"])
-    result = store.find_nodes_by_suffix("tv_distance")
+    db = _seed_suffix_store(tmp_path, ["a.tv_distance", "a.tvxdistance"])
+    with SQLiteStore(str(db)) as store:
+        result = store.find_nodes_by_suffix("tv_distance")
     assert [n.id for n in result] == ["a.tv_distance"]  # _ is literal
-    store.disconnect()
 
 
 def test_find_nodes_by_suffix_dotted_partial(tmp_path: Path) -> None:
     """Multi-segment suffix (e.g. triads.tv_distance) resolves correctly."""
-    store = _suffix_store(tmp_path, ["src.cgis.query.triads.tv_distance"])
-    result = store.find_nodes_by_suffix("triads.tv_distance")
+    db = _seed_suffix_store(tmp_path, ["src.cgis.query.triads.tv_distance"])
+    with SQLiteStore(str(db)) as store:
+        result = store.find_nodes_by_suffix("triads.tv_distance")
     assert [n.id for n in result] == ["src.cgis.query.triads.tv_distance"]
-    store.disconnect()
 
 
 def test_find_nodes_by_suffix_orders_and_limits(tmp_path: Path) -> None:
     """Results are ordered by id and capped at the limit parameter."""
-    store = _suffix_store(tmp_path, [f"m{i}.go" for i in range(5)])
-    result = store.find_nodes_by_suffix("go", limit=3)
+    db = _seed_suffix_store(tmp_path, [f"m{i}.go" for i in range(5)])
+    with SQLiteStore(str(db)) as store:
+        result = store.find_nodes_by_suffix("go", limit=3)
     assert [n.id for n in result] == ["m0.go", "m1.go", "m2.go"]
-    store.disconnect()
 
 
 def test_find_nodes_by_suffix_no_match_returns_empty(tmp_path: Path) -> None:
     """No matching suffix returns an empty list."""
-    store = _suffix_store(tmp_path, ["a.b"])
-    assert store.find_nodes_by_suffix("zzz") == []
-    store.disconnect()
+    db = _seed_suffix_store(tmp_path, ["a.b"])
+    with SQLiteStore(str(db)) as store:
+        assert store.find_nodes_by_suffix("zzz") == []
 
 
 def test_find_nodes_by_suffix_closed_store_raises(tmp_path: Path) -> None:
