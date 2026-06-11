@@ -75,6 +75,39 @@ def test_split_binary_block_keyed_via_git_header() -> None:
     assert set(split_diff_by_file(diff)) == {"logo.png"}
 
 
+def test_split_quoted_binary_block_keyed_via_git_header() -> None:
+    """Git-quoted binary header (`"b/logo 2.png"`) — the quote precedes b/."""
+    diff = (
+        'diff --git "a/img/logo 2.png" "b/img/logo 2.png"\n'
+        'Binary files "a/img/logo 2.png" and "b/img/logo 2.png" differ\n'
+    )
+    assert set(split_diff_by_file(diff)) == {"img/logo 2.png"}
+
+
+def test_split_quoted_text_headers() -> None:
+    """Quoted ---/+++ headers yield the bare path: no quotes, no b/ prefix."""
+    diff = (
+        'diff --git "a/src/x y.py" "b/src/x y.py"\n'
+        '--- "a/src/x y.py"\n'
+        '+++ "b/src/x y.py"\n'
+        "@@ -0,0 +1 @@\n"
+        "+x = 1\n"
+    )
+    assert set(split_diff_by_file(diff)) == {"src/x y.py"}
+
+
+def test_split_quoted_deletion_keyed_by_old_path() -> None:
+    """Quoted old header + /dev/null new side → keyed by the unquoted old path."""
+    diff = (
+        'diff --git "a/old name.py" "b/old name.py"\n'
+        '--- "a/old name.py"\n'
+        "+++ /dev/null\n"
+        "@@ -1 +0,0 @@\n"
+        "-x = 1\n"
+    )
+    assert set(split_diff_by_file(diff)) == {"old name.py"}
+
+
 def test_split_unparsable_block_skipped() -> None:
     """A block with no parsable path is skipped (logged), never raised on (spec §5)."""
     assert split_diff_by_file("diff --git\ngarbage\n") == {}

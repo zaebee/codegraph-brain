@@ -13,8 +13,10 @@ from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 
 log = structlog.getLogger(__name__)
 
-_OLD_FILE_RE = re.compile(r"^--- (?:a/)?(.+)$")
-_NEW_FILE_RE = re.compile(r"^\+\+\+ (?:b/)?(.+)$")
+# Git C-quotes paths with special characters: `--- "a/x y.py"` — the optional
+# quotes wrap the WHOLE `a/...` token, so they must be stripped around the prefix.
+_OLD_FILE_RE = re.compile(r'^--- "?(?:a/)?(.+?)"?$')
+_NEW_FILE_RE = re.compile(r'^\+\+\+ "?(?:b/)?(.+?)"?$')
 
 
 def _block_path(lines: list[str]) -> str | None:
@@ -36,7 +38,16 @@ def _block_path(lines: list[str]) -> str | None:
 
 
 def _git_header_path(header: str) -> str | None:
-    """Fallback for blocks without ---/+++ headers (binary, mode-only): b/ side."""
+    """Fallback for blocks without ---/+++ headers (binary, mode-only): b/ side.
+
+    Tries the quoted form first (`diff --git "a/x y.png" "b/x y.png"` — the
+    quote sits before b/, so a bare ` b/` search misses it; gemini review,
+    PR #157), then the plain ` b/` marker.
+    """
+    quoted = ' "b/'
+    idx = header.rfind(quoted)
+    if idx != -1:
+        return header[idx + len(quoted) :].removesuffix('"') or None
     marker = " b/"
     idx = header.rfind(marker)
     if idx == -1:
