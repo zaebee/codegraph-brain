@@ -162,6 +162,10 @@ ignore_missing_imports = true
 module = "mistralai.*"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = "mcp.*"
+ignore_missing_imports = true
+
 [tool.interrogate]
 ignore-init-method = true
 ignore-init-module = true
