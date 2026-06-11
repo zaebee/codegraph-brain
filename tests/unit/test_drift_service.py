@@ -146,6 +146,23 @@ def test_analyze_drift_missing_db_raises(tmp_path: Path, patterns_file: str) -> 
         analyze_drift(str(tmp_path / "missing.db"), patterns_file)
 
 
+def test_analyze_drift_bad_suffix_raises(graph_db: str, tmp_path: Path) -> None:
+    """analyze_drift rejects patterns_path whose suffix is not .yaml or .yml."""
+    bad = tmp_path / "patterns.txt"
+    bad.write_text(_YAML)
+    with pytest.raises(ValueError, match=r"patterns_path must be a \.yaml or \.yml file"):
+        analyze_drift(graph_db, str(bad))
+
+
+def test_analyze_drift_resolved_path_works(graph_db: str, tmp_path: Path) -> None:
+    """analyze_drift accepts a valid .yaml file and returns correct results."""
+    p = tmp_path / "patterns.yaml"
+    p.write_text(_YAML)
+    analysis = analyze_drift(graph_db, str(p))
+    assert isinstance(analysis, DriftAnalysis)
+    assert len(analysis.reports) == 1
+
+
 def test_quotient_observe_only_does_not_flip_any_critical(tmp_path: Path) -> None:
     """Quotient with enforce:false does not set any_critical even when its score exceeds max_drift.
 

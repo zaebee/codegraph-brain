@@ -18,6 +18,9 @@ class DriftAnalysis:
     any_critical: bool
 
 
+_ALLOWED_PATTERN_SUFFIXES = {".yaml", ".yml"}
+
+
 def analyze_drift(db_path: str, patterns_path: str, max_drift: float = 0.50) -> DriftAnalysis:
     """Score every project domain (and the quotient level) against patterns.
 
@@ -27,12 +30,20 @@ def analyze_drift(db_path: str, patterns_path: str, max_drift: float = 0.50) -> 
     Raises:
         FileNotFoundError: If ``db_path`` does not point to an existing file.
             Use ``cgis ingest`` to create the graph database first.
+        ValueError: If ``patterns_path`` does not end in ``.yaml`` or ``.yml``.
         FileNotFoundError: If ``patterns_path`` does not point to an existing file.
     """
     if not Path(db_path).is_file():
         msg = f"Graph database not found: {db_path}"
         raise FileNotFoundError(msg)
-    scorer = DriftScorer(patterns_path)
+    resolved = Path(patterns_path).resolve()
+    if resolved.suffix not in _ALLOWED_PATTERN_SUFFIXES:
+        msg = f"patterns_path must be a .yaml or .yml file, got: {patterns_path!r}"
+        raise ValueError(msg)
+    if not resolved.is_file():
+        msg = f"Patterns file not found: {patterns_path}"
+        raise FileNotFoundError(msg)
+    scorer = DriftScorer(str(resolved))
     domains = scorer.load_project_domains()
 
     reports: list[DriftReport] = []
