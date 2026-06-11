@@ -145,13 +145,17 @@ def _graph_pairs(
         return []
     prefix = f"{source_root}/" if source_root else ""
     try:
+        # Load only the changed files' nodes and their outgoing edges instead
+        # of the whole graph: any qualifying edge has BOTH endpoints changed,
+        # so its source is always among these nodes (gemini review, PR #157).
         fqn_to_file = {
-            node.id: path
-            for node in store.get_all_nodes()
-            if (path := prefix + node.file_path) in changed
+            node.id: prefix + node.file_path
+            for path in changed
+            if not prefix or path.startswith(prefix)
+            for node in store.get_nodes_by_file(path.removeprefix(prefix))
         }
         pairs: list[tuple[str, str]] = []
-        for edge in store.get_all_edges():
+        for edge in store.get_outgoing_edges_batch(list(fqn_to_file)):
             if edge.type not in _CHUNK_EDGE_TYPES or edge.target.startswith(RAW_CALL_PREFIX):
                 continue
             src = fqn_to_file.get(edge.source)

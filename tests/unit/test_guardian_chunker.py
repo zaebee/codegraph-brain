@@ -262,7 +262,8 @@ def test_broken_store_degrades_to_isolated_chunks() -> None:
     """A store that raises on read → isolated chunks, no exception escapes."""
 
     class _BrokenStore(SQLiteStore):
-        def get_all_nodes(self) -> list[Node]:
+        def get_nodes_by_file(self, file_path: str) -> list[Node]:  # noqa: ARG002
+            """Simulate a corrupt db on the first read _graph_pairs performs."""
             msg = "corrupt db"
             raise RuntimeError(msg)
 
