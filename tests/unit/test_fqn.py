@@ -78,3 +78,15 @@ def test_truncation_signal(tmp_path: Path) -> None:
     # Candidates are a prefix of the sorted list; none start with "raw_call:"
     for c in res.candidates:
         assert "go" in c
+
+
+def test_empty_fqn_returns_unresolved(tmp_path: Path) -> None:
+    """Empty or whitespace-only FQN short-circuits without touching the store."""
+    db = _seed_store(tmp_path / "fqn.db", ["a.fn"])
+    with SQLiteStore(str(db)) as store:
+        res_empty = resolve_fqn(store, "")
+        res_blank = resolve_fqn(store, "  ")
+    assert res_empty.resolved is None
+    assert res_empty.candidates == []
+    assert res_blank.resolved is None
+    assert res_blank.candidates == []

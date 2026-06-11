@@ -42,10 +42,15 @@ def resolve_fqn(store: SQLiteStore, fqn: str) -> FqnResolution:
     resolution.  When the result set is larger than ``_CANDIDATE_LIMIT`` the
     ``truncated`` flag is set to signal that the listing is incomplete.
 
+    Empty or whitespace-only input returns an unresolved ``FqnResolution``
+    immediately without touching the store.
+
     Exact-match policy lives here, not in ``SQLiteStore.find_nodes_by_suffix``,
     so the storage layer stays a pure suffix search with no intra-domain call
     chain (enforced by the pure_utility self-drift guardrail, #145).
     """
+    if not fqn.strip():
+        return FqnResolution(resolved=None)
     exact = store.get_node(fqn)
     if exact:
         return FqnResolution(resolved=fqn)

@@ -204,7 +204,7 @@ def test_cgis_drift_returns_json(repo_with_calls: tuple[Path, Path]) -> None:
     assert payload["any_critical"] is False
     assert payload["domains"][0]["fqn_prefix"] == "mod"
     assert payload["quotient"] == []
-    assert payload["max_drift"] == 0.50
+    assert payload["max_drift"] == pytest.approx(0.50)
 
 
 def test_cgis_drift_missing_db_returns_error(tmp_path: Path) -> None:
@@ -240,7 +240,7 @@ def test_cgis_validate_returns_json(repo_with_calls: tuple[Path, Path]) -> None:
 
     payload = json.loads(result)
     assert payload["total"] > 0
-    assert payload["threshold"] == 0.30
+    assert payload["threshold"] == pytest.approx(0.30)
     assert isinstance(payload["healthy"], bool)
     assert isinstance(payload["top_unresolved"], list)
     # ghost_fn() cannot be resolved — at least one unresolved entry expected

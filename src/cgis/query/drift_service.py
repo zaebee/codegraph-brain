@@ -1,6 +1,7 @@
 """Drift-analysis orchestration shared by the CLI and the MCP server."""
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from cgis.query.drift import DomainConfig, DriftReport, DriftScorer
 from cgis.query.fingerprint import FingerprintExtractor
@@ -22,7 +23,15 @@ def analyze_drift(db_path: str, patterns_path: str, max_drift: float = 0.50) -> 
 
     Raises on unreadable inputs — callers translate errors to their medium.
     ``any_critical`` counts quotient bindings only when they are enforced.
+
+    Raises:
+        FileNotFoundError: If ``db_path`` does not point to an existing file.
+            Use ``cgis ingest`` to create the graph database first.
+        FileNotFoundError: If ``patterns_path`` does not point to an existing file.
     """
+    if not Path(db_path).is_file():
+        msg = f"Graph database not found: {db_path}"
+        raise FileNotFoundError(msg)
     scorer = DriftScorer(patterns_path)
     domains = scorer.load_project_domains()
 
