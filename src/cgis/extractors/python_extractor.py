@@ -203,7 +203,7 @@ class PythonExtractor(BaseExtractor):
             and local_types_acc is not None
         ):
             self._collect_param_type(
-                node, code_bytes, import_map, current_func_node, local_types_acc
+                node, code_bytes, import_map, current_func_node, local_types_acc, edges
             )
 
         for child in node.children:
@@ -803,8 +803,14 @@ class PythonExtractor(BaseExtractor):
         import_map: dict[str, str] | None,
         func_node: Node,
         acc: dict[str, dict[str, str]],
+        edges: list[Edge],
     ) -> None:
-        """Populate acc with param→FQN for typed parameter annotations."""
+        """Populate acc with param→FQN for typed parameter annotations.
+
+        Also emits a speculative `raw_dep:` DEPENDS_ON candidate per typed
+        parameter; the resolver keeps it only when it resolves to a DI alias
+        (VARIABLE node) and drops it otherwise (spec §3.2c).
+        """
         if not node.named_children:
             return
         name_node = node.named_children[0]
@@ -823,6 +829,18 @@ class PythonExtractor(BaseExtractor):
             return
         acc.setdefault(func_node.id, {})[var_name] = self._resolve_type_fqn(
             clean_type, import_map, func_node.file_path
+        )
+        edges.append(
+            Edge(
+                id=f"{func_node.file_path}:rawdep_{node.start_byte}_{node.end_byte}",
+                type=EdgeType.DEPENDS_ON,
+                source=func_node.id,
+                target=f"raw_dep:{clean_type}",
+                confidence=0.1,
+                context=f"Annotation candidate {clean_type}",
+                file_path=func_node.file_path,
+                line_number=node.start_point.row + 1,
+            )
         )
 
     _GENERIC_WRAPPERS: frozenset[str] = frozenset({"Optional", "Union"})

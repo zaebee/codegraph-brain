@@ -522,6 +522,32 @@ AutoDep = Annotated[object, Depends()]
     assert not any(e.type == EdgeType.DEPENDS_ON for e in edges)
 
 
+def test_typed_param_emits_raw_dep_candidate(extractor: PythonExtractor) -> None:
+    """Typed parameter annotation emits a speculative raw_dep: DEPENDS_ON candidate edge."""
+    code = """
+def handler(owner: PublishedOwnerDep):
+    pass
+"""
+    _nodes, edges = extractor.parse(code, "routes.py")
+
+    cands = [e for e in edges if e.target == "raw_dep:PublishedOwnerDep"]
+    assert len(cands) == 1
+    assert cands[0].type == EdgeType.DEPENDS_ON
+    assert cands[0].source == "routes.handler"
+    assert cands[0].confidence == pytest.approx(0.1)
+
+
+def test_untyped_param_emits_no_raw_dep_candidate(extractor: PythonExtractor) -> None:
+    """Untyped parameter produces no raw_dep: candidate edge."""
+    code = """
+def handler(owner):
+    pass
+"""
+    _nodes, edges = extractor.parse(code, "routes.py")
+
+    assert not any(e.target.startswith("raw_dep:") for e in edges)
+
+
 def test_tuple_target_di_assignment_skipped(extractor: PythonExtractor) -> None:
     """Tuple-target assignments like `a, b = ...` are skipped (no VARIABLE node or DEPENDS_ON)."""
     code = """
