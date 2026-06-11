@@ -99,6 +99,7 @@ def test_impact_surfaces_alias_and_all_endpoints(di_graph_store: SQLiteStore) ->
     engine = QueryEngine(di_graph_store)
     rpo = _find_id(di_graph_store, "resolve_published_owner")
 
+    # max_depth=4: the chain resolve_published_owner→alias→endpoint is depth 2; 4 is headroom.
     imp_nodes, _ = engine.get_impact_graph(rpo, max_depth=4)
     ids = {n.id for n in imp_nodes}
 
@@ -112,6 +113,8 @@ def test_flow_includes_sub_dependency_chain(di_graph_store: SQLiteStore) -> None
     engine = QueryEngine(di_graph_store)
     rpo = _find_id(di_graph_store, "resolve_published_owner")
 
+    # max_depth=3: the chain resolve_published_owner→resolve_owner→get_owner_service is depth 2;
+    # 3 is headroom.
     flow_nodes, _ = engine.get_flow_graph(rpo, max_depth=3)
     ids = {n.id for n in flow_nodes}
 

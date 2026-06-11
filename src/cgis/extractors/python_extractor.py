@@ -666,6 +666,13 @@ class PythonExtractor(BaseExtractor):
 
         None for argless calls, keyword-only calls, and non-name arguments
         (lambdas, calls, subscripts) — those emit no DEPENDS_ON edge (spec §3.2a/b).
+
+        Note: ``child_by_field_name("arguments")`` returns a truthy
+        ``argument_list`` node even for ``Depends()`` (argless), so the
+        ``if not args`` guard here only covers a *missing* arguments field
+        (should not occur in practice).  The argless case — where
+        ``args.named_children`` is empty — is handled by the loop falling
+        through to the final ``return None``.
         """
         args = call_node.child_by_field_name("arguments")
         if not args:

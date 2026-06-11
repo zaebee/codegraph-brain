@@ -357,6 +357,7 @@ def test_file_path_to_module_fqn_dot_slash_source_root() -> None:
 
 
 def test_depends_in_param_default_emits_depends_on(extractor: PythonExtractor) -> None:
+    """Depends(fn) as a plain default value emits one DEPENDS_ON edge from the handler."""
     code = """
 from fastapi import Depends
 
@@ -377,6 +378,7 @@ def handler(db = Depends(get_db)):
 
 
 def test_depends_inside_annotated_emits_depends_on(extractor: PythonExtractor) -> None:
+    """Depends(fn) nested inside Annotated[...] type annotation emits a DEPENDS_ON edge."""
     code = """
 from typing import Annotated
 from fastapi import Depends
@@ -396,6 +398,7 @@ def handler(owner: Annotated[object, Depends(resolve_owner)]):
 
 
 def test_depends_under_union_wrapper_emits_depends_on(extractor: PythonExtractor) -> None:
+    """Depends(fn) inside Annotated[...] | None still emits a DEPENDS_ON edge."""
     code = """
 from typing import Annotated
 from fastapi import Depends
@@ -414,6 +417,7 @@ def handler(owner: Annotated[object, Depends(resolve_owner)] | None = None):
 
 
 def test_security_call_emits_depends_on(extractor: PythonExtractor) -> None:
+    """Security(fn) as a parameter default emits a DEPENDS_ON edge, same as Depends."""
     code = """
 from fastapi import Security
 
@@ -429,6 +433,7 @@ def handler(scopes = Security(get_scopes)):
 
 
 def test_argless_depends_emits_no_depends_on(extractor: PythonExtractor) -> None:
+    """Depends() with no argument emits no DEPENDS_ON edge (no provider to link)."""
     code = """
 from fastapi import Depends
 
@@ -441,6 +446,7 @@ def handler(db = Depends()):
 
 
 def test_depends_with_lambda_arg_emits_no_depends_on(extractor: PythonExtractor) -> None:
+    """Depends(lambda: ...) with a non-name first arg emits no DEPENDS_ON edge (spec §3.2b)."""
     code = """
 from fastapi import Depends
 
