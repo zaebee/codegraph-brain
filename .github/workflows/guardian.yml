@@ -79,17 +79,24 @@ jobs:
               > guardian_metrics.jsonl 2>/dev/null || true
 
       - name: Run Guardian Review
+        id: guardian
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           GUARDIAN_PROVIDER: ${{ vars.GUARDIAN_PROVIDER }}
           GUARDIAN_MODEL: ${{ vars.GUARDIAN_MODEL }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GUARDIAN_FEATURES: ${{ vars.GUARDIAN_FEATURES }}
+          GUARDIAN_SKEPTIC: ${{ vars.GUARDIAN_SKEPTIC }}
+          GUARDIAN_SKEPTIC_MODEL: ${{ vars.GUARDIAN_SKEPTIC_MODEL }}
         run: |
           uv run python scripts/guardian_review.py \
             --output guardian_report.md \
             --db graph.db \
             --pr "$PR_NUMBER" \
             --metrics guardian_metrics.jsonl \
+            --inline \
             --base-branch "$BASE_BRANCH"
 
       - name: Upload metrics artifact
@@ -100,6 +107,7 @@ jobs:
           retention-days: 7
 
       - name: Post review as PR comment
+        if: steps.guardian.outputs.posted_inline != 'true'
         uses: peter-evans/create-or-update-comment@a111a2c3bacd7be7898ee22d0d71d9aec2bb972c  # v4
         with:
           issue-number: ${{ env.PR_NUMBER }}

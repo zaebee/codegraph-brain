@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from guardian_stubs import FINDING_JSON, StubProvider
 from pydantic import BaseModel, ValidationError
 
 from cgis.guardian.collector import ContextCollector
@@ -17,11 +18,6 @@ from cgis.guardian.providers.gemini import GeminiProvider
 from cgis.guardian.providers.mistral import MistralProvider
 
 _VALID_JSON = '{"findings": [], "summary": "all good"}'
-_VALID_FINDING_JSON = (
-    '{"findings": [{"file": "a.py", "line": 1, "severity": "major", "category": "logic",'
-    ' "title": "t", "evidence": "e", "problem": "p", "fix": "f", "confidence": 90}],'
-    ' "summary": "s"}'
-)
 
 # ---------------------------------------------------------------------------
 # PromptBuilder
@@ -124,7 +120,7 @@ def collector(tmp_path: Path) -> ContextCollector:
 async def test_run_review_parses_valid_json(collector: ContextCollector) -> None:
     """A valid JSON response becomes a ReviewResult on the first pass."""
     reviewer = GuardianReviewer(
-        provider=_SequenceProvider([_VALID_FINDING_JSON]), context_collector=collector
+        provider=_SequenceProvider([FINDING_JSON]), context_collector=collector
     )
     result = await reviewer.run_review()
     assert result.parse_failed is False
@@ -243,14 +239,14 @@ async def test_provider_last_usage_after_call(collector: ContextCollector) -> No
 def test_graph_stats_initialised_to_zero(tmp_path: Path) -> None:
     """graph_stats starts at zero before collect_graph_context is called."""
     c = ContextCollector(project_root=tmp_path)
-    assert c.graph_stats == {"total": 0, "with_graph": 0}
+    assert c.graph_stats == {"total": 0, "with_graph": 0, "flow_fallback": 0}
 
 
 def test_graph_stats_updated_when_no_db(tmp_path: Path) -> None:
     """graph_stats stays at zero when db_path is None."""
     c = ContextCollector(project_root=tmp_path)
     c.collect_graph_context()
-    assert c.graph_stats == {"total": 0, "with_graph": 0}
+    assert c.graph_stats == {"total": 0, "with_graph": 0, "flow_fallback": 0}
 
 
 def test_graph_stats_empty_changed_files(tmp_path: Path) -> None:
@@ -260,7 +256,7 @@ def test_graph_stats_empty_changed_files(tmp_path: Path) -> None:
     c = ContextCollector(project_root=tmp_path, db_path=db)
     with patch("cgis.guardian.collector.ContextCollector.get_changed_py_files", return_value=[]):
         c.collect_graph_context()
-    assert c.graph_stats == {"total": 0, "with_graph": 0}
+    assert c.graph_stats == {"total": 0, "with_graph": 0, "flow_fallback": 0}
 
 
 # ---------------------------------------------------------------------------
@@ -497,3 +493,94 @@ def test_build_user_prompt_lgtm_example_is_valid_json() -> None:
     parsed = json.loads(example)
     assert parsed["findings"] == []
     assert isinstance(parsed["summary"], str)
+
+
+def test_user_prompt_includes_full_files_section() -> None:
+    """The FULL FILE CONTENTS section appears iff the context provides it."""
+    with_files = PromptBuilder.build_user_prompt({"diff": "d", "full_files": "#### `a.py`"})
+    without = PromptBuilder.build_user_prompt({"diff": "d"})
+    assert "FULL FILE CONTENTS (HEAD)" in with_files
+    assert "FULL FILE CONTENTS" not in without
+
+
+def test_user_prompt_includes_drift_section() -> None:
+    """The ARCHITECTURAL DRIFT section appears iff the context provides it."""
+    with_drift = PromptBuilder.build_user_prompt({"diff": "d", "drift": "| domain |"})
+    assert "ARCHITECTURAL DRIFT (motif-basis)" in with_drift
+    assert "ontology" in with_drift  # the reading instruction names the category
+
+
+# ---------------------------------------------------------------------------
+# Skeptic pass
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_finder_hallucinated_skeptic_fields_are_reset(tmp_path: Path) -> None:
+    """Skeptic-owned fields the finder LLM fills in are wiped (they're in its schema).
+
+    A hallucinated verdict="refuted" would make visible_findings() silently
+    drop a finder finding; skeptic_status="ok" without a skeptic is a lie.
+    Observed in the wild: gemini-3.5-flash bench rows with skeptic off.
+    """
+    hallucinated = (
+        '{"findings": [{"file": "a.py", "line": 1, "severity": "major", "category": "logic",'
+        ' "title": "t", "evidence": "e", "problem": "p", "fix": "f", "confidence": 90,'
+        ' "verdict": "refuted", "skeptic_note": "made up"}],'
+        ' "summary": "s", "skeptic_status": "ok"}'
+    )
+    finder = StubProvider([hallucinated])
+    collector = ContextCollector(project_root=tmp_path)
+    reviewer = GuardianReviewer(provider=finder, context_collector=collector)
+    with patch.object(collector, "collect_all", return_value={"diff": "d"}):
+        result = await reviewer.run_review()
+    assert result.skeptic_status == "off"
+    assert result.findings[0].verdict is None
+    assert result.findings[0].skeptic_note is None
+
+
+@pytest.mark.asyncio
+async def test_skeptic_pass_merges_verdicts(tmp_path: Path) -> None:
+    """With a skeptic provider, verdicts land on findings and status is 'ok'."""
+    finder = StubProvider([FINDING_JSON])
+    skeptic = StubProvider(
+        ['{"verdicts": [{"finding_index": 0, "verdict": "confirmed", "rationale": "r"}]}']
+    )
+    collector = ContextCollector(project_root=tmp_path)
+    reviewer = GuardianReviewer(
+        provider=finder, context_collector=collector, skeptic_provider=skeptic
+    )
+    with patch.object(collector, "collect_all", return_value={"diff": "d"}):
+        result = await reviewer.run_review()
+    assert result.skeptic_status == "ok"
+    assert result.findings[0].verdict == "confirmed"
+
+
+@pytest.mark.asyncio
+async def test_skeptic_not_called_on_lgtm(tmp_path: Path) -> None:
+    """An empty pass 1 has nothing to refute — the skeptic is never called (spec §5.4)."""
+    finder = StubProvider(['{"findings": [], "summary": "ok"}'])
+    skeptic = StubProvider([])  # would raise IndexError if called
+    collector = ContextCollector(project_root=tmp_path)
+    reviewer = GuardianReviewer(
+        provider=finder, context_collector=collector, skeptic_provider=skeptic
+    )
+    with patch.object(collector, "collect_all", return_value={"diff": "d"}):
+        result = await reviewer.run_review()
+    assert result.skeptic_status == "off"
+    assert skeptic.prompts == []
+
+
+@pytest.mark.asyncio
+async def test_skeptic_failure_degrades_to_single_pass(tmp_path: Path) -> None:
+    """Skeptic crash → single-pass findings, skeptic_status='failed' (spec §5.5)."""
+    finder = StubProvider([FINDING_JSON])
+    skeptic = StubProvider(["not json at all {{{"])
+    collector = ContextCollector(project_root=tmp_path)
+    reviewer = GuardianReviewer(
+        provider=finder, context_collector=collector, skeptic_provider=skeptic
+    )
+    with patch.object(collector, "collect_all", return_value={"diff": "d"}):
+        result = await reviewer.run_review()
+    assert result.skeptic_status == "failed"
+    assert result.findings[0].verdict is None

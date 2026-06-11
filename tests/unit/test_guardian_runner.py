@@ -1,13 +1,23 @@
 """Tests for the guardian script runner (provider selection + orchestration)."""
 
+import subprocess
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
+from guardian_stubs import FINDING_JSON, StubProvider
 from pydantic import BaseModel
 
 from cgis.guardian.collector import ContextCollector
 from cgis.guardian.providers.base import BaseProvider, ProviderUsage
-from cgis.guardian.runner import build_footer, build_provider, run_guardian
+from cgis.guardian.runner import (
+    DEFAULT_GEMINI_MODEL,
+    DEFAULT_MISTRAL_MODEL,
+    build_footer,
+    build_provider,
+    build_skeptic_provider,
+    run_guardian,
+)
 
 _VALID_JSON = '{"findings": [], "summary": "all good"}'
 
@@ -90,6 +100,55 @@ def test_build_footer_includes_model_and_tokens() -> None:
     assert "2/4" in footer
 
 
+def test_build_skeptic_provider_default_is_other_provider() -> None:
+    """Primary gemini -> skeptic mistral by default (spec §5.5), when its key exists."""
+    env = {"GEMINI_API_KEY": "g", "MISTRAL_API_KEY": "m"}
+    built = build_skeptic_provider(env, primary="gemini")
+    assert built is not None
+    _provider, model = built
+    assert model == DEFAULT_MISTRAL_MODEL
+
+
+def test_build_skeptic_provider_off() -> None:
+    """GUARDIAN_SKEPTIC=off disables the pass."""
+    env = {"GUARDIAN_SKEPTIC": "off", "GEMINI_API_KEY": "g", "MISTRAL_API_KEY": "m"}
+    assert build_skeptic_provider(env, primary="gemini") is None
+
+
+def test_build_skeptic_provider_same_provider_model_override() -> None:
+    """GUARDIAN_SKEPTIC=gemini + GUARDIAN_SKEPTIC_MODEL allows a gemini+gemini pair."""
+    env = {
+        "GUARDIAN_SKEPTIC": "gemini",
+        "GUARDIAN_SKEPTIC_MODEL": "gemini-2.5-flash",
+        "GEMINI_API_KEY": "g",
+    }
+    built = build_skeptic_provider(env, primary="gemini")
+    assert built is not None
+    _, model = built
+    assert model == "gemini-2.5-flash"
+
+
+def test_build_skeptic_provider_mistral_primary_defaults_to_gemini() -> None:
+    """Primary mistral -> skeptic gemini by default (spec §5.5), when its key exists."""
+    env = {"GEMINI_API_KEY": "g", "MISTRAL_API_KEY": "m"}
+    built = build_skeptic_provider(env, primary="mistral")
+    assert built is not None
+    _provider, model = built
+    assert model == DEFAULT_GEMINI_MODEL
+
+
+def test_build_skeptic_provider_unknown_value_disabled() -> None:
+    """GUARDIAN_SKEPTIC=<unknown> returns None (graceful single-pass), not an error."""
+    env = {"GUARDIAN_SKEPTIC": "claude", "GEMINI_API_KEY": "g", "MISTRAL_API_KEY": "m"}
+    assert build_skeptic_provider(env, primary="gemini") is None
+
+
+def test_build_skeptic_provider_missing_key_degrades_to_none() -> None:
+    """No API key for the chosen skeptic → None (graceful single-pass), not an error."""
+    env = {"GEMINI_API_KEY": "g"}  # default skeptic for gemini primary is mistral — no key
+    assert build_skeptic_provider(env, primary="gemini") is None
+
+
 async def test_run_guardian_smoke(tmp_path: Path) -> None:
     """End-to-end with a fake provider: review → render → metrics line.
 
@@ -101,7 +160,7 @@ async def test_run_guardian_smoke(tmp_path: Path) -> None:
     """
     metrics = tmp_path / "m.jsonl"
     collector = ContextCollector(project_root=tmp_path)
-    report = await run_guardian(
+    report, posted_inline = await run_guardian(
         provider=_FakeProvider(),
         model="fake-model",
         collector=collector,
@@ -110,3 +169,81 @@ async def test_run_guardian_smoke(tmp_path: Path) -> None:
     )
     assert report.startswith("LGTM — no defects found in this diff.")
     assert metrics.exists()
+    assert posted_inline is False
+
+
+# ---------------------------------------------------------------------------
+# Inline review path tests (spec §6.5, §8)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_guardian_posts_inline_and_reports_success(tmp_path: Path) -> None:
+    """Smoke test (spec §8): canned JSON → ReviewResult → inline post; posted=True."""
+    provider = StubProvider([FINDING_JSON])
+    collector = ContextCollector(project_root=tmp_path)
+    with (
+        patch.object(collector, "collect_all", return_value={"diff": "d"}),
+        patch.object(
+            collector,
+            "get_git_diff",
+            return_value="diff --git a/a.py b/a.py\n+++ b/a.py\n@@ -0,0 +1,1 @@\n+x = 1\n",
+        ),
+        patch("cgis.guardian.runner.post_inline_review") as mock_post,
+    ):
+        report, posted = await run_guardian(
+            provider=provider,
+            model="m",
+            collector=collector,
+            pr=153,
+            metrics_path=tmp_path / "m.jsonl",
+            inline_repo="zaebee/codegraph-brain",
+        )
+    assert posted is True
+    mock_post.assert_called_once()
+    assert "**[Logic Bug]" in report  # report still rendered for the artifact
+
+
+@pytest.mark.asyncio
+async def test_run_guardian_inline_failure_falls_back(tmp_path: Path) -> None:
+    """API rejection → posted=False, report intact (peter-evans fallback, spec §6.5)."""
+    provider = StubProvider([FINDING_JSON])
+    collector = ContextCollector(project_root=tmp_path)
+    with (
+        patch.object(collector, "collect_all", return_value={"diff": "d"}),
+        patch.object(collector, "get_git_diff", return_value=""),
+        patch(
+            "cgis.guardian.runner.post_inline_review",
+            side_effect=subprocess.CalledProcessError(1, "gh"),
+        ),
+    ):
+        report, posted = await run_guardian(
+            provider=provider,
+            model="m",
+            collector=collector,
+            pr=153,
+            metrics_path=tmp_path / "m.jsonl",
+            inline_repo="zaebee/codegraph-brain",
+        )
+    assert posted is False
+    assert "**[Logic Bug]" in report
+
+
+@pytest.mark.asyncio
+async def test_run_guardian_no_inline_repo_skips_posting(tmp_path: Path) -> None:
+    """inline_repo=None (local runs, bench) → no posting attempted, posted=False."""
+    provider = StubProvider([FINDING_JSON])
+    collector = ContextCollector(project_root=tmp_path)
+    with (
+        patch.object(collector, "collect_all", return_value={"diff": "d"}),
+        patch("cgis.guardian.runner.post_inline_review") as mock_post,
+    ):
+        _, posted = await run_guardian(
+            provider=provider,
+            model="m",
+            collector=collector,
+            pr=None,
+            metrics_path=tmp_path / "m.jsonl",
+        )
+    assert posted is False
+    mock_post.assert_not_called()

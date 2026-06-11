@@ -7,10 +7,17 @@ from pathlib import Path
 
 import structlog
 
-from cgis.guardian.collector import ContextCollector
-from cgis.guardian.runner import build_provider, run_guardian
+from cgis.guardian.collector import ContextCollector, parse_features
+from cgis.guardian.providers.mistral import MistralProvider
+from cgis.guardian.runner import build_provider, build_skeptic_provider, run_guardian
 
 log = structlog.getLogger(__name__)
+
+
+def _append_github_output(path: str, posted_inline: bool) -> None:
+    """Blocking append of the posted_inline workflow output (called via asyncio.to_thread)."""
+    with Path(path).open("a", encoding="utf-8") as fh:
+        fh.write(f"posted_inline={'true' if posted_inline else 'false'}\n")
 
 
 async def main() -> None:
@@ -45,20 +52,31 @@ async def main() -> None:
         default="main",
         help="Base branch for git diff (default: main). Use the PR target branch.",
     )
+    parser.add_argument(
+        "--inline",
+        action="store_true",
+        help="Post findings as an inline GitHub review; fall back to the report file on failure.",
+    )
     args = parser.parse_args()
 
     provider, model = build_provider(os.environ)
+    primary = "mistral" if isinstance(provider, MistralProvider) else "gemini"
+    skeptic = build_skeptic_provider(os.environ, primary=primary)
+    features = parse_features(os.environ.get("GUARDIAN_FEATURES", ""))
+    inline_repo = os.environ.get("GITHUB_REPOSITORY") if args.inline else None
     project_root = Path(__file__).parent.parent.absolute()
     collector = ContextCollector(
-        project_root=project_root, db_path=args.db, base_branch=args.base_branch
+        project_root=project_root, db_path=args.db, base_branch=args.base_branch, features=features
     )
     log.info("Running guardian review...", model=model)
-    report = await run_guardian(
+    report, posted_inline = await run_guardian(
         provider=provider,
         model=model,
         collector=collector,
         pr=args.pr,
         metrics_path=args.metrics,
+        skeptic=skeptic,
+        inline_repo=inline_repo,
     )
 
     if args.output:
@@ -71,6 +89,10 @@ async def main() -> None:
         log.info("Review written to file.", path=str(output_path))
     else:
         print(report)
+
+    github_output = os.environ.get("GITHUB_OUTPUT")
+    if github_output:
+        await asyncio.to_thread(_append_github_output, github_output, posted_inline)
 
 
 if __name__ == "__main__":

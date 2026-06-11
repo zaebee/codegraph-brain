@@ -6,11 +6,33 @@ from pathlib import Path
 import structlog
 
 from cgis.extractors.python_extractor import file_path_to_module_fqn
+from cgis.query.drift import DriftScorer
 from cgis.query.engine import QueryEngine
+from cgis.query.fingerprint import FingerprintExtractor
 from cgis.query.mermaid import MermaidCompiler
+from cgis.query.quotient import build_quotient
 from cgis.storage.sqlite_store import SQLiteStore
 
 log = structlog.getLogger(__name__)
+
+VALID_FEATURES = frozenset({"full_files", "flow", "drift"})
+
+_MAX_FILE_LINES = 1200
+_MAX_TOTAL_CHARS = 120_000
+
+
+def parse_features(raw: str) -> frozenset[str]:
+    """Parse a GUARDIAN_FEATURES value ('full_files,flow,drift') into a validated set.
+
+    Raises ValueError on unknown names: a typo silently disabling an ablation
+    arm would corrupt the benchmark comparison.
+    """
+    items = {item.strip() for item in raw.split(",") if item.strip()}
+    unknown = items - VALID_FEATURES
+    if unknown:
+        _msg = f"Unknown GUARDIAN_FEATURES: {sorted(unknown)}; valid: {sorted(VALID_FEATURES)}"
+        raise ValueError(_msg)
+    return frozenset(items)
 
 
 class ContextCollector:
@@ -23,6 +45,7 @@ class ContextCollector:
         db_path: Path | None = None,
         base_ref: str | None = None,
         source_root: str = "src",
+        features: frozenset[str] = frozenset(),
     ) -> None:
         """Set project root, diff base (branch or explicit ref), and optional graph DB.
 
@@ -32,13 +55,17 @@ class ContextCollector:
         source_root must match the ingest root used to build the graph DB
         (CI runs `cgis ingest ./src`): node FQNs are relative to that root,
         so changed-file paths are stripped of it before lookup.
+
+        features gates the optional context sections (spec §4): "full_files", "flow", "drift".
         """
         self.project_root = project_root
         self.base_branch = base_branch
         self.db_path = db_path
         self.base_ref = base_ref
         self.source_root = source_root
-        self.graph_stats: dict[str, int] = {"total": 0, "with_graph": 0}
+        self.features = features
+        self.graph_stats: dict[str, int] = {"total": 0, "with_graph": 0, "flow_fallback": 0}
+        self._diff_cache: str | None = None
 
     def _diff_range(self) -> str:
         """Return the git range argument for diff commands."""
@@ -46,7 +73,14 @@ class ContextCollector:
         return f"{base}...HEAD"
 
     def get_git_diff(self) -> str:
-        """Returns diff between HEAD and the base branch on origin."""
+        """Returns diff between HEAD and the base branch on origin.
+
+        The diff is cached after the first successful call: within one review
+        run it is needed twice (LLM context and inline-comment line index),
+        and the working tree does not change in between.
+        """
+        if self._diff_cache is not None:
+            return self._diff_cache
         try:
             result = subprocess.run(
                 ["git", "diff", self._diff_range()],
@@ -58,7 +92,8 @@ class ContextCollector:
         except subprocess.CalledProcessError as e:
             return f"Error getting git diff: {e.stderr}"
         else:
-            return result.stdout
+            self._diff_cache = result.stdout
+            return self._diff_cache
 
     def get_changed_py_files(self) -> list[str]:
         """Returns relative paths of .py files changed vs the base branch."""
@@ -79,7 +114,36 @@ class ContextCollector:
         file_path = self.project_root / relative_path
         if not file_path.exists():
             return f"Error: File {relative_path} not found."
-        return file_path.read_text()
+        return file_path.read_text(encoding="utf-8")
+
+    def collect_full_files(self) -> str:
+        """Full HEAD text of changed .py files, smallest-first under budgets (spec §4.1).
+
+        Per-file cap ~1200 lines and a global ~120K-char budget; omitted files get
+        an explicit note so the model never reads absence-of-file as absence-of-code.
+        """
+        changed = self.get_changed_py_files()
+        sized: list[tuple[int, str, str]] = []
+        omitted: list[str] = []
+        for rel_path in changed:
+            path = self.project_root / rel_path
+            if not path.exists():  # deleted in this PR — nothing to show at HEAD
+                continue
+            text = path.read_text(encoding="utf-8")
+            if len(text.splitlines()) > _MAX_FILE_LINES:
+                omitted.append(f"file omitted: too large ({rel_path})")
+                continue
+            sized.append((len(text), rel_path, text))
+
+        sections: list[str] = []
+        used = 0
+        for size, rel_path, text in sorted(sized):
+            if used + size > _MAX_TOTAL_CHARS:
+                omitted.append(f"file omitted: budget exhausted ({rel_path})")
+                continue
+            used += size
+            sections.append(f"#### `{rel_path}`\n```python\n{text}\n```")
+        return "\n\n".join(sections + omitted)
 
     def collect_graph_context(self) -> str:
         """Query graph.db for impact graphs of changed files; return Mermaid blocks."""
@@ -93,21 +157,31 @@ class ContextCollector:
         compiler = MermaidCompiler()
         sections: list[str] = []
         total_changed = len(changed_files)
+        flow_fallbacks = 0
 
         with SQLiteStore(str(self.db_path)) as store:
             engine = QueryEngine(store)
             for rel_path in changed_files:
                 module_fqn = file_path_to_module_fqn(rel_path, self.source_root)
                 nodes, edges = engine.get_impact_graph(module_fqn, max_depth=2)
+                title = "Impact graph"
+                if not nodes and "flow" in self.features:
+                    # New file: nothing references it yet (#94) — show what it calls.
+                    nodes, edges = engine.get_flow_graph(module_fqn, max_depth=2)
+                    title = "Dependency graph (outbound)"
+                    if nodes:
+                        flow_fallbacks += 1
                 if not nodes:
                     log.debug("No impact graph for module", fqn=module_fqn)
                     continue
                 mermaid = compiler.compile(nodes, edges)
-                sections.append(
-                    f"#### Impact graph for `{module_fqn}`:\n```mermaid\n{mermaid}\n```"
-                )
+                sections.append(f"#### {title} for `{module_fqn}`:\n```mermaid\n{mermaid}\n```")
 
-        self.graph_stats = {"total": total_changed, "with_graph": len(sections)}
+        self.graph_stats = {
+            "total": total_changed,
+            "with_graph": len(sections),
+            "flow_fallback": flow_fallbacks,
+        }
         if total_changed > 0 and len(sections) == 0:
             log.warning(
                 "No graph context found for any changed file.",
@@ -115,6 +189,54 @@ class ContextCollector:
                 project_root=str(self.project_root),
             )
         return "\n\n".join(sections)
+
+    def collect_drift(self) -> str:
+        """Compact per-domain drift table + quotient k=1 lines (spec §4.3).
+
+        First real consumer of drift v2 outside tests — the soft enforcement
+        channel deferred in #146/#151. Any failure degrades to an empty section.
+        """
+        if self.db_path is None or not self.db_path.exists():
+            return ""
+        patterns = self.project_root / "docs" / "ontology" / "patterns.yaml"
+        if not patterns.exists():
+            return ""
+        try:
+            scorer = DriftScorer(str(patterns))
+            domains = scorer.load_project_domains()
+            quotient_lines: list[str] = []
+            with SQLiteStore(str(self.db_path)) as store:
+                extractor = FingerprintExtractor(store)
+                reports = [scorer.score(extractor.extract(d.fqn_prefix), d) for d in domains]
+                level = scorer.load_project_level()
+                if level:
+                    qnodes, qedges = build_quotient(
+                        store.get_all_nodes(), store.get_all_edges(), domains
+                    )
+                    q_extractor = FingerprintExtractor.from_graph(qnodes, qedges)
+                    quotient_lines = [
+                        f"Quotient k=1 [{b.name}] vs {qr.expected_pattern}: "
+                        f"drift={qr.drift_score:.2f} (observe-only)"
+                        for b in level
+                        for qr in [scorer.score(q_extractor.extract(b.fqn_prefix), b)]
+                    ]
+        except Exception:
+            log.warning("Drift section skipped.", exc_info=True)
+            return ""
+
+        if not reports and not quotient_lines:  # no domains declared — skip the empty table
+            return ""
+
+        rows = [
+            f"| {r.fqn_prefix} | {r.expected_pattern or '(hygiene)'} "
+            f"| {r.drift_score:.2f} | {r.tolerance:.2f} "
+            f"| {'⚠' if r.drift_score > r.tolerance else ''} |"
+            for r in reports
+        ]
+        table = "| domain | expected | drift | tolerance | over |\n|---|---|---|---|---|\n"
+        return (
+            table + "\n".join(rows) + ("\n" + "\n".join(quotient_lines) if quotient_lines else "")
+        )
 
     def collect_all(self) -> dict[str, str]:
         """Collects all relevant files, git diff, and optional graph context."""
@@ -126,4 +248,12 @@ class ContextCollector:
         graph_context = self.collect_graph_context()
         if graph_context:
             context["graph_context"] = graph_context
+        if "full_files" in self.features:
+            full_files = self.collect_full_files()
+            if full_files:
+                context["full_files"] = full_files
+        if "drift" in self.features:
+            drift = self.collect_drift()
+            if drift:
+                context["drift"] = drift
         return context

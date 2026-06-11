@@ -21,9 +21,11 @@ from pathlib import Path
 import structlog
 
 from cgis.guardian.bench import GroundTruth, load_ground_truth, match_findings, score
-from cgis.guardian.collector import ContextCollector
+from cgis.guardian.collector import ContextCollector, parse_features
 from cgis.guardian.core import GuardianReviewer
-from cgis.guardian.runner import build_provider
+from cgis.guardian.providers.mistral import MistralProvider
+from cgis.guardian.runner import build_provider, build_skeptic_provider
+from cgis.guardian.skeptic import visible_findings
 
 log = structlog.getLogger(__name__)
 
@@ -72,6 +74,15 @@ def _append_jsonl(path: Path, entry: dict[str, object]) -> None:
 async def _run_one(truth: GroundTruth, run_idx: int, results_path: Path) -> None:
     """Replay one PR once: worktree → ingest → review → score → JSONL line."""
     provider, model = build_provider(os.environ)
+    primary = "mistral" if isinstance(provider, MistralProvider) else "gemini"
+    # Bench requires explicit opt-in: an implicit skeptic default would silently
+    # change scoring vs the committed baseline (review runs keep the implicit default).
+    skeptic = (
+        build_skeptic_provider(os.environ, primary=primary)
+        if os.environ.get("GUARDIAN_SKEPTIC")
+        else None
+    )
+    features = parse_features(os.environ.get("GUARDIAN_FEATURES", ""))
     _git("fetch", "origin", f"pull/{truth.pr}/head")
     with tempfile.TemporaryDirectory(prefix=f"bench-pr{truth.pr}-") as tmp:
         worktree = Path(tmp) / "wt"
@@ -82,13 +93,19 @@ async def _run_one(truth: GroundTruth, run_idx: int, results_path: Path) -> None
                 project_root=worktree,
                 db_path=worktree / "graph.db",
                 base_ref=truth.base,
+                features=features,
             )
-            reviewer = GuardianReviewer(provider=provider, context_collector=collector)
+            reviewer = GuardianReviewer(
+                provider=provider,
+                context_collector=collector,
+                skeptic_provider=skeptic[0] if skeptic else None,
+            )
             result = await reviewer.run_review()
         finally:
             _git("worktree", "remove", "--force", str(worktree))
 
-    matches = match_findings(result.findings, truth)
+    visible = visible_findings(result.findings)
+    matches = match_findings(visible, truth)
     bench_score = score(matches, truth)
     entry = {
         "timestamp": datetime.now(UTC).isoformat(),
@@ -106,6 +123,8 @@ async def _run_one(truth: GroundTruth, run_idx: int, results_path: Path) -> None
         "ambiguous_hits": matches.ambiguous_hits,
         "prompt_tokens": provider.last_usage.prompt_tokens,
         "completion_tokens": provider.last_usage.completion_tokens,
+        "skeptic_model": skeptic[1] if skeptic else None,
+        "skeptic_status": result.skeptic_status,
         "findings": [f.model_dump() for f in result.findings],
     }
     await asyncio.to_thread(_append_jsonl, results_path, entry)
