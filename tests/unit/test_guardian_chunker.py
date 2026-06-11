@@ -213,6 +213,23 @@ def test_test_file_attaches_to_its_module(tmp_path: Path) -> None:
     ]
 
 
+def test_multiple_tests_attach_to_same_chunk() -> None:
+    """Two test files pairing with the same module land in one chunk."""
+    diff = (
+        fdiff("src/cgis/guardian/core.py")
+        + fdiff("tests/unit/test_core.py")
+        + fdiff("tests/unit/test_guardian_core.py")
+    )
+    chunks = build_chunks(diff, store=None)
+    assert [c.files for c in chunks] == [
+        (
+            "src/cgis/guardian/core.py",
+            "tests/unit/test_core.py",
+            "tests/unit/test_guardian_core.py",
+        )
+    ]
+
+
 def test_test_pairing_needs_underscore_boundary() -> None:
     """'core' must not match score.py — suffix only counts at an underscore boundary."""
     diff = fdiff("src/cgis/score.py") + fdiff("tests/unit/test_core.py")
