@@ -20,6 +20,22 @@ Analyse transitive upstream callers of a specific FQN.
 
 ---
 
+## `cgis_drift`
+
+Report per-domain architectural drift against declared ideal patterns.
+
+    Returns JSON: ``any_critical`` verdict, per-domain reports and the
+    observe-only quotient layer. Call after ``cgis_ingest`` to learn whether
+    your edits pushed a domain past its drift tolerance.
+
+| Argument | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `db_path` | `string` |  |  |
+| `patterns_path` | `string` |  |  |
+| `max_drift` | `number` |  |  |
+
+---
+
 ## `cgis_get_structure`
 
 Show the class/module layout of a component by tracing outgoing edges.
@@ -62,5 +78,19 @@ Trace the execution call-graph starting from a specific FQN downwards.
 | `fqn` | `string` | ✓ |  |
 | `db_path` | `string` |  |  |
 | `depth` | `integer` |  |  |
+
+---
+
+## `cgis_validate`
+
+Report graph integrity as JSON: edge resolution stats + health verdict.
+
+    Check this before trusting ``cgis_analyze_impact`` output — a high
+    unresolved ratio means callers are missing from the graph.
+
+| Argument | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `db_path` | `string` |  |  |
+| `threshold` | `number` |  |  |
 
 ---
