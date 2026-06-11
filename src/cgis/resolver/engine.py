@@ -338,6 +338,8 @@ class ResolverEngine:
         Order: the consuming file's import map first, then the VARIABLE-only
         symbol index with same-file preference. Returns None for anything that
         is not an existing VARIABLE node — the caller drops the edge.
+        A globally-unique match is accepted even when the name is not importable
+        in the consuming file — matching _resolve_global_call's behavior.
         """
         file_path = self._get_normalized_file_path(source_fqn, edge_file_path)
         if file_path:

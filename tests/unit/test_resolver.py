@@ -1114,6 +1114,20 @@ def test_raw_dep_unresolved_is_dropped_and_never_leaks() -> None:
     assert any(e.target == "unknown_fn" for e in resolved)
 
 
+def test_raw_dep_ambiguous_across_files_is_dropped() -> None:
+    """Two same-named aliases in different files, no import map: candidate is dropped."""
+    nodes = [
+        _func_node("routes.get_vehicle", "routes.py"),
+        _alias_node("deps.OwnerDep", "deps.py"),
+        _alias_node("other.OwnerDep", "other.py"),
+    ]
+    edges = [_raw_dep_edge("routes.get_vehicle", "OwnerDep", "routes.py")]
+
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+
+    assert resolved == []
+
+
 def test_variable_nodes_do_not_pollute_call_resolution() -> None:
     """VARIABLE nodes are not in _global_symbols: raw_call: never lands on them."""
     nodes = [
