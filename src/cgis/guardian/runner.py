@@ -6,8 +6,8 @@ from pathlib import Path
 
 import structlog
 
+from cgis.guardian.chunked import run_review_routed
 from cgis.guardian.collector import ContextCollector
-from cgis.guardian.core import GuardianReviewer
 from cgis.guardian.diff_index import diff_line_index
 from cgis.guardian.github_poster import post_inline_review
 from cgis.guardian.metrics import record_review
@@ -119,17 +119,17 @@ async def run_guardian(
     covers both "not configured" and "API rejected" — the caller posts the
     big comment in either case (spec §6.5).
     """
-    reviewer = GuardianReviewer(
+    routed = await run_review_routed(
         provider=provider,
-        context_collector=collector,
+        collector=collector,
         skeptic_provider=skeptic[0] if skeptic else None,
     )
-    result = await reviewer.run_review()
+    result = routed.result
     report = render_report(result)
     # Built BEFORE the inline attempt: a successful inline post skips the
     # fallback comment, so the footer must ride inside the review body too
     # (live finding on PR #157 — inline reviews arrived footerless).
-    footer = build_footer(model=model, usage=provider.last_usage, stats=collector.graph_stats)
+    footer = build_footer(model=model, usage=provider.cumulative_usage, stats=collector.graph_stats)
 
     posted = False
     if inline_repo is not None and pr is not None:
@@ -151,8 +151,8 @@ async def run_guardian(
     record_review(
         model=model,
         pr=pr,
-        prompt_tokens=provider.last_usage.prompt_tokens,
-        completion_tokens=provider.last_usage.completion_tokens,
+        prompt_tokens=provider.cumulative_usage.prompt_tokens,
+        completion_tokens=provider.cumulative_usage.completion_tokens,
         findings_total=len(result.findings),
         # lgtm counts pre-skeptic findings on purpose: all-refuted is "finder
         # flagged something, skeptic killed it" — not a clean LGTM.
@@ -160,6 +160,7 @@ async def run_guardian(
         parse_failed=result.parse_failed,
         skeptic_model=skeptic[1] if skeptic else None,
         skeptic_status=result.skeptic_status,
+        chunk_count=routed.chunk_count,
         metrics_path=metrics_path,
     )
     return report + footer, posted

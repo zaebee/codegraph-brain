@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from cgis.guardian.chunker import Chunk, build_chunks
 from cgis.guardian.collector import ContextCollector
-from cgis.guardian.core import finder_pass
+from cgis.guardian.core import GuardianReviewer, finder_pass
 from cgis.guardian.findings import Finding, ReviewResult, extract_json
 from cgis.guardian.providers.base import BaseProvider
 from cgis.guardian.skeptic import (
@@ -159,4 +159,32 @@ async def run_chunked_review(
     return RoutedReview(
         result=merged.model_copy(update={"findings": verified, "skeptic_status": "ok"}),
         chunk_count=len(chunks),
+    )
+
+
+async def run_review_routed(
+    *,
+    provider: BaseProvider,
+    collector: ContextCollector,
+    skeptic_provider: BaseProvider | None,
+) -> RoutedReview:
+    """Single entry point for runner and bench: chunked vs single-pass (spec §4.1).
+
+    chunked without a graph DB falls back to single pass: build_chunks would
+    degrade to all-isolated chunks = one API call per file with zero
+    connectivity benefit — strictly worse than the status quo.
+    """
+    chunked = "chunked" in collector.features
+    if chunked and (collector.db_path is None or not collector.db_path.exists()):
+        log.warning("chunked requested but no graph DB; falling back to single pass.")
+        chunked = False
+    if not chunked:
+        reviewer = GuardianReviewer(
+            provider=provider,
+            context_collector=collector,
+            skeptic_provider=skeptic_provider,
+        )
+        return RoutedReview(result=await reviewer.run_review(), chunk_count=None)
+    return await run_chunked_review(
+        provider=provider, collector=collector, skeptic_provider=skeptic_provider
     )

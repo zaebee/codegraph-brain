@@ -144,3 +144,30 @@ def test_record_review_parse_failed_flag(tmp_path: Path) -> None:
         metrics_path=path,
     )
     assert json.loads(path.read_text())["parse_failed"] is True
+
+
+def test_record_review_chunk_count(tmp_path: Path) -> None:
+    """chunk_count rides in the entry; defaults to None for single-pass."""
+    path = tmp_path / "m.jsonl"
+    record_review(
+        model="m",
+        pr=1,
+        prompt_tokens=1,
+        completion_tokens=1,
+        findings_total=0,
+        lgtm=True,
+        chunk_count=3,
+        metrics_path=path,
+    )
+    record_review(
+        model="m",
+        pr=2,
+        prompt_tokens=1,
+        completion_tokens=1,
+        findings_total=0,
+        lgtm=True,
+        metrics_path=path,
+    )
+    entries = [json.loads(line) for line in path.read_text().splitlines()]
+    assert entries[0]["chunk_count"] == 3
+    assert entries[1]["chunk_count"] is None

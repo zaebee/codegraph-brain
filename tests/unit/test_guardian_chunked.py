@@ -7,7 +7,14 @@ import pytest
 from guardian_stubs import StubProvider
 from pydantic import BaseModel
 
-from cgis.guardian.chunked import MAX_CHUNKS, RoutedReview, _cap_chunks, _dedup, run_chunked_review
+from cgis.guardian.chunked import (
+    MAX_CHUNKS,
+    RoutedReview,
+    _cap_chunks,
+    _dedup,
+    run_chunked_review,
+    run_review_routed,
+)
 from cgis.guardian.chunker import Chunk
 from cgis.guardian.collector import ContextCollector
 from cgis.guardian.findings import Finding, ReviewResult
@@ -264,3 +271,39 @@ async def test_chunked_skeptic_failure_returns_unverified(tmp_path: Path) -> Non
     )
     assert routed.result.skeptic_status == "failed"
     assert routed.result.findings[0].verdict is None
+
+
+@pytest.mark.asyncio
+async def test_routed_no_flag_single_pass(tmp_path: Path) -> None:
+    """Without 'chunked' the single-pass path runs: ONE finder call for two files."""
+    diff = fdiff("src/a.py") + fdiff("src/b.py")
+    provider = StubProvider([_LGTM])
+    routed = await run_review_routed(
+        provider=provider, collector=_collector(tmp_path, diff), skeptic_provider=None
+    )
+    assert routed.chunk_count is None
+    assert len(provider.prompts) == 1
+
+
+@pytest.mark.asyncio
+async def test_routed_flag_without_db_falls_back(tmp_path: Path) -> None:
+    """chunked + no graph DB -> single pass (warn), not isolated-chunk spam."""
+    diff = fdiff("src/a.py") + fdiff("src/b.py")
+    collector = _collector(tmp_path, diff, with_db=False)
+    collector.features = frozenset({"chunked"})
+    provider = StubProvider([_LGTM])
+    routed = await run_review_routed(provider=provider, collector=collector, skeptic_provider=None)
+    assert routed.chunk_count is None
+    assert len(provider.prompts) == 1
+
+
+@pytest.mark.asyncio
+async def test_routed_flag_with_db_chunks(tmp_path: Path) -> None:
+    """chunked + DB -> the chunked path runs."""
+    diff = fdiff("src/a.py") + fdiff("src/b.py")
+    collector = _collector(tmp_path, diff)
+    collector.features = frozenset({"chunked"})
+    provider = StubProvider([_LGTM, _LGTM])
+    routed = await run_review_routed(provider=provider, collector=collector, skeptic_provider=None)
+    assert routed.chunk_count == 2
+    assert len(provider.prompts) == 2
