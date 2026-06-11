@@ -1,9 +1,13 @@
 """Unit tests for the guardian chunker (spec: 2026-06-11-guardian-chunker-design.md)."""
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
+from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.guardian.chunker import Chunk, build_chunks, split_diff_by_file
+from cgis.storage.sqlite_store import SQLiteStore
 
 
 def fdiff(path: str, body: str = "+x = 1") -> str:
@@ -94,3 +98,104 @@ def test_chunk_is_frozen() -> None:
     chunk = Chunk(files=("a.py",), diff="d")
     with pytest.raises(ValidationError):
         chunk.diff = "x"  # type: ignore[misc]
+
+
+def _node(fqn: str, file_path: str) -> Node:
+    """Minimal MODULE node for graph fixtures."""
+    return Node(
+        id=fqn,
+        type=NodeType.MODULE,
+        name=fqn.rsplit(".", 1)[-1],
+        file_path=file_path,
+        start_line=1,
+        end_line=1,
+    )
+
+
+def _edge(source: str, target: str, etype: EdgeType = EdgeType.IMPORTS) -> Edge:
+    """Minimal edge for graph fixtures."""
+    return Edge(id=f"{source}->{target}:{etype}", source=source, target=target, type=etype)
+
+
+def _make_store(tmp_path: Path, nodes: list[Node], edges: list[Edge]) -> SQLiteStore:
+    """Persist a small synthetic graph and return the connected store."""
+    store = SQLiteStore(str(tmp_path / "graph.db"))
+    store.connect()
+    store.save_graph(nodes, edges)
+    return store
+
+
+def test_imports_edge_joins_two_files(tmp_path: Path) -> None:
+    """a.py imports b.py, both changed → one two-file chunk."""
+    store = _make_store(
+        tmp_path,
+        [_node("src.cgis.a", "src/cgis/a.py"), _node("src.cgis.b", "src/cgis/b.py")],
+        [_edge("src.cgis.a", "src.cgis.b")],
+    )
+    diff = fdiff("src/cgis/a.py") + fdiff("src/cgis/b.py")
+    chunks = build_chunks(diff, store)
+    assert [c.files for c in chunks] == [("src/cgis/a.py", "src/cgis/b.py")]
+    assert "+x = 1" in chunks[0].diff
+
+
+def test_calls_edge_joins_symbol_level_nodes(tmp_path: Path) -> None:
+    """CALLS between function nodes connects their FILES via node.file_path."""
+    store = _make_store(
+        tmp_path,
+        [_node("src.cgis.a.run", "src/cgis/a.py"), _node("src.cgis.b.go", "src/cgis/b.py")],
+        [_edge("src.cgis.a.run", "src.cgis.b.go", EdgeType.CALLS)],
+    )
+    diff = fdiff("src/cgis/a.py") + fdiff("src/cgis/b.py")
+    assert [c.files for c in build_chunks(diff, store)] == [("src/cgis/a.py", "src/cgis/b.py")]
+
+
+def test_indirect_path_through_unchanged_file_does_not_join(tmp_path: Path) -> None:
+    """A→X→B with only A and B changed → A and B stay separate (induced subgraph)."""
+    store = _make_store(
+        tmp_path,
+        [
+            _node("src.cgis.a", "src/cgis/a.py"),
+            _node("src.cgis.x", "src/cgis/x.py"),
+            _node("src.cgis.b", "src/cgis/b.py"),
+        ],
+        [_edge("src.cgis.a", "src.cgis.x"), _edge("src.cgis.x", "src.cgis.b")],
+    )
+    diff = fdiff("src/cgis/a.py") + fdiff("src/cgis/b.py")  # x.py NOT in the diff
+    assert [c.files for c in build_chunks(diff, store)] == [
+        ("src/cgis/a.py",),
+        ("src/cgis/b.py",),
+    ]
+
+
+def test_non_chunk_edge_types_ignored(tmp_path: Path) -> None:
+    """CONTAINS/DECLARES etc. carry structure, not coupling — they must not join."""
+    store = _make_store(
+        tmp_path,
+        [_node("src.cgis.a", "src/cgis/a.py"), _node("src.cgis.b", "src/cgis/b.py")],
+        [_edge("src.cgis.a", "src.cgis.b", EdgeType.CONTAINS)],
+    )
+    diff = fdiff("src/cgis/a.py") + fdiff("src/cgis/b.py")
+    assert len(build_chunks(diff, store)) == 2
+
+
+def test_source_root_normalization(tmp_path: Path) -> None:
+    """Graph paths are ingest-root-relative (cgis/...), diff paths repo-relative (src/cgis/...)."""
+    store = _make_store(
+        tmp_path,
+        [_node("cgis.a", "cgis/a.py"), _node("cgis.b", "cgis/b.py")],
+        [_edge("cgis.a", "cgis.b")],
+    )
+    diff = fdiff("src/cgis/a.py") + fdiff("src/cgis/b.py")
+    chunks = build_chunks(diff, store, source_root="src")
+    assert [c.files for c in chunks] == [("src/cgis/a.py", "src/cgis/b.py")]
+
+
+def test_raw_call_target_skipped(tmp_path: Path) -> None:
+    """Unresolved raw_call: targets have no node and must not crash or join."""
+    store = _make_store(
+        tmp_path,
+        [_node("src.cgis.a", "src/cgis/a.py"), _node("src.cgis.b", "src/cgis/b.py")],
+        [_edge("src.cgis.a", "raw_call:mystery", EdgeType.CALLS)],
+    )
+    diff = fdiff("src/cgis/a.py") + fdiff("src/cgis/b.py")
+    assert len(build_chunks(diff, store)) == 2

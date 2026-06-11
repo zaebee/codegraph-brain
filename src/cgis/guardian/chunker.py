@@ -8,7 +8,8 @@ import re
 import structlog
 from pydantic import BaseModel
 
-from cgis.storage.sqlite_store import SQLiteStore
+from cgis.core.models import EdgeType
+from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 
 log = structlog.getLogger(__name__)
 
@@ -120,10 +121,36 @@ def build_chunks(
     ]
 
 
+_CHUNK_EDGE_TYPES = frozenset({EdgeType.IMPORTS, EdgeType.CALLS})
+
+
 def _graph_pairs(
-    store: SQLiteStore | None,  # noqa: ARG001
-    changed: set[str],  # noqa: ARG001
-    source_root: str,  # noqa: ARG001
+    store: SQLiteStore | None, changed: set[str], source_root: str
 ) -> list[tuple[str, str]]:
-    """File pairs joined by an IMPORTS/CALLS edge with both endpoints changed."""
-    return []  # graph connectivity lands in the next task
+    """File pairs joined by an IMPORTS/CALLS edge with both endpoints changed.
+
+    Graph paths are normalized with source_root (collector convention,
+    fix 48790da). Any store failure degrades to no pairs — the chunker sits
+    on the review path and must not take guardian down.
+    """
+    if store is None:
+        return []
+    prefix = f"{source_root}/" if source_root else ""
+    try:
+        fqn_to_file = {
+            node.id: path
+            for node in store.get_all_nodes()
+            if (path := prefix + node.file_path) in changed
+        }
+        pairs: list[tuple[str, str]] = []
+        for edge in store.get_all_edges():
+            if edge.type not in _CHUNK_EDGE_TYPES or edge.target.startswith(RAW_CALL_PREFIX):
+                continue
+            src = fqn_to_file.get(edge.source)
+            dst = fqn_to_file.get(edge.target)
+            if src and dst and src != dst:
+                pairs.append((src, dst))
+    except Exception:
+        log.warning("Graph connectivity skipped; falling back to isolated chunks.", exc_info=True)
+        return []
+    return pairs
