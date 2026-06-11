@@ -186,6 +186,24 @@ async def test_run_review_passes_context_to_prompt(collector: ContextCollector) 
     assert "MY_DIFF" in captured["user"]
 
 
+def test_provider_cumulative_usage_defaults_to_zero() -> None:
+    """cumulative_usage starts at zero, like last_usage."""
+    provider = _SequenceProvider([])
+    assert provider.cumulative_usage.total_tokens == 0
+
+
+def test_record_usage_updates_last_and_accumulates() -> None:
+    """_record_usage sets last_usage to the new value and sums cumulative_usage."""
+    provider = _SequenceProvider([])
+    provider._record_usage(ProviderUsage(prompt_tokens=100, completion_tokens=10))  # noqa: SLF001
+    provider._record_usage(ProviderUsage(prompt_tokens=200, completion_tokens=20))  # noqa: SLF001
+    assert provider.last_usage.prompt_tokens == 200
+    assert provider.last_usage.completion_tokens == 20
+    assert provider.cumulative_usage.prompt_tokens == 300
+    assert provider.cumulative_usage.completion_tokens == 30
+    assert provider.cumulative_usage.total_tokens == 330
+
+
 def test_provider_last_usage_defaults_to_zero() -> None:
     """last_usage is initialised to zero before any call."""
     provider = _FakeProvider()
