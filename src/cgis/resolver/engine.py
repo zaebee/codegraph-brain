@@ -172,44 +172,52 @@ class ResolverEngine:
 
         for edge in self.edges:
             if edge.target.startswith(_RAW_CLASS_PREFIX):
-                raw = edge.target.removeprefix(_RAW_CLASS_PREFIX)
-                resolved = self._resolve_class_ref(raw, edge.source, edge.file_path)
-                final_target = resolved or raw
-                confidence = 1.0 if resolved else 0.5
-                resolved_edges.append(
-                    edge.model_copy(update={"target": final_target, "confidence": confidence})
-                )
-                self._ensure_virtual_node(final_target, virtual_nodes)
-                continue
-
-            if edge.target.startswith(RAW_DEP_PREFIX):
+                class_edge = self._resolved_class_edge(edge)
+                resolved_edges.append(class_edge)
+                self._ensure_virtual_node(class_edge.target, virtual_nodes)
+            elif edge.target.startswith(RAW_DEP_PREFIX):
                 dep_edge = self._resolved_dep_edge(edge)
                 if dep_edge is not None:
                     resolved_edges.append(dep_edge)
-                continue
-
-            if not edge.target.startswith("raw_call:"):
+            elif not edge.target.startswith("raw_call:"):
                 resolved_edges.append(edge)
                 self._ensure_virtual_node(edge.target, virtual_nodes)
-                continue
-
-            raw_name = edge.target.removeprefix("raw_call:")
-
-            if raw_name.startswith(_SELF_PREFIX):
-                new_target = self._resolve_self_call(
-                    edge.source, raw_name.removeprefix(_SELF_PREFIX)
-                )
             else:
-                new_target = self._resolve_global_call(raw_name, edge.source, edge.file_path)
-
-            final_target = new_target or raw_name
-            confidence = min(edge.confidence + 0.5, 1.0) if new_target else 0.8
-            resolved_edges.append(
-                edge.model_copy(update={"target": final_target, "confidence": confidence})
-            )
-            self._ensure_virtual_node(final_target, virtual_nodes)
+                call_edge = self._resolved_call_edge(edge)
+                resolved_edges.append(call_edge)
+                self._ensure_virtual_node(call_edge.target, virtual_nodes)
 
         return resolved_edges, list(virtual_nodes.values())
+
+    def _resolved_class_edge(self, edge: Edge) -> Edge:
+        """Resolve a raw_class: edge to its final class FQN.
+
+        Strips the raw_class: prefix, resolves via _resolve_class_ref, then
+        returns a copy of the edge with the resolved target (confidence 1.0) or
+        the bare name as fallback (confidence 0.5).
+        """
+        raw = edge.target.removeprefix(_RAW_CLASS_PREFIX)
+        resolved = self._resolve_class_ref(raw, edge.source, edge.file_path)
+        final_target = resolved or raw
+        confidence = 1.0 if resolved else 0.5
+        return edge.model_copy(update={"target": final_target, "confidence": confidence})
+
+    def _resolved_call_edge(self, edge: Edge) -> Edge:
+        """Resolve a raw_call: edge to its final call target FQN.
+
+        Strips the raw_call: prefix, dispatches to _resolve_self_call for
+        self.* calls or _resolve_global_call otherwise, then returns a copy of
+        the edge with the resolved target and adjusted confidence:
+        min(edge.confidence + 0.5, 1.0) on success, 0.8 on failure.
+        """
+        raw_name = edge.target.removeprefix("raw_call:")
+        if raw_name.startswith(_SELF_PREFIX):
+            new_target = self._resolve_self_call(edge.source, raw_name.removeprefix(_SELF_PREFIX))
+        else:
+            new_target = self._resolve_global_call(raw_name, edge.source, edge.file_path)
+        final_target = new_target or raw_name
+        confidence = min(edge.confidence + 0.5, 1.0) if new_target else 0.8
+        return edge.model_copy(update={"target": final_target, "confidence": confidence})
 
     def _ensure_virtual_node(self, target: str, virtual_nodes: dict[str, Node]) -> None:
         """Create a virtual boundary node for target if it is not already in the graph."""
