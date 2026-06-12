@@ -295,3 +295,84 @@ def test_cgis_get_structure_exact_fqn_has_no_note(
 
     assert "```mermaid" in result
     assert "Resolved" not in result
+
+
+# --- cgis_drift profile + empty status tests (#178) ---
+
+_PATTERNS_YAML_EMPTY = """\
+version: "1.0.0"
+drift_weights:
+  hub_count: 1.0
+  star_count: 0.0
+  chain_len: 0.0
+  dag_depth: 0.0
+  router_count: 0.0
+  cycle_ratio: 0.0
+  unresolved_ratio: 0.0
+patterns:
+  needs_hub:
+    description: "x"
+    hub_count: {min: 10}
+project_domains:
+  - name: "misfire"
+    fqn_prefix: "totally.missing"
+    expected_pattern: needs_hub
+    drift_tolerance: 0.10
+"""
+
+_PATTERNS_YAML_PROFILE = """\
+version: "1.0.0"
+drift_weights:
+  hub_count: 1.0
+  star_count: 0.0
+  chain_len: 0.0
+  dag_depth: 0.0
+  router_count: 0.0
+  cycle_ratio: 0.0
+  unresolved_ratio: 0.0
+patterns:
+  needs_hub:
+    description: "x"
+    hub_count: {min: 10}
+project_domains:
+  - name: "pydom"
+    fqn_prefix: "totally.missing"
+    expected_pattern: needs_hub
+    drift_tolerance: 0.10
+    profile: python
+"""
+
+
+def test_cgis_drift_mistargeted_prefix_reports_empty_and_any_critical(
+    repo_with_calls: tuple[Path, Path],
+) -> None:
+    """A mis-targeted fqn_prefix produces status='empty', non-null note, and any_critical=True."""
+    repo, db = repo_with_calls
+    cgis_ingest(str(repo), str(db))
+    patterns = repo / "patterns_empty.yaml"
+    patterns.write_text(_PATTERNS_YAML_EMPTY, encoding="utf-8")
+
+    result = cgis_drift(str(db), str(patterns))
+
+    payload = json.loads(result)
+    assert payload["any_critical"] is True
+    domain = payload["domains"][0]
+    assert domain["status"] == "empty"
+    assert domain["note"] is not None
+    assert "matched 0 nodes" in domain["note"]
+
+
+def test_cgis_drift_profile_filters_python_domain(
+    repo_with_calls: tuple[Path, Path],
+) -> None:
+    """profile='typescript' filters out the python-profile domain; payload has no rows."""
+    repo, db = repo_with_calls
+    cgis_ingest(str(repo), str(db))
+    patterns = repo / "patterns_profile.yaml"
+    patterns.write_text(_PATTERNS_YAML_PROFILE, encoding="utf-8")
+
+    result = cgis_drift(str(db), str(patterns), profile="typescript")
+
+    payload = json.loads(result)
+    assert payload["any_critical"] is False
+    assert payload["domains"] == []

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 from rich.tree import Tree
 
@@ -785,8 +786,12 @@ def guardian_stats(
         console.print(f"  Overall precision : [cyan]{avg_precision}[/cyan]  ({rated_label})")
 
 
-def _drift_status_label(score: float, max_drift: float) -> str:
-    """Return a Rich-formatted status label for a given drift score."""
+def _drift_status_label(score: float, max_drift: float, status: str = "clean") -> str:
+    """Return a Rich-formatted status label; empty/no_signal override score (#178)."""
+    if status == "empty":
+        return "[bold red]⛔ EMPTY[/bold red]"
+    if status == "no_signal":
+        return "[yellow]◌ no signal[/yellow]"
     if score >= max_drift:
         return "[bold red]❌ critical[/bold red]"
     if score >= 0.20:
@@ -810,8 +815,10 @@ def _render_drift_table(reports: list[DriftReport], max_drift: float) -> None:
             f"{r.drift_score:.2f}",
             f"{r.tv_imports:.2f}" if r.tv_imports is not None else "—",
             f"{r.tv_calls:.2f}" if r.tv_calls is not None else "—",
-            _drift_status_label(r.drift_score, max_drift),
+            _drift_status_label(r.drift_score, max_drift, r.status),
         )
+        if r.note:
+            table.add_row(f"[dim]{escape(r.note)}[/dim]", "", "", "", "", "")
     console.print(table)
 
 
@@ -834,6 +841,17 @@ def drift(
         max=1.0,
         help="Override critical threshold (default 0.50).",
     ),
+    profile: str | None = typer.Option(
+        None,
+        "--profile",
+        "-P",
+        help=(
+            "Score only domains with this profile (plus profile-less ones). "
+            "Without it, zero-match domains of OTHER profiles report EMPTY "
+            "and fail the gate — use --profile when your patterns.yaml mixes "
+            "languages but the db holds one graph."
+        ),
+    ),
 ) -> None:
     """
     Report per-domain architectural drift against declared ideal patterns.
@@ -849,7 +867,7 @@ def drift(
         raise typer.Exit(code=1)
 
     try:
-        analysis = analyze_drift(db, patterns, max_drift=max_drift)
+        analysis = analyze_drift(db, patterns, max_drift=max_drift, profile=profile)
     except Exception as e:
         console.print(f"[bold red]❌ Error during drift analysis:[/bold red] {e}")
         raise typer.Exit(code=1) from e

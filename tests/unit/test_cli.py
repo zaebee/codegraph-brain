@@ -6,7 +6,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from cgis.cli import app
+from cgis.cli import _drift_status_label, app
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.extractors.python_extractor import file_path_to_module_fqn
 from cgis.query.engine import QueryEngine
@@ -821,3 +821,72 @@ def test_structure_resolves_suffix(tmp_path: Path) -> None:
     result = runner.invoke(app, ["structure", "mod.caller", "--db", db])
     assert result.exit_code == 0
     assert "src.app.mod.caller" in result.stdout
+
+
+# --- _drift_status_label unit tests (#178) ---
+
+
+def test_status_label_empty_and_no_signal() -> None:
+    """Status-driven labels precede score-driven ones (#178)."""
+    assert "EMPTY" in _drift_status_label(0.0, 0.5, status="empty")
+    assert "no signal" in _drift_status_label(0.0, 0.5, status="no_signal")
+    assert "clean" in _drift_status_label(0.0, 0.5, status="clean")
+    assert "critical" in _drift_status_label(0.9, 0.5, status="critical")
+
+
+def _drift_db_and_patterns(tmp_path: Path, fqn_prefix: str = "nonexistent") -> tuple[str, str]:
+    """Helper: empty db + patterns YAML with a single enforced domain."""
+    db_path = str(tmp_path / "g.db")
+    with SQLiteStore(db_path) as store:
+        store.save_graph([], [], overwrite=True)
+    patterns_path = str(tmp_path / "patterns.yaml")
+    Path(patterns_path).write_text(
+        "version: '1.0.0'\n"
+        "drift_weights:\n"
+        "  hub_count: 1.0\n  star_count: 0.0\n  chain_len: 0.0\n"
+        "  dag_depth: 0.0\n  router_count: 0.0\n  cycle_ratio: 0.0\n"
+        "  unresolved_ratio: 0.0\n"
+        "patterns:\n"
+        "  needs_hub:\n    description: x\n    hub_count: {min: 10}\n"
+        "project_domains:\n"
+        f"  - name: test\n    fqn_prefix: {fqn_prefix}\n"
+        "    expected_pattern: needs_hub\n    drift_tolerance: 0.10\n"
+    )
+    return db_path, patterns_path
+
+
+def test_drift_empty_domain_output_contains_empty_and_note(tmp_path: Path) -> None:
+    """A mis-targeted fqn_prefix produces EMPTY in the output and 'matched 0 nodes' note."""
+    db_path, patterns_path = _drift_db_and_patterns(tmp_path, fqn_prefix="totally.missing")
+    result = runner.invoke(app, ["drift", "--db", db_path, "--patterns", patterns_path])
+    assert result.exit_code == 1
+    assert "EMPTY" in result.output
+    assert "matched 0 nodes" in result.output
+
+
+def test_drift_profile_filters_out_python_domain(tmp_path: Path) -> None:
+    """--profile typescript skips a domain with profile:python → no EMPTY row for it."""
+    db_path = str(tmp_path / "g.db")
+    with SQLiteStore(db_path) as store:
+        store.save_graph([], [], overwrite=True)
+    patterns_path = str(tmp_path / "patterns.yaml")
+    Path(patterns_path).write_text(
+        "version: '1.0.0'\n"
+        "drift_weights:\n"
+        "  hub_count: 1.0\n  star_count: 0.0\n  chain_len: 0.0\n"
+        "  dag_depth: 0.0\n  router_count: 0.0\n  cycle_ratio: 0.0\n"
+        "  unresolved_ratio: 0.0\n"
+        "patterns:\n"
+        "  needs_hub:\n    description: x\n    hub_count: {min: 10}\n"
+        "project_domains:\n"
+        "  - name: pydom\n    fqn_prefix: totally.missing\n"
+        "    expected_pattern: needs_hub\n    drift_tolerance: 0.10\n"
+        "    profile: python\n"
+    )
+    result = runner.invoke(
+        app,
+        ["drift", "--db", db_path, "--patterns", patterns_path, "--profile", "typescript"],
+    )
+    # python-profile domain is filtered out → nothing to score → no EMPTY row
+    assert result.exit_code == 0
+    assert "EMPTY" not in result.output

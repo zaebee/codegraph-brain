@@ -334,3 +334,64 @@ def test_profile_filter_excludes_other_profiles(graph_db: str, tmp_path: Path) -
     assert "agnostic" in names  # profile None matches any filter
     unfiltered = analyze_drift(graph_db, str(p), max_drift=1.0)
     assert {r.domain for r in unfiltered.reports} >= {"ui", "extraction", "agnostic"}
+
+
+def test_observe_only_quotient_empty_does_not_trip_any_critical(tmp_path: Path) -> None:
+    """enforce:false PROJECT_LEVEL quotient binding with mis-targeted prefix → empty, gate green.
+
+    Task-3 review gap: mirrors test_quotient_observe_only_does_not_flip_any_critical mechanics
+    but targets a mis-matched quotient prefix so status=="empty" instead of a score violation.
+    With enforce:false the gate must stay False even when status=="empty".
+    """
+    # Use a mis-targeted quotient fqn_prefix ("totally.missing") so the quotient
+    # graph (collapsed from the three domain nodes) contains nothing at that prefix.
+    yaml_text = _YAML_WITH_OBSERVE_ONLY_QUOTIENT.replace(
+        'fqn_prefix: "quotient"', 'fqn_prefix: "totally.missing"'
+    )
+    patterns_file = tmp_path / "patterns.yaml"
+    patterns_file.write_text(yaml_text)
+
+    db = str(tmp_path / "g.db")
+    nodes = [
+        Node(
+            id="dom.alpha.x",
+            type=NodeType.FUNCTION,
+            name="x",
+            file_path="x.py",
+            start_line=1,
+            end_line=2,
+        ),
+        Node(
+            id="dom.beta.y",
+            type=NodeType.FUNCTION,
+            name="y",
+            file_path="y.py",
+            start_line=1,
+            end_line=2,
+        ),
+        Node(
+            id="dom.gamma.z",
+            type=NodeType.FUNCTION,
+            name="z",
+            file_path="z.py",
+            start_line=1,
+            end_line=2,
+        ),
+    ]
+    edges = [
+        Edge(id="e1", source="dom.alpha.x", target="dom.beta.y", type=EdgeType.CALLS),
+        Edge(id="e2", source="dom.alpha.x", target="dom.gamma.z", type=EdgeType.CALLS),
+        Edge(id="e3", source="dom.beta.y", target="dom.gamma.z", type=EdgeType.CALLS),
+    ]
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)
+
+    analysis = analyze_drift(db, str(patterns_file), max_drift=0.3)
+
+    assert len(analysis.quotient) == 1
+    q_binding, q_report = analysis.quotient[0]
+    assert q_binding.enforce is False
+    assert q_report.status == "empty"
+    assert analysis.any_critical is False, (
+        "observe-only quotient binding with status='empty' must not flip any_critical"
+    )

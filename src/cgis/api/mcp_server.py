@@ -144,19 +144,25 @@ def cgis_drift(
     db_path: str = _DEFAULT_DB,
     patterns_path: str = "docs/ontology/patterns.yaml",
     max_drift: float = 0.50,
+    profile: str | None = None,
 ) -> str:
     """Report per-domain architectural drift against declared ideal patterns.
 
     Returns JSON: ``any_critical`` verdict, per-domain reports and the
     observe-only quotient layer. Call after ``cgis_ingest`` to learn whether
     your edits pushed a domain past its drift tolerance.
+
+    ``profile``: when set, score only domains with this profile (plus
+    profile-less ones). Use when your patterns.yaml mixes languages but the
+    graph holds one language — avoids false EMPTY reports for other-language
+    domains that would otherwise fail the gate.
     """
     if not Path(db_path).exists():
         return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
     if not Path(patterns_path).exists():
         return f"❌ Patterns file not found: {patterns_path}"
     try:
-        analysis = analyze_drift(db_path, patterns_path, max_drift=max_drift)
+        analysis = analyze_drift(db_path, patterns_path, max_drift=max_drift, profile=profile)
         payload = {
             "any_critical": analysis.any_critical,
             "max_drift": max_drift,
