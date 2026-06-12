@@ -42,6 +42,27 @@ Report per-domain architectural drift against declared ideal patterns.
 
 ---
 
+## `cgis_find_symbol`
+
+Resolve a partial symbol name to candidate FQNs (substring match, ranked).
+
+    Call this BEFORE ``cgis_trace_flow`` / ``cgis_analyze_impact`` /
+    ``cgis_get_structure`` when you know a short name (e.g.
+    ``get_reservation_prices``) but not its full FQN — it removes the
+    read-the-file-first guesswork. Returns JSON ``[{fqn, name, type, file,
+    line}]`` ranked exact > prefix > substring. ``kind`` filters by node type
+    (FUNCTION / METHOD / CLASS / …); ``fqn_prefix`` scopes the search.
+
+| Argument | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `query` | `string` | ✓ |  |
+| `db_path` | `string` |  |  |
+| `kind` | `any` |  |  |
+| `fqn_prefix` | `any` |  |  |
+| `limit` | `integer` |  |  |
+
+---
+
 ## `cgis_get_structure`
 
 Show the class/module layout of a component by tracing outgoing edges.
