@@ -267,33 +267,28 @@ def _domain_entry(
 
     profile_suffix = "  # profile guessed" if guessed else ""
 
+    # Hygiene-only reason, or None when the domain earns a template label.
     if fp.node_count < min_nodes:
         reason = f"# below min_nodes ({fp.node_count} nodes) — census too small to label"
-        hyg = _hygiene_score(fp, prefix, scorer, profile)
-        tolerance = _ceil2(hyg + margin)
-        lines.append(f"    profile: {profile}{profile_suffix}")
-        lines.append(f"    drift_tolerance: {tolerance:.2f}  {reason}")
     elif fp.edge_count == 0:
         reason = "# no intra-domain edges — nothing to fit"
-        hyg = _hygiene_score(fp, prefix, scorer, profile)
-        tolerance = _ceil2(hyg + margin)
-        lines.append(f"    profile: {profile}{profile_suffix}")
-        lines.append(f"    drift_tolerance: {tolerance:.2f}  {reason}")
     elif best > _NO_FIT_THRESHOLD:
         reason = f"# no template fits (best: {best_name} at {best:.2f})"
-        hyg = _hygiene_score(fp, prefix, scorer, profile)
-        tolerance = _ceil2(hyg + margin)
-        lines.append(f"    profile: {profile}{profile_suffix}")
-        lines.append(f"    drift_tolerance: {tolerance:.2f}  {reason}")
     else:
+        reason = None
+
+    if reason is not None:
+        tolerance = _ceil2(_hygiene_score(fp, prefix, scorer, profile) + margin)
+        comment = reason
+    else:
+        tolerance = _ceil2(best + margin)
         comment = (
             f"# measured ≈ {best:.2f} via init-ontology"
             f" (runner-up: {runner_name} at {runner:.2f}) — ratchet down over time"
         )
-        tolerance = _ceil2(best + margin)
         lines.append(f"    expected_pattern: {best_name}")
-        lines.append(f"    profile: {profile}{profile_suffix}")
-        lines.append(f"    drift_tolerance: {tolerance:.2f}  {comment}")
+    lines.append(f"    profile: {profile}{profile_suffix}")
+    lines.append(f"    drift_tolerance: {tolerance:.2f}  {comment}")
 
     return "\n".join(lines)
 
