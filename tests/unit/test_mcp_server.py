@@ -1,6 +1,7 @@
 """Unit tests for the MCP server tools."""
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -39,7 +40,7 @@ def test_cgis_ingest_returns_summary(tmp_path: Path) -> None:
     result = cgis_ingest(str(tmp_path), str(db))
 
     assert "✅" in result
-    assert "Nodes:" in result
+    assert "Graph total:" in result
     assert db.exists()
 
 
@@ -571,3 +572,72 @@ def test_cgis_context_missing_db_returns_error(tmp_path: Path) -> None:
     result = cgis_context("x.y", str(missing))
     assert result.startswith("❌ Database not found")
     assert not missing.exists()
+
+
+def _graph_total_nodes(summary: str) -> int:
+    """Parse the 'Graph total: N nodes' count out of a cgis_ingest summary."""
+    m = re.search(r"Graph total: (\d+) nodes", summary)
+    assert m, f"no graph total in: {summary}"
+    return int(m.group(1))
+
+
+def test_cgis_ingest_noop_reingest_reports_stable_total(tmp_path: Path) -> None:
+    """A no-change re-ingest reports the whole-graph total, not a shrunken working set (#192)."""
+    (tmp_path / "a.py").write_text("def fa():\n    fb()\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("def fb(): pass\n", encoding="utf-8")
+    db = tmp_path / "graph.db"
+
+    first = cgis_ingest(str(tmp_path), str(db))
+    again = cgis_ingest(str(tmp_path), str(db))  # nothing changed
+
+    total = _graph_total_nodes(first)
+    assert total > 0
+    assert _graph_total_nodes(again) == total  # no apparent data loss
+
+
+def test_cgis_ingest_full_rebuild_drops_stale_nodes(tmp_path: Path) -> None:
+    """full_rebuild=True re-scans from scratch, so a removed file's nodes disappear (#192)."""
+    (tmp_path / "a.py").write_text("def fa(): pass\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("def fb(): pass\n", encoding="utf-8")
+    db = tmp_path / "graph.db"
+
+    both = _graph_total_nodes(cgis_ingest(str(tmp_path), str(db)))
+    (tmp_path / "b.py").unlink()
+    rebuilt = cgis_ingest(str(tmp_path), str(db), full_rebuild=True)
+
+    assert "full rebuild" in rebuilt
+    assert _graph_total_nodes(rebuilt) < both  # fb's node is gone
+
+
+def test_cgis_ingest_incremental_reports_changed_and_total(tmp_path: Path) -> None:
+    """Incremental mode surfaces both the per-run delta and the whole-graph total."""
+    (tmp_path / "m.py").write_text("def f(): pass\n", encoding="utf-8")
+    db = tmp_path / "graph.db"
+
+    result = cgis_ingest(str(tmp_path), str(db))
+
+    assert "mode: incremental" in result
+    assert "Graph total:" in result
+
+
+def test_cgis_ingest_noop_reports_no_files_changed(tmp_path: Path) -> None:
+    """An incremental no-op says so explicitly, so the stable total reads correctly (#192)."""
+    (tmp_path / "m.py").write_text("def f(): pass\n", encoding="utf-8")
+    db = tmp_path / "graph.db"
+
+    cgis_ingest(str(tmp_path), str(db))
+    again = cgis_ingest(str(tmp_path), str(db))
+
+    assert "No files changed" in again
+
+
+def test_cgis_ingest_full_rebuild_repopulates_files_state(tmp_path: Path) -> None:
+    """full_rebuild leaves files_state valid so the next incremental is a no-op (#223 review)."""
+    (tmp_path / "m.py").write_text("def f(): pass\n", encoding="utf-8")
+    db = tmp_path / "graph.db"
+
+    cgis_ingest(str(tmp_path), str(db), full_rebuild=True)
+    nxt = cgis_ingest(str(tmp_path), str(db))  # nothing changed since the rebuild
+
+    # If full_rebuild left files_state stale, this run would re-parse instead of no-op.
+    assert "No files changed" in nxt

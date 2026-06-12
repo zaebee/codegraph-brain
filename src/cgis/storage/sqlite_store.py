@@ -218,6 +218,35 @@ class SQLiteStore:
             self._conn.executemany(self._EDGE_INSERT, [self._edge_to_row(e) for e in edges])
             self._conn.executemany(self._NODE_INSERT, [self._node_to_row(n) for n in nodes])
 
+    def clear(self) -> None:
+        """Wipe the whole graph — nodes, edges, and the incremental files_state cache.
+
+        Used for a full rebuild: re-scanning from an empty database drops nodes
+        for deleted/renamed files, and clearing ``files_state`` keeps the
+        incremental cache consistent with what the re-scan repopulates (so the
+        next incremental run isn't forced to re-parse everything).
+        """
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        with self._conn:
+            self._conn.execute("DELETE FROM nodes")
+            self._conn.execute("DELETE FROM edges")
+            self._conn.execute("DELETE FROM files_state")
+
+    def get_node_count(self) -> int:
+        """Return the total node count via a cheap COUNT(*) (no deserialization)."""
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        row = self._conn.execute("SELECT COUNT(*) AS n FROM nodes").fetchone()
+        return int(row["n"]) if row else 0
+
+    def get_edge_count(self) -> int:
+        """Return the total edge count via a cheap COUNT(*) (no join/aggregation)."""
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        row = self._conn.execute("SELECT COUNT(*) AS n FROM edges").fetchone()
+        return int(row["n"]) if row else 0
+
     def get_node(self, node_id: str) -> Node | None:
         """Return a single node by FQN, or None if not found."""
         if not self._conn:

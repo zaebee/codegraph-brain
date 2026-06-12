@@ -764,3 +764,28 @@ def test_search_nodes_escapes_wildcards(temp_store: SQLiteStore) -> None:
     # '_' must be literal, not a single-char wildcard → 'aXb' must NOT match 'a_b' query
     temp_store.save_graph([_named_node("m.aXb", "aXb", NodeType.FUNCTION)], [])
     assert {n.id for n in temp_store.search_nodes("a_b")} == {"m.a_b"}
+
+
+def test_clear_wipes_nodes_edges_and_files_state(temp_store: SQLiteStore) -> None:
+    """clear() empties the graph and the incremental files_state cache (#192/#223)."""
+    nodes, edges = _seed_data()
+    temp_store.save_graph(nodes, edges)
+    temp_store.upsert_file_hash("f.py", "deadbeef")
+    assert temp_store.get_node_count() == len(nodes)
+    assert temp_store.get_edge_count() == len(edges)
+    assert temp_store.get_all_tracked_files() == {"f.py"}
+
+    temp_store.clear()
+
+    assert temp_store.get_node_count() == 0
+    assert temp_store.get_edge_count() == 0
+    assert temp_store.get_all_nodes() == []
+    assert temp_store.get_all_tracked_files() == set()
+
+
+def test_count_helpers_avoid_deserializing_the_graph(temp_store: SQLiteStore) -> None:
+    """get_node_count/get_edge_count return the same totals as the heavier paths."""
+    nodes, edges = _seed_data()
+    temp_store.save_graph(nodes, edges)
+    assert temp_store.get_node_count() == len(temp_store.get_all_nodes())
+    assert temp_store.get_edge_count() == temp_store.get_edge_stats().total
