@@ -233,6 +233,20 @@ class SQLiteStore:
             self._conn.execute("DELETE FROM edges")
             self._conn.execute("DELETE FROM files_state")
 
+    def get_node_count(self) -> int:
+        """Return the total node count via a cheap COUNT(*) (no deserialization)."""
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        row = self._conn.execute("SELECT COUNT(*) AS n FROM nodes").fetchone()
+        return int(row["n"]) if row else 0
+
+    def get_edge_count(self) -> int:
+        """Return the total edge count via a cheap COUNT(*) (no join/aggregation)."""
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        row = self._conn.execute("SELECT COUNT(*) AS n FROM edges").fetchone()
+        return int(row["n"]) if row else 0
+
     def get_node(self, node_id: str) -> Node | None:
         """Return a single node by FQN, or None if not found."""
         if not self._conn:
