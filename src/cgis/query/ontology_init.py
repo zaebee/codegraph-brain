@@ -230,6 +230,36 @@ def _hygiene_score(
     return scorer.score(fp, cfg).drift_score
 
 
+def _baseline_lines(fp: PatternFingerprint) -> list[str]:
+    """Return YAML lines for a ``hygiene_baseline:`` block, if any key breaches its global bound.
+
+    For each hygiene key in ``_PARSED_HEADER["hygiene"]``, if the measured fingerprint
+    value breaches the GLOBAL bound (max → measured > bound; min → measured < bound;
+    exact → measured != bound), the key is collected with its ``_ceil2``-rounded value.
+    The ceil direction is load-bearing (spec §2.2): a floored value below the true
+    measurement would gate_fail the proposal on its own graph (the round-trip guarantee).
+    Returns an empty list when no key breaches its bound.
+    """
+    _hygiene_obj = _PARSED_HEADER.get("hygiene") or {}
+    hygiene_raw: dict[str, object] = _hygiene_obj if isinstance(_hygiene_obj, dict) else {}
+    items: list[str] = []
+    for key, constraint in hygiene_raw.items():
+        if not isinstance(constraint, dict):
+            continue
+        measured = float(getattr(fp, key, 0.0))
+        breached = (
+            ("max" in constraint and measured > float(constraint["max"]))
+            or ("min" in constraint and measured < float(constraint["min"]))
+            or ("exact" in constraint and measured != float(constraint["exact"]))
+        )
+        if breached:
+            items.append(
+                f"      {key}: {_ceil2(measured)}"
+                "  # acknowledged at baseline by init-ontology — ratchet down over time"
+            )
+    return items
+
+
 def _domain_entry(
     prefix: str,
     all_nodes: list[Node],
@@ -289,6 +319,13 @@ def _domain_entry(
         lines.append(f"    expected_pattern: {best_name}")
     lines.append(f"    profile: {profile}{profile_suffix}")
     lines.append(f"    drift_tolerance: {tolerance:.2f}  {comment}")
+
+    # Emit hygiene_baseline for any measured value that breaches the GLOBAL hygiene bound
+    # (spec §2.2, #176/#170 task 4).  Applies to BOTH labeled and hygiene-only entries.
+    baseline_items = _baseline_lines(fp)
+    if baseline_items:
+        lines.append("    hygiene_baseline:")
+        lines.extend(baseline_items)
 
     return "\n".join(lines)
 

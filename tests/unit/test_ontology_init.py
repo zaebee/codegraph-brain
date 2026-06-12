@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from conftest import make_chain_nodes_edges
+from conftest import make_chain_nodes_edges, module_with_funcs
 
 from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeType
 from cgis.query.drift_service import analyze_drift
@@ -221,3 +221,42 @@ def test_hygiene_only_cyclic_domain_round_trips(tmp_path: Path) -> None:
         assert r.drift_score <= r.tolerance + 1e-9, (
             f"{r.fqn_prefix}: {r.drift_score} > {r.tolerance}"
         )
+
+
+# ---------------------------------------------------------------------------
+# hygiene_baseline emission in init-ontology (#176/#170 task 4)
+# ---------------------------------------------------------------------------
+
+
+def test_cyclic_domain_proposal_emits_baseline_and_round_trips(tmp_path: Path) -> None:
+    """A domain with an intra-domain import cycle gets an acknowledged baseline (spec §2.2).
+
+    The emitted value is _ceil2'd UP (colleague catch: flooring below the true
+    measurement would gate_fail the proposal on its own graph).
+    Round-trip guarantee: analyze_drift on the proposal yields no gate_failed
+    and any_critical is False.
+    """
+    db = str(tmp_path / "cyc.db")
+    # Two modules importing each other + enough functions to clear min_nodes:
+    nodes: list[Node] = []
+    edges: list[Edge] = []
+    for mod, n in (("app.loop.a", 6), ("app.loop.b", 6)):
+        nodes += module_with_funcs(mod, f"{mod.replace('.', '/')}.py", n)
+    edges += [
+        Edge(id="c1", source="app.loop.a", target="app.loop.b", type=EdgeType.IMPORTS),
+        Edge(id="c2", source="app.loop.b", target="app.loop.a", type=EdgeType.IMPORTS),
+    ]
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)
+    # depth=2 forces app.loop as the domain prefix (auto-descent would discover
+    # app.loop.a and app.loop.b as separate single-file domains, each with a
+    # cross-domain cycle_ratio of 0.0 — Task 1 semantics).  With depth=2, the
+    # unified domain has all 14 nodes and an intra-domain cycle_ratio > 0.
+    text = propose_ontology(db, min_nodes=10, depth=2)
+    assert "hygiene_baseline" in text
+    assert "acknowledged at baseline by init-ontology" in text
+    out = tmp_path / "p.yaml"
+    out.write_text(text)
+    analysis = analyze_drift(db, str(out))
+    assert analysis.any_critical is False
+    assert all(r.status != "gate_failed" for r in analysis.reports)
