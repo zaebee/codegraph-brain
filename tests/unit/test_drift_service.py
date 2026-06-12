@@ -249,3 +249,88 @@ def test_quotient_observe_only_does_not_flip_any_critical(tmp_path: Path) -> Non
     assert analysis.any_critical is False, (
         "observe-only quotient binding (enforce=False) must not flip any_critical"
     )
+
+
+# ---------------------------------------------------------------------------
+# empty / no_signal in analyze_drift (#178)
+# ---------------------------------------------------------------------------
+
+_YAML_MISTARGETED = _YAML.replace('fqn_prefix: "cgis.extractors"', 'fqn_prefix: "click.core"')
+
+
+def test_empty_domain_trips_any_critical(graph_db: str, tmp_path: Path) -> None:
+    """A zero-match enforced domain fails the gate despite score 0.0 (#178)."""
+    p = tmp_path / "mistargeted.yaml"
+    p.write_text(_YAML_MISTARGETED)
+    analysis = analyze_drift(graph_db, str(p), max_drift=1.0)
+    assert analysis.reports[0].status == "empty"
+    assert analysis.any_critical is True
+
+
+def test_empty_domain_note_suggests_real_prefix(graph_db: str, tmp_path: Path) -> None:
+    """The empty note carries closest-prefix suggestions via the suffix index."""
+    p = tmp_path / "suggest.yaml"
+    p.write_text(_YAML.replace('fqn_prefix: "cgis.extractors"', 'fqn_prefix: "extractors.a"'))
+    analysis = analyze_drift(graph_db, str(p), max_drift=1.0)
+    report = analysis.reports[0]
+    assert report.status == "empty"
+    assert report.note is not None
+    assert "matched 0 nodes" in report.note
+    assert "cgis.extractors.a" in report.note
+
+
+def test_unenforced_empty_domain_does_not_trip(graph_db: str, tmp_path: Path) -> None:
+    """enforce: false keeps observe-only semantics for the new empty term."""
+    yaml_text = _YAML_MISTARGETED.replace(
+        "drift_tolerance: 0.15", "drift_tolerance: 0.15\n    enforce: false"
+    )
+    p = tmp_path / "observed.yaml"
+    p.write_text(yaml_text)
+    analysis = analyze_drift(graph_db, str(p), max_drift=1.0)
+    assert analysis.reports[0].status == "empty"
+    assert analysis.any_critical is False
+
+
+def test_no_signal_does_not_trip(tmp_path: Path) -> None:
+    """A single isolated node matches → no_signal, gate stays green."""
+    db = str(tmp_path / "lone.db")
+    lone = Node(
+        id="cgis.extractors.lonely",
+        type=NodeType.FUNCTION,
+        name="lonely",
+        file_path="a.py",
+        start_line=1,
+        end_line=2,
+    )
+    with SQLiteStore(db) as store:
+        store.save_graph([lone], [])
+    p = tmp_path / "patterns.yaml"
+    p.write_text(_YAML)
+    analysis = analyze_drift(db, str(p), max_drift=1.0)
+    assert analysis.reports[0].status == "no_signal"
+    assert analysis.any_critical is False
+
+
+def test_profile_filter_excludes_other_profiles(graph_db: str, tmp_path: Path) -> None:
+    """profile filter keeps matching + profile-less domains, skips others."""
+    yaml_text = (
+        _YAML
+        + """  - name: "ui"
+    fqn_prefix: "components"
+    expected_pattern: pure_utility
+    profile: typescript
+    drift_tolerance: 0.15
+  - name: "agnostic"
+    fqn_prefix: "cgis.extractors"
+    drift_tolerance: 0.99
+"""
+    )
+    p = tmp_path / "multi.yaml"
+    p.write_text(yaml_text)
+    filtered = analyze_drift(graph_db, str(p), max_drift=1.0, profile="python")
+    names = {r.domain for r in filtered.reports}
+    assert "ui" not in names  # different explicit profile: excluded
+    assert "extraction" in names  # profile None matches any filter
+    assert "agnostic" in names  # profile None matches any filter
+    unfiltered = analyze_drift(graph_db, str(p), max_drift=1.0)
+    assert {r.domain for r in unfiltered.reports} >= {"ui", "extraction", "agnostic"}
