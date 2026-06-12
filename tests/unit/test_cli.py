@@ -1030,3 +1030,29 @@ def test_init_ontology_missing_db_exits_1(tmp_path: Path) -> None:
     assert result.exit_code == 1
     assert not missing.exists()
     assert "Graph database not found" in result.output
+
+
+def test_context_emits_xml_payload(tmp_path: Path) -> None:
+    """`cgis context` compiles an XML package with focal/callers/callees to stdout."""
+    db = make_chain_db(tmp_path)  # app.chain.f0 → … → f11
+    result = runner.invoke(app, ["context", "app.chain.f5", "--db", db])
+    assert result.exit_code == 0
+    assert '<context focal="app.chain.f5"' in result.stdout
+    assert "app.chain.f4" in result.stdout  # upstream caller
+    assert "app.chain.f6" in result.stdout  # downstream callee
+    assert result.stdout.rstrip().endswith("</context>")
+
+
+def test_context_missing_db_errors(tmp_path: Path) -> None:
+    """A missing database is a clear error, not a traceback."""
+    result = runner.invoke(app, ["context", "x.y", "--db", str(tmp_path / "missing.db")])
+    assert result.exit_code == 1
+    assert "Database not found" in result.output
+
+
+def test_context_unknown_fqn_exits_nonzero(tmp_path: Path) -> None:
+    """An FQN absent from the graph exits 1 without emitting a package."""
+    db = make_chain_db(tmp_path)
+    result = runner.invoke(app, ["context", "app.chain.ghost", "--db", db])
+    assert result.exit_code == 1
+    assert "<context" not in result.stdout

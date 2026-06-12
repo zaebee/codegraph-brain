@@ -16,6 +16,7 @@ from cgis.core.models import Edge, Node
 from cgis.extractors.python_extractor import PythonExtractor
 from cgis.extractors.typescript_extractor import TypeScriptExtractor
 from cgis.pipeline import IngestionPipeline
+from cgis.query.context_service import build_context
 from cgis.query.drift_service import analyze_drift
 from cgis.query.engine import QueryEngine
 from cgis.query.fqn import resolve_fqn
@@ -315,3 +316,37 @@ def cgis_init_ontology(
         return propose_ontology(db_path, margin=margin, min_nodes=min_nodes, depth=depth)
     except Exception as e:  # translate errors to the ❌-message medium
         return f"❌ Error proposing ontology: {e}"
+
+
+@mcp.tool()
+def cgis_context(
+    fqn: str, db_path: str = _DEFAULT_DB, depth: int = 1, source_root: str = ""
+) -> str:
+    """Compile an agent-facing GraphRAG context package for a focal FQN (#19).
+
+    Returns an XML-tagged prompt — the focal node's source, its enclosing class,
+    its architectural domain boundary, direct callers (upstream ripple) and
+    callees (downstream dependencies) — meant to be injected into your context
+    window in place of raw file dumps. Far more token-efficient than reading
+    whole files, and structured so boundaries stay unambiguous.
+
+    Use ``cgis_ingest`` first if the database does not exist. ``source_root``
+    locates source files on disk when the graph was ingested from a
+    sub-directory (e.g. ``"src"`` after ``cgis ingest ./src``); without it the
+    ``<source>`` block degrades gracefully to "unavailable".
+    """
+    if blank := _blank_fqn_error(fqn):
+        return blank
+    if not Path(db_path).exists():
+        return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
+    try:
+        with SQLiteStore(db_path) as store:
+            res = resolve_fqn(store, fqn)
+            if res.resolved is None:
+                return _resolution_error(fqn, res.candidates, res.truncated)
+            payload = build_context(store, res.resolved, depth=depth, source_root=source_root)
+    except Exception as exc:
+        return f"❌ {exc}"
+
+    note = f"> Resolved '{fqn}' → '{res.resolved}'\n\n" if res.via_suffix else ""
+    return note + payload
