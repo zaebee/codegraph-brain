@@ -226,7 +226,8 @@ def cgis_find_symbol(
     if not Path(db_path).exists():
         return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
     try:
-        kinds = (kind.upper(),) if kind else ()
+        # Blank/whitespace kind means "no type filter", not "match nothing".
+        kinds = (kind.strip().upper(),) if kind and kind.strip() else ()
         with SQLiteStore(db_path) as store:
             matches = store.search_nodes(query, kinds=kinds, fqn_prefix=fqn_prefix, limit=limit)
     except Exception as exc:

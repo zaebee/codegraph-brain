@@ -412,3 +412,12 @@ def test_cgis_find_symbol_kind_filter(tmp_path: Path) -> None:
 
 def test_cgis_find_symbol_missing_db(tmp_path: Path) -> None:
     assert "❌" in cgis_find_symbol("x", str(tmp_path / "nope.db"))
+
+
+def test_cgis_find_symbol_blank_kind_is_no_filter(tmp_path: Path) -> None:
+    """A whitespace-only kind means 'no type filter', not 'match nothing' (#173)."""
+    (tmp_path / "mod.py").write_text("def get_user(): pass\n", encoding="utf-8")
+    db = tmp_path / "graph.db"
+    cgis_ingest(str(tmp_path), str(db))
+    data = json.loads(cgis_find_symbol("get_user", str(db), kind="   "))
+    assert any(d["name"] == "get_user" for d in data)

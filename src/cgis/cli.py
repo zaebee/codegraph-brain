@@ -576,15 +576,15 @@ def find(
         console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
         raise typer.Exit(code=1)
 
-    kinds = (kind.upper(),) if kind else ()
+    kinds = (kind.strip().upper(),) if kind and kind.strip() else ()
     with SQLiteStore(db) as store:
         matches = store.search_nodes(query, kinds=kinds, fqn_prefix=prefix, limit=limit)
 
     if not matches:
-        console.print(f"[yellow]No symbols matching '{query}'[/yellow]")
+        console.print(f"[yellow]No symbols matching '{escape(query)}'[/yellow]")
         return
 
-    table = Table(title=f"Symbols matching '{query}'")
+    table = Table(title=f"Symbols matching '{escape(query)}'")
     table.add_column("Name", style="cyan")
     table.add_column("Type", style="dim")
     table.add_column("FQN", style="yellow")
