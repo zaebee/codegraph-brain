@@ -229,3 +229,32 @@ def test_structural_parent_prefers_class_over_file(tmp_path: Path) -> None:
     with SQLiteStore(db) as store:
         out = build_context(store, "m.C.meth", depth=1)
     assert '<class name="m.C"' in out
+
+
+def test_transitive_unresolved_surfaces_at_depth_2(tmp_path: Path) -> None:
+    """At depth 2 a callee's own unresolved call also surfaces (symmetric with resolved)."""
+    nodes = [
+        Node(
+            id="a.f", type=NodeType.FUNCTION, name="f", file_path="a.py", start_line=1, end_line=2
+        ),
+        Node(
+            id="a.mid",
+            type=NodeType.FUNCTION,
+            name="mid",
+            file_path="a.py",
+            start_line=4,
+            end_line=5,
+        ),
+    ]
+    edges = [
+        Edge(id="r1", source="a.f", target="a.mid", type=EdgeType.CALLS),
+        Edge(id="r2", source="a.mid", target="raw_call:deep", type=EdgeType.CALLS, confidence=0.1),
+    ]
+    db = str(tmp_path / "t.db")
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)
+    with SQLiteStore(db) as store:
+        shallow = build_context(store, "a.f", depth=1)
+        deep = build_context(store, "a.f", depth=2)
+    assert "deep (unresolved)" not in shallow  # mid's unresolved is 2 hops away
+    assert "deep (unresolved)" in deep

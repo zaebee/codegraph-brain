@@ -37,23 +37,28 @@ def _sorted_neighbours(nodes: list[Node], focus_fqn: str) -> list[Node]:
     )
 
 
-def _direct_callers(engine: QueryEngine, focus_fqn: str, depth: int) -> list[Node]:
-    """Upstream CALLS neighbours — who reaches the focal node (impact ripple)."""
+def _collect_callers(engine: QueryEngine, focus_fqn: str, depth: int) -> list[Node]:
+    """Upstream CALLS neighbours within ``depth`` hops — who reaches the focal node."""
     nodes, _ = engine.get_impact_graph(focus_fqn, max_depth=depth, allowed_edge_types=_CALLS)
     return _sorted_neighbours(nodes, focus_fqn)
 
 
-def _direct_callees(
+def _collect_callees(
     engine: QueryEngine, focus_fqn: str, depth: int
 ) -> tuple[list[Node], list[str]]:
-    """Downstream CALLS neighbours, split into resolved nodes and unresolved names."""
+    """Downstream CALLS neighbours within ``depth`` hops, split into resolved + unresolved.
+
+    Unresolved ``raw_call:`` targets are collected across the whole traversal
+    (not just the focal node's own edges) so that at depth>1 they stay symmetric
+    with the resolved set — a transitive callee's unknown call surfaces too.
+    """
     nodes, edges = engine.get_flow_graph(focus_fqn, max_depth=depth, allowed_edge_types=_CALLS)
     resolved = _sorted_neighbours(nodes, focus_fqn)
     unresolved = sorted(
         {
             edge.target[len(RAW_CALL_PREFIX) :]
             for edge in edges
-            if edge.source == focus_fqn and edge.target.startswith(RAW_CALL_PREFIX)
+            if edge.target.startswith(RAW_CALL_PREFIX)
         }
     )
     return resolved, unresolved
@@ -89,17 +94,18 @@ def _class_context(store: SQLiteStore, focus: Node) -> tuple[Node | None, list[N
     return parent, siblings
 
 
-def build_context(store: SQLiteStore, focus_fqn: str, depth: int = 2, source_root: str = "") -> str:
+def build_context(store: SQLiteStore, focus_fqn: str, depth: int = 1, source_root: str = "") -> str:
     """Compile the agent-facing context package for an already-resolved ``focus_fqn``.
 
-    ``depth`` controls how far the CALLS traversal reaches (1 = direct
-    neighbours; 2 = the default, picking up one transitive hop of ripple/flow).
-    A future adaptive strategy (#19 follow-up) will scale this by the node's
-    out-degree — leaf nodes stay surgical, hubs pull deeper context.
-    ``source_root`` is prepended to the
-    node's stored (relative) ``file_path`` to locate the file on disk — needed
-    when the graph was ingested from a sub-directory (e.g. ``cgis ingest ./src``
-    stores ``cgis/...`` paths). Raises ``ValueError`` if the FQN is absent.
+    ``depth`` controls how far the CALLS traversal reaches. The default of 1
+    lists only *direct* callers/callees — the honest, high-signal neighbourhood
+    for a focused edit. Higher values pull in transitive neighbours; the
+    rendered notes state the hop bound rather than calling them "direct" (a
+    future adaptive strategy, #220, will scale depth by the node's out-degree).
+    ``source_root`` is prepended to the node's stored (relative) ``file_path`` to
+    locate the file on disk — needed when the graph was ingested from a
+    sub-directory (e.g. ``cgis ingest ./src`` stores ``cgis/...`` paths). Raises
+    ``ValueError`` if the FQN is absent.
     """
     focus = store.get_node(focus_fqn)
     if focus is None:
@@ -111,8 +117,8 @@ def build_context(store: SQLiteStore, focus_fqn: str, depth: int = 2, source_roo
     relative = focus.file_path.replace("\\", "/")
     file_path = str(Path(source_root) / relative) if source_root else relative
     source = extract_snippet(file_path, focus.start_line, focus.end_line)
-    callers = _direct_callers(engine, focus_fqn, depth)
-    callees, unresolved = _direct_callees(engine, focus_fqn, depth)
+    callers = _collect_callers(engine, focus_fqn, depth)
+    callees, unresolved = _collect_callees(engine, focus_fqn, depth)
     class_node, siblings = _class_context(store, focus)
     return compile_context(
         focus=focus,
@@ -122,4 +128,5 @@ def build_context(store: SQLiteStore, focus_fqn: str, depth: int = 2, source_roo
         callers=callers,
         callees=callees,
         unresolved_callees=unresolved,
+        depth=depth,
     )

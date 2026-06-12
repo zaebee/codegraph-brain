@@ -179,3 +179,48 @@ def test_source_return_arrow_stays_readable() -> None:
     out = _compile(source="def f(a, b) -> bool:\n    return a < b\n")
     assert "-> bool:" in out
     assert "return a < b" in out
+
+
+def test_only_own_tags_neutralized_jsx_stays_verbatim() -> None:
+    """Scoped escape: TS/JSX </div> reaches the agent verbatim; only our tags are neutralized."""
+    jsx = _compile(source="return <div>{x}</div>\n")
+    assert "</div>" in jsx
+    own = _compile(source="s = '</source></context>'\n")
+    assert "&lt;/source>&lt;/context>" in own
+
+
+def test_xml_attributes_escape_special_chars() -> None:
+    """FQN/file attributes with &/\"/<> are escaped so the XML stays well-formed (gemini)."""
+    focus = Node(
+        id="pkg.A&B.f",
+        type=NodeType.FUNCTION,
+        name="f",
+        file_path='a"b.py',
+        start_line=1,
+        end_line=2,
+    )
+    out = compile_context(
+        focus=focus,
+        source="",
+        class_node=None,
+        siblings=[],
+        callers=[],
+        callees=[],
+        unresolved_callees=[],
+    )
+    assert 'focal="pkg.A&amp;B.f"' in out
+    assert "a&quot;b.py" in out
+
+
+def test_callees_note_is_direct_at_depth_1() -> None:
+    """At the default depth-1 the list IS direct, so the note says so honestly."""
+    out = _compile(depth=1)
+    assert 'note="direct callees' in out
+
+
+def test_callees_note_drops_direct_at_depth_2() -> None:
+    """At depth>1 the list is transitive — the note must NOT claim 'direct' (colleague)."""
+    out = _compile(depth=2)
+    assert "within 2 hops" in out
+    callees_note = out.split('<callees note="')[1].split('"')[0]
+    assert "direct" not in callees_note

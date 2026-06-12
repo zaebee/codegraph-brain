@@ -44,3 +44,9 @@ def test_start_below_one_is_clamped(tmp_path: Path) -> None:
     path = _write(tmp_path, ["first", "second"])
 
     assert extract_snippet(path, 0, 2) == "first\nsecond\n"
+
+
+def test_blank_middle_line_preserved(tmp_path: Path) -> None:
+    """A blank line inside the range is kept — early-EOF break must trigger only on real EOF."""
+    path = _write(tmp_path, ["a", "", "c"])
+    assert extract_snippet(path, 1, 3) == "a\n\nc\n"

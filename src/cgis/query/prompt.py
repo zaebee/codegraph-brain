@@ -22,8 +22,31 @@ import re
 from cgis.core.models import Node
 
 _BACKTICK_RUN = re.compile(r"`+")
-_CALLERS_NOTE = "who calls this — changes here ripple upstream"
-_CALLEES_NOTE = "what this calls — its direct dependencies"
+# Only the closing tags this module itself emits — so neutralising them in source
+# defeats prompt-injection without corrupting unrelated markup (e.g. TS/JSX `</div>`).
+_OWN_TAGS = ("source", "context", "class", "domain", "callers", "callees")
+_OWN_CLOSING_TAG = re.compile(r"</(" + "|".join(_OWN_TAGS) + r")>")
+
+
+def _escape_xml_attr(value: str) -> str:
+    """Escape a value for safe inclusion in an XML attribute (``&`` first)."""
+    return (
+        value.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
+    )
+
+
+def _callers_note(depth: int) -> str:
+    """Honest <callers> note: 'direct' only at depth 1, hop-bounded above it."""
+    if depth <= 1:
+        return "direct callers — who calls this (changes here ripple from here)"
+    return f"callers within {depth} hops upstream (transitive ripple set)"
+
+
+def _callees_note(depth: int) -> str:
+    """Honest <callees> note: 'direct' only at depth 1, hop-bounded above it."""
+    if depth <= 1:
+        return "direct callees — what this calls"
+    return f"callees within {depth} hops downstream (transitive execution flow)"
 
 
 def _basename(file_path: str) -> str:
@@ -61,16 +84,15 @@ def _sibling_line(node: Node) -> str:
 
 
 def _neutralize_closing_tags(code: str) -> str:
-    """Escape XML closing-tag starts (``</``) so source can't close the prompt's tags.
+    """Escape only *this module's* closing tags in source so it can't close the prompt.
 
     The adaptive backtick fence stops a code block from closing early, but a file
     literally containing ``</source>``/``</context>`` could otherwise close the
-    surrounding XML tag and inject instructions (#19 watch-out #2). Every XML
-    closing tag begins with ``</``, so neutralising just that sequence defeats
-    the injection while keeping return arrows (``->``), generics and comparisons
-    perfectly readable — unlike a blanket ``<``/``>`` escape.
+    surrounding XML tag and inject instructions (#19 watch-out #2). We neutralise
+    exactly the closing tags this module emits — leaving unrelated markup such as
+    TS/JSX ``</div>``, return arrows (``->``) and generics verbatim for the agent.
     """
-    return code.replace("</", "&lt;/")
+    return _OWN_CLOSING_TAG.sub(r"&lt;/\1>", code)
 
 
 def _source_section(source: str) -> str:
@@ -85,7 +107,9 @@ def _class_section(class_node: Node | None, siblings: list[Node]) -> str:
     if class_node is None:
         return "<class>none — module-level function</class>"
     members = "\n".join(_sibling_line(s) for s in siblings) or "(no other members)"
-    header = f'<class name="{class_node.id}" file="{class_node.file_path}:{class_node.start_line}">'
+    name = _escape_xml_attr(class_node.id)
+    file_attr = _escape_xml_attr(f"{class_node.file_path}:{class_node.start_line}")
+    header = f'<class name="{name}" file="{file_attr}">'
     return f"{header}\n{members}\n</class>"
 
 
@@ -100,8 +124,8 @@ def _domain_section(focus: Node) -> str | None:
     """
     if not focus.domains:
         return None
-    ontology = focus.ontology_class or "-"
-    domains = ", ".join(focus.domains)
+    ontology = _escape_xml_attr(focus.ontology_class or "-")
+    domains = _escape_xml_attr(", ".join(focus.domains))
     return (
         f'<domain ontology_class="{ontology}" domains="{domains}">'
         "respect these architectural boundaries when refactoring"
@@ -109,18 +133,18 @@ def _domain_section(focus: Node) -> str | None:
     )
 
 
-def _callers_section(callers: list[Node]) -> str:
+def _callers_section(callers: list[Node], depth: int) -> str:
     """Render the <callers> tag, with an explicit note when there are none."""
     body = "\n".join(_caller_line(c) for c in callers) or "none — no upstream callers"
-    return f'<callers note="{_CALLERS_NOTE}">\n{body}\n</callers>'
+    return f'<callers note="{_callers_note(depth)}">\n{body}\n</callers>'
 
 
-def _callees_section(callees: list[Node], unresolved_callees: list[str]) -> str:
+def _callees_section(callees: list[Node], unresolved_callees: list[str], depth: int) -> str:
     """Render the <callees> tag: resolved deps plus flagged unresolved targets."""
     lines = [_caller_line(c) for c in callees]
     lines += [f"- {name} (unresolved)" for name in unresolved_callees]
     body = "\n".join(lines) or "none"
-    return f'<callees note="{_CALLEES_NOTE}">\n{body}\n</callees>'
+    return f'<callees note="{_callees_note(depth)}">\n{body}\n</callees>'
 
 
 def compile_context(
@@ -131,26 +155,29 @@ def compile_context(
     callers: list[Node],
     callees: list[Node],
     unresolved_callees: list[str],
+    depth: int = 1,
 ) -> str:
     """Assemble the XML-tagged context package for ``focus``.
 
     ``source`` is the focal node's raw code (already read from disk, may be
     empty). ``class_node``/``siblings`` describe the enclosing class (``None``
-    for a module-level function). ``callers``/``callees`` are the direct CALLS
-    neighbours; ``unresolved_callees`` are raw_call target names that never
-    resolved to a node, listed so the agent knows the dependency exists but is
-    external/dynamic.
+    for a module-level function). ``callers``/``callees`` are the CALLS
+    neighbours reached within ``depth`` hops; ``unresolved_callees`` are
+    raw_call target names that never resolved to a node, listed so the agent
+    knows the dependency exists but is external/dynamic. ``depth`` is carried
+    only to label the caller/callee notes honestly — at depth 1 they are
+    "direct", above it the note states the hop bound rather than claiming
+    directness.
     """
-    header = (
-        f'<context focal="{focus.id}" type="{focus.type.value}"'
-        f' file="{focus.file_path}:{focus.start_line}-{focus.end_line}">'
-    )
+    focal = _escape_xml_attr(focus.id)
+    file_attr = _escape_xml_attr(f"{focus.file_path}:{focus.start_line}-{focus.end_line}")
+    header = f'<context focal="{focal}" type="{focus.type.value}" file="{file_attr}">'
     sections = [
         _source_section(source),
         _class_section(class_node, siblings),
         _domain_section(focus),
-        _callers_section(callers),
-        _callees_section(callees, unresolved_callees),
+        _callers_section(callers, depth),
+        _callees_section(callees, unresolved_callees, depth),
     ]
     body = "\n\n".join(section for section in sections if section)
     return f"{header}\n\n{body}\n\n</context>"

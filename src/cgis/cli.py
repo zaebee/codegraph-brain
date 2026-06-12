@@ -1050,7 +1050,9 @@ def init_ontology(
 def context(
     fqn: str = typer.Argument(..., help="FQN of the focal node to compile context for"),
     db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
-    depth: int = typer.Option(2, "--depth", min=1, help="CALLS traversal depth (1=direct)."),
+    depth: int = typer.Option(
+        1, "--depth", min=1, help="CALLS traversal depth (1=direct neighbours)."
+    ),
     source_root: str = typer.Option(
         "",
         "--source-root",

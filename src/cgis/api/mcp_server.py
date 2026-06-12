@@ -320,7 +320,7 @@ def cgis_init_ontology(
 
 @mcp.tool()
 def cgis_context(
-    fqn: str, db_path: str = _DEFAULT_DB, depth: int = 2, source_root: str = ""
+    fqn: str, db_path: str = _DEFAULT_DB, depth: int = 1, source_root: str = ""
 ) -> str:
     """Compile an agent-facing GraphRAG context package for a focal FQN (#19).
 

@@ -20,5 +20,12 @@ def extract_snippet(file_path: str, start_line: int, end_line: int) -> str:
     # Drop any stale cache entry so freshly written/edited files read correctly.
     linecache.checkcache(file_path)
     start = max(1, start_line)
-    lines = [linecache.getline(file_path, i) for i in range(start, end_line + 1)]
+    lines: list[str] = []
+    for i in range(start, end_line + 1):
+        line = linecache.getline(file_path, i)
+        if not line:
+            # Empty string means EOF (a blank source line is "\n"); stop early so a
+            # corrupt/huge end_line can't spin millions of empty reads.
+            break
+        lines.append(line)
     return "".join(lines)
