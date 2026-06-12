@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from conftest import make_chain_nodes_edges
 
 from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeType
 from cgis.query.drift_service import analyze_drift
@@ -88,29 +89,12 @@ def test_discover_single_node_graph() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _chain_domain_nodes(prefix: str, count: int) -> tuple[list[Node], list[Edge]]:
-    """`count` functions in one domain wired as a CALLS chain f0→f1→…→fn."""
-    nodes = [
-        _node(f"{prefix}.f{i}", file_path=f"{prefix.replace('.', '/')}.py") for i in range(count)
-    ]
-    edges = [
-        Edge(
-            id=f"e{prefix}{i}",
-            source=f"{prefix}.f{i}",
-            target=f"{prefix}.f{i + 1}",
-            type=EdgeType.CALLS,
-        )
-        for i in range(count - 1)
-    ]
-    return nodes, edges
-
-
 @pytest.fixture
 def two_domain_db(tmp_path: Path) -> str:
     """Graph with one big chain domain (>= min_nodes) and one tiny domain."""
     db = str(tmp_path / "g.db")
-    big_nodes, big_edges = _chain_domain_nodes("app.pipeline", 12)
-    tiny_nodes, tiny_edges = _chain_domain_nodes("app.tiny", 3)
+    big_nodes, big_edges = make_chain_nodes_edges("app.pipeline", 12)
+    tiny_nodes, tiny_edges = make_chain_nodes_edges("app.tiny", 3)
     with SQLiteStore(db) as store:
         store.save_graph(big_nodes + tiny_nodes, big_edges + tiny_edges)
     return db

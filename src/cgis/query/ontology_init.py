@@ -122,6 +122,14 @@ patterns:
 _NO_FIT_THRESHOLD = 0.5
 _TS_EXTENSIONS = frozenset({".ts", ".tsx", ".js", ".jsx", ".vue"})
 
+# Parse the bundled header once at module load so _fit_templates never
+# re-parses per call; preserves declaration order (yaml dict insertion order).
+_PARSED_HEADER: dict[str, object] = yaml.safe_load(_DEFAULT_ONTOLOGY_HEADER)
+_patterns_section = _PARSED_HEADER.get("patterns")
+_TEMPLATE_NAMES: list[str] = (
+    list(_patterns_section.keys()) if isinstance(_patterns_section, dict) else []
+)
+
 # Commented-out project_level skeleton appended after project_domains.
 _PROJECT_LEVEL_SKELETON = """\
 # project_level:  # quotient binding is an architectural decision — uncomment and tune:
@@ -179,11 +187,8 @@ def _fit_templates(
     in the bundled header's declaration order; ties are broken by template name
     (alphabetic) to guarantee determinism.
     """
-    raw = yaml.safe_load(_DEFAULT_ONTOLOGY_HEADER)
-    template_names: list[str] = list((raw.get("patterns") or {}).keys())
-
     fits: list[tuple[str, float]] = []
-    for t_name in template_names:
+    for t_name in _TEMPLATE_NAMES:
         cfg = DomainConfig(
             name=fp.domain,
             fqn_prefix=fp.domain,
@@ -332,7 +337,7 @@ def discover_domains(nodes: list[Node], depth: int | None = None) -> list[str]:
         if not children:
             # Never-branching lineage: the deepest id on this chain is the
             # single candidate (downstream min_nodes will hygiene-fy it).
-            stub = prefix.rstrip(".")
+            stub = prefix.removesuffix(".")
             return [stub] if stub in set(real_ids) else []
         if len(children) != 1:
             break

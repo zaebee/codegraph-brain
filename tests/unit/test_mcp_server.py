@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from conftest import make_chain_db
 
 from cgis.api.mcp_server import (
     cgis_analyze_impact,
@@ -16,7 +17,6 @@ from cgis.api.mcp_server import (
     cgis_trace_flow,
     cgis_validate,
 )
-from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.storage.sqlite_store import SQLiteStore
 
 
@@ -531,37 +531,9 @@ def test_cgis_find_symbol_blank_kind_is_no_filter(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _make_chain_db(tmp_path: Path) -> str:
-    """Build a 12-node CALLS chain database for cgis_init_ontology tests."""
-    db = str(tmp_path / "chain.db")
-    nodes = [
-        Node(
-            id=f"app.chain.f{i}",
-            type=NodeType.FUNCTION,
-            name=f"f{i}",
-            file_path=f"app/chain/f{i}.py",
-            start_line=1,
-            end_line=2,
-        )
-        for i in range(12)
-    ]
-    edges = [
-        Edge(
-            id=f"e{i}",
-            source=f"app.chain.f{i}",
-            target=f"app.chain.f{i + 1}",
-            type=EdgeType.CALLS,
-        )
-        for i in range(11)
-    ]
-    with SQLiteStore(db) as store:
-        store.save_graph(nodes, edges)
-    return db
-
-
 def test_cgis_init_ontology_returns_yaml_text(tmp_path: Path) -> None:
     """Returns parseable yaml with project_domains; writes NO files."""
-    db = _make_chain_db(tmp_path)
+    db = make_chain_db(tmp_path)
     before = set(tmp_path.iterdir())
     result = cgis_init_ontology(db_path=db)
     assert "project_domains:" in result
