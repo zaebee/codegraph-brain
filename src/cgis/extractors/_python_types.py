@@ -60,7 +60,25 @@ class TypeResolver:
                 # Strip only the single outermost `]` to avoid mangling nested generics
                 if inner.endswith("]"):
                     inner = inner[:-1]
-                first_arg = inner.split(",")[0].strip()
+                first_arg = self._first_top_level_arg(inner)
                 return self.clean_python_type_string(first_arg)
             type_str = outer
         return type_str.strip()
+
+    @staticmethod
+    def _first_top_level_arg(args: str) -> str:
+        """Return the first argument of a generic's arg list.
+
+        Splits on the first comma at bracket depth 0 so nested generics keep
+        their inner commas intact, e.g. "dict[str, int], Meta" -> "dict[str, int]"
+        (a naive ``split(",")[0]`` would truncate to "dict[str").
+        """
+        depth = 0
+        for idx, char in enumerate(args):
+            if char == "[":
+                depth += 1
+            elif char == "]":
+                depth -= 1
+            elif char == "," and depth == 0:
+                return args[:idx].strip()
+        return args.strip()

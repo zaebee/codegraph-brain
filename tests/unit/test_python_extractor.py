@@ -56,6 +56,18 @@ def test_annotated_param_type_unwraps_to_inner_type(extractor: PythonExtractor) 
     assert "raw_dep:Annotated" not in dep_targets
 
 
+def test_annotated_nested_generic_first_arg_not_truncated(extractor: PythonExtractor) -> None:
+    """`Annotated[dict[str, int], ...]` unwraps to the base `dict`, not `dict[str` (#194).
+
+    Guards the bracket-depth-aware first-arg split: a naive comma split would
+    truncate the nested generic at its inner comma.
+    """
+    code = "def f(db: Annotated[dict[str, int], Depends(get_db)]):\n    pass\n"
+    _, edges = extractor.parse(code, "m.py")
+    dep_targets = [e.target for e in edges if e.target.startswith("raw_dep:")]
+    assert "raw_dep:dict" in dep_targets
+
+
 def test_extract_simple_function(extractor: PythonExtractor) -> None:
     code = """
 def hello():
