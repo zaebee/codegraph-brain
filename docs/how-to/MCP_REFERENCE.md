@@ -68,11 +68,12 @@ Resolve a partial symbol name to candidate FQNs (substring match, ranked).
 
 ## `cgis_get_structure`
 
-Show the class/module layout of a component by tracing outgoing edges.
+Show the structural layout (CONTAINS/DECLARES) of a module or class.
 
-    ``output_format="mermaid"`` (default) returns a diagram of the immediate
-    call structure rooted at the given FQN; ``"json"`` returns the joinable
-    ``{root, nodes, edges}`` payload with real FQNs.
+    Traverses only containment edges — no call-graph noise — matching the CLI
+    ``structure`` command. ``output_format="mermaid"`` (default) returns a
+    diagram of the hierarchy rooted at the given FQN; ``"json"`` returns the
+    joinable ``{root, nodes, edges}`` payload with real FQNs.
 
 | Argument | Type | Required | Description |
 | :--- | :--- | :---: | :--- |

@@ -180,6 +180,50 @@ def test_cgis_trace_flow_unknown_format_returns_error(
     assert "xml" in result
 
 
+def test_cgis_get_structure_uses_structural_not_call_edges(
+    repo_with_calls: tuple[Path, Path],
+) -> None:
+    """structure traverses CONTAINS/DECLARES only — a CALLS-reached callee must not appear.
+
+    Regression for the #209 review HIGH: cgis_get_structure previously called
+    get_flow_graph (call-graph) instead of get_structural_graph (containment).
+    """
+    repo, db = repo_with_calls
+    cgis_ingest(str(repo), str(db))
+
+    result = cgis_get_structure("mod.caller", str(db), output_format="json")
+
+    payload = json.loads(result)
+    # caller() calls callee(), but a *structural* view of a function has no callee
+    assert all(not n["fqn"].endswith("mod.callee") for n in payload["nodes"])
+    assert all(e["type"] != "CALLS" for e in payload["edges"])
+
+
+def test_trace_flow_blank_fqn_short_circuits(tmp_path: Path) -> None:
+    """A blank FQN is rejected before any store access (mirrors #173 search guard)."""
+    # db deliberately does not exist — the blank guard must fire first
+    result = cgis_trace_flow("   ", str(tmp_path / "graph.db"))
+
+    assert "❌" in result
+    assert "empty" in result.lower()
+
+
+def test_analyze_impact_blank_fqn_short_circuits(tmp_path: Path) -> None:
+    """analyze_impact also short-circuits on blank input before the store."""
+    result = cgis_analyze_impact("", str(tmp_path / "graph.db"))
+
+    assert "❌" in result
+    assert "empty" in result.lower()
+
+
+def test_get_structure_blank_fqn_short_circuits(tmp_path: Path) -> None:
+    """get_structure also short-circuits on blank input before the store."""
+    result = cgis_get_structure("\t", str(tmp_path / "graph.db"))
+
+    assert "❌" in result
+    assert "empty" in result.lower()
+
+
 def test_cgis_trace_flow_db_error_returns_error(tmp_path: Path) -> None:
     db = tmp_path / "bad.db"
     db.write_bytes(b"not sqlite")

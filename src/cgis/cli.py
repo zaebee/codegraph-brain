@@ -33,7 +33,9 @@ _DEFAULT_DB = "graph.db"
 _DEFAULT_DB_HELP = "Path to the SQLite database"
 _DEPTH_HELP = "Maximum traversal depth"
 _FORMAT_HELP = "Output format: text, mermaid, or json"
-_INTERNAL_ONLY_TEXT_ERR = "--internal-only is only supported with '--format mermaid' or 'json'"
+_INTERNAL_ONLY_TEXT_ERR = (
+    "--internal-only is only supported with '--format mermaid' or '--format json'"
+)
 
 _OPT_SHOW_STRUCTURE: bool = typer.Option(
     False,

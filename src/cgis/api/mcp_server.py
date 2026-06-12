@@ -48,6 +48,13 @@ def _resolution_error(fqn: str, candidates: list[str], truncated: bool = False) 
     return f"❌ FQN not found in graph: {fqn}"
 
 
+def _blank_fqn_error(fqn: str) -> str | None:
+    """Reject empty/whitespace FQN before touching the store (mirrors the #173 search guard)."""
+    if not fqn.strip():
+        return "❌ FQN cannot be empty or whitespace-only."
+    return None
+
+
 def _render_subgraph(
     output_format: str,
     root: str,
@@ -107,6 +114,8 @@ def cgis_trace_flow(
     FQNs (not display hashes) for agent/CI use. Use ``cgis_ingest`` first if
     the database does not exist yet.
     """
+    if blank := _blank_fqn_error(fqn):
+        return blank
     if not Path(db_path).exists():
         return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
     try:
@@ -133,6 +142,8 @@ def cgis_analyze_impact(
     payload with real FQNs — letting an agent compute set differences (e.g.
     "which route handlers never reach ``verify_ownership``?") directly.
     """
+    if blank := _blank_fqn_error(fqn):
+        return blank
     if not Path(db_path).exists():
         return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
     try:
@@ -152,12 +163,15 @@ def cgis_analyze_impact(
 def cgis_get_structure(
     fqn: str, db_path: str = _DEFAULT_DB, depth: int = 2, output_format: str = "mermaid"
 ) -> str:
-    """Show the class/module layout of a component by tracing outgoing edges.
+    """Show the structural layout (CONTAINS/DECLARES) of a module or class.
 
-    ``output_format="mermaid"`` (default) returns a diagram of the immediate
-    call structure rooted at the given FQN; ``"json"`` returns the joinable
-    ``{root, nodes, edges}`` payload with real FQNs.
+    Traverses only containment edges — no call-graph noise — matching the CLI
+    ``structure`` command. ``output_format="mermaid"`` (default) returns a
+    diagram of the hierarchy rooted at the given FQN; ``"json"`` returns the
+    joinable ``{root, nodes, edges}`` payload with real FQNs.
     """
+    if blank := _blank_fqn_error(fqn):
+        return blank
     if not Path(db_path).exists():
         return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
     try:
@@ -165,7 +179,7 @@ def cgis_get_structure(
             res = resolve_fqn(store, fqn)
             if res.resolved is None:
                 return _resolution_error(fqn, res.candidates, res.truncated)
-            nodes, edges = QueryEngine(store).get_flow_graph(res.resolved, max_depth=depth)
+            nodes, edges = QueryEngine(store).get_structural_graph(res.resolved, max_depth=depth)
     except Exception as exc:
         return f"❌ {exc}"
 
