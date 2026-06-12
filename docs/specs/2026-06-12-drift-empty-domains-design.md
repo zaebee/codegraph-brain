@@ -88,7 +88,7 @@ here). #178 adds exactly one status-aware term:
 ```python
     any_critical = (
         any(r.drift_score >= max_drift for r in reports)
-        or any(r.status == "empty" for r in reports)
+        or any(r.status == "empty" for d, r in zip(domains, reports) if d.enforce)
         or any(
             (r.drift_score >= max_drift or r.status == "empty")
             for b, r in quotient
@@ -97,10 +97,14 @@ here). #178 adds exactly one status-aware term:
     )
 ```
 
-- `empty` on a project domain or an ENFORCED quotient binding → CI fails.
-  A broken ontology is critical by definition.
-- `empty` on an `enforce: false` binding → reported, never trips (existing
-  observe-only semantics preserved).
+- `empty` on an ENFORCED binding (project domain or quotient) → CI fails.
+  A broken ontology is critical by definition. The NEW empty term respects
+  `DomainConfig.enforce` for project domains via the zip (gemini catch on
+  the spec PR: prose and code disagreed).
+- `empty` on an `enforce: false` binding → reported, never trips.
+- The EXISTING score term (`r.drift_score >= max_drift for r in reports`)
+  is enforce-blind for project domains today; that pre-existing semantics
+  question belongs to #170 and is deliberately not changed here.
 - `no_signal` NEVER trips the gate — a tiny-but-real domain is legitimate;
   it just must not render as "clean".
 
@@ -115,6 +119,10 @@ frozen dataclasses → `dataclasses.replace`):
 3. `note = "fqn_prefix '<p>' matched 0 nodes; did you mean: <id1>, <id2>?"`
    capped at 3 suggestions; without matches,
    `note = "fqn_prefix '<p>' matched 0 nodes"`.
+
+The suggestion helper short-circuits on an empty or whitespace-only
+`fqn_prefix` (no DB query; note degrades to the bare "matched 0 nodes"
+message) — defensive guard, gemini suggestion on the spec PR.
 
 This is the minimal slice of #173 (find_symbol) — full symbol search stays
 out of scope. Suggestion lookup runs inside the existing `SQLiteStore`
