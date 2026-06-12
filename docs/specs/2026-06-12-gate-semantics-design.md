@@ -4,6 +4,8 @@
 **Issues:** #176 (cycle_ratio false criticals on flat repos) + #170 (status semantics) — one spec: both change what the gate means, and the cycle fix interacts with both #170 halves and with #174's round-trip guarantee.
 **Status:** Draft
 **Roadmap:** #179 P1 ("make the gate correct across topologies")
+**Sequencing:** depends on #174's `ontology_init.py` (merged, PR #211) —
+the baseline emission rides on it.
 **Lane:** A (drift/ontology): `query/{fingerprint,drift,drift_service,health}.py`, `query/ontology_init.py`, `docs/ontology/patterns.yaml`, drift regions of `cli.py`/`mcp_server.py`.
 
 ## 1. Problem — and a corrected diagnosis
@@ -53,8 +55,10 @@ consuming the global `in_cycle` metadata:
 1. `domain_files` = FILE/MODULE nodes within the prefix (non-virtual).
 2. Intra-domain import subgraph: IMPORTS edges whose source AND target are
    in `domain_files`.
-3. Tarjan SCC (reuse the existing `tarjan_scc` helper health.py uses);
-   cyclic files = members of SCCs with len > 1.
+3. Tarjan SCC — reuse the SAME `tarjan_scc` helper health.py uses, as a
+   shared module-level utility import (NOT reached through `HealthScorer`
+   internals — no fingerprint→health private coupling); cyclic files =
+   members of SCCs with len > 1.
 4. `cycle_count` = domain nodes whose `file_path` equals a cyclic file's
    `file_path`; `cycle_ratio = cycle_count / len(domain_nodes)` (unchanged
    denominator semantics — still blast radius, now of the domain's OWN
@@ -82,13 +86,25 @@ Consequences, pinned:
 status: Literal["clean", "warning", "critical", "gate_failed", "empty", "no_signal"]
 ```
 
-**Hygiene provenance**: `DriftScorer.score()` currently merges
-`{**hygiene, **template}` into one constraint dict. It now tracks which
-constraint KEYS came from the hygiene block; a violation of a
-hygiene-provenance constraint forces `status="gate_failed"` regardless of
-the TV score (the score is still computed and reported — only the status is
-sticky). Template-constraint violations keep today's score-driven
-classification.
+**Hygiene provenance — separate evaluation, not a merged dict** (colleague
+catch on the spec PR: the merge-based design had a LIVE collision —
+`unresolved_ratio` is declared in BOTH the hygiene block `{max: 0.2}` and
+the `pure_utility` template `{max: 0.1}`; after `{**hygiene, **template}`
+the template bound wins while the key would still read as
+hygiene-provenance, escalating a TEMPLATE breach at 0.15 into a false
+`gate_failed`). `DriftScorer.score()` therefore evaluates the two
+constraint sets SEPARATELY:
+
+- hygiene constraints, judged against their own (baseline-relaxed) bounds —
+  any violation forces `status="gate_failed"` (TV score still computed and
+  reported; only the status is sticky);
+- template constraints, judged against their own bounds — violations keep
+  today's score-driven classification.
+
+A key present in both sets is checked twice against its two different
+bounds — which is exactly the intended semantics (the hygiene invariant and
+the template ideal are different statements). No provenance side-set is
+needed.
 
 **Acknowledgeable debt** — the #174-interaction fix. A domain binding may
 declare:
@@ -119,12 +135,19 @@ future CI enforcement applies to both).
 `DomainConfig` gains `hygiene_baseline: dict[str, float] =
 field(default_factory=dict)`; the loader validates the block is a mapping
 via the existing `_validate_mapping` helper (project parsing rule) before
-parsing it, for project_domains and project_level alike.
+parsing it, for project_domains and project_level alike. Baseline keys
+that name no hygiene constraint are rejected at load time with a
+descriptive error (a silently no-op'ing acknowledgment would be worse than
+none).
 
 **init-ontology integration** (`ontology_init.py`): when a measured domain
 breaches a default hygiene bound (today: any intra-domain `cycle_ratio > 0`,
 `unresolved_ratio` over the hygiene max), the proposal emits a
-`hygiene_baseline` block with the measured value and the comment
+`hygiene_baseline` block with the measured value ROUNDED UP via the same
+`_ceil2` used for tolerances (colleague catch: a floored baseline below the
+true measurement would gate_fail the proposal on its own graph — the
+rounding direction is load-bearing for the round-trip guarantee) and the
+comment
 `# acknowledged at baseline by init-ontology — ratchet down over time`.
 This restores the #174 round-trip guarantee under gate_failed: a freshly
 proposed ontology never fails its own graph, while any REGRESSION beyond
