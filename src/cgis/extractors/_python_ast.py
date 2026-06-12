@@ -10,18 +10,25 @@ from tree_sitter import Node as BaseNode
 PYTHON_LANG = "python"
 
 
-def resolve_relative_module(module_fqn: str, leading_dots: int, relative_path: str) -> str:
+def resolve_relative_module(
+    module_fqn: str, leading_dots: int, relative_path: str, is_package: bool = False
+) -> str:
     """Resolve a relative import to an absolute FQN.
 
     Args:
         module_fqn: FQN of the current file, e.g. "src.cgis.extractors.python_extractor"
         leading_dots: number of leading dots in the import statement
         relative_path: module path after the dots, e.g. "core" for "from ..core import x"
+        is_package: True when the importing file is a package ``__init__.py``. Its
+            FQN already had the ``/__init__`` suffix stripped, so it IS the
+            package — one leading dot refers to the package itself and must trim
+            one fewer segment than a regular module would.
 
     Returns "src.cgis.core" for leading_dots=2, relative_path="core" in the example above.
     """
     segments = module_fqn.split(".")
-    trim = min(leading_dots, len(segments))
+    effective_dots = leading_dots - 1 if is_package and leading_dots > 0 else leading_dots
+    trim = min(effective_dots, len(segments))
     if trim == 0:
         # leading_dots == 0: not a relative import — return the module unchanged.
         # (Guards against `segments[:-0]` == `[]`, which would drop the whole FQN.)

@@ -149,8 +149,10 @@ class ImportHandler:
             idx = node.children.index(import_symbol_node)
             symbols = self._collect_imported_symbols(node.children[idx + 1 :], code_bytes)
 
+        norm_path = file_path.replace("\\", "/")
+        is_package = norm_path == "__init__.py" or norm_path.endswith("/__init__.py")
         base_module = (
-            resolve_relative_module(module_fqn, leading_dots, raw_module_str)
+            resolve_relative_module(module_fqn, leading_dots, raw_module_str, is_package=is_package)
             if leading_dots > 0
             else raw_module_str
         )

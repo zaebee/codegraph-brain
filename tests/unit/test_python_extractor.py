@@ -24,6 +24,38 @@ def test_resolve_relative_module_trims_one_level_per_dot() -> None:
     assert resolve_relative_module("src.cgis.mod", 1, "") == "src.cgis"
 
 
+def test_resolve_relative_module_package_keeps_own_segment() -> None:
+    """Inside a package __init__.py the module FQN already IS the package (#194).
+
+    `file_path_to_module_fqn` strips the /__init__ suffix, so one leading dot
+    refers to the package itself and must trim one fewer segment than a regular
+    module would.
+    """
+    # module_fqn "src.cgis" is the package src/cgis/__init__.py
+    assert resolve_relative_module("src.cgis", 1, "", is_package=True) == "src.cgis"
+    assert resolve_relative_module("src.cgis", 1, "sub", is_package=True) == "src.cgis.sub"
+    assert resolve_relative_module("src.cgis", 2, "other", is_package=True) == "src.other"
+
+
+def test_relative_import_in_package_init_keeps_package(extractor: PythonExtractor) -> None:
+    """Relative imports written inside __init__.py resolve against the package (#194)."""
+    nodes, _ = extractor.parse(
+        "from . import pipeline\nfrom .sub import X\n", "src/cgis/__init__.py"
+    )
+    import_map = nodes[0].metadata["import_map"]
+    assert import_map["pipeline"] == "src.cgis.pipeline"
+    assert import_map["X"] == "src.cgis.sub.X"
+
+
+def test_annotated_param_type_unwraps_to_inner_type(extractor: PythonExtractor) -> None:
+    """`Annotated[T, ...]` param annotations resolve to T, not the wrapper (#194)."""
+    code = "def f(db: Annotated[Session, Depends(get_db)]):\n    pass\n"
+    _, edges = extractor.parse(code, "m.py")
+    dep_targets = [e.target for e in edges if e.target.startswith("raw_dep:")]
+    assert "raw_dep:Session" in dep_targets
+    assert "raw_dep:Annotated" not in dep_targets
+
+
 def test_extract_simple_function(extractor: PythonExtractor) -> None:
     code = """
 def hello():
