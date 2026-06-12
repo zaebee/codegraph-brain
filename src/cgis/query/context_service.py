@@ -60,11 +60,23 @@ def _direct_callees(
 
 
 def _structural_parent(store: SQLiteStore, focus_fqn: str) -> Node | None:
-    """Return the node that structurally contains/declares the focal node, if any."""
-    for edge in store.get_incoming_edges(focus_fqn):
-        if edge.type in _STRUCTURAL:
-            return store.get_node(edge.source)
-    return None
+    """Return the focal node's structural parent, preferring a CLASS over a FILE/MODULE.
+
+    A node may have several incoming structural edges (a method is DECLARED by a
+    class which is itself CONTAINED by a file). We collect every resolvable
+    parent — skipping any whose node is missing from the store — then prefer the
+    enclosing CLASS so a method's class context is never lost to an earlier
+    file-level edge.
+    """
+    parents = [
+        parent
+        for edge in store.get_incoming_edges(focus_fqn)
+        if edge.type in _STRUCTURAL and (parent := store.get_node(edge.source)) is not None
+    ]
+    for parent in parents:
+        if parent.type == NodeType.CLASS:
+            return parent
+    return parents[0] if parents else None
 
 
 def _class_context(store: SQLiteStore, focus: Node) -> tuple[Node | None, list[Node]]:
@@ -94,7 +106,10 @@ def build_context(store: SQLiteStore, focus_fqn: str, depth: int = 2, source_roo
         msg = f"FQN not found in graph: {focus_fqn}"
         raise ValueError(msg)
     engine = QueryEngine(store)
-    file_path = str(Path(source_root) / focus.file_path) if source_root else focus.file_path
+    # Normalise Windows-style separators: a graph ingested on Windows stores
+    # backslash paths that POSIX would treat as one literal filename component.
+    relative = focus.file_path.replace("\\", "/")
+    file_path = str(Path(source_root) / relative) if source_root else relative
     source = extract_snippet(file_path, focus.start_line, focus.end_line)
     callers = _direct_callers(engine, focus_fqn, depth)
     callees, unresolved = _direct_callees(engine, focus_fqn, depth)

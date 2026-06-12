@@ -60,11 +60,24 @@ def _sibling_line(node: Node) -> str:
     return f"- {node.name} ({node.type.value}, {_loc(node)})"
 
 
+def _neutralize_closing_tags(code: str) -> str:
+    """Escape XML closing-tag starts (``</``) so source can't close the prompt's tags.
+
+    The adaptive backtick fence stops a code block from closing early, but a file
+    literally containing ``</source>``/``</context>`` could otherwise close the
+    surrounding XML tag and inject instructions (#19 watch-out #2). Every XML
+    closing tag begins with ``</``, so neutralising just that sequence defeats
+    the injection while keeping return arrows (``->``), generics and comparisons
+    perfectly readable — unlike a blanket ``<``/``>`` escape.
+    """
+    return code.replace("</", "&lt;/")
+
+
 def _source_section(source: str) -> str:
-    """Render the <source> tag, fencing real code or noting its absence."""
+    """Render the <source> tag, fencing real code (closing-tag-safe) or noting its absence."""
     if not source.strip():
         return "<source>(source unavailable)</source>"
-    return f"<source>\n{_fence(source)}\n</source>"
+    return f"<source>\n{_fence(_neutralize_closing_tags(source))}\n</source>"
 
 
 def _class_section(class_node: Node | None, siblings: list[Node]) -> str:

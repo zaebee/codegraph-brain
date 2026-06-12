@@ -165,3 +165,17 @@ def test_domain_block_omitted_for_structural_ontology_only() -> None:
         unresolved_callees=[],
     )
     assert "<domain" not in out
+
+
+def test_source_closing_tags_are_neutralized() -> None:
+    """A file containing </source>/</context> can't close the prompt's tags (gemini SEC-HIGH)."""
+    out = _compile(source="x = '</source></context>'\n")
+    # only the closing-tag starts are escaped, so they don't terminate <source> early
+    assert "&lt;/source>&lt;/context>" in out
+
+
+def test_source_return_arrow_stays_readable() -> None:
+    """The surgical escape leaves '->' return arrows and comparisons untouched."""
+    out = _compile(source="def f(a, b) -> bool:\n    return a < b\n")
+    assert "-> bool:" in out
+    assert "return a < b" in out

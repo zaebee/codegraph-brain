@@ -182,3 +182,50 @@ def test_external_callees_are_excluded(tmp_path: Path) -> None:
         out = build_context(store, "app.f", depth=1)
     assert "app.g" in out
     assert "builtins.len" not in out
+
+
+def test_windows_style_file_path_is_normalized_for_snippet(tmp_path: Path) -> None:
+    """A backslash file_path (Windows-ingested graph) still locates the snippet on POSIX."""
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "m.py").write_text("def w():\n    return 1\n", encoding="utf-8")
+    node = Node(
+        id="pkg.m.w",
+        type=NodeType.FUNCTION,
+        name="w",
+        file_path="pkg\\m.py",  # backslash, as a Windows ingest would store
+        start_line=1,
+        end_line=2,
+    )
+    db = str(tmp_path / "win.db")
+    with SQLiteStore(db) as store:
+        store.save_graph([node], [])
+    with SQLiteStore(db) as store:
+        out = build_context(store, "pkg.m.w", source_root=str(tmp_path))
+    assert "def w():" in out
+
+
+def test_structural_parent_prefers_class_over_file(tmp_path: Path) -> None:
+    """When a method has both a FILE and a CLASS structural parent, the CLASS wins."""
+    nodes = [
+        Node(id="m", type=NodeType.FILE, name="m", file_path="m.py", start_line=1, end_line=9),
+        Node(id="m.C", type=NodeType.CLASS, name="C", file_path="m.py", start_line=1, end_line=9),
+        Node(
+            id="m.C.meth",
+            type=NodeType.METHOD,
+            name="meth",
+            file_path="m.py",
+            start_line=2,
+            end_line=3,
+        ),
+    ]
+    edges = [
+        # FILE→method edge listed FIRST so the naive "first structural edge" would pick the file
+        Edge(id="x1", source="m", target="m.C.meth", type=EdgeType.CONTAINS),
+        Edge(id="x2", source="m.C", target="m.C.meth", type=EdgeType.DECLARES),
+    ]
+    db = str(tmp_path / "p.db")
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)
+    with SQLiteStore(db) as store:
+        out = build_context(store, "m.C.meth", depth=1)
+    assert '<class name="m.C"' in out
