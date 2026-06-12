@@ -50,6 +50,17 @@ def _prune_external(
     return nodes, [e for e in filtered_edges if e.source in reachable and e.target in reachable]
 
 
+def _edge_accepted(
+    edge: Edge,
+    allowed_edge_types: frozenset[EdgeType] | None,
+    min_confidence: float | None,
+) -> bool:
+    """True when an edge passes the traversal filters: type allow-list and confidence floor."""
+    if allowed_edge_types is not None and edge.type not in allowed_edge_types:
+        return False
+    return not (min_confidence is not None and edge.confidence < min_confidence)
+
+
 class QueryEngine:
     """
     Performs graph traversals over the SQLite Code Graph.
@@ -141,9 +152,7 @@ class QueryEngine:
             edges = get_edges_batch(current_frontier)
             next_frontier: list[str] = []
             for edge in edges:
-                if allowed_edge_types is not None and edge.type not in allowed_edge_types:
-                    continue
-                if min_confidence is not None and edge.confidence < min_confidence:
+                if not _edge_accepted(edge, allowed_edge_types, min_confidence):
                     continue
                 visited_edges[edge.id] = edge
                 neighbor_id = get_neighbor_id(edge)
