@@ -6,6 +6,7 @@ from enum import StrEnum
 from pathlib import Path
 
 import typer
+import yaml
 from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
@@ -26,6 +27,7 @@ from cgis.query.fqn import resolve_fqn
 from cgis.query.graph_json import graph_to_json
 from cgis.query.health import HealthScorer
 from cgis.query.mermaid import MermaidCompiler
+from cgis.query.ontology_init import propose_ontology
 from cgis.resolver.uplift import SemanticUpliftEngine
 from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 
@@ -978,6 +980,69 @@ def drift(
         raise typer.Exit(code=1)
 
     console.print("[bold green]✅ All domains within tolerance.[/bold green]")
+
+
+def _render_init_summary(text: str) -> None:
+    """Print a compact Rich summary table for the proposed ontology.
+
+    Parses ``yaml.safe_load(text)["project_domains"]`` and renders one row per
+    domain with columns: name, fqn_prefix, pattern (or "(hygiene)"), tolerance.
+    Mirrors the style of ``_render_drift_table``.
+    """
+    try:
+        data = yaml.safe_load(text)
+        domains = data.get("project_domains") or []
+    except Exception:  # pragma: no cover — malformed yaml is not expected here
+        return
+
+    table = Table(title="Proposed Ontology Summary")
+    table.add_column("Name", style="cyan")
+    table.add_column("FQN Prefix", style="yellow")
+    table.add_column("Pattern", style="dim")
+    table.add_column("Tolerance", justify="right", style="magenta")
+
+    for d in domains:
+        table.add_row(
+            str(d.get("name", "")),
+            str(d.get("fqn_prefix", "")),
+            str(d.get("expected_pattern", "(hygiene)")),
+            f"{d.get('drift_tolerance', ''):.2f}"
+            if isinstance(d.get("drift_tolerance"), float)
+            else str(d.get("drift_tolerance", "")),
+        )
+    console.print(table)
+
+
+@app.command(name="init-ontology")
+def init_ontology(
+    db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
+    out: str = typer.Option(
+        "patterns.yaml", "--out", "-o", help="Where to write the proposed ontology."
+    ),
+    margin: float = typer.Option(
+        0.03, "--margin", min=0.0, max=0.5, help="Tolerance headroom above the measured score."
+    ),
+    min_nodes: int = typer.Option(
+        10, "--min-nodes", min=1, help="Domains smaller than this stay hygiene-only."
+    ),
+    depth: int | None = typer.Option(
+        None, "--depth", help="Fixed FQN segment depth for domain discovery (default: auto)."
+    ),
+    force: bool = typer.Option(False, "--force", help="Overwrite an existing --out file."),
+) -> None:
+    """Propose a starter patterns.yaml from the measured graph (measure-then-label)."""
+    if Path(out).exists() and not force:
+        console.print(f"[bold red]❌ {out} already exists[/bold red] — use --force to overwrite.")
+        raise typer.Exit(code=1)
+    try:
+        text = propose_ontology(db, margin=margin, min_nodes=min_nodes, depth=depth)
+    except FileNotFoundError as e:
+        console.print(f"[bold red]❌ {e}[/bold red]")
+        raise typer.Exit(code=1) from e
+    Path(out).write_text(text)
+    _render_init_summary(text)
+    console.print(f"[bold green]✅ Proposed ontology written to {out}[/bold green]")
+    console.print(f"Next: [cyan]cgis drift --db {db} --patterns {out}[/cyan]")
 
 
 if __name__ == "__main__":  # pragma: no cover

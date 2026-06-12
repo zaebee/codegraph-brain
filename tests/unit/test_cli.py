@@ -990,3 +990,69 @@ def test_trace_internal_only_rejected_for_text_format(tmp_path: Path) -> None:
     result = runner.invoke(app, ["trace", caller_fqn, "--db", str(db_file), "--internal-only"])
 
     assert result.exit_code != 0
+
+
+# ---------------------------------------------------------------------------
+# init-ontology command tests (#174 task 3)
+# ---------------------------------------------------------------------------
+
+
+def _make_chain_db(tmp_path: Path) -> str:
+    """Build a 12-node CALLS chain database in tmp_path for init-ontology tests."""
+    db = str(tmp_path / "chain.db")
+    nodes = [
+        Node(
+            id=f"app.chain.f{i}",
+            type=NodeType.FUNCTION,
+            name=f"f{i}",
+            file_path=f"app/chain/f{i}.py",
+            start_line=1,
+            end_line=2,
+        )
+        for i in range(12)
+    ]
+    edges = [
+        Edge(
+            id=f"e{i}",
+            source=f"app.chain.f{i}",
+            target=f"app.chain.f{i + 1}",
+            type=EdgeType.CALLS,
+        )
+        for i in range(11)
+    ]
+    with SQLiteStore(str(db)) as store:
+        store.save_graph(nodes, edges)
+    return db
+
+
+def test_init_ontology_writes_file_and_summary(tmp_path: Path) -> None:
+    """Happy path: writes the yaml, prints a summary, exit 0."""
+    db = _make_chain_db(tmp_path)
+    out = tmp_path / "patterns.yaml"
+    result = runner.invoke(app, ["init-ontology", "--db", db, "--out", str(out)])
+    assert result.exit_code == 0
+    assert out.exists()
+    assert "project_domains" in out.read_text()
+
+
+def test_init_ontology_refuses_overwrite_without_force(tmp_path: Path) -> None:
+    """Existing --out without --force → exit 1, file untouched."""
+    db = _make_chain_db(tmp_path)
+    out = tmp_path / "patterns.yaml"
+    out.write_text("hand-tuned: true\n")
+    result = runner.invoke(app, ["init-ontology", "--db", db, "--out", str(out)])
+    assert result.exit_code == 1
+    assert out.read_text() == "hand-tuned: true\n"
+    forced = runner.invoke(app, ["init-ontology", "--db", db, "--out", str(out), "--force"])
+    assert forced.exit_code == 0
+    assert "project_domains" in out.read_text()
+
+
+def test_init_ontology_missing_db_exits_1(tmp_path: Path) -> None:
+    """Missing db → red message, exit 1, no db file created."""
+    missing = tmp_path / "none.db"
+    result = runner.invoke(
+        app, ["init-ontology", "--db", str(missing), "--out", str(tmp_path / "p.yaml")]
+    )
+    assert result.exit_code == 1
+    assert not missing.exists()
