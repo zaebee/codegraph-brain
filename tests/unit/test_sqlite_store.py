@@ -703,6 +703,8 @@ def test_search_nodes_kind_and_prefix_filters(temp_store: SQLiteStore) -> None:
         _named_node("app.svc.get_user", "get_user", NodeType.FUNCTION),
         _named_node("app.api.get_user", "get_user", NodeType.FUNCTION),
         _named_node("app.svc.UserModel", "UserModel", NodeType.CLASS),
+        # Segment-boundary trap: prefix "app.svc" must NOT match this sibling package.
+        _named_node("app.svc_alternative.get_user", "get_user", NodeType.FUNCTION),
     ]
     temp_store.save_graph(nodes, [])
     assert {n.id for n in temp_store.search_nodes("User", kinds=("CLASS",))} == {
@@ -711,6 +713,13 @@ def test_search_nodes_kind_and_prefix_filters(temp_store: SQLiteStore) -> None:
     assert {n.id for n in temp_store.search_nodes("get_user", fqn_prefix="app.svc")} == {
         "app.svc.get_user"
     }
+
+
+def test_search_nodes_empty_query_returns_empty(temp_store: SQLiteStore) -> None:
+    """An empty / whitespace-only query short-circuits to no results (#173)."""
+    temp_store.save_graph([_named_node("m.fn", "fn", NodeType.FUNCTION)], [])
+    assert temp_store.search_nodes("") == []
+    assert temp_store.search_nodes("   ") == []
 
 
 def test_search_nodes_escapes_wildcards(temp_store: SQLiteStore) -> None:

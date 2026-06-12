@@ -268,6 +268,8 @@ class SQLiteStore:
         """
         if not self._conn:
             raise RuntimeError(self._error_message)
+        if not query.strip():
+            return []
         esc = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         sql = "SELECT * FROM nodes WHERE name LIKE ? ESCAPE '\\'"
         params: list[str | int] = [f"%{esc}%"]
@@ -277,8 +279,10 @@ class SQLiteStore:
             params.extend(kinds)
         if fqn_prefix:
             pfx = fqn_prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-            sql += " AND id LIKE ? ESCAPE '\\'"
-            params.append(f"{pfx}%")
+            # Segment-boundary match: the prefix itself or a child under it — never
+            # `app.svc` accidentally matching `app.svc_alternative` (mirrors _in_domain).
+            sql += " AND (id = ? OR id LIKE ? ESCAPE '\\')"
+            params.extend([fqn_prefix, f"{pfx}.%"])
         sql += (
             " ORDER BY CASE WHEN name = ? THEN 0 WHEN name LIKE ? ESCAPE '\\' THEN 1 ELSE 2 END,"
             " LENGTH(id), id LIMIT ?"
