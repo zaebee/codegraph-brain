@@ -555,6 +555,46 @@ def validate(
 
 
 @app.command()
+def find(
+    query: str = typer.Argument(..., help="Partial symbol name to search for"),
+    db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
+    kind: str | None = typer.Option(
+        None, "--kind", "-k", help="Filter by node type (FUNCTION/METHOD/CLASS/...)"
+    ),
+    prefix: str | None = typer.Option(
+        None, "--prefix", "-p", help="Scope results to FQNs under this prefix"
+    ),
+    limit: int = typer.Option(20, "--limit", "-n", min=1, help="Max results"),
+) -> None:
+    """
+    Find symbols by partial name → candidate FQNs (ranked exact > prefix > substring).
+
+    Resolves the "I know the name but not the FQN" gap before trace/impact/structure.
+    """
+    path = Path(db)
+    if not path.is_file():
+        console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
+        raise typer.Exit(code=1)
+
+    kinds = (kind.upper(),) if kind else ()
+    with SQLiteStore(db) as store:
+        matches = store.search_nodes(query, kinds=kinds, fqn_prefix=prefix, limit=limit)
+
+    if not matches:
+        console.print(f"[yellow]No symbols matching '{query}'[/yellow]")
+        return
+
+    table = Table(title=f"Symbols matching '{query}'")
+    table.add_column("Name", style="cyan")
+    table.add_column("Type", style="dim")
+    table.add_column("FQN", style="yellow")
+    table.add_column("Location", style="dim")
+    for node in matches:
+        table.add_row(node.name, node.type.value, node.id, f"{node.file_path}:{node.start_line}")
+    console.print(table)
+
+
+@app.command()
 def structure(
     target: str = typer.Argument(..., help="FQN or file path of the module/class to inspect"),
     db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),

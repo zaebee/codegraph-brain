@@ -671,3 +671,51 @@ def test_find_nodes_by_suffix_closed_store_raises(tmp_path: Path) -> None:
     store = SQLiteStore(str(tmp_path / "closed.db"))
     with pytest.raises(RuntimeError):
         store.find_nodes_by_suffix("x")
+
+
+def _named_node(fqn: str, name: str, ntype: NodeType, file_path: str = "f.py") -> Node:
+    """Node with an explicit leaf name (search tests need name != id)."""
+    return Node(id=fqn, type=ntype, name=name, file_path=file_path, start_line=1, end_line=2)
+
+
+def test_search_nodes_ranks_exact_prefix_substring(temp_store: SQLiteStore) -> None:
+    """search_nodes ranks exact > prefix > substring, tie-break shorter FQN then id (#173)."""
+    nodes = [
+        _named_node("c.fetch_get_user", "fetch_get_user", NodeType.FUNCTION),  # substring
+        _named_node("b.get_user_by_id", "get_user_by_id", NodeType.FUNCTION),  # prefix
+        _named_node("scope.get_user", "get_user", NodeType.FUNCTION),  # exact (longer id)
+        _named_node("a.get_user", "get_user", NodeType.FUNCTION),  # exact (shorter id)
+        _named_node("d.UserService", "UserService", NodeType.CLASS),  # no match
+    ]
+    temp_store.save_graph(nodes, [])
+    result = temp_store.search_nodes("get_user", limit=10)
+    assert [n.id for n in result] == [
+        "a.get_user",
+        "scope.get_user",
+        "b.get_user_by_id",
+        "c.fetch_get_user",
+    ]
+
+
+def test_search_nodes_kind_and_prefix_filters(temp_store: SQLiteStore) -> None:
+    """search_nodes filters by node type and FQN prefix (#173)."""
+    nodes = [
+        _named_node("app.svc.get_user", "get_user", NodeType.FUNCTION),
+        _named_node("app.api.get_user", "get_user", NodeType.FUNCTION),
+        _named_node("app.svc.UserModel", "UserModel", NodeType.CLASS),
+    ]
+    temp_store.save_graph(nodes, [])
+    assert {n.id for n in temp_store.search_nodes("User", kinds=("CLASS",))} == {
+        "app.svc.UserModel"
+    }
+    assert {n.id for n in temp_store.search_nodes("get_user", fqn_prefix="app.svc")} == {
+        "app.svc.get_user"
+    }
+
+
+def test_search_nodes_escapes_wildcards(temp_store: SQLiteStore) -> None:
+    """LIKE wildcards in the query are treated literally (#173)."""
+    temp_store.save_graph([_named_node("m.a_b", "a_b", NodeType.FUNCTION)], [])
+    # '_' must be literal, not a single-char wildcard → 'aXb' must NOT match 'a_b' query
+    temp_store.save_graph([_named_node("m.aXb", "aXb", NodeType.FUNCTION)], [])
+    assert {n.id for n in temp_store.search_nodes("a_b")} == {"m.a_b"}

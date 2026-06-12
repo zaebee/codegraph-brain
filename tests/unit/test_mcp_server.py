@@ -8,6 +8,7 @@ import pytest
 from cgis.api.mcp_server import (
     cgis_analyze_impact,
     cgis_drift,
+    cgis_find_symbol,
     cgis_get_structure,
     cgis_ingest,
     cgis_trace_flow,
@@ -376,3 +377,38 @@ def test_cgis_drift_profile_filters_python_domain(
     payload = json.loads(result)
     assert payload["any_critical"] is False
     assert payload["domains"] == []
+
+
+def test_cgis_find_symbol_returns_ranked_json(tmp_path: Path) -> None:
+    """cgis_find_symbol resolves a partial name to ranked candidate FQNs (#173)."""
+    (tmp_path / "mod.py").write_text(
+        "def get_user(): pass\ndef get_user_by_id(): pass\n", encoding="utf-8"
+    )
+    db = tmp_path / "graph.db"
+    cgis_ingest(str(tmp_path), str(db))
+
+    data = json.loads(cgis_find_symbol("get_user", str(db)))
+    assert {d["name"] for d in data} >= {"get_user", "get_user_by_id"}
+    assert set(data[0].keys()) == {"fqn", "name", "type", "file", "line"}
+    # exact match ranks before the prefix match
+    exact_idx = next(i for i, d in enumerate(data) if d["name"] == "get_user")
+    prefix_idx = next(i for i, d in enumerate(data) if d["name"] == "get_user_by_id")
+    assert exact_idx < prefix_idx
+
+
+def test_cgis_find_symbol_kind_filter(tmp_path: Path) -> None:
+    """The kind filter restricts results by node type (#173)."""
+    (tmp_path / "mod.py").write_text(
+        "class UserThing: pass\ndef user_fn(): pass\n", encoding="utf-8"
+    )
+    db = tmp_path / "graph.db"
+    cgis_ingest(str(tmp_path), str(db))
+
+    data = json.loads(cgis_find_symbol("ser", str(db), kind="class"))
+    names = {d["name"] for d in data}
+    assert "UserThing" in names
+    assert "user_fn" not in names
+
+
+def test_cgis_find_symbol_missing_db(tmp_path: Path) -> None:
+    assert "❌" in cgis_find_symbol("x", str(tmp_path / "nope.db"))

@@ -204,3 +204,41 @@ def cgis_validate(db_path: str = _DEFAULT_DB, threshold: float = 0.30) -> str:
         return json.dumps(payload, indent=2)
     except Exception as exc:
         return f"❌ {exc}"
+
+
+@mcp.tool()
+def cgis_find_symbol(
+    query: str,
+    db_path: str = _DEFAULT_DB,
+    kind: str | None = None,
+    fqn_prefix: str | None = None,
+    limit: int = 20,
+) -> str:
+    """Resolve a partial symbol name to candidate FQNs (substring match, ranked).
+
+    Call this BEFORE ``cgis_trace_flow`` / ``cgis_analyze_impact`` /
+    ``cgis_get_structure`` when you know a short name (e.g.
+    ``get_reservation_prices``) but not its full FQN — it removes the
+    read-the-file-first guesswork. Returns JSON ``[{fqn, name, type, file,
+    line}]`` ranked exact > prefix > substring. ``kind`` filters by node type
+    (FUNCTION / METHOD / CLASS / …); ``fqn_prefix`` scopes the search.
+    """
+    if not Path(db_path).exists():
+        return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
+    try:
+        kinds = (kind.upper(),) if kind else ()
+        with SQLiteStore(db_path) as store:
+            matches = store.search_nodes(query, kinds=kinds, fqn_prefix=fqn_prefix, limit=limit)
+    except Exception as exc:
+        return f"❌ {exc}"
+    payload = [
+        {
+            "fqn": n.id,
+            "name": n.name,
+            "type": n.type.value,
+            "file": n.file_path,
+            "line": n.start_line,
+        }
+        for n in matches
+    ]
+    return json.dumps(payload, indent=2)
