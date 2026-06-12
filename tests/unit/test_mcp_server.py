@@ -124,6 +124,106 @@ def test_cgis_get_structure_missing_db_returns_error(tmp_path: Path) -> None:
     assert "cgis_ingest" in result
 
 
+def test_cgis_trace_flow_json_returns_joinable_payload(
+    repo_with_calls: tuple[Path, Path],
+) -> None:
+    """`output_format='json'` returns parseable {root, nodes, edges} with real FQNs (#171)."""
+    repo, db = repo_with_calls
+    cgis_ingest(str(repo), str(db))
+
+    result = cgis_trace_flow("mod.caller", str(db), depth=3, output_format="json")
+
+    assert "```mermaid" not in result
+    payload = json.loads(result)
+    assert payload["root"].endswith("mod.caller")
+    assert any(n["fqn"].endswith("mod.callee") for n in payload["nodes"])
+    assert all({"src", "dst", "type", "confidence"} <= e.keys() for e in payload["edges"])
+
+
+def test_cgis_analyze_impact_json_returns_joinable_payload(
+    repo_with_calls: tuple[Path, Path],
+) -> None:
+    """impact JSON exposes upstream callers as edge sources for set ops (#171)."""
+    repo, db = repo_with_calls
+    cgis_ingest(str(repo), str(db))
+
+    result = cgis_analyze_impact("mod.callee", str(db), depth=3, output_format="json")
+
+    payload = json.loads(result)
+    assert payload["root"].endswith("mod.callee")
+    assert any(e["src"].endswith("mod.caller") for e in payload["edges"])
+
+
+def test_cgis_get_structure_json_returns_joinable_payload(
+    repo_with_calls: tuple[Path, Path],
+) -> None:
+    """structure JSON is parseable and rooted at the resolved FQN (#171)."""
+    repo, db = repo_with_calls
+    cgis_ingest(str(repo), str(db))
+
+    result = cgis_get_structure("mod.caller", str(db), depth=2, output_format="json")
+
+    payload = json.loads(result)
+    assert payload["root"].endswith("mod.caller")
+
+
+def test_cgis_trace_flow_unknown_format_returns_error(
+    repo_with_calls: tuple[Path, Path],
+) -> None:
+    """An unknown output_format is an explicit error, not a silent mermaid fallback (#171)."""
+    repo, db = repo_with_calls
+    cgis_ingest(str(repo), str(db))
+
+    result = cgis_trace_flow("mod.caller", str(db), output_format="xml")
+
+    assert "❌" in result
+    assert "xml" in result
+
+
+def test_cgis_get_structure_uses_structural_not_call_edges(
+    repo_with_calls: tuple[Path, Path],
+) -> None:
+    """structure traverses CONTAINS/DECLARES only — a CALLS-reached callee must not appear.
+
+    Regression for the #209 review HIGH: cgis_get_structure previously called
+    get_flow_graph (call-graph) instead of get_structural_graph (containment).
+    """
+    repo, db = repo_with_calls
+    cgis_ingest(str(repo), str(db))
+
+    result = cgis_get_structure("mod.caller", str(db), output_format="json")
+
+    payload = json.loads(result)
+    # caller() calls callee(), but a *structural* view of a function has no callee
+    assert all(not n["fqn"].endswith("mod.callee") for n in payload["nodes"])
+    assert all(e["type"] != "CALLS" for e in payload["edges"])
+
+
+def test_trace_flow_blank_fqn_short_circuits(tmp_path: Path) -> None:
+    """A blank FQN is rejected before any store access (mirrors #173 search guard)."""
+    # db deliberately does not exist — the blank guard must fire first
+    result = cgis_trace_flow("   ", str(tmp_path / "graph.db"))
+
+    assert "❌" in result
+    assert "empty" in result.lower()
+
+
+def test_analyze_impact_blank_fqn_short_circuits(tmp_path: Path) -> None:
+    """analyze_impact also short-circuits on blank input before the store."""
+    result = cgis_analyze_impact("", str(tmp_path / "graph.db"))
+
+    assert "❌" in result
+    assert "empty" in result.lower()
+
+
+def test_get_structure_blank_fqn_short_circuits(tmp_path: Path) -> None:
+    """get_structure also short-circuits on blank input before the store."""
+    result = cgis_get_structure("\t", str(tmp_path / "graph.db"))
+
+    assert "❌" in result
+    assert "empty" in result.lower()
+
+
 def test_cgis_trace_flow_db_error_returns_error(tmp_path: Path) -> None:
     db = tmp_path / "bad.db"
     db.write_bytes(b"not sqlite")

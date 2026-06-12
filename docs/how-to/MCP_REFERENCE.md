@@ -9,14 +9,17 @@
 
 Analyse transitive upstream callers of a specific FQN.
 
-    Returns a Mermaid.js diagram showing what would be impacted if this
-    function changed. Answers "what breaks if I change X?".
+    Answers "what breaks if I change X?". ``output_format="mermaid"`` (default)
+    returns a diagram; ``"json"`` returns a joinable ``{root, nodes, edges}``
+    payload with real FQNs — letting an agent compute set differences (e.g.
+    "which route handlers never reach ``verify_ownership``?") directly.
 
 | Argument | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
 | `fqn` | `string` | ✓ |  |
 | `db_path` | `string` |  |  |
 | `depth` | `integer` |  |  |
+| `output_format` | `string` |  |  |
 
 ---
 
@@ -65,16 +68,19 @@ Resolve a partial symbol name to candidate FQNs (substring match, ranked).
 
 ## `cgis_get_structure`
 
-Show the class/module layout of a component by tracing outgoing edges.
+Show the structural layout (CONTAINS/DECLARES) of a module or class.
 
-    Returns a Mermaid.js diagram of the immediate call structure rooted at
-    the given FQN. Useful for understanding how a class is organised.
+    Traverses only containment edges — no call-graph noise — matching the CLI
+    ``structure`` command. ``output_format="mermaid"`` (default) returns a
+    diagram of the hierarchy rooted at the given FQN; ``"json"`` returns the
+    joinable ``{root, nodes, edges}`` payload with real FQNs.
 
 | Argument | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
 | `fqn` | `string` | ✓ |  |
 | `db_path` | `string` |  |  |
 | `depth` | `integer` |  |  |
+| `output_format` | `string` |  |  |
 
 ---
 
@@ -97,14 +103,17 @@ Scan a local directory, extract all symbols, resolve links, and build the graph 
 
 Trace the execution call-graph starting from a specific FQN downwards.
 
-    Returns a Mermaid.js diagram showing what the given function calls.
-    Use ``cgis_ingest`` first if the database does not exist yet.
+    ``output_format="mermaid"`` (default) returns a human-readable diagram;
+    ``"json"`` returns a joinable ``{root, nodes, edges}`` payload with real
+    FQNs (not display hashes) for agent/CI use. Use ``cgis_ingest`` first if
+    the database does not exist yet.
 
 | Argument | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
 | `fqn` | `string` | ✓ |  |
 | `db_path` | `string` |  |  |
 | `depth` | `integer` |  |  |
+| `output_format` | `string` |  |  |
 
 ---
 
