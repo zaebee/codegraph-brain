@@ -1170,3 +1170,76 @@ def test_variable_nodes_do_not_pollute_call_resolution() -> None:
 
     # Unresolved (kept as bare name), NOT resolved to deps.OwnerDep
     assert resolved[0].target == "OwnerDep"
+
+
+# ---------------------------------------------------------------------------
+# raw_import: resolution (#161 slice 2)
+# ---------------------------------------------------------------------------
+
+
+def _sym_node(fqn: str, file_path: str = "defs.py") -> Node:
+    """Minimal FUNCTION node for symbol-import tests."""
+    return Node(
+        id=fqn,
+        type=NodeType.FUNCTION,
+        name=fqn.rsplit(".", maxsplit=1)[-1],
+        file_path=file_path,
+        start_line=1,
+        end_line=2,
+    )
+
+
+def _raw_import_edge(source: str, fqn: str) -> Edge:
+    """IMPORTS_SYMBOL candidate edge as the extractor emits it."""
+    return Edge(
+        id=f"{source}:imports_symbol:{fqn}",
+        source=source,
+        target=f"raw_import:{fqn}",
+        type=EdgeType.IMPORTS_SYMBOL,
+        confidence=0.1,
+        file_path="consumer.py",
+    )
+
+
+def test_raw_import_resolves_exact_node() -> None:
+    """A raw_import: target that names an existing node resolves at confidence 1.0."""
+    nodes = [_sym_node("defs.Router")]
+    edges = [_raw_import_edge("consumer", "defs.Router")]
+    resolved, virtual = ResolverEngine(nodes, edges).resolve()
+    assert len(resolved) == 1
+    assert resolved[0].target == "defs.Router"
+    assert resolved[0].type == EdgeType.IMPORTS_SYMBOL
+    assert resolved[0].confidence == pytest.approx(1.0)
+    assert virtual == []
+
+
+def test_raw_import_resolves_via_suffix_map() -> None:
+    """A src/-layout prefix mismatch resolves through the suffix map."""
+    nodes = [_sym_node("src.defs.Router")]
+    edges = [_raw_import_edge("consumer", "defs.Router")]
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+    assert resolved[0].target == "src.defs.Router"
+
+
+def test_raw_import_unknown_symbol_is_dropped() -> None:
+    """External symbols (no node) drop the edge entirely — and mint NO virtual node."""
+    edges = [_raw_import_edge("consumer", "fastapi.Depends")]
+    resolved, virtual = ResolverEngine([], edges).resolve()
+    assert resolved == []
+    assert virtual == []
+
+
+def test_raw_import_never_leaks_into_output() -> None:
+    """No-leak negative: no output edge may carry the raw_import: prefix.
+
+    Regression guard for the §2.4 dispatch-placement constraint — if the
+    raw_import: branch lands after the passthrough catch-all, this fails.
+    """
+    nodes = [_sym_node("defs.Router")]
+    edges = [
+        _raw_import_edge("consumer", "defs.Router"),
+        _raw_import_edge("consumer", "totally.unknown.Symbol"),
+    ]
+    resolved, virtual = ResolverEngine(nodes, edges).resolve()
+    assert all(not e.target.startswith("raw_import:") for e in resolved)
+    assert all(not v.id.startswith("raw_import:") for v in virtual)
