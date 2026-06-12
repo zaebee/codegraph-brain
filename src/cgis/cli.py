@@ -43,6 +43,13 @@ _OPT_SHOW_EXTERNAL: bool = typer.Option(
     "--show-external/--no-show-external",
     help="Include stdlib and external nodes in output",
 )
+_OPT_MIN_CONFIDENCE: float | None = typer.Option(
+    None,
+    "--min-confidence",
+    min=0.0,
+    max=1.0,
+    help="Hide edges below this confidence (e.g. 0.5 drops unresolved raw_call edges)",
+)
 
 
 class OutputFormat(StrEnum):
@@ -244,6 +251,7 @@ def build_trace_tree(
     current_depth: int,
     allowed_edge_types: frozenset[EdgeType] | None = None,
     show_external: bool = True,
+    min_confidence: float | None = None,
 ) -> None:
     """Cycle-safe recursive tree builder for downstream flow tracing."""
     if current_depth >= max_depth:
@@ -252,6 +260,8 @@ def build_trace_tree(
     outgoing = store.get_outgoing_edges(current_id)
     if allowed_edge_types is not None:
         outgoing = [e for e in outgoing if e.type in allowed_edge_types]
+    if min_confidence is not None:
+        outgoing = [e for e in outgoing if e.confidence >= min_confidence]
     nodes_map = {n.id: n for n in store.get_nodes([e.target for e in outgoing])}
     for edge in outgoing:
         target_id = edge.target
@@ -290,6 +300,7 @@ def build_trace_tree(
             current_depth + 1,
             allowed_edge_types=allowed_edge_types,
             show_external=show_external,
+            min_confidence=min_confidence,
         )
         path_visited.remove(target_id)
 
@@ -307,6 +318,7 @@ def trace(
     ),
     show_structure: bool = _OPT_SHOW_STRUCTURE,
     show_external: bool = _OPT_SHOW_EXTERNAL,
+    min_confidence: float | None = _OPT_MIN_CONFIDENCE,
 ) -> None:
     """
     Trace execution flow starting from a specific code entity downwards.
@@ -326,7 +338,11 @@ def trace(
 
         if output_format == OutputFormat.MERMAID:
             nodes, edges = QueryEngine(store).get_flow_graph(
-                start, max_depth=depth, allowed_edge_types=allowed, show_external=show_external
+                start,
+                max_depth=depth,
+                allowed_edge_types=allowed,
+                show_external=show_external,
+                min_confidence=min_confidence,
             )
             if internal_only:
                 nodes, edges = _filter_internal(nodes, edges)
@@ -353,6 +369,7 @@ def trace(
                 0,
                 allowed_edge_types=allowed,
                 show_external=show_external,
+                min_confidence=min_confidence,
             )
             console.print(tree)
 
@@ -366,6 +383,7 @@ def build_impact_tree(
     current_depth: int,
     allowed_edge_types: frozenset[EdgeType] | None = None,
     show_external: bool = True,
+    min_confidence: float | None = None,
 ) -> None:
     """Cycle-safe recursive tree builder for upstream impact analysis."""
     if current_depth >= max_depth:
@@ -374,6 +392,8 @@ def build_impact_tree(
     incoming = store.get_incoming_edges(current_id)
     if allowed_edge_types is not None:
         incoming = [e for e in incoming if e.type in allowed_edge_types]
+    if min_confidence is not None:
+        incoming = [e for e in incoming if e.confidence >= min_confidence]
     nodes_map = {n.id: n for n in store.get_nodes([e.source for e in incoming])}
     for edge in incoming:
         source_id = edge.source
@@ -412,6 +432,7 @@ def build_impact_tree(
             current_depth + 1,
             allowed_edge_types=allowed_edge_types,
             show_external=show_external,
+            min_confidence=min_confidence,
         )
         path_visited.remove(source_id)
 
@@ -429,6 +450,7 @@ def impact(
     ),
     show_structure: bool = _OPT_SHOW_STRUCTURE,
     show_external: bool = _OPT_SHOW_EXTERNAL,
+    min_confidence: float | None = _OPT_MIN_CONFIDENCE,
 ) -> None:
     """
     Analyze transitive upstream impact (callers) of changing a specific code entity.
@@ -448,7 +470,11 @@ def impact(
 
         if output_format == OutputFormat.MERMAID:
             nodes, edges = QueryEngine(store).get_impact_graph(
-                target, max_depth=depth, allowed_edge_types=allowed, show_external=show_external
+                target,
+                max_depth=depth,
+                allowed_edge_types=allowed,
+                show_external=show_external,
+                min_confidence=min_confidence,
             )
             if internal_only:
                 nodes, edges = _filter_internal(nodes, edges)
@@ -475,6 +501,7 @@ def impact(
                 0,
                 allowed_edge_types=allowed,
                 show_external=show_external,
+                min_confidence=min_confidence,
             )
             console.print(tree)
 
