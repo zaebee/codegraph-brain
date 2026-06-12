@@ -12,6 +12,7 @@ from cgis.core.models import (
 from cgis.resolver.symbols import SymbolResolver
 
 RAW_DEP_PREFIX = "raw_dep:"
+RAW_IMPORT_PREFIX = "raw_import:"
 
 
 class ResolverEngine:
@@ -52,6 +53,11 @@ class ResolverEngine:
                 dep_edge = self._resolved_dep_edge(edge)
                 if dep_edge is not None:
                     resolved_edges.append(dep_edge)
+            elif edge.target.startswith(RAW_IMPORT_PREFIX):
+                import_edge = self._resolved_import_edge(edge)
+                if import_edge is not None:
+                    resolved_edges.append(import_edge)
+                # no _ensure_virtual_node: target exists on hit, edge dies on miss
             elif not edge.target.startswith("raw_call:"):
                 resolved_edges.append(edge)
                 self._ensure_virtual_node(edge.target, virtual_nodes)
@@ -103,6 +109,20 @@ class ResolverEngine:
             # entirely — raw_dep: must never leak into output (spec §3.3).
             return None
         return edge.model_copy(update={"target": dep_target, "confidence": 1.0})
+
+    def _resolved_import_edge(self, edge: Edge) -> Edge | None:
+        """Resolve a raw_import: symbol edge, or None when it must be dropped.
+
+        Reuses SymbolIndex.map_to_node_fqn (exact / suffix / strip-prefix). An
+        external or unknown symbol drops the edge: the module-level IMPORTS
+        edge already captures the coupling — raw_import: never leaks into
+        output and never mints a virtual node (spec §2.2/§2.4).
+        """
+        imported_fqn = edge.target.removeprefix(RAW_IMPORT_PREFIX)
+        node_fqn = self._index.map_to_node_fqn(imported_fqn)
+        if node_fqn is None:
+            return None
+        return edge.model_copy(update={"target": node_fqn, "confidence": 1.0})
 
     def _ensure_virtual_node(self, target: str, virtual_nodes: dict[str, Node]) -> None:
         """Create a virtual boundary node for target if it is not already in the graph."""

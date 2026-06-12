@@ -26,6 +26,7 @@ edge_types:
     - DECLARES    # Node declares a symbol (module → function)
     - BELONGS_TO  # Symbol belongs to a parent scope
     - IMPORTS     # Module imports another module or symbol
+    - IMPORTS_SYMBOL    # Module imports a specific symbol (from X import Y); resolved to the symbol node or dropped
     - EXPORTS     # Module exports a symbol
     - EXTENDS     # Subclass inherits from a superclass
   behavioral:
@@ -65,6 +66,11 @@ conventions:
   # ResolverEngine converts them to real FQNs, or leaves the prefix if unresolved.
   unresolved_call_prefix: "raw_call:"
   unresolved_call_example: "raw_call:print"
+  # Speculative raw prefixes (slice 1 #166 backfill + slice 2 #161): candidates
+  # that the resolver either resolves to an existing node or DROPS entirely —
+  # unlike raw_call:, these never appear in output.
+  unresolved_dep_prefix: "raw_dep:"
+  unresolved_import_prefix: "raw_import:"
 
 classes:
   CodeEntity:

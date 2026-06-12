@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from cgis.core.models import VIRTUAL_FILE_PATH, Edge, Node, NodeNamespace
+from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeNamespace
 from cgis.extractors.python_extractor import file_path_to_module_fqn
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -195,3 +195,30 @@ def test_file_coverage(
             f"{py_file.relative_to(SRC_DIR.parent.parent)} has definitions "
             f"but produced no nodes in the graph"
         )
+
+
+# ---------------------------------------------------------------------------
+# 5. Symbol-import edges — #161 slice 2 self-parse pins
+# ---------------------------------------------------------------------------
+
+
+def test_engine_imports_symbolresolver_symbol_level(
+    graph_data: tuple[SQLiteStore, list[Node], list[Edge]],
+) -> None:
+    """resolver.engine must carry an IMPORTS_SYMBOL edge to SymbolResolver (#161 slice 2 pin)."""
+    store, _, _ = graph_data
+    engine_module = _fqn("resolver/engine.py")
+    symbol_resolver = _fqn("resolver/symbols.py", "SymbolResolver")
+    edges = store.get_outgoing_edges(engine_module)
+    assert any(e.target == symbol_resolver and e.type == EdgeType.IMPORTS_SYMBOL for e in edges), (
+        f"Missing IMPORTS_SYMBOL pin; outgoing: {sorted({e.target for e in edges})}"
+    )
+
+
+def test_no_raw_import_leak_in_self_graph(
+    graph_data: tuple[SQLiteStore, list[Node], list[Edge]],
+) -> None:
+    """raw_import: must never survive resolution (#161 slice 2 no-leak, spec §3)."""
+    _, _, edges = graph_data
+    leaked = [e for e in edges if e.target.startswith("raw_import:")]
+    assert leaked == [], f"raw_import: leaked: {[(e.source, e.target) for e in leaked]}"
