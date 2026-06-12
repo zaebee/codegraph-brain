@@ -12,12 +12,14 @@ from pathlib import Path
 import structlog
 from mcp.server.fastmcp import FastMCP
 
+from cgis.core.models import Edge, Node
 from cgis.extractors.python_extractor import PythonExtractor
 from cgis.extractors.typescript_extractor import TypeScriptExtractor
 from cgis.pipeline import IngestionPipeline
 from cgis.query.drift_service import analyze_drift
 from cgis.query.engine import QueryEngine
 from cgis.query.fqn import resolve_fqn
+from cgis.query.graph_json import graph_to_json
 from cgis.query.mermaid import MermaidCompiler
 from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 
@@ -46,6 +48,30 @@ def _resolution_error(fqn: str, candidates: list[str], truncated: bool = False) 
     return f"❌ FQN not found in graph: {fqn}"
 
 
+def _render_subgraph(
+    output_format: str,
+    root: str,
+    note: str,
+    title: str,
+    nodes: list[Node],
+    edges: list[Edge],
+) -> str:
+    """Render a traversal result as a Mermaid diagram or joinable JSON (#171).
+
+    ``json`` returns the raw ``{root, nodes, edges}`` payload with real FQNs —
+    no markdown wrapper — so an agent can parse and combine it across calls.
+    ``mermaid`` (default) returns the human-readable diagram. Any other value
+    is an explicit error rather than a silent fallback.
+    """
+    fmt = output_format.strip().lower()
+    if fmt == "json":
+        return json.dumps(graph_to_json(root, nodes, edges), indent=2)
+    if fmt == "mermaid":
+        diagram = MermaidCompiler().compile(nodes, edges)
+        return f"{note}### {title} `{root}`:\n\n```mermaid\n{diagram}\n```"
+    return f"❌ Unknown format '{output_format}'. Use 'mermaid' or 'json'."
+
+
 @mcp.tool()
 def cgis_ingest(project_path: str, db_path: str = _DEFAULT_DB) -> str:
     """Scan a local directory, extract all symbols, resolve links, and build the graph DB.
@@ -71,11 +97,15 @@ def cgis_ingest(project_path: str, db_path: str = _DEFAULT_DB) -> str:
 
 
 @mcp.tool()
-def cgis_trace_flow(fqn: str, db_path: str = _DEFAULT_DB, depth: int = 3) -> str:
+def cgis_trace_flow(
+    fqn: str, db_path: str = _DEFAULT_DB, depth: int = 3, output_format: str = "mermaid"
+) -> str:
     """Trace the execution call-graph starting from a specific FQN downwards.
 
-    Returns a Mermaid.js diagram showing what the given function calls.
-    Use ``cgis_ingest`` first if the database does not exist yet.
+    ``output_format="mermaid"`` (default) returns a human-readable diagram;
+    ``"json"`` returns a joinable ``{root, nodes, edges}`` payload with real
+    FQNs (not display hashes) for agent/CI use. Use ``cgis_ingest`` first if
+    the database does not exist yet.
     """
     if not Path(db_path).exists():
         return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
@@ -89,16 +119,19 @@ def cgis_trace_flow(fqn: str, db_path: str = _DEFAULT_DB, depth: int = 3) -> str
         return f"❌ {exc}"
 
     note = f"> Resolved '{fqn}' → '{res.resolved}'\n\n" if res.via_suffix else ""
-    diagram = MermaidCompiler().compile(nodes, edges)
-    return f"{note}### Execution flow for `{res.resolved}`:\n\n```mermaid\n{diagram}\n```"
+    return _render_subgraph(output_format, res.resolved, note, "Execution flow for", nodes, edges)
 
 
 @mcp.tool()
-def cgis_analyze_impact(fqn: str, db_path: str = _DEFAULT_DB, depth: int = 3) -> str:
+def cgis_analyze_impact(
+    fqn: str, db_path: str = _DEFAULT_DB, depth: int = 3, output_format: str = "mermaid"
+) -> str:
     """Analyse transitive upstream callers of a specific FQN.
 
-    Returns a Mermaid.js diagram showing what would be impacted if this
-    function changed. Answers "what breaks if I change X?".
+    Answers "what breaks if I change X?". ``output_format="mermaid"`` (default)
+    returns a diagram; ``"json"`` returns a joinable ``{root, nodes, edges}``
+    payload with real FQNs — letting an agent compute set differences (e.g.
+    "which route handlers never reach ``verify_ownership``?") directly.
     """
     if not Path(db_path).exists():
         return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
@@ -112,16 +145,18 @@ def cgis_analyze_impact(fqn: str, db_path: str = _DEFAULT_DB, depth: int = 3) ->
         return f"❌ {exc}"
 
     note = f"> Resolved '{fqn}' → '{res.resolved}'\n\n" if res.via_suffix else ""
-    diagram = MermaidCompiler().compile(nodes, edges)
-    return f"{note}### Impact analysis for `{res.resolved}`:\n\n```mermaid\n{diagram}\n```"
+    return _render_subgraph(output_format, res.resolved, note, "Impact analysis for", nodes, edges)
 
 
 @mcp.tool()
-def cgis_get_structure(fqn: str, db_path: str = _DEFAULT_DB, depth: int = 2) -> str:
+def cgis_get_structure(
+    fqn: str, db_path: str = _DEFAULT_DB, depth: int = 2, output_format: str = "mermaid"
+) -> str:
     """Show the class/module layout of a component by tracing outgoing edges.
 
-    Returns a Mermaid.js diagram of the immediate call structure rooted at
-    the given FQN. Useful for understanding how a class is organised.
+    ``output_format="mermaid"`` (default) returns a diagram of the immediate
+    call structure rooted at the given FQN; ``"json"`` returns the joinable
+    ``{root, nodes, edges}`` payload with real FQNs.
     """
     if not Path(db_path).exists():
         return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
@@ -135,8 +170,7 @@ def cgis_get_structure(fqn: str, db_path: str = _DEFAULT_DB, depth: int = 2) -> 
         return f"❌ {exc}"
 
     note = f"> Resolved '{fqn}' → '{res.resolved}'\n\n" if res.via_suffix else ""
-    diagram = MermaidCompiler().compile(nodes, edges)
-    return f"{note}### Structure of `{res.resolved}`:\n\n```mermaid\n{diagram}\n```"
+    return _render_subgraph(output_format, res.resolved, note, "Structure of", nodes, edges)
 
 
 @mcp.tool()

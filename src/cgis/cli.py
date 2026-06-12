@@ -23,6 +23,7 @@ from cgis.query.drift import DriftReport
 from cgis.query.drift_service import analyze_drift
 from cgis.query.engine import BEHAVIORAL_EDGE_TYPES, QueryEngine
 from cgis.query.fqn import resolve_fqn
+from cgis.query.graph_json import graph_to_json
 from cgis.query.health import HealthScorer
 from cgis.query.mermaid import MermaidCompiler
 from cgis.resolver.uplift import SemanticUpliftEngine
@@ -31,7 +32,8 @@ from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 _DEFAULT_DB = "graph.db"
 _DEFAULT_DB_HELP = "Path to the SQLite database"
 _DEPTH_HELP = "Maximum traversal depth"
-_FORMAT_HELP = "Output format: text or mermaid"
+_FORMAT_HELP = "Output format: text, mermaid, or json"
+_INTERNAL_ONLY_TEXT_ERR = "--internal-only is only supported with '--format mermaid' or 'json'"
 
 _OPT_SHOW_STRUCTURE: bool = typer.Option(
     False,
@@ -57,6 +59,7 @@ class OutputFormat(StrEnum):
 
     TEXT = "text"
     MERMAID = "mermaid"
+    JSON = "json"
 
 
 class DriftOutputFormat(StrEnum):
@@ -224,6 +227,21 @@ def _filter_internal(
     return filtered_nodes, filtered_edges
 
 
+def _render_graph(
+    output_format: OutputFormat,
+    root: str,
+    nodes: list[Node],
+    edges: list[Edge],
+    internal_only: bool = False,
+) -> str:
+    """Render a subgraph for a non-text format (Mermaid for eyes, JSON for agents)."""
+    if internal_only:
+        nodes, edges = _filter_internal(nodes, edges)
+    if output_format == OutputFormat.JSON:
+        return _json.dumps(graph_to_json(root, nodes, edges), indent=2)
+    return MermaidCompiler().compile(nodes, edges)
+
+
 def _resolve_cli_fqn(store: SQLiteStore, target: str, kind: str) -> str:
     """Resolve a possibly-partial FQN for a CLI command or exit with code 1."""
     resolution = resolve_fqn(store, target)
@@ -336,7 +354,7 @@ def trace(
         if not start_node:  # pragma: no cover — resolved FQNs always exist
             raise typer.Exit(code=1)
 
-        if output_format == OutputFormat.MERMAID:
+        if output_format != OutputFormat.TEXT:
             nodes, edges = QueryEngine(store).get_flow_graph(
                 start,
                 max_depth=depth,
@@ -344,13 +362,10 @@ def trace(
                 show_external=show_external,
                 min_confidence=min_confidence,
             )
-            if internal_only:
-                nodes, edges = _filter_internal(nodes, edges)
-            typer.echo(MermaidCompiler().compile(nodes, edges))
+            typer.echo(_render_graph(output_format, start, nodes, edges, internal_only))
         else:
             if internal_only:
-                msg = "--internal-only is only supported with '--format mermaid'"
-                raise typer.BadParameter(msg)
+                raise typer.BadParameter(_INTERNAL_ONLY_TEXT_ERR)
             console.print(
                 f"[bold blue]🔍 Tracing execution flow starting from:[/bold blue] {start}\n"
             )
@@ -468,7 +483,7 @@ def impact(
         if not target_node:  # pragma: no cover — resolved FQNs always exist
             raise typer.Exit(code=1)
 
-        if output_format == OutputFormat.MERMAID:
+        if output_format != OutputFormat.TEXT:
             nodes, edges = QueryEngine(store).get_impact_graph(
                 target,
                 max_depth=depth,
@@ -476,13 +491,10 @@ def impact(
                 show_external=show_external,
                 min_confidence=min_confidence,
             )
-            if internal_only:
-                nodes, edges = _filter_internal(nodes, edges)
-            typer.echo(MermaidCompiler().compile(nodes, edges))
+            typer.echo(_render_graph(output_format, target, nodes, edges, internal_only))
         else:
             if internal_only:
-                msg = "--internal-only is only supported with '--format mermaid'"
-                raise typer.BadParameter(msg)
+                raise typer.BadParameter(_INTERNAL_ONLY_TEXT_ERR)
             console.print(
                 f"[bold blue]🔍 Analyzing transitive upstream callers of:[/bold blue] {target}\n"
             )
@@ -655,8 +667,8 @@ def structure(
 
         nodes, edges = QueryEngine(store).get_structural_graph(target, max_depth=depth)
 
-    if output_format == OutputFormat.MERMAID:
-        typer.echo(MermaidCompiler().compile(nodes, edges))
+    if output_format != OutputFormat.TEXT:
+        typer.echo(_render_graph(output_format, target, nodes, edges))
         return
 
     console.print(f"[bold blue]📦 Structure of:[/bold blue] {target}\n")
@@ -740,7 +752,7 @@ def analyze(
         console.print("[bold red]❌ JSON/text only for analyze — mermaid not supported.[/bold red]")
         raise typer.Exit(code=1)
 
-    if output_format.value == "json":
+    if output_format == OutputFormat.JSON:
         typer.echo(_json.dumps([a.model_dump() for a in visible], indent=2))
         return
 

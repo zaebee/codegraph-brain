@@ -930,3 +930,63 @@ def test_find_query_with_brackets_does_not_crash(tmp_path: Path) -> None:
     runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
     result = runner.invoke(app, ["find", "List[int]", "--db", str(db_file)])
     assert result.exit_code == 0  # no MarkupError on the unmatched-query message
+
+
+def _ingest_caller_callee(tmp_path: Path) -> tuple[Path, str]:
+    """Ingest a caller→callee module, returning the db path and caller FQN."""
+    code = "def caller():\n    callee()\n\ndef callee(): pass\n"
+    py_file = tmp_path / "funcs.py"
+    py_file.write_text(code, encoding="utf-8")
+    db_file = tmp_path / "graph.db"
+    runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
+    module = file_path_to_module_fqn(py_file.relative_to(tmp_path).as_posix())
+    return db_file, f"{module}.caller"
+
+
+def test_trace_json_emits_real_fqns(tmp_path: Path) -> None:
+    """`trace --format json` returns parseable {root, nodes, edges} with real FQNs (#171)."""
+    db_file, caller_fqn = _ingest_caller_callee(tmp_path)
+
+    result = runner.invoke(app, ["trace", caller_fqn, "--db", str(db_file), "--format", "json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["root"] == caller_fqn
+    assert any(n["fqn"] == caller_fqn for n in payload["nodes"])
+    assert all({"src", "dst", "type", "confidence"} <= e.keys() for e in payload["edges"])
+
+
+def test_impact_json_emits_real_fqns(tmp_path: Path) -> None:
+    """`impact --format json` returns parseable JSON rooted at the target (#171)."""
+    db_file, caller_fqn = _ingest_caller_callee(tmp_path)
+    callee_fqn = caller_fqn.replace(".caller", ".callee")
+
+    result = runner.invoke(app, ["impact", callee_fqn, "--db", str(db_file), "--format", "json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["root"] == callee_fqn
+    # caller transitively impacts callee → appears as an edge source
+    assert any(e["src"] == caller_fqn for e in payload["edges"])
+
+
+def test_structure_json_emits_real_fqns(tmp_path: Path) -> None:
+    """`structure --format json` returns parseable JSON (#171)."""
+    db_file, caller_fqn = _ingest_caller_callee(tmp_path)
+    module_fqn = caller_fqn.rsplit(".", maxsplit=1)[0]
+
+    result = runner.invoke(app, ["structure", module_fqn, "--db", str(db_file), "--format", "json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["root"] == module_fqn
+    assert any(n["fqn"] == caller_fqn for n in payload["nodes"])
+
+
+def test_trace_internal_only_rejected_for_text_format(tmp_path: Path) -> None:
+    """--internal-only is a graph-format flag; using it with text is a usage error (#171)."""
+    db_file, caller_fqn = _ingest_caller_callee(tmp_path)
+
+    result = runner.invoke(app, ["trace", caller_fqn, "--db", str(db_file), "--internal-only"])
+
+    assert result.exit_code != 0

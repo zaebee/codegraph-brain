@@ -124,6 +124,62 @@ def test_cgis_get_structure_missing_db_returns_error(tmp_path: Path) -> None:
     assert "cgis_ingest" in result
 
 
+def test_cgis_trace_flow_json_returns_joinable_payload(
+    repo_with_calls: tuple[Path, Path],
+) -> None:
+    """`output_format='json'` returns parseable {root, nodes, edges} with real FQNs (#171)."""
+    repo, db = repo_with_calls
+    cgis_ingest(str(repo), str(db))
+
+    result = cgis_trace_flow("mod.caller", str(db), depth=3, output_format="json")
+
+    assert "```mermaid" not in result
+    payload = json.loads(result)
+    assert payload["root"].endswith("mod.caller")
+    assert any(n["fqn"].endswith("mod.callee") for n in payload["nodes"])
+    assert all({"src", "dst", "type", "confidence"} <= e.keys() for e in payload["edges"])
+
+
+def test_cgis_analyze_impact_json_returns_joinable_payload(
+    repo_with_calls: tuple[Path, Path],
+) -> None:
+    """impact JSON exposes upstream callers as edge sources for set ops (#171)."""
+    repo, db = repo_with_calls
+    cgis_ingest(str(repo), str(db))
+
+    result = cgis_analyze_impact("mod.callee", str(db), depth=3, output_format="json")
+
+    payload = json.loads(result)
+    assert payload["root"].endswith("mod.callee")
+    assert any(e["src"].endswith("mod.caller") for e in payload["edges"])
+
+
+def test_cgis_get_structure_json_returns_joinable_payload(
+    repo_with_calls: tuple[Path, Path],
+) -> None:
+    """structure JSON is parseable and rooted at the resolved FQN (#171)."""
+    repo, db = repo_with_calls
+    cgis_ingest(str(repo), str(db))
+
+    result = cgis_get_structure("mod.caller", str(db), depth=2, output_format="json")
+
+    payload = json.loads(result)
+    assert payload["root"].endswith("mod.caller")
+
+
+def test_cgis_trace_flow_unknown_format_returns_error(
+    repo_with_calls: tuple[Path, Path],
+) -> None:
+    """An unknown output_format is an explicit error, not a silent mermaid fallback (#171)."""
+    repo, db = repo_with_calls
+    cgis_ingest(str(repo), str(db))
+
+    result = cgis_trace_flow("mod.caller", str(db), output_format="xml")
+
+    assert "❌" in result
+    assert "xml" in result
+
+
 def test_cgis_trace_flow_db_error_returns_error(tmp_path: Path) -> None:
     db = tmp_path / "bad.db"
     db.write_bytes(b"not sqlite")
