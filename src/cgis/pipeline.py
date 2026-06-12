@@ -123,11 +123,11 @@ class IngestionPipeline:
             # nothing went stale, the persisted graph is already correct.
             # Re-running the resolver + persistence + uplift would rebuild the
             # whole graph from the DB for zero benefit, so skip them entirely.
-            if store is not None:
-                stale_files = store.get_all_tracked_files() - found_file_paths
-                if not changed_files and not stale_files:
-                    logger.info("No changes detected — skipping resolution and persistence.")
-                    return all_nodes, all_edges, []
+            if store is not None and self._is_noop_incremental(
+                store, changed_files, found_file_paths
+            ):
+                logger.info("No changes detected — skipping resolution and persistence.")
+                return all_nodes, all_edges, []
 
             # Task 2: Resolution
             resolve_task = progress.add_task(description="Resolving semantic links...", total=None)
@@ -181,6 +181,21 @@ class IngestionPipeline:
             all_edges.extend(edges)
         except Exception as e:
             logger.exception("Failed to parse file", full_path=full_path, error=str(e))
+
+    @staticmethod
+    def _is_noop_incremental(
+        store: "SQLiteStore", changed_files: dict[str, str], found_file_paths: set[str]
+    ) -> bool:
+        """True when an incremental run has nothing to do (no changed, no stale files).
+
+        Checks ``changed_files`` first so the ``get_all_tracked_files`` DB query
+        is only issued when it can actually change the outcome (i.e. nothing was
+        re-extracted this run).
+        """
+        if changed_files:
+            return False
+        stale_files = store.get_all_tracked_files() - found_file_paths
+        return not stale_files
 
     def _persist_incremental(
         self,
