@@ -3,7 +3,8 @@
 from collections import Counter
 from dataclasses import dataclass, field
 
-from cgis.core.models import Edge, EdgeType, Node
+from cgis.core.models import Edge, EdgeType, Node, NodeType
+from cgis.query._scc import build_adjacency, tarjan_scc
 from cgis.query.health import HealthScorer
 from cgis.query.triads import ZERO_TRIADS, normalized_census, triad_census
 from cgis.storage.sqlite_store import SQLiteStore
@@ -187,8 +188,7 @@ class FingerprintExtractor:
         dag_depth = _max_dag_depth(domain_ids, internal_edges)
         router_count = _count_routers(domain_ids, all_edges)
 
-        cycle_count = sum(1 for n in domain_nodes if n.metadata.get("in_cycle", False))
-        cycle_ratio = cycle_count / len(domain_nodes)
+        cycle_ratio = self._intra_domain_cycle_ratio(domain_nodes, all_edges)
 
         calls_edges = [e for e in domain_outgoing if e.type == EdgeType.CALLS]
         raw_calls = [e for e in calls_edges if e.target.startswith(RAW_CALL_PREFIX)]
@@ -211,3 +211,27 @@ class FingerprintExtractor:
             node_count=len(domain_nodes),
             edge_count=len(internal_edges),
         )
+
+    def _intra_domain_cycle_ratio(self, domain_nodes: list[Node], all_edges: list[Edge]) -> float:
+        """Blast radius of the domain's OWN import cycles (spec §2.1, #176).
+
+        Tarjan SCC over IMPORTS edges whose endpoints are both FILE/MODULE
+        nodes of this domain; the ratio counts domain nodes living in files
+        that participate in an intra-domain cycle. Single-file domains are
+        0.0 by construction; cross-domain cycles are the quotient layer's
+        concern and never count here.
+        """
+        file_types = {NodeType.FILE, NodeType.MODULE}
+        domain_files = {n.id for n in domain_nodes if n.type in file_types}
+        if len(domain_files) < 2:
+            return 0.0
+        adj = build_adjacency(all_edges, frozenset({EdgeType.IMPORTS}))
+        adj = {
+            k: [v for v in vs if v in domain_files] for k, vs in adj.items() if k in domain_files
+        }
+        cyclic_files = {n for scc in tarjan_scc(adj) if len(scc) > 1 for n in scc}
+        if not cyclic_files:
+            return 0.0
+        cyclic_paths = {n.file_path for n in domain_nodes if n.id in cyclic_files}
+        cycle_count = sum(1 for n in domain_nodes if n.file_path in cyclic_paths)
+        return cycle_count / len(domain_nodes)
