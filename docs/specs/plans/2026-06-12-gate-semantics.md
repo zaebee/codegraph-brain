@@ -168,6 +168,16 @@ git commit -m "feat(fingerprint): intra-domain cycle_ratio — own cycles only (
 
 This is the load-bearing task. Read spec §2.2-2.3 + §2.5 first.
 
+CONSUMER MAP (from `cgis_analyze_impact` on `DriftScorer.score`, depth 3 —
+verify nothing is missed): `drift_service.analyze_drift`,
+`ontology_init.{_fit_templates,_hygiene_score}`, AND
+`guardian/collector.py::ContextCollector.collect_drift` (transitively
+chunked/runner/core). The new `default_tolerance` kwarg defaults to 0.50 so
+collector keeps compiling, but the relative `_classify` re-shades statuses
+embedded in guardian prompts — run `uv run pytest tests/unit/ -q -k guardian`
+explicitly in Step 5 and apply the owned-update rule to any guardian test
+that pinned an absolute-threshold status.
+
 - [ ] **Step 1: Write the failing tests.** Append to `tests/unit/test_drift.py`:
 
 ```python
