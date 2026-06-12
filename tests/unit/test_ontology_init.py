@@ -62,3 +62,14 @@ def test_discover_sorted_and_deduplicated() -> None:
     """Output is sorted; many nodes per prefix yield one candidate."""
     nodes = [_node("z.b.f"), _node("z.a.g"), _node("z.a.h"), _node("z.b.i")]
     assert discover_domains(nodes) == ["z.a", "z.b"]
+
+
+def test_discover_node_at_intermediate_prefix() -> None:
+    """A MODULE node id coexisting with deeper nodes must not yield []."""
+    nodes = [_node("src.click", node_type=NodeType.MODULE), _node("src.click.core.f")]
+    assert discover_domains(nodes) == ["src.click.core.f"]
+
+
+def test_discover_single_node_graph() -> None:
+    """A one-node graph proposes that node's lineage, not []."""
+    assert discover_domains([_node("solo.fn")]) == ["solo.fn"]

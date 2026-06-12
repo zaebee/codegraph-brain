@@ -16,6 +16,9 @@ def discover_domains(nodes: list[Node], depth: int | None = None) -> list[str]:
     child; the first level with >= 2 children yields the candidates. An
     explicit ``depth`` (segment count) overrides auto-descent. Virtual
     boundary nodes are excluded. Sorted, deduplicated.
+
+    A never-branching lineage yields its deepest id as the single candidate;
+    downstream min_nodes filtering keeps such micro-domains hygiene-only.
     """
     real_ids = [n.id for n in nodes if n.file_path != VIRTUAL_FILE_PATH]
     if not real_ids:
@@ -26,15 +29,20 @@ def discover_domains(nodes: list[Node], depth: int | None = None) -> list[str]:
         )
     prefix = ""
     while True:
-        level = {
+        children = {
             i[len(prefix) :].split(".")[0]
             for i in real_ids
             if i.startswith(prefix) and len(i) > len(prefix)
         }
-        if len(level) != 1:
+        if not children:
+            # Never-branching lineage: the deepest id on this chain is the
+            # single candidate (downstream min_nodes will hygiene-fy it).
+            stub = prefix.rstrip(".")
+            return [stub] if stub in set(real_ids) else []
+        if len(children) != 1:
             break
-        prefix = f"{prefix}{next(iter(level))}."
-    return sorted({f"{prefix}{seg}" for seg in level})
+        prefix = f"{prefix}{next(iter(children))}."
+    return sorted({f"{prefix}{seg}" for seg in children})
 
 
 def propose_ontology(
