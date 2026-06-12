@@ -579,6 +579,54 @@ def test_owner_api_shape_cycle_gate_fails(tmp_path: Path) -> None:
     assert analysis_baselined.any_critical is False
 
 
+def test_unenforced_gate_failed_does_not_trip(tmp_path: Path) -> None:
+    """Unenforced domain with gate_failed status must NOT set any_critical (spec §2.2 observe-only).
+
+    Topology mirrors test_owner_api_shape_cycle_gate_fails: two modules inside one
+    domain wired in a 2-module import cycle (plus a CALLS edge to avoid no_signal).
+    The intra-domain cycle_ratio = 1.0 → violates hygiene {max: 0.0} → status
+    gate_failed.  However, with enforce: false declared on the domain binding the
+    gate_failed outcome is observe-only: it must be reported in the DriftReport but
+    must NOT contribute to analysis.any_critical.
+
+    Spec §2.2: "observe-only bindings record violations without blocking the gate."
+    """
+    db = str(tmp_path / "owner.db")
+    nodes: list[Node] = module_with_funcs("app.svc.a", "app/svc/a.py", 3) + module_with_funcs(
+        "app.svc.b", "app/svc/b.py", 3
+    )
+    edges: list[Edge] = [
+        # Intra-domain import cycle between the two modules.
+        Edge(id="i1", source="app.svc.a", target="app.svc.b", type=EdgeType.IMPORTS),
+        Edge(id="i2", source="app.svc.b", target="app.svc.a", type=EdgeType.IMPORTS),
+        # A CALLS edge so edge_count > 0 (avoids no_signal short-circuit).
+        Edge(id="c1", source="app.svc.a.f0", target="app.svc.b.f0", type=EdgeType.CALLS),
+    ]
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)
+
+    yaml_unenforced = (
+        _YAML_ACCEPTANCE_BASE
+        + "project_domains:\n"
+        + '  - name: "svc"\n'
+        + '    fqn_prefix: "app.svc"\n'
+        + "    drift_tolerance: 0.99\n"
+        + "    enforce: false\n"
+    )
+    p = str(tmp_path / "unenforced.yaml")
+    Path(p).write_text(yaml_unenforced)
+
+    analysis = analyze_drift(db, p, max_drift=0.5)
+
+    report = analysis.reports[0]
+    assert report.status == "gate_failed", (
+        "intra-domain cycle must produce gate_failed even when enforce=false"
+    )
+    assert analysis.any_critical is False, (
+        "unenforced (observe-only) domain with gate_failed must NOT trip any_critical"
+    )
+
+
 def test_per_domain_tolerance_binds_over_default(tmp_path: Path) -> None:
     """The #170B repro: per-domain drift_tolerance takes precedence over max_drift.
 
