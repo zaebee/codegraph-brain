@@ -23,7 +23,6 @@ from cgis.query.fqn import resolve_fqn
 from cgis.query.graph_json import graph_to_json
 from cgis.query.mermaid import MermaidCompiler
 from cgis.query.ontology_init import propose_ontology
-from cgis.resolver.uplift import SemanticUpliftEngine
 from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 
 print("CGIS MCP Server starting…", file=sys.stderr)
@@ -100,11 +99,11 @@ def cgis_ingest(project_path: str, db_path: str = _DEFAULT_DB, full_rebuild: boo
     try:
         with SQLiteStore(db_path) as store:
             if full_rebuild:
-                nodes, _raw, resolved = pipeline.run(project_path)
-                store.save_graph(nodes, resolved, overwrite=True)
-                SemanticUpliftEngine(store, None).execute_uplift()
-            else:
-                nodes, _raw, resolved = pipeline.run(project_path, store=store)
+                # Clear first, then run incrementally over an empty DB: this drops
+                # deleted-file nodes, repopulates files_state correctly, and runs
+                # uplift inside the pipeline (store provided) — all in one path.
+                store.clear()
+            _nodes, _raw, resolved = pipeline.run(project_path, store=store)
             total_nodes = len(store.get_all_nodes())
             total_edges = store.get_edge_stats().total
     except Exception as exc:
@@ -119,10 +118,10 @@ def cgis_ingest(project_path: str, db_path: str = _DEFAULT_DB, full_rebuild: boo
         db=db_path,
     )
     lines = [f"✅ Ingested: {project_path} (mode: {mode})"]
-    if not full_rebuild:
-        # The per-run working set differs from the whole graph in incremental mode;
-        # showing both stops a no-op re-ingest from looking like data loss (#192).
-        lines.append(f"Changed this run: {len(nodes)} nodes / {len(resolved)} edges")
+    if not full_rebuild and not resolved:
+        # Incremental no-op: an empty resolved set means no files changed. Say so
+        # explicitly so the stable total below doesn't read as a shrunken graph (#192).
+        lines.append("No files changed since the last ingest.")
     lines.append(f"Graph total: {total_nodes} nodes / {total_edges} edges")
     lines.append(f"Graph stored in: {db_path}")
     return "\n".join(lines)

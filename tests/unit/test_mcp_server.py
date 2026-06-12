@@ -616,5 +616,28 @@ def test_cgis_ingest_incremental_reports_changed_and_total(tmp_path: Path) -> No
 
     result = cgis_ingest(str(tmp_path), str(db))
 
-    assert "Changed this run:" in result
+    assert "mode: incremental" in result
     assert "Graph total:" in result
+
+
+def test_cgis_ingest_noop_reports_no_files_changed(tmp_path: Path) -> None:
+    """An incremental no-op says so explicitly, so the stable total reads correctly (#192)."""
+    (tmp_path / "m.py").write_text("def f(): pass\n", encoding="utf-8")
+    db = tmp_path / "graph.db"
+
+    cgis_ingest(str(tmp_path), str(db))
+    again = cgis_ingest(str(tmp_path), str(db))
+
+    assert "No files changed" in again
+
+
+def test_cgis_ingest_full_rebuild_repopulates_files_state(tmp_path: Path) -> None:
+    """full_rebuild leaves files_state valid so the next incremental is a no-op (#223 review)."""
+    (tmp_path / "m.py").write_text("def f(): pass\n", encoding="utf-8")
+    db = tmp_path / "graph.db"
+
+    cgis_ingest(str(tmp_path), str(db), full_rebuild=True)
+    nxt = cgis_ingest(str(tmp_path), str(db))  # nothing changed since the rebuild
+
+    # If full_rebuild left files_state stale, this run would re-parse instead of no-op.
+    assert "No files changed" in nxt
