@@ -2,6 +2,8 @@
 
 The CGIS ontology is a three-layer contract that maps raw AST constructs to semantic concepts. It governs what every `Node` and `Edge` in the graph means and is treated as a **breaking-change boundary** — modifying it requires a PR with explicit migration notes.
 
+> For the *architectural* layer — the 13-triad census and the 5-pattern alphabet that drift scores against — see **[PATTERNS_AND_TRIADS.md](./PATTERNS_AND_TRIADS.md)**.
+
 ---
 
 ## L1 — Structural Layer (AST-derived)
