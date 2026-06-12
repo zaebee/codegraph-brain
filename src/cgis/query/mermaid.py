@@ -24,7 +24,7 @@ def _sanitize_token(text: str) -> str:
 
 def _guard_token(slug: str) -> str:
     """Prefix to dodge a leading digit or a Mermaid reserved word."""
-    if slug[0].isdigit() or slug.lower() in _MERMAID_RESERVED:
+    if slug and (slug[0].isdigit() or slug.lower() in _MERMAID_RESERVED):
         return f"id_{slug}"
     return slug
 
@@ -42,22 +42,39 @@ def _fqn_slug(fqn: str) -> str:
     return _guard_token(_sanitize_token(tail))
 
 
+def _internal_node_slug(node_id: str, path_fqn: str) -> str | None:
+    """Slug an internal node by matching the longest module suffix of its path FQN.
+
+    The extractor builds node ids relative to the ingest root, which may be a
+    suffix of the file-path-derived FQN (e.g. id ``cgis.pipeline.run`` when the
+    path yields ``src.cgis.pipeline``). Trying successively shorter suffixes
+    keeps the ``<file_stem>`` prefix even when the two roots differ. The stem is
+    always the deepest segment of the path FQN. Returns None on no match.
+    """
+    parts = path_fqn.split(".")
+    stem = parts[-1]
+    for i in range(len(parts)):
+        candidate = ".".join(parts[i:])
+        if node_id == candidate:
+            return _guard_token(_sanitize_token(stem))
+        if node_id.startswith(candidate + "."):
+            suffix = node_id[len(candidate) + 1 :]
+            return _guard_token(_sanitize_token(f"{stem}_{suffix}"))
+    return None
+
+
 def _node_slug(node: Node) -> str:
     """Readable id for a node: ``<file_stem>_<Class>_<method>`` (#210).
 
     For internal nodes the symbol suffix is peeled off the module FQN derived
     from the file path; module/file nodes slug to the bare stem. Non-internal or
-    virtual nodes fall back to :func:`_fqn_slug`. Collisions are disambiguated
-    later by :class:`_IdAllocator`.
+    virtual nodes (and any that don't match the path FQN) fall back to
+    :func:`_fqn_slug`. Collisions are disambiguated later by :class:`_IdAllocator`.
     """
     if node.namespace == NodeNamespace.INTERNAL and node.file_path != VIRTUAL_FILE_PATH:
-        module_fqn = file_path_to_module_fqn(node.file_path)
-        stem = module_fqn.rsplit(".", maxsplit=1)[-1]
-        if node.id == module_fqn:
-            return _guard_token(_sanitize_token(stem))
-        if node.id.startswith(module_fqn + "."):
-            suffix = node.id[len(module_fqn) + 1 :]
-            return _guard_token(_sanitize_token(f"{stem}_{suffix}"))
+        slug = _internal_node_slug(node.id, file_path_to_module_fqn(node.file_path))
+        if slug is not None:
+            return slug
     return _fqn_slug(node.id)
 
 

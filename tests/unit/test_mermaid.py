@@ -316,6 +316,17 @@ def test_node_slug_module_node_is_stem() -> None:
     assert _node_slug(node) == "pipeline"
 
 
+def test_node_slug_survives_source_root_mismatch() -> None:
+    """Ids rooted differently from the file path still keep the file_stem prefix (#213 review).
+
+    Ingesting ``./src`` yields ids like ``cgis.pipeline.X`` while the file path
+    derives ``src.cgis.pipeline`` — the longest-suffix match must still prefix
+    the stem, not fall back and drop it.
+    """
+    node = _make_node_in_file("cgis.pipeline.IngestionPipeline.run", "src/cgis/pipeline.py")
+    assert _node_slug(node) == "pipeline_IngestionPipeline_run"
+
+
 def test_compile_emits_readable_slug_not_hash() -> None:
     """compile() renders readable slug ids, never n_<md5> hashes (#210)."""
     node = _make_node_in_file("src.cgis.pipeline.IngestionPipeline.run", "src/cgis/pipeline.py")
