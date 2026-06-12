@@ -99,6 +99,25 @@ Scan a local directory, extract all symbols, resolve links, and build the graph 
 
 ---
 
+## `cgis_init_ontology`
+
+Propose a starter patterns.yaml from the measured graph (read-only).
+
+    Returns the YAML text — save it yourself (e.g. to patterns.yaml), review
+    the proposed labels, then run ``cgis_drift`` with it. Tolerances are the
+    measured scores plus ``margin``: a baseline to ratchet down, not a verdict.
+
+    No files are written; the caller decides where to persist the output.
+
+| Argument | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `db_path` | `string` |  |  |
+| `margin` | `number` |  |  |
+| `min_nodes` | `integer` |  |  |
+| `depth` | `any` |  |  |
+
+---
+
 ## `cgis_trace_flow`
 
 Trace the execution call-graph starting from a specific FQN downwards.
