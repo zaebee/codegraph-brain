@@ -94,9 +94,13 @@ project_domains:
   # Python graph (ingest root: src/ → FQNs carry the cgis. prefix)
   - name: "extraction"
     fqn_prefix: "cgis.extractors"
-    expected_pattern: pure_utility
+    expected_pattern: layered_dag
     profile: python
-    drift_tolerance: 0.30 # v2 measured ≈0.26 (tv_calls .75: extractors call each other in forks/chains)
+    # Re-negotiated in #116: PythonExtractor was decomposed from a God Object into a
+    # layered package (orchestrator python_extractor → handlers → _python_ast core),
+    # so the domain is no longer pure_utility. Best-fit is now layered_dag (measured
+    # ≈0.32 vs orchestrator 0.40, pure_utility 0.51 — same pattern as cgis.query).
+    drift_tolerance: 0.35
 
   - name: "resolution"
     fqn_prefix: "cgis.resolver"

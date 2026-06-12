@@ -1,0 +1,312 @@
+"""Function/method-definition handling for the Python extractor.
+
+Emits FUNCTION/METHOD nodes plus their CALLS, DECLARES/CONTAINS, DEPENDS_ON
+edges, and collects local type information (assignments and typed parameters)
+used downstream for call resolution.
+"""
+
+from collections.abc import Callable
+from typing import Any
+
+from tree_sitter import Node as BaseNode
+
+from cgis.core.models import Edge, EdgeType, Node, NodeType
+from cgis.extractors._python_ast import (
+    PYTHON_LANG,
+    extract_node_name,
+    get_id,
+    get_identifier,
+    is_method,
+)
+from cgis.extractors._python_types import TypeResolver
+
+
+class FunctionHandler:
+    """Extracts function/method nodes, call edges and local type metadata."""
+
+    _DI_CALL_NAMES: frozenset[str] = frozenset({"Depends", "Security"})
+
+    def __init__(
+        self,
+        pick_source_root: Callable[[str], str | None],
+        type_resolver: TypeResolver,
+    ) -> None:
+        """Store the source-root picker and the shared type resolver."""
+        self._pick_source_root = pick_source_root
+        self._types = type_resolver
+
+    def process_function_node(
+        self,
+        node: BaseNode,
+        code_bytes: bytes,
+        file_path: str,
+        nodes: list[Node],
+        edges: list[Edge],
+        module_fqn: str,
+        decorators: list[str] | None = None,
+    ) -> Node:
+        """Process function or method definition node."""
+        child = node.child_by_field_name("name")
+        node_id = get_id(node, code_bytes, file_path, self._pick_source_root(file_path))
+        node_name = extract_node_name(child, code_bytes)
+        node_type = NodeType.METHOD if is_method(node) else NodeType.FUNCTION
+
+        metadata: dict[str, Any] = {}
+        if decorators:
+            metadata["decorators"] = decorators
+        if decorators and any(
+            d == "abstractmethod" or d.endswith(".abstractmethod") for d in decorators
+        ):
+            metadata["is_abstract"] = True
+
+        func_node = Node(
+            id=node_id,
+            type=node_type,
+            name=node_name,
+            file_path=file_path,
+            start_line=node.start_point.row + 1,
+            end_line=node.end_point.row + 1,
+            language=PYTHON_LANG,
+            metadata=metadata,
+        )
+        nodes.append(func_node)
+
+        edges.extend(
+            Edge(
+                id=f"{node_id}:decorator:{i}:{deco_name}",
+                type=EdgeType.CALLS,
+                source=node_id,
+                target=f"raw_call:{deco_name}",
+                confidence=0.5,
+                file_path=file_path,
+            )
+            for i, deco_name in enumerate(decorators or [])
+        )
+
+        parts = node_id.rsplit(".", maxsplit=1)
+        parent_fqn = parts[0] if len(parts) > 1 else module_fqn
+        edge_type = EdgeType.DECLARES if node_type == NodeType.METHOD else EdgeType.CONTAINS
+        edges.append(
+            Edge(
+                id=f"{parent_fqn}:structural:{node_id}",
+                type=edge_type,
+                source=parent_fqn,
+                target=node_id,
+                confidence=1.0,
+                file_path=file_path,
+            )
+        )
+        return func_node
+
+    def process_call_node(
+        self, node: BaseNode, code_bytes: bytes, file_path: str, source_id: str, edges: list[Edge]
+    ) -> None:
+        """
+        Finds call expressions node.
+        """
+        child = node.child_by_field_name("function")
+        edge_id = f"{file_path}:edge_{node.start_byte}_{node.end_byte}"
+        if child:
+            call_name = get_identifier(child, code_bytes)
+            if call_name == "unknown":
+                return
+            target_id = f"raw_call:{call_name}"
+
+            edges.append(
+                Edge(
+                    id=edge_id,
+                    type=EdgeType.CALLS,
+                    source=source_id,
+                    target=target_id,
+                    confidence=0.5,
+                    context=f"Call to {call_name}",
+                    file_path=file_path,
+                    line_number=node.start_point.row + 1,
+                )
+            )
+            if call_name in self._DI_CALL_NAMES:
+                provider = self._di_provider_name(node, code_bytes)
+                if provider:
+                    edges.append(
+                        Edge(
+                            id=f"{file_path}:dep_{node.start_byte}_{node.end_byte}",
+                            type=EdgeType.DEPENDS_ON,
+                            source=source_id,
+                            target=f"raw_call:{provider}",
+                            confidence=0.5,
+                            context=f"DI dependency on {provider}",
+                            file_path=file_path,
+                            line_number=node.start_point.row + 1,
+                        )
+                    )
+
+    def _di_provider_name(self, call_node: BaseNode, code_bytes: bytes) -> str | None:
+        """Return the first positional argument's identifier/dotted name, or None.
+
+        None for argless calls, keyword-only calls, and non-name arguments
+        (lambdas, calls, subscripts) — those emit no DEPENDS_ON edge (spec §3.2a/b).
+
+        Note: ``child_by_field_name("arguments")`` returns a truthy
+        ``argument_list`` node even for ``Depends()`` (argless), so the
+        ``if not args`` guard here only covers a *missing* arguments field
+        (should not occur in practice).  The argless case — where
+        ``args.named_children`` is empty — is handled by the loop falling
+        through to the final ``return None``.
+        """
+        args = call_node.child_by_field_name("arguments")
+        if not args:
+            return None
+        for child in args.named_children:
+            if child.type == "keyword_argument":
+                continue
+            if child.type in ("identifier", "attribute"):
+                name = get_identifier(child, code_bytes)
+                return name if name != "unknown" else None
+            return None
+        return None
+
+    def _find_di_calls(self, node: BaseNode, code_bytes: bytes) -> list[BaseNode]:
+        """Return all call nodes in the subtree whose callee is a DI name (spec §3.2a)."""
+        found: list[BaseNode] = []
+        stack = [node]
+        while stack:
+            curr = stack.pop()
+            if curr.type == "call":
+                fn = curr.child_by_field_name("function")
+                if fn and get_identifier(fn, code_bytes) in self._DI_CALL_NAMES:
+                    found.append(curr)
+            stack.extend(curr.children)
+        return found
+
+    def process_module_assignment(
+        self,
+        node: BaseNode,
+        code_bytes: bytes,
+        file_path: str,
+        nodes: list[Node],
+        edges: list[Edge],
+        module_fqn: str,
+    ) -> None:
+        """Emit a VARIABLE alias node + DEPENDS_ON edges for module-level DI assignments.
+
+        Only fires for `Name = <RHS containing Depends/Security>` with a plain
+        identifier LHS at true module level (class bodies excluded by the
+        caller). Plain constants never reach the node list (spec §3.2a).
+        """
+        left = node.child_by_field_name("left")
+        right = node.child_by_field_name("right")
+        if not left or not right or left.type != "identifier":
+            return
+        di_calls = self._find_di_calls(right, code_bytes)
+        if not di_calls:
+            return
+        name = get_identifier(left, code_bytes)
+        if name == "unknown":
+            return
+        alias_id = f"{module_fqn}.{name}" if module_fqn else name
+        nodes.append(
+            Node(
+                id=alias_id,
+                type=NodeType.VARIABLE,
+                name=name,
+                file_path=file_path,
+                start_line=node.start_point.row + 1,
+                end_line=node.end_point.row + 1,
+                language=PYTHON_LANG,
+            )
+        )
+        for call in di_calls:
+            provider = self._di_provider_name(call, code_bytes)
+            if not provider:
+                continue
+            edges.append(
+                Edge(
+                    id=f"{file_path}:dep_{call.start_byte}_{call.end_byte}",
+                    type=EdgeType.DEPENDS_ON,
+                    source=alias_id,
+                    target=f"raw_call:{provider}",
+                    confidence=0.5,
+                    context=f"DI alias for {provider}",
+                    file_path=file_path,
+                    line_number=node.start_point.row + 1,
+                )
+            )
+
+    def collect_assignment_type(
+        self,
+        node: BaseNode,
+        code_bytes: bytes,
+        import_map: dict[str, str] | None,
+        func_node: Node,
+        acc: dict[str, dict[str, str]],
+    ) -> None:
+        """Populate acc with var→FQN for `var = ClassName(...)` assignments."""
+        left_node = node.child_by_field_name("left")
+        right_node = node.child_by_field_name("right")
+        if not left_node or not right_node or right_node.type != "call":
+            return
+        var_name = get_identifier(left_node, code_bytes)
+        if var_name == "unknown":
+            return
+        func_call_node = right_node.child_by_field_name("function")
+        if not func_call_node:
+            return
+        class_name = get_identifier(func_call_node, code_bytes)
+        if class_name == "unknown":
+            return
+        if "." in class_name:
+            # Module-qualified constructor (e.g. models.Store()): keep only if prefix
+            # is a known import alias. Otherwise it's a method-call result — skip.
+            module_part, _, _ = class_name.partition(".")
+            if not import_map or module_part not in import_map:
+                return
+        acc.setdefault(func_node.id, {})[var_name] = self._types.resolve_type_fqn(
+            class_name, import_map, func_node.file_path
+        )
+
+    def collect_param_type(
+        self,
+        node: BaseNode,
+        code_bytes: bytes,
+        import_map: dict[str, str] | None,
+        func_node: Node,
+        acc: dict[str, dict[str, str]],
+        edges: list[Edge],
+    ) -> None:
+        """Populate acc with param→FQN for typed parameter annotations.
+
+        Also emits a speculative `raw_dep:` DEPENDS_ON candidate per typed
+        parameter; the resolver keeps it only when it resolves to a DI alias
+        (VARIABLE node) and drops it otherwise (spec §3.2c).
+        """
+        if not node.named_children:
+            return
+        name_node = node.named_children[0]
+        type_node = node.child_by_field_name("type")
+        if not type_node:
+            return
+        var_name = get_identifier(name_node, code_bytes)
+        if var_name == "unknown":
+            return
+        # Slice raw bytes to capture union/generic types like `A | None` or `list[X]`
+        raw_type = (
+            code_bytes[type_node.start_byte : type_node.end_byte].decode("utf-8").strip("\"'")
+        )
+        clean_type = self._types.clean_python_type_string(raw_type)
+        if not clean_type:
+            return
+        acc.setdefault(func_node.id, {})[var_name] = self._types.resolve_type_fqn(
+            clean_type, import_map, func_node.file_path
+        )
+        edges.append(
+            Edge(
+                id=f"{func_node.file_path}:rawdep_{node.start_byte}_{node.end_byte}",
+                type=EdgeType.DEPENDS_ON,
+                source=func_node.id,
+                target=f"raw_dep:{clean_type}",
+                confidence=0.1,
+                context=f"Annotation candidate {clean_type}",
+                file_path=func_node.file_path,
+                line_number=node.start_point.row + 1,
+            )
+        )

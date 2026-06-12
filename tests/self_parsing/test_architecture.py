@@ -180,7 +180,6 @@ def test_analyzer_report_is_deterministic(
 _KNOWN_GOD_OBJECTS = frozenset(
     {
         "storage.sqlite_store.SQLiteStore",  # data-access layer — many CRUD methods by design
-        "extractors.python_extractor.PythonExtractor",  # complex AST visitor
         "extractors.typescript_extractor.TypeScriptExtractor",  # complex AST visitor
         "query.drift.DriftScorer",  # drift scoring — multiple constraint/weight/param operations
         "guardian.collector.ContextCollector",  # slice-2 chunked: _graph_sections + collect_for_chunk  # noqa: E501
