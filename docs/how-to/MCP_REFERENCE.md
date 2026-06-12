@@ -28,11 +28,17 @@ Report per-domain architectural drift against declared ideal patterns.
     observe-only quotient layer. Call after ``cgis_ingest`` to learn whether
     your edits pushed a domain past its drift tolerance.
 
+    ``profile``: when set, score only domains with this profile (plus
+    profile-less ones). Use when your patterns.yaml mixes languages but the
+    graph holds one language — avoids false EMPTY reports for other-language
+    domains that would otherwise fail the gate.
+
 | Argument | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
 | `db_path` | `string` |  |  |
 | `patterns_path` | `string` |  |  |
 | `max_drift` | `number` |  |  |
+| `profile` | `any` |  |  |
 
 ---
 

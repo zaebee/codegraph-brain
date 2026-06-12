@@ -8,9 +8,10 @@ classDef stdlibNode fill:#eceff1,stroke:#607d8b,stroke-width:1px,color:#455a64;
 classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dasharray: 3 3,color:#bf360c;
 
     subgraph n_9881ca900b7c44fd13c9206dbb6b1f1c["pipeline.py"]
-        n_0f875e605375c329869f67b3fb05ca43["_get_extractor (pipeline.py:216)"]:::methodNode
-        n_705d8fa6977288feb6d561fe353917bd["_persist_incremental (pipeline.py:175)"]:::methodNode
-        n_69ab802205de25759be41c9155266b2c["_process_file (pipeline.py:145)"]:::methodNode
+        n_0f875e605375c329869f67b3fb05ca43["_get_extractor (pipeline.py:245)"]:::methodNode
+        n_19e7df0f25916f44dfc53ee201a07808["_is_noop_incremental (pipeline.py:185)"]:::methodNode
+        n_705d8fa6977288feb6d561fe353917bd["_persist_incremental (pipeline.py:204)"]:::methodNode
+        n_69ab802205de25759be41c9155266b2c["_process_file (pipeline.py:155)"]:::methodNode
         n_380356b2071cde8dd55ba6287e99bd8a["run (pipeline.py:51)"]:::methodNode
     end
     subgraph n_724e82bcada88588298dcf4c3336e3f5["engine.py"]
@@ -23,6 +24,7 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
     end
     n_380356b2071cde8dd55ba6287e99bd8a -->|CALLS| n_0f875e605375c329869f67b3fb05ca43
     n_380356b2071cde8dd55ba6287e99bd8a -->|CALLS| n_69ab802205de25759be41c9155266b2c
+    n_380356b2071cde8dd55ba6287e99bd8a -->|CALLS| n_19e7df0f25916f44dfc53ee201a07808
     n_380356b2071cde8dd55ba6287e99bd8a -->|CALLS| n_ebda4de8e05ef057deb454e72894302d
     n_380356b2071cde8dd55ba6287e99bd8a -->|CALLS| n_e75ca2e29418d9c85a1a14b7069c25d9
     n_380356b2071cde8dd55ba6287e99bd8a -->|CALLS| n_705d8fa6977288feb6d561fe353917bd
