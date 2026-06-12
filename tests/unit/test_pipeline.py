@@ -8,6 +8,7 @@ import pytest
 from cgis.core.models import EdgeType, NodeType
 from cgis.extractors.python_extractor import PythonExtractor
 from cgis.pipeline import IngestionPipeline
+from cgis.resolver.engine import ResolverEngine
 from cgis.storage.sqlite_store import SQLiteStore
 
 
@@ -79,6 +80,38 @@ def test_incremental_skips_unchanged_file(pipeline: IngestionPipeline, tmp_path:
         nodes2, _, _ = pipeline.run(str(tmp_path), store=store)
 
     assert len(nodes1) == len(nodes2)
+    assert {n.name for n in nodes1} == {n.name for n in nodes2}
+
+
+def test_incremental_noop_skips_resolution(
+    pipeline: IngestionPipeline, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A re-ingest with zero changes must skip the resolver entirely (#185).
+
+    When no file changed and none went stale the persisted graph is already
+    correct, so rebuilding/re-resolving the whole graph is pure waste.
+    """
+    (tmp_path / "mod.py").write_text("def alpha(): pass\n", encoding="utf-8")
+    db_path = str(tmp_path / "graph.db")
+
+    with SQLiteStore(db_path) as store:
+        nodes1, _, _ = pipeline.run(str(tmp_path), store=store)
+
+    calls = {"n": 0}
+    real_resolve = ResolverEngine.resolve
+
+    def counting_resolve(self: ResolverEngine) -> tuple[list, list]:
+        calls["n"] += 1
+        return real_resolve(self)
+
+    monkeypatch.setattr("cgis.pipeline.ResolverEngine.resolve", counting_resolve)
+
+    with SQLiteStore(db_path) as store:
+        nodes2, _, resolved2 = pipeline.run(str(tmp_path), store=store)
+
+    assert calls["n"] == 0, "resolver ran on a no-op re-ingest"
+    assert resolved2 == []
+    # Graph content is preserved — short-circuit returns the cached nodes unchanged.
     assert {n.name for n in nodes1} == {n.name for n in nodes2}
 
 

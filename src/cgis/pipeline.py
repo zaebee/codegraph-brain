@@ -119,6 +119,16 @@ class IngestionPipeline:
 
                     progress.update(extract_task, advance=1)
 
+            # Incremental no-op short-circuit (#185): when nothing changed and
+            # nothing went stale, the persisted graph is already correct.
+            # Re-running the resolver + persistence + uplift would rebuild the
+            # whole graph from the DB for zero benefit, so skip them entirely.
+            if store is not None:
+                stale_files = store.get_all_tracked_files() - found_file_paths
+                if not changed_files and not stale_files:
+                    logger.info("No changes detected — skipping resolution and persistence.")
+                    return all_nodes, all_edges, []
+
             # Task 2: Resolution
             resolve_task = progress.add_task(description="Resolving semantic links...", total=None)
             logger.info("Starting resolution phase...")
