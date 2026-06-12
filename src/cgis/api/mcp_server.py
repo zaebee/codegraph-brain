@@ -23,6 +23,7 @@ from cgis.query.fqn import resolve_fqn
 from cgis.query.graph_json import graph_to_json
 from cgis.query.mermaid import MermaidCompiler
 from cgis.query.ontology_init import propose_ontology
+from cgis.resolver.uplift import SemanticUpliftEngine
 from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 
 print("CGIS MCP Server starting…", file=sys.stderr)
@@ -82,27 +83,49 @@ def _render_subgraph(
 
 
 @mcp.tool()
-def cgis_ingest(project_path: str, db_path: str = _DEFAULT_DB) -> str:
+def cgis_ingest(project_path: str, db_path: str = _DEFAULT_DB, full_rebuild: bool = False) -> str:
     """Scan a local directory, extract all symbols, resolve links, and build the graph DB.
 
     Use this to initialise or refresh the code knowledge graph for a project.
     Paths are normalised relative to the workspace root so the database is
     portable across machines.
+
+    By default the ingest is **incremental**: only changed/new files are
+    re-scanned, and the summary reports both what changed this run and the
+    whole-graph total. Set ``full_rebuild=True`` to re-scan every file and
+    overwrite the database from scratch — use this to drop nodes for files that
+    were deleted or renamed, which an incremental run leaves behind.
     """
     pipeline = IngestionPipeline(_EXTRACTORS)
     try:
         with SQLiteStore(db_path) as store:
-            nodes, _raw, resolved = pipeline.run(project_path, store=store)
+            if full_rebuild:
+                nodes, _raw, resolved = pipeline.run(project_path)
+                store.save_graph(nodes, resolved, overwrite=True)
+                SemanticUpliftEngine(store, None).execute_uplift()
+            else:
+                nodes, _raw, resolved = pipeline.run(project_path, store=store)
+            total_nodes = len(store.get_all_nodes())
+            total_edges = store.get_edge_stats().total
     except Exception as exc:
         return f"❌ {exc}"
 
-    logger.info("MCP ingest complete", nodes=len(nodes), edges=len(resolved), db=db_path)
-    return (
-        f"✅ Ingested: {project_path}\n"
-        f"Nodes: {len(nodes)}\n"
-        f"Resolved edges: {len(resolved)}\n"
-        f"Graph stored in: {db_path}"
+    mode = "full rebuild" if full_rebuild else "incremental"
+    logger.info(
+        "MCP ingest complete",
+        mode=mode,
+        total_nodes=total_nodes,
+        total_edges=total_edges,
+        db=db_path,
     )
+    lines = [f"✅ Ingested: {project_path} (mode: {mode})"]
+    if not full_rebuild:
+        # The per-run working set differs from the whole graph in incremental mode;
+        # showing both stops a no-op re-ingest from looking like data loss (#192).
+        lines.append(f"Changed this run: {len(nodes)} nodes / {len(resolved)} edges")
+    lines.append(f"Graph total: {total_nodes} nodes / {total_edges} edges")
+    lines.append(f"Graph stored in: {db_path}")
+    return "\n".join(lines)
 
 
 @mcp.tool()
