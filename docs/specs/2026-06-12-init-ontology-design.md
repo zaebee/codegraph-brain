@@ -44,7 +44,10 @@ def propose_ontology(
 
 `propose_ontology` flow:
 
-1. Open the store, run `discover_domains` over all node ids
+1. Validate `db_path` is an existing file FIRST (`FileNotFoundError` with the
+   "run ingest first" wording, mirroring `analyze_drift`) — SQLite would
+   otherwise silently create an empty db on open (gemini catch on the spec
+   PR). Then open the store and run `discover_domains` over all node ids
    (exclude virtual nodes: `file_path == VIRTUAL_FILE_PATH`).
 2. Per candidate, `FingerprintExtractor.extract(prefix)` (one shared
    extractor — its `_loaded()` cache makes N extractions cheap).
@@ -125,8 +128,10 @@ def cgis_init_ontology(
 
 Returns the proposed YAML **text** — deliberately read-only: no file writes
 from the MCP surface (avoids the S2083 path-write taint class entirely; the
-agent decides where to save). Docstring tells the agent to save it and run
-`cgis_drift` with it.
+agent decides where to save). Missing `db_path` → the `❌ Database not found
+… Run cgis_ingest first.` error string, mirroring `cgis_drift` (the
+`propose_ontology` FileNotFoundError is translated at this surface).
+Docstring tells the agent to save it and run `cgis_drift` with it.
 
 ### 2.5 Determinism
 
