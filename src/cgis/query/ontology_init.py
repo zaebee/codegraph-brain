@@ -314,16 +314,22 @@ def discover_domains(nodes: list[Node], depth: int | None = None) -> list[str]:
 
     Auto-descent: walk down from the FQN roots while a level has a single
     child; the first level with >= 2 children yields the candidates. An
-    explicit ``depth`` (segment count) overrides auto-descent. Virtual
+    explicit ``depth`` (segment count, >= 1) overrides auto-descent. Virtual
     boundary nodes are excluded. Sorted, deduplicated.
 
     A never-branching lineage yields its deepest id as the single candidate;
     downstream min_nodes filtering keeps such micro-domains hygiene-only.
+
+    Raises:
+        ValueError: if ``depth`` is not ``None`` and is <= 0.
     """
     real_ids = [n.id for n in nodes if n.file_path != VIRTUAL_FILE_PATH]
     if not real_ids:
         return []
     if depth is not None:
+        if depth <= 0:
+            msg = "depth must be a positive integer"
+            raise ValueError(msg)
         return sorted(
             {".".join(i.split(".")[:depth]) for i in real_ids if i.count(".") >= depth - 1}
         )

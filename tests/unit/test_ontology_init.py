@@ -84,6 +84,15 @@ def test_discover_single_node_graph() -> None:
     assert discover_domains([_node("solo.fn")]) == ["solo.fn"]
 
 
+def test_discover_depth_zero_or_negative_raises() -> None:
+    """depth must be positive — 0/negative would yield empty prefixes."""
+    nodes = [_node("a.b.c")]
+    with pytest.raises(ValueError, match="positive"):
+        discover_domains(nodes, depth=0)
+    with pytest.raises(ValueError, match="positive"):
+        discover_domains(nodes, depth=-2)
+
+
 # ---------------------------------------------------------------------------
 # propose_ontology
 # ---------------------------------------------------------------------------

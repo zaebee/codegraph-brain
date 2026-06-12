@@ -1007,7 +1007,7 @@ def _render_init_summary(text: str) -> None:
             escape(str(d.get("fqn_prefix", ""))),
             escape(str(d.get("expected_pattern", "(hygiene)"))),
             f"{d.get('drift_tolerance', ''):.2f}"
-            if isinstance(d.get("drift_tolerance"), float)
+            if isinstance(d.get("drift_tolerance"), (int, float))
             else escape(str(d.get("drift_tolerance", ""))),
         )
     console.print(table)
@@ -1026,7 +1026,7 @@ def init_ontology(
         10, "--min-nodes", min=1, help="Domains smaller than this stay hygiene-only."
     ),
     depth: int | None = typer.Option(
-        None, "--depth", help="Fixed FQN segment depth for domain discovery (default: auto)."
+        None, "--depth", min=1, help="Fixed FQN segment depth for domain discovery (default: auto)."
     ),
     force: bool = typer.Option(False, "--force", help="Overwrite an existing --out file."),
 ) -> None:
