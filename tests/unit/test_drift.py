@@ -1307,3 +1307,101 @@ def test_stray_baseline_key_rejected(tmp_path: Path) -> None:
     p.write_text(bad_yaml)
     with pytest.raises(ValueError, match="hygiene_baseline"):
         DriftScorer(str(p)).load_project_domains()
+
+
+# ---------------------------------------------------------------------------
+# _apply_baseline: min and exact operator coverage (#176/#170 task 5e)
+# ---------------------------------------------------------------------------
+
+# A scorer YAML whose hygiene block has a min constraint (chain_len) and an
+# exact constraint (router_count), to exercise _apply_baseline for those
+# operator branches (the existing tests only exercise the max branch via
+# cycle_ratio {max: 0.0}).
+_YAML_HYGIENE_MIN_EXACT = """\
+version: "1.0.0"
+drift_weights:
+  hub_count:        0.0
+  star_count:       0.0
+  chain_len:        0.50
+  dag_depth:        0.0
+  router_count:     0.50
+  cycle_ratio:      0.0
+  unresolved_ratio: 0.0
+hygiene:
+  chain_len:    {min: 2.0}
+  router_count: {exact: 0}
+patterns:
+  any_pattern:
+    description: "Accepts anything"
+project_domains:
+  - name: "target"
+    fqn_prefix: "target"
+    expected_pattern: any_pattern
+    drift_tolerance: 0.5
+"""
+
+
+def _me_fp(chain_len: float, router_count: int) -> PatternFingerprint:
+    """Fingerprint helper for min/exact baseline tests."""
+    return PatternFingerprint(
+        domain="target",
+        hub_count=0,
+        star_count=0,
+        chain_len=chain_len,
+        dag_depth=0,
+        router_count=router_count,
+        cycle_ratio=0.0,
+        unresolved_ratio=0.0,
+        node_count=10,
+        edge_count=5,
+    )
+
+
+def test_min_baseline_relaxes_downward(tmp_path: Path) -> None:
+    """A hygiene_baseline on a min constraint lets a measurement above it pass.
+
+    Global hygiene: chain_len {min: 2.0}.
+    Domain baseline: chain_len: 1.0  → effective min becomes min(2.0, 1.0) = 1.0.
+    Measured chain_len = 1.5 → 1.5 >= 1.0 → not gate_failed.
+    Without the baseline 1.5 < 2.0 would trip gate_failed.
+    """
+    yaml_with_baseline = _YAML_HYGIENE_MIN_EXACT.replace(
+        "    drift_tolerance: 0.5",
+        "    drift_tolerance: 0.5\n    hygiene_baseline:\n      chain_len: 1.0",
+    )
+    p = tmp_path / "min_base.yaml"
+    p.write_text(yaml_with_baseline)
+    scorer = DriftScorer(str(p))
+    domain = scorer.load_project_domains()[0]
+    report = scorer.score(_me_fp(chain_len=1.5, router_count=0), domain)
+    assert report.status != "gate_failed", (
+        "chain_len 1.5 >= effective min 1.0 (baseline relaxed from 2.0) must not gate_fail"
+    )
+
+
+def test_exact_baseline_overrides(tmp_path: Path) -> None:
+    """A hygiene_baseline on an exact constraint overrides the global bound.
+
+    Global hygiene: router_count {exact: 0}.
+    Domain baseline: router_count: 2 → effective exact becomes 2.
+    Measured router_count = 2 → 2 == 2 → not gate_failed.
+    Measured router_count = 3 → 3 != 2 → gate_failed (new debt beyond baseline).
+    """
+    yaml_with_baseline = _YAML_HYGIENE_MIN_EXACT.replace(
+        "    drift_tolerance: 0.5",
+        "    drift_tolerance: 0.5\n    hygiene_baseline:\n      router_count: 2",
+    )
+    p = tmp_path / "exact_base.yaml"
+    p.write_text(yaml_with_baseline)
+    scorer = DriftScorer(str(p))
+    domain = scorer.load_project_domains()[0]
+
+    # Exactly at baseline value → acknowledged, not gate_failed.
+    at_baseline = scorer.score(_me_fp(chain_len=2.0, router_count=2), domain)
+    assert at_baseline.status != "gate_failed", (
+        "router_count 2 == exact baseline 2 must not gate_fail"
+    )
+
+    # Beyond baseline → gate_failed.
+    beyond = scorer.score(_me_fp(chain_len=2.0, router_count=3), domain)
+    assert beyond.status == "gate_failed", "router_count 3 != exact baseline 2 must gate_fail"
