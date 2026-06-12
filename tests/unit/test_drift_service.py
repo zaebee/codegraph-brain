@@ -126,12 +126,44 @@ def test_analyze_drift_returns_report_per_domain(graph_db: str, patterns_file: s
     assert analysis.quotient == []  # no project_level in YAML
 
 
-def test_analyze_drift_any_critical_threshold(graph_db: str, patterns_file: str) -> None:
-    """any_critical flips based on max_drift threshold."""
-    lenient = analyze_drift(graph_db, patterns_file, max_drift=1.0)
+def test_analyze_drift_any_critical_threshold(graph_db: str, tmp_path: Path) -> None:
+    """any_critical respects the default_tolerance passed via max_drift (#170B).
+
+    Spec §2.5 semantic change: the gate is now status-based.  A domain without
+    an explicit drift_tolerance uses max_drift as its effective tolerance.
+    hub_count=0 violates min:1 → nonzero drift; with a large max_drift the
+    domain stays clean/warning; with a very small max_drift the domain is
+    critical and any_critical flips.
+    """
+    # YAML with hub_count min:1 so graph_db (hub_count=0) yields nonzero drift,
+    # and NO per-domain drift_tolerance so max_drift becomes the effective tolerance.
+    yaml_no_tol = """\
+version: "1.0.0"
+drift_weights:
+  hub_count:        1.0
+  star_count:       0.0
+  chain_len:        0.0
+  dag_depth:        0.0
+  router_count:     0.0
+  cycle_ratio:      0.0
+  unresolved_ratio: 0.0
+patterns:
+  hub_required:
+    description: "Must have hub"
+    hub_count: {min: 1}
+project_domains:
+  - name: "extraction"
+    fqn_prefix: "cgis.extractors"
+    expected_pattern: hub_required
+"""
+    p = tmp_path / "notol.yaml"
+    p.write_text(yaml_no_tol)
+    # Large default_tolerance: score < 1.0 → not critical, gate green.
+    lenient = analyze_drift(graph_db, str(p), max_drift=1.0)
     assert lenient.any_critical is False
-    strict = analyze_drift(graph_db, patterns_file, max_drift=0.0)
-    assert strict.any_critical is True  # any score >= 0.0 trips it
+    # Tiny default_tolerance: score > 0.0 → critical, gate red (old: score>=0.0).
+    strict = analyze_drift(graph_db, str(p), max_drift=0.01)
+    assert strict.any_critical is True
 
 
 def test_analyze_drift_missing_patterns_raises(graph_db: str, tmp_path: Path) -> None:
