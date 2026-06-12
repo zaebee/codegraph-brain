@@ -110,6 +110,12 @@ def analyze_drift(
             quotient = [
                 (b, scorer.score(q_extractor.extract(b.fqn_prefix), b)) for b in level_bindings
             ]
+            quotient = [
+                (b, dataclasses.replace(r, note=_empty_note(store, r.fqn_prefix)))
+                if r.status == "empty"
+                else (b, r)
+                for b, r in quotient
+            ]
 
     # "empty" on an ENFORCED binding (project domain or quotient) is always
     # critical regardless of score (spec §2.3): a broken fqn_prefix ontology

@@ -884,10 +884,13 @@ def drift(
 
     for b, qr in analysis.quotient:
         marker = "" if b.enforce else " [dim](observe-only)[/dim]"
+        status_label = _drift_status_label(qr.drift_score, max_drift, qr.status)
         console.print(
             f"Quotient k=1 \\[{b.name}] vs {qr.expected_pattern}: "
-            f"drift={qr.drift_score:.2f}{marker}"
+            f"drift={qr.drift_score:.2f} {status_label}{marker}"
         )
+        if qr.note:
+            console.print(f"  [dim]{escape(qr.note)}[/dim]")
 
     if analysis.any_critical:
         console.print("[bold red]❌ One or more domains exceed the drift threshold.[/bold red]")

@@ -392,6 +392,10 @@ def test_observe_only_quotient_empty_does_not_trip_any_critical(tmp_path: Path) 
     q_binding, q_report = analysis.quotient[0]
     assert q_binding.enforce is False
     assert q_report.status == "empty"
+    # Task-5 review finding: the quotient note must be decorated with "matched 0 nodes"
+    # so that a broken fqn_prefix is visible in CLI output (#178 §2.4).
+    assert q_report.note is not None, "empty quotient report must carry a diagnostic note"
+    assert "matched 0 nodes" in q_report.note
     assert analysis.any_critical is False, (
         "observe-only quotient binding with status='empty' must not flip any_critical"
     )
