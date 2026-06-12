@@ -20,6 +20,7 @@ from cgis.guardian.metrics import load_reviews, rate_review
 from cgis.pipeline import IngestionPipeline
 from cgis.query.analyzer import AnalyzerEngine
 from cgis.query.anomaly import AnomalyType, ArchitecturalAnomaly
+from cgis.query.context_service import build_context
 from cgis.query.drift import DriftReport
 from cgis.query.drift_service import analyze_drift
 from cgis.query.engine import BEHAVIORAL_EDGE_TYPES, QueryEngine
@@ -1043,6 +1044,52 @@ def init_ontology(
     _render_init_summary(text)
     console.print(f"[bold green]✅ Proposed ontology written to {out}[/bold green]")
     console.print(f"Next: [cyan]cgis drift --db {db} --patterns {out}[/cyan]")
+
+
+@app.command()
+def context(
+    fqn: str = typer.Argument(..., help="FQN of the focal node to compile context for"),
+    db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
+    depth: int = typer.Option(2, "--depth", min=1, help="CALLS traversal depth (1=direct)."),
+    source_root: str = typer.Option(
+        "",
+        "--source-root",
+        "-s",
+        help="Directory prepended to stored file paths to locate source for the snippet "
+        "(e.g. 'src' if you ran `cgis ingest ./src`).",
+    ),
+) -> None:
+    """Compile an agent-facing GraphRAG context package for a focal FQN.
+
+    Emits an XML-tagged prompt (focal source, enclosing class, domain boundary,
+    callers, callees) to stdout — pipe it straight into an LLM:
+
+        cgis context "pkg.mod.func" | llm "refactor this safely"
+
+    Resolution notes go to stderr so stdout stays a clean payload.
+    """
+    path = Path(db)
+    if not path.is_file():
+        console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
+        raise typer.Exit(code=1)
+
+    err_console = Console(stderr=True)
+    with SQLiteStore(db) as store:
+        resolution = resolve_fqn(store, fqn)
+        if resolution.resolved is None:
+            if resolution.candidates:
+                err_console.print(f"[bold red]❌ Ambiguous FQN:[/bold red] {fqn}")
+                for candidate in resolution.candidates:
+                    err_console.print(f"  [dim]- {candidate}[/dim]")
+                if resolution.truncated:
+                    err_console.print("  [dim]… (more matches exist; refine the name)[/dim]")
+            else:
+                err_console.print(f"[bold red]❌ Node not found in graph:[/bold red] {fqn}")
+            raise typer.Exit(code=1)
+        if resolution.via_suffix:
+            err_console.print(f"[dim]Resolved '{fqn}' → '{resolution.resolved}'[/dim]")
+        payload = build_context(store, resolution.resolved, depth=depth, source_root=source_root)
+    typer.echo(payload)
 
 
 if __name__ == "__main__":  # pragma: no cover

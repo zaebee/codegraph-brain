@@ -9,6 +9,7 @@ from conftest import make_chain_db
 
 from cgis.api.mcp_server import (
     cgis_analyze_impact,
+    cgis_context,
     cgis_drift,
     cgis_find_symbol,
     cgis_get_structure,
@@ -545,5 +546,28 @@ def test_cgis_init_ontology_missing_db_message(tmp_path: Path) -> None:
     """Missing db → the ❌ message string, no exception, no db created."""
     missing = tmp_path / "none.db"
     result = cgis_init_ontology(db_path=str(missing))
+    assert result.startswith("❌ Database not found")
+    assert not missing.exists()
+
+
+def test_cgis_context_returns_xml_package(tmp_path: Path) -> None:
+    """cgis_context compiles an XML package with focal/callers/callees for an agent."""
+    db = make_chain_db(tmp_path)
+    result = cgis_context("app.chain.f5", str(db))
+    assert '<context focal="app.chain.f5"' in result
+    assert "app.chain.f4" in result  # upstream caller
+    assert "app.chain.f6" in result  # downstream callee
+
+
+def test_cgis_context_blank_fqn_guarded(tmp_path: Path) -> None:
+    """A blank FQN is rejected before touching the store (mirrors the nav tools)."""
+    db = make_chain_db(tmp_path)
+    assert cgis_context("   ", str(db)).startswith("❌ FQN cannot be empty")
+
+
+def test_cgis_context_missing_db_returns_error(tmp_path: Path) -> None:
+    """A missing database returns a friendly ❌ message, not an exception."""
+    missing = tmp_path / "missing.db"
+    result = cgis_context("x.y", str(missing))
     assert result.startswith("❌ Database not found")
     assert not missing.exists()
