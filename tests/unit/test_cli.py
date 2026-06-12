@@ -1056,3 +1056,4 @@ def test_init_ontology_missing_db_exits_1(tmp_path: Path) -> None:
     )
     assert result.exit_code == 1
     assert not missing.exists()
+    assert "Graph database not found" in result.output

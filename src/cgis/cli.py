@@ -1003,12 +1003,12 @@ def _render_init_summary(text: str) -> None:
 
     for d in domains:
         table.add_row(
-            str(d.get("name", "")),
-            str(d.get("fqn_prefix", "")),
-            str(d.get("expected_pattern", "(hygiene)")),
+            escape(str(d.get("name", ""))),
+            escape(str(d.get("fqn_prefix", ""))),
+            escape(str(d.get("expected_pattern", "(hygiene)"))),
             f"{d.get('drift_tolerance', ''):.2f}"
             if isinstance(d.get("drift_tolerance"), float)
-            else str(d.get("drift_tolerance", "")),
+            else escape(str(d.get("drift_tolerance", ""))),
         )
     console.print(table)
 
