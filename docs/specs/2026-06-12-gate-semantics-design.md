@@ -102,9 +102,13 @@ declare:
       cycle_ratio: 0.08   # acknowledged debt — values may only go DOWN
 ```
 
-Semantics: for each hygiene constraint, the effective bound =
-`max(global hygiene bound, domain's hygiene_baseline value)`. Breach =
-`measured > effective bound` → `gate_failed`. NEW debt beyond the
+Semantics: the effective bound resolution is OPERATOR-AWARE (gemini catch
+on the spec PR — a baseline must only ever RELAX the global bound):
+`max`-constraints → `max(global, baseline)`; `min`-constraints →
+`min(global, baseline)`; `exact`-constraints → the baseline overrides.
+(Today's hygiene block carries only `max` constraints, but the resolution
+rule must not bake that in.) Breach = measured violates the effective
+bound → `gate_failed`. NEW debt beyond the
 acknowledged level fails absolutely; staying at-or-under the acknowledged
 level passes the gate (the violation list still notes
 `cycle_ratio 0.07 acknowledged (baseline 0.08)` for visibility).
@@ -113,8 +117,9 @@ sanctioned direction (same social contract as `drift_tolerance`; #151's
 future CI enforcement applies to both).
 
 `DomainConfig` gains `hygiene_baseline: dict[str, float] =
-field(default_factory=dict)`; the loader parses it for project_domains and
-project_level alike.
+field(default_factory=dict)`; the loader validates the block is a mapping
+via the existing `_validate_mapping` helper (project parsing rule) before
+parsing it, for project_domains and project_level alike.
 
 **init-ontology integration** (`ontology_init.py`): when a measured domain
 breaches a default hygiene bound (today: any intra-domain `cycle_ratio > 0`,
@@ -130,7 +135,11 @@ the baseline fails loudly.
 
 ### 2.3 #170B: per-domain tolerance precedence
 
-- `DomainConfig.drift_tolerance` becomes OPTIONAL (`float | None = None`).
+- `DomainConfig.drift_tolerance` becomes OPTIONAL (`float | None = None`);
+  `_build_domain_config` parses it null-safely
+  (`float(d["drift_tolerance"]) if d.get("drift_tolerance") is not None
+  else None`) — the current unconditional `float(d[...])` would KeyError on
+  omission.
 - Effective tolerance per domain = `drift_tolerance if not None else
   max_drift` (the CLI/MCP `max_drift` argument is demoted to "default
   tolerance for domains that don't declare one").
