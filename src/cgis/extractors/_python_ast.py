@@ -22,7 +22,14 @@ def resolve_relative_module(module_fqn: str, leading_dots: int, relative_path: s
     """
     segments = module_fqn.split(".")
     trim = min(leading_dots, len(segments))
-    base = ".".join(segments[:-trim]) if trim < len(segments) else ""
+    if trim == 0:
+        # leading_dots == 0: not a relative import — return the module unchanged.
+        # (Guards against `segments[:-0]` == `[]`, which would drop the whole FQN.)
+        base = module_fqn
+    elif trim == len(segments):
+        base = ""
+    else:
+        base = ".".join(segments[:-trim])
     if relative_path:
         return f"{base}.{relative_path}" if base else relative_path
     return base

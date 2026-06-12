@@ -3,12 +3,25 @@
 import pytest
 
 from cgis.core.models import Edge, EdgeType, NodeType
+from cgis.extractors._python_ast import resolve_relative_module
 from cgis.extractors.python_extractor import PythonExtractor, file_path_to_module_fqn
 
 
 @pytest.fixture
 def extractor() -> PythonExtractor:
     return PythonExtractor()
+
+
+def test_resolve_relative_module_no_leading_dots_returns_full_module() -> None:
+    """leading_dots=0 must return the module unchanged (regression: [:-0] == [])."""
+    assert resolve_relative_module("a.b.c", 0, "") == "a.b.c"
+    assert resolve_relative_module("a.b.c", 0, "x") == "a.b.c.x"
+
+
+def test_resolve_relative_module_trims_one_level_per_dot() -> None:
+    """Each leading dot trims one trailing segment before appending the relative path."""
+    assert resolve_relative_module("src.cgis.extractors.mod", 2, "core") == "src.cgis.core"
+    assert resolve_relative_module("src.cgis.mod", 1, "") == "src.cgis"
 
 
 def test_extract_simple_function(extractor: PythonExtractor) -> None:
