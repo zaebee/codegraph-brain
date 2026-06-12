@@ -61,7 +61,14 @@ def analyze_drift(db_path: str, patterns_path: str, max_drift: float = 0.50) -> 
                 (b, scorer.score(q_extractor.extract(b.fqn_prefix), b)) for b in level_bindings
             ]
 
-    any_critical = any(r.drift_score >= max_drift for r in reports) or any(
-        r.drift_score >= max_drift for b, r in quotient if b.enforce
+    # "empty" on an enforced project domain or quotient binding is always
+    # critical regardless of score (spec §2.3): a broken fqn_prefix ontology
+    # must not silently pass CI. "no_signal" is loud but never trips the gate.
+    any_critical = (
+        any(r.drift_score >= max_drift for r in reports)
+        or any(r.status == "empty" for r in reports)
+        or any(
+            (r.drift_score >= max_drift or r.status == "empty") for b, r in quotient if b.enforce
+        )
     )
     return DriftAnalysis(reports=reports, quotient=quotient, any_critical=any_critical)

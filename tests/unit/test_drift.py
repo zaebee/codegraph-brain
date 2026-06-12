@@ -1051,3 +1051,76 @@ def test_load_project_level_observe_only(tmp_path: Path) -> None:
     levels = DriftScorer(str(p)).load_project_level()
     assert len(levels) == 1
     assert levels[0].enforce is False
+
+
+# ---------------------------------------------------------------------------
+# empty / no_signal guards (#178)
+# ---------------------------------------------------------------------------
+
+
+def _structural_zero_fp(node_count: int, edge_count: int) -> PatternFingerprint:
+    """All-zero fingerprint with explicit match counts (#178 guard tests)."""
+    return PatternFingerprint(
+        domain="cgis.extractors",
+        hub_count=0,
+        star_count=0,
+        chain_len=0.0,
+        dag_depth=0,
+        router_count=0,
+        cycle_ratio=0.0,
+        unresolved_ratio=0.0,
+        node_count=node_count,
+        edge_count=edge_count,
+    )
+
+
+def test_zero_match_domain_is_empty_not_clean(
+    scorer: DriftScorer, pure_util_domain: DomainConfig
+) -> None:
+    """node_count == 0 → status 'empty', score 0.0, no violations (#178)."""
+    report = scorer.score(_structural_zero_fp(node_count=0, edge_count=0), pure_util_domain)
+    assert report.status == "empty"
+    assert report.drift_score == pytest.approx(0.0)
+    assert report.violations == []
+
+
+def test_edgeless_domain_is_no_signal_not_clean(
+    scorer: DriftScorer, pure_util_domain: DomainConfig
+) -> None:
+    """Nodes matched but zero intra-domain edges → status 'no_signal' (#178)."""
+    report = scorer.score(_structural_zero_fp(node_count=3, edge_count=0), pure_util_domain)
+    assert report.status == "no_signal"
+    assert report.drift_score == pytest.approx(0.0)
+
+
+def test_guards_precede_hygiene_only_path(scorer: DriftScorer) -> None:
+    """A hygiene-only domain (no expected_pattern) with 0 nodes is 'empty' too."""
+    hygiene_domain = DomainConfig(
+        name="ghost",
+        fqn_prefix="ghost.prefix",
+        expected_pattern=None,
+        profile=None,
+        drift_tolerance=0.2,
+    )
+    report = scorer.score(_structural_zero_fp(node_count=0, edge_count=0), hygiene_domain)
+    assert report.status == "empty"
+
+
+def test_measured_domain_status_unchanged(
+    scorer: DriftScorer, pure_util_domain: DomainConfig
+) -> None:
+    """A normal fingerprint (counts > 0) keeps today's classification path."""
+    perfect = PatternFingerprint(
+        domain="cgis.extractors",
+        hub_count=1,
+        star_count=0,
+        chain_len=0.0,
+        dag_depth=0,
+        router_count=0,
+        cycle_ratio=0.0,
+        unresolved_ratio=0.0,
+        node_count=4,
+        edge_count=3,
+    )
+    report = scorer.score(perfect, pure_util_domain)
+    assert report.status == "clean"
