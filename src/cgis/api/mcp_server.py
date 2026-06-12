@@ -202,6 +202,10 @@ def cgis_drift(
     observe-only quotient layer. Call after ``cgis_ingest`` to learn whether
     your edits pushed a domain past its drift tolerance.
 
+    ``max_drift`` is now the default tolerance only for domains that omit
+    ``drift_tolerance`` — it no longer caps domains that declare their own
+    (see #170).
+
     ``profile``: when set, score only domains with this profile (plus
     profile-less ones). Use when your patterns.yaml mixes languages but the
     graph holds one language — avoids false EMPTY reports for other-language

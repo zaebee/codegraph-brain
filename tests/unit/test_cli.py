@@ -4,7 +4,7 @@ import json
 import re
 from pathlib import Path
 
-from conftest import make_chain_db
+from conftest import make_chain_db, module_with_funcs
 from typer.testing import CliRunner
 
 from cgis.cli import _drift_status_label, app
@@ -1056,3 +1056,81 @@ def test_context_unknown_fqn_exits_nonzero(tmp_path: Path) -> None:
     result = runner.invoke(app, ["context", "app.chain.ghost", "--db", db])
     assert result.exit_code == 1
     assert "<context" not in result.stdout
+
+
+# ---------------------------------------------------------------------------
+# gate_failed rendering + CLI run-level tests (#170 task 3)
+# ---------------------------------------------------------------------------
+
+
+def test_status_label_gate_failed() -> None:
+    """gate_failed renders distinctly and precedes score-driven labels (spec §2.4)."""
+    label = _drift_status_label(0.0, 0.5, status="gate_failed")
+    assert "gate failed" in label
+
+
+def _intra_cycle_db(tmp_path: Path) -> str:
+    """Two-module intra-domain cycle db with ≥ min_nodes total for drift scoring."""
+    db = str(tmp_path / "cycle.db")
+    nodes = module_with_funcs("app.loop.a", "app/loop/a.py", 6) + module_with_funcs(
+        "app.loop.b", "app/loop/b.py", 6
+    )
+    edges = [
+        Edge(id="c1", source="app.loop.a", target="app.loop.b", type=EdgeType.IMPORTS),
+        Edge(id="c2", source="app.loop.b", target="app.loop.a", type=EdgeType.IMPORTS),
+    ]
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)
+    return db
+
+
+def _cycle_patterns_yaml(tmp_path: Path, *, with_baseline: bool) -> str:
+    """Patterns yaml with a hygiene cycle_ratio {max: 0.0} domain binding.
+
+    The domain is hygiene-only (no expected_pattern) so the only gate is the
+    hygiene invariant itself.  With ``with_baseline=True``, the domain declares a
+    hygiene_baseline that acknowledges the measured cycle ratio and a tolerance of
+    1.0 so the score gate also clears — confirming that acknowledged debt fully
+    suppresses both gate_failed and critical.  Without a baseline the hygiene
+    breach forces gate_failed and exit 1.
+    """
+    if with_baseline:
+        domain_block = (
+            "  - name: loop\n    fqn_prefix: app.loop\n"
+            "    drift_tolerance: 1.0\n"
+            "    hygiene_baseline:\n      cycle_ratio: 1.0\n"
+        )
+    else:
+        domain_block = "  - name: loop\n    fqn_prefix: app.loop\n    drift_tolerance: 0.50\n"
+    patterns_path = str(tmp_path / "patterns.yaml")
+    Path(patterns_path).write_text(
+        "version: '1.0.0'\n"
+        "drift_weights:\n"
+        "  hub_count: 0.0\n  star_count: 0.0\n  chain_len: 0.0\n"
+        "  dag_depth: 0.0\n  router_count: 0.0\n  cycle_ratio: 1.0\n"
+        "  unresolved_ratio: 0.0\n"
+        "hygiene:\n"
+        "  cycle_ratio: {max: 0.0}\n"
+        "  unresolved_ratio: {max: 0.2}\n"
+        "patterns:\n"
+        "  pure_utility:\n    description: x\n    hub_count: {min: 1}\n"
+        "project_domains:\n" + domain_block
+    )
+    return patterns_path
+
+
+def test_drift_gate_failed_output_and_exit_1(tmp_path: Path) -> None:
+    """An intra-domain cycle with cycle_ratio {max: 0.0} hygiene → gate failed + exit 1."""
+    db = _intra_cycle_db(tmp_path)
+    patterns = _cycle_patterns_yaml(tmp_path, with_baseline=False)
+    result = runner.invoke(app, ["drift", "--db", db, "--patterns", patterns])
+    assert result.exit_code == 1
+    assert "gate failed" in result.output
+
+
+def test_drift_acknowledged_baseline_exits_0(tmp_path: Path) -> None:
+    """The same cycle db with a covering hygiene_baseline → exit 0 (acknowledged)."""
+    db = _intra_cycle_db(tmp_path)
+    patterns = _cycle_patterns_yaml(tmp_path, with_baseline=True)
+    result = runner.invoke(app, ["drift", "--db", db, "--patterns", patterns])
+    assert result.exit_code == 0

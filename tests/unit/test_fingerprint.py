@@ -1,6 +1,7 @@
 """Unit tests for PatternFingerprint and FingerprintExtractor."""
 
 import pytest
+from conftest import module_with_funcs
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
 from cgis.query.fingerprint import FingerprintExtractor, PatternFingerprint
@@ -354,33 +355,9 @@ def test_hand_built_fingerprint_defaults_are_measurable() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _module_with_funcs(prefix: str, fname: str, n_funcs: int) -> list[Node]:
-    """One MODULE node + n FUNCTION children, all sharing file_path."""
-    mod = Node(
-        id=prefix,
-        type=NodeType.MODULE,
-        name=prefix.rsplit(".", maxsplit=1)[-1],
-        file_path=fname,
-        start_line=1,
-        end_line=99,
-    )
-    funcs = [
-        Node(
-            id=f"{prefix}.f{i}",
-            type=NodeType.FUNCTION,
-            name=f"f{i}",
-            file_path=fname,
-            start_line=i + 1,
-            end_line=i + 2,
-        )
-        for i in range(n_funcs)
-    ]
-    return [mod, *funcs]
-
-
 def test_single_file_domain_in_cross_cycle_has_zero_cycle_ratio() -> None:
     """The httpx case: a one-file domain inside a CROSS-domain import cycle → 0.0."""
-    nodes = _module_with_funcs("pkg.alpha", "pkg/alpha.py", 3) + _module_with_funcs(
+    nodes = module_with_funcs("pkg.alpha", "pkg/alpha.py", 3) + module_with_funcs(
         "pkg.beta", "pkg/beta.py", 3
     )
     edges = [
@@ -395,9 +372,9 @@ def test_single_file_domain_in_cross_cycle_has_zero_cycle_ratio() -> None:
 def test_intra_domain_cycle_counts_blast_radius() -> None:
     """Two modules of ONE domain importing each other → their nodes count."""
     nodes = (
-        _module_with_funcs("app.svc.a", "app/svc/a.py", 2)
-        + _module_with_funcs("app.svc.b", "app/svc/b.py", 2)
-        + _module_with_funcs("app.svc.clean", "app/svc/clean.py", 2)
+        module_with_funcs("app.svc.a", "app/svc/a.py", 2)
+        + module_with_funcs("app.svc.b", "app/svc/b.py", 2)
+        + module_with_funcs("app.svc.clean", "app/svc/clean.py", 2)
     )
     edges = [
         Edge(id="i1", source="app.svc.a", target="app.svc.b", type=EdgeType.IMPORTS),
@@ -412,7 +389,7 @@ def test_intra_domain_cycle_counts_blast_radius() -> None:
 
 def test_acyclic_domain_keeps_zero() -> None:
     """A chain of imports inside one domain stays 0.0."""
-    nodes = _module_with_funcs("lib.x", "lib/x.py", 1) + _module_with_funcs("lib.y", "lib/y.py", 1)
+    nodes = module_with_funcs("lib.x", "lib/x.py", 1) + module_with_funcs("lib.y", "lib/y.py", 1)
     edges = [Edge(id="i1", source="lib.x", target="lib.y", type=EdgeType.IMPORTS)]
     with _store(nodes, edges) as store:
         fp = FingerprintExtractor(store).extract("lib")

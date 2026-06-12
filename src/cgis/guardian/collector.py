@@ -215,6 +215,8 @@ class ContextCollector:
             quotient_lines: list[str] = []
             with SQLiteStore(str(self.db_path)) as store:
                 extractor = FingerprintExtractor(store)
+                # default_tolerance=0.50 fallback is deliberate here: collector has no
+                # max_drift to thread, and production domains declare their own tolerance.
                 reports = [scorer.score(extractor.extract(d.fqn_prefix), d) for d in domains]
                 level = scorer.load_project_level()
                 if level:
@@ -226,6 +228,7 @@ class ContextCollector:
                         f"Quotient k=1 [{b.name}] vs {qr.expected_pattern}: "
                         f"drift={qr.drift_score:.2f} (observe-only)"
                         for b in level
+                        # default_tolerance=0.50 fallback is deliberate here (see comment above).
                         for qr in [scorer.score(q_extractor.extract(b.fqn_prefix), b)]
                     ]
         except Exception:
