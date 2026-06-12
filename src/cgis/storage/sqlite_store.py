@@ -251,6 +251,46 @@ class SQLiteStore:
         )
         return [self._row_to_node(row) for row in cursor.fetchall()]
 
+    def search_nodes(
+        self,
+        query: str,
+        kinds: tuple[str, ...] = (),
+        fqn_prefix: str | None = None,
+        limit: int = 20,
+    ) -> list[Node]:
+        """Find nodes whose leaf ``name`` contains ``query`` (substring), ranked.
+
+        Ranking: exact name match > name-prefix match > substring; ties broken by
+        shorter FQN then id (deterministic). ``kinds`` filters by NodeType value
+        (e.g. ``("FUNCTION", "METHOD")``); ``fqn_prefix`` scopes to ids under that
+        prefix. LIKE wildcards (``%``, ``_``) in inputs are escaped — they are
+        literal characters in names/FQNs. Powers ``cgis_find_symbol`` (#173).
+        """
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        if not query.strip():
+            return []
+        esc = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        sql = "SELECT * FROM nodes WHERE name LIKE ? ESCAPE '\\'"
+        params: list[str | int] = [f"%{esc}%"]
+        if kinds:
+            placeholders = ", ".join(["?"] * len(kinds))
+            sql += f" AND type IN ({placeholders})"
+            params.extend(kinds)
+        if fqn_prefix:
+            pfx = fqn_prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            # Segment-boundary match: the prefix itself or a child under it — never
+            # `app.svc` accidentally matching `app.svc_alternative` (mirrors _in_domain).
+            sql += " AND (id = ? OR id LIKE ? ESCAPE '\\')"
+            params.extend([fqn_prefix, f"{pfx}.%"])
+        sql += (
+            " ORDER BY CASE WHEN name = ? THEN 0 WHEN name LIKE ? ESCAPE '\\' THEN 1 ELSE 2 END,"
+            " LENGTH(id), id LIMIT ?"
+        )
+        params.extend([query, f"{esc}%", limit])
+        cursor = self._conn.execute(sql, params)
+        return [self._row_to_node(row) for row in cursor.fetchall()]
+
     def get_nodes(self, node_ids: list[str]) -> list[Node]:
         """Return nodes matching the given FQN list, fetched in 999-item chunks."""
         if not self._conn:

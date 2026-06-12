@@ -907,3 +907,26 @@ def test_drift_profile_filters_out_python_domain(tmp_path: Path) -> None:
     # python-profile domain is filtered out → nothing to score → no EMPTY row
     assert result.exit_code == 0
     assert "EMPTY" not in result.output
+
+
+def test_find_resolves_partial_name(tmp_path: Path) -> None:
+    """cgis find returns the FQN for a partial leaf name; --kind filters (#173)."""
+    (tmp_path / "mod.py").write_text("def get_reservation_prices(): pass\n", encoding="utf-8")
+    db_file = tmp_path / "graph.db"
+    runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
+
+    result = runner.invoke(app, ["find", "reservation", "--db", str(db_file)])
+    assert result.exit_code == 0
+    assert "get_reservation_prices" in result.output
+
+    no_cls = runner.invoke(app, ["find", "reservation", "--db", str(db_file), "--kind", "CLASS"])
+    assert "get_reservation_prices" not in no_cls.output
+
+
+def test_find_query_with_brackets_does_not_crash(tmp_path: Path) -> None:
+    """A query with Rich-markup chars (brackets) is escaped, not parsed (#173)."""
+    (tmp_path / "mod.py").write_text("def fn(): pass\n", encoding="utf-8")
+    db_file = tmp_path / "graph.db"
+    runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
+    result = runner.invoke(app, ["find", "List[int]", "--db", str(db_file)])
+    assert result.exit_code == 0  # no MarkupError on the unmatched-query message
