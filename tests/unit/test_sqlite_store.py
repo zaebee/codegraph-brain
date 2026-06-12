@@ -457,6 +457,42 @@ def test_flow_graph_filters_structural_edges(temp_store: SQLiteStore) -> None:
     assert filt_edges[0].type == EdgeType.CALLS
 
 
+def test_flow_graph_filters_by_min_confidence(temp_store: SQLiteStore) -> None:
+    """min_confidence drops low-confidence edges (e.g. unresolved raw_call) (#112)."""
+    nodes = [_make_node("caller"), _make_node("solid"), _make_node("weak")]
+    edges = [
+        Edge(id="c->s", source="caller", target="solid", type=EdgeType.CALLS, confidence=1.0),
+        Edge(id="c->w", source="caller", target="weak", type=EdgeType.CALLS, confidence=0.1),
+    ]
+    temp_store.save_graph(nodes, edges)
+    qe = QueryEngine(temp_store)
+
+    # No filter: both reached.
+    n_all, _ = qe.get_flow_graph("caller", max_depth=2)
+    assert {n.id for n in n_all} == {"caller", "solid", "weak"}
+
+    # min_confidence 0.5 prunes the 0.1 edge → weak is unreachable.
+    n_f, e_f = qe.get_flow_graph("caller", max_depth=2, min_confidence=0.5)
+    assert {n.id for n in n_f} == {"caller", "solid"}
+    assert all(e.confidence >= 0.5 for e in e_f)
+
+
+def test_impact_graph_filters_by_min_confidence(temp_store: SQLiteStore) -> None:
+    """min_confidence applies to upstream impact traversal too (#112)."""
+    nodes = [_make_node("strong_caller"), _make_node("weak_caller"), _make_node("target")]
+    edges = [
+        Edge(
+            id="s->t", source="strong_caller", target="target", type=EdgeType.CALLS, confidence=1.0
+        ),
+        Edge(id="w->t", source="weak_caller", target="target", type=EdgeType.CALLS, confidence=0.1),
+    ]
+    temp_store.save_graph(nodes, edges)
+    qe = QueryEngine(temp_store)
+
+    n_f, _ = qe.get_impact_graph("target", max_depth=2, min_confidence=0.5)
+    assert {n.id for n in n_f} == {"target", "strong_caller"}
+
+
 def test_impact_graph_filters_structural_edges(temp_store: SQLiteStore) -> None:
     """allowed_edge_types excludes CONTAINS/DECLARES in upstream impact traversal."""
     nodes = [_make_node("container"), _make_node("caller"), _make_node("target")]

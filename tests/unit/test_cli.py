@@ -170,6 +170,23 @@ def test_trace_shows_unresolved_external_call(tmp_path: Path) -> None:
     assert "print" in result.output
 
 
+def test_trace_min_confidence_hides_low_conf_calls(tmp_path: Path) -> None:
+    """--min-confidence hides low-confidence (unresolved/raw_call) edges from the tree (#112)."""
+    (tmp_path / "mod.py").write_text("def greet(): print('hi')\n", encoding="utf-8")
+    db_file = tmp_path / "graph.db"
+    runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
+    fqn = f"{file_path_to_module_fqn('mod.py')}.greet"
+
+    shown = runner.invoke(app, ["trace", fqn, "--db", str(db_file), "--show-external"])
+    assert "print" in shown.output
+
+    hidden = runner.invoke(
+        app, ["trace", fqn, "--db", str(db_file), "--show-external", "--min-confidence", "0.9"]
+    )
+    assert hidden.exit_code == 0
+    assert "print" not in hidden.output
+
+
 def test_trace_detects_cycle(tmp_path: Path) -> None:
     """Mutually recursive functions trigger cycle detection in the trace tree."""
     code = "def func_a():\n    func_b()\n\ndef func_b():\n    func_a()\n"

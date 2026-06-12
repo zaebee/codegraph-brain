@@ -50,6 +50,17 @@ def _prune_external(
     return nodes, [e for e in filtered_edges if e.source in reachable and e.target in reachable]
 
 
+def _edge_accepted(
+    edge: Edge,
+    allowed_edge_types: frozenset[EdgeType] | None,
+    min_confidence: float | None,
+) -> bool:
+    """True when an edge passes the traversal filters: type allow-list and confidence floor."""
+    if allowed_edge_types is not None and edge.type not in allowed_edge_types:
+        return False
+    return not (min_confidence is not None and edge.confidence < min_confidence)
+
+
 class QueryEngine:
     """
     Performs graph traversals over the SQLite Code Graph.
@@ -66,6 +77,7 @@ class QueryEngine:
         max_depth: int = 5,
         allowed_edge_types: frozenset[EdgeType] | None = None,
         show_external: bool = True,
+        min_confidence: float | None = None,
     ) -> tuple[list[Node], list[Edge]]:
         """
         Transitive upstream traversal (who calls me?).
@@ -78,6 +90,7 @@ class QueryEngine:
             max_depth,
             allowed_edge_types=allowed_edge_types,
             show_external=show_external,
+            min_confidence=min_confidence,
         )
 
     def get_flow_graph(
@@ -86,6 +99,7 @@ class QueryEngine:
         max_depth: int = 5,
         allowed_edge_types: frozenset[EdgeType] | None = None,
         show_external: bool = True,
+        min_confidence: float | None = None,
     ) -> tuple[list[Node], list[Edge]]:
         """
         Transitive downstream traversal (who do I call?).
@@ -98,6 +112,7 @@ class QueryEngine:
             max_depth,
             allowed_edge_types=allowed_edge_types,
             show_external=show_external,
+            min_confidence=min_confidence,
         )
 
     def get_structural_graph(
@@ -118,10 +133,15 @@ class QueryEngine:
         max_depth: int,
         allowed_edge_types: frozenset[EdgeType] | None = None,
         show_external: bool = True,
+        min_confidence: float | None = None,
     ) -> tuple[list[Node], list[Edge]]:
         """
         Level-by-level BFS. Fetches edges for the entire frontier in one
         batch query per level — O(depth) DB roundtrips instead of O(nodes).
+
+        ``min_confidence`` prunes edges below the given confidence (e.g.
+        unresolved ``raw_call:`` edges at 0.1) so the traversal never crosses
+        them — low-confidence neighbours stay out of the result.
         """
         discovered_ids: set[str] = {start_id}
         visited_edges: dict[str, Edge] = {}
@@ -132,7 +152,7 @@ class QueryEngine:
             edges = get_edges_batch(current_frontier)
             next_frontier: list[str] = []
             for edge in edges:
-                if allowed_edge_types is not None and edge.type not in allowed_edge_types:
+                if not _edge_accepted(edge, allowed_edge_types, min_confidence):
                     continue
                 visited_edges[edge.id] = edge
                 neighbor_id = get_neighbor_id(edge)
