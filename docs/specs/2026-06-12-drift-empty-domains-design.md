@@ -107,6 +107,12 @@ here). #178 adds exactly one status-aware term:
   question belongs to #170 and is deliberately not changed here.
 - `no_signal` NEVER trips the gate — a tiny-but-real domain is legitimate;
   it just must not render as "clean".
+  Known residual (colleague review on PR #196): a NEAR-miss prefix that
+  accidentally catches exactly one stray symbol (0 intra-domain edges) is
+  `no_signal`, not `empty`, and passes silently. Accepted — making
+  enforced-`no_signal` trip would false-fail legitimate micro-domains; the
+  right detector for "matched the wrong thing" is #177's fit-quality /
+  coverage report, where this is recorded as a requirement.
 
 ### 2.4 Closest-prefix suggestions (`drift_service`)
 

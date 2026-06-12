@@ -31,11 +31,11 @@ def _empty_note(store: SQLiteStore, fqn_prefix: str) -> str:
     base = f"fqn_prefix '{fqn_prefix}' matched 0 nodes"
     if not fqn_prefix.strip():
         return base
-    matches = store.find_nodes_by_suffix(fqn_prefix, limit=4)
+    matches = store.find_nodes_by_suffix(fqn_prefix, limit=3)
     if not matches:
         last_segment = fqn_prefix.rsplit(".", maxsplit=1)[-1]
         if last_segment.strip():
-            matches = store.find_nodes_by_suffix(last_segment, limit=4)
+            matches = store.find_nodes_by_suffix(last_segment, limit=3)
     if not matches:
         return base
     ids = sorted(n.id for n in matches)[:3]
@@ -89,7 +89,6 @@ def analyze_drift(
     if profile is not None:
         domains = [d for d in domains if d.profile is None or d.profile == profile]
 
-    reports: list[DriftReport] = []
     quotient: list[tuple[DomainConfig, DriftReport]] = []
     with SQLiteStore(db_path) as store:
         extractor = FingerprintExtractor(store)
