@@ -21,6 +21,7 @@ from cgis.query.engine import QueryEngine
 from cgis.query.fqn import resolve_fqn
 from cgis.query.graph_json import graph_to_json
 from cgis.query.mermaid import MermaidCompiler
+from cgis.query.ontology_init import propose_ontology
 from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 
 print("CGIS MCP Server starting…", file=sys.stderr)
@@ -291,3 +292,26 @@ def cgis_find_symbol(
         for n in matches
     ]
     return json.dumps(payload, indent=2)
+
+
+@mcp.tool()
+def cgis_init_ontology(
+    db_path: str = _DEFAULT_DB,
+    margin: float = 0.03,
+    min_nodes: int = 10,
+    depth: int | None = None,
+) -> str:
+    """Propose a starter patterns.yaml from the measured graph (read-only).
+
+    Returns the YAML text — save it yourself (e.g. to patterns.yaml), review
+    the proposed labels, then run ``cgis_drift`` with it. Tolerances are the
+    measured scores plus ``margin``: a baseline to ratchet down, not a verdict.
+
+    No files are written; the caller decides where to persist the output.
+    """
+    if not Path(db_path).exists():
+        return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
+    try:
+        return propose_ontology(db_path, margin=margin, min_nodes=min_nodes, depth=depth)
+    except Exception as e:  # translate errors to the ❌-message medium
+        return f"❌ Error proposing ontology: {e}"

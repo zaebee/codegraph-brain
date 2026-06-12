@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
 
 from cgis.api.mcp_server import (
     cgis_analyze_impact,
@@ -11,9 +12,11 @@ from cgis.api.mcp_server import (
     cgis_find_symbol,
     cgis_get_structure,
     cgis_ingest,
+    cgis_init_ontology,
     cgis_trace_flow,
     cgis_validate,
 )
+from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.storage.sqlite_store import SQLiteStore
 
 
@@ -521,3 +524,54 @@ def test_cgis_find_symbol_blank_kind_is_no_filter(tmp_path: Path) -> None:
     cgis_ingest(str(tmp_path), str(db))
     data = json.loads(cgis_find_symbol("get_user", str(db), kind="   "))
     assert any(d["name"] == "get_user" for d in data)
+
+
+# ---------------------------------------------------------------------------
+# cgis_init_ontology tests (#174 task 4)
+# ---------------------------------------------------------------------------
+
+
+def _make_chain_db(tmp_path: Path) -> str:
+    """Build a 12-node CALLS chain database for cgis_init_ontology tests."""
+    db = str(tmp_path / "chain.db")
+    nodes = [
+        Node(
+            id=f"app.chain.f{i}",
+            type=NodeType.FUNCTION,
+            name=f"f{i}",
+            file_path=f"app/chain/f{i}.py",
+            start_line=1,
+            end_line=2,
+        )
+        for i in range(12)
+    ]
+    edges = [
+        Edge(
+            id=f"e{i}",
+            source=f"app.chain.f{i}",
+            target=f"app.chain.f{i + 1}",
+            type=EdgeType.CALLS,
+        )
+        for i in range(11)
+    ]
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)
+    return db
+
+
+def test_cgis_init_ontology_returns_yaml_text(tmp_path: Path) -> None:
+    """Returns parseable yaml with project_domains; writes NO files."""
+    db = _make_chain_db(tmp_path)
+    before = set(tmp_path.iterdir())
+    result = cgis_init_ontology(db_path=db)
+    assert "project_domains:" in result
+    assert yaml.safe_load(result)["project_domains"]
+    assert set(tmp_path.iterdir()) == before  # read-only surface
+
+
+def test_cgis_init_ontology_missing_db_message(tmp_path: Path) -> None:
+    """Missing db → the ❌ message string, no exception, no db created."""
+    missing = tmp_path / "none.db"
+    result = cgis_init_ontology(db_path=str(missing))
+    assert result.startswith("❌ Database not found")
+    assert not missing.exists()
