@@ -172,6 +172,42 @@ def test_analyze_drift_resolved_path_works(graph_db: str, tmp_path: Path) -> Non
     assert len(analysis.reports) == 1
 
 
+def _triangle_quotient_db(tmp_path: Path) -> str:
+    """SQLite db with three single-node domains forming a CALLS triangle (030T at quotient)."""
+    db = str(tmp_path / "g.db")
+    nodes = [
+        Node(
+            id=f"dom.{name}.{sym}",
+            type=NodeType.FUNCTION,
+            name=sym,
+            file_path=f"{sym}.py",
+            start_line=1,
+            end_line=2,
+        )
+        for name, sym in (("alpha", "x"), ("beta", "y"), ("gamma", "z"))
+    ]
+    edges = [
+        Edge(id="e1", source="dom.alpha.x", target="dom.beta.y", type=EdgeType.CALLS),
+        Edge(id="e2", source="dom.alpha.x", target="dom.gamma.z", type=EdgeType.CALLS),
+        Edge(id="e3", source="dom.beta.y", target="dom.gamma.z", type=EdgeType.CALLS),
+    ]
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)
+    return db
+
+
+def _mistargeted_quotient_yaml(tmp_path: Path, enforce: bool) -> str:
+    """Patterns file whose project_level fqn_prefix matches nothing in the quotient graph."""
+    yaml_text = _YAML_WITH_OBSERVE_ONLY_QUOTIENT.replace(
+        'fqn_prefix: "quotient"', 'fqn_prefix: "totally.missing"'
+    )
+    if enforce:
+        yaml_text = yaml_text.replace("    enforce: false", "    enforce: true")
+    p = tmp_path / "patterns.yaml"
+    p.write_text(yaml_text)
+    return str(p)
+
+
 def test_quotient_observe_only_does_not_flip_any_critical(tmp_path: Path) -> None:
     """Quotient with enforce:false does not set any_critical even when its score exceeds max_drift.
 
@@ -191,41 +227,7 @@ def test_quotient_observe_only_does_not_flip_any_critical(tmp_path: Path) -> Non
     patterns_file = tmp_path / "patterns.yaml"
     patterns_file.write_text(_YAML_WITH_OBSERVE_ONLY_QUOTIENT)
 
-    db = str(tmp_path / "g.db")
-    nodes = [
-        Node(
-            id="dom.alpha.x",
-            type=NodeType.FUNCTION,
-            name="x",
-            file_path="x.py",
-            start_line=1,
-            end_line=2,
-        ),
-        Node(
-            id="dom.beta.y",
-            type=NodeType.FUNCTION,
-            name="y",
-            file_path="y.py",
-            start_line=1,
-            end_line=2,
-        ),
-        Node(
-            id="dom.gamma.z",
-            type=NodeType.FUNCTION,
-            name="z",
-            file_path="z.py",
-            start_line=1,
-            end_line=2,
-        ),
-    ]
-    # Three cross-domain CALLS form a complete triangle (030T at quotient level).
-    edges = [
-        Edge(id="e1", source="dom.alpha.x", target="dom.beta.y", type=EdgeType.CALLS),
-        Edge(id="e2", source="dom.alpha.x", target="dom.gamma.z", type=EdgeType.CALLS),
-        Edge(id="e3", source="dom.beta.y", target="dom.gamma.z", type=EdgeType.CALLS),
-    ]
-    with SQLiteStore(db) as store:
-        store.save_graph(nodes, edges)
+    db = _triangle_quotient_db(tmp_path)
 
     # Act: run with max_drift=0.3, which sits below the quotient score but above domain scores.
     max_drift = 0.3
@@ -277,6 +279,22 @@ def test_empty_domain_note_suggests_real_prefix(graph_db: str, tmp_path: Path) -
     assert report.note is not None
     assert "matched 0 nodes" in report.note
     assert "cgis.extractors.a" in report.note
+
+
+def test_empty_note_trailing_dot_prefix_no_crash(graph_db: str, tmp_path: Path) -> None:
+    """fqn_prefix with a trailing dot yields status 'empty' and 'matched 0 nodes' without crashing.
+
+    Regression guard for the trailing-dot edge case: rsplit('.', 1)[-1] returns an
+    empty string when fqn_prefix ends with '.', which must not be passed to
+    find_nodes_by_suffix (pointless DB query).  The note must still be well-formed.
+    """
+    p = tmp_path / "trailing_dot.yaml"
+    p.write_text(_YAML.replace('fqn_prefix: "cgis.extractors"', 'fqn_prefix: "ghost."'))
+    analysis = analyze_drift(graph_db, str(p), max_drift=1.0)
+    report = analysis.reports[0]
+    assert report.status == "empty"
+    assert report.note is not None
+    assert "matched 0 nodes" in report.note
 
 
 def test_unenforced_empty_domain_does_not_trip(graph_db: str, tmp_path: Path) -> None:
@@ -343,50 +361,10 @@ def test_observe_only_quotient_empty_does_not_trip_any_critical(tmp_path: Path) 
     but targets a mis-matched quotient prefix so status=="empty" instead of a score violation.
     With enforce:false the gate must stay False even when status=="empty".
     """
-    # Use a mis-targeted quotient fqn_prefix ("totally.missing") so the quotient
-    # graph (collapsed from the three domain nodes) contains nothing at that prefix.
-    yaml_text = _YAML_WITH_OBSERVE_ONLY_QUOTIENT.replace(
-        'fqn_prefix: "quotient"', 'fqn_prefix: "totally.missing"'
-    )
-    patterns_file = tmp_path / "patterns.yaml"
-    patterns_file.write_text(yaml_text)
+    db = _triangle_quotient_db(tmp_path)
+    patterns_file = _mistargeted_quotient_yaml(tmp_path, enforce=False)
 
-    db = str(tmp_path / "g.db")
-    nodes = [
-        Node(
-            id="dom.alpha.x",
-            type=NodeType.FUNCTION,
-            name="x",
-            file_path="x.py",
-            start_line=1,
-            end_line=2,
-        ),
-        Node(
-            id="dom.beta.y",
-            type=NodeType.FUNCTION,
-            name="y",
-            file_path="y.py",
-            start_line=1,
-            end_line=2,
-        ),
-        Node(
-            id="dom.gamma.z",
-            type=NodeType.FUNCTION,
-            name="z",
-            file_path="z.py",
-            start_line=1,
-            end_line=2,
-        ),
-    ]
-    edges = [
-        Edge(id="e1", source="dom.alpha.x", target="dom.beta.y", type=EdgeType.CALLS),
-        Edge(id="e2", source="dom.alpha.x", target="dom.gamma.z", type=EdgeType.CALLS),
-        Edge(id="e3", source="dom.beta.y", target="dom.gamma.z", type=EdgeType.CALLS),
-    ]
-    with SQLiteStore(db) as store:
-        store.save_graph(nodes, edges)
-
-    analysis = analyze_drift(db, str(patterns_file), max_drift=0.3)
+    analysis = analyze_drift(db, patterns_file, max_drift=0.3)
 
     assert len(analysis.quotient) == 1
     q_binding, q_report = analysis.quotient[0]
@@ -411,50 +389,10 @@ def test_enforced_quotient_empty_trips_any_critical(tmp_path: Path) -> None:
     flips enforce to True (explicit, because project_level defaults to False) so
     the empty result is treated as a critical violation.
     """
-    # Replace `enforce: false` with `enforce: true` and mis-target the prefix.
-    # Note: project_level bindings default enforce=False, so we must set it explicitly.
-    yaml_text = _YAML_WITH_OBSERVE_ONLY_QUOTIENT.replace(
-        "    enforce: false", "    enforce: true"
-    ).replace('fqn_prefix: "quotient"', 'fqn_prefix: "totally.missing"')
-    patterns_file = tmp_path / "patterns.yaml"
-    patterns_file.write_text(yaml_text)
+    db = _triangle_quotient_db(tmp_path)
+    patterns_file = _mistargeted_quotient_yaml(tmp_path, enforce=True)
 
-    db = str(tmp_path / "g.db")
-    nodes = [
-        Node(
-            id="dom.alpha.x",
-            type=NodeType.FUNCTION,
-            name="x",
-            file_path="x.py",
-            start_line=1,
-            end_line=2,
-        ),
-        Node(
-            id="dom.beta.y",
-            type=NodeType.FUNCTION,
-            name="y",
-            file_path="y.py",
-            start_line=1,
-            end_line=2,
-        ),
-        Node(
-            id="dom.gamma.z",
-            type=NodeType.FUNCTION,
-            name="z",
-            file_path="z.py",
-            start_line=1,
-            end_line=2,
-        ),
-    ]
-    edges = [
-        Edge(id="e1", source="dom.alpha.x", target="dom.beta.y", type=EdgeType.CALLS),
-        Edge(id="e2", source="dom.alpha.x", target="dom.gamma.z", type=EdgeType.CALLS),
-        Edge(id="e3", source="dom.beta.y", target="dom.gamma.z", type=EdgeType.CALLS),
-    ]
-    with SQLiteStore(db) as store:
-        store.save_graph(nodes, edges)
-
-    analysis = analyze_drift(db, str(patterns_file), max_drift=0.3)
+    analysis = analyze_drift(db, patterns_file, max_drift=0.3)
 
     assert len(analysis.quotient) == 1
     q_binding, q_report = analysis.quotient[0]

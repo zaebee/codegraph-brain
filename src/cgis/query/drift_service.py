@@ -34,7 +34,8 @@ def _empty_note(store: SQLiteStore, fqn_prefix: str) -> str:
     matches = store.find_nodes_by_suffix(fqn_prefix, limit=4)
     if not matches:
         last_segment = fqn_prefix.rsplit(".", maxsplit=1)[-1]
-        matches = store.find_nodes_by_suffix(last_segment, limit=4)
+        if last_segment.strip():
+            matches = store.find_nodes_by_suffix(last_segment, limit=4)
     if not matches:
         return base
     ids = sorted(n.id for n in matches)[:3]
