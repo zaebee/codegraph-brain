@@ -181,6 +181,7 @@ the baseline fails loudly.
   domains that declare their own tolerance; the CLI/MCP help text and
   `patterns.yaml` header comment are updated. The observed #170B repro
   (crud 0.527 < tolerance 0.55 flagged critical) becomes clean.
+- Boundary pinned: `score == tolerance` PASSES (tolerance is the maximum acceptable value, inclusive) — deliberate change from the old `>= max_drift` gate.
 
 ### 2.4 Surfaces
 

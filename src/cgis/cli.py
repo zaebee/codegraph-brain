@@ -870,19 +870,12 @@ def guardian_stats(
         console.print(f"  Overall precision : [cyan]{avg_precision}[/cyan]  ({rated_label})")
 
 
-def _drift_status_label(
-    score: float,  # noqa: ARG001 — kept for API compat; label is status-driven
-    tolerance: float,  # noqa: ARG001 — kept for API compat; label is status-driven
-    status: str = "clean",
-) -> str:
+def _drift_status_label(status: str = "clean") -> str:
     """Return a Rich-formatted status label for a drift report entry.
 
     ``gate_failed`` renders first and distinctly (spec §2.4, #170A).
     ``empty`` and ``no_signal`` are status-driven and precede score-driven ones (#178).
-    The second parameter is the binding's effective tolerance (per-domain or default)
-    — formerly named ``max_drift``; callers now pass ``r.tolerance`` (#170B).
-    Label derivation is fully status-driven: ``score`` and ``tolerance`` are
-    retained in the signature for call-site compatibility but unused here.
+    Label derivation is fully status-driven.
     """
     if status == "gate_failed":
         return "[bold red]⛔ gate failed[/bold red]"
@@ -917,7 +910,7 @@ def _render_drift_table(reports: list[DriftReport]) -> None:
             f"{r.drift_score:.2f}",
             f"{r.tv_imports:.2f}" if r.tv_imports is not None else "—",
             f"{r.tv_calls:.2f}" if r.tv_calls is not None else "—",
-            _drift_status_label(r.drift_score, r.tolerance, r.status),
+            _drift_status_label(r.status),
         )
         if r.note:
             table.add_row(f"[dim]{escape(r.note)}[/dim]", "", "", "", "", "")
@@ -989,7 +982,7 @@ def drift(
 
     for b, qr in analysis.quotient:
         marker = "" if b.enforce else " [dim](observe-only)[/dim]"
-        status_label = _drift_status_label(qr.drift_score, qr.tolerance, qr.status)
+        status_label = _drift_status_label(qr.status)
         console.print(
             f"Quotient k=1 \\[{b.name}] vs {qr.expected_pattern}: "
             f"drift={qr.drift_score:.2f} {status_label}{marker}"

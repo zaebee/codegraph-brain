@@ -1405,3 +1405,130 @@ def test_exact_baseline_overrides(tmp_path: Path) -> None:
     # Beyond baseline → gate_failed.
     beyond = scorer.score(_me_fp(chain_len=2.0, router_count=3), domain)
     assert beyond.status == "gate_failed", "router_count 3 != exact baseline 2 must gate_fail"
+
+
+# ---------------------------------------------------------------------------
+# Boundary pin: score == tolerance is NOT critical (spec §2.3, #221 review)
+# ---------------------------------------------------------------------------
+
+
+def test_score_equal_to_tolerance_is_not_critical(scorer: DriftScorer) -> None:
+    """score == tolerance_eff must yield clean or warning, never critical (§2.3).
+
+    Tolerance is the maximum acceptable value, inclusive — score > tolerance triggers
+    critical, score == tolerance does not.
+    """
+    # Score a known-drift fingerprint against the pure_utility domain to get a
+    # concrete drift_score value, then pin tolerance exactly to that score.
+    probe_fp = PatternFingerprint(
+        domain="cgis.extractors",
+        hub_count=0,  # violates min:1 → guaranteed nonzero drift
+        star_count=0,
+        chain_len=0.0,
+        dag_depth=0,
+        router_count=0,
+        cycle_ratio=0.0,
+        unresolved_ratio=0.0,
+        node_count=10,
+        edge_count=5,
+    )
+    probe_domain = DomainConfig(
+        name="probe",
+        fqn_prefix="cgis.extractors",
+        expected_pattern="pure_utility",
+        drift_tolerance=1.0,  # wide-open to get the raw score
+    )
+    measured_score = scorer.score(probe_fp, probe_domain).drift_score
+
+    # Build a domain whose tolerance is exactly the measured score.
+    boundary_domain = DomainConfig(
+        name="boundary",
+        fqn_prefix="cgis.extractors",
+        expected_pattern="pure_utility",
+        drift_tolerance=measured_score,
+    )
+    report = scorer.score(probe_fp, boundary_domain)
+    # score == tolerance → must NOT be critical (tolerance is inclusive upper bound).
+    assert report.status != "critical", (
+        f"score {report.drift_score} == tolerance {report.tolerance} must not be critical"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Single-source hygiene violations — no double-reporting (#221 colleague 🟠1)
+# ---------------------------------------------------------------------------
+
+
+def test_acknowledged_domain_has_exactly_one_cycle_ratio_violation(
+    scorer: DriftScorer,
+) -> None:
+    """Acknowledged-debt domain: violations contain EXACTLY ONE cycle_ratio entry.
+
+    The raw merged-path breach string ("cycle_ratio ... > max 0.0") must be
+    suppressed; only the acknowledgment note from _hygiene_check survives.
+    """
+    domain = DomainConfig(
+        name="ack",
+        fqn_prefix="cgis.extractors",
+        expected_pattern="pure_utility",
+        drift_tolerance=0.5,
+        hygiene_baseline={"cycle_ratio": 0.10},
+    )
+    fp = PatternFingerprint(
+        domain="cgis.extractors",
+        hub_count=1,
+        star_count=0,
+        chain_len=0.0,
+        dag_depth=0,
+        router_count=0,
+        cycle_ratio=0.07,  # within baseline 0.10 → acknowledged, not gate_failed
+        unresolved_ratio=0.0,
+        node_count=20,
+        edge_count=10,
+    )
+    report = scorer.score(fp, domain)
+    cycle_entries = [v for v in report.violations if "cycle_ratio" in v]
+    assert len(cycle_entries) == 1, (
+        f"Expected exactly 1 cycle_ratio violation entry, got {cycle_entries}"
+    )
+    assert "acknowledged" in cycle_entries[0], (
+        f"The single entry must be the acknowledgment note, got: {cycle_entries[0]!r}"
+    )
+
+
+def test_breaching_domain_has_exactly_one_hygiene_breach_string(
+    scorer: DriftScorer,
+) -> None:
+    """Breaching domain: violations contain EXACTLY ONE cycle_ratio entry — the hygiene breach.
+
+    The raw merged-path string ("cycle_ratio ... > max 0.0") must be suppressed;
+    the hygiene breach from _hygiene_check ("hygiene cycle_ratio ... violates max 0.0")
+    is the sole cycle_ratio entry.
+    """
+    domain = DomainConfig(
+        name="breach",
+        fqn_prefix="cgis.extractors",
+        expected_pattern="pure_utility",
+        drift_tolerance=0.5,
+    )
+    fp = PatternFingerprint(
+        domain="cgis.extractors",
+        hub_count=1,
+        star_count=0,
+        chain_len=0.0,
+        dag_depth=0,
+        router_count=0,
+        cycle_ratio=0.07,  # > hygiene max 0.0 → gate_failed
+        unresolved_ratio=0.0,
+        node_count=20,
+        edge_count=10,
+    )
+    report = scorer.score(fp, domain)
+    assert report.status == "gate_failed"
+    cycle_entries = [v for v in report.violations if "cycle_ratio" in v]
+    assert len(cycle_entries) == 1, (
+        f"Expected exactly 1 cycle_ratio violation entry, got {cycle_entries}"
+    )
+    assert cycle_entries[0].startswith("hygiene cycle_ratio"), (
+        f"The single entry must be the hygiene breach string, got: {cycle_entries[0]!r}"
+    )

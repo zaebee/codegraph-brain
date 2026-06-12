@@ -846,10 +846,10 @@ def test_structure_resolves_suffix(tmp_path: Path) -> None:
 
 def test_status_label_empty_and_no_signal() -> None:
     """Status-driven labels precede score-driven ones (#178)."""
-    assert "EMPTY" in _drift_status_label(0.0, 0.5, status="empty")
-    assert "no signal" in _drift_status_label(0.0, 0.5, status="no_signal")
-    assert "clean" in _drift_status_label(0.0, 0.5, status="clean")
-    assert "critical" in _drift_status_label(0.9, 0.5, status="critical")
+    assert "EMPTY" in _drift_status_label(status="empty")
+    assert "no signal" in _drift_status_label(status="no_signal")
+    assert "clean" in _drift_status_label(status="clean")
+    assert "critical" in _drift_status_label(status="critical")
 
 
 def _drift_db_and_patterns(tmp_path: Path, fqn_prefix: str = "nonexistent") -> tuple[str, str]:
@@ -1065,7 +1065,7 @@ def test_context_unknown_fqn_exits_nonzero(tmp_path: Path) -> None:
 
 def test_status_label_gate_failed() -> None:
     """gate_failed renders distinctly and precedes score-driven labels (spec §2.4)."""
-    label = _drift_status_label(0.0, 0.5, status="gate_failed")
+    label = _drift_status_label(status="gate_failed")
     assert "gate failed" in label
 
 

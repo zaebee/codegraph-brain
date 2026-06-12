@@ -354,12 +354,14 @@ class DriftScorer:
 
         ideal = None if domain.expected_pattern is None else self.ideal_for(domain.expected_pattern)
         layers = None if domain.profile is None else self.layers_for(domain.profile)
+        hygiene_keys: frozenset[str] = frozenset(hygiene.keys())
         if ideal is None or layers is None:
             return self._score_v1(
                 actual,
                 domain,
                 constraints,
                 self._weights_for(domain),
+                hygiene_keys=hygiene_keys,
                 gate_violations=gate_violations,
                 acknowledged=acknowledged,
                 tolerance_eff=tolerance_eff,
@@ -370,6 +372,7 @@ class DriftScorer:
             constraints,
             ideal,
             layers,
+            hygiene_keys=hygiene_keys,
             gate_violations=gate_violations,
             acknowledged=acknowledged,
             tolerance_eff=tolerance_eff,
@@ -382,6 +385,7 @@ class DriftScorer:
         constraints: dict[str, tuple[str, float]],
         weights: dict[str, float],
         *,
+        hygiene_keys: frozenset[str],
         gate_violations: list[str],
         acknowledged: list[str],
         tolerance_eff: float,
@@ -396,9 +400,24 @@ class DriftScorer:
                 tolerance_eff=tolerance_eff,
             )
 
-        drift_sum, violations, ideal_overrides = self._weighted_constraint_drift(
+        drift_sum, raw_violations, ideal_overrides = self._weighted_constraint_drift(
             actual, constraints, weights
         )
+        # Filter merged-path violations for hygiene keys that _hygiene_check already
+        # reported — suppress double-reporting (e.g. "cycle_ratio 0.07 > max 0.0"
+        # alongside "hygiene cycle_ratio 0.07 violates max 0.0").
+        # Only keys that produced a gate_violations or acknowledged entry are suppressed;
+        # a key that appears in both hygiene AND template but only breaches the TEMPLATE
+        # bound (not the hygiene bound) is NOT suppressed — its template violation is the
+        # sole reporter in that case.
+        hygiene_reported_keys = {
+            k for k in hygiene_keys if any(k in msg for msg in gate_violations + acknowledged)
+        }
+        violations = [
+            v
+            for v in raw_violations
+            if not any(v.startswith(k + " ") for k in hygiene_reported_keys)
+        ]
 
         all_violations = violations + gate_violations + acknowledged
         status: Literal["clean", "warning", "critical", "gate_failed", "empty", "no_signal"] = (
@@ -492,6 +511,7 @@ class DriftScorer:
         ideal: tuple[tuple[float, ...], tuple[float, ...]],
         layers: dict[str, float],
         *,
+        hygiene_keys: frozenset[str],
         gate_violations: list[str],
         acknowledged: list[str],
         tolerance_eff: float,
@@ -521,8 +541,18 @@ class DriftScorer:
             tv_cal, contribs = tv_distance(actual.t_calls, ideal[1], triad_w)
             violations.extend(self._triad_violations("T_calls", actual.t_calls, ideal[1], contribs))
 
-        gate_drift, v1_gate_violations = self._gate_drift(actual, domain, gates, discount)
-        violations.extend(v1_gate_violations)
+        gate_drift, raw_v1_violations = self._gate_drift(actual, domain, gates, discount)
+        # Filter v1 gate violations for hygiene keys that _hygiene_check already reported.
+        # Same logic as _score_v1: only suppress keys that gate_violations/acknowledged
+        # already covers; template-only violations on hygiene-named keys are kept.
+        hygiene_reported_keys = {
+            k for k in hygiene_keys if any(k in msg for msg in gate_violations + acknowledged)
+        }
+        violations.extend(
+            v
+            for v in raw_v1_violations
+            if not any(v.startswith(k + " ") for k in hygiene_reported_keys)
+        )
         all_violations = violations + gate_violations + acknowledged
 
         eff = {
