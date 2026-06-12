@@ -123,8 +123,10 @@ A domain's **drift score** combines, per the active profile's weights
    and template constraints (`dag_depth`, …).
 
 **Total-variation (TV) distance** between two 13-vectors `p`, `q` is
-`½ · Σ |pᵢ − qᵢ|` ∈ [0, 1] — 0 = identical shape, 1 = no overlap. Layers with
-zero connected triples are excluded and the rest renormalize.
+`½ · Σ wᵢ · |pᵢ − qᵢ|` — where `wᵢ` are per-triad weights from the profile's
+`triad_weights` (default `1.0`, i.e. plain TV ∈ [0, 1]; raising a weight makes a
+particular motif count for more). 0 = identical shape, 1 = no overlap. Layers
+with zero connected triples are excluded and the rest renormalize.
 
 ```
 measured census  ──TV──►  nearest pattern ideal  ──►  drift_score ∈ [0,1]
