@@ -56,14 +56,12 @@ def analyze_drift(
     rules that should apply regardless of which language graph is being measured.
     Omitting ``profile`` retains the score-everything default.
 
-    ``any_critical`` is True when:
-    - any domain report's ``drift_score >= max_drift`` (enforce-blind, pre-existing
-      semantics — full precedence rework is #170, deliberately untouched here), OR
-    - any ENFORCED project domain has status ``"empty"`` (spec §2.3): a broken
-      ``fqn_prefix`` ontology must not silently pass CI; ``enforce: false`` stays
-      observe-only, OR
-    - any ENFORCED quotient binding exceeds ``max_drift`` or has status ``"empty"``.
-    ``"no_signal"`` never trips the gate.
+    ``any_critical`` is True when any ENFORCED binding has status in
+    ``{"critical", "gate_failed", "empty"}`` (spec §2.3, #170B).  The
+    per-domain ``drift_tolerance`` determines whether a score yields
+    ``"critical"``; ``max_drift`` is the fallback default tolerance for domains
+    that do not declare their own (``drift_tolerance`` is no longer a global cap).
+    ``"no_signal"`` never trips the gate.  ``enforce: false`` stays observe-only.
 
     For each ``"empty"`` report, the ``note`` field is decorated with closest-prefix
     suggestions from the suffix index (spec §2.4).
@@ -92,7 +90,10 @@ def analyze_drift(
     quotient: list[tuple[DomainConfig, DriftReport]] = []
     with SQLiteStore(db_path) as store:
         extractor = FingerprintExtractor(store)
-        reports = [scorer.score(extractor.extract(domain.fqn_prefix), domain) for domain in domains]
+        reports = [
+            scorer.score(extractor.extract(domain.fqn_prefix), domain, default_tolerance=max_drift)
+            for domain in domains
+        ]
         reports = [
             dataclasses.replace(r, note=_empty_note(store, r.fqn_prefix))
             if r.status == "empty"
@@ -108,7 +109,8 @@ def analyze_drift(
             qnodes, qedges = build_quotient(store.get_all_nodes(), store.get_all_edges(), domains)
             q_extractor = FingerprintExtractor.from_graph(qnodes, qedges)
             quotient = [
-                (b, scorer.score(q_extractor.extract(b.fqn_prefix), b)) for b in level_bindings
+                (b, scorer.score(q_extractor.extract(b.fqn_prefix), b, default_tolerance=max_drift))
+                for b in level_bindings
             ]
             quotient = [
                 (b, dataclasses.replace(r, note=_empty_note(store, r.fqn_prefix)))
@@ -117,16 +119,13 @@ def analyze_drift(
                 for b, r in quotient
             ]
 
-    # "empty" on an ENFORCED binding (project domain or quotient) is always
-    # critical regardless of score (spec §2.3): a broken fqn_prefix ontology
-    # must not silently pass CI. enforce: false stays observe-only. The
-    # score term below is enforce-blind for project domains — pre-existing
-    # semantics, deliberately untouched here (#170). "no_signal" never trips.
-    any_critical = (
-        any(r.drift_score >= max_drift for r in reports)
-        or any(r.status == "empty" for d, r in zip(domains, reports, strict=True) if d.enforce)
-        or any(
-            (r.drift_score >= max_drift or r.status == "empty") for b, r in quotient if b.enforce
-        )
-    )
+    # Gate is now uniformly status-based and enforce-respecting (spec §2.3,
+    # #170B): 'critical' and 'gate_failed' on enforced bindings trip any_critical;
+    # 'empty' on enforced bindings also trips it (broken fqn_prefix must not
+    # silently pass CI). 'no_signal' never trips. enforce:false stays observe-only.
+    any_critical = any(
+        r.status in ("critical", "gate_failed", "empty")
+        for d, r in zip(domains, reports, strict=True)
+        if d.enforce
+    ) or any(r.status in ("critical", "gate_failed", "empty") for b, r in quotient if b.enforce)
     return DriftAnalysis(reports=reports, quotient=quotient, any_critical=any_critical)

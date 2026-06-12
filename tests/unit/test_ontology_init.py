@@ -4,12 +4,17 @@ from pathlib import Path
 
 import pytest
 import yaml
-from conftest import make_chain_nodes_edges
+from conftest import make_chain_nodes_edges, module_with_funcs
 
 from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeType
 from cgis.query.drift_service import analyze_drift
-from cgis.query.fingerprint import FingerprintExtractor
-from cgis.query.ontology_init import _DEFAULT_ONTOLOGY_HEADER, discover_domains, propose_ontology
+from cgis.query.fingerprint import FingerprintExtractor, PatternFingerprint
+from cgis.query.ontology_init import (
+    _DEFAULT_ONTOLOGY_HEADER,
+    _baseline_lines,
+    discover_domains,
+    propose_ontology,
+)
 from cgis.storage.sqlite_store import SQLiteStore
 
 
@@ -221,3 +226,103 @@ def test_hygiene_only_cyclic_domain_round_trips(tmp_path: Path) -> None:
         assert r.drift_score <= r.tolerance + 1e-9, (
             f"{r.fqn_prefix}: {r.drift_score} > {r.tolerance}"
         )
+
+
+# ---------------------------------------------------------------------------
+# hygiene_baseline emission in init-ontology (#176/#170 task 4)
+# ---------------------------------------------------------------------------
+
+
+def test_cyclic_domain_proposal_emits_baseline_and_round_trips(tmp_path: Path) -> None:
+    """A domain with an intra-domain import cycle gets an acknowledged baseline (spec §2.2).
+
+    The emitted value is _ceil2'd UP (colleague catch: flooring below the true
+    measurement would gate_fail the proposal on its own graph).
+    Round-trip guarantee: analyze_drift on the proposal yields no gate_failed
+    and any_critical is False.
+    """
+    db = str(tmp_path / "cyc.db")
+    # Two modules importing each other + enough functions to clear min_nodes:
+    nodes: list[Node] = []
+    edges: list[Edge] = []
+    for mod, n in (("app.loop.a", 6), ("app.loop.b", 6)):
+        nodes += module_with_funcs(mod, f"{mod.replace('.', '/')}.py", n)
+    edges += [
+        Edge(id="c1", source="app.loop.a", target="app.loop.b", type=EdgeType.IMPORTS),
+        Edge(id="c2", source="app.loop.b", target="app.loop.a", type=EdgeType.IMPORTS),
+    ]
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)
+    # depth=2 forces app.loop as the domain prefix (auto-descent would discover
+    # app.loop.a and app.loop.b as separate single-file domains, each with a
+    # cross-domain cycle_ratio of 0.0 — Task 1 semantics).  With depth=2, the
+    # unified domain has all 14 nodes and an intra-domain cycle_ratio > 0.
+    text = propose_ontology(db, min_nodes=10, depth=2)
+    assert "hygiene_baseline" in text
+    assert "acknowledged at baseline by init-ontology" in text
+    out = tmp_path / "p.yaml"
+    out.write_text(text)
+    analysis = analyze_drift(db, str(out))
+    assert analysis.any_critical is False
+    assert all(r.status != "gate_failed" for r in analysis.reports)
+
+
+# ---------------------------------------------------------------------------
+# _baseline_lines: operator-aware rounding (#221 review, spec §2.2)
+# ---------------------------------------------------------------------------
+
+
+def _fp(**kwargs: object) -> PatternFingerprint:
+    """Minimal PatternFingerprint factory for _baseline_lines tests."""
+    defaults: dict[str, object] = {
+        "domain": "test",
+        "hub_count": 0,
+        "star_count": 0,
+        "chain_len": 0.0,
+        "dag_depth": 0,
+        "router_count": 0,
+        "cycle_ratio": 0.0,
+        "unresolved_ratio": 0.0,
+    }
+    defaults.update(kwargs)
+    return PatternFingerprint(**defaults)  # type: ignore[arg-type]
+
+
+def test_baseline_lines_max_rounds_up() -> None:
+    """max constraint: measured value is ceiled (rounds UP) so the baseline >= measured."""
+    # cycle_ratio 0.073 → ceil2 = 0.08, not 0.07.
+    hygiene: dict[str, object] = {"cycle_ratio": {"max": 0.0}}
+    fp = _fp(cycle_ratio=0.073)
+    lines = _baseline_lines(fp, hygiene=hygiene)
+    assert len(lines) == 1
+    assert "cycle_ratio: 0.08" in lines[0]
+
+
+def test_baseline_lines_min_rounds_down() -> None:
+    """min constraint: measured value is floored (rounds DOWN) so baseline <= measured.
+
+    Without this fix, _ceil2 would produce a value ABOVE the true measurement,
+    which would gate_fail the proposal (the round-trip would show the acknowledged
+    baseline as a new breach since baseline > measured).
+    """
+    # synthetic hygiene with a min key; measured 0.856 → floor2 = 0.85 (not ceil = 0.86)
+    hygiene: dict[str, object] = {"chain_len": {"min": 1.0}}
+    fp = _fp(chain_len=0.856)
+    lines = _baseline_lines(fp, hygiene=hygiene)
+    assert len(lines) == 1
+    assert "chain_len: 0.85" in lines[0]
+
+
+def test_baseline_lines_exact_skipped() -> None:
+    """exact constraint breaches are skipped — pinning would re-fail on improvement."""
+    hygiene: dict[str, object] = {"router_count": {"exact": 0.0}}
+    fp = _fp(router_count=2)  # 2 != 0 → breach
+    lines = _baseline_lines(fp, hygiene=hygiene)
+    assert lines == [], "exact breaches must not emit baseline lines"
+
+
+def test_baseline_lines_no_breach_returns_empty() -> None:
+    """Compliant fingerprints produce no baseline lines."""
+    hygiene: dict[str, object] = {"cycle_ratio": {"max": 0.0}, "unresolved_ratio": {"max": 0.2}}
+    fp = _fp(cycle_ratio=0.0, unresolved_ratio=0.1)
+    assert _baseline_lines(fp, hygiene=hygiene) == []

@@ -1,8 +1,13 @@
 """Unit tests for PatternFingerprint and FingerprintExtractor."""
 
+from pathlib import Path
+
 import pytest
+from conftest import module_with_funcs
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
+from cgis.extractors.python_extractor import PythonExtractor
+from cgis.pipeline import IngestionPipeline
 from cgis.query.fingerprint import FingerprintExtractor, PatternFingerprint
 from cgis.query.triads import TRIAD_ORDER
 from cgis.storage.sqlite_store import SQLiteStore
@@ -347,3 +352,91 @@ def test_hand_built_fingerprint_defaults_are_measurable() -> None:
     )
     assert fp.node_count == 1
     assert fp.edge_count == 1
+
+
+# ---------------------------------------------------------------------------
+# intra-domain cycle_ratio (#176)
+# ---------------------------------------------------------------------------
+
+
+def test_single_file_domain_in_cross_cycle_has_zero_cycle_ratio() -> None:
+    """The httpx case: a one-file domain inside a CROSS-domain import cycle → 0.0."""
+    nodes = module_with_funcs("pkg.alpha", "pkg/alpha.py", 3) + module_with_funcs(
+        "pkg.beta", "pkg/beta.py", 3
+    )
+    edges = [
+        Edge(id="i1", source="pkg.alpha", target="pkg.beta", type=EdgeType.IMPORTS),
+        Edge(id="i2", source="pkg.beta", target="pkg.alpha", type=EdgeType.IMPORTS),
+    ]
+    with _store(nodes, edges) as store:
+        fp = FingerprintExtractor(store).extract("pkg.alpha")
+    assert fp.cycle_ratio == pytest.approx(
+        0.0
+    )  # the cycle is cross-domain; not this domain's smell
+
+
+def test_intra_domain_cycle_counts_blast_radius() -> None:
+    """Two modules of ONE domain importing each other → their nodes count."""
+    nodes = (
+        module_with_funcs("app.svc.a", "app/svc/a.py", 2)
+        + module_with_funcs("app.svc.b", "app/svc/b.py", 2)
+        + module_with_funcs("app.svc.clean", "app/svc/clean.py", 2)
+    )
+    edges = [
+        Edge(id="i1", source="app.svc.a", target="app.svc.b", type=EdgeType.IMPORTS),
+        Edge(id="i2", source="app.svc.b", target="app.svc.a", type=EdgeType.IMPORTS),
+        Edge(id="i3", source="app.svc.clean", target="app.svc.a", type=EdgeType.IMPORTS),
+    ]
+    with _store(nodes, edges) as store:
+        fp = FingerprintExtractor(store).extract("app.svc")
+    # 6 of 9 nodes live in the two cyclic files (module + 2 funcs each)
+    assert fp.cycle_ratio == pytest.approx(6 / 9)
+
+
+def test_acyclic_domain_keeps_zero() -> None:
+    """A chain of imports inside one domain stays 0.0."""
+    nodes = module_with_funcs("lib.x", "lib/x.py", 1) + module_with_funcs("lib.y", "lib/y.py", 1)
+    edges = [Edge(id="i1", source="lib.x", target="lib.y", type=EdgeType.IMPORTS)]
+    with _store(nodes, edges) as store:
+        fp = FingerprintExtractor(store).extract("lib")
+    assert fp.cycle_ratio == pytest.approx(0.0)
+
+
+# ---------------------------------------------------------------------------
+# Pipeline-ingested cycle integration test (#221 colleague refuted-finding)
+# Guards the resolver-uplift assumption: raw IMPORTS targets get resolved to
+# file-node ids so Tarjan SCC can find the cycle.
+# ---------------------------------------------------------------------------
+
+
+def test_pipeline_ingested_mutual_imports_produce_nonzero_cycle_ratio(
+    tmp_path: Path,
+) -> None:
+    """Two real .py files with mutual imports → cycle_ratio > 0 after full pipeline.
+
+    This is an integration-level check: the extractor emits raw IMPORTS edges,
+    the resolver resolves them to file-node FQNs, and FingerprintExtractor.extract
+    must see the cycle in the intra-domain IMPORTS subgraph.
+    """
+    pkg = tmp_path / "mypkg"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("", encoding="utf-8")
+    (pkg / "alpha.py").write_text(
+        "from mypkg.beta import beta_val\nalpha_val = 1\n", encoding="utf-8"
+    )
+    (pkg / "beta.py").write_text(
+        "from mypkg.alpha import alpha_val\nbeta_val = 2\n", encoding="utf-8"
+    )
+
+    db_path = str(tmp_path / "graph.db")
+    pipeline = IngestionPipeline({".py": PythonExtractor()})
+    with SQLiteStore(db_path) as store:
+        pipeline.run(str(tmp_path), store=store)
+
+    with SQLiteStore(db_path) as store:
+        fp = FingerprintExtractor(store).extract("mypkg")
+
+    assert fp.cycle_ratio > 0, (
+        "mypkg.alpha and mypkg.beta mutually import each other — "
+        "cycle_ratio must be > 0 after pipeline ingestion with resolver uplift"
+    )

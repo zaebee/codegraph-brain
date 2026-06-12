@@ -209,6 +209,11 @@ def _ceil2(x: float) -> float:
     return math.ceil(x * 100) / 100
 
 
+def _floor2(x: float) -> float:
+    """Floor x to 2 decimal places (min-constraint baseline rounding — always rounds down)."""
+    return math.floor(x * 100) / 100
+
+
 def _hygiene_score(
     fp: PatternFingerprint, prefix: str, scorer: DriftScorer, profile: str | None
 ) -> float:
@@ -228,6 +233,53 @@ def _hygiene_score(
         drift_tolerance=1.0,
     )
     return scorer.score(fp, cfg).drift_score
+
+
+def _baseline_lines(
+    fp: PatternFingerprint,
+    hygiene: dict[str, object] | None = None,
+) -> list[str]:
+    """Return YAML lines for a ``hygiene_baseline:`` block, if any key breaches its global bound.
+
+    For each hygiene key, if the measured fingerprint value breaches the GLOBAL bound
+    (max → measured > bound; min → measured < bound; exact → skipped entirely),
+    the key is collected with an operator-correct rounded value.
+
+    Rounding is operator-aware (spec §2.2, #221 review):
+    - ``max`` constraints: round UP via ``_ceil2`` — a floored value below the true
+      measurement would gate_fail the proposal on its own graph (the round-trip guarantee).
+    - ``min`` constraints: round DOWN via ``_floor2`` — a ceiled value above the true
+      measurement would gate_fail the proposal on its own graph.
+    - ``exact`` constraints: SKIPPED — an exact-bound acknowledgment would pin the value
+      and re-fail on improvement; exact breaches remain visible as gate_failed in the
+      proposal and cannot be acknowledged by init-ontology by design.
+
+    ``hygiene``: optional parsed hygiene mapping (for testing); defaults to the bundled
+    ``_PARSED_HEADER["hygiene"]`` block when not supplied.
+    Returns an empty list when no key breaches its bound.
+    """
+    if hygiene is None:
+        _hygiene_obj = _PARSED_HEADER.get("hygiene") or {}
+        hygiene = _hygiene_obj if isinstance(_hygiene_obj, dict) else {}
+    items: list[str] = []
+    for key, constraint in hygiene.items():
+        if not isinstance(constraint, dict):
+            continue
+        measured = float(getattr(fp, key, 0.0))
+        if "max" in constraint and measured > float(constraint["max"]):
+            rounded = _ceil2(measured)
+            items.append(
+                f"      {key}: {rounded}"
+                "  # acknowledged at baseline by init-ontology — ratchet down over time"
+            )
+        elif "min" in constraint and measured < float(constraint["min"]):
+            rounded = _floor2(measured)
+            items.append(
+                f"      {key}: {rounded}"
+                "  # acknowledged at baseline by init-ontology — ratchet down over time"
+            )
+        # exact: skipped — pins value and would re-fail on improvement; unacknowledgeable by design.
+    return items
 
 
 def _domain_entry(
@@ -289,6 +341,13 @@ def _domain_entry(
         lines.append(f"    expected_pattern: {best_name}")
     lines.append(f"    profile: {profile}{profile_suffix}")
     lines.append(f"    drift_tolerance: {tolerance:.2f}  {comment}")
+
+    # Emit hygiene_baseline for any measured value that breaches the GLOBAL hygiene bound
+    # (spec §2.2, #176/#170 task 4).  Applies to BOTH labeled and hygiene-only entries.
+    baseline_items = _baseline_lines(fp)
+    if baseline_items:
+        lines.append("    hygiene_baseline:")
+        lines.extend(baseline_items)
 
     return "\n".join(lines)
 

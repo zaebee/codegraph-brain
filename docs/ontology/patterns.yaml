@@ -6,6 +6,10 @@ version: "2.1.0"
 # requires --profile (e.g. `cgis drift --profile python`) or the
 # other-language domains fail loudly as EMPTY. That loud failure is the
 # feature: a silent zero-match green is how mis-targeted ontologies hide.
+# NOTE (#170): per-domain drift_tolerance takes precedence; the CLI/MCP
+# max_drift is only the default for domains that omit it. Hygiene breaches
+# force gate_failed regardless of the TV score; acknowledged debt may be
+# declared per-domain via hygiene_baseline (ratchet-down convention, #151).
 
 # ── Measurement profiles (spec §2.3, §3.3) ───────────────────────────────────
 # drift_weights: v1 per-component weights — now used ONLY for the gate term

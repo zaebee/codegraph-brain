@@ -2,7 +2,7 @@
 
 Plain importable functions (no pytest fixtures) so any test module can do::
 
-    from conftest import make_chain_db, make_chain_nodes_edges
+    from conftest import make_chain_db, make_chain_nodes_edges, module_with_funcs
 """
 
 from pathlib import Path
@@ -42,6 +42,42 @@ def make_chain_nodes_edges(prefix: str, count: int) -> tuple[list[Node], list[Ed
         for i in range(count - 1)
     ]
     return nodes, edges
+
+
+def module_with_funcs(prefix: str, fname: str, n_funcs: int) -> list[Node]:
+    """One MODULE node + n FUNCTION children, all sharing ``fname`` as file_path.
+
+    Promoted to conftest to avoid Sonar duplication across test_fingerprint,
+    test_cli, and test_ontology_init (spec §176/#170 task 3 Sonar lesson).
+
+    Args:
+        prefix:  FQN of the module node (e.g. ``"app.svc.a"``).
+        fname:   Relative file path shared by the module and all its children.
+        n_funcs: Number of FUNCTION children to create.
+
+    Returns:
+        A list: one MODULE node followed by ``n_funcs`` FUNCTION nodes.
+    """
+    mod = Node(
+        id=prefix,
+        type=NodeType.MODULE,
+        name=prefix.rsplit(".", maxsplit=1)[-1],
+        file_path=fname,
+        start_line=1,
+        end_line=99,
+    )
+    funcs = [
+        Node(
+            id=f"{prefix}.f{i}",
+            type=NodeType.FUNCTION,
+            name=f"f{i}",
+            file_path=fname,
+            start_line=i + 1,
+            end_line=i + 2,
+        )
+        for i in range(n_funcs)
+    ]
+    return [mod, *funcs]
 
 
 def make_chain_db(tmp_path: Path, prefix: str = "app.chain", count: int = 12) -> str:

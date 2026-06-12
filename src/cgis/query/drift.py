@@ -23,8 +23,6 @@ _COMPONENT_NAMES = (
 
 _CALLS_LAYER = frozenset({"hub_count", "star_count", "chain_len", "router_count"})
 
-_STATUS_WARNING = 0.20
-_STATUS_CRITICAL = 0.50
 _TRIAD_VIOLATION_THRESHOLD = 0.05
 
 
@@ -35,9 +33,12 @@ class DomainConfig:
     name: str
     fqn_prefix: str
     expected_pattern: str | None
-    drift_tolerance: float
+    drift_tolerance: float | None = None
     profile: str | None = None
     params: dict[str, float] = field(default_factory=dict)
+    # Acknowledged hygiene debt: per-constraint relaxed bound (ratchet-down
+    # convention; values may only decrease over time). Spec §2.2.
+    hygiene_baseline: dict[str, float] = field(default_factory=dict)
     # When False the domain is audited but violations never block CI.
     enforce: bool = True
 
@@ -53,7 +54,7 @@ class DriftReport:
     ideal: PatternFingerprint
     drift_score: float
     violations: list[str]
-    status: Literal["clean", "warning", "critical", "empty", "no_signal"]
+    status: Literal["clean", "warning", "critical", "gate_failed", "empty", "no_signal"]
     tolerance: float
     tv_imports: float | None = None
     tv_calls: float | None = None
@@ -70,13 +71,13 @@ def _clip_discount(actual: PatternFingerprint) -> float:
     return max(0.0, min(1.0 - actual.unresolved_ratio, 1.0))
 
 
-def _classify(score: float) -> Literal["clean", "warning", "critical"]:
-    """Return status label based on drift score thresholds."""
-    if score < _STATUS_WARNING:
-        return "clean"
-    if score < _STATUS_CRITICAL:
+def _classify(score: float, tolerance: float) -> Literal["clean", "warning", "critical"]:
+    """Status from the score RELATIVE to the binding's effective tolerance (#170B)."""
+    if score > tolerance:
+        return "critical"
+    if score > 0.75 * tolerance:
         return "warning"
-    return "critical"
+    return "clean"
 
 
 def _validate_mapping(node: object, owner: str) -> dict[str, Any]:
@@ -134,15 +135,41 @@ class DriftScorer:
 
     def _build_domain_config(self, d: dict[str, Any], *, enforce_default: bool) -> DomainConfig:
         """Build one DomainConfig from a YAML binding dict."""
+        raw_tol = d.get("drift_tolerance")
+        tolerance = float(raw_tol) if raw_tol is not None else None
+        hygiene_baseline = self._parse_hygiene_baseline(d)
         return DomainConfig(
             name=d["name"],
             fqn_prefix=d["fqn_prefix"],
             expected_pattern=d.get("expected_pattern"),
-            drift_tolerance=float(d["drift_tolerance"]),
+            drift_tolerance=tolerance,
             profile=d.get("profile"),
             params=self._load_params(d),
+            hygiene_baseline=hygiene_baseline,
             enforce=bool(d.get("enforce", enforce_default)),
         )
+
+    def _parse_hygiene_baseline(self, d: dict[str, Any]) -> dict[str, float]:
+        """Parse and validate the hygiene_baseline block from a domain binding dict.
+
+        Raises ValueError if any baseline key is not a valid hygiene constraint key.
+        """
+        raw = d.get("hygiene_baseline")
+        if raw is None:
+            return {}
+        mapping = _validate_mapping(raw, f"Domain '{d.get('name', '?')}' hygiene_baseline")
+        hygiene_keys = set(self._parse_constraints(self._hygiene, {}).keys())
+        result: dict[str, float] = {}
+        for key, val in mapping.items():
+            if key not in hygiene_keys:
+                valid = sorted(hygiene_keys)
+                msg = (
+                    f"hygiene_baseline key '{key}' in domain '{d.get('name', '?')}' "
+                    f"names no hygiene constraint; valid keys: {valid}"
+                )
+                raise ValueError(msg)
+            result[key] = float(val)
+        return result
 
     def load_project_domains(self) -> list[DomainConfig]:
         """Return all project domains declared in patterns.yaml."""
@@ -289,21 +316,67 @@ class DriftScorer:
             raise TypeError(msg)
         return found, self._merge_params(found, domain)
 
-    def score(self, actual: PatternFingerprint, domain: DomainConfig) -> DriftReport:
-        """Compute the drift score and return a DriftReport (v2 when configured)."""
+    def score(
+        self,
+        actual: PatternFingerprint,
+        domain: DomainConfig,
+        default_tolerance: float = 0.50,
+    ) -> DriftReport:
+        """Compute the drift score and return a DriftReport (v2 when configured).
+
+        Hygiene and template constraints are evaluated SEPARATELY (spec §2.2):
+        hygiene violations against operator-aware baseline-relaxed bounds force
+        status='gate_failed'; template violations keep score-driven classification.
+        The SCORE math (merged constraint dict) is unchanged from prior behaviour.
+
+        ``default_tolerance`` is the fallback when ``domain.drift_tolerance is None``
+        — callers (CLI, MCP) pass ``max_drift`` here; the per-domain value takes
+        precedence when declared (#170B).
+        """
+        tolerance_eff = (
+            domain.drift_tolerance if domain.drift_tolerance is not None else default_tolerance
+        )
         if actual.node_count == 0:
-            return self._signal_report(actual, domain, status="empty")
+            return self._signal_report(actual, domain, status="empty", tolerance_eff=tolerance_eff)
         if actual.edge_count == 0:
-            return self._signal_report(actual, domain, status="no_signal")
+            return self._signal_report(
+                actual, domain, status="no_signal", tolerance_eff=tolerance_eff
+            )
         template, params = self._resolve_template(domain)
         hygiene = self._parse_constraints(self._hygiene, {})
-        constraints = {**hygiene, **self._parse_constraints(template, params)}
+        template_constraints = self._parse_constraints(template, params)
+        # SCORE math unchanged: merged dict feeds v1/v2 paths.
+        constraints = {**hygiene, **template_constraints}
+
+        # STATUS: hygiene evaluated separately with baseline-relaxed effective bounds.
+        hygiene_eff = self._apply_baseline(hygiene, domain.hygiene_baseline)
+        gate_violations, acknowledged = self._hygiene_check(actual, hygiene_eff, domain)
 
         ideal = None if domain.expected_pattern is None else self.ideal_for(domain.expected_pattern)
         layers = None if domain.profile is None else self.layers_for(domain.profile)
+        hygiene_keys: frozenset[str] = frozenset(hygiene.keys())
         if ideal is None or layers is None:
-            return self._score_v1(actual, domain, constraints, self._weights_for(domain))
-        return self._score_v2(actual, domain, constraints, ideal, layers)
+            return self._score_v1(
+                actual,
+                domain,
+                constraints,
+                self._weights_for(domain),
+                hygiene_keys=hygiene_keys,
+                gate_violations=gate_violations,
+                acknowledged=acknowledged,
+                tolerance_eff=tolerance_eff,
+            )
+        return self._score_v2(
+            actual,
+            domain,
+            constraints,
+            ideal,
+            layers,
+            hygiene_keys=hygiene_keys,
+            gate_violations=gate_violations,
+            acknowledged=acknowledged,
+            tolerance_eff=tolerance_eff,
+        )
 
     def _score_v1(
         self,
@@ -311,13 +384,44 @@ class DriftScorer:
         domain: DomainConfig,
         constraints: dict[str, tuple[str, float]],
         weights: dict[str, float],
+        *,
+        hygiene_keys: frozenset[str],
+        gate_violations: list[str],
+        acknowledged: list[str],
+        tolerance_eff: float,
     ) -> DriftReport:
         """V1 scoring: per-constraint weighted drift with CALLS-layer discount."""
         if not constraints:
-            return self._zero_drift_report(actual, domain)
+            return self._zero_drift_report(
+                actual,
+                domain,
+                gate_violations=gate_violations,
+                acknowledged=acknowledged,
+                tolerance_eff=tolerance_eff,
+            )
 
-        drift_sum, violations, ideal_overrides = self._weighted_constraint_drift(
+        drift_sum, raw_violations, ideal_overrides = self._weighted_constraint_drift(
             actual, constraints, weights
+        )
+        # Filter merged-path violations for hygiene keys that _hygiene_check already
+        # reported — suppress double-reporting (e.g. "cycle_ratio 0.07 > max 0.0"
+        # alongside "hygiene cycle_ratio 0.07 violates max 0.0").
+        # Only keys that produced a gate_violations or acknowledged entry are suppressed;
+        # a key that appears in both hygiene AND template but only breaches the TEMPLATE
+        # bound (not the hygiene bound) is NOT suppressed — its template violation is the
+        # sole reporter in that case.
+        hygiene_reported_keys = {
+            k for k in hygiene_keys if any(k in msg for msg in gate_violations + acknowledged)
+        }
+        violations = [
+            v
+            for v in raw_violations
+            if not any(v.startswith(k + " ") for k in hygiene_reported_keys)
+        ]
+
+        all_violations = violations + gate_violations + acknowledged
+        status: Literal["clean", "warning", "critical", "gate_failed", "empty", "no_signal"] = (
+            "gate_failed" if gate_violations else _classify(drift_sum, tolerance_eff)
         )
 
         ideal_fp = PatternFingerprint(
@@ -338,9 +442,9 @@ class DriftScorer:
             actual=actual,
             ideal=ideal_fp,
             drift_score=drift_sum,
-            violations=violations,
-            status=_classify(drift_sum),
-            tolerance=domain.drift_tolerance,
+            violations=all_violations,
+            status=status,
+            tolerance=tolerance_eff,
         )
 
     def _weighted_constraint_drift(
@@ -406,11 +510,18 @@ class DriftScorer:
         gates: dict[str, tuple[str, float]],
         ideal: tuple[tuple[float, ...], tuple[float, ...]],
         layers: dict[str, float],
+        *,
+        hygiene_keys: frozenset[str],
+        gate_violations: list[str],
+        acknowledged: list[str],
+        tolerance_eff: float,
     ) -> DriftReport:
         """Fingerprint v2 drift: layered TV distance + hard gates (spec §3.3).
 
         Every constraint reaching this path is treated as a hard gate — the
         topological shape itself is measured by the TV terms, not constraints.
+        Hygiene gate violations are threaded in from score() and take precedence
+        over score-driven classification (spec §2.2).
         """
         if domain.profile is None:  # layers presence implies a profile
             msg = "v2 scoring requires a profile on the domain binding."
@@ -430,8 +541,19 @@ class DriftScorer:
             tv_cal, contribs = tv_distance(actual.t_calls, ideal[1], triad_w)
             violations.extend(self._triad_violations("T_calls", actual.t_calls, ideal[1], contribs))
 
-        gate_drift, gate_violations = self._gate_drift(actual, domain, gates, discount)
-        violations.extend(gate_violations)
+        gate_drift, raw_v1_violations = self._gate_drift(actual, domain, gates, discount)
+        # Filter v1 gate violations for hygiene keys that _hygiene_check already reported.
+        # Same logic as _score_v1: only suppress keys that gate_violations/acknowledged
+        # already covers; template-only violations on hygiene-named keys are kept.
+        hygiene_reported_keys = {
+            k for k in hygiene_keys if any(k in msg for msg in gate_violations + acknowledged)
+        }
+        violations.extend(
+            v
+            for v in raw_v1_violations
+            if not any(v.startswith(k + " ") for k in hygiene_reported_keys)
+        )
+        all_violations = violations + gate_violations + acknowledged
 
         eff = {
             "imports": layers["imports"] if tv_imp is not None else 0.0,
@@ -446,6 +568,10 @@ class DriftScorer:
         total = sum(eff.values())
         drift = sum(eff[k] * terms[k] for k in eff) / total if total > 0.0 else 0.0
 
+        status: Literal["clean", "warning", "critical", "gate_failed", "empty", "no_signal"] = (
+            "gate_failed" if gate_violations else _classify(drift, tolerance_eff)
+        )
+
         return DriftReport(
             domain=domain.name,
             fqn_prefix=domain.fqn_prefix,
@@ -453,9 +579,9 @@ class DriftScorer:
             actual=actual,
             ideal=self._ideal_fingerprint_v2(domain, ideal),
             drift_score=drift,
-            violations=violations,
-            status=_classify(drift),
-            tolerance=domain.drift_tolerance,
+            violations=all_violations,
+            status=status,
+            tolerance=tolerance_eff,
             tv_imports=tv_imp,
             tv_calls=tv_cal,
         )
@@ -498,6 +624,8 @@ class DriftScorer:
         actual: PatternFingerprint,
         domain: DomainConfig,
         status: Literal["empty", "no_signal"],
+        *,
+        tolerance_eff: float,
     ) -> DriftReport:
         """Report for a domain with nothing to score: matched 0 nodes (empty)
         or matched nodes but 0 intra-domain edges (no_signal). Score is 0.0 by
@@ -511,11 +639,23 @@ class DriftScorer:
             drift_score=0.0,
             violations=[],
             status=status,
-            tolerance=domain.drift_tolerance,
+            tolerance=tolerance_eff,
         )
 
-    def _zero_drift_report(self, actual: PatternFingerprint, domain: DomainConfig) -> DriftReport:
-        """Return a clean zero-drift report for domains with no constraints."""
+    def _zero_drift_report(
+        self,
+        actual: PatternFingerprint,
+        domain: DomainConfig,
+        *,
+        gate_violations: list[str],
+        acknowledged: list[str],
+        tolerance_eff: float,
+    ) -> DriftReport:
+        """Return a zero-drift report for domains with no constraints.
+
+        Gate violations still force 'gate_failed' even when there are no
+        template constraints to score against.
+        """
         ideal_fp = PatternFingerprint(
             domain=domain.fqn_prefix,
             hub_count=0,
@@ -526,6 +666,10 @@ class DriftScorer:
             cycle_ratio=0.0,
             unresolved_ratio=0.0,
         )
+        all_violations = gate_violations + acknowledged
+        status: Literal["clean", "warning", "critical", "gate_failed", "empty", "no_signal"] = (
+            "gate_failed" if gate_violations else "clean"
+        )
         return DriftReport(
             domain=domain.name,
             fqn_prefix=domain.fqn_prefix,
@@ -533,10 +677,64 @@ class DriftScorer:
             actual=actual,
             ideal=ideal_fp,
             drift_score=0.0,
-            violations=[],
-            status="clean",
-            tolerance=domain.drift_tolerance,
+            violations=all_violations,
+            status=status,
+            tolerance=tolerance_eff,
         )
+
+    @staticmethod
+    def _apply_baseline(
+        hygiene: dict[str, tuple[str, float]],
+        baseline: dict[str, float],
+    ) -> dict[str, tuple[str, float]]:
+        """Relax hygiene bounds by the domain's acknowledged debt (spec §2.2).
+
+        Operator-aware: max-bounds take max(global, baseline), min-bounds take
+        min(global, baseline), exact-bounds are overridden — a baseline can
+        only ever RELAX, never tighten.
+        """
+        out = dict(hygiene)
+        for key, ack in baseline.items():
+            op, bound = out[key]  # key validity enforced at load time
+            if op == "max":
+                out[key] = (op, max(bound, ack))
+            elif op == "min":
+                out[key] = (op, min(bound, ack))
+            else:  # exact
+                out[key] = (op, ack)
+        return out
+
+    @staticmethod
+    def _hygiene_check(
+        actual: PatternFingerprint,
+        hygiene_eff: dict[str, tuple[str, float]],
+        domain: DomainConfig,
+    ) -> tuple[list[str], list[str]]:
+        """Return (breaches, acknowledgments) against the EFFECTIVE hygiene bounds.
+
+        A breach of any effective bound forces status='gate_failed' upstream.
+        A measurement over the GLOBAL bound but within the acknowledged
+        baseline produces a visibility note, not a breach.
+
+        Comparison directions mirror ``_score_constraint`` / ``_weighted_constraint_drift``:
+        max → actual > bound; min → actual < bound; exact → actual != bound.
+        """
+        breaches: list[str] = []
+        acknowledged: list[str] = []
+        for key, (op, bound) in hygiene_eff.items():
+            value = float(getattr(actual, key))
+            violated = (
+                (op == "max" and value > bound)
+                or (op == "min" and value < bound)
+                or (op == "exact" and value != bound)
+            )
+            if violated:
+                breaches.append(f"hygiene {key} {value:.4f} violates {op} {bound}")
+            elif key in domain.hygiene_baseline:
+                acknowledged.append(
+                    f"{key} {value:.4f} acknowledged (baseline {domain.hygiene_baseline[key]})"
+                )
+        return breaches, acknowledged
 
     @staticmethod
     def _score_constraint(

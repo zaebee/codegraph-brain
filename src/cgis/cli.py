@@ -870,21 +870,32 @@ def guardian_stats(
         console.print(f"  Overall precision : [cyan]{avg_precision}[/cyan]  ({rated_label})")
 
 
-def _drift_status_label(score: float, max_drift: float, status: str = "clean") -> str:
-    """Return a Rich-formatted status label; empty/no_signal override score (#178)."""
+def _drift_status_label(status: str = "clean") -> str:
+    """Return a Rich-formatted status label for a drift report entry.
+
+    ``gate_failed`` renders first and distinctly (spec §2.4, #170A).
+    ``empty`` and ``no_signal`` are status-driven and precede score-driven ones (#178).
+    Label derivation is fully status-driven.
+    """
+    if status == "gate_failed":
+        return "[bold red]⛔ gate failed[/bold red]"
     if status == "empty":
         return "[bold red]⛔ EMPTY[/bold red]"
     if status == "no_signal":
         return "[yellow]◌ no signal[/yellow]"
-    if score >= max_drift:
+    if status == "critical":
         return "[bold red]❌ critical[/bold red]"
-    if score >= 0.20:
+    if status == "warning":
         return "[yellow]⚠️  warning[/yellow]"
     return "[green]✅ clean[/green]"
 
 
-def _render_drift_table(reports: list[DriftReport], max_drift: float) -> None:
-    """Print an Architectural Drift Report table to the console."""
+def _render_drift_table(reports: list[DriftReport]) -> None:
+    """Print an Architectural Drift Report table to the console.
+
+    Each report carries its own effective tolerance (``r.tolerance``), so no
+    global ``max_drift`` parameter is needed here (#170B, spec §2.4).
+    """
     table = Table(title="Architectural Drift Report")
     table.add_column("Domain", style="cyan")
     table.add_column("Expected Pattern", style="dim")
@@ -899,7 +910,7 @@ def _render_drift_table(reports: list[DriftReport], max_drift: float) -> None:
             f"{r.drift_score:.2f}",
             f"{r.tv_imports:.2f}" if r.tv_imports is not None else "—",
             f"{r.tv_calls:.2f}" if r.tv_calls is not None else "—",
-            _drift_status_label(r.drift_score, max_drift, r.status),
+            _drift_status_label(r.status),
         )
         if r.note:
             table.add_row(f"[dim]{escape(r.note)}[/dim]", "", "", "", "", "")
@@ -923,7 +934,10 @@ def drift(
         "--max-drift",
         min=0.0,
         max=1.0,
-        help="Override critical threshold (default 0.50).",
+        help=(
+            "Default tolerance for domains that do not declare drift_tolerance "
+            "(no longer caps domains that do — see #170)."
+        ),
     ),
     profile: str | None = typer.Option(
         None,
@@ -964,11 +978,11 @@ def drift(
             raise typer.Exit(code=1)
         return
 
-    _render_drift_table(analysis.reports, max_drift)
+    _render_drift_table(analysis.reports)
 
     for b, qr in analysis.quotient:
         marker = "" if b.enforce else " [dim](observe-only)[/dim]"
-        status_label = _drift_status_label(qr.drift_score, max_drift, qr.status)
+        status_label = _drift_status_label(qr.status)
         console.print(
             f"Quotient k=1 \\[{b.name}] vs {qr.expected_pattern}: "
             f"drift={qr.drift_score:.2f} {status_label}{marker}"
