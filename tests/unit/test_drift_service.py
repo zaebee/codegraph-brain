@@ -399,3 +399,67 @@ def test_observe_only_quotient_empty_does_not_trip_any_critical(tmp_path: Path) 
     assert analysis.any_critical is False, (
         "observe-only quotient binding with status='empty' must not flip any_critical"
     )
+
+
+def test_enforced_quotient_empty_trips_any_critical(tmp_path: Path) -> None:
+    """enforce:true PROJECT_LEVEL quotient binding with mis-targeted prefix → empty, gate red.
+
+    Spec §2.3: when a project_level binding has enforce:true (or omits the key,
+    defaulting to True) and the quotient graph resolves to status=="empty", the
+    gate MUST fire — i.e. analysis.any_critical must be True.  This mirrors the
+    mechanics of test_observe_only_quotient_empty_does_not_trip_any_critical but
+    flips enforce to True (explicit, because project_level defaults to False) so
+    the empty result is treated as a critical violation.
+    """
+    # Replace `enforce: false` with `enforce: true` and mis-target the prefix.
+    # Note: project_level bindings default enforce=False, so we must set it explicitly.
+    yaml_text = _YAML_WITH_OBSERVE_ONLY_QUOTIENT.replace(
+        "    enforce: false", "    enforce: true"
+    ).replace('fqn_prefix: "quotient"', 'fqn_prefix: "totally.missing"')
+    patterns_file = tmp_path / "patterns.yaml"
+    patterns_file.write_text(yaml_text)
+
+    db = str(tmp_path / "g.db")
+    nodes = [
+        Node(
+            id="dom.alpha.x",
+            type=NodeType.FUNCTION,
+            name="x",
+            file_path="x.py",
+            start_line=1,
+            end_line=2,
+        ),
+        Node(
+            id="dom.beta.y",
+            type=NodeType.FUNCTION,
+            name="y",
+            file_path="y.py",
+            start_line=1,
+            end_line=2,
+        ),
+        Node(
+            id="dom.gamma.z",
+            type=NodeType.FUNCTION,
+            name="z",
+            file_path="z.py",
+            start_line=1,
+            end_line=2,
+        ),
+    ]
+    edges = [
+        Edge(id="e1", source="dom.alpha.x", target="dom.beta.y", type=EdgeType.CALLS),
+        Edge(id="e2", source="dom.alpha.x", target="dom.gamma.z", type=EdgeType.CALLS),
+        Edge(id="e3", source="dom.beta.y", target="dom.gamma.z", type=EdgeType.CALLS),
+    ]
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)
+
+    analysis = analyze_drift(db, str(patterns_file), max_drift=0.3)
+
+    assert len(analysis.quotient) == 1
+    q_binding, q_report = analysis.quotient[0]
+    assert q_binding.enforce is True
+    assert q_report.status == "empty"
+    assert analysis.any_critical is True, (
+        "enforced quotient binding with status='empty' must trip any_critical"
+    )
