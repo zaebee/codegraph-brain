@@ -2,7 +2,7 @@
 
 import pytest
 
-from cgis.core.models import EdgeType, NodeType
+from cgis.core.models import Edge, EdgeType, NodeType
 from cgis.extractors.python_extractor import PythonExtractor, file_path_to_module_fqn
 
 
@@ -604,3 +604,62 @@ class Config:
 
     assert not any(n.type == NodeType.VARIABLE for n in nodes)
     assert not any(e.type == EdgeType.DEPENDS_ON for e in edges)
+
+
+# ---------------------------------------------------------------------------
+# IMPORTS_SYMBOL emission (#161 slice 2)
+# ---------------------------------------------------------------------------
+
+
+def _symbol_edges(edges: list[Edge]) -> list[Edge]:
+    """Filter IMPORTS_SYMBOL edges (slice-2 helper)."""
+    return [e for e in edges if e.type == EdgeType.IMPORTS_SYMBOL]
+
+
+def test_from_import_emits_symbol_edge(extractor: PythonExtractor) -> None:
+    """`from a.b import X` emits IMPORTS_SYMBOL with raw_import: target at conf 0.1."""
+    _, edges = extractor.parse("from a.b import X\n", "src/pkg/mod.py")
+    sym = _symbol_edges(edges)
+    assert len(sym) == 1
+    assert sym[0].source == "src.pkg.mod"
+    assert sym[0].target == "raw_import:a.b.X"
+    assert sym[0].confidence == pytest.approx(0.1)
+
+
+def test_from_import_alias_symbol_edge_keeps_real_name(extractor: PythonExtractor) -> None:
+    """`from a import X as Y` — the local alias maps, but the edge targets the real symbol."""
+    _, edges = extractor.parse("from a import X as Y\n", "mod.py")
+    assert _symbol_edges(edges)[0].target == "raw_import:a.X"
+
+
+def test_relative_from_import_symbol_edge(extractor: PythonExtractor) -> None:
+    """`from .sib import X` inside pkg/mod.py resolves the dots to the sibling module."""
+    _, edges = extractor.parse("from .sib import X\n", "pkg/mod.py")
+    assert _symbol_edges(edges)[0].target == "raw_import:pkg.sib.X"
+
+
+def test_plain_import_emits_no_symbol_edge(extractor: PythonExtractor) -> None:
+    """`import os` stays module-level only — the imported name IS the module."""
+    _, edges = extractor.parse("import os\n", "mod.py")
+    assert _symbol_edges(edges) == []
+
+
+def test_wildcard_import_emits_no_symbol_edge(extractor: PythonExtractor) -> None:
+    """`from a.b import *` has no symbol list — nothing is emitted (spec §2.3)."""
+    _, edges = extractor.parse("from a.b import *\n", "mod.py")
+    assert _symbol_edges(edges) == []
+
+
+def test_multi_symbol_import_one_edge_each(extractor: PythonExtractor) -> None:
+    """`from a import X, Y` emits one IMPORTS_SYMBOL edge per imported name."""
+    _, edges = extractor.parse("from a import X, Y\n", "mod.py")
+    targets = {e.target for e in _symbol_edges(edges)}
+    assert targets == {"raw_import:a.X", "raw_import:a.Y"}
+
+
+def test_module_imports_edge_coexists_with_symbol_edges(extractor: PythonExtractor) -> None:
+    """The module-level IMPORTS edge is untouched — both granularities coexist."""
+    _, edges = extractor.parse("from a.b import X\n", "mod.py")
+    module_edges = [e for e in edges if e.type == EdgeType.IMPORTS]
+    assert len(module_edges) == 1
+    assert module_edges[0].target == "a.b"

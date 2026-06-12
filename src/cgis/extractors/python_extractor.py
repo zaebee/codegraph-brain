@@ -358,7 +358,22 @@ class PythonExtractor(BaseExtractor):
         )
 
         for local_name, sym in symbols:
-            import_map[local_name] = f"{base_module}.{sym}" if base_module else sym
+            target_fqn = f"{base_module}.{sym}" if base_module else sym
+            import_map[local_name] = target_fqn
+            # Symbol-level import edge (#161 slice 2): raw_import: candidates are
+            # resolved to an existing node by the ResolverEngine or DROPPED —
+            # they never leak into output (spec §2.2). Literal prefix mirrors
+            # the raw_dep:/raw_call: convention used elsewhere in this file.
+            edges.append(
+                Edge(
+                    id=f"{module_fqn}:imports_symbol:{target_fqn}",
+                    type=EdgeType.IMPORTS_SYMBOL,
+                    source=module_fqn,
+                    target=f"raw_import:{target_fqn}",
+                    confidence=0.1,
+                    file_path=file_path,
+                )
+            )
 
         if base_module:
             edges.append(
