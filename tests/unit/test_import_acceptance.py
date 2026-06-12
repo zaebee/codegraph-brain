@@ -60,19 +60,14 @@ def test_symbol_import_surfaces_importer_in_impact(import_graph_store: SQLiteSto
     impact_ids = {n.id for n in imp_nodes}
 
     # consumer module must appear in the impact set
-    consumer_matches = [nid for nid in impact_ids if nid.endswith("consumer")]
+    consumer_matches = [nid for nid in impact_ids if nid == "consumer" or nid.endswith(".consumer")]
     assert consumer_matches, (
         f"consumer module missing from impact of Router.\nImpact node ids: {sorted(impact_ids)}"
     )
     consumer_id = consumer_matches[0]
 
     # the connecting edge must be IMPORTS_SYMBOL with confidence 1.0
-    connecting = [
-        e
-        for e in imp_edges
-        if (e.source == consumer_id and e.target == router_id)
-        or (e.source == consumer_id and e.target.endswith("defs.Router"))
-    ]
+    connecting = [e for e in imp_edges if e.source == consumer_id and e.target == router_id]
     assert connecting, (
         f"No IMPORTS_SYMBOL edge from consumer to Router found in impact edges.\n"
         f"Impact edges: {[(e.source, e.target, e.type) for e in imp_edges]}"
