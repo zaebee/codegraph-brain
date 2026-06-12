@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
+from conftest import make_chain_db
 
 from cgis.api.mcp_server import (
     cgis_analyze_impact,
@@ -11,6 +13,7 @@ from cgis.api.mcp_server import (
     cgis_find_symbol,
     cgis_get_structure,
     cgis_ingest,
+    cgis_init_ontology,
     cgis_trace_flow,
     cgis_validate,
 )
@@ -521,3 +524,26 @@ def test_cgis_find_symbol_blank_kind_is_no_filter(tmp_path: Path) -> None:
     cgis_ingest(str(tmp_path), str(db))
     data = json.loads(cgis_find_symbol("get_user", str(db), kind="   "))
     assert any(d["name"] == "get_user" for d in data)
+
+
+# ---------------------------------------------------------------------------
+# cgis_init_ontology tests (#174 task 4)
+# ---------------------------------------------------------------------------
+
+
+def test_cgis_init_ontology_returns_yaml_text(tmp_path: Path) -> None:
+    """Returns parseable yaml with project_domains; writes NO files."""
+    db = make_chain_db(tmp_path)
+    before = set(tmp_path.iterdir())
+    result = cgis_init_ontology(db_path=db)
+    assert "project_domains:" in result
+    assert yaml.safe_load(result)["project_domains"]
+    assert set(tmp_path.iterdir()) == before  # read-only surface
+
+
+def test_cgis_init_ontology_missing_db_message(tmp_path: Path) -> None:
+    """Missing db → the ❌ message string, no exception, no db created."""
+    missing = tmp_path / "none.db"
+    result = cgis_init_ontology(db_path=str(missing))
+    assert result.startswith("❌ Database not found")
+    assert not missing.exists()

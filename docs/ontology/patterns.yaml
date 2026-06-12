@@ -136,7 +136,7 @@ project_domains:
     fqn_prefix: "cgis.query"
     expected_pattern: layered_dag
     profile: python
-    drift_tolerance: 0.18 # v2 measured ≈0.14 (tv_imp .25, tv_calls .14)
+    drift_tolerance: 0.20 # v2 re-baselined ≈0.19 after ontology_init joined the domain (#174) — was ≈0.14/0.18
 
   # TypeScript graph (ingest root: ui/src → components/Foo.tsx = components.Foo)
   - name: "components"

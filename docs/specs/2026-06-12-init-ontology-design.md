@@ -195,3 +195,12 @@ name. Needed both for tests and for diff-able re-runs on CI.
 - Auto-refresh / ratchet automation (#151), incremental ingest (#175).
 - Multi-graph (python+typescript in one db) profile splitting beyond the
   per-domain majority-extension heuristic.
+
+## Amendment 1 (2026-06-12): summary table columns
+
+§2.3's summary table listed a "nodes" column; the proposed YAML deliberately
+carries no node_count field (it is drift INPUT, not a report), so the CLI
+table shows name / fqn_prefix / pattern-or-hygiene / tolerance. Node counts
+remain visible in the per-domain comments (`# below min_nodes (N nodes)`)
+and in any subsequent `cgis drift` run. Review finding M5, accepted as a
+display simplification.
