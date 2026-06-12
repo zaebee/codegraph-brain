@@ -116,10 +116,17 @@ Scan a local directory, extract all symbols, resolve links, and build the graph 
     Paths are normalised relative to the workspace root so the database is
     portable across machines.
 
+    By default the ingest is **incremental**: only changed/new files are
+    re-scanned, and the summary reports both what changed this run and the
+    whole-graph total. Set ``full_rebuild=True`` to re-scan every file and
+    overwrite the database from scratch — use this to drop nodes for files that
+    were deleted or renamed, which an incremental run leaves behind.
+
 | Argument | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
 | `project_path` | `string` | ✓ |  |
 | `db_path` | `string` |  |  |
+| `full_rebuild` | `boolean` |  |  |
 
 ---
 
