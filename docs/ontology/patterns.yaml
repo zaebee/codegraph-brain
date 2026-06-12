@@ -105,9 +105,14 @@ project_domains:
     profile: python
     # Re-negotiated in #116: PythonExtractor was decomposed from a God Object into a
     # layered package (orchestrator python_extractor → handlers → _python_ast core),
-    # so the domain is no longer pure_utility. Best-fit is now layered_dag (measured
-    # ≈0.32 vs orchestrator 0.40, pure_utility 0.51 — same pattern as cgis.query).
-    drift_tolerance: 0.35
+    # so the domain is no longer pure_utility. Best-fit is now layered_dag (same
+    # pattern as cgis.query).
+    # Re-baselined in #183 (≈0.32 → 0.37): the resolver stopped fabricating phantom
+    # `module.list.append`-style internal FQNs for builtin-method calls (e.g. `edges.append`
+    # where `edges: list[Edge]`). Those fake intra-domain CALLS edges had been artificially
+    # deflating this domain's drift; 0.37 is the honest census of the real structure (no real
+    # edges lost — verified by edge-diff). Correctness-driven re-baseline, not ratchet loosening.
+    drift_tolerance: 0.40
 
   - name: "resolution"
     fqn_prefix: "cgis.resolver"
