@@ -182,17 +182,21 @@ class IngestionPipeline:
         except Exception as e:
             logger.exception("Failed to parse file", full_path=full_path, error=str(e))
 
-    @staticmethod
     def _is_noop_incremental(
-        store: "SQLiteStore", changed_files: dict[str, str], found_file_paths: set[str]
+        self, store: "SQLiteStore", changed_files: dict[str, str], found_file_paths: set[str]
     ) -> bool:
-        """True when an incremental run has nothing to do (no changed, no stale files).
+        """True when an incremental run can be skipped entirely.
 
-        Checks ``changed_files`` first so the ``get_all_tracked_files`` DB query
-        is only issued when it can actually change the outcome (i.e. nothing was
-        re-extracted this run).
+        Requires no re-extracted files and no stale files. A configured domains
+        ontology also disables the skip: ``domains.yaml`` can change independently
+        of the source tree, and the semantic uplift that applies it must re-run
+        to pick those changes up (it is not tracked in ``changed_files``).
+
+        ``changed_files`` / ``domains_config`` are checked before the
+        ``get_all_tracked_files`` DB query so it is only issued when it can
+        actually change the outcome.
         """
-        if changed_files:
+        if changed_files or self._domains_config is not None:
             return False
         stale_files = store.get_all_tracked_files() - found_file_paths
         return not stale_files
