@@ -23,6 +23,30 @@ Analyse transitive upstream callers of a specific FQN.
 
 ---
 
+## `cgis_context`
+
+Compile an agent-facing GraphRAG context package for a focal FQN (#19).
+
+    Returns an XML-tagged prompt — the focal node's source, its enclosing class,
+    its architectural domain boundary, direct callers (upstream ripple) and
+    callees (downstream dependencies) — meant to be injected into your context
+    window in place of raw file dumps. Far more token-efficient than reading
+    whole files, and structured so boundaries stay unambiguous.
+
+    Use ``cgis_ingest`` first if the database does not exist. ``source_root``
+    locates source files on disk when the graph was ingested from a
+    sub-directory (e.g. ``"src"`` after ``cgis ingest ./src``); without it the
+    ``<source>`` block degrades gracefully to "unavailable".
+
+| Argument | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `fqn` | `string` | ✓ |  |
+| `db_path` | `string` |  |  |
+| `depth` | `integer` |  |  |
+| `source_root` | `string` |  |  |
+
+---
+
 ## `cgis_drift`
 
 Report per-domain architectural drift against declared ideal patterns.
