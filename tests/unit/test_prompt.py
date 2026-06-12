@@ -224,3 +224,11 @@ def test_callees_note_drops_direct_at_depth_2() -> None:
     assert "within 2 hops" in out
     callees_note = out.split('<callees note="')[1].split('"')[0]
     assert "direct" not in callees_note
+
+
+def test_closing_tag_with_trailing_space_is_neutralized() -> None:
+    """`</source >` (XML allows whitespace before >) is also neutralized (colleague nit)."""
+    out = _compile(source="s = '</source ></context  >'\n")
+    fenced = out.split("```python")[1]
+    assert "</source >" not in fenced
+    assert "&lt;/source>" in out  # whitespace-tolerant match, normalized on escape

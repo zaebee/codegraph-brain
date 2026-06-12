@@ -25,7 +25,8 @@ _BACKTICK_RUN = re.compile(r"`+")
 # Only the closing tags this module itself emits — so neutralising them in source
 # defeats prompt-injection without corrupting unrelated markup (e.g. TS/JSX `</div>`).
 _OWN_TAGS = ("source", "context", "class", "domain", "callers", "callees")
-_OWN_CLOSING_TAG = re.compile(r"</(" + "|".join(_OWN_TAGS) + r")>")
+# ``\s*`` before ``>`` matches the whitespace XML allows in an end tag (``</source >``).
+_OWN_CLOSING_TAG = re.compile(r"</(" + "|".join(_OWN_TAGS) + r")\s*>")
 
 
 def _escape_xml_attr(value: str) -> str:

@@ -73,11 +73,12 @@ def _structural_parent(store: SQLiteStore, focus_fqn: str) -> Node | None:
     enclosing CLASS so a method's class context is never lost to an earlier
     file-level edge.
     """
-    parents = [
-        parent
+    candidates = (
+        store.get_node(edge.source)
         for edge in store.get_incoming_edges(focus_fqn)
-        if edge.type in _STRUCTURAL and (parent := store.get_node(edge.source)) is not None
-    ]
+        if edge.type in _STRUCTURAL
+    )
+    parents = [node for node in candidates if node is not None]
     for parent in parents:
         if parent.type == NodeType.CLASS:
             return parent
