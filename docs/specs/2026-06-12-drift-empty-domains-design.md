@@ -107,6 +107,12 @@ here). #178 adds exactly one status-aware term:
   question belongs to #170 and is deliberately not changed here.
 - `no_signal` NEVER trips the gate — a tiny-but-real domain is legitimate;
   it just must not render as "clean".
+  Known residual (colleague review on PR #196): a NEAR-miss prefix that
+  accidentally catches exactly one stray symbol (0 intra-domain edges) is
+  `no_signal`, not `empty`, and passes silently. Accepted — making
+  enforced-`no_signal` trip would false-fail legitimate micro-domains; the
+  right detector for "matched the wrong thing" is #177's fit-quality /
+  coverage report, where this is recorded as a requirement.
 
 ### 2.4 Closest-prefix suggestions (`drift_service`)
 
@@ -215,3 +221,29 @@ failure; documented in the patterns.yaml header comment.
 - #173 full `find_symbol` tool — only the internal suffix-based suggestion.
 - #174 init-ontology.
 - Any graph/census/ratchet change.
+
+## Amendment 1 (2026-06-12): fingerprint defaults and the no_signal trigger
+
+Plan-stage research found §2.1/§2.2 as written would break the existing test
+suite: 22 hand-built `PatternFingerprint` fixtures construct without
+`node_count` (default 0 → every one becomes "empty"), and v1-path fixtures
+leave both censuses at `ZERO_TRIADS` (→ every one becomes "no_signal").
+
+Superseding §2.1/§2.2 details:
+
+- `PatternFingerprint` gains TWO fields, both defaulting to **1**:
+  `node_count: int = 1` and `edge_count: int = 1` (intra-domain edge count,
+  all layers). The defaults mean "hand-built fingerprints are assumed
+  measurable"; only `extract()` produces real zeros (the early-return path
+  sets both to 0; the normal path sets `len(domain_nodes)` /
+  `len(internal_edges)`).
+- Guards become: `node_count == 0` → **empty**;
+  `node_count > 0 and edge_count == 0` → **no_signal**.
+  The census-zero-vector trigger is dropped: it cannot distinguish a
+  v1-style fingerprint (censuses legitimately absent) from a measured
+  no-structure domain, while `edge_count == 0` says exactly "nothing to
+  measure beyond node existence" — which also covers the issue's
+  single-symbol / alias-only repro (isolated nodes have no intra-domain
+  edges). A domain with edges but too few nodes for triples still carries
+  v1 signal (chain_len, fan-out) and is correctly NOT no_signal.
+- Every existing hand-built fixture passes unchanged.

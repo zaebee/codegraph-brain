@@ -1,5 +1,12 @@
 version: "2.1.0"
 
+# NOTE (#178): a domain whose fqn_prefix matches 0 nodes reports status
+# "empty" and FAILS the gate when enforced. This file mixes python and
+# typescript domains — running `cgis drift` against a single-language graph
+# requires --profile (e.g. `cgis drift --profile python`) or the
+# other-language domains fail loudly as EMPTY. That loud failure is the
+# feature: a silent zero-match green is how mis-targeted ontologies hide.
+
 # ── Measurement profiles (spec §2.3, §3.3) ───────────────────────────────────
 # drift_weights: v1 per-component weights — now used ONLY for the gate term
 #   (hygiene + template-declared non-triad constraints).

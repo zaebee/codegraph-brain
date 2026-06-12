@@ -35,6 +35,14 @@ class PatternFingerprint:
     t_imports: tuple[float, ...] = field(default=ZERO_TRIADS)
     t_calls: tuple[float, ...] = field(default=ZERO_TRIADS)
 
+    # How many graph nodes / intra-domain edges the selector matched.
+    # Defaults are 1 ("hand-built fingerprints are assumed measurable",
+    # spec Amendment 1); only extract() produces real zeros. 0 nodes means
+    # the fqn_prefix selected nothing; 0 edges with >0 nodes means there is
+    # no structure to score (isolated symbols / alias-only matches).
+    node_count: int = 1
+    edge_count: int = 1
+
 
 def _in_domain(fqn: str, prefix: str) -> bool:
     """Return True iff fqn is the prefix itself or a child of it (segment-boundary aware)."""
@@ -155,6 +163,8 @@ class FingerprintExtractor:
                 router_count=0,
                 cycle_ratio=0.0,
                 unresolved_ratio=0.0,
+                node_count=0,
+                edge_count=0,
             )
 
         domain_ids = {n.id for n in domain_nodes}
@@ -198,4 +208,6 @@ class FingerprintExtractor:
             unresolved_ratio=unresolved_ratio,
             t_imports=t_imports,
             t_calls=t_calls,
+            node_count=len(domain_nodes),
+            edge_count=len(internal_edges),
         )

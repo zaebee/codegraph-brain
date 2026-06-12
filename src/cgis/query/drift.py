@@ -53,10 +53,12 @@ class DriftReport:
     ideal: PatternFingerprint
     drift_score: float
     violations: list[str]
-    status: Literal["clean", "warning", "critical"]
+    status: Literal["clean", "warning", "critical", "empty", "no_signal"]
     tolerance: float
     tv_imports: float | None = None
     tv_calls: float | None = None
+    # Human-readable diagnostic (e.g. closest-prefix suggestions for "empty").
+    note: str | None = None
 
 
 def _clip_discount(actual: PatternFingerprint) -> float:
@@ -289,6 +291,10 @@ class DriftScorer:
 
     def score(self, actual: PatternFingerprint, domain: DomainConfig) -> DriftReport:
         """Compute the drift score and return a DriftReport (v2 when configured)."""
+        if actual.node_count == 0:
+            return self._signal_report(actual, domain, status="empty")
+        if actual.edge_count == 0:
+            return self._signal_report(actual, domain, status="no_signal")
         template, params = self._resolve_template(domain)
         hygiene = self._parse_constraints(self._hygiene, {})
         constraints = {**hygiene, **self._parse_constraints(template, params)}
@@ -485,6 +491,27 @@ class DriftScorer:
             unresolved_ratio=0.0,
             t_imports=ideal[0],
             t_calls=ideal[1],
+        )
+
+    def _signal_report(
+        self,
+        actual: PatternFingerprint,
+        domain: DomainConfig,
+        status: Literal["empty", "no_signal"],
+    ) -> DriftReport:
+        """Report for a domain with nothing to score: matched 0 nodes (empty)
+        or matched nodes but 0 intra-domain edges (no_signal). Score is 0.0 by
+        definition — the gate handles 'empty' separately (spec §2.3)."""
+        return DriftReport(
+            domain=domain.name,
+            fqn_prefix=domain.fqn_prefix,
+            expected_pattern=domain.expected_pattern,
+            actual=actual,
+            ideal=actual,
+            drift_score=0.0,
+            violations=[],
+            status=status,
+            tolerance=domain.drift_tolerance,
         )
 
     def _zero_drift_report(self, actual: PatternFingerprint, domain: DomainConfig) -> DriftReport:

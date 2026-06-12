@@ -172,6 +172,42 @@ def test_analyze_drift_resolved_path_works(graph_db: str, tmp_path: Path) -> Non
     assert len(analysis.reports) == 1
 
 
+def _triangle_quotient_db(tmp_path: Path) -> str:
+    """SQLite db with three single-node domains forming a CALLS triangle (030T at quotient)."""
+    db = str(tmp_path / "g.db")
+    nodes = [
+        Node(
+            id=f"dom.{name}.{sym}",
+            type=NodeType.FUNCTION,
+            name=sym,
+            file_path=f"{sym}.py",
+            start_line=1,
+            end_line=2,
+        )
+        for name, sym in (("alpha", "x"), ("beta", "y"), ("gamma", "z"))
+    ]
+    edges = [
+        Edge(id="e1", source="dom.alpha.x", target="dom.beta.y", type=EdgeType.CALLS),
+        Edge(id="e2", source="dom.alpha.x", target="dom.gamma.z", type=EdgeType.CALLS),
+        Edge(id="e3", source="dom.beta.y", target="dom.gamma.z", type=EdgeType.CALLS),
+    ]
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)
+    return db
+
+
+def _mistargeted_quotient_yaml(tmp_path: Path, enforce: bool) -> str:
+    """Patterns file whose project_level fqn_prefix matches nothing in the quotient graph."""
+    yaml_text = _YAML_WITH_OBSERVE_ONLY_QUOTIENT.replace(
+        'fqn_prefix: "quotient"', 'fqn_prefix: "totally.missing"'
+    )
+    if enforce:
+        yaml_text = yaml_text.replace("    enforce: false", "    enforce: true")
+    p = tmp_path / "patterns.yaml"
+    p.write_text(yaml_text)
+    return str(p)
+
+
 def test_quotient_observe_only_does_not_flip_any_critical(tmp_path: Path) -> None:
     """Quotient with enforce:false does not set any_critical even when its score exceeds max_drift.
 
@@ -191,41 +227,7 @@ def test_quotient_observe_only_does_not_flip_any_critical(tmp_path: Path) -> Non
     patterns_file = tmp_path / "patterns.yaml"
     patterns_file.write_text(_YAML_WITH_OBSERVE_ONLY_QUOTIENT)
 
-    db = str(tmp_path / "g.db")
-    nodes = [
-        Node(
-            id="dom.alpha.x",
-            type=NodeType.FUNCTION,
-            name="x",
-            file_path="x.py",
-            start_line=1,
-            end_line=2,
-        ),
-        Node(
-            id="dom.beta.y",
-            type=NodeType.FUNCTION,
-            name="y",
-            file_path="y.py",
-            start_line=1,
-            end_line=2,
-        ),
-        Node(
-            id="dom.gamma.z",
-            type=NodeType.FUNCTION,
-            name="z",
-            file_path="z.py",
-            start_line=1,
-            end_line=2,
-        ),
-    ]
-    # Three cross-domain CALLS form a complete triangle (030T at quotient level).
-    edges = [
-        Edge(id="e1", source="dom.alpha.x", target="dom.beta.y", type=EdgeType.CALLS),
-        Edge(id="e2", source="dom.alpha.x", target="dom.gamma.z", type=EdgeType.CALLS),
-        Edge(id="e3", source="dom.beta.y", target="dom.gamma.z", type=EdgeType.CALLS),
-    ]
-    with SQLiteStore(db) as store:
-        store.save_graph(nodes, edges)
+    db = _triangle_quotient_db(tmp_path)
 
     # Act: run with max_drift=0.3, which sits below the quotient score but above domain scores.
     max_drift = 0.3
@@ -248,4 +250,154 @@ def test_quotient_observe_only_does_not_flip_any_critical(tmp_path: Path) -> Non
         assert r.drift_score < max_drift, f"domain '{r.domain}' unexpectedly exceeded max_drift"
     assert analysis.any_critical is False, (
         "observe-only quotient binding (enforce=False) must not flip any_critical"
+    )
+
+
+# ---------------------------------------------------------------------------
+# empty / no_signal in analyze_drift (#178)
+# ---------------------------------------------------------------------------
+
+_YAML_MISTARGETED = _YAML.replace('fqn_prefix: "cgis.extractors"', 'fqn_prefix: "click.core"')
+
+
+def test_empty_domain_trips_any_critical(graph_db: str, tmp_path: Path) -> None:
+    """A zero-match enforced domain fails the gate despite score 0.0 (#178)."""
+    p = tmp_path / "mistargeted.yaml"
+    p.write_text(_YAML_MISTARGETED)
+    analysis = analyze_drift(graph_db, str(p), max_drift=1.0)
+    assert analysis.reports[0].status == "empty"
+    assert analysis.any_critical is True
+
+
+def test_empty_domain_note_suggests_real_prefix(graph_db: str, tmp_path: Path) -> None:
+    """The empty note carries closest-prefix suggestions via the suffix index."""
+    p = tmp_path / "suggest.yaml"
+    p.write_text(_YAML.replace('fqn_prefix: "cgis.extractors"', 'fqn_prefix: "extractors.a"'))
+    analysis = analyze_drift(graph_db, str(p), max_drift=1.0)
+    report = analysis.reports[0]
+    assert report.status == "empty"
+    assert report.note is not None
+    assert "matched 0 nodes" in report.note
+    assert "cgis.extractors.a" in report.note
+
+
+def test_empty_note_trailing_dot_prefix_no_crash(graph_db: str, tmp_path: Path) -> None:
+    """fqn_prefix with a trailing dot yields status 'empty' and 'matched 0 nodes' without crashing.
+
+    Regression guard for the trailing-dot edge case: rsplit('.', 1)[-1] returns an
+    empty string when fqn_prefix ends with '.', which must not be passed to
+    find_nodes_by_suffix (pointless DB query).  The note must still be well-formed.
+    """
+    p = tmp_path / "trailing_dot.yaml"
+    p.write_text(_YAML.replace('fqn_prefix: "cgis.extractors"', 'fqn_prefix: "ghost."'))
+    analysis = analyze_drift(graph_db, str(p), max_drift=1.0)
+    report = analysis.reports[0]
+    assert report.status == "empty"
+    assert report.note is not None
+    assert "matched 0 nodes" in report.note
+
+
+def test_unenforced_empty_domain_does_not_trip(graph_db: str, tmp_path: Path) -> None:
+    """enforce: false keeps observe-only semantics for the new empty term."""
+    yaml_text = _YAML_MISTARGETED.replace(
+        "drift_tolerance: 0.15", "drift_tolerance: 0.15\n    enforce: false"
+    )
+    p = tmp_path / "observed.yaml"
+    p.write_text(yaml_text)
+    analysis = analyze_drift(graph_db, str(p), max_drift=1.0)
+    assert analysis.reports[0].status == "empty"
+    assert analysis.any_critical is False
+
+
+def test_no_signal_does_not_trip(tmp_path: Path) -> None:
+    """A single isolated node matches → no_signal, gate stays green."""
+    db = str(tmp_path / "lone.db")
+    lone = Node(
+        id="cgis.extractors.lonely",
+        type=NodeType.FUNCTION,
+        name="lonely",
+        file_path="a.py",
+        start_line=1,
+        end_line=2,
+    )
+    with SQLiteStore(db) as store:
+        store.save_graph([lone], [])
+    p = tmp_path / "patterns.yaml"
+    p.write_text(_YAML)
+    analysis = analyze_drift(db, str(p), max_drift=1.0)
+    assert analysis.reports[0].status == "no_signal"
+    assert analysis.any_critical is False
+
+
+def test_profile_filter_excludes_other_profiles(graph_db: str, tmp_path: Path) -> None:
+    """profile filter keeps matching + profile-less domains, skips others."""
+    yaml_text = (
+        _YAML
+        + """  - name: "ui"
+    fqn_prefix: "components"
+    expected_pattern: pure_utility
+    profile: typescript
+    drift_tolerance: 0.15
+  - name: "agnostic"
+    fqn_prefix: "cgis.extractors"
+    drift_tolerance: 0.99
+"""
+    )
+    p = tmp_path / "multi.yaml"
+    p.write_text(yaml_text)
+    filtered = analyze_drift(graph_db, str(p), max_drift=1.0, profile="python")
+    names = {r.domain for r in filtered.reports}
+    assert "ui" not in names  # different explicit profile: excluded
+    assert "extraction" in names  # profile None matches any filter
+    assert "agnostic" in names  # profile None matches any filter
+    unfiltered = analyze_drift(graph_db, str(p), max_drift=1.0)
+    assert {r.domain for r in unfiltered.reports} >= {"ui", "extraction", "agnostic"}
+
+
+def test_observe_only_quotient_empty_does_not_trip_any_critical(tmp_path: Path) -> None:
+    """enforce:false PROJECT_LEVEL quotient binding with mis-targeted prefix → empty, gate green.
+
+    Task-3 review gap: mirrors test_quotient_observe_only_does_not_flip_any_critical mechanics
+    but targets a mis-matched quotient prefix so status=="empty" instead of a score violation.
+    With enforce:false the gate must stay False even when status=="empty".
+    """
+    db = _triangle_quotient_db(tmp_path)
+    patterns_file = _mistargeted_quotient_yaml(tmp_path, enforce=False)
+
+    analysis = analyze_drift(db, patterns_file, max_drift=0.3)
+
+    assert len(analysis.quotient) == 1
+    q_binding, q_report = analysis.quotient[0]
+    assert q_binding.enforce is False
+    assert q_report.status == "empty"
+    # Task-5 review finding: the quotient note must be decorated with "matched 0 nodes"
+    # so that a broken fqn_prefix is visible in CLI output (#178 §2.4).
+    assert q_report.note is not None, "empty quotient report must carry a diagnostic note"
+    assert "matched 0 nodes" in q_report.note
+    assert analysis.any_critical is False, (
+        "observe-only quotient binding with status='empty' must not flip any_critical"
+    )
+
+
+def test_enforced_quotient_empty_trips_any_critical(tmp_path: Path) -> None:
+    """enforce:true PROJECT_LEVEL quotient binding with mis-targeted prefix → empty, gate red.
+
+    Spec §2.3: when a project_level binding has enforce:true (or omits the key,
+    defaulting to True) and the quotient graph resolves to status=="empty", the
+    gate MUST fire — i.e. analysis.any_critical must be True.  This mirrors the
+    mechanics of test_observe_only_quotient_empty_does_not_trip_any_critical but
+    flips enforce to True (explicit, because project_level defaults to False) so
+    the empty result is treated as a critical violation.
+    """
+    db = _triangle_quotient_db(tmp_path)
+    patterns_file = _mistargeted_quotient_yaml(tmp_path, enforce=True)
+
+    analysis = analyze_drift(db, patterns_file, max_drift=0.3)
+
+    assert len(analysis.quotient) == 1
+    q_binding, q_report = analysis.quotient[0]
+    assert q_binding.enforce is True
+    assert q_report.status == "empty"
+    assert analysis.any_critical is True, (
+        "enforced quotient binding with status='empty' must trip any_critical"
     )
