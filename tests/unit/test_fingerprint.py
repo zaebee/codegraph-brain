@@ -58,7 +58,7 @@ def test_exact_prefix_match_is_included() -> None:
 
 
 def test_empty_domain_returns_zero_fingerprint() -> None:
-    """No matching nodes → all-zero PatternFingerprint."""
+    """No matching nodes → all-zero PatternFingerprint with node_count/edge_count == 0."""
     with _store([], []) as store:
         fp = FingerprintExtractor(store).extract("nonexistent")
     assert fp == PatternFingerprint(
@@ -70,6 +70,8 @@ def test_empty_domain_returns_zero_fingerprint() -> None:
         router_count=0,
         cycle_ratio=0.0,
         unresolved_ratio=0.0,
+        node_count=0,
+        edge_count=0,
     )
 
 
@@ -297,3 +299,51 @@ def test_extractor_without_store_or_preload_raises() -> None:
     """Constructing with store=None and no from_graph() preload fails loud."""
     with pytest.raises(RuntimeError, match="store or a from_graph"):
         FingerprintExtractor(None).extract("m")
+
+
+# ── node_count / edge_count (#178 task 1) ────────────────────────────────────
+
+
+def test_extract_sets_node_and_edge_counts() -> None:
+    """extract() over a real domain records actual node/edge counts in the fingerprint."""
+    nodes = [_node("real.a"), _node("real.b"), _node("real.c")]
+    edges = [_edge("real.a", "real.b"), _edge("real.b", "real.c")]
+    with _store(nodes, edges) as store:
+        fp = FingerprintExtractor(store).extract("real")
+    assert fp.node_count >= 2
+    assert fp.edge_count >= 1
+
+
+def test_extract_zero_match_sets_zero_counts() -> None:
+    """extract() with an unmatched prefix produces node_count == 0 and edge_count == 0."""
+    with _store([], []) as store:
+        fp = FingerprintExtractor(store).extract("totally.missing.prefix")
+    assert fp.node_count == 0
+    assert fp.edge_count == 0
+
+
+def test_extract_isolated_node_has_no_signal_counts() -> None:
+    """A domain with one node and no intra-domain edges gives node_count=1, edge_count=0."""
+    with _store([_node("lone.x")], []) as store:
+        fp = FingerprintExtractor(store).extract("lone")
+    assert fp.node_count == 1
+    assert fp.edge_count == 0
+
+
+def test_hand_built_fingerprint_defaults_are_measurable() -> None:
+    """PatternFingerprint constructed without new kwargs has node_count==1, edge_count==1.
+
+    Amendment 1: hand-built fingerprints are assumed measurable by default.
+    """
+    fp = PatternFingerprint(
+        domain="hand",
+        hub_count=0,
+        star_count=0,
+        chain_len=0.0,
+        dag_depth=0,
+        router_count=0,
+        cycle_ratio=0.0,
+        unresolved_ratio=0.0,
+    )
+    assert fp.node_count == 1
+    assert fp.edge_count == 1
