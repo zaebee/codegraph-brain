@@ -1,6 +1,6 @@
 """Symbol resolution strategies over a SymbolIndex."""
 
-from cgis.core.models import RAW_CLASS_PREFIX, Edge, EdgeType, Node
+from cgis.core.models import RAW_CLASS_PREFIX, Edge, EdgeType, Node, NodeNamespace
 from cgis.resolver.indices import IndexBuilder, SymbolIndex
 
 
@@ -27,7 +27,11 @@ class SymbolResolver:
             if edge.type == EdgeType.EXTENDS:
                 raw = edge.target.removeprefix(RAW_CLASS_PREFIX)
                 resolved = self.resolve_class_ref(raw, edge.source, edge.file_path)
-                self._inheritance_tree.setdefault(edge.source, []).append(resolved or raw)
+                # Only resolved (FQN) parents are useful for method-hierarchy lookup.
+                # Storing the bare `raw` name would false-match an unrelated class
+                # that happens to share that bare name (#183).
+                if resolved:
+                    self._inheritance_tree.setdefault(edge.source, []).append(resolved)
 
     def resolve_class_ref(
         self, name: str, source_fqn: str, edge_file_path: str | None
@@ -150,7 +154,16 @@ class SymbolResolver:
         if not class_fqn:
             return None
         candidate = f"{class_fqn}.{method_name}"
-        return self.index.map_to_node_fqn(candidate) or candidate
+        resolved = self.index.map_to_node_fqn(candidate)
+        if resolved:
+            return resolved
+        # No node for `Class.method`. Keep it only when the type is external/stdlib
+        # — that is a real call into a library (it becomes an EXTERNAL/STDLIB virtual
+        # node). For an internal/unknown type it is a phantom method: drop it rather
+        # than fabricate a node that does not exist (#183).
+        if self.index.classify_fqn(candidate) in (NodeNamespace.EXTERNAL, NodeNamespace.STDLIB):
+            return candidate
+        return None
 
     def _resolve_via_global_symbols(self, name: str, file_path: str | None) -> str | None:
         """Look up name in the global symbol index, preferring same-file candidates."""

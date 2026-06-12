@@ -64,3 +64,46 @@ def test_resolve_dep_candidate_import_is_authoritative() -> None:
     ]
     resolver = _resolver(nodes)
     assert resolver.resolve_dep_candidate("Dep", "consumer.handler", None) is None
+
+
+def test_local_type_call_does_not_fabricate_missing_method() -> None:
+    """`var.method` where the method node does not exist resolves to None (#183).
+
+    Previously `_resolve_local_type_call` returned the fabricated `Class.method`
+    FQN, which the engine treated as a successful resolve (+0.5 conf) and minted
+    a virtual node for a method that does not exist.
+    """
+    source = Node(
+        id="mod.caller",
+        type=NodeType.FUNCTION,
+        name="caller",
+        file_path="mod.py",
+        start_line=1,
+        end_line=2,
+        metadata={"local_types": {"store": "mod.Store"}},
+    )
+    nodes = [
+        source,
+        _node("mod.Store", NodeType.CLASS),
+        _node("mod.Store.save", NodeType.METHOD),
+    ]
+    resolver = _resolver(nodes)
+    # An existing method still resolves.
+    assert resolver.resolve_global_call("store.save", "mod.caller") == "mod.Store.save"
+    # A missing method must NOT fabricate "mod.Store.delete".
+    assert resolver.resolve_global_call("store.delete", "mod.caller") is None
+
+
+def test_unresolved_parent_does_not_false_resolve_via_bare_name() -> None:
+    """An EXTENDS parent that does not resolve must not leak a bare name into the
+    inheritance tree and false-match an unrelated same-named class's method (#183)."""
+    nodes = [
+        _node("app.Child", NodeType.CLASS, file_path="app.py"),
+        _node("app.Child.run", NodeType.METHOD, file_path="app.py"),
+        # Unrelated method whose class segment is the bare name "Ghost".
+        _node("Ghost.handle", NodeType.METHOD, file_path="other.py"),
+    ]
+    extends = Edge(id="e", source="app.Child", target="raw_class:Ghost", type=EdgeType.EXTENDS)
+    resolver = _resolver(nodes, [extends])
+    # "Ghost" never resolved (no Ghost class) → handle must NOT bind to Ghost.handle.
+    assert resolver.resolve_self_call("app.Child.run", "handle") is None
