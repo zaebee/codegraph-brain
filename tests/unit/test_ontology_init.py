@@ -7,6 +7,7 @@ import yaml
 
 from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeType
 from cgis.query.drift_service import analyze_drift
+from cgis.query.fingerprint import FingerprintExtractor
 from cgis.query.ontology_init import _DEFAULT_ONTOLOGY_HEADER, discover_domains, propose_ontology
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -195,3 +196,35 @@ def test_header_templates_match_repo_ontology() -> None:
     assert bundled["patterns"] == repo["patterns"]
     assert bundled["profiles"] == repo["profiles"]
     assert bundled["hygiene"] == repo["hygiene"]
+
+
+def test_hygiene_only_cyclic_domain_round_trips(tmp_path: Path) -> None:
+    """Hygiene tolerance must be scored with the SAME profile the yaml emits.
+
+    Regression for the profile-mismatch bug: a cyclic below-min_nodes domain
+    proposed as hygiene-only must still satisfy score <= tolerance when the
+    proposed yaml is fed back into analyze_drift (spec §4.3 round-trip).
+    """
+    db = str(tmp_path / "cyc.db")
+    a = _node("app.cyc.mod_a", file_path="app/cyc/mod_a.py", node_type=NodeType.MODULE)
+    b = _node("app.cyc.mod_b", file_path="app/cyc/mod_b.py", node_type=NodeType.MODULE)
+    edges = [
+        Edge(id="i1", source="app.cyc.mod_a", target="app.cyc.mod_b", type=EdgeType.IMPORTS),
+        Edge(id="i2", source="app.cyc.mod_b", target="app.cyc.mod_a", type=EdgeType.IMPORTS),
+    ]
+    with SQLiteStore(db) as store:
+        store.save_graph([a, b], edges)
+    text = propose_ontology(db, min_nodes=10)
+    out = tmp_path / "p.yaml"
+    out.write_text(text)
+    analysis = analyze_drift(db, str(out))
+    # Verify the fixture actually has cycles (cycle_ratio > 0) — the regression
+    # only fires when the cyclic weight (0.25 for python) diverges from the v1
+    # equal-weight path, so a fixture without cycles would be a false green.
+    with SQLiteStore(db) as store:
+        fp = FingerprintExtractor(store).extract("app.cyc")
+    assert fp.cycle_ratio > 0, "fixture has no cycles — in_cycle enrichment did not fire"
+    for r in analysis.reports:
+        assert r.drift_score <= r.tolerance + 1e-9, (
+            f"{r.fqn_prefix}: {r.drift_score} > {r.tolerance}"
+        )

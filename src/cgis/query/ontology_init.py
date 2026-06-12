@@ -204,18 +204,22 @@ def _ceil2(x: float) -> float:
     return math.ceil(x * 100) / 100
 
 
-def _hygiene_score(fp: PatternFingerprint, prefix: str, scorer: DriftScorer) -> float:
-    """Return the v1 hygiene drift score for a domain (expected_pattern=None, profile=None).
+def _hygiene_score(
+    fp: PatternFingerprint, prefix: str, scorer: DriftScorer, profile: str | None
+) -> float:
+    """Return the hygiene drift score for a domain scored with the given profile.
 
-    Used to set tolerances for hygiene-only entries: the bundled hygiene block
-    (cycle_ratio, unresolved_ratio) applies to every domain, so a domain with
-    cycles must not fail the round-trip guarantee.
+    Used to set tolerances for hygiene-only entries.  The profile MUST match the
+    one emitted into the YAML (detected by ``_detect_profile``): if ``profile``
+    differs from the emitted value the v1 drift_weights used to score
+    ``cycle_ratio`` and ``unresolved_ratio`` will diverge, breaking the
+    round-trip guarantee (spec §4.3) on domains that have cycles.
     """
     cfg = DomainConfig(
         name=prefix,
         fqn_prefix=prefix,
         expected_pattern=None,
-        profile=None,
+        profile=profile,
         drift_tolerance=1.0,
     )
     return scorer.score(fp, cfg).drift_score
@@ -260,19 +264,19 @@ def _domain_entry(
 
     if fp.node_count < min_nodes:
         reason = f"# below min_nodes ({fp.node_count} nodes) — census too small to label"
-        hyg = _hygiene_score(fp, prefix, scorer)
+        hyg = _hygiene_score(fp, prefix, scorer, profile)
         tolerance = _ceil2(hyg + margin)
         lines.append(f"    profile: {profile}{profile_suffix}")
         lines.append(f"    drift_tolerance: {tolerance:.2f}  {reason}")
     elif fp.edge_count == 0:
         reason = "# no intra-domain edges — nothing to fit"
-        hyg = _hygiene_score(fp, prefix, scorer)
+        hyg = _hygiene_score(fp, prefix, scorer, profile)
         tolerance = _ceil2(hyg + margin)
         lines.append(f"    profile: {profile}{profile_suffix}")
         lines.append(f"    drift_tolerance: {tolerance:.2f}  {reason}")
     elif best > _NO_FIT_THRESHOLD:
         reason = f"# no template fits (best: {best_name} at {best:.2f})"
-        hyg = _hygiene_score(fp, prefix, scorer)
+        hyg = _hygiene_score(fp, prefix, scorer, profile)
         tolerance = _ceil2(hyg + margin)
         lines.append(f"    profile: {profile}{profile_suffix}")
         lines.append(f"    drift_tolerance: {tolerance:.2f}  {reason}")
