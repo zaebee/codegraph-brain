@@ -4,8 +4,10 @@ import pytest
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.query.cohesion import (
+    THRESHOLDS,
     FileGraph,
     build_file_graph,
+    classify_verdict,
     greedy_modularity,
     layout_direction,
     partition_divergence,
@@ -156,3 +158,20 @@ def test_layout_direction() -> None:
         layout_direction({"a": 0, "b": 0, "c": 0}, {"a": "x", "b": "y", "c": "z"}) == "over_split"
     )
     assert layout_direction({"a": 0, "b": 1}, {"a": "x", "b": "y"}) == "matched"
+
+
+def test_verdict_table() -> None:
+    t = THRESHOLDS
+    assert classify_verdict(q=0.10, d=1.0, direction="under_split", thresholds=t) == "leave"
+    assert classify_verdict(q=0.50, d=0.05, direction="matched", thresholds=t) == "aligned"
+    assert classify_verdict(q=0.43, d=1.0, direction="under_split", thresholds=t) == "split"
+    assert classify_verdict(q=0.43, d=0.8, direction="over_split", thresholds=t) == "consolidate"
+    assert classify_verdict(q=0.43, d=0.8, direction="matched", thresholds=t) == "borderline"
+    assert classify_verdict(q=0.30, d=1.0, direction="under_split", thresholds=t) == "borderline"
+
+
+def test_verdict_min_q_override() -> None:
+    t = THRESHOLDS
+    strict = {**t, "split": 0.50}
+    result = classify_verdict(q=0.43, d=1.0, direction="under_split", thresholds=strict)
+    assert result == "borderline"

@@ -225,3 +225,30 @@ def layout_direction(p_comm: Mapping[str, Hashable], p_dir: Mapping[str, Hashabl
     if n_dir > n_comm:
         return "over_split"
     return "matched"
+
+
+Verdict = Literal["split", "consolidate", "aligned", "leave", "borderline", "no_signal"]
+
+#: Default thresholds (cross-validated for Q; divergence is provisional, #242 spec).
+THRESHOLDS: dict[str, float] = {"split": 0.35, "leave": 0.25, "divergence": 0.2}
+
+
+def classify_verdict(
+    *, q: float, d: float, direction: Direction, thresholds: Mapping[str, float]
+) -> Verdict:
+    """Verdict from modularity Q, divergence D, and mismatch direction.
+
+    ``no_signal`` is decided upstream (no files / no edges); this maps a scored
+    package. Gated on BOTH Q (structure is real) and D (layout disagrees), with
+    direction disambiguating split (flatter layout) from consolidate (finer).
+    """
+    if q < thresholds["leave"]:
+        return "leave"
+    if d < thresholds["divergence"]:
+        return "aligned"
+    if q >= thresholds["split"]:
+        if direction == "under_split":
+            return "split"
+        if direction == "over_split":
+            return "consolidate"
+    return "borderline"
