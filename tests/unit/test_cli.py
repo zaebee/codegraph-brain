@@ -1218,6 +1218,7 @@ def test_metrics_includes_pagerank_section(tmp_path: Path) -> None:
     assert "critical" in payload
     assert all("page_rank" in m for m in payload["critical"])
 
+
 # ── fit-quality rendering + roll-ups (#177) ───────────────────────────────────
 
 from cgis.cli import _fit_cell  # noqa: E402

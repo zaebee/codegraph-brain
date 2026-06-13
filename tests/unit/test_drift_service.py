@@ -831,3 +831,52 @@ def test_coverage_lists_unbound_prefixes(tmp_path: Path) -> None:
     analysis = analyze_drift(db, str(p), max_drift=1.0)
     assert any(c.startswith("orphan") for c in analysis.coverage)
     assert not any(c == "dom" or c.startswith("dom.") for c in analysis.coverage)
+
+
+# ── fit-quality robustness (#232 colleague review) ────────────────────────────
+
+
+def test_cyclic_well_shaped_domain_is_not_banded_no_fit(tmp_path: Path) -> None:
+    """A domain that fits an archetype but has an import cycle reads gate_failed,
+    yet its fit band stays shape-good — the cycle is the gate's story, not
+    'no template fits' (review #1: band on gate-free shape residual)."""
+    db = str(tmp_path / "cyc.db")
+    nodes = module_with_funcs("dom.a", "dom/a.py", 2) + module_with_funcs("dom.b", "dom/b.py", 2)
+    edges = [
+        Edge(id="i1", source="dom.a", target="dom.b", type=EdgeType.IMPORTS),
+        Edge(id="i2", source="dom.b", target="dom.a", type=EdgeType.IMPORTS),
+        Edge(id="c1", source="dom.a.f0", target="dom.b.f0", type=EdgeType.CALLS),
+        Edge(id="c2", source="dom.a.f1", target="dom.b.f0", type=EdgeType.CALLS),
+    ]
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)
+    p = tmp_path / "p.yaml"
+    p.write_text(fit_patterns_yaml())
+    r = analyze_drift(db, str(p), max_drift=1.0).reports[0]
+    assert r.status == "gate_failed"
+    assert r.fit is not None
+    assert r.fit.band != "none"
+
+
+def test_fit_none_when_alphabet_has_no_templates(tmp_path: Path) -> None:
+    """A profiles-but-no-patterns config no longer crashes drift — fit is None (review #2)."""
+    db = instar_db(tmp_path)
+    p = tmp_path / "p.yaml"
+    p.write_text(
+        "version: '2.0.0'\n"
+        "profiles:\n  py:\n    drift_weights: {hub_count: 1.0}\n"
+        "    layers: {imports: 0.0, calls: 1.0, gates: 0.0}\n    triad_weights: {}\n"
+        "project_domains:\n  - name: dom\n    fqn_prefix: dom\n    profile: py\n"
+        "    drift_tolerance: 0.5\n"
+    )
+    analysis = analyze_drift(db, str(p), max_drift=1.0)  # must not raise IndexError
+    assert analysis.reports[0].fit is None
+
+
+def test_good_band_reachable_below_default_good_threshold(tmp_path: Path) -> None:
+    """--max-residual under 0.25 still bands a near-perfect match 'good', not 'none' (review #3)."""
+    p = tmp_path / "p.yaml"
+    p.write_text(fit_patterns_yaml())
+    analysis = analyze_drift(instar_db(tmp_path), str(p), max_drift=1.0, max_residual=0.20)
+    assert analysis.reports[0].fit is not None
+    assert analysis.reports[0].fit.band == "good"

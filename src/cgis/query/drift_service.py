@@ -36,15 +36,27 @@ _FITTABLE_STATUSES = frozenset({"clean", "warning", "critical", "gate_failed"})
 
 def _fit_quality(
     scorer: DriftScorer, report: DriftReport, profile: str, max_residual: float
-) -> FitQuality:
-    """Rank the alphabet against one domain's shape and band the closest fit (#177)."""
+) -> FitQuality | None:
+    """Rank the alphabet against one domain's shape and band the closest fit (#177).
+
+    Ranking uses the canonical distance (``fit_templates``); the reported
+    residuals and band use the gate-FREE ``shape_residual`` so a gate breach
+    (e.g. a cycle) never masquerades as "no template fits". Returns None when
+    the alphabet declares no templates (a profiles-only config).
+    """
     fits = scorer.fit_templates(report.actual, profile)
-    nearest_name, nearest_res = fits[0]
-    runner_name, runner_res = fits[1] if len(fits) > 1 else (None, None)
+    if not fits:
+        return None
+    nearest_name = fits[0][0]
+    runner_name = fits[1][0] if len(fits) > 1 else None
+    nearest_res = scorer.shape_residual(report.actual, profile, nearest_name)
+    runner_res = scorer.shape_residual(report.actual, profile, runner_name) if runner_name else None
+    # Keep the good-band reachable even when --max-residual is set below it.
+    good_cut = min(_GOOD_RESIDUAL, max_residual)
     band: Literal["good", "weak", "none"]
     if nearest_res > max_residual:
         band = "none"
-    elif nearest_res <= _GOOD_RESIDUAL:
+    elif nearest_res <= good_cut:
         band = "good"
     else:
         band = "weak"
@@ -166,14 +178,15 @@ def analyze_drift(
             else r
             for d, r in zip(domains, reports, strict=True)
         ]
-        coverage = _uncovered_prefixes(store.get_all_nodes(), [d.fqn_prefix for d in domains])
+        all_nodes = store.get_all_nodes()  # one materialization, reused below (#177 #4)
+        coverage = _uncovered_prefixes(all_nodes, [d.fqn_prefix for d in domains])
         level_bindings = scorer.load_project_level()
         if profile is not None:
             level_bindings = [
                 b for b in level_bindings if b.profile is None or b.profile == profile
             ]
         if level_bindings:
-            qnodes, qedges = build_quotient(store.get_all_nodes(), store.get_all_edges(), domains)
+            qnodes, qedges = build_quotient(all_nodes, store.get_all_edges(), domains)
             q_extractor = FingerprintExtractor.from_graph(qnodes, qedges)
             quotient = [
                 (b, scorer.score(q_extractor.extract(b.fqn_prefix), b, default_tolerance=max_drift))

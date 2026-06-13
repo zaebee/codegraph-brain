@@ -410,9 +410,11 @@ class DriftScorer:
         canonical "distance to template" reused by both fit-quality reporting
         (#177) and init-ontology labelling (#174) — one source of truth.
 
-        Note: gate violations (e.g. cycles) inflate the residual uniformly
-        across all templates, so they never change WHICH template is nearest,
-        only the absolute residual of a domain that already reads gate_failed.
+        Returns the FULL ``drift_score`` (gates included) — this is the value
+        init-ontology turns into a domain's tolerance, so the proposed ontology
+        round-trips even on cyclic domains (#174). Fit-quality reporting bands
+        on ``shape_residual`` instead (gate-free), so a cycle inflates the
+        score here without ever printing "no template fits".
         """
         fits = [
             (
@@ -434,6 +436,26 @@ class DriftScorer:
             profile=profile,
             drift_tolerance=1.0,
         )
+
+    def shape_residual(self, actual: PatternFingerprint, profile: str, template: str) -> float:
+        """Gate-FREE layered-TV distance to one template's ideal (#177 fit band).
+
+        Unlike ``fit_templates`` (which returns the full ``drift_score`` so
+        init-ontology's tolerance covers the gate term too, #174 round-trip),
+        this excludes the hygiene/gate contribution: a domain that genuinely
+        fits an archetype but carries a cycle is NOT banded "no template fits"
+        — the cycle is the gate's story, not the shape's. Combines the two TV
+        layers exactly as ``_score_v2`` does, minus the gates layer.
+        """
+        report = self.score(actual, self._fit_config(actual.domain, template, profile))
+        layers = self.layers_for(profile) or {}
+        discount = _clip_discount(actual)
+        imp_w = layers.get("imports", 0.0) if report.tv_imports is not None else 0.0
+        cal_w = layers.get("calls", 0.0) * discount if report.tv_calls is not None else 0.0
+        total = imp_w + cal_w
+        if total <= 0.0:
+            return 0.0
+        return (imp_w * (report.tv_imports or 0.0) + cal_w * (report.tv_calls or 0.0)) / total
 
     def _score_v1(
         self,

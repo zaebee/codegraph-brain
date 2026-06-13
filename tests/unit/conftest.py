@@ -109,6 +109,7 @@ def fit_patterns_yaml() -> str:
         "version: '2.0.0'\n"
         "profiles:\n  py:\n    drift_weights: {hub_count: 0.5, star_count: 0.5}\n"
         "    layers: {imports: 0.0, calls: 1.0, gates: 0.0}\n    triad_weights: {}\n"
+        "hygiene:\n  cycle_ratio: {max: 0.0}\n"
         "patterns:\n"
         "  pure_utility:\n    description: u\n    ideal:\n"
         "      imports: {'021U': 1.0}\n      calls: {'021U': 1.0}\n"
