@@ -183,3 +183,27 @@ def test_trivial_anchor_does_not_substring_match() -> None:
         result, diff_index={"src/x.py": {12}}, skeptic_model=None, diff_content=content
     )
     assert comments == []  # no exact ')' line, too short to substring → demoted
+
+
+def test_file_level_finding_stays_file_level() -> None:
+    """A file-level finding (line=None, no anchor) is NOT promoted to inline just
+    because its evidence text appears somewhere in the diff (#243 review)."""
+    content = {"src/x.py": {10: "    added1", 11: "    added2"}}
+    # evidence quotes a real diff line, but the model said this is file-level
+    f = _finding(line=None, anchor=None, evidence="added2")
+    result = ReviewResult(findings=[f], summary="s")
+    _, comments = build_review(
+        result, diff_index={"src/x.py": {10, 11}}, skeptic_model=None, diff_content=content
+    )
+    assert comments == []  # stays in the body, not anchored to line 11
+
+
+def test_explicit_anchor_still_places_a_lineless_finding() -> None:
+    """line=None but an explicit anchor → the model opted into positioning, so anchor wins."""
+    content = {"src/x.py": {10: "    added1", 11: "    added2"}}
+    f = _finding(line=None, anchor="added2")
+    result = ReviewResult(findings=[f], summary="s")
+    _, comments = build_review(
+        result, diff_index={"src/x.py": {10, 11}}, skeptic_model=None, diff_content=content
+    )
+    assert comments[0]["line"] == 11

@@ -25,7 +25,14 @@ def _anchored_line(finding: Finding, content: dict[int, str] | None) -> int | No
     - among the candidates: the model's ``line`` if it is one, else the nearest;
     - quote present but located nowhere → ``None``, demoting to a body comment
       instead of a confidently-wrong inline anchor.
+
+    A finding the model marked file-level (``line is None``) with no explicit
+    ``anchor`` stays file-level: ``evidence`` is supporting text, not a
+    positional signal, so it must not promote a file-level note to an inline
+    comment at a coincidental textual match (#243 review).
     """
+    if finding.line is None and finding.anchor is None:
+        return None
     quote = (finding.anchor or finding.evidence or "").strip()
     if not content or not quote:
         return finding.line
