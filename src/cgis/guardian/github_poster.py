@@ -37,9 +37,12 @@ def _anchored_line(finding: Finding, content: dict[int, str] | None) -> int | No
         matches = [n for n, text in content.items() if needle in text.strip()]
     if not matches:
         return None
-    if finding.line in matches:
-        return finding.line
-    return min(matches, key=lambda n: (abs(n - (finding.line or matches[0])), n))
+    if finding.line is None:
+        return matches[0]
+    model_line = finding.line  # bound local so the closure narrows it to int (mypy)
+    if model_line in matches:
+        return model_line
+    return min(matches, key=lambda n: (abs(n - model_line), n))
 
 
 def build_review(
@@ -62,7 +65,7 @@ def build_review(
     from its verbatim quote (#181) so the comment lands on the real line rather
     than the model's estimate; an unlocatable quote demotes to a body comment.
     """
-    content_by_file = diff_content or {}
+    content_by_file = diff_content if diff_content is not None else {}
     inline: list[Finding] = []
     outside: list[Finding] = []
     for raw in visible_findings(result.findings):
