@@ -22,6 +22,9 @@ class Finding(BaseModel, frozen=True):
     problem: str
     fix: str
     confidence: int = Field(ge=0, le=100)
+    # Verbatim single source line the finding sits on, used to derive the inline
+    # anchor deterministically instead of trusting the model's ``line`` (#181).
+    anchor: str | None = None
     verdict: Verdict | None = None
     skeptic_note: str | None = None
 

@@ -100,3 +100,122 @@ def test_footer_default_empty_keeps_body_unchanged() -> None:
     with_default, _ = build_review(result, diff_index={}, skeptic_model=None)
     with_empty, _ = build_review(result, diff_index={}, skeptic_model=None, footer="")
     assert with_default == with_empty
+
+
+_CONTENT = {"src/x.py": {10: "    context1", 11: "    added1", 12: "    added2", 13: "    ctx2"}}
+
+
+def _finding(**over: object) -> Finding:
+    base: dict[str, object] = {
+        "file": "src/x.py",
+        "line": 11,
+        "severity": "major",
+        "category": "logic",
+        "title": "t",
+        "evidence": "e",
+        "problem": "p",
+        "fix": "f",
+        "confidence": 90,
+    }
+    base.update(over)
+    return Finding(**base)  # type: ignore[arg-type]
+
+
+def test_anchor_corrects_a_wrong_model_line() -> None:
+    """A verbatim anchor overrides a hallucinated line — comment lands on the real line (#181)."""
+    f = _finding(line=999, anchor="added2")  # model guessed 999; real line is 12
+    result = ReviewResult(findings=[f], summary="s")
+    _, comments = build_review(
+        result,
+        diff_index={"src/x.py": {10, 11, 12, 13}},
+        skeptic_model=None,
+        diff_content=_CONTENT,
+    )
+    assert len(comments) == 1
+    assert comments[0]["line"] == 12
+
+
+def test_hallucinated_anchor_demotes_to_body() -> None:
+    """A quote that appears nowhere in the diff becomes a body note, not a wrong inline anchor."""
+    f = _finding(line=11, anchor="this text is not in the diff at all")
+    result = ReviewResult(findings=[f], summary="s")
+    body, comments = build_review(
+        result,
+        diff_index={"src/x.py": {10, 11, 12, 13}},
+        skeptic_model=None,
+        diff_content=_CONTENT,
+    )
+    assert comments == []  # not posted at the (wrong) model line 11
+    assert "t" in body  # finding survives in the body — nothing lost
+
+
+def test_no_diff_content_keeps_legacy_behaviour() -> None:
+    """Without diff_content, the model line is used as before (backward compatible)."""
+    f = _finding(line=11, anchor="added2")
+    result = ReviewResult(findings=[f], summary="s")
+    _, comments = build_review(result, diff_index={"src/x.py": {10, 11, 12}}, skeptic_model=None)
+    assert comments[0]["line"] == 11
+
+
+def test_exact_match_beats_a_spurious_substring() -> None:
+    """A trivial line that is a substring of the anchor must not outrank the exact
+    match, even when the model's hallucinated line is nearer to it (#181 review)."""
+    content = {
+        "src/x.py": {
+            4: "from cgis.resolver.indices import IndexBuilder, SymbolIndex",
+            20: ")",  # substring of the anchor — must NOT win
+        }
+    }
+    f = _finding(line=18, anchor="from cgis.resolver.indices import IndexBuilder, SymbolIndex")
+    result = ReviewResult(findings=[f], summary="s")
+    _, comments = build_review(
+        result, diff_index={"src/x.py": {4, 20}}, skeptic_model=None, diff_content=content
+    )
+    assert comments[0]["line"] == 4  # exact match wins over the nearer ")" at 20
+
+
+def test_trivial_anchor_does_not_substring_match() -> None:
+    """A 1-char anchor like ')' can't substring-match 'qux()' — it demotes to body."""
+    content = {"src/x.py": {12: "    qux()"}}
+    f = _finding(line=12, anchor=")")
+    result = ReviewResult(findings=[f], summary="s")
+    _, comments = build_review(
+        result, diff_index={"src/x.py": {12}}, skeptic_model=None, diff_content=content
+    )
+    assert comments == []  # no exact ')' line, too short to substring → demoted
+
+
+def test_file_level_finding_stays_file_level() -> None:
+    """A file-level finding (line=None, no anchor) is NOT promoted to inline just
+    because its evidence text appears somewhere in the diff (#243 review)."""
+    content = {"src/x.py": {10: "    added1", 11: "    added2"}}
+    # evidence quotes a real diff line, but the model said this is file-level
+    f = _finding(line=None, anchor=None, evidence="added2")
+    result = ReviewResult(findings=[f], summary="s")
+    _, comments = build_review(
+        result, diff_index={"src/x.py": {10, 11}}, skeptic_model=None, diff_content=content
+    )
+    assert comments == []  # stays in the body, not anchored to line 11
+
+
+def test_explicit_anchor_still_places_a_lineless_finding() -> None:
+    """line=None but an explicit anchor → the model opted into positioning, so anchor wins."""
+    content = {"src/x.py": {10: "    added1", 11: "    added2"}}
+    f = _finding(line=None, anchor="added2")
+    result = ReviewResult(findings=[f], summary="s")
+    _, comments = build_review(
+        result, diff_index={"src/x.py": {10, 11}}, skeptic_model=None, diff_content=content
+    )
+    assert comments[0]["line"] == 11
+
+
+def test_short_keyword_anchor_does_not_substring_match() -> None:
+    """A 5-char keyword like 'else:' must not substring-match 'something_else:' —
+    only exact line equality may anchor below _MIN_SUBSTRING_ANCHOR (#243 review)."""
+    content = {"src/x.py": {5: "    something_else: int = 1"}}
+    f = _finding(line=99, anchor="else:")  # 5 chars; substring of the line but generic
+    result = ReviewResult(findings=[f], summary="s")
+    _, comments = build_review(
+        result, diff_index={"src/x.py": {5}}, skeptic_model=None, diff_content=content
+    )
+    assert comments == []  # demoted: too short to substring, no exact match

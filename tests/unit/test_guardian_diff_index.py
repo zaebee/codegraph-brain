@@ -1,6 +1,6 @@
 """Unit tests for the pure unified-diff RIGHT-side line indexer (spec §6.2)."""
 
-from cgis.guardian.diff_index import diff_line_index
+from cgis.guardian.diff_index import diff_line_content, diff_line_index
 
 _SIMPLE = """\
 diff --git a/src/x.py b/src/x.py
@@ -101,3 +101,16 @@ def test_plus_plus_plus_content_line_inside_hunk() -> None:
         "+third\n"
     )
     assert diff_line_index(diff) == {"notes.md": {1, 2, 3}}
+
+
+def test_diff_line_content_maps_numbers_to_text() -> None:
+    """RIGHT-side lines map to their verbatim text (marker stripped) for anchoring (#181)."""
+    content = diff_line_content(_SIMPLE)["src/x.py"]
+    assert content == {10: "context1", 11: "added1", 12: "added2", 13: "context2"}
+    # index is derived from content → identical key set
+    assert diff_line_index(_SIMPLE)["src/x.py"] == set(content)
+
+
+def test_diff_line_content_new_file() -> None:
+    """A brand-new file maps every added line to its text."""
+    assert diff_line_content(_NEW_FILE)["brand.py"] == {1: "line1", 2: "line2"}
