@@ -19,6 +19,7 @@ _COMPONENT_NAMES = (
     "router_count",
     "cycle_ratio",
     "unresolved_ratio",
+    "tangle_ratio",
 )
 
 _CALLS_LAYER = frozenset({"hub_count", "star_count", "chain_len", "router_count"})

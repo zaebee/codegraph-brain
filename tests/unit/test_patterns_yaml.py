@@ -19,6 +19,10 @@ _COMPONENT_NAMES = frozenset(
     }
 )
 
+# Hygiene may constrain the 7 v1 components plus tangle_ratio — a v2 census-derived
+# hard gate that is NOT a drift_weights component (#186).
+_HYGIENE_COMPONENTS = _COMPONENT_NAMES | {"tangle_ratio"}
+
 # funnel = transpose(layered_dag); added per #186 research (the single most common
 # intra-domain archetype across 9 repos) so fit-quality (#177) measures against a
 # transpose-closed alphabet instead of flagging its absence as "no template fits".
@@ -96,7 +100,7 @@ def test_each_profile_weights_cover_all_components_and_sum_to_one() -> None:
 def test_hygiene_uses_known_components() -> None:
     """The hygiene block constrains only known components."""
     data = _load()
-    assert set(data["hygiene"].keys()) <= _COMPONENT_NAMES
+    assert set(data["hygiene"].keys()) <= _HYGIENE_COMPONENTS
 
 
 def test_all_pattern_constraints_use_known_components() -> None:
