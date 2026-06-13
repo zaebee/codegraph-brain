@@ -241,3 +241,111 @@ def test_pagerank_empty_graph_returns_empty(tmp_path: Path) -> None:
     db = _write_db(tmp_path, [], [])
     with DuckDBAnalyzer(db) as analyzer:
         assert analyzer.get_pagerank() == []
+
+
+def _exclude_fixture(tmp_path: Path) -> str:
+    """Graph mixing prod nodes, top-level tests, nested tests, and a 'testservice'
+    false-positive — used by the --exclude segment tests (#234)."""
+    nodes = [
+        _node("core.svc.handler"),
+        _node("tests.utils.rnd"),
+        _node("domains.resv.tests.test_routes"),
+        _node("domains.testservice.run"),
+        _node("core.models.Thing", NodeType.CLASS),
+        _node("core.models.Thing.m", NodeType.METHOD),
+        _node("tests.fakes.FakeThing", NodeType.CLASS),
+        _node("tests.fakes.FakeThing.m", NodeType.METHOD),
+    ]
+    edges = [
+        # test helpers call the prod handler (so they have coupling and would rank)
+        Edge(id="e1", source="tests.utils.rnd", target="core.svc.handler", type=EdgeType.CALLS),
+        Edge(
+            id="e2",
+            source="domains.resv.tests.test_routes",
+            target="core.svc.handler",
+            type=EdgeType.CALLS,
+        ),
+        Edge(
+            id="e3",
+            source="core.svc.handler",
+            target="domains.testservice.run",
+            type=EdgeType.CALLS,
+        ),
+        Edge(
+            id="d1",
+            source="core.models.Thing",
+            target="core.models.Thing.m",
+            type=EdgeType.DECLARES,
+        ),
+        Edge(
+            id="d2",
+            source="tests.fakes.FakeThing",
+            target="tests.fakes.FakeThing.m",
+            type=EdgeType.DECLARES,
+        ),
+    ]
+    return _write_db(tmp_path, nodes, edges)
+
+
+def test_exclude_segment_drops_tests_from_all_sections(tmp_path: Path) -> None:
+    """`exclude=['tests']` removes top-level AND nested test FQNs from every
+    section, while keeping a 'testservice' that only contains the substring (#234)."""
+    db = _exclude_fixture(tmp_path)
+    with DuckDBAnalyzer(db) as analyzer:
+        report = analyzer.architecture_report(exclude=["tests"])
+
+    ids = (
+        {m.node_id for m in report.bottlenecks}
+        | {m.node_id for m in report.god_classes}
+        | {m.node_id for m in report.critical}
+    )
+    # no FQN carries a 'tests' dot-segment anywhere
+    assert not any(".tests." in f".{i}." for i in ids)
+    assert "tests.utils.rnd" not in ids
+    assert "domains.resv.tests.test_routes" not in ids
+    assert "tests.fakes.FakeThing" not in ids
+    # substring-but-not-a-segment survivor stays, as does the real prod node
+    assert "domains.testservice.run" in ids
+    assert "core.svc.handler" in ids
+
+
+def test_exclude_is_opt_in_default_keeps_tests(tmp_path: Path) -> None:
+    """Without exclude, test nodes still appear — the flag changed behaviour (#234)."""
+    db = _exclude_fixture(tmp_path)
+    with DuckDBAnalyzer(db) as analyzer:
+        report = analyzer.architecture_report()
+    bottleneck_ids = {m.node_id for m in report.bottlenecks}
+    god_ids = {m.node_id for m in report.god_classes}
+    assert "tests.utils.rnd" in bottleneck_ids
+    assert "tests.fakes.FakeThing" in god_ids
+
+
+def test_exclude_segment_escapes_like_metacharacters(tmp_path: Path) -> None:
+    """An underscore in a segment is matched literally, not as the LIKE wildcard (#234)."""
+    nodes = [_node("a.b_c.fn"), _node("a.bxc.fn")]
+    db = _write_db(tmp_path, nodes, [])
+    with DuckDBAnalyzer(db) as analyzer:
+        ids = {m.node_id for m in analyzer.get_coupling_metrics(exclude=["b_c"])}
+    # 'b_c' must drop only the literal 'b_c' segment, never 'bxc'
+    assert "a.b_c.fn" not in ids
+    assert "a.bxc.fn" in ids
+
+
+def test_exclude_multiple_segments_drops_any_match(tmp_path: Path) -> None:
+    """Repeatable exclude is AND-composed: a node is dropped if it matches ANY
+    given segment; an unrelated node survives (#234, #235 review)."""
+    nodes = [_node("a.tests.x"), _node("b.vendor.y"), _node("c.core.z")]
+    db = _write_db(tmp_path, nodes, [])
+    with DuckDBAnalyzer(db) as analyzer:
+        ids = {m.node_id for m in analyzer.get_coupling_metrics(exclude=["tests", "vendor"])}
+    assert ids == {"c.core.z"}
+
+
+def test_exclude_empty_or_whitespace_segment_is_noop(tmp_path: Path) -> None:
+    """Empty / whitespace-only segments are skipped, never excluding everything
+    (#235 review — gemini/zaebee robustness nit)."""
+    nodes = [_node("a.core.x"), _node("b.svc.y")]
+    db = _write_db(tmp_path, nodes, [])
+    with DuckDBAnalyzer(db) as analyzer:
+        ids = {m.node_id for m in analyzer.get_coupling_metrics(exclude=["", "  "])}
+    assert ids == {"a.core.x", "b.svc.y"}
