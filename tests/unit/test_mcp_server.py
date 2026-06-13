@@ -18,6 +18,7 @@ from cgis.api.mcp_server import (
     cgis_ingest,
     cgis_init_ontology,
     cgis_metrics,
+    cgis_suggest_packages,
     cgis_trace_flow,
     cgis_validate,
 )
@@ -784,3 +785,24 @@ def test_cgis_audit_none_params_do_not_crash(tmp_path: Path) -> None:
     )
     assert payload["target"] == "app.guard"
     assert {g["fqn"] for g in payload["gaps"]} == {"app.h2"}
+
+
+# --- cgis_suggest_packages tests (#242) ---
+
+
+def test_cgis_suggest_packages_returns_json(repo_with_calls: tuple[Path, Path]) -> None:
+    """cgis_suggest_packages returns a JSON payload with the cohesion verdict (#242)."""
+    repo, db = repo_with_calls
+    cgis_ingest(str(repo), str(db))
+    # repo_with_calls creates mod.py and extra.py; prefix "mod" exists in the graph
+    payload = json.loads(cgis_suggest_packages(str(db), prefix="mod"))
+    assert "verdict" in payload
+    assert "modularity_q" in payload
+    assert "direction" in payload
+    assert isinstance(payload["communities"], list)
+
+
+def test_cgis_suggest_packages_missing_db(tmp_path: Path) -> None:
+    """A missing db returns an error string, not a crash (#242)."""
+    result = cgis_suggest_packages(str(tmp_path / "no.db"), prefix="mod")
+    assert "not found" in result.lower()
