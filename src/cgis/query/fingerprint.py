@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.query._scc import build_adjacency, tarjan_scc
 from cgis.query.health import HealthScorer
-from cgis.query.triads import ZERO_TRIADS, normalized_census, triad_census
+from cgis.query.triads import ZERO_TRIADS, normalized_census, tangle_mass, triad_census
 from cgis.storage.sqlite_store import SQLiteStore
 
 RAW_CALL_PREFIX = "raw_call:"
@@ -43,6 +43,15 @@ class PatternFingerprint:
     # no structure to score (isolated symbols / alias-only matches).
     node_count: int = 1
     edge_count: int = 1
+
+    @property
+    def tangle_ratio(self) -> float:
+        """Worst-layer normalized mutual-motif mass, in [0, 1] (spec #186).
+
+        max over the IMPORTS and CALLS census of tangle_mass — a hard hygiene
+        signal: a breach in either layer is a breach. 0 for empty/DAG layers.
+        """
+        return max(tangle_mass(self.t_imports), tangle_mass(self.t_calls))
 
 
 def _in_domain(fqn: str, prefix: str) -> bool:
