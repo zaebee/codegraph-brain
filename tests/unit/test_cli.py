@@ -4,7 +4,7 @@ import json
 import re
 from pathlib import Path
 
-from conftest import make_chain_db, module_with_funcs
+from conftest import fit_patterns_yaml, make_chain_db, module_with_funcs, triangle_db
 from typer.testing import CliRunner
 
 from cgis.cli import _drift_status_label, app
@@ -1217,3 +1217,50 @@ def test_metrics_includes_pagerank_section(tmp_path: Path) -> None:
     payload = json.loads(runner.invoke(app, ["metrics", "--db", db, "--format", "json"]).stdout)
     assert "critical" in payload
     assert all("page_rank" in m for m in payload["critical"])
+
+
+# ── fit-quality rendering + roll-ups (#177) ───────────────────────────────────
+
+from cgis.cli import _fit_cell  # noqa: E402
+from cgis.query.drift import FitQuality  # noqa: E402
+
+
+def test_fit_cell_bands() -> None:
+    """_fit_cell colours by band and shows '—' for an absent fit."""
+    assert _fit_cell(None) == "—"
+    good = FitQuality("funnel", 0.10, "layered_dag", 0.4, "good")
+    weak = FitQuality("funnel", 0.30, "layered_dag", 0.5, "weak")
+    none = FitQuality("funnel", 0.60, "layered_dag", 0.7, "none")
+    assert "green" in _fit_cell(good)
+    assert "funnel 0.10" in _fit_cell(good)
+    assert "yellow" in _fit_cell(weak)
+    assert "✗" in _fit_cell(none)
+    assert "red" in _fit_cell(none)
+
+
+def test_drift_reports_no_template_fits_and_coverage(tmp_path: Path) -> None:
+    """A 030T domain triggers the 'no template fits' roll-up; unbound code is listed."""
+    db = triangle_db(tmp_path)
+    # extra unbound package so coverage is non-empty
+    with SQLiteStore(db) as store:
+        store.save_graph(
+            [
+                Node(
+                    id="orphan.x",
+                    type=NodeType.FUNCTION,
+                    name="x",
+                    file_path="orphan.py",
+                    start_line=1,
+                    end_line=2,
+                )
+            ],
+            [],
+        )
+    patterns = tmp_path / "p.yaml"
+    patterns.write_text(fit_patterns_yaml())
+    result = runner.invoke(
+        app, ["drift", "--db", db, "--patterns", str(patterns), "--max-drift", "1.0"]
+    )
+    assert "no template fits" in result.output
+    assert "Unbound code" in result.output
+    assert "orphan" in result.output

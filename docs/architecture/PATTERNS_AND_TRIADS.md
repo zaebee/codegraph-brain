@@ -92,9 +92,16 @@ Counting thresholds are gone: shape is a *distance*, not a rule.
 | **`orchestrator`** | `021D` = 1.0 | *Coordinates N independent services*; fan-out from one coordinator, no leaf-to-leaf edges. | `pipeline` (fans out to extractors/resolver/storage) |
 | **`dispatcher`** | `021D` = 1.0 | *Routes to the first matching strategy*; mutually exclusive paths. Topologically identical to `orchestrator` — distinguished by **intent**, not shape. | `cli` |
 | **`layered_dag`** | `021D` = 0.5, `021C` = 0.5 + `dag_depth ≥ 3` | *Clean layered architecture*; fan-out **and** chains, no upward edges. Triads are local, so depth is enforced by a separate `dag_depth` gate. | `query`, `extractors` |
+| **`funnel`** | `021U` = 0.5, `021C` = 0.5 | *Convergent aggregation* — fan-in **and** chains, the edge-transpose of `layered_dag`. Many inputs funnel through staged sinks. | `crud`, `http clients`, `composables` |
 
-Two honest notes baked into the alphabet:
+Three honest notes baked into the alphabet:
 
+- **`funnel` = transpose(`layered_dag`)** (`021D`⇄`021U`, `021C` self-dual). Added
+  per #186 research: across 9 repos it is the single *most common* intra-domain
+  archetype (best-fit tally `funnel 39 > layered_dag 28 > pure_utility 27`) — the
+  one the hand-authored alphabet missed. Its presence keeps the closed alphabet
+  **transpose-closed** and stops fit-quality (#177) from flagging convergence
+  layers as "no template fits".
 - **`orchestrator` ≡ `dispatcher` topologically** (both `021D`=1.0). The census
   can't tell a coordinator from a router — only a human's `expected_pattern`
   choice can. That's a feature: the label records *intent*; drift checks the

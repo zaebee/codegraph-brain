@@ -21,7 +21,7 @@ from cgis.pipeline import IngestionPipeline
 from cgis.query.analyzer import AnalyzerEngine
 from cgis.query.anomaly import AnomalyType, ArchitecturalAnomaly
 from cgis.query.context_service import build_context
-from cgis.query.drift import DriftReport
+from cgis.query.drift import DriftReport, FitQuality
 from cgis.query.drift_service import analyze_drift
 from cgis.query.engine import BEHAVIORAL_EDGE_TYPES, QueryEngine
 from cgis.query.fqn import resolve_fqn
@@ -892,6 +892,42 @@ def _drift_status_label(status: str = "clean") -> str:
     return "[green]✅ clean[/green]"
 
 
+def _fit_cell(fit: FitQuality | None) -> str:
+    """Render a report's fit-quality (#177): nearest template + residual, banded."""
+    if fit is None:
+        return "—"
+    label = f"{fit.nearest_template} {fit.nearest_residual:.2f}"
+    if fit.band == "good":
+        return f"[green]{label}[/green]"
+    if fit.band == "weak":
+        return f"[yellow]{label}[/yellow]"
+    return f"[bold red]✗ {label}[/bold red]"
+
+
+def _render_fit_rollups(reports: list[DriftReport], coverage: list[str]) -> None:
+    """Print the 'no template fits' and unbound-coverage roll-ups (#177)."""
+    for r in reports:
+        f = r.fit
+        if f is None or f.band != "none":
+            continue
+        runner = (
+            f", runner-up {f.runner_up_template} {f.runner_up_residual:.2f}"
+            if f.runner_up_template is not None and f.runner_up_residual is not None
+            else ""
+        )
+        console.print(
+            f"[yellow]⚠ {escape(r.fqn_prefix)}: no template fits "
+            f"(nearest {f.nearest_template} {f.nearest_residual:.2f}{runner})[/yellow]"
+            " — split the module or extend the alphabet."
+        )
+    if coverage:
+        shown = ", ".join(escape(c) for c in coverage[:8])
+        more = f" (+{len(coverage) - 8} more)" if len(coverage) > 8 else ""
+        console.print(
+            f"[dim]Unbound code (no project_domain): {shown}{more} — drift skips these.[/dim]"
+        )
+
+
 def _render_drift_table(reports: list[DriftReport]) -> None:
     """Print an Architectural Drift Report table to the console.
 
@@ -904,6 +940,7 @@ def _render_drift_table(reports: list[DriftReport]) -> None:
     table.add_column("Drift", justify="right")
     table.add_column("TV imp", justify="right", style="dim")
     table.add_column("TV calls", justify="right", style="dim")
+    table.add_column("Fit", justify="left")
     table.add_column("Status", justify="center")
     for r in reports:
         table.add_row(
@@ -912,11 +949,15 @@ def _render_drift_table(reports: list[DriftReport]) -> None:
             f"{r.drift_score:.2f}",
             f"{r.tv_imports:.2f}" if r.tv_imports is not None else "—",
             f"{r.tv_calls:.2f}" if r.tv_calls is not None else "—",
+            _fit_cell(r.fit),
             _drift_status_label(r.status),
         )
-        if r.note:
-            table.add_row(f"[dim]{escape(r.note)}[/dim]", "", "", "", "", "")
     console.print(table)
+    # Notes print below the table (not as a cramped sub-row) so the diagnostic
+    # text isn't wrapped by the columnar layout.
+    for r in reports:
+        if r.note:
+            console.print(f"  [dim]{escape(r.note)}[/dim]")
 
 
 @app.command()
@@ -952,6 +993,17 @@ def drift(
             "languages but the db holds one graph."
         ),
     ),
+    max_residual: float = typer.Option(
+        0.45,
+        "--max-residual",
+        min=0.0,
+        max=1.0,
+        help=(
+            "Fit-quality cutoff (#177): a domain whose nearest template is farther "
+            "than this is flagged 'no template fits' — a grab-bag module or an "
+            "alphabet gap, independent of drift tolerance."
+        ),
+    ),
 ) -> None:
     """
     Report per-domain architectural drift against declared ideal patterns.
@@ -967,7 +1019,9 @@ def drift(
         raise typer.Exit(code=1)
 
     try:
-        analysis = analyze_drift(db, patterns, max_drift=max_drift, profile=profile)
+        analysis = analyze_drift(
+            db, patterns, max_drift=max_drift, profile=profile, max_residual=max_residual
+        )
     except Exception as e:
         console.print(f"[bold red]❌ Error during drift analysis:[/bold red] {e}")
         raise typer.Exit(code=1) from e
@@ -991,6 +1045,8 @@ def drift(
         )
         if qr.note:
             console.print(f"  [dim]{escape(qr.note)}[/dim]")
+
+    _render_fit_rollups(analysis.reports, analysis.coverage)
 
     if analysis.any_critical:
         console.print("[bold red]❌ One or more domains exceed the drift threshold.[/bold red]")

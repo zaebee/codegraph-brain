@@ -1532,3 +1532,69 @@ def test_breaching_domain_has_exactly_one_hygiene_breach_string(
     assert cycle_entries[0].startswith("hygiene cycle_ratio"), (
         f"The single entry must be the hygiene breach string, got: {cycle_entries[0]!r}"
     )
+
+
+# ── fit_templates: canonical distance-to-template ranking (#177) ──────────────
+
+
+def _triad_vec(**weights: float) -> tuple[float, ...]:
+    """Build a normalized 13-triad vector from {triad_name: weight} (#177 tests)."""
+    idx = {name: i for i, name in enumerate(TRIAD_ORDER)}
+    vec = [0.0] * len(TRIAD_ORDER)
+    for name, w in weights.items():
+        vec[idx[name]] = w
+    return tuple(vec)
+
+
+def _shape_fp(t_imports: tuple[float, ...], t_calls: tuple[float, ...]) -> PatternFingerprint:
+    """A gate-clean fingerprint carrying only the given triad shapes (#177 tests)."""
+    return PatternFingerprint(
+        domain="x.dom",
+        hub_count=0,
+        star_count=0,
+        chain_len=0.0,
+        dag_depth=5,
+        router_count=0,
+        cycle_ratio=0.0,
+        unresolved_ratio=0.0,
+        node_count=10,
+        edge_count=10,
+        t_imports=t_imports,
+        t_calls=t_calls,
+    )
+
+
+@pytest.fixture
+def repo_scorer() -> DriftScorer:
+    """The production alphabet (6 templates incl. funnel) for fit ranking tests."""
+    return DriftScorer("docs/ontology/patterns.yaml")
+
+
+def test_fit_templates_ranks_pure_utility_for_in_star(repo_scorer: DriftScorer) -> None:
+    """A pure 021U (in-star) shape is nearest to pure_utility."""
+    fp = _shape_fp(_triad_vec(**{"021U": 1.0}), _triad_vec(**{"021U": 1.0}))
+    fits = repo_scorer.fit_templates(fp, "python")
+    assert fits[0][0] == "pure_utility"
+    assert fits[0][1] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_fit_templates_ranks_funnel_for_in_star_plus_chain(repo_scorer: DriftScorer) -> None:
+    """The 021U+021C mix (the #186 funnel shape) is nearest to funnel — proving the
+    transpose-derived template is reachable as a best fit, not a symmetry ghost."""
+    mix = _triad_vec(**{"021U": 0.5, "021C": 0.5})
+    fp = _shape_fp(mix, mix)
+    fits = repo_scorer.fit_templates(fp, "python")
+    assert fits[0][0] == "funnel"
+    assert fits[0][1] == pytest.approx(0.0, abs=1e-9)
+    # layered_dag (the transpose) must NOT also be at distance 0 — they're distinct.
+    by_name = dict(fits)
+    assert by_name["layered_dag"] > 0.1
+
+
+def test_fit_templates_sorted_and_deterministic(repo_scorer: DriftScorer) -> None:
+    """Output is ascending by residual and identical across runs."""
+    fp = _shape_fp(_triad_vec(**{"021C": 1.0}), _triad_vec(**{"021C": 1.0}))
+    fits = repo_scorer.fit_templates(fp, "python")
+    assert [r for _, r in fits] == sorted(r for _, r in fits)
+    assert fits[0][0] == "pipeline_stage"
+    assert repo_scorer.fit_templates(fp, "python") == fits

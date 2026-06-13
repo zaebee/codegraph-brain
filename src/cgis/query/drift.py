@@ -44,6 +44,25 @@ class DomainConfig:
 
 
 @dataclass(frozen=True)
+class FitQuality:
+    """How well the closest alphabet template matches a domain's shape (#177).
+
+    ``residual`` is the domain's tolerance-free distance to a template's ideal
+    (``DriftScorer.fit_templates``) — it answers "clean because it MATCHES an
+    archetype" vs "clean because tolerance is loose". ``band``:
+    ``good`` (≤ good-threshold), ``weak``, or ``none`` (> max_residual — no
+    template in the closed alphabet captures this domain: a genuine grab-bag,
+    a mesh/tangle, or a gap the alphabet should fill).
+    """
+
+    nearest_template: str
+    nearest_residual: float
+    runner_up_template: str | None
+    runner_up_residual: float | None
+    band: Literal["good", "weak", "none"]
+
+
+@dataclass(frozen=True)
 class DriftReport:
     """Per-domain drift analysis result."""
 
@@ -60,6 +79,8 @@ class DriftReport:
     tv_calls: float | None = None
     # Human-readable diagnostic (e.g. closest-prefix suggestions for "empty").
     note: str | None = None
+    # Fit quality vs the alphabet (#177); None for hygiene-only/empty/no_signal.
+    fit: FitQuality | None = None
 
 
 def _clip_discount(actual: PatternFingerprint) -> float:
@@ -377,6 +398,73 @@ class DriftScorer:
             acknowledged=acknowledged,
             tolerance_eff=tolerance_eff,
         )
+
+    def fit_templates(self, actual: PatternFingerprint, profile: str) -> list[tuple[str, float]]:
+        """Return ``[(template_name, residual)]`` sorted by (residual asc, name asc).
+
+        The residual is ``actual``'s drift score against each template's ideal
+        under a synthetic binding with ``drift_tolerance=1.0`` — a pure,
+        status-free distance ("how far is this shape from the archetype",
+        independent of any tolerance). Iterates THIS scorer's loaded templates,
+        so it reflects whatever alphabet ``patterns.yaml`` declares. This is the
+        canonical "distance to template" reused by both fit-quality reporting
+        (#177) and init-ontology labelling (#174) — one source of truth.
+
+        Returns the FULL ``drift_score`` (gates included) — this is the value
+        init-ontology turns into a domain's tolerance, so the proposed ontology
+        round-trips even on cyclic domains (#174). Fit-quality reporting bands
+        on ``shape_residual`` instead (gate-free), so a cycle inflates the
+        score here without ever printing "no template fits".
+        """
+        fits = [
+            (
+                t_name,
+                self.score(actual, self._fit_config(actual.domain, t_name, profile)).drift_score,
+            )
+            for t_name in self._patterns
+        ]
+        fits.sort(key=lambda pair: (pair[1], pair[0]))
+        return fits
+
+    @staticmethod
+    def _fit_config(domain: str, template: str, profile: str) -> DomainConfig:
+        """Synthetic domain binding used to measure distance to one template."""
+        return DomainConfig(
+            name=domain,
+            fqn_prefix=domain,
+            expected_pattern=template,
+            profile=profile,
+            drift_tolerance=1.0,
+        )
+
+    def shape_residual(
+        self, actual: PatternFingerprint, profile: str, template: str
+    ) -> float | None:
+        """Gate-FREE layered-TV distance to one template's ideal, or None (#177 fit band).
+
+        Unlike ``fit_templates`` (which returns the full ``drift_score`` so
+        init-ontology's tolerance covers the gate term too, #174 round-trip),
+        this excludes the hygiene/gate contribution: a domain that genuinely
+        fits an archetype but carries a cycle is NOT banded "no template fits"
+        — the cycle is the gate's story, not the shape's. Combines the two TV
+        layers exactly as ``_score_v2`` does, minus the gates layer.
+
+        Returns ``None`` when there is no trusted shape weight at all — a v1
+        profile (no ``layers``), an empty census on both layers, or fully
+        unresolved calls (``discount == 0``) with no imports layer. Banding
+        that 0.0 would read as "clean because it MATCHES an archetype" when the
+        truth is "no signal to fit" (review #1 / gemini); the caller maps None
+        to ``fit=None``.
+        """
+        report = self.score(actual, self._fit_config(actual.domain, template, profile))
+        layers = self.layers_for(profile) or {}
+        discount = _clip_discount(actual)
+        imp_w = layers.get("imports", 0.0) if report.tv_imports is not None else 0.0
+        cal_w = layers.get("calls", 0.0) * discount if report.tv_calls is not None else 0.0
+        total = imp_w + cal_w
+        if total <= 0.0:
+            return None
+        return (imp_w * (report.tv_imports or 0.0) + cal_w * (report.tv_calls or 0.0)) / total
 
     def _score_v1(
         self,

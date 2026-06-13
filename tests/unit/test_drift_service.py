@@ -3,7 +3,7 @@
 from pathlib import Path
 
 import pytest
-from conftest import module_with_funcs
+from conftest import fit_patterns_yaml, instar_db, module_with_funcs, triangle_db
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.query.drift_service import DriftAnalysis, analyze_drift
@@ -768,3 +768,148 @@ def test_cross_domain_signal_routes_to_quotient(tmp_path: Path) -> None:
     assert analysis.any_critical is False, (
         "observe-only quotient binding must not flip any_critical even with nonzero drift"
     )
+
+
+# ── fit-quality + coverage roll-up (#177) ─────────────────────────────────────
+
+
+def test_fit_attached_to_profiled_domain(tmp_path: Path) -> None:
+    """A profiled domain's report carries fit; the in-star ranks pure_utility good."""
+    p = tmp_path / "p.yaml"
+    p.write_text(fit_patterns_yaml())
+    analysis = analyze_drift(instar_db(tmp_path), str(p), max_drift=1.0)
+    fit = analysis.reports[0].fit
+    assert fit is not None
+    assert fit.nearest_template == "pure_utility"
+    assert fit.band == "good"
+    assert fit.runner_up_template == "pipeline_stage"
+
+
+def test_no_template_fits_a_transitive_triangle(tmp_path: Path) -> None:
+    """A 030T shape no 021* template captures → band 'none' (the #177 alphabet-gap signal)."""
+    db = triangle_db(tmp_path)
+    p = tmp_path / "p.yaml"
+    p.write_text(fit_patterns_yaml())
+    analysis = analyze_drift(db, str(p), max_drift=1.0)
+    fit = analysis.reports[0].fit
+    assert fit is not None
+    assert fit.band == "none"
+    assert fit.nearest_residual > 0.45
+
+
+def test_fit_is_none_for_profileless_domain(graph_db: str, patterns_file: str) -> None:
+    """A v1 (profile-less) domain has no fit — template ranking needs a profile."""
+    analysis = analyze_drift(graph_db, patterns_file, max_drift=1.0)
+    assert analysis.reports[0].fit is None
+
+
+def test_coverage_lists_unbound_prefixes(tmp_path: Path) -> None:
+    """Graph code under no project_domain surfaces in the coverage roll-up."""
+    db = str(tmp_path / "cov.db")
+    nodes = [
+        Node(
+            id="dom.f1",
+            type=NodeType.FUNCTION,
+            name="f1",
+            file_path="dom.py",
+            start_line=1,
+            end_line=2,
+        ),
+        Node(
+            id="orphan.pkg.g",
+            type=NodeType.FUNCTION,
+            name="g",
+            file_path="orphan/pkg.py",
+            start_line=1,
+            end_line=2,
+        ),
+    ]
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, [])
+    p = tmp_path / "p.yaml"
+    p.write_text(fit_patterns_yaml())
+    analysis = analyze_drift(db, str(p), max_drift=1.0)
+    assert any(c.startswith("orphan") for c in analysis.coverage)
+    assert not any(c == "dom" or c.startswith("dom.") for c in analysis.coverage)
+
+
+# ── fit-quality robustness (#232 colleague review) ────────────────────────────
+
+
+def test_cyclic_well_shaped_domain_is_not_banded_no_fit(tmp_path: Path) -> None:
+    """A domain that fits an archetype but has an import cycle reads gate_failed,
+    yet its fit band stays shape-good — the cycle is the gate's story, not
+    'no template fits' (review #1: band on gate-free shape residual)."""
+    db = str(tmp_path / "cyc.db")
+    nodes = module_with_funcs("dom.a", "dom/a.py", 2) + module_with_funcs("dom.b", "dom/b.py", 2)
+    edges = [
+        Edge(id="i1", source="dom.a", target="dom.b", type=EdgeType.IMPORTS),
+        Edge(id="i2", source="dom.b", target="dom.a", type=EdgeType.IMPORTS),
+        Edge(id="c1", source="dom.a.f0", target="dom.b.f0", type=EdgeType.CALLS),
+        Edge(id="c2", source="dom.a.f1", target="dom.b.f0", type=EdgeType.CALLS),
+    ]
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)
+    p = tmp_path / "p.yaml"
+    p.write_text(fit_patterns_yaml())
+    r = analyze_drift(db, str(p), max_drift=1.0).reports[0]
+    assert r.status == "gate_failed"
+    assert r.fit is not None
+    assert r.fit.band != "none"
+
+
+def test_fit_none_when_alphabet_has_no_templates(tmp_path: Path) -> None:
+    """A profiles-but-no-patterns config no longer crashes drift — fit is None (review #2)."""
+    db = instar_db(tmp_path)
+    p = tmp_path / "p.yaml"
+    p.write_text(
+        "version: '2.0.0'\n"
+        "profiles:\n  py:\n    drift_weights: {hub_count: 1.0}\n"
+        "    layers: {imports: 0.0, calls: 1.0, gates: 0.0}\n    triad_weights: {}\n"
+        "project_domains:\n  - name: dom\n    fqn_prefix: dom\n    profile: py\n"
+        "    drift_tolerance: 0.5\n"
+    )
+    analysis = analyze_drift(db, str(p), max_drift=1.0)  # must not raise IndexError
+    assert analysis.reports[0].fit is None
+
+
+def test_good_band_reachable_below_default_good_threshold(tmp_path: Path) -> None:
+    """--max-residual under 0.25 still bands a near-perfect match 'good', not 'none' (review #3)."""
+    p = tmp_path / "p.yaml"
+    p.write_text(fit_patterns_yaml())
+    analysis = analyze_drift(instar_db(tmp_path), str(p), max_drift=1.0, max_residual=0.20)
+    assert analysis.reports[0].fit is not None
+    assert analysis.reports[0].fit.band == "good"
+
+
+def test_fit_none_when_no_shape_signal(tmp_path: Path) -> None:
+    """A profiled 'clean' domain with no fittable shape (empty census, no imports
+    layer) gets fit=None — not band 'good' 0.00 (review #1 / gemini: 'no signal
+    to fit' must not read as 'matches an archetype')."""
+    db = str(tmp_path / "flat.db")
+    nodes = [
+        Node(
+            id="dom.f1",
+            type=NodeType.FUNCTION,
+            name="f1",
+            file_path="dom.py",
+            start_line=1,
+            end_line=2,
+        ),
+        Node(
+            id="dom.f2",
+            type=NodeType.FUNCTION,
+            name="f2",
+            file_path="dom.py",
+            start_line=3,
+            end_line=4,
+        ),
+    ]
+    edges = [Edge(id="e1", source="dom.f1", target="dom.f2", type=EdgeType.CALLS)]
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)  # 1 edge → not no_signal; census empty → no shape
+    p = tmp_path / "p.yaml"
+    p.write_text(fit_patterns_yaml())
+    r = analyze_drift(db, str(p), max_drift=1.0).reports[0]
+    assert r.status != "no_signal"
+    assert r.fit is None
