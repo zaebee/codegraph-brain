@@ -137,3 +137,39 @@ def test_coupling_excludes_virtual_self_dispatch_nodes(tmp_path: Path) -> None:
 
     assert "self._conn.execute" not in ids
     assert "app.real" in ids
+
+
+def test_out_degree_excludes_external_callees(tmp_path: Path) -> None:
+    """Fan-out counts only INTERNAL callees — stdlib/raw_call targets don't inflate it."""
+    caller = _node("app.caller")
+    internal_callee = _node("app.helper")
+    edges = [
+        Edge(id="i", source="app.caller", target="app.helper", type=EdgeType.CALLS),
+        Edge(id="x1", source="app.caller", target="raw_call:print", type=EdgeType.CALLS),
+        Edge(id="x2", source="app.caller", target="raw_call:typer", type=EdgeType.CALLS),
+    ]
+    db = _write_db(tmp_path, [caller, internal_callee], edges)
+
+    with DuckDBAnalyzer(db) as analyzer:
+        metrics = analyzer.get_coupling_metrics()
+
+    caller_m = next(m for m in metrics if m.node_id == "app.caller")
+    assert caller_m.out_degree == 1  # only app.helper, not the 2 externals
+
+
+def test_architecture_report_honors_god_limit(tmp_path: Path) -> None:
+    """architecture_report caps God classes at god_limit (the --limit plumbing target)."""
+    nodes: list[Node] = []
+    edges: list[Edge] = []
+    for c in range(6):
+        nodes.append(_node(f"app.C{c}", NodeType.CLASS))
+        nodes.append(_node(f"app.C{c}.m", NodeType.METHOD))
+        edges.append(
+            Edge(id=f"d{c}", source=f"app.C{c}", target=f"app.C{c}.m", type=EdgeType.DECLARES)
+        )
+    db = _write_db(tmp_path, nodes, edges)
+
+    with DuckDBAnalyzer(db) as analyzer:
+        report = analyzer.architecture_report(god_limit=2)
+
+    assert len(report.god_classes) == 2

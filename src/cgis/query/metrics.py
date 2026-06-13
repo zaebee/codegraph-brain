@@ -39,8 +39,13 @@ WITH incoming AS (
     FROM edges WHERE type = 'CALLS' GROUP BY target
 ),
 outgoing AS (
-    SELECT source AS node_id, COUNT(*) AS out_deg
-    FROM edges WHERE type = 'CALLS' GROUP BY source
+    SELECT e.source AS node_id, COUNT(*) AS out_deg
+    FROM edges e
+    JOIN nodes t ON e.target = t.id
+    WHERE e.type = 'CALLS'
+      AND t.namespace = 'INTERNAL'
+      AND t.file_path != '{VIRTUAL_FILE_PATH}'
+    GROUP BY e.source
 )
 SELECT
     n.id,
@@ -108,13 +113,19 @@ class DuckDBAnalyzer:
             msg = f"Database not found: {sqlite_db_path}. Run `cgis ingest` first."
             raise FileNotFoundError(msg)
         self.conn = duckdb.connect(":memory:")
-        self.conn.execute("INSTALL sqlite;")
-        self.conn.execute("LOAD sqlite;")
-        # The path can't be a bound parameter in ATTACH; single-quote-escape it
-        # (and the is_file check above) keeps the literal injection-safe.
-        safe_path = sqlite_db_path.replace("'", "''")
-        self.conn.execute(f"ATTACH '{safe_path}' AS gdb (TYPE SQLITE, READ_ONLY);")
-        self.conn.execute("USE gdb;")
+        try:
+            self.conn.execute("INSTALL sqlite;")
+            self.conn.execute("LOAD sqlite;")
+            # The path can't be a bound parameter in ATTACH; single-quote-escape it
+            # (and the is_file check above) keeps the literal injection-safe.
+            safe_path = sqlite_db_path.replace("'", "''")
+            self.conn.execute(f"ATTACH '{safe_path}' AS gdb (TYPE SQLITE, READ_ONLY);")
+            self.conn.execute("USE gdb;")
+        except Exception:
+            # INSTALL/LOAD/ATTACH can fail (offline extension fetch, non-SQLite file).
+            # Close the just-opened connection so it never leaks past a failed __init__.
+            self.conn.close()
+            raise
 
     def __enter__(self) -> "DuckDBAnalyzer":
         """Enter the context manager, returning this analyzer."""

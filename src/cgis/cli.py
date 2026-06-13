@@ -1150,8 +1150,8 @@ def metrics(
         raise typer.Exit(code=1)
     try:
         with DuckDBAnalyzer(db) as analyzer:
-            report = analyzer.architecture_report(bottleneck_limit=limit)
-    except RuntimeError as e:  # optional duckdb dependency missing
+            report = analyzer.architecture_report(bottleneck_limit=limit, god_limit=limit)
+    except Exception as e:  # duckdb missing, extension fetch, or a non-SQLite file
         console.print(f"[bold red]❌ {e}[/bold red]")
         raise typer.Exit(code=1) from e
 

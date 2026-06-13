@@ -1159,3 +1159,49 @@ def test_metrics_missing_db_errors(tmp_path: Path) -> None:
     result = runner.invoke(app, ["metrics", "--db", str(tmp_path / "missing.db")])
     assert result.exit_code == 1
     assert "not found" in result.output.lower()
+
+
+def test_metrics_limit_applies_to_god_classes(tmp_path: Path) -> None:
+    """`--limit` caps the God-class section too, not just bottlenecks (#230 review)."""
+    nodes: list[Node] = []
+    edges: list[Edge] = []
+    for c in range(6):
+        nodes.append(
+            Node(
+                id=f"app.C{c}",
+                type=NodeType.CLASS,
+                name=f"C{c}",
+                file_path="m.py",
+                start_line=1,
+                end_line=2,
+            )
+        )
+        nodes.append(
+            Node(
+                id=f"app.C{c}.m",
+                type=NodeType.METHOD,
+                name="m",
+                file_path="m.py",
+                start_line=3,
+                end_line=4,
+            )
+        )
+        edges.append(
+            Edge(id=f"d{c}", source=f"app.C{c}", target=f"app.C{c}.m", type=EdgeType.DECLARES)
+        )
+    db = str(tmp_path / "classes.db")
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)
+
+    result = runner.invoke(app, ["metrics", "--db", db, "--limit", "2", "--format", "json"])
+    assert result.exit_code == 0
+    assert len(json.loads(result.stdout)["god_classes"]) == 2
+
+
+def test_metrics_invalid_db_errors_cleanly(tmp_path: Path) -> None:
+    """A present-but-not-SQLite file is a clean ❌, not a DuckDB traceback (#230 review)."""
+    bad = tmp_path / "not_a.db"
+    bad.write_text("definitely not a sqlite database", encoding="utf-8")
+    result = runner.invoke(app, ["metrics", "--db", str(bad)])
+    assert result.exit_code == 1
+    assert "❌" in result.output
