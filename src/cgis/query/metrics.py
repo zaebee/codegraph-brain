@@ -48,7 +48,11 @@ def _segment_exclusion(id_expr: str, segments: Sequence[str]) -> tuple[str, list
     """
     clauses: list[str] = []
     params: list[str] = []
-    for seg in segments:
+    # dict.fromkeys dedupes while preserving order; skip empty/whitespace segments
+    # (they would yield a '%..%' pattern that matches no real FQN — a silent no-op).
+    for seg in dict.fromkeys(segments):
+        if not seg.strip():
+            continue
         escaped = seg.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         clauses.append(f"('.' || {id_expr} || '.') NOT LIKE ? ESCAPE '\\'")
         params.append(f"%.{escaped}.%")

@@ -329,3 +329,23 @@ def test_exclude_segment_escapes_like_metacharacters(tmp_path: Path) -> None:
     # 'b_c' must drop only the literal 'b_c' segment, never 'bxc'
     assert "a.b_c.fn" not in ids
     assert "a.bxc.fn" in ids
+
+
+def test_exclude_multiple_segments_drops_any_match(tmp_path: Path) -> None:
+    """Repeatable exclude is AND-composed: a node is dropped if it matches ANY
+    given segment; an unrelated node survives (#234, #235 review)."""
+    nodes = [_node("a.tests.x"), _node("b.vendor.y"), _node("c.core.z")]
+    db = _write_db(tmp_path, nodes, [])
+    with DuckDBAnalyzer(db) as analyzer:
+        ids = {m.node_id for m in analyzer.get_coupling_metrics(exclude=["tests", "vendor"])}
+    assert ids == {"c.core.z"}
+
+
+def test_exclude_empty_or_whitespace_segment_is_noop(tmp_path: Path) -> None:
+    """Empty / whitespace-only segments are skipped, never excluding everything
+    (#235 review — gemini/zaebee robustness nit)."""
+    nodes = [_node("a.core.x"), _node("b.svc.y")]
+    db = _write_db(tmp_path, nodes, [])
+    with DuckDBAnalyzer(db) as analyzer:
+        ids = {m.node_id for m in analyzer.get_coupling_metrics(exclude=["", "  "])}
+    assert ids == {"a.core.x", "b.svc.y"}
