@@ -110,3 +110,21 @@ def test_audit_empty_prefix_is_treated_as_unset(tmp_path: Path) -> None:
     db = _store(tmp_path, *_graph())
     with SQLiteStore(db) as store, pytest.raises(ValueError, match="from_type"):
         audit_reachability(store, target_fqn="app.verify_owner", from_prefix="   ")
+
+
+def test_audit_reference_only_is_a_gap_not_covered(tmp_path: Path) -> None:
+    """A REFERENCES/IMPORT link (not CALLS/DEPENDS_ON) is NOT coverage — sound for authz (#236)."""
+    nodes = [
+        _node("app.routes.ref", NodeType.ROUTE_HANDLER, 5),
+        _node("app.verify_owner", NodeType.FUNCTION, 50),
+    ]
+    edges = [
+        Edge(id="r", source="app.routes.ref", target="app.verify_owner", type=EdgeType.REFERENCES),
+    ]
+    db = _store(tmp_path, nodes, edges)
+    with SQLiteStore(db) as store:
+        result = audit_reachability(
+            store, target_fqn="app.verify_owner", from_type=NodeType.ROUTE_HANDLER
+        )
+    assert {r.fqn for r in result.gaps} == {"app.routes.ref"}  # reference-only = gap
+    assert result.covered == []

@@ -6,16 +6,31 @@ That's the IDOR-class gap that previously took manual ``impact`` diffing to find
 
 The shape generalizes — handlers that touch storage but never reach a validator,
 mutations that never reach event tracking, routes that bypass the service layer.
-Reachability follows **behavioral** edges (CALLS, REFERENCES, DEPENDS_ON,
-AUTHORIZES, …), so a checkpoint wired via FastAPI ``Depends()`` (a DEPENDS_ON
-edge, #161) counts — exactly as it does at runtime.
+
+Reachability follows **enforcement** edges by default — invocation (CALLS) and
+runtime wiring (DEPENDS_ON, AUTHORIZES) — *not* every behavioral edge. This is
+deliberate and load-bearing for a security primitive: merely *importing* or
+*referencing* the guard (IMPORTS/IMPORTS_SYMBOL/REFERENCES) is not enforcing it,
+so counting those as coverage would hide real IDOR gaps (a false "covered" is the
+dangerous direction). Callers can pass a wider ``allowed_edge_types`` explicitly.
+A guard wired via FastAPI ``Depends()`` (a DEPENDS_ON edge, #161) counts — *when
+the resolver uplifts that wiring to the guard node*; an unresolved dynamic
+provider (``raw_dep:``/``raw_call:`` at confidence 0.1) can't be proven and shows
+as a gap.
 """
 
 from dataclasses import dataclass
 
 from cgis.core.models import EdgeType, Node, NodeNamespace, NodeType
-from cgis.query.engine import BEHAVIORAL_EDGE_TYPES, QueryEngine
+from cgis.query.engine import QueryEngine
 from cgis.storage.sqlite_store import SQLiteStore
+
+# Edges that mean the source *enforces* (invokes / wires) the checkpoint, as
+# opposed to merely importing or naming it. The default for an authz audit:
+# false coverage (import-only) is worse than a false gap for a security linter.
+_ENFORCEMENT_EDGE_TYPES: frozenset[EdgeType] = frozenset(
+    {EdgeType.CALLS, EdgeType.DEPENDS_ON, EdgeType.AUTHORIZES}
+)
 
 
 @dataclass(frozen=True)
@@ -79,9 +94,15 @@ def audit_reachability(
     required; an empty/whitespace ``from_prefix`` is treated as unset). Coverage
     is decided by a **single upstream traversal** from the checkpoint
     (``get_impact_graph``) up to ``max_depth`` over ``allowed_edge_types``
-    (behavioral edges by default): every node that reaches the checkpoint within
-    the depth is in that set, so a source is *covered* iff it appears there,
-    otherwise a *gap*. One BFS for the whole audit, not one per source. The
+    (**enforcement** edges — CALLS/DEPENDS_ON/AUTHORIZES — by default, so an
+    import-only or reference-only link never counts as coverage): every node that
+    reaches the checkpoint within the depth is in that set, so a source is
+    *covered* iff it appears there, otherwise a *gap*. One BFS for the whole
+    audit, not one per source.
+
+    ``max_depth`` bounds the proof: a source that only reaches the checkpoint via
+    a chain longer than ``max_depth`` is reported as a gap even though it is
+    covered at runtime — raise it for deep route→service→crud→…→guard stacks. The
     checkpoint node itself is never audited as its own source.
 
     Note on ``target_fqn`` granularity: reaching a node means a behavioral edge
@@ -97,7 +118,7 @@ def audit_reachability(
         msg = "audit_reachability requires from_type or a non-empty from_prefix to select sources."
         raise ValueError(msg)
     engine = QueryEngine(store)
-    edge_types = allowed_edge_types or BEHAVIORAL_EDGE_TYPES
+    edge_types = allowed_edge_types or _ENFORCEMENT_EDGE_TYPES
     upstream_nodes, _ = engine.get_impact_graph(
         target_fqn, max_depth=max_depth, allowed_edge_types=edge_types
     )

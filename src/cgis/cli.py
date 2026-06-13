@@ -1290,7 +1290,12 @@ def audit(
         None, "--from-prefix", help="Only audit nodes whose FQN starts with this prefix."
     ),
     db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
-    depth: int = typer.Option(5, "--depth", min=1, help="Max reachability depth."),
+    depth: int = typer.Option(
+        5,
+        "--depth",
+        min=1,
+        help="Max reachability depth — bounds the proof; a deeper-than-this path reads as a gap.",
+    ),
     output_format: OutputFormat = typer.Option(
         OutputFormat.TEXT, "--format", "-f", help=_TEXT_JSON_FORMAT_HELP
     ),
