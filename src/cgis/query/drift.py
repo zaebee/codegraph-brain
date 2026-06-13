@@ -437,8 +437,10 @@ class DriftScorer:
             drift_tolerance=1.0,
         )
 
-    def shape_residual(self, actual: PatternFingerprint, profile: str, template: str) -> float:
-        """Gate-FREE layered-TV distance to one template's ideal (#177 fit band).
+    def shape_residual(
+        self, actual: PatternFingerprint, profile: str, template: str
+    ) -> float | None:
+        """Gate-FREE layered-TV distance to one template's ideal, or None (#177 fit band).
 
         Unlike ``fit_templates`` (which returns the full ``drift_score`` so
         init-ontology's tolerance covers the gate term too, #174 round-trip),
@@ -446,6 +448,13 @@ class DriftScorer:
         fits an archetype but carries a cycle is NOT banded "no template fits"
         — the cycle is the gate's story, not the shape's. Combines the two TV
         layers exactly as ``_score_v2`` does, minus the gates layer.
+
+        Returns ``None`` when there is no trusted shape weight at all — a v1
+        profile (no ``layers``), an empty census on both layers, or fully
+        unresolved calls (``discount == 0``) with no imports layer. Banding
+        that 0.0 would read as "clean because it MATCHES an archetype" when the
+        truth is "no signal to fit" (review #1 / gemini); the caller maps None
+        to ``fit=None``.
         """
         report = self.score(actual, self._fit_config(actual.domain, template, profile))
         layers = self.layers_for(profile) or {}
@@ -454,7 +463,7 @@ class DriftScorer:
         cal_w = layers.get("calls", 0.0) * discount if report.tv_calls is not None else 0.0
         total = imp_w + cal_w
         if total <= 0.0:
-            return 0.0
+            return None
         return (imp_w * (report.tv_imports or 0.0) + cal_w * (report.tv_calls or 0.0)) / total
 
     def _score_v1(

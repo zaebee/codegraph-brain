@@ -880,3 +880,36 @@ def test_good_band_reachable_below_default_good_threshold(tmp_path: Path) -> Non
     analysis = analyze_drift(instar_db(tmp_path), str(p), max_drift=1.0, max_residual=0.20)
     assert analysis.reports[0].fit is not None
     assert analysis.reports[0].fit.band == "good"
+
+
+def test_fit_none_when_no_shape_signal(tmp_path: Path) -> None:
+    """A profiled 'clean' domain with no fittable shape (empty census, no imports
+    layer) gets fit=None — not band 'good' 0.00 (review #1 / gemini: 'no signal
+    to fit' must not read as 'matches an archetype')."""
+    db = str(tmp_path / "flat.db")
+    nodes = [
+        Node(
+            id="dom.f1",
+            type=NodeType.FUNCTION,
+            name="f1",
+            file_path="dom.py",
+            start_line=1,
+            end_line=2,
+        ),
+        Node(
+            id="dom.f2",
+            type=NodeType.FUNCTION,
+            name="f2",
+            file_path="dom.py",
+            start_line=3,
+            end_line=4,
+        ),
+    ]
+    edges = [Edge(id="e1", source="dom.f1", target="dom.f2", type=EdgeType.CALLS)]
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)  # 1 edge → not no_signal; census empty → no shape
+    p = tmp_path / "p.yaml"
+    p.write_text(fit_patterns_yaml())
+    r = analyze_drift(db, str(p), max_drift=1.0).reports[0]
+    assert r.status != "no_signal"
+    assert r.fit is None

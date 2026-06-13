@@ -48,8 +48,12 @@ def _fit_quality(
     if not fits:
         return None
     nearest_name = fits[0][0]
-    runner_name = fits[1][0] if len(fits) > 1 else None
     nearest_res = scorer.shape_residual(report.actual, profile, nearest_name)
+    if nearest_res is None:
+        # No trusted shape weight (v1 profile / empty census / fully unresolved) —
+        # "no signal to fit" is not a perfect match. Leave fit unset.
+        return None
+    runner_name = fits[1][0] if len(fits) > 1 else None
     runner_res = scorer.shape_residual(report.actual, profile, runner_name) if runner_name else None
     # Keep the good-band reachable even when --max-residual is set below it.
     good_cut = min(_GOOD_RESIDUAL, max_residual)
