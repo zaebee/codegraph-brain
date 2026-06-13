@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.query.audit import audit_reachability
 from cgis.storage.sqlite_store import SQLiteStore
@@ -101,3 +103,10 @@ def test_audit_from_prefix_selects_sources(tmp_path: Path) -> None:
     with SQLiteStore(db) as store:
         result = audit_reachability(store, target_fqn="app.verify_owner", from_prefix="app.routes")
     assert {r.fqn for r in result.gaps} == {"app.routes.h3"}
+
+
+def test_audit_empty_prefix_is_treated_as_unset(tmp_path: Path) -> None:
+    """A whitespace-only from_prefix is treated as unset — error if it's the only selector."""
+    db = _store(tmp_path, *_graph())
+    with SQLiteStore(db) as store, pytest.raises(ValueError, match="from_type"):
+        audit_reachability(store, target_fqn="app.verify_owner", from_prefix="   ")

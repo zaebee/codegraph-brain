@@ -1289,7 +1289,8 @@ def audit(
     if output_format == OutputFormat.MERMAID:
         console.print("[bold red]❌ audit supports --format text or json only.[/bold red]")
         raise typer.Exit(code=2)
-    if from_type is None and from_prefix is None:
+    from_prefix = from_prefix.strip() if from_prefix else None
+    if from_type is None and not from_prefix:
         console.print(
             "[bold red]❌ Provide --from-type or --from-prefix to select sources.[/bold red]"
         )

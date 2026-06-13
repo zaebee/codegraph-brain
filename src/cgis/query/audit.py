@@ -76,15 +76,25 @@ def audit_reachability(
     """Split the selected sources into those that reach ``target_fqn`` and those that don't.
 
     Sources are chosen by ``from_type`` and/or ``from_prefix`` (at least one is
-    required). Coverage is decided by a **single upstream traversal** from the
-    checkpoint (``get_impact_graph``) up to ``max_depth`` over
-    ``allowed_edge_types`` (behavioral edges by default): every node that reaches
-    the checkpoint within the depth is in that set, so a source is *covered* iff
-    it appears there, otherwise a *gap*. One BFS for the whole audit, not one per
-    source. The checkpoint node itself is never audited as its own source.
+    required; an empty/whitespace ``from_prefix`` is treated as unset). Coverage
+    is decided by a **single upstream traversal** from the checkpoint
+    (``get_impact_graph``) up to ``max_depth`` over ``allowed_edge_types``
+    (behavioral edges by default): every node that reaches the checkpoint within
+    the depth is in that set, so a source is *covered* iff it appears there,
+    otherwise a *gap*. One BFS for the whole audit, not one per source. The
+    checkpoint node itself is never audited as its own source.
+
+    Note on ``target_fqn`` granularity: reaching a node means a behavioral edge
+    *to that node*. For a checkpoint that callers invoke (a FUNCTION/METHOD like
+    ``verify_resource_ownership``) this is exactly right. Pointing it at a CLASS
+    measures *instantiation* (a call to the constructor), NOT method use on an
+    already-injected instance — so a dependency-injected collaborator looks like
+    a gap. Target the specific method (or the constructor) when auditing "does X
+    use this collaborator".
     """
+    from_prefix = from_prefix.strip() or None if from_prefix is not None else None
     if from_type is None and from_prefix is None:
-        msg = "audit_reachability requires from_type or from_prefix to select sources."
+        msg = "audit_reachability requires from_type or a non-empty from_prefix to select sources."
         raise ValueError(msg)
     engine = QueryEngine(store)
     edge_types = allowed_edge_types or BEHAVIORAL_EDGE_TYPES
