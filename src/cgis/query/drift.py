@@ -378,6 +378,42 @@ class DriftScorer:
             tolerance_eff=tolerance_eff,
         )
 
+    def fit_templates(self, actual: PatternFingerprint, profile: str) -> list[tuple[str, float]]:
+        """Return ``[(template_name, residual)]`` sorted by (residual asc, name asc).
+
+        The residual is ``actual``'s drift score against each template's ideal
+        under a synthetic binding with ``drift_tolerance=1.0`` — a pure,
+        status-free distance ("how far is this shape from the archetype",
+        independent of any tolerance). Iterates THIS scorer's loaded templates,
+        so it reflects whatever alphabet ``patterns.yaml`` declares. This is the
+        canonical "distance to template" reused by both fit-quality reporting
+        (#177) and init-ontology labelling (#174) — one source of truth.
+
+        Note: gate violations (e.g. cycles) inflate the residual uniformly
+        across all templates, so they never change WHICH template is nearest,
+        only the absolute residual of a domain that already reads gate_failed.
+        """
+        fits = [
+            (
+                t_name,
+                self.score(actual, self._fit_config(actual.domain, t_name, profile)).drift_score,
+            )
+            for t_name in self._patterns
+        ]
+        fits.sort(key=lambda pair: (pair[1], pair[0]))
+        return fits
+
+    @staticmethod
+    def _fit_config(domain: str, template: str, profile: str) -> DomainConfig:
+        """Synthetic domain binding used to measure distance to one template."""
+        return DomainConfig(
+            name=domain,
+            fqn_prefix=domain,
+            expected_pattern=template,
+            profile=profile,
+            drift_tolerance=1.0,
+        )
+
     def _score_v1(
         self,
         actual: PatternFingerprint,

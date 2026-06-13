@@ -129,13 +129,9 @@ patterns:
 _NO_FIT_THRESHOLD = 0.5
 _TS_EXTENSIONS = frozenset({".ts", ".tsx", ".js", ".jsx", ".vue"})
 
-# Parse the bundled header once at module load so _fit_templates never
-# re-parses per call; preserves declaration order (yaml dict insertion order).
+# Parse the bundled header once at module load (used by _baseline_lines for the
+# hygiene block; template ranking now lives on DriftScorer.fit_templates).
 _PARSED_HEADER: dict[str, object] = yaml.safe_load(_DEFAULT_ONTOLOGY_HEADER)
-_patterns_section = _PARSED_HEADER.get("patterns")
-_TEMPLATE_NAMES: list[str] = (
-    list(_patterns_section.keys()) if isinstance(_patterns_section, dict) else []
-)
 
 # Commented-out project_level skeleton appended after project_domains.
 _PROJECT_LEVEL_SKELETON = """\
@@ -189,26 +185,11 @@ def _fit_templates(
 ) -> list[tuple[str, float]]:
     """Return ``[(template_name, fit_score)]`` sorted by (score, name).
 
-    Each fit score is ``scorer.score(fp, DomainConfig(..., expected_pattern=t,
-    profile=profile, drift_tolerance=1.0)).drift_score``. Templates are iterated
-    in the bundled header's declaration order; ties are broken by template name
-    (alphabetic) to guarantee determinism.
+    Thin wrapper over ``DriftScorer.fit_templates`` — the canonical
+    distance-to-template, shared with fit-quality reporting (#177) so both
+    surfaces rank templates identically.
     """
-    fits: list[tuple[str, float]] = []
-    for t_name in _TEMPLATE_NAMES:
-        cfg = DomainConfig(
-            name=fp.domain,
-            fqn_prefix=fp.domain,
-            expected_pattern=t_name,
-            profile=profile,
-            drift_tolerance=1.0,
-        )
-        report = scorer.score(fp, cfg)
-        fits.append((t_name, report.drift_score))
-
-    # Sort by (score asc, name asc) for determinism on ties.
-    fits.sort(key=lambda x: (x[1], x[0]))
-    return fits
+    return scorer.fit_templates(fp, profile)
 
 
 def _ceil2(x: float) -> float:
