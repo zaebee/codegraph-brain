@@ -126,5 +126,6 @@ def test_audit_reference_only_is_a_gap_not_covered(tmp_path: Path) -> None:
         result = audit_reachability(
             store, target_fqn="app.verify_owner", from_type=NodeType.ROUTE_HANDLER
         )
-    assert {r.fqn for r in result.gaps} == {"app.routes.ref"}  # reference-only = gap
+    # A reference-only link must not be treated as coverage.
+    assert {r.fqn for r in result.gaps} == {"app.routes.ref"}
     assert result.covered == []
