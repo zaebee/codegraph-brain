@@ -1128,6 +1128,14 @@ def _render_metrics(report: ArchitectureReport) -> None:
         gods.add_row(m.node_id, str(m.out_degree))
     console.print(gods)
 
+    critical = Table(title="⭐ Critical nodes (top by PageRank — transitive importance)")
+    critical.add_column("Node", style="cyan")
+    critical.add_column("Type", style="magenta")
+    critical.add_column("PageRank", justify="right", style="green")
+    for m in report.critical:
+        critical.add_row(m.node_id, m.node_type, f"{m.page_rank:.4f}")
+    console.print(critical)
+
 
 @app.command()
 def metrics(
@@ -1137,7 +1145,7 @@ def metrics(
         OutputFormat.TEXT, "--format", "-f", help=_TEXT_JSON_FORMAT_HELP
     ),
 ) -> None:
-    """Whole-graph architectural metrics — coupling bottlenecks + God classes (DuckDB).
+    """Whole-graph architectural metrics — bottlenecks, God classes, PageRank (DuckDB).
 
     Runs vectorized aggregations over the graph via an optional DuckDB layer.
     Install it with `pip install 'codegraph-brain[analytics]'` if missing.
@@ -1150,7 +1158,9 @@ def metrics(
         raise typer.Exit(code=1)
     try:
         with DuckDBAnalyzer(db) as analyzer:
-            report = analyzer.architecture_report(bottleneck_limit=limit, god_limit=limit)
+            report = analyzer.architecture_report(
+                bottleneck_limit=limit, god_limit=limit, critical_limit=limit
+            )
     except Exception as e:  # duckdb missing, extension fetch, or a non-SQLite file
         console.print(f"[bold red]❌ {e}[/bold red]")
         raise typer.Exit(code=1) from e

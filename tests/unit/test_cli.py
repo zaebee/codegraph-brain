@@ -1205,3 +1205,15 @@ def test_metrics_invalid_db_errors_cleanly(tmp_path: Path) -> None:
     result = runner.invoke(app, ["metrics", "--db", str(bad)])
     assert result.exit_code == 1
     assert "❌" in result.output
+
+
+def test_metrics_includes_pagerank_section(tmp_path: Path) -> None:
+    """`cgis metrics` shows a PageRank/critical-nodes section (#231)."""
+    db = make_chain_db(tmp_path)
+    text = runner.invoke(app, ["metrics", "--db", db])
+    assert text.exit_code == 0
+    assert "PageRank" in text.stdout
+
+    payload = json.loads(runner.invoke(app, ["metrics", "--db", db, "--format", "json"]).stdout)
+    assert "critical" in payload
+    assert all("page_rank" in m for m in payload["critical"])
