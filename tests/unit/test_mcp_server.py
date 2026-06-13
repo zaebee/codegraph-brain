@@ -16,6 +16,7 @@ from cgis.api.mcp_server import (
     cgis_get_structure,
     cgis_ingest,
     cgis_init_ontology,
+    cgis_metrics,
     cgis_trace_flow,
     cgis_validate,
 )
@@ -641,3 +642,17 @@ def test_cgis_ingest_full_rebuild_repopulates_files_state(tmp_path: Path) -> Non
 
     # If full_rebuild left files_state stale, this run would re-parse instead of no-op.
     assert "No files changed" in nxt
+
+
+def test_cgis_metrics_returns_report(tmp_path: Path) -> None:
+    """cgis_metrics returns a JSON architecture report (#16)."""
+    db = make_chain_db(tmp_path)
+    payload = json.loads(cgis_metrics(str(db)))
+    assert "bottlenecks" in payload
+    assert "god_classes" in payload
+
+
+def test_cgis_metrics_missing_db_returns_error(tmp_path: Path) -> None:
+    """A missing database returns a friendly ❌ message, not an exception."""
+    result = cgis_metrics(str(tmp_path / "missing.db"))
+    assert result.startswith("❌ Database not found")

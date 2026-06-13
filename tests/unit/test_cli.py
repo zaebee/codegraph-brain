@@ -1134,3 +1134,28 @@ def test_drift_acknowledged_baseline_exits_0(tmp_path: Path) -> None:
     patterns = _cycle_patterns_yaml(tmp_path, with_baseline=True)
     result = runner.invoke(app, ["drift", "--db", db, "--patterns", patterns])
     assert result.exit_code == 0
+
+
+def test_metrics_reports_top_nodes(tmp_path: Path) -> None:
+    """`cgis metrics` prints architectural metrics for the graph (#16)."""
+    db = make_chain_db(tmp_path)  # app.chain.f0 → … → f11 CALLS chain
+    result = runner.invoke(app, ["metrics", "--db", db])
+    assert result.exit_code == 0
+    assert "app.chain.f" in result.stdout
+
+
+def test_metrics_json_format(tmp_path: Path) -> None:
+    """`cgis metrics --format json` emits a parseable architecture report."""
+    db = make_chain_db(tmp_path)
+    result = runner.invoke(app, ["metrics", "--db", db, "--format", "json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert "bottlenecks" in payload
+    assert "god_classes" in payload
+
+
+def test_metrics_missing_db_errors(tmp_path: Path) -> None:
+    """A missing database is a clean error, not a traceback."""
+    result = runner.invoke(app, ["metrics", "--db", str(tmp_path / "missing.db")])
+    assert result.exit_code == 1
+    assert "not found" in result.output.lower()

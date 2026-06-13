@@ -23,3 +23,4 @@ repos:
           - tree-sitter-typescript>=0.23.2
           - pytest>=9.0.3
           - "mcp[cli]>=1.27.2"
+          - duckdb>=1.1.0

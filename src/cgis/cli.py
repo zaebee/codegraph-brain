@@ -28,6 +28,7 @@ from cgis.query.fqn import resolve_fqn
 from cgis.query.graph_json import graph_to_json
 from cgis.query.health import HealthScorer
 from cgis.query.mermaid import MermaidCompiler
+from cgis.query.metrics import ArchitectureReport, DuckDBAnalyzer
 from cgis.query.ontology_init import propose_ontology
 from cgis.resolver.uplift import SemanticUpliftEngine
 from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
@@ -1106,6 +1107,57 @@ def context(
             err_console.print(f"[dim]Resolved '{fqn}' → '{resolution.resolved}'[/dim]")
         payload = build_context(store, resolution.resolved, depth=depth, source_root=source_root)
     typer.echo(payload)
+
+
+def _render_metrics(report: ArchitectureReport) -> None:
+    """Print the architecture report as two Rich tables (bottlenecks + God classes)."""
+    bottlenecks = Table(title="🔌 Coupling bottlenecks (top by fan-in + fan-out)")
+    bottlenecks.add_column("Node", style="cyan")
+    bottlenecks.add_column("Type", style="magenta")
+    bottlenecks.add_column("In", justify="right", style="green")
+    bottlenecks.add_column("Out", justify="right", style="yellow")
+    for m in report.bottlenecks:
+        bottlenecks.add_row(m.node_id, m.node_type, str(m.in_degree), str(m.out_degree))
+    console.print(bottlenecks)
+
+    gods = Table(title="🏛️  God classes (top by declared members)")
+    gods.add_column("Class", style="cyan")
+    gods.add_column("Members", justify="right", style="red")
+    for m in report.god_classes:
+        gods.add_row(m.node_id, str(m.out_degree))
+    console.print(gods)
+
+
+@app.command()
+def metrics(
+    db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
+    limit: int = typer.Option(10, "--limit", min=1, help="Top-N rows per section."),
+    output_format: OutputFormat = typer.Option(
+        OutputFormat.TEXT, "--format", "-f", help="Output format: text or json"
+    ),
+) -> None:
+    """Whole-graph architectural metrics — coupling bottlenecks + God classes (DuckDB).
+
+    Runs vectorized aggregations over the graph via an optional DuckDB layer.
+    Install it with `pip install 'codegraph-brain[analytics]'` if missing.
+    """
+    if output_format == OutputFormat.MERMAID:
+        console.print("[bold red]❌ metrics supports --format text or json only.[/bold red]")
+        raise typer.Exit(code=2)
+    if not Path(db).is_file():
+        console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
+        raise typer.Exit(code=1)
+    try:
+        with DuckDBAnalyzer(db) as analyzer:
+            report = analyzer.architecture_report(bottleneck_limit=limit)
+    except RuntimeError as e:  # optional duckdb dependency missing
+        console.print(f"[bold red]❌ {e}[/bold red]")
+        raise typer.Exit(code=1) from e
+
+    if output_format == OutputFormat.JSON:
+        typer.echo(_json.dumps(report.model_dump(), indent=2))
+        return
+    _render_metrics(report)
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -223,3 +223,7 @@ graph.json
 *.db
 ui/
 guardian_metrics.jsonl
+
+# SQLite WAL/SHM sidecars
+*.db-wal
+*.db-shm
