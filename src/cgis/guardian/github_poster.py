@@ -7,9 +7,12 @@ from cgis.guardian.findings import Finding, ReviewResult
 from cgis.guardian.render import render_inline_comment, render_review_body
 from cgis.guardian.skeptic import visible_findings
 
-#: Below this length a quote is too generic to substring-match safely (``)``,
-#: ``else:``) — only an exact line equality may anchor it (#181 review).
-_MIN_SUBSTRING_ANCHOR = 5
+#: Below this length a quote is too generic to substring-match safely — short
+#: keywords/patterns (``)``, ``else:``, ``self.``, ``return``) would collide with
+#: unrelated lines (``something_else:``, ``myself.foo``). Such a quote may only
+#: anchor via an EXACT line equality, never a substring (#181 review). A real
+#: anchor is a full statement, comfortably longer than this.
+_MIN_SUBSTRING_ANCHOR = 10
 
 
 def _anchored_line(finding: Finding, content: dict[int, str] | None) -> int | None:

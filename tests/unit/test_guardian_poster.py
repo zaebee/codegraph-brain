@@ -207,3 +207,15 @@ def test_explicit_anchor_still_places_a_lineless_finding() -> None:
         result, diff_index={"src/x.py": {10, 11}}, skeptic_model=None, diff_content=content
     )
     assert comments[0]["line"] == 11
+
+
+def test_short_keyword_anchor_does_not_substring_match() -> None:
+    """A 5-char keyword like 'else:' must not substring-match 'something_else:' —
+    only exact line equality may anchor below _MIN_SUBSTRING_ANCHOR (#243 review)."""
+    content = {"src/x.py": {5: "    something_else: int = 1"}}
+    f = _finding(line=99, anchor="else:")  # 5 chars; substring of the line but generic
+    result = ReviewResult(findings=[f], summary="s")
+    _, comments = build_review(
+        result, diff_index={"src/x.py": {5}}, skeptic_model=None, diff_content=content
+    )
+    assert comments == []  # demoted: too short to substring, no exact match
