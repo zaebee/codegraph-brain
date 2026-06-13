@@ -7,9 +7,15 @@ depend on the ingest root (src/ vs src/cgis/ — the #242 load-bearing fix).
 
 from __future__ import annotations
 
+import math
+from collections import Counter
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Literal
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
+
+if TYPE_CHECKING:
+    from collections.abc import Hashable, Mapping
 
 _FILE_TYPES = frozenset({NodeType.FILE, NodeType.MODULE})
 
@@ -168,3 +174,54 @@ def greedy_modularity(graph: FileGraph) -> tuple[list[list[str]], float]:
 
     communities = sorted(sorted(s) for s in members.values())
     return communities, _modularity(graph, communities, deg, m2)
+
+
+Direction = Literal["under_split", "over_split", "matched"]
+
+
+def _entropy(labels: Mapping[str, Hashable]) -> float:
+    """Shannon entropy (nats) of a partition's label distribution."""
+    n = len(labels)
+    counts = Counter(labels.values())
+    return -sum((c / n) * math.log(c / n) for c in counts.values())
+
+
+def _mutual_information(a: Mapping[str, Hashable], b: Mapping[str, Hashable]) -> float:
+    """Mutual information (nats) between two partitions over the same key set."""
+    n = len(a)
+    ca, cb = Counter(a.values()), Counter(b.values())
+    joint = Counter((a[k], b[k]) for k in a)
+    mi = 0.0
+    for (x, y), nxy in joint.items():
+        p_xy = nxy / n
+        mi += p_xy * math.log(p_xy / ((ca[x] / n) * (cb[y] / n)))
+    return mi
+
+
+def partition_divergence(p_comm: Mapping[str, Hashable], p_dir: Mapping[str, Hashable]) -> float:
+    """1 - NMI between two partitions of the same file set, in [0, 1].
+
+    NMI = I(X;Y) / mean(H(X), H(Y)); defined as 1.0 (so D = 0) when both
+    partitions are trivial (single cluster each). A non-trivial partition
+    against a trivial one has MI 0 -> NMI 0 -> D = 1 (the flat-package case).
+    """
+    h_a, h_b = _entropy(p_comm), _entropy(p_dir)
+    if h_a == 0.0 and h_b == 0.0:
+        return 0.0
+    nmi = _mutual_information(p_comm, p_dir) / ((h_a + h_b) / 2)
+    return 1.0 - nmi
+
+
+def layout_direction(p_comm: Mapping[str, Hashable], p_dir: Mapping[str, Hashable]) -> Direction:
+    """Direction of the layout/community mismatch by distinct-group count.
+
+    ``under_split`` when the directory layout is flatter than the communities
+    (fewer dir groups than communities); ``over_split`` when finer; ``matched``
+    when equal.
+    """
+    n_dir, n_comm = len(set(p_dir.values())), len(set(p_comm.values()))
+    if n_dir < n_comm:
+        return "under_split"
+    if n_dir > n_comm:
+        return "over_split"
+    return "matched"

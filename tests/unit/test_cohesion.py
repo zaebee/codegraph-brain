@@ -3,7 +3,13 @@
 import pytest
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
-from cgis.query.cohesion import FileGraph, build_file_graph, greedy_modularity
+from cgis.query.cohesion import (
+    FileGraph,
+    build_file_graph,
+    greedy_modularity,
+    layout_direction,
+    partition_divergence,
+)
 
 
 def _file(fqn: str, path: str) -> Node:
@@ -118,3 +124,35 @@ def test_modularity_is_deterministic() -> None:
     adj = {**_clique("p", ["a", "b", "c"]), **_clique("p", ["x", "y", "z"])}
     g = FileGraph(files=tuple(sorted(adj)), adj=adj)
     assert greedy_modularity(g) == greedy_modularity(g)
+
+
+def test_divergence_flat_layout_vs_multi_community_is_one() -> None:
+    p_comm = {"a": 0, "b": 0, "c": 1, "d": 1}
+    p_dir = {"a": "<root>", "b": "<root>", "c": "<root>", "d": "<root>"}
+    assert partition_divergence(p_comm, p_dir) == pytest.approx(1.0)
+
+
+def test_divergence_aligned_layout_is_zero() -> None:
+    p_comm = {"a": 0, "b": 0, "c": 1, "d": 1}
+    p_dir = {"a": "x", "b": "x", "c": "y", "d": "y"}
+    assert partition_divergence(p_comm, p_dir) == pytest.approx(0.0)
+
+
+def test_divergence_is_symmetric() -> None:
+    p_comm = {"a": 0, "b": 1, "c": 1}
+    p_dir = {"a": "x", "b": "y", "c": "y"}
+    assert partition_divergence(p_comm, p_dir) == pytest.approx(partition_divergence(p_dir, p_comm))
+
+
+def test_divergence_both_trivial_is_zero() -> None:
+    p_comm = {"a": 0, "b": 0}
+    p_dir = {"a": "<root>", "b": "<root>"}
+    assert partition_divergence(p_comm, p_dir) == pytest.approx(0.0)
+
+
+def test_layout_direction() -> None:
+    assert layout_direction({"a": 0, "b": 1}, {"a": "<root>", "b": "<root>"}) == "under_split"
+    assert (
+        layout_direction({"a": 0, "b": 0, "c": 0}, {"a": "x", "b": "y", "c": "z"}) == "over_split"
+    )
+    assert layout_direction({"a": 0, "b": 1}, {"a": "x", "b": "y"}) == "matched"
