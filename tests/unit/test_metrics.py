@@ -349,3 +349,25 @@ def test_exclude_empty_or_whitespace_segment_is_noop(tmp_path: Path) -> None:
     with DuckDBAnalyzer(db) as analyzer:
         ids = {m.node_id for m in analyzer.get_coupling_metrics(exclude=["", "  "])}
     assert ids == {"a.core.x", "b.svc.y"}
+
+
+def test_pagerank_rows_carry_internal_degree(tmp_path: Path) -> None:
+    """PageRank rows report in/out degree over the same internal CALLS graph, so a
+    high-rank-but-zero-in-degree leaf is legible as a dangling artifact (#237)."""
+    hub = _node("app.hub")
+    callers = [_node(f"app.c{i}") for i in range(3)]
+    edges = [
+        Edge(id=f"e{i}", source=f"app.c{i}", target="app.hub", type=EdgeType.CALLS)
+        for i in range(3)
+    ]
+    db = _write_db(tmp_path, [hub, *callers], edges)
+
+    with DuckDBAnalyzer(db) as analyzer:
+        ranked = {m.node_id: m for m in analyzer.get_pagerank()}
+
+    # hub: reached by 3 internal callers, calls nothing internal
+    assert ranked["app.hub"].in_degree == 3
+    assert ranked["app.hub"].out_degree == 0
+    # a caller: pure source — out 1, in 0 (so its rank is floor/dangling only)
+    assert ranked["app.c0"].in_degree == 0
+    assert ranked["app.c0"].out_degree == 1

@@ -269,6 +269,12 @@ class DuckDBAnalyzer:
         ``exclude`` removes any node whose FQN contains one of the given
         dot-segments from the PageRank universe entirely (so excluded nodes leave
         the propagation graph, not just the final ranking).
+
+        Each row also carries its ``in_degree``/``out_degree`` **within the same
+        internal, exclude-applied CALLS graph PageRank ran on** (#237) — so a
+        high rank paired with ``in_degree == 0`` is legible as a dangling-mass
+        artifact (a leaf sink that accrued redistributed rank, not a real hub)
+        rather than a genuine centrality signal.
         """
         conn = self.conn
         where, params = _segment_exclusion("id", exclude)
@@ -291,6 +297,10 @@ class DuckDBAnalyzer:
             "SELECT src, COUNT(*) AS deg FROM pr_edges GROUP BY src"
         )
         conn.execute(
+            "CREATE OR REPLACE TEMP TABLE pr_in AS "
+            "SELECT dst, COUNT(*) AS deg FROM pr_edges GROUP BY dst"
+        )
+        conn.execute(
             "CREATE OR REPLACE TEMP TABLE pr_rank AS SELECT id, 1.0 / ? AS r FROM pr_nodes", [n]
         )
         base = (1.0 - _PAGERANK_DAMPING) / n
@@ -298,15 +308,23 @@ class DuckDBAnalyzer:
             conn.execute(_PAGERANK_STEP, [base, _PAGERANK_DAMPING, n])
             conn.execute("CREATE OR REPLACE TEMP TABLE pr_rank AS SELECT * FROM pr_next")
         rows = conn.execute(
-            "SELECT r.id, nd.type, r.r FROM pr_rank r JOIN nodes nd ON r.id = nd.id "
+            "SELECT r.id, nd.type, r.r, "
+            "COALESCE(pin.deg, 0) AS in_deg, COALESCE(pout.deg, 0) AS out_deg "
+            "FROM pr_rank r JOIN nodes nd ON r.id = nd.id "
+            "LEFT JOIN pr_in pin ON r.id = pin.dst "
+            "LEFT JOIN pr_out pout ON r.id = pout.src "
             "ORDER BY r.r DESC, r.id LIMIT ?",
             [limit],
         ).fetchall()
         return [
             NodeMetric(
-                node_id=str(i), node_type=str(t), in_degree=0, out_degree=0, page_rank=float(r)
+                node_id=str(i),
+                node_type=str(t),
+                in_degree=int(in_deg),
+                out_degree=int(out_deg),
+                page_rank=float(r),
             )
-            for i, t, r in rows
+            for i, t, r, in_deg, out_deg in rows
         ]
 
     def architecture_report(
