@@ -218,6 +218,11 @@ class DuckDBAnalyzer:
         not just direct in-degree, so a function called by other heavily-used
         functions ranks above one called by many trivial leaves. External/stdlib
         and resolver virtual pseudo-nodes are excluded.
+
+        Unlike the coupling metric (FUNCTION/METHOD only), the PageRank universe
+        also includes CLASS nodes — a constructor call is a CALLS edge to the
+        class, so a heavily-instantiated class (e.g. a core data model) is
+        legitimately central. Uncalled classes simply rest at the floor rank.
         """
         conn = self.conn
         conn.execute(
