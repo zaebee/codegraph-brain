@@ -91,3 +91,80 @@ def build_file_graph(
         adj.setdefault(a, {})[b] = adj.setdefault(a, {}).get(b, 0.0) + e.weight
         adj.setdefault(b, {})[a] = adj.setdefault(b, {}).get(a, 0.0) + e.weight
     return FileGraph(files=tuple(file_ids), adj=adj)
+
+
+_MIN_GAIN = 1e-12  # ignore non-positive / floating-noise merges
+
+
+def _modularity(
+    graph: FileGraph,
+    communities: list[list[str]],
+    deg: dict[str, float],
+    m2: float,
+) -> float:
+    """Newman modularity Q for a partition (m2 == 2m == sum of weighted degrees)."""
+    q = 0.0
+    for c in communities:
+        members = set(c)
+        l_c = sum(w for f in c for g, w in graph.adj.get(f, {}).items() if g in members)
+        d_c = sum(deg[f] for f in c)
+        q += l_c / m2 - (d_c / m2) ** 2
+    return q
+
+
+def _best_merge(
+    graph: FileGraph,
+    members: dict[str, set[str]],
+    deg: dict[str, float],
+    m2: float,
+) -> tuple[str, str] | None:
+    """Return the (c1, c2) pair with the highest positive delta-Q, or None.
+
+    Iterates sorted label pairs for lexicographic tie-breaking (deterministic).
+    Returns None when no merge would improve modularity by more than _MIN_GAIN.
+    """
+    best_gain: float = _MIN_GAIN
+    best_pair: tuple[str, str] | None = None
+    labels = sorted(members)
+    for i, c1 in enumerate(labels):
+        a_c1 = sum(deg[f] for f in members[c1]) / m2
+        for c2 in labels[i + 1 :]:
+            e_ij = (
+                sum(graph.adj.get(f, {}).get(g, 0.0) for f in members[c1] for g in members[c2]) / m2
+            )
+            if e_ij == 0.0:
+                continue
+            a_c2 = sum(deg[f] for f in members[c2]) / m2
+            dq = 2 * (e_ij - a_c1 * a_c2)
+            if dq > best_gain:
+                best_gain, best_pair = dq, (c1, c2)
+    return best_pair
+
+
+def greedy_modularity(graph: FileGraph) -> tuple[list[list[str]], float]:
+    """Greedy (Clauset-Newman-Moore) community detection; returns (communities, Q).
+
+    Each file starts in its own community; the connected pair with the maximum
+    positive delta-Q = 2*(e_ij - a_i*a_j) is merged until no merge improves Q.
+    Ties break on the lexicographically smallest label pair (deterministic).
+    Isolated files stay singletons and contribute 0 to Q. Communities are
+    returned sorted (members sorted, then the list sorted).
+    """
+    files = list(graph.files)
+    if not files:
+        return [], 0.0
+    deg = {f: sum(graph.adj.get(f, {}).values()) for f in files}
+    m2 = sum(deg.values())
+    if m2 == 0.0:
+        return [[f] for f in files], 0.0
+
+    members: dict[str, set[str]] = {f: {f} for f in files}
+    while len(members) > 1:
+        best_pair = _best_merge(graph, members, deg, m2)
+        if best_pair is None:
+            break
+        c1, c2 = best_pair
+        members[c1] |= members.pop(c2)
+
+    communities = sorted(sorted(s) for s in members.values())
+    return communities, _modularity(graph, communities, deg, m2)

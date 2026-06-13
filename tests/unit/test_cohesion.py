@@ -1,7 +1,9 @@
 """Unit tests for cgis.query.cohesion — intra-package file graph builder (#242)."""
 
+import pytest
+
 from cgis.core.models import Edge, EdgeType, Node, NodeType
-from cgis.query.cohesion import build_file_graph
+from cgis.query.cohesion import FileGraph, build_file_graph, greedy_modularity
 
 
 def _file(fqn: str, path: str) -> Node:
@@ -72,3 +74,47 @@ def test_build_file_graph_with_calls_adds_calls_layer() -> None:
     assert g.adj["p.a"]["p.b"] == 1.0
     g_imports_only = build_file_graph(nodes, [call], prefix="p", with_calls=False)
     assert g_imports_only.adj == {}
+
+
+def _clique(prefix: str, names: list[str]) -> dict[str, dict[str, float]]:
+    adj: dict[str, dict[str, float]] = {}
+    ids = [f"{prefix}.{n}" for n in names]
+    for a in ids:
+        for b in ids:
+            if a != b:
+                adj.setdefault(a, {})[b] = 1.0
+    return adj
+
+
+def test_modularity_two_disconnected_cliques() -> None:
+    adj = {**_clique("p", ["a", "b", "c"]), **_clique("p", ["x", "y", "z"])}
+    g = FileGraph(files=tuple(sorted(adj)), adj=adj)
+    communities, q = greedy_modularity(g)
+    assert len(communities) == 2
+    assert q == pytest.approx(0.5, abs=0.05)
+    assert {frozenset(c) for c in communities} == {
+        frozenset({"p.a", "p.b", "p.c"}),
+        frozenset({"p.x", "p.y", "p.z"}),
+    }
+
+
+def test_modularity_single_clique_is_one_community() -> None:
+    adj = _clique("p", ["a", "b", "c"])
+    g = FileGraph(files=tuple(sorted(adj)), adj=adj)
+    communities, q = greedy_modularity(g)
+    assert len(communities) == 1
+    assert q == pytest.approx(0.0, abs=0.05)
+
+
+def test_modularity_isolated_files_are_singletons() -> None:
+    adj = _clique("p", ["a", "b", "c"])
+    g = FileGraph(files=(*sorted(adj), "p.leaf"), adj=adj)
+    communities, q = greedy_modularity(g)
+    assert ["p.leaf"] in communities
+    assert q == pytest.approx(0.0, abs=0.05)
+
+
+def test_modularity_is_deterministic() -> None:
+    adj = {**_clique("p", ["a", "b", "c"]), **_clique("p", ["x", "y", "z"])}
+    g = FileGraph(files=tuple(sorted(adj)), adj=adj)
+    assert greedy_modularity(g) == greedy_modularity(g)
