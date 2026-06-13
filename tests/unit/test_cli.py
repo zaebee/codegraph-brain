@@ -4,7 +4,7 @@ import json
 import re
 from pathlib import Path
 
-from conftest import make_chain_db, module_with_funcs
+from conftest import fit_patterns_yaml, make_chain_db, module_with_funcs, triangle_db
 from typer.testing import CliRunner
 
 from cgis.cli import _drift_status_label, app
@@ -1223,20 +1223,6 @@ def test_metrics_includes_pagerank_section(tmp_path: Path) -> None:
 from cgis.cli import _fit_cell  # noqa: E402
 from cgis.query.drift import FitQuality  # noqa: E402
 
-_FIT_YAML = (
-    "version: '2.0.0'\n"
-    "profiles:\n  py:\n    drift_weights: {hub_count: 0.5, star_count: 0.5}\n"
-    "    layers: {imports: 0.0, calls: 1.0, gates: 0.0}\n    triad_weights: {}\n"
-    "patterns:\n"
-    "  pure_utility:\n    description: u\n    ideal:\n"
-    "      imports: {'021U': 1.0}\n      calls: {'021U': 1.0}\n"
-    "  pipeline_stage:\n    description: c\n    ideal:\n"
-    "      imports: {'021C': 1.0}\n      calls: {'021C': 1.0}\n"
-    "project_domains:\n"
-    "  - name: dom\n    fqn_prefix: dom\n    expected_pattern: pure_utility\n"
-    "    profile: py\n    drift_tolerance: 0.5\n"
-)
-
 
 def test_fit_cell_bands() -> None:
     """_fit_cell colours by band and shows '—' for an absent fit."""
@@ -1251,33 +1237,9 @@ def test_fit_cell_bands() -> None:
     assert "red" in _fit_cell(none)
 
 
-def _triangle_db(tmp_path: Path) -> str:
-    """One 030T transitive triangle under prefix 'dom' (no 021* template fits)."""
-    db = str(tmp_path / "tri.db")
-    nodes = [
-        Node(
-            id=f"dom.f{i}",
-            type=NodeType.FUNCTION,
-            name=f"f{i}",
-            file_path="dom.py",
-            start_line=i,
-            end_line=i + 1,
-        )
-        for i in (1, 2, 3)
-    ]
-    edges = [
-        Edge(id="e1", source="dom.f1", target="dom.f2", type=EdgeType.CALLS),
-        Edge(id="e2", source="dom.f2", target="dom.f3", type=EdgeType.CALLS),
-        Edge(id="e3", source="dom.f1", target="dom.f3", type=EdgeType.CALLS),
-    ]
-    with SQLiteStore(db) as store:
-        store.save_graph(nodes, edges)
-    return db
-
-
 def test_drift_reports_no_template_fits_and_coverage(tmp_path: Path) -> None:
     """A 030T domain triggers the 'no template fits' roll-up; unbound code is listed."""
-    db = _triangle_db(tmp_path)
+    db = triangle_db(tmp_path)
     # extra unbound package so coverage is non-empty
     with SQLiteStore(db) as store:
         store.save_graph(
@@ -1294,7 +1256,7 @@ def test_drift_reports_no_template_fits_and_coverage(tmp_path: Path) -> None:
             [],
         )
     patterns = tmp_path / "p.yaml"
-    patterns.write_text(_FIT_YAML)
+    patterns.write_text(fit_patterns_yaml())
     result = runner.invoke(
         app, ["drift", "--db", db, "--patterns", str(patterns), "--max-drift", "1.0"]
     )

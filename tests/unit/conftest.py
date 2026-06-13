@@ -96,3 +96,69 @@ def make_chain_db(tmp_path: Path, prefix: str = "app.chain", count: int = 12) ->
     with SQLiteStore(db) as store:
         store.save_graph(nodes, edges)
     return db
+
+
+def fit_patterns_yaml() -> str:
+    """A minimal v2 patterns.yaml (profile + two ideal templates) for fit tests (#177).
+
+    Profile ``py`` weights only the CALLS layer; templates ``pure_utility``
+    (021U in-star) and ``pipeline_stage`` (021C chain) give a clean two-way
+    ranking. Shared across the drift/cli/mcp fit tests (Sonar-dedup, #211 lesson).
+    """
+    return (
+        "version: '2.0.0'\n"
+        "profiles:\n  py:\n    drift_weights: {hub_count: 0.5, star_count: 0.5}\n"
+        "    layers: {imports: 0.0, calls: 1.0, gates: 0.0}\n    triad_weights: {}\n"
+        "patterns:\n"
+        "  pure_utility:\n    description: u\n    ideal:\n"
+        "      imports: {'021U': 1.0}\n      calls: {'021U': 1.0}\n"
+        "  pipeline_stage:\n    description: c\n    ideal:\n"
+        "      imports: {'021C': 1.0}\n      calls: {'021C': 1.0}\n"
+        "project_domains:\n"
+        "  - name: dom\n    fqn_prefix: dom\n    expected_pattern: pure_utility\n"
+        "    profile: py\n    drift_tolerance: 0.5\n"
+    )
+
+
+def _three_func_db(tmp_path: Path, name: str, edges: list[Edge]) -> str:
+    """Three FUNCTION nodes f1/f2/f3 under prefix 'dom' wired by ``edges``."""
+    db = str(tmp_path / name)
+    nodes = [
+        Node(
+            id=f"dom.f{i}",
+            type=NodeType.FUNCTION,
+            name=f"f{i}",
+            file_path="dom.py",
+            start_line=i,
+            end_line=i + 1,
+        )
+        for i in (1, 2, 3)
+    ]
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)
+    return db
+
+
+def instar_db(tmp_path: Path) -> str:
+    """Three functions forming one 021U in-star (f1→f3, f2→f3) under 'dom' (#177)."""
+    return _three_func_db(
+        tmp_path,
+        "instar.db",
+        [
+            Edge(id="e1", source="dom.f1", target="dom.f3", type=EdgeType.CALLS),
+            Edge(id="e2", source="dom.f2", target="dom.f3", type=EdgeType.CALLS),
+        ],
+    )
+
+
+def triangle_db(tmp_path: Path) -> str:
+    """A 030T transitive triangle (f1→f2, f2→f3, f1→f3) under 'dom' — no 021* fits (#177)."""
+    return _three_func_db(
+        tmp_path,
+        "tri.db",
+        [
+            Edge(id="e1", source="dom.f1", target="dom.f2", type=EdgeType.CALLS),
+            Edge(id="e2", source="dom.f2", target="dom.f3", type=EdgeType.CALLS),
+            Edge(id="e3", source="dom.f1", target="dom.f3", type=EdgeType.CALLS),
+        ],
+    )

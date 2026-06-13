@@ -3,7 +3,7 @@
 from pathlib import Path
 
 import pytest
-from conftest import module_with_funcs
+from conftest import fit_patterns_yaml, instar_db, module_with_funcs, triangle_db
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.query.drift_service import DriftAnalysis, analyze_drift
@@ -772,61 +772,12 @@ def test_cross_domain_signal_routes_to_quotient(tmp_path: Path) -> None:
 
 # ── fit-quality + coverage roll-up (#177) ─────────────────────────────────────
 
-_YAML_FIT = """\
-version: "2.0.0"
-profiles:
-  py:
-    drift_weights: {hub_count: 0.5, star_count: 0.5}
-    layers: {imports: 0.0, calls: 1.0, gates: 0.0}
-    triad_weights: {}
-patterns:
-  pure_utility:
-    description: "in-star"
-    ideal:
-      imports: {"021U": 1.0}
-      calls:   {"021U": 1.0}
-  pipeline_stage:
-    description: "chain"
-    ideal:
-      imports: {"021C": 1.0}
-      calls:   {"021C": 1.0}
-project_domains:
-  - name: "dom"
-    fqn_prefix: "dom"
-    expected_pattern: pure_utility
-    profile: py
-    drift_tolerance: 0.5
-"""
-
-
-def _instar_db(tmp_path: Path, prefix: str = "dom") -> str:
-    """Three functions forming one 021U in-star (f1→f3, f2→f3) under `prefix`."""
-    db = str(tmp_path / "instar.db")
-    nodes = [
-        Node(
-            id=f"{prefix}.f{i}",
-            type=NodeType.FUNCTION,
-            name=f"f{i}",
-            file_path=f"{prefix}.py",
-            start_line=i,
-            end_line=i + 1,
-        )
-        for i in (1, 2, 3)
-    ]
-    edges = [
-        Edge(id="e1", source=f"{prefix}.f1", target=f"{prefix}.f3", type=EdgeType.CALLS),
-        Edge(id="e2", source=f"{prefix}.f2", target=f"{prefix}.f3", type=EdgeType.CALLS),
-    ]
-    with SQLiteStore(db) as store:
-        store.save_graph(nodes, edges)
-    return db
-
 
 def test_fit_attached_to_profiled_domain(tmp_path: Path) -> None:
     """A profiled domain's report carries fit; the in-star ranks pure_utility good."""
     p = tmp_path / "p.yaml"
-    p.write_text(_YAML_FIT)
-    analysis = analyze_drift(_instar_db(tmp_path), str(p), max_drift=1.0)
+    p.write_text(fit_patterns_yaml())
+    analysis = analyze_drift(instar_db(tmp_path), str(p), max_drift=1.0)
     fit = analysis.reports[0].fit
     assert fit is not None
     assert fit.nearest_template == "pure_utility"
@@ -836,27 +787,9 @@ def test_fit_attached_to_profiled_domain(tmp_path: Path) -> None:
 
 def test_no_template_fits_a_transitive_triangle(tmp_path: Path) -> None:
     """A 030T shape no 021* template captures → band 'none' (the #177 alphabet-gap signal)."""
-    db = str(tmp_path / "tri.db")
-    nodes = [
-        Node(
-            id=f"dom.f{i}",
-            type=NodeType.FUNCTION,
-            name=f"f{i}",
-            file_path="dom.py",
-            start_line=i,
-            end_line=i + 1,
-        )
-        for i in (1, 2, 3)
-    ]
-    edges = [  # f1→f2, f2→f3, f1→f3 — one transitive triangle (030T)
-        Edge(id="e1", source="dom.f1", target="dom.f2", type=EdgeType.CALLS),
-        Edge(id="e2", source="dom.f2", target="dom.f3", type=EdgeType.CALLS),
-        Edge(id="e3", source="dom.f1", target="dom.f3", type=EdgeType.CALLS),
-    ]
-    with SQLiteStore(db) as store:
-        store.save_graph(nodes, edges)
+    db = triangle_db(tmp_path)
     p = tmp_path / "p.yaml"
-    p.write_text(_YAML_FIT)
+    p.write_text(fit_patterns_yaml())
     analysis = analyze_drift(db, str(p), max_drift=1.0)
     fit = analysis.reports[0].fit
     assert fit is not None
@@ -894,7 +827,7 @@ def test_coverage_lists_unbound_prefixes(tmp_path: Path) -> None:
     with SQLiteStore(db) as store:
         store.save_graph(nodes, [])
     p = tmp_path / "p.yaml"
-    p.write_text(_YAML_FIT)
+    p.write_text(fit_patterns_yaml())
     analysis = analyze_drift(db, str(p), max_drift=1.0)
     assert any(c.startswith("orphan") for c in analysis.coverage)
     assert not any(c == "dom" or c.startswith("dom.") for c in analysis.coverage)

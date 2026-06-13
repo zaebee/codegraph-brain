@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from conftest import make_chain_db
+from conftest import fit_patterns_yaml, make_chain_db
 
 from cgis.api.mcp_server import (
     cgis_analyze_impact,
@@ -658,6 +658,7 @@ def test_cgis_metrics_missing_db_returns_error(tmp_path: Path) -> None:
     result = cgis_metrics(str(tmp_path / "missing.db"))
     assert result.startswith("❌ Database not found")
 
+
 def test_cgis_drift_payload_has_coverage_and_fit(tmp_path: Path) -> None:
     """cgis_drift JSON carries top-level coverage and per-report fit (#177)."""
     db = str(tmp_path / "g.db")
@@ -688,14 +689,7 @@ def test_cgis_drift_payload_has_coverage_and_fit(tmp_path: Path) -> None:
     with SQLiteStore(db) as store:
         store.save_graph(nodes, edges)
     p = tmp_path / "p.yaml"
-    p.write_text(
-        "version: '2.0.0'\nprofiles:\n  py:\n    drift_weights: {hub_count: 1.0}\n"
-        "    layers: {imports: 0.0, calls: 1.0, gates: 0.0}\n    triad_weights: {}\n"
-        "patterns:\n  pure_utility:\n    description: u\n    ideal:\n"
-        "      imports: {'021U': 1.0}\n      calls: {'021U': 1.0}\n"
-        "project_domains:\n  - name: dom\n    fqn_prefix: dom\n    expected_pattern: pure_utility\n"
-        "    profile: py\n    drift_tolerance: 0.5\n"
-    )
+    p.write_text(fit_patterns_yaml())
     payload = json.loads(cgis_drift(db_path=db, patterns_path=str(p), max_drift=1.0))
     assert any(c.startswith("orphan") for c in payload["coverage"])
     assert payload["domains"][0]["fit"]["nearest_template"] == "pure_utility"
