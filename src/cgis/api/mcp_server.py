@@ -12,10 +12,11 @@ from pathlib import Path
 import structlog
 from mcp.server.fastmcp import FastMCP
 
-from cgis.core.models import Edge, Node
+from cgis.core.models import Edge, Node, NodeType
 from cgis.extractors.python_extractor import PythonExtractor
 from cgis.extractors.typescript_extractor import TypeScriptExtractor
 from cgis.pipeline import IngestionPipeline
+from cgis.query.audit import audit_reachability
 from cgis.query.context_service import build_context
 from cgis.query.drift_service import analyze_drift
 from cgis.query.engine import QueryEngine
@@ -424,3 +425,57 @@ def cgis_metrics(
         return f"❌ {exc}"
 
     return json.dumps(report.model_dump(), indent=2)
+
+
+@mcp.tool()
+def cgis_audit_reachability(
+    target: str,
+    db_path: str = _DEFAULT_DB,
+    from_type: str | None = None,
+    from_prefix: str | None = None,
+    depth: int = 5,
+) -> str:
+    """Reachability/authorization audit — which sources never reach a checkpoint (#172).
+
+    The headline use is **IDOR/authz coverage**: list every route handler that does
+    NOT transitively reach an ownership check. Reachability follows behavioral edges
+    (CALLS *and* FastAPI ``Depends()`` DEPENDS_ON), so a guard wired via DI counts.
+
+    Select sources with ``from_type`` (a NodeType like ``ROUTE_HANDLER`` /
+    ``API_ENDPOINT`` / ``FUNCTION``) and/or ``from_prefix`` (FQN prefix) — at least
+    one is required. Returns JSON ``{target, covered, gaps}`` where each gap carries
+    ``fqn``/``file``/``line``. Generalizes to validators, event tracking, or
+    service-layer-boundary rules by pointing ``target`` at the required node.
+    """
+    if blank := _blank_fqn_error(target):
+        return blank
+    if not Path(db_path).exists():
+        return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
+    # Defensive against agents passing JSON null for omitted optional params.
+    node_type: NodeType | None = None
+    if from_type and from_type.strip():
+        try:
+            node_type = NodeType(from_type.strip().upper())
+        except ValueError:
+            valid = ", ".join(t.value for t in NodeType)
+            return f"❌ Unknown node type '{from_type}'. Valid: {valid}"
+    prefix = (from_prefix or "").strip() or None
+    if node_type is None and prefix is None:
+        return "❌ Provide from_type or from_prefix to select audited sources."
+    try:
+        with SQLiteStore(db_path) as store:
+            res = resolve_fqn(store, target)
+            if res.resolved is None:
+                return _resolution_error(target, res.candidates, res.truncated)
+            result = audit_reachability(
+                store,
+                target_fqn=res.resolved,
+                from_type=node_type,
+                from_prefix=prefix,
+                max_depth=depth,
+            )
+    except Exception as exc:
+        return f"❌ {exc}"
+
+    note = f"> Resolved '{target}' → '{res.resolved}'\n\n" if res.via_suffix else ""
+    return note + json.dumps(dataclasses.asdict(result), indent=2)
