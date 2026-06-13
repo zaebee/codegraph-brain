@@ -1238,6 +1238,26 @@ def metrics(
     _render_metrics(report)
 
 
+def _resolve_checkpoint(store: SQLiteStore, target: str) -> str:
+    """Resolve a checkpoint FQN (suffix-aware), diagnosing to stderr or exiting 1.
+
+    Notes go to stderr so `cgis audit --format json` keeps a clean stdout payload.
+    """
+    err_console = Console(stderr=True)
+    resolution = resolve_fqn(store, target)
+    if resolution.resolved is None:
+        if resolution.candidates:
+            err_console.print(f"[bold red]❌ Ambiguous checkpoint FQN:[/bold red] {target}")
+            for candidate in resolution.candidates:
+                err_console.print(f"  [dim]- {candidate}[/dim]")
+        else:
+            err_console.print(f"[bold red]❌ Checkpoint not found in graph:[/bold red] {target}")
+        raise typer.Exit(code=1)
+    if resolution.via_suffix:
+        err_console.print(f"[dim]Resolved '{target}' → '{resolution.resolved}'[/dim]")
+    return resolution.resolved
+
+
 def _render_audit(result: ReachabilityAudit) -> None:
     """Print a reachability audit — a covered/gap summary then the gap list (#172)."""
     total = len(result.covered) + len(result.gaps)
@@ -1299,24 +1319,11 @@ def audit(
         console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
         raise typer.Exit(code=1)
 
-    err_console = Console(stderr=True)
     with SQLiteStore(db) as store:
-        resolution = resolve_fqn(store, target)
-        if resolution.resolved is None:
-            if resolution.candidates:
-                err_console.print(f"[bold red]❌ Ambiguous checkpoint FQN:[/bold red] {target}")
-                for candidate in resolution.candidates:
-                    err_console.print(f"  [dim]- {candidate}[/dim]")
-            else:
-                err_console.print(
-                    f"[bold red]❌ Checkpoint not found in graph:[/bold red] {target}"
-                )
-            raise typer.Exit(code=1)
-        if resolution.via_suffix:
-            err_console.print(f"[dim]Resolved '{target}' → '{resolution.resolved}'[/dim]")
+        resolved = _resolve_checkpoint(store, target)
         result = audit_reachability(
             store,
-            target_fqn=resolution.resolved,
+            target_fqn=resolved,
             from_type=from_type,
             from_prefix=from_prefix,
             max_depth=depth,
