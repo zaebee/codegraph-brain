@@ -49,7 +49,8 @@ class PatternFingerprint:
         """Worst-layer normalized mutual-motif mass, in [0, 1] (spec #186).
 
         max over the IMPORTS and CALLS census of tangle_mass — a hard hygiene
-        signal: a breach in either layer is a breach. 0 for empty/DAG layers.
+        signal: a breach in either layer is a breach. 0 for empty or
+        antisymmetric (no-mutual-dyad) layers.
         """
         return max(tangle_mass(self.t_imports), tangle_mass(self.t_calls))
 

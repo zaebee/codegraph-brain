@@ -225,8 +225,10 @@ def tangle_mass(census: tuple[float, ...]) -> float:
     """Normalized transpose-fixed (mutual) motif mass of a census, in [0, 1].
 
     Weights each normalized triad fraction by its MAN mutual-dyad count M and
-    divides by the maximal M (3, pure 300). A pure DAG (only 021*/030T/030C)
-    scores 0; a pure mutual mesh (300) scores 1. The empty census scores 0.
+    divides by the maximal M (3, pure 300). An antisymmetric graph — no mutual
+    dyads, i.e. only 021*/030T/030C (cycles included; acyclicity is cycle_ratio's
+    job, orthogonal to tangle) — scores 0; a pure mutual mesh (300) scores 1.
+    The empty census scores 0.
     """
     weighted = sum(w * t for w, t in zip(_TANGLE_WEIGHTS, census, strict=True))
     return weighted / _TANGLE_MAX_M

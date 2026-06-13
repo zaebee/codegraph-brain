@@ -470,15 +470,15 @@ def _tangle_fp(
 
 
 def test_tangle_ratio_zero_for_empty_census() -> None:
-    assert _tangle_fp().tangle_ratio == 0.0
+    assert _tangle_fp().tangle_ratio == pytest.approx(0.0)
 
 
 def test_tangle_ratio_takes_worst_layer() -> None:
     # imports clean DAG (021C), calls pure mesh (300) → max picks 1.0.
     fp = _tangle_fp(t_imports=_onehot("021C"), t_calls=_onehot("300"))
-    assert fp.tangle_ratio == 1.0
+    assert fp.tangle_ratio == pytest.approx(1.0)
 
 
 def test_tangle_ratio_pure_dag_is_zero() -> None:
     fp = _tangle_fp(t_imports=_onehot("030T"), t_calls=_onehot("021C"))
-    assert fp.tangle_ratio == 0.0
+    assert fp.tangle_ratio == pytest.approx(0.0)

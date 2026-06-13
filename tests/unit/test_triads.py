@@ -201,30 +201,30 @@ def _one_hot(name: str) -> tuple[float, ...]:
 
 def test_tangle_mass_pure_dag_is_zero() -> None:
     # 021C and 030T are acyclic, M=0 → not tangle.
-    assert tangle_mass(_one_hot("021C")) == 0.0
-    assert tangle_mass(_one_hot("030T")) == 0.0
+    assert tangle_mass(_one_hot("021C")) == pytest.approx(0.0)
+    assert tangle_mass(_one_hot("030T")) == pytest.approx(0.0)
 
 
 def test_tangle_mass_pure_mesh_is_one() -> None:
     # 300 is the full mutual triad, M=3 → 3/3 = 1.0.
-    assert tangle_mass(_one_hot("300")) == 1.0
+    assert tangle_mass(_one_hot("300")) == pytest.approx(1.0)
 
 
 def test_tangle_mass_single_mutual_dyad() -> None:
     # 201 has M=2 → 2/3.
-    assert tangle_mass(_one_hot("201")) == 2.0 / 3.0
+    assert tangle_mass(_one_hot("201")) == pytest.approx(2.0 / 3.0)
     # 120C has M=1 → 1/3.
-    assert tangle_mass(_one_hot("120C")) == 1.0 / 3.0
+    assert tangle_mass(_one_hot("120C")) == pytest.approx(1.0 / 3.0)
 
 
 def test_tangle_mass_empty_census_is_zero() -> None:
-    assert tangle_mass(ZERO_TRIADS) == 0.0
+    assert tangle_mass(ZERO_TRIADS) == pytest.approx(0.0)
 
 
 def test_tangle_mass_mixed_is_weighted_average() -> None:
     # Half 021C (M=0), half 300 (M=3) → (0.5*0 + 0.5*3)/3 = 0.5.
     half = tuple(0.5 if t in ("021C", "300") else 0.0 for t in TRIAD_ORDER)
-    assert tangle_mass(half) == 0.5
+    assert tangle_mass(half) == pytest.approx(0.5)
 
 
 def test_tangle_weights_align_with_triad_order() -> None:
