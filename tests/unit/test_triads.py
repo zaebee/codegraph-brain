@@ -3,7 +3,15 @@
 import pytest
 
 from cgis.core.models import Edge, EdgeType
-from cgis.query.triads import TRIAD_ORDER, normalized_census, triad_census, tv_distance
+from cgis.query.triads import (
+    _TANGLE_WEIGHTS,
+    TRIAD_ORDER,
+    ZERO_TRIADS,
+    normalized_census,
+    tangle_mass,
+    triad_census,
+    tv_distance,
+)
 
 
 def _e(source: str, target: str, etype: EdgeType = EdgeType.CALLS) -> Edge:
@@ -181,3 +189,46 @@ def test_tv_decomposes_per_triad() -> None:
     assert contribs[0] == (TRIAD_ORDER[0], pytest.approx(0.2))  # ½·1.0·0.4
     assert contribs[1] == (TRIAD_ORDER[1], pytest.approx(0.1))  # ½·0.5·0.4
     assert tv == pytest.approx(sum(c for _, c in contribs))
+
+
+# ── tangle_mass: normalized transpose-fixed (mutual) motif mass (#186) ────────
+
+
+def _one_hot(name: str) -> tuple[float, ...]:
+    """A normalized census concentrated entirely on one triad class."""
+    return tuple(1.0 if t == name else 0.0 for t in TRIAD_ORDER)
+
+
+def test_tangle_mass_pure_dag_is_zero() -> None:
+    # 021C and 030T are acyclic, M=0 → not tangle.
+    assert tangle_mass(_one_hot("021C")) == pytest.approx(0.0)
+    assert tangle_mass(_one_hot("030T")) == pytest.approx(0.0)
+
+
+def test_tangle_mass_pure_mesh_is_one() -> None:
+    # 300 is the full mutual triad, M=3 → 3/3 = 1.0.
+    assert tangle_mass(_one_hot("300")) == pytest.approx(1.0)
+
+
+def test_tangle_mass_single_mutual_dyad() -> None:
+    # 201 has M=2 → 2/3.
+    assert tangle_mass(_one_hot("201")) == pytest.approx(2.0 / 3.0)
+    # 120C has M=1 → 1/3.
+    assert tangle_mass(_one_hot("120C")) == pytest.approx(1.0 / 3.0)
+
+
+def test_tangle_mass_empty_census_is_zero() -> None:
+    assert tangle_mass(ZERO_TRIADS) == pytest.approx(0.0)
+
+
+def test_tangle_mass_mixed_is_weighted_average() -> None:
+    # Half 021C (M=0), half 300 (M=3) → (0.5*0 + 0.5*3)/3 = 0.5.
+    half = tuple(0.5 if t in ("021C", "300") else 0.0 for t in TRIAD_ORDER)
+    assert tangle_mass(half) == pytest.approx(0.5)
+
+
+def test_tangle_weights_align_with_triad_order() -> None:
+    assert len(_TANGLE_WEIGHTS) == len(TRIAD_ORDER) == 13
+    # The MAN first digit per class, derived from the name itself.
+    expected = tuple(int(name[0]) for name in TRIAD_ORDER)
+    assert expected == _TANGLE_WEIGHTS

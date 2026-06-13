@@ -23,6 +23,7 @@ drift_weights:
 hygiene:
   cycle_ratio:      {max: 0.0}
   unresolved_ratio: {max: 0.2}
+  tangle_ratio:     {max: 0.25}
 patterns:
   pure_utility:
     description: "Hub pattern"
@@ -1598,3 +1599,64 @@ def test_fit_templates_sorted_and_deterministic(repo_scorer: DriftScorer) -> Non
     assert [r for _, r in fits] == sorted(r for _, r in fits)
     assert fits[0][0] == "pipeline_stage"
     assert repo_scorer.fit_templates(fp, "python") == fits
+
+
+# ── tangle_ratio hygiene gate (#186) ──────────────────────────────────────────
+
+
+def _hygiene_only_config(name: str) -> DomainConfig:
+    return DomainConfig(name=name, fqn_prefix=name, expected_pattern=None)
+
+
+def _tangle_fp(
+    domain: str,
+    t_imports: tuple[float, ...] | None = None,
+    t_calls: tuple[float, ...] | None = None,
+) -> PatternFingerprint:
+    zeros = tuple(0.0 for _ in TRIAD_ORDER)
+    return PatternFingerprint(
+        domain=domain,
+        hub_count=0,
+        star_count=0,
+        chain_len=0.0,
+        dag_depth=0,
+        router_count=0,
+        cycle_ratio=0.0,
+        unresolved_ratio=0.0,
+        t_imports=t_imports if t_imports is not None else zeros,
+        t_calls=t_calls if t_calls is not None else zeros,
+        node_count=10,
+        edge_count=10,
+    )
+
+
+def _onehot(name: str) -> tuple[float, ...]:
+    return tuple(1.0 if t == name else 0.0 for t in TRIAD_ORDER)
+
+
+def test_tangle_gate_fails_mesh_domain(scorer: DriftScorer) -> None:
+    """A pure-mesh (300) CALLS layer breaches the tangle_ratio hygiene gate."""
+    fp = _tangle_fp("dom", t_calls=_onehot("300"))
+    report = scorer.score(fp, _hygiene_only_config("dom"))
+    assert report.status == "gate_failed"
+    assert any("tangle_ratio" in v for v in report.violations)
+
+
+def test_tangle_gate_passes_clean_domain(scorer: DriftScorer) -> None:
+    """A pure-DAG (021C) domain stays under the tangle bound."""
+    clean = _onehot("021C")
+    fp = _tangle_fp("dom", t_imports=clean, t_calls=clean)
+    report = scorer.score(fp, _hygiene_only_config("dom"))
+    assert report.status != "gate_failed"
+
+
+def test_tangle_baseline_ratchet_acknowledges_breach(scorer: DriftScorer) -> None:
+    """hygiene_baseline relaxes a known tangle breach back to non-failing."""
+    cfg = DomainConfig(
+        name="dom",
+        fqn_prefix="dom",
+        expected_pattern=None,
+        hygiene_baseline={"tangle_ratio": 1.0},
+    )
+    report = scorer.score(_tangle_fp("dom", t_calls=_onehot("300")), cfg)
+    assert report.status != "gate_failed"

@@ -67,6 +67,24 @@ A macro-graph whose census mass sits in this tail (e.g. a frontend where
 `store ↔ components ↔ hooks`) is genuinely **meshed**, not layered — a signal no
 fan-out/fan-in/chain template can represent (see Part 3 and issue #186).
 
+### `tangle_ratio` — the antisymmetry gate
+
+The total mass of this tail is captured by one hygiene number,
+**`tangle_ratio` = `Σ Mᵢ · tᵢ / 3`**, where `Mᵢ` is the MAN mutual-dyad count of
+class `i` (the first digit: `111*`/`120*` → 1, `201`/`210` → 2, `300` → 3) and
+`tᵢ` is its normalized census fraction. A mutual dyad `A ↔ B` is its own
+*transpose*; `300` is the maximal fixed point. So `tangle_ratio` is the
+**transpose-fixed mass**: an *antisymmetric* graph — no mutual dyads, i.e. only
+`021*`/`030T`/`030C` (cycles included — acyclicity is `cycle_ratio`'s job,
+orthogonal to tangle) — scores 0, a pure mesh (`300`) scores 1. It is measured as `max` over the IMPORTS and CALLS layers
+(the worst layer breaches).
+
+It is the symmetric partner of `cycle_ratio`. Together they complete the health
+predicate **`health = acyclicity + antisymmetry`**: `cycle_ratio` rejects the
+cyclic back-edge (`030C`), `tangle_ratio` rejects mutual coupling (`M ≥ 1`). It is
+a hard hygiene gate (`tangle_ratio: {max: …}` under `hygiene:`), ratchet-able per
+domain via `hygiene_baseline: {tangle_ratio: …}` (#151).
+
 ### How it's computed
 
 `triad_census(node_ids, edges, edge_type)` walks every connected triple, encodes
@@ -126,8 +144,8 @@ A domain's **drift score** combines, per the active profile's weights
    pattern's `imports` ideal.
 2. **`calls` layer** — same over CALLS, discounted by `(1 − unresolved_ratio)`
    (a domain whose calls are mostly unresolved gets its calls-evidence faded).
-3. **`gates` layer** — hygiene invariants (`cycle_ratio`, `unresolved_ratio`)
-   and template constraints (`dag_depth`, …).
+3. **`gates` layer** — hygiene invariants (`cycle_ratio`, `unresolved_ratio`,
+   `tangle_ratio`) and template constraints (`dag_depth`, …).
 
 **Total-variation (TV) distance** between two 13-vectors `p`, `q` is
 `½ · Σ wᵢ · |pᵢ − qᵢ|` — where `wᵢ` are per-triad weights from the profile's

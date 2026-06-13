@@ -316,6 +316,21 @@ def test_cgis_drift_returns_json(repo_with_calls: tuple[Path, Path]) -> None:
     assert payload["max_drift"] == pytest.approx(0.50)
 
 
+def test_cgis_drift_payload_includes_tangle_ratio(
+    repo_with_calls: tuple[Path, Path],
+) -> None:
+    """Each domain in the cgis_drift payload carries a tangle_ratio field (#186)."""
+    repo, db = repo_with_calls
+    cgis_ingest(str(repo), str(db))
+    patterns = repo / "patterns.yaml"
+    patterns.write_text(_PATTERNS_YAML, encoding="utf-8")
+
+    payload = json.loads(cgis_drift(str(db), str(patterns)))
+
+    assert all("tangle_ratio" in d for d in payload["domains"])
+    assert all(0.0 <= d["tangle_ratio"] <= 1.0 for d in payload["domains"])
+
+
 def test_cgis_drift_missing_db_returns_error(tmp_path: Path) -> None:
     """cgis_drift returns an error string when the db file does not exist."""
     result = cgis_drift(str(tmp_path / "no.db"), str(tmp_path / "p.yaml"))

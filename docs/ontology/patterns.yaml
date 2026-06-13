@@ -52,6 +52,7 @@ profiles:
 hygiene:
   cycle_ratio:      {max: 0.0}
   unresolved_ratio: {max: 0.2}
+  tangle_ratio:     {max: 0.25}
 
 # ── The closed alphabet: five templates (spec §2.1, §3.3) ────────────────────
 # ideal: hand-authored points in 13-triad space, one per layer, each summing

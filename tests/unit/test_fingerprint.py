@@ -440,3 +440,45 @@ def test_pipeline_ingested_mutual_imports_produce_nonzero_cycle_ratio(
         "mypkg.alpha and mypkg.beta mutually import each other — "
         "cycle_ratio must be > 0 after pipeline ingestion with resolver uplift"
     )
+
+
+# ── tangle_ratio property: worst-layer mutual-motif mass (#186) ───────────────
+
+_ZEROS = tuple(0.0 for _ in TRIAD_ORDER)
+
+
+def _onehot(name: str) -> tuple[float, ...]:
+    return tuple(1.0 if t == name else 0.0 for t in TRIAD_ORDER)
+
+
+def _tangle_fp(
+    t_imports: tuple[float, ...] = _ZEROS,
+    t_calls: tuple[float, ...] = _ZEROS,
+) -> PatternFingerprint:
+    return PatternFingerprint(
+        domain="d",
+        hub_count=0,
+        star_count=0,
+        chain_len=0.0,
+        dag_depth=0,
+        router_count=0,
+        cycle_ratio=0.0,
+        unresolved_ratio=0.0,
+        t_imports=t_imports,
+        t_calls=t_calls,
+    )
+
+
+def test_tangle_ratio_zero_for_empty_census() -> None:
+    assert _tangle_fp().tangle_ratio == pytest.approx(0.0)
+
+
+def test_tangle_ratio_takes_worst_layer() -> None:
+    # imports clean DAG (021C), calls pure mesh (300) → max picks 1.0.
+    fp = _tangle_fp(t_imports=_onehot("021C"), t_calls=_onehot("300"))
+    assert fp.tangle_ratio == pytest.approx(1.0)
+
+
+def test_tangle_ratio_pure_dag_is_zero() -> None:
+    fp = _tangle_fp(t_imports=_onehot("030T"), t_calls=_onehot("021C"))
+    assert fp.tangle_ratio == pytest.approx(0.0)

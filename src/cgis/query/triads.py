@@ -210,3 +210,25 @@ def tv_distance(
         for name, a, b, w in zip(TRIAD_ORDER, t, ideal, weights, strict=True)
     ]
     return sum((c for _, c in contribs), 0.0), contribs
+
+
+#: MAN mutual-dyad count (M, the first digit of the MAN code) for each class,
+#: aligned index-for-index with TRIAD_ORDER. Transpose-fixed mutual mass is the
+#: anti-pattern signal (spec: health = acyclicity + antisymmetry).
+_TANGLE_WEIGHTS: tuple[int, ...] = (0, 0, 0, 1, 1, 0, 0, 2, 1, 1, 1, 2, 3)
+
+#: Max single-class weight (pure 300), used to normalize tangle into [0, 1].
+_TANGLE_MAX_M = 3.0
+
+
+def tangle_mass(census: tuple[float, ...]) -> float:
+    """Normalized transpose-fixed (mutual) motif mass of a census, in [0, 1].
+
+    Weights each normalized triad fraction by its MAN mutual-dyad count M and
+    divides by the maximal M (3, pure 300). An antisymmetric graph — no mutual
+    dyads, i.e. only 021*/030T/030C (cycles included; acyclicity is cycle_ratio's
+    job, orthogonal to tangle) — scores 0; a pure mutual mesh (300) scores 1.
+    The empty census scores 0.
+    """
+    weighted = sum(w * t for w, t in zip(_TANGLE_WEIGHTS, census, strict=True))
+    return weighted / _TANGLE_MAX_M
