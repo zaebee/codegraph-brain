@@ -752,3 +752,10 @@ def test_cgis_audit_requires_selector(tmp_path: Path) -> None:
     """No from_type/from_prefix → clear error."""
     db = _audit_graph_db(tmp_path)
     assert "from_type or from_prefix" in cgis_audit_reachability("app.guard", db)
+
+
+def test_cgis_audit_whitespace_prefix_is_rejected(tmp_path: Path) -> None:
+    """A whitespace-only from_prefix is treated as unset → friendly guard, not a raw ValueError."""
+    db = _audit_graph_db(tmp_path)
+    result = cgis_audit_reachability("app.guard", db, from_prefix="   ")
+    assert "from_type or from_prefix" in result

@@ -458,7 +458,8 @@ def cgis_audit_reachability(
         except ValueError:
             valid = ", ".join(t.value for t in NodeType)
             return f"❌ Unknown node type '{from_type}'. Valid: {valid}"
-    if node_type is None and not from_prefix:
+    prefix = from_prefix.strip() or None
+    if node_type is None and prefix is None:
         return "❌ Provide from_type or from_prefix to select audited sources."
     try:
         with SQLiteStore(db_path) as store:
@@ -469,7 +470,7 @@ def cgis_audit_reachability(
                 store,
                 target_fqn=res.resolved,
                 from_type=node_type,
-                from_prefix=from_prefix or None,
+                from_prefix=prefix,
                 max_depth=depth,
             )
     except Exception as exc:

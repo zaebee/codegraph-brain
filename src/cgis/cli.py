@@ -1250,6 +1250,8 @@ def _resolve_checkpoint(store: SQLiteStore, target: str) -> str:
             err_console.print(f"[bold red]❌ Ambiguous checkpoint FQN:[/bold red] {target}")
             for candidate in resolution.candidates:
                 err_console.print(f"  [dim]- {candidate}[/dim]")
+            if resolution.truncated:
+                err_console.print("  [dim]… (more matches exist; refine the name)[/dim]")
         else:
             err_console.print(f"[bold red]❌ Checkpoint not found in graph:[/bold red] {target}")
         raise typer.Exit(code=1)
