@@ -257,9 +257,17 @@ def cgis_drift(
         payload = {
             "any_critical": analysis.any_critical,
             "max_drift": max_drift,
-            "domains": [dataclasses.asdict(r) for r in analysis.reports],
+            "domains": [
+                {**dataclasses.asdict(r), "tangle_ratio": round(r.actual.tangle_ratio, 4)}
+                for r in analysis.reports
+            ],
             "quotient": [
-                {**dataclasses.asdict(r), "enforce": b.enforce} for b, r in analysis.quotient
+                {
+                    **dataclasses.asdict(r),
+                    "enforce": b.enforce,
+                    "tangle_ratio": round(r.actual.tangle_ratio, 4),
+                }
+                for b, r in analysis.quotient
             ],
             "coverage": analysis.coverage,
         }
