@@ -10,6 +10,7 @@ from conftest import fit_patterns_yaml, make_chain_db
 
 from cgis.api.mcp_server import (
     cgis_analyze_impact,
+    cgis_audit_reachability,
     cgis_context,
     cgis_drift,
     cgis_find_symbol,
@@ -694,3 +695,60 @@ def test_cgis_drift_payload_has_coverage_and_fit(tmp_path: Path) -> None:
     assert any(c.startswith("orphan") for c in payload["coverage"])
     assert payload["domains"][0]["fit"]["nearest_template"] == "pure_utility"
     assert payload["domains"][0]["fit"]["band"] == "good"
+
+
+def _audit_graph_db(tmp_path: Path) -> str:
+    nodes = [
+        Node(
+            id="app.h1",
+            type=NodeType.ROUTE_HANDLER,
+            name="h1",
+            file_path="r.py",
+            start_line=1,
+            end_line=2,
+        ),
+        Node(
+            id="app.h2",
+            type=NodeType.ROUTE_HANDLER,
+            name="h2",
+            file_path="r.py",
+            start_line=4,
+            end_line=5,
+        ),
+        Node(
+            id="app.guard",
+            type=NodeType.FUNCTION,
+            name="guard",
+            file_path="a.py",
+            start_line=1,
+            end_line=2,
+        ),
+    ]
+    edges = [Edge(id="e1", source="app.h1", target="app.guard", type=EdgeType.CALLS)]
+    db = str(tmp_path / "audit.db")
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)
+    return db
+
+
+def test_cgis_audit_reachability_reports_gaps(tmp_path: Path) -> None:
+    """cgis_audit_reachability returns covered/gaps JSON; h2 never reaches the guard (#172)."""
+    db = _audit_graph_db(tmp_path)
+    payload = json.loads(cgis_audit_reachability("app.guard", db, from_type="ROUTE_HANDLER"))
+    assert payload["target"] == "app.guard"
+    assert {g["fqn"] for g in payload["gaps"]} == {"app.h2"}
+    assert {c["fqn"] for c in payload["covered"]} == {"app.h1"}
+
+
+def test_cgis_audit_unknown_node_type_errors(tmp_path: Path) -> None:
+    """An invalid from_type is a friendly ❌, not a crash."""
+    db = _audit_graph_db(tmp_path)
+    assert cgis_audit_reachability("app.guard", db, from_type="NOPE").startswith(
+        "❌ Unknown node type"
+    )
+
+
+def test_cgis_audit_requires_selector(tmp_path: Path) -> None:
+    """No from_type/from_prefix → clear error."""
+    db = _audit_graph_db(tmp_path)
+    assert "from_type or from_prefix" in cgis_audit_reachability("app.guard", db)

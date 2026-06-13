@@ -13,13 +13,14 @@ from rich.table import Table
 from rich.tree import Tree
 
 from cgis import __app_name__, __version__
-from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeNamespace
+from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeNamespace, NodeType
 from cgis.extractors.python_extractor import PythonExtractor, file_path_to_module_fqn
 from cgis.extractors.typescript_extractor import TypeScriptExtractor
 from cgis.guardian.metrics import load_reviews, rate_review
 from cgis.pipeline import IngestionPipeline
 from cgis.query.analyzer import AnalyzerEngine
 from cgis.query.anomaly import AnomalyType, ArchitecturalAnomaly
+from cgis.query.audit import ReachabilityAudit, audit_reachability
 from cgis.query.context_service import build_context
 from cgis.query.drift import DriftReport, FitQuality
 from cgis.query.drift_service import analyze_drift
@@ -1235,6 +1236,98 @@ def metrics(
         typer.echo(_json.dumps(report.model_dump(), indent=2))
         return
     _render_metrics(report)
+
+
+def _render_audit(result: ReachabilityAudit) -> None:
+    """Print a reachability audit — a covered/gap summary then the gap list (#172)."""
+    total = len(result.covered) + len(result.gaps)
+    console.print(
+        f"[bold blue]🔒 Reachability audit:[/bold blue] {total} sources → "
+        f"[cyan]{escape(result.target)}[/cyan]"
+    )
+    console.print(
+        f"  [green]✅ covered: {len(result.covered)}[/green]   "
+        f"[bold red]❌ gaps: {len(result.gaps)}[/bold red]"
+    )
+    for gap in result.gaps:
+        console.print(
+            f"  [bold red]✗ {escape(gap.fqn)}[/bold red] "
+            f"[dim]({escape(gap.file)}:{gap.line})[/dim] — never reaches the checkpoint"
+        )
+
+
+@app.command()
+def audit(
+    target: str = typer.Argument(
+        ..., help="FQN of the checkpoint every source must reach (e.g. verify_resource_ownership)"
+    ),
+    from_type: NodeType | None = typer.Option(
+        None,
+        "--from-type",
+        help="Only audit nodes of this type (e.g. ROUTE_HANDLER, API_ENDPOINT).",
+    ),
+    from_prefix: str | None = typer.Option(
+        None, "--from-prefix", help="Only audit nodes whose FQN starts with this prefix."
+    ),
+    db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
+    depth: int = typer.Option(5, "--depth", min=1, help="Max reachability depth."),
+    output_format: OutputFormat = typer.Option(
+        OutputFormat.TEXT, "--format", "-f", help=_TEXT_JSON_FORMAT_HELP
+    ),
+) -> None:
+    """Reachability audit — which sources never reach a required checkpoint (#172).
+
+    The headline use is authorization coverage: list every route handler that does
+    NOT transitively reach the ownership check (IDOR-class gaps), following CALLS
+    *and* FastAPI DEPENDS_ON edges:
+
+        cgis audit verify_resource_ownership --from-type ROUTE_HANDLER
+
+    Generalizes to any "must pass a checkpoint" rule (validators, event tracking,
+    service-layer boundaries).
+    """
+    if output_format == OutputFormat.MERMAID:
+        console.print("[bold red]❌ audit supports --format text or json only.[/bold red]")
+        raise typer.Exit(code=2)
+    if from_type is None and from_prefix is None:
+        console.print(
+            "[bold red]❌ Provide --from-type or --from-prefix to select sources.[/bold red]"
+        )
+        raise typer.Exit(code=2)
+    if not Path(db).is_file():
+        console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
+        raise typer.Exit(code=1)
+
+    err_console = Console(stderr=True)
+    with SQLiteStore(db) as store:
+        resolution = resolve_fqn(store, target)
+        if resolution.resolved is None:
+            if resolution.candidates:
+                err_console.print(f"[bold red]❌ Ambiguous checkpoint FQN:[/bold red] {target}")
+                for candidate in resolution.candidates:
+                    err_console.print(f"  [dim]- {candidate}[/dim]")
+            else:
+                err_console.print(
+                    f"[bold red]❌ Checkpoint not found in graph:[/bold red] {target}"
+                )
+            raise typer.Exit(code=1)
+        if resolution.via_suffix:
+            err_console.print(f"[dim]Resolved '{target}' → '{resolution.resolved}'[/dim]")
+        result = audit_reachability(
+            store,
+            target_fqn=resolution.resolved,
+            from_type=from_type,
+            from_prefix=from_prefix,
+            max_depth=depth,
+        )
+
+    if output_format == OutputFormat.JSON:
+        typer.echo(_json.dumps(dataclasses.asdict(result), indent=2))
+    else:
+        _render_audit(result)
+    # Exit non-zero when gaps exist so `cgis audit` can gate CI like a linter.
+    if result.gaps:
+        raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":  # pragma: no cover

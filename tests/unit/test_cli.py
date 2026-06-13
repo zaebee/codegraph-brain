@@ -1264,3 +1264,81 @@ def test_drift_reports_no_template_fits_and_coverage(tmp_path: Path) -> None:
     assert "no template fits" in result.output
     assert "Unbound code" in result.output
     assert "orphan" in result.output
+
+
+def _audit_db(tmp_path: Path) -> str:
+    """Two handlers reach the check, one (h3) doesn't — the IDOR gap."""
+    nodes = [
+        Node(
+            id="app.h1",
+            type=NodeType.ROUTE_HANDLER,
+            name="h1",
+            file_path="r.py",
+            start_line=10,
+            end_line=11,
+        ),
+        Node(
+            id="app.h3",
+            type=NodeType.ROUTE_HANDLER,
+            name="h3",
+            file_path="r.py",
+            start_line=30,
+            end_line=31,
+        ),
+        Node(
+            id="app.verify_owner",
+            type=NodeType.FUNCTION,
+            name="verify_owner",
+            file_path="a.py",
+            start_line=5,
+            end_line=6,
+        ),
+        Node(
+            id="app.storage",
+            type=NodeType.FUNCTION,
+            name="storage",
+            file_path="s.py",
+            start_line=1,
+            end_line=2,
+        ),
+    ]
+    edges = [
+        Edge(id="e1", source="app.h1", target="app.verify_owner", type=EdgeType.CALLS),
+        Edge(id="e2", source="app.h3", target="app.storage", type=EdgeType.CALLS),
+    ]
+    db = str(tmp_path / "audit.db")
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)
+    return db
+
+
+def test_audit_lists_gaps_and_exits_nonzero(tmp_path: Path) -> None:
+    """`cgis audit` lists the uncovered handler and exits 1 so CI can gate (#172)."""
+    db = _audit_db(tmp_path)
+    result = runner.invoke(
+        app, ["audit", "verify_owner", "--from-type", "ROUTE_HANDLER", "--db", db]
+    )
+    assert result.exit_code == 1
+    assert "app.h3" in result.stdout
+    assert "1" in result.stdout  # gap count
+
+
+def test_audit_json_format(tmp_path: Path) -> None:
+    """`cgis audit --format json` emits parseable covered/gaps with the resolved target."""
+    db = _audit_db(tmp_path)
+    result = runner.invoke(
+        app,
+        ["audit", "verify_owner", "--from-type", "ROUTE_HANDLER", "--db", db, "--format", "json"],
+    )
+    payload = json.loads(result.stdout)
+    assert payload["target"] == "app.verify_owner"
+    assert {g["fqn"] for g in payload["gaps"]} == {"app.h3"}
+    assert {c["fqn"] for c in payload["covered"]} == {"app.h1"}
+
+
+def test_audit_requires_a_selector(tmp_path: Path) -> None:
+    """Without --from-type or --from-prefix the command errors (exit 2)."""
+    db = _audit_db(tmp_path)
+    result = runner.invoke(app, ["audit", "verify_owner", "--db", db])
+    assert result.exit_code == 2
+    assert "from-type" in result.output
