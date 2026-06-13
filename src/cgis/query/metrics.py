@@ -46,6 +46,8 @@ def _segment_exclusion(id_expr: str, segments: Sequence[str]) -> tuple[str, list
     ``LIKE … ESCAPE '\\'`` with ``%``/``_``/``\\`` escaped, so a segment is matched
     literally and the path stays injection-safe.
     """
+    if not segments:  # reachable empty case (default ()) — and guards a None caller
+        return "", []
     clauses: list[str] = []
     params: list[str] = []
     # dict.fromkeys dedupes while preserving order; skip empty/whitespace segments
