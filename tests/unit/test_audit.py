@@ -28,20 +28,20 @@ def _store(tmp_path: Path, nodes: list[Node], edges: list[Edge]) -> str:
 def _graph() -> tuple[list[Node], list[Edge]]:
     """3 route handlers + a DI handler; only h3 never reaches the ownership check."""
     nodes = [
-        _node("app.h1", NodeType.ROUTE_HANDLER, 10),
-        _node("app.h2", NodeType.ROUTE_HANDLER, 20),
-        _node("app.h3", NodeType.ROUTE_HANDLER, 30),  # the IDOR gap
-        _node("app.h4", NodeType.ROUTE_HANDLER, 40),  # reaches via FastAPI DI
+        _node("app.routes.h1", NodeType.ROUTE_HANDLER, 10),
+        _node("app.routes.h2", NodeType.ROUTE_HANDLER, 20),
+        _node("app.routes.h3", NodeType.ROUTE_HANDLER, 30),  # the IDOR gap
+        _node("app.routes.h4", NodeType.ROUTE_HANDLER, 40),  # reaches via FastAPI DI
         _node("app.verify_owner", NodeType.FUNCTION, 50),
         _node("app.svc", NodeType.FUNCTION, 60),
         _node("app.storage", NodeType.FUNCTION, 70),
     ]
     edges = [
-        Edge(id="e1", source="app.h1", target="app.verify_owner", type=EdgeType.CALLS),
-        Edge(id="e2", source="app.h2", target="app.svc", type=EdgeType.CALLS),
+        Edge(id="e1", source="app.routes.h1", target="app.verify_owner", type=EdgeType.CALLS),
+        Edge(id="e2", source="app.routes.h2", target="app.svc", type=EdgeType.CALLS),
         Edge(id="e3", source="app.svc", target="app.verify_owner", type=EdgeType.CALLS),
-        Edge(id="e4", source="app.h3", target="app.storage", type=EdgeType.CALLS),
-        Edge(id="e5", source="app.h4", target="app.verify_owner", type=EdgeType.DEPENDS_ON),
+        Edge(id="e4", source="app.routes.h3", target="app.storage", type=EdgeType.CALLS),
+        Edge(id="e5", source="app.routes.h4", target="app.verify_owner", type=EdgeType.DEPENDS_ON),
     ]
     return nodes, edges
 
@@ -56,8 +56,8 @@ def test_audit_splits_covered_and_gaps(tmp_path: Path) -> None:
 
     covered = {r.fqn for r in result.covered}
     gaps = {r.fqn for r in result.gaps}
-    assert covered == {"app.h1", "app.h2", "app.h4"}  # direct, transitive, DI
-    assert gaps == {"app.h3"}
+    assert covered == {"app.routes.h1", "app.routes.h2", "app.routes.h4"}  # direct, transitive, DI
+    assert gaps == {"app.routes.h3"}
 
 
 def test_audit_gap_carries_file_and_line(tmp_path: Path) -> None:
@@ -68,7 +68,7 @@ def test_audit_gap_carries_file_and_line(tmp_path: Path) -> None:
             store, target_fqn="app.verify_owner", from_type=NodeType.ROUTE_HANDLER
         )
     gap = result.gaps[0]
-    assert gap.fqn == "app.h3"
+    assert gap.fqn == "app.routes.h3"
     assert gap.file == "app/routes.py"
     assert gap.line == 30
 
@@ -80,7 +80,7 @@ def test_audit_di_path_requires_behavioral_edges(tmp_path: Path) -> None:
         result = audit_reachability(
             store, target_fqn="app.verify_owner", from_type=NodeType.ROUTE_HANDLER
         )
-    assert "app.h4" in {r.fqn for r in result.covered}
+    assert "app.routes.h4" in {r.fqn for r in result.covered}
 
 
 def test_audit_respects_max_depth(tmp_path: Path) -> None:
@@ -91,13 +91,13 @@ def test_audit_respects_max_depth(tmp_path: Path) -> None:
             store, target_fqn="app.verify_owner", from_type=NodeType.ROUTE_HANDLER, max_depth=1
         )
     # h2 reaches verify only at depth 2 (h2→svc→verify), so at depth 1 it's a gap
-    assert "app.h2" in {r.fqn for r in result.gaps}
-    assert "app.h1" in {r.fqn for r in result.covered}  # direct, depth 1
+    assert "app.routes.h2" in {r.fqn for r in result.gaps}
+    assert "app.routes.h1" in {r.fqn for r in result.covered}  # direct, depth 1
 
 
 def test_audit_from_prefix_selects_sources(tmp_path: Path) -> None:
     """Sources can be selected by FQN prefix instead of node type."""
     db = _store(tmp_path, *_graph())
     with SQLiteStore(db) as store:
-        result = audit_reachability(store, target_fqn="app.verify_owner", from_prefix="app.h")
-    assert {r.fqn for r in result.gaps} == {"app.h3"}
+        result = audit_reachability(store, target_fqn="app.verify_owner", from_prefix="app.routes")
+    assert {r.fqn for r in result.gaps} == {"app.routes.h3"}

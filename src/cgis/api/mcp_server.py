@@ -452,9 +452,9 @@ def cgis_audit_reachability(
     if not Path(db_path).exists():
         return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
     node_type: NodeType | None = None
-    if from_type:
+    if from_type.strip():
         try:
-            node_type = NodeType(from_type)
+            node_type = NodeType(from_type.strip().upper())
         except ValueError:
             valid = ", ".join(t.value for t in NodeType)
             return f"❌ Unknown node type '{from_type}'. Valid: {valid}"
