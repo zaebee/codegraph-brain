@@ -1141,6 +1141,15 @@ def _render_metrics(report: ArchitectureReport) -> None:
 def metrics(
     db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
     limit: int = typer.Option(10, "--limit", min=1, help="Top-N rows per section."),
+    exclude: list[str] = typer.Option(
+        [],
+        "--exclude",
+        "-x",
+        help=(
+            "Drop nodes whose FQN contains this dot-segment anywhere, e.g. "
+            "'-x tests' removes both tests.* and domains.*.tests.* (repeatable)."
+        ),
+    ),
     output_format: OutputFormat = typer.Option(
         OutputFormat.TEXT, "--format", "-f", help=_TEXT_JSON_FORMAT_HELP
     ),
@@ -1149,6 +1158,7 @@ def metrics(
 
     Runs vectorized aggregations over the graph via an optional DuckDB layer.
     Install it with `pip install 'codegraph-brain[analytics]'` if missing.
+    Use `--exclude tests` to keep test scaffolding out of the rankings.
     """
     if output_format == OutputFormat.MERMAID:
         console.print("[bold red]❌ metrics supports --format text or json only.[/bold red]")
@@ -1159,7 +1169,7 @@ def metrics(
     try:
         with DuckDBAnalyzer(db) as analyzer:
             report = analyzer.architecture_report(
-                bottleneck_limit=limit, god_limit=limit, critical_limit=limit
+                bottleneck_limit=limit, god_limit=limit, critical_limit=limit, exclude=exclude
             )
     except Exception as e:  # duckdb missing, extension fetch, or a non-SQLite file
         console.print(f"[bold red]❌ {e}[/bold red]")

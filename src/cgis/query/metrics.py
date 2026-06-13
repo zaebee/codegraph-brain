@@ -12,6 +12,7 @@ importing this module is fine without it, but constructing :class:`DuckDBAnalyze
 raises a clear error so the CLI can degrade gracefully.
 """
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -33,7 +34,32 @@ _DUCKDB_MISSING = (
     "Install it with: pip install 'codegraph-brain[analytics]'  (or: uv add duckdb)"
 )
 
-_COUPLING_QUERY = f"""
+
+def _segment_exclusion(id_expr: str, segments: Sequence[str]) -> tuple[str, list[str]]:
+    """Build a WHERE fragment excluding FQNs that contain any of ``segments``.
+
+    A segment matches a whole dot-delimited component **anywhere** in the id, so
+    ``tests`` drops both ``tests.utils.x`` and ``domains.resv.tests.test_x`` while
+    keeping ``domains.testservice`` (substring, not a segment). Returns
+    ``("", [])`` when ``segments`` is empty. The fragment uses ``?`` placeholders
+    (the segments ride in as query parameters, never string-interpolated) and
+    ``LIKE … ESCAPE '\\'`` with ``%``/``_``/``\\`` escaped, so a segment is matched
+    literally and the path stays injection-safe.
+    """
+    clauses: list[str] = []
+    params: list[str] = []
+    for seg in segments:
+        escaped = seg.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        clauses.append(f"('.' || {id_expr} || '.') NOT LIKE ? ESCAPE '\\'")
+        params.append(f"%.{escaped}.%")
+    if not clauses:
+        return "", []
+    return " AND " + " AND ".join(clauses), params
+
+
+def _coupling_query(exclude_sql: str) -> str:
+    """Coupling query with an optional segment-exclusion fragment on the node list."""
+    return f"""
 WITH incoming AS (
     SELECT target AS node_id, COUNT(*) AS in_deg
     FROM edges WHERE type = 'CALLS' GROUP BY target
@@ -57,20 +83,24 @@ LEFT JOIN incoming i ON n.id = i.node_id
 LEFT JOIN outgoing o ON n.id = o.node_id
 WHERE n.namespace = 'INTERNAL'
   AND n.type IN ('FUNCTION', 'METHOD')
-  AND n.file_path != '{VIRTUAL_FILE_PATH}'
+  AND n.file_path != '{VIRTUAL_FILE_PATH}'{exclude_sql}
 ORDER BY (COALESCE(i.in_deg, 0) + COALESCE(o.out_deg, 0)) DESC, n.id
 LIMIT ?
 """
 
-_GOD_CLASS_QUERY = """
+
+def _god_class_query(exclude_sql: str) -> str:
+    """God-class query with an optional segment-exclusion fragment on the class id."""
+    return f"""
 SELECT e.source AS node_id, COUNT(*) AS declares
 FROM edges e
 JOIN nodes n ON e.source = n.id
-WHERE e.type = 'DECLARES' AND n.type = 'CLASS'
+WHERE e.type = 'DECLARES' AND n.type = 'CLASS'{exclude_sql}
 GROUP BY e.source
 ORDER BY declares DESC, e.source
 LIMIT ?
 """
+
 
 # Vectorized PageRank: 20 fixed iterations of the standard damped formula, run as
 # DuckDB temp-table joins (Python only drives the loop — the data never leaves the
@@ -183,24 +213,30 @@ class DuckDBAnalyzer:
             for node_id, node_type, in_degree, out_degree in rows
         ]
 
-    def get_coupling_metrics(self, limit: int = 10) -> list[NodeMetric]:
+    def get_coupling_metrics(
+        self, limit: int = 10, exclude: Sequence[str] = ()
+    ) -> list[NodeMetric]:
         """Top INTERNAL functions/methods by total coupling (fan-in + fan-out).
 
         High in-degree marks a critical bottleneck (many callers); high out-degree
         marks an over-orchestrating or complex unit. External/stdlib and
         unresolved ``raw_call:`` targets are excluded so ``len``/``print`` noise
-        never tops the list.
+        never tops the list. ``exclude`` drops any node whose FQN contains one of
+        the given dot-segments (e.g. ``["tests"]``) from the ranked list.
         """
-        rows = self.conn.execute(_COUPLING_QUERY, [limit]).fetchall()
+        where, params = _segment_exclusion("n.id", exclude)
+        rows = self.conn.execute(_coupling_query(where), [*params, limit]).fetchall()
         return self._rows_to_metrics(rows)
 
-    def get_god_classes(self, limit: int = 5) -> list[NodeMetric]:
+    def get_god_classes(self, limit: int = 5, exclude: Sequence[str] = ()) -> list[NodeMetric]:
         """Top classes by declared-member count (DECLARES fan-out).
 
         ``out_degree`` carries the number of methods/attributes the class
-        declares — a high value is the classic God-object smell.
+        declares — a high value is the classic God-object smell. ``exclude`` drops
+        classes whose FQN contains one of the given dot-segments.
         """
-        rows = self.conn.execute(_GOD_CLASS_QUERY, [limit]).fetchall()
+        where, params = _segment_exclusion("n.id", exclude)
+        rows = self.conn.execute(_god_class_query(where), [*params, limit]).fetchall()
         return [
             NodeMetric(
                 node_id=str(node_id),
@@ -211,7 +247,7 @@ class DuckDBAnalyzer:
             for node_id, declares in rows
         ]
 
-    def get_pagerank(self, limit: int = 10) -> list[NodeMetric]:
+    def get_pagerank(self, limit: int = 10, exclude: Sequence[str] = ()) -> list[NodeMetric]:
         """Top INTERNAL nodes by PageRank over the internal CALLS graph.
 
         PageRank weights a node by the *transitive* importance of what reaches it,
@@ -223,11 +259,17 @@ class DuckDBAnalyzer:
         also includes CLASS nodes — a constructor call is a CALLS edge to the
         class, so a heavily-instantiated class (e.g. a core data model) is
         legitimately central. Uncalled classes simply rest at the floor rank.
+
+        ``exclude`` removes any node whose FQN contains one of the given
+        dot-segments from the PageRank universe entirely (so excluded nodes leave
+        the propagation graph, not just the final ranking).
         """
         conn = self.conn
+        where, params = _segment_exclusion("id", exclude)
         conn.execute(
             "CREATE OR REPLACE TEMP TABLE pr_nodes AS "
-            f"SELECT id FROM nodes WHERE {_PAGERANK_INTERNAL}"
+            f"SELECT id FROM nodes WHERE {_PAGERANK_INTERNAL}{where}",
+            params,
         )
         n = int(conn.execute("SELECT COUNT(*) FROM pr_nodes").fetchone()[0])
         if n == 0:
@@ -262,11 +304,19 @@ class DuckDBAnalyzer:
         ]
 
     def architecture_report(
-        self, bottleneck_limit: int = 10, god_limit: int = 5, critical_limit: int = 10
+        self,
+        bottleneck_limit: int = 10,
+        god_limit: int = 5,
+        critical_limit: int = 10,
+        exclude: Sequence[str] = (),
     ) -> ArchitectureReport:
-        """Bundle the coupling bottlenecks, God classes, and PageRank-critical nodes."""
+        """Bundle the coupling bottlenecks, God classes, and PageRank-critical nodes.
+
+        ``exclude`` is threaded into all three sections — any node whose FQN
+        contains one of the given dot-segments (e.g. ``["tests"]``) is dropped.
+        """
         return ArchitectureReport(
-            bottlenecks=self.get_coupling_metrics(bottleneck_limit),
-            god_classes=self.get_god_classes(god_limit),
-            critical=self.get_pagerank(critical_limit),
+            bottlenecks=self.get_coupling_metrics(bottleneck_limit, exclude),
+            god_classes=self.get_god_classes(god_limit, exclude),
+            critical=self.get_pagerank(critical_limit, exclude),
         )

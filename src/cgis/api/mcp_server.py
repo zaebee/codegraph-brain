@@ -380,21 +380,31 @@ def cgis_context(
 
 
 @mcp.tool()
-def cgis_metrics(db_path: str = _DEFAULT_DB, limit: int = 10) -> str:
+def cgis_metrics(
+    db_path: str = _DEFAULT_DB, limit: int = 10, exclude: list[str] | None = None
+) -> str:
     """Whole-graph architectural metrics — coupling bottlenecks + God classes (#16).
 
-    Returns JSON ``{bottlenecks, god_classes}`` computed with vectorized DuckDB
-    aggregations over the whole graph (fan-in/fan-out coupling, declared-member
-    counts) — the global "what are the hotspots?" view that complements the
-    node-local trace/impact/context tools. Requires the optional ``duckdb``
-    extra; an unavailable dependency is reported as a normal ❌ message.
+    Returns JSON ``{bottlenecks, god_classes, critical}`` computed with vectorized
+    DuckDB aggregations over the whole graph (fan-in/fan-out coupling,
+    declared-member counts, PageRank) — the global "what are the hotspots?" view
+    that complements the node-local trace/impact/context tools. Requires the
+    optional ``duckdb`` extra; an unavailable dependency is reported as a normal
+    ❌ message.
+
+    ``exclude`` drops any node whose FQN contains one of the given dot-segments
+    (e.g. ``["tests"]`` removes both ``tests.*`` and ``domains.*.tests.*``) so
+    test/vendor scaffolding stays out of the rankings.
     """
     if not Path(db_path).exists():
         return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
     try:
         with DuckDBAnalyzer(db_path) as analyzer:
             report = analyzer.architecture_report(
-                bottleneck_limit=limit, god_limit=limit, critical_limit=limit
+                bottleneck_limit=limit,
+                god_limit=limit,
+                critical_limit=limit,
+                exclude=exclude or [],
             )
     except Exception as exc:
         return f"❌ {exc}"
