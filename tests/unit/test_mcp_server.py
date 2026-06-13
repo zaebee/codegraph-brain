@@ -20,6 +20,7 @@ from cgis.api.mcp_server import (
     cgis_trace_flow,
     cgis_validate,
 )
+from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.storage.sqlite_store import SQLiteStore
 
 
@@ -656,3 +657,46 @@ def test_cgis_metrics_missing_db_returns_error(tmp_path: Path) -> None:
     """A missing database returns a friendly ❌ message, not an exception."""
     result = cgis_metrics(str(tmp_path / "missing.db"))
     assert result.startswith("❌ Database not found")
+
+def test_cgis_drift_payload_has_coverage_and_fit(tmp_path: Path) -> None:
+    """cgis_drift JSON carries top-level coverage and per-report fit (#177)."""
+    db = str(tmp_path / "g.db")
+    nodes = [
+        Node(
+            id=f"dom.f{i}",
+            type=NodeType.FUNCTION,
+            name=f"f{i}",
+            file_path="dom.py",
+            start_line=i,
+            end_line=i + 1,
+        )
+        for i in (1, 2, 3)
+    ] + [
+        Node(
+            id="orphan.y",
+            type=NodeType.FUNCTION,
+            name="y",
+            file_path="orphan.py",
+            start_line=1,
+            end_line=2,
+        )
+    ]
+    edges = [
+        Edge(id="e1", source="dom.f1", target="dom.f3", type=EdgeType.CALLS),
+        Edge(id="e2", source="dom.f2", target="dom.f3", type=EdgeType.CALLS),
+    ]
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)
+    p = tmp_path / "p.yaml"
+    p.write_text(
+        "version: '2.0.0'\nprofiles:\n  py:\n    drift_weights: {hub_count: 1.0}\n"
+        "    layers: {imports: 0.0, calls: 1.0, gates: 0.0}\n    triad_weights: {}\n"
+        "patterns:\n  pure_utility:\n    description: u\n    ideal:\n"
+        "      imports: {'021U': 1.0}\n      calls: {'021U': 1.0}\n"
+        "project_domains:\n  - name: dom\n    fqn_prefix: dom\n    expected_pattern: pure_utility\n"
+        "    profile: py\n    drift_tolerance: 0.5\n"
+    )
+    payload = json.loads(cgis_drift(db_path=db, patterns_path=str(p), max_drift=1.0))
+    assert any(c.startswith("orphan") for c in payload["coverage"])
+    assert payload["domains"][0]["fit"]["nearest_template"] == "pure_utility"
+    assert payload["domains"][0]["fit"]["band"] == "good"
