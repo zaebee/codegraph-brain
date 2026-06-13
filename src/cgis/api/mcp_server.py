@@ -393,7 +393,9 @@ def cgis_metrics(db_path: str = _DEFAULT_DB, limit: int = 10) -> str:
         return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
     try:
         with DuckDBAnalyzer(db_path) as analyzer:
-            report = analyzer.architecture_report(bottleneck_limit=limit, god_limit=limit)
+            report = analyzer.architecture_report(
+                bottleneck_limit=limit, god_limit=limit, critical_limit=limit
+            )
     except Exception as exc:
         return f"❌ {exc}"
 

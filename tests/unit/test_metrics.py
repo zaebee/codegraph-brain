@@ -173,3 +173,71 @@ def test_architecture_report_honors_god_limit(tmp_path: Path) -> None:
         report = analyzer.architecture_report(god_limit=2)
 
     assert len(report.god_classes) == 2
+
+
+def test_pagerank_hub_ranks_above_spokes(tmp_path: Path) -> None:
+    """A node everything points to gets the highest PageRank (#231)."""
+    spokes = [_node(f"app.s{i}") for i in range(5)]
+    hub = _node("app.hub")
+    edges = [
+        Edge(id=f"e{i}", source=f"app.s{i}", target="app.hub", type=EdgeType.CALLS)
+        for i in range(5)
+    ]
+    db = _write_db(tmp_path, [*spokes, hub], edges)
+
+    with DuckDBAnalyzer(db) as analyzer:
+        ranked = analyzer.get_pagerank()
+
+    assert ranked[0].node_id == "app.hub"
+    assert ranked[0].page_rank > 0
+    # hub strictly outranks every spoke
+    spoke_ranks = [m.page_rank for m in ranked if m.node_id != "app.hub"]
+    assert all(ranked[0].page_rank > r for r in spoke_ranks)
+
+
+def test_pagerank_ranks_all_internal_nodes(tmp_path: Path) -> None:
+    """Every INTERNAL function/method is ranked; results are sorted descending."""
+    nodes = [_node(f"app.f{i}") for i in range(4)]
+    edges = [
+        Edge(id=f"c{i}", source=f"app.f{i}", target=f"app.f{i + 1}", type=EdgeType.CALLS)
+        for i in range(3)
+    ]
+    db = _write_db(tmp_path, nodes, edges)
+
+    with DuckDBAnalyzer(db) as analyzer:
+        ranked = analyzer.get_pagerank()
+
+    assert {m.node_id for m in ranked} == {f"app.f{i}" for i in range(4)}
+    ranks = [m.page_rank for m in ranked]
+    assert ranks == sorted(ranks, reverse=True)
+
+
+def test_pagerank_excludes_external_and_virtual(tmp_path: Path) -> None:
+    """PageRank ignores raw_call/external and resolver virtual pseudo-nodes."""
+    f = _node("app.f")
+    virtual = Node(
+        id="self._x.run",
+        type=NodeType.FUNCTION,
+        name="run",
+        file_path=VIRTUAL_FILE_PATH,
+        start_line=0,
+        end_line=0,
+        namespace=NodeNamespace.INTERNAL,
+    )
+    edges = [
+        Edge(id="x", source="app.f", target="raw_call:print", type=EdgeType.CALLS),
+        Edge(id="v", source="app.f", target="self._x.run", type=EdgeType.CALLS),
+    ]
+    db = _write_db(tmp_path, [f, virtual], edges)
+
+    with DuckDBAnalyzer(db) as analyzer:
+        ids = {m.node_id for m in analyzer.get_pagerank()}
+
+    assert ids == {"app.f"}
+
+
+def test_pagerank_empty_graph_returns_empty(tmp_path: Path) -> None:
+    """No internal nodes → empty ranking, no crash."""
+    db = _write_db(tmp_path, [], [])
+    with DuckDBAnalyzer(db) as analyzer:
+        assert analyzer.get_pagerank() == []
