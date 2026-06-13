@@ -100,3 +100,58 @@ def test_footer_default_empty_keeps_body_unchanged() -> None:
     with_default, _ = build_review(result, diff_index={}, skeptic_model=None)
     with_empty, _ = build_review(result, diff_index={}, skeptic_model=None, footer="")
     assert with_default == with_empty
+
+
+_CONTENT = {"src/x.py": {10: "    context1", 11: "    added1", 12: "    added2", 13: "    ctx2"}}
+
+
+def _finding(**over: object) -> Finding:
+    base: dict[str, object] = {
+        "file": "src/x.py",
+        "line": 11,
+        "severity": "major",
+        "category": "logic",
+        "title": "t",
+        "evidence": "e",
+        "problem": "p",
+        "fix": "f",
+        "confidence": 90,
+    }
+    base.update(over)
+    return Finding(**base)  # type: ignore[arg-type]
+
+
+def test_anchor_corrects_a_wrong_model_line() -> None:
+    """A verbatim anchor overrides a hallucinated line — comment lands on the real line (#181)."""
+    f = _finding(line=999, anchor="added2")  # model guessed 999; real line is 12
+    result = ReviewResult(findings=[f], summary="s")
+    _, comments = build_review(
+        result,
+        diff_index={"src/x.py": {10, 11, 12, 13}},
+        skeptic_model=None,
+        diff_content=_CONTENT,
+    )
+    assert len(comments) == 1
+    assert comments[0]["line"] == 12
+
+
+def test_hallucinated_anchor_demotes_to_body() -> None:
+    """A quote that appears nowhere in the diff becomes a body note, not a wrong inline anchor."""
+    f = _finding(line=11, anchor="this text is not in the diff at all")
+    result = ReviewResult(findings=[f], summary="s")
+    body, comments = build_review(
+        result,
+        diff_index={"src/x.py": {10, 11, 12, 13}},
+        skeptic_model=None,
+        diff_content=_CONTENT,
+    )
+    assert comments == []  # not posted at the (wrong) model line 11
+    assert "t" in body  # finding survives in the body — nothing lost
+
+
+def test_no_diff_content_keeps_legacy_behaviour() -> None:
+    """Without diff_content, the model line is used as before (backward compatible)."""
+    f = _finding(line=11, anchor="added2")
+    result = ReviewResult(findings=[f], summary="s")
+    _, comments = build_review(result, diff_index={"src/x.py": {10, 11, 12}}, skeptic_model=None)
+    assert comments[0]["line"] == 11

@@ -8,7 +8,7 @@ import structlog
 
 from cgis.guardian.chunked import run_review_routed
 from cgis.guardian.collector import ContextCollector
-from cgis.guardian.diff_index import diff_line_index
+from cgis.guardian.diff_index import diff_line_content
 from cgis.guardian.github_poster import post_inline_review
 from cgis.guardian.metrics import record_review
 from cgis.guardian.providers.base import BaseProvider, ProviderUsage
@@ -134,15 +134,17 @@ async def run_guardian(
     posted = False
     if inline_repo is not None and pr is not None:
         try:
-            index = diff_line_index(collector.get_git_diff())
+            diff_text = collector.get_git_diff()
+            content = diff_line_content(diff_text)
             await asyncio.to_thread(  # subprocess `gh api` call — keep the loop responsive
                 post_inline_review,
                 repo=inline_repo,
                 pr=pr,
                 result=result,
-                diff_index=index,
+                diff_index={path: set(lines) for path, lines in content.items()},
                 skeptic_model=skeptic[1] if skeptic else None,
                 footer=footer,
+                diff_content=content,
             )
             posted = True
         except Exception:

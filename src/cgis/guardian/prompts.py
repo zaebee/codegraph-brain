@@ -122,6 +122,7 @@ paths, unresolved calls not using `raw_call:` prefix.
 Return ONLY a JSON object — no prose, no markdown fences — with this exact shape:
 
 {{"findings": [{{"file": "src/path/to/file.py", "line": 123,
+  "anchor": "<the exact source line this finding sits on, copied verbatim from section 3>",
   "severity": "critical|major|minor",
   "category": "logic|contract|tests|types|ontology",
   "title": "short headline",
@@ -135,6 +136,10 @@ Rules:
 - "category" maps to the focus areas: logic = Logic Bug, contract = Library Contract,
   tests = Test Coverage, types = Type Safety, ontology = Ontology.
 - "line" is the line number in the HEAD version of the file, or null for file-level findings.
+- "anchor" is the single exact line of code the finding refers to, copied VERBATIM from the
+  diff in section 3 (no paraphrasing, no `+`/`-` marker). It is used to position the inline
+  comment deterministically — if your "line" guess is off, a correct "anchor" still lands the
+  comment on the right line. Use null only for genuinely file-level findings.
 - "confidence" must be >= 80 to include a finding (the gate above).
 - max 5 findings; fewer is fine; an empty list means LGTM.
 - "summary" is mandatory; for an LGTM it lists what you checked and found correct.

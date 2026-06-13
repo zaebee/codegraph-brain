@@ -12,15 +12,16 @@ def _new_file_path(header: re.Match[str]) -> str | None:
     return None if path == "/dev/null" else path
 
 
-def diff_line_index(diff_text: str) -> dict[str, set[int]]:
-    """Map each changed file (new path) to the set of RIGHT-side line numbers.
+def diff_line_content(diff_text: str) -> dict[str, dict[int, str]]:
+    """Map each changed file (new path) to ``{RIGHT-side line number: line text}``.
 
-    GitHub only accepts inline review comments on lines present in the diff;
-    context and added lines count, removed lines do not (spec §6.2). Renames
-    are keyed by the new path so keys match Finding.file. Files deleted in the
-    PR (+++ /dev/null) have no RIGHT side and are excluded.
+    The text is the line content with its leading diff marker (``+``/`` ``)
+    stripped, so it can be matched verbatim against a finding's quote to anchor
+    the comment deterministically (#181). Same right-side accounting as
+    :func:`diff_line_index`: added and context lines carry a number, removed
+    lines don't, and ``+++ /dev/null`` deletions are excluded.
     """
-    index: dict[str, set[int]] = {}
+    content: dict[str, dict[int, str]] = {}
     current: str | None = None
     in_hunk = False
     new_line = 0
@@ -39,10 +40,22 @@ def diff_line_index(diff_text: str) -> dict[str, set[int]]:
         if (hunk := _HUNK_RE.match(line)) and current is not None:
             new_line = int(hunk.group(1))
             in_hunk = True
-            index.setdefault(current, set())
+            content.setdefault(current, {})
             continue
         if not in_hunk or current is None or line.startswith(("-", "\\")):
             continue  # outside a hunk / removed line / "\ No newline" marker
-        index[current].add(new_line)  # added or context line: has a RIGHT-side number
+        content[current][new_line] = line[1:]  # drop the '+'/' ' marker, keep the text
         new_line += 1
-    return {path: lines for path, lines in index.items() if lines}
+    return {path: lines for path, lines in content.items() if lines}
+
+
+def diff_line_index(diff_text: str) -> dict[str, set[int]]:
+    """Map each changed file (new path) to the set of RIGHT-side line numbers.
+
+    GitHub only accepts inline review comments on lines present in the diff;
+    context and added lines count, removed lines do not (spec §6.2). Renames
+    are keyed by the new path so keys match Finding.file. Files deleted in the
+    PR (+++ /dev/null) have no RIGHT side and are excluded. Derived from
+    :func:`diff_line_content` so the two never diverge.
+    """
+    return {path: set(lines) for path, lines in diff_line_content(diff_text).items()}
