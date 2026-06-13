@@ -23,6 +23,30 @@ Analyse transitive upstream callers of a specific FQN.
 
 ---
 
+## `cgis_audit_reachability`
+
+Reachability/authorization audit — which sources never reach a checkpoint (#172).
+
+    The headline use is **IDOR/authz coverage**: list every route handler that does
+    NOT transitively reach an ownership check. Reachability follows behavioral edges
+    (CALLS *and* FastAPI ``Depends()`` DEPENDS_ON), so a guard wired via DI counts.
+
+    Select sources with ``from_type`` (a NodeType like ``ROUTE_HANDLER`` /
+    ``API_ENDPOINT`` / ``FUNCTION``) and/or ``from_prefix`` (FQN prefix) — at least
+    one is required. Returns JSON ``{target, covered, gaps}`` where each gap carries
+    ``fqn``/``file``/``line``. Generalizes to validators, event tracking, or
+    service-layer-boundary rules by pointing ``target`` at the required node.
+
+| Argument | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `target` | `string` | ✓ |  |
+| `db_path` | `string` |  |  |
+| `from_type` | `any` |  |  |
+| `from_prefix` | `any` |  |  |
+| `depth` | `integer` |  |  |
+
+---
+
 ## `cgis_context`
 
 Compile an agent-facing GraphRAG context package for a focal FQN (#19).
@@ -51,14 +75,24 @@ Compile an agent-facing GraphRAG context package for a focal FQN (#19).
 
 Report per-domain architectural drift against declared ideal patterns.
 
-    Returns JSON: ``any_critical`` verdict, per-domain reports and the
-    observe-only quotient layer. Call after ``cgis_ingest`` to learn whether
-    your edits pushed a domain past its drift tolerance.
+    Returns JSON: ``any_critical`` verdict, per-domain reports (each carrying a
+    ``fit`` block — nearest alphabet template + residual + good/weak/none band),
+    the observe-only quotient layer, and ``coverage`` (graph prefixes bound by no
+    domain). Call after ``cgis_ingest`` to learn whether your edits pushed a
+    domain past its drift tolerance.
+
+    ``max_drift`` is now the default tolerance only for domains that omit
+    ``drift_tolerance`` — it no longer caps domains that declare their own
+    (see #170).
 
     ``profile``: when set, score only domains with this profile (plus
     profile-less ones). Use when your patterns.yaml mixes languages but the
     graph holds one language — avoids false EMPTY reports for other-language
     domains that would otherwise fail the gate.
+
+    ``max_residual``: a domain whose nearest template is farther than this gets
+    ``fit.band = "none"`` ("no template fits") — a grab-bag module or an
+    alphabet gap, independent of drift tolerance (#177).
 
 | Argument | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
@@ -66,6 +100,7 @@ Report per-domain architectural drift against declared ideal patterns.
 | `patterns_path` | `string` |  |  |
 | `max_drift` | `number` |  |  |
 | `profile` | `any` |  |  |
+| `max_residual` | `number` |  |  |
 
 ---
 
@@ -146,6 +181,29 @@ Propose a starter patterns.yaml from the measured graph (read-only).
 | `margin` | `number` |  |  |
 | `min_nodes` | `integer` |  |  |
 | `depth` | `any` |  |  |
+
+---
+
+## `cgis_metrics`
+
+Whole-graph architectural metrics — coupling bottlenecks + God classes (#16).
+
+    Returns JSON ``{bottlenecks, god_classes, critical}`` computed with vectorized
+    DuckDB aggregations over the whole graph (fan-in/fan-out coupling,
+    declared-member counts, PageRank) — the global "what are the hotspots?" view
+    that complements the node-local trace/impact/context tools. Requires the
+    optional ``duckdb`` extra; an unavailable dependency is reported as a normal
+    ❌ message.
+
+    ``exclude`` drops any node whose FQN contains one of the given dot-segments
+    (e.g. ``["tests"]`` removes both ``tests.*`` and ``domains.*.tests.*``) so
+    test/vendor scaffolding stays out of the rankings.
+
+| Argument | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `db_path` | `string` |  |  |
+| `limit` | `integer` |  |  |
+| `exclude` | `any` |  |  |
 
 ---
 
