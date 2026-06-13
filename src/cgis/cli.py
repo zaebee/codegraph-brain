@@ -37,6 +37,7 @@ _DEFAULT_DB = "graph.db"
 _DEFAULT_DB_HELP = "Path to the SQLite database"
 _DEPTH_HELP = "Maximum traversal depth"
 _FORMAT_HELP = "Output format: text, mermaid, or json"
+_TEXT_JSON_FORMAT_HELP = "Output format: text or json"
 _INTERNAL_ONLY_TEXT_ERR = (
     "--internal-only is only supported with '--format mermaid' or '--format json'"
 )
@@ -734,7 +735,7 @@ def analyze(
         help="Only show anomalies at or above this severity score (0.0-1.0)",
     ),
     output_format: OutputFormat = typer.Option(
-        OutputFormat.TEXT, "--format", "-f", help="Output format: text or json"
+        OutputFormat.TEXT, "--format", "-f", help=_TEXT_JSON_FORMAT_HELP
     ),
 ) -> None:
     """
@@ -928,7 +929,7 @@ def drift(
         help="Path to a patterns.yaml file with domain expectations.",
     ),
     output_format: DriftOutputFormat = typer.Option(
-        DriftOutputFormat.TEXT, "--format", "-f", help="Output format: text or json"
+        DriftOutputFormat.TEXT, "--format", "-f", help=_TEXT_JSON_FORMAT_HELP
     ),
     max_drift: float = typer.Option(
         0.50,
@@ -1133,7 +1134,7 @@ def metrics(
     db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
     limit: int = typer.Option(10, "--limit", min=1, help="Top-N rows per section."),
     output_format: OutputFormat = typer.Option(
-        OutputFormat.TEXT, "--format", "-f", help="Output format: text or json"
+        OutputFormat.TEXT, "--format", "-f", help=_TEXT_JSON_FORMAT_HELP
     ),
 ) -> None:
     """Whole-graph architectural metrics — coupling bottlenecks + God classes (DuckDB).
