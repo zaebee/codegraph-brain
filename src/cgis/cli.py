@@ -39,6 +39,7 @@ _DEFAULT_DB_HELP = "Path to the SQLite database"
 _DEPTH_HELP = "Maximum traversal depth"
 _FORMAT_HELP = "Output format: text, mermaid, or json"
 _TEXT_JSON_FORMAT_HELP = "Output format: text or json"
+_TRUNCATED_HINT = "  [dim]… (more matches exist; refine the name)[/dim]"
 _INTERNAL_ONLY_TEXT_ERR = (
     "--internal-only is only supported with '--format mermaid' or '--format json'"
 )
@@ -259,7 +260,7 @@ def _resolve_cli_fqn(store: SQLiteStore, target: str, kind: str) -> str:
             for candidate in resolution.candidates:
                 console.print(f"  [dim]- {candidate}[/dim]")
             if resolution.truncated:
-                console.print("  [dim]… (more matches exist; refine the name)[/dim]")
+                console.print(_TRUNCATED_HINT)
         else:
             console.print(f"[bold red]❌ {kind} not found in graph:[/bold red] {target}")
         raise typer.Exit(code=1)
@@ -1157,7 +1158,7 @@ def context(
                 for candidate in resolution.candidates:
                     err_console.print(f"  [dim]- {candidate}[/dim]")
                 if resolution.truncated:
-                    err_console.print("  [dim]… (more matches exist; refine the name)[/dim]")
+                    err_console.print(_TRUNCATED_HINT)
             else:
                 err_console.print(f"[bold red]❌ Node not found in graph:[/bold red] {fqn}")
             raise typer.Exit(code=1)
@@ -1251,7 +1252,7 @@ def _resolve_checkpoint(store: SQLiteStore, target: str) -> str:
             for candidate in resolution.candidates:
                 err_console.print(f"  [dim]- {candidate}[/dim]")
             if resolution.truncated:
-                err_console.print("  [dim]… (more matches exist; refine the name)[/dim]")
+                err_console.print(_TRUNCATED_HINT)
         else:
             err_console.print(f"[bold red]❌ Checkpoint not found in graph:[/bold red] {target}")
         raise typer.Exit(code=1)
