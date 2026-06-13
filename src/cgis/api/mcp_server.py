@@ -22,6 +22,7 @@ from cgis.query.engine import QueryEngine
 from cgis.query.fqn import resolve_fqn
 from cgis.query.graph_json import graph_to_json
 from cgis.query.mermaid import MermaidCompiler
+from cgis.query.metrics import DuckDBAnalyzer
 from cgis.query.ontology_init import propose_ontology
 from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 
@@ -376,3 +377,24 @@ def cgis_context(
 
     note = f"> Resolved '{fqn}' → '{res.resolved}'\n\n" if res.via_suffix else ""
     return note + payload
+
+
+@mcp.tool()
+def cgis_metrics(db_path: str = _DEFAULT_DB, limit: int = 10) -> str:
+    """Whole-graph architectural metrics — coupling bottlenecks + God classes (#16).
+
+    Returns JSON ``{bottlenecks, god_classes}`` computed with vectorized DuckDB
+    aggregations over the whole graph (fan-in/fan-out coupling, declared-member
+    counts) — the global "what are the hotspots?" view that complements the
+    node-local trace/impact/context tools. Requires the optional ``duckdb``
+    extra; an unavailable dependency is reported as a normal ❌ message.
+    """
+    if not Path(db_path).exists():
+        return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
+    try:
+        with DuckDBAnalyzer(db_path) as analyzer:
+            report = analyzer.architecture_report(bottleneck_limit=limit, god_limit=limit)
+    except Exception as exc:
+        return f"❌ {exc}"
+
+    return json.dumps(report.model_dump(), indent=2)
