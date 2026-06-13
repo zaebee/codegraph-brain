@@ -48,14 +48,28 @@ src/cgis/api/mcp_server.py          cgis_suggest_packages (same service -> JSON)
 ```
 
 **Data flow:** `graph.db → suggest_service reads FILE/MODULE nodes + edges under
-prefix → cohesion.build_file_graph (collapse node→file via Node.file_path, aggregate
-IMPORTS [+CALLS], undirected weighted) → greedy_modularity → Q + communities →
-partition_divergence vs current sub-directory layout → verdict → SuggestReport
-(frozen dataclass) → CLI/MCP serialize`.
+prefix → cohesion.build_file_graph (collapse node→file, reconcile cross-rooted targets
+by FQN suffix, aggregate IMPORTS [+CALLS], undirected weighted) → greedy_modularity → Q +
+communities → partition_divergence vs current sub-directory layout → verdict →
+SuggestReport (frozen dataclass) → CLI/MCP serialize`.
+
+**Root-agnostic edge resolution (load-bearing).** The intra-package import graph must
+not depend on how the user ingested. Verified empirically: ingesting `src/` gives file
+nodes `cgis.query.*` and 19 internal IMPORTS edges that resolve file-to-file; ingesting
+`src/cgis/` gives file nodes `query.*` while the **same** import edges target the literal
+written path `cgis.query.*` (separate EXTERNAL placeholder nodes) — so a naive
+`node→file via Node.file_path` collapse finds **zero** internal edges and silently reports
+`no_signal` on the exact package the tool exists for. `build_file_graph` therefore
+reconciles each import target to a file under `prefix` by **FQN suffix** (reusing #145's
+`resolve_fqn` / `SQLiteStore.find_nodes_by_suffix`): exact-first, then a unique
+dot-boundary suffix match; an ambiguous suffix is skipped (never guessed). With this, the
+two ingest roots produce the same graph and the same verdict.
 
 **Reuse:** `_in_domain` (prefix matching) from `fingerprint.py`; the node→unit collapse
-idea from `quotient.py` (here collapsing to file granularity, not domain); `Node.file_path`
-to derive the current-directory partition. The CNM modularity pass is net-new.
+idea from `quotient.py` (here collapsing to file granularity, not domain); `resolve_fqn` /
+`find_nodes_by_suffix` (#145) for root-agnostic target reconciliation; `Node.file_path` /
+FQN segmentation to derive the current-directory partition. The CNM modularity pass is
+net-new.
 
 ## The metric
 
@@ -101,18 +115,56 @@ NMI normalization: `NMI = I(X;Y) / mean(H(X), H(Y))`, with `NMI = 1.0` by defini
 when both partitions have zero entropy (single cluster on both sides → nothing to split,
 D = 0).
 
-### Verdict — gated on BOTH signals
+**Isolated files.** A file with no intra-package import (a pure leaf — e.g. `fqn`,
+`graph_json`, `mermaid`, `metrics` in `cgis.query`) has weighted degree 0. It is a
+**singleton community** in `P_comm`, is counted in `file_count`, and is a normal member of
+`P_dir`. Isolated nodes contribute 0 to `Q` (their `k_i·k_j` null-model term is 0), so they
+neither inflate nor depress modularity; they do enter the NMI/`D` computation as singletons.
+
+**Flat-package degeneracy (important).** For a flat package `P_dir` is the single
+`"<root>"` group, so `D = 1.0` for *any* non-trivial `P_comm` — `D` carries no
+discriminating signal there and the verdict is driven by `Q` alone. The `divergence`
+threshold only does work for **already-nested** packages, where it separates `aligned`
+(dirs match communities) from `split`/`borderline` (nested but mis-grouped).
+
+**Threshold calibration.** `Q`'s thresholds (`0.35`/`0.25`) are cross-validated across 9
+packages / 5 codebases. The `divergence=0.2` threshold is **provisional**: every high-`Q`
+case measured so far is flat (`D=1.0` by construction), so it has not been calibrated on a
+nested package. Slice 1 measures `D` on ≥1 already-subdivided real package (e.g.
+`cgis.guardian` over its `providers/` split, or a comparable nested target) to confirm
+`0.2` separates `aligned` from `split`; until then the threshold is documented as
+provisional, not validated — the same "measure before fixing the threshold" discipline
+applied to the `tangle_ratio` gate.
+
+### Verdict — gated on BOTH signals, with direction
 
 `Q` says "the structure is real"; `D` says "the layout disagrees with it". Both are
-required to recommend a split.
+required to recommend a change. `D = 1 − NMI` is **symmetric**, so a high `D` alone does
+not say *which way* the layout is wrong: a package can be **under-split** (the graph wants
+more grouping than the directories express — `cgis.query`) or **over-split** (directories
+are finer than the communities — files that should merge). `split` must not be emitted for
+the over-split case. We disambiguate cheaply by comparing partition sizes:
+
+```
+direction = under_split  if |P_dir| < |P_comm|
+            over_split   if |P_dir| > |P_comm|
+            matched      otherwise
+```
+
+For a flat package `|P_dir| = 1 ≤ |P_comm|`, so `split` is always the right direction.
 
 | condition | verdict | meaning |
 |---|---|---|
 | `file_count < 2` or `edge_count == 0` | `no_signal` | nothing to measure |
 | `Q < 0.25` | `leave` | no real community structure — flat is fine (e.g. `owner-api/utils`, Q=0) |
 | `Q ≥ 0.25` and `D < 0.2` | `aligned` | structure exists and directories already express it |
-| `Q ≥ 0.35` and `D ≥ 0.2` | `split` | real communities + layout diverges → split (`cgis.query`: Q=0.43, D=1.0) |
-| `0.25 ≤ Q < 0.35` and `D ≥ 0.2` | `borderline` | inspect the bridge edges by hand |
+| `Q ≥ 0.35`, `D ≥ 0.2`, `direction = under_split` | `split` | real communities + flatter layout → split (`cgis.query`: Q=0.43, D=1.0) |
+| `Q ≥ 0.35`, `D ≥ 0.2`, `direction = over_split` | `consolidate` | finer dirs than communities → merge (rare; bridges show what to fold) |
+| `Q ≥ 0.35`, `D ≥ 0.2`, `direction = matched` | `borderline` | same group count, different membership → re-group; inspect bridges |
+| `0.25 ≤ Q < 0.35` and `D ≥ 0.2` | `borderline` | weak structure — inspect the bridge edges by hand |
+
+`direction` is also surfaced in the JSON contract so an agent can act on it without
+re-deriving partition sizes.
 
 Thresholds default from the cross-validation (`split=0.35`, `leave=0.25`, `divergence=0.2`).
 `--min-q` overrides the split threshold.
@@ -140,9 +192,10 @@ cgis suggest-packages <fqn_prefix> \
 ```
 
 Operates on the ingested db (consistent with `trace` / `impact` / `structure` / `drift`).
-Text output (Rich): verdict line (`✂️ SPLIT` / `✅ ALIGNED` / `· LEAVE` / `◌ no signal`),
-`Q` + `divergence`, a community table (id → files), a bridges table (source, target,
-weight). JSON output via the same enum pattern as `DriftOutputFormat`.
+Text output (Rich): verdict line (`✂️ SPLIT` / `🔗 CONSOLIDATE` / `✅ ALIGNED` / `· LEAVE`
+/ `◌ no signal`), `Q` + `divergence` + `direction`, a community table (id → files), a
+bridges table (source, target, weight). JSON output via the same enum pattern as
+`DriftOutputFormat`.
 
 ## MCP
 
@@ -154,7 +207,7 @@ weight). JSON output via the same enum pattern as `DriftOutputFormat`.
 ```json
 {
   "package": "cgis.query", "layer": "imports", "file_count": 19, "edge_count": 19,
-  "modularity_q": 0.434, "divergence": 1.0, "verdict": "split",
+  "modularity_q": 0.434, "divergence": 1.0, "direction": "under_split", "verdict": "split",
   "communities": [
     {"id": 0, "files": ["drift", "fingerprint", "triads", "quotient", "_scc"]}
   ],
@@ -163,29 +216,51 @@ weight). JSON output via the same enum pattern as `DriftOutputFormat`.
 }
 ```
 
-`layer` is `"imports"` or `"imports+calls"`. File names in `communities`/`bridges` are
-the last FQN segment (the module name) for readability.
+`layer` is `"imports"` or `"imports+calls"`. `verdict` is one of `split` / `consolidate` /
+`aligned` / `leave` / `no_signal`; `direction` is `under_split` / `over_split` / `matched`.
+File names in `communities`/`bridges` are the last FQN segment (the module name) for
+readability.
 
 ## Error / edge handling
 
 - **Missing db** → error string (mirrors `cgis_drift`'s `FileNotFoundError` guard).
 - **Prefix matches no files** → `no_signal` verdict with a note; no did-you-mean
   suggestion (YAGNI for slice 1).
-- **Single file / no intra-package edges** → `no_signal` (`file_count < 2` or
-  `edge_count == 0`).
+- **Files exist but zero internal edges — distinguish two causes (no silent failure,
+  per #182):**
+  - if some import edges from under-`prefix` files exist but *none* reconciled to a file
+    under `prefix` → emit `no_signal` with the diagnostic note *"N import edges found but
+    none resolve inside the package — the graph looks mis-rooted or imports are
+    unresolved; try ingesting the package's parent directory"*. This is the empirically
+    observed `src/cgis`-root case, and must never read as a clean "nothing to split".
+  - if there are genuinely no intra-package import edges (a real flat leaf bag) →
+    `no_signal` plain.
+- **Single file** (`file_count < 2`) → `no_signal`.
 - **One community detected** (whole graph is one blob) → `P_comm` is trivial; D vs a
-  flat `P_dir` is 0 → not `split`.
+  flat `P_dir` is 0 → not `split` (`leave`, since Q ≈ 0).
 
 ## Testing
 
 1. **`cohesion.py` units (synthetic graphs, known Q):** two disconnected cliques →
-   Q ≈ 0.5, one community per clique; a single clique → Q ≈ 0, one community; CNM
-   determinism (same graph, two runs → identical partition).
+   Q ≈ 0.5, one community per clique; a single clique → Q ≈ 0, one community; isolated
+   node → singleton community, Q unchanged; CNM determinism (same graph, two runs →
+   identical partition).
 2. **`partition_divergence`:** flat `P_dir` vs multi-community → D = 1.0; aligned →
    D = 0.0; NMI symmetry; both-trivial → D = 0.
-3. **`suggest_service` + MCP:** `SQLiteStore` fixture; verdict and JSON-shape assertions
-   (in the spirit of `test_cgis_drift_*`).
-4. **Self-parsing dogfood** (`tests/self_parsing/`): run `suggest-packages` on
+3. **`direction`:** `|P_dir| < |P_comm|` → `under_split`; `>` → `over_split`; `=` →
+   `matched`; over-split + high-D → verdict `consolidate`, not `split`.
+4. **Root-agnostic reconciliation (the 🔴 regression guard):** ingest the same fixture
+   under both `src/` and `src/cgis/` roots → `suggest-packages` yields the **same verdict
+   and same Q** (suffix reconciliation closes the gap); a deliberately mis-rooted db with
+   unresolvable targets → `no_signal` with the mis-rooted diagnostic note, never a clean
+   verdict.
+5. **`suggest_service` + MCP:** `SQLiteStore` fixture; verdict and JSON-shape assertions
+   (in the spirit of `test_cgis_drift_*`), including the `direction` field.
+6. **Divergence-threshold calibration on a nested package:** measure `D` on an
+   already-subdivided real package (e.g. `cgis.guardian` with its `providers/` subpackage)
+   and assert it lands `aligned` (low D), confirming `0.2` separates aligned from split on
+   a non-flat case (not just flat `D=1.0`).
+7. **Self-parsing dogfood** (`tests/self_parsing/`): run `suggest-packages` on
    `cgis.query` in the self-parsed graph → assert `verdict == "split"`, `Q` in the band
    ~0.40–0.46, `divergence` high. The tool catching the exact smell it was built for is
    the canonical validation (the self-drift analogue for drift).
@@ -207,3 +282,9 @@ restructure that resolves this (slice 2) re-baselines the domains anyway.
   reports communities by id + member files only.
 - Louvain or calls-only layers, did-you-mean on bad prefixes, recursive multi-package
   sweeps.
+
+**Known approximation:** greedy CNM with the "stop when no merge improves Q" rule finds a
+**local** modularity optimum, not the globally optimal dendrogram cut. This is an accepted
+slice-1 heuristic (it reproduced the spike's answer on `cgis.query` via an independent run),
+documented here so it is a stated assumption, not a silent one; Louvain / multi-resolution
+refinement is deferred.
