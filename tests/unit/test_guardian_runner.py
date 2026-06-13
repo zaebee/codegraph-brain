@@ -154,9 +154,9 @@ async def test_run_guardian_smoke(tmp_path: Path) -> None:
 
     ContextCollector.collect_all() gracefully handles a non-git tmp_path:
     get_git_diff() returns an error string (no exception), and read_file()
-    returns "Error: File ... not found." for missing CONTRIBUTING.md /
-    ontology.yaml.  The FakeProvider ignores the prompt content and always
-    returns valid JSON, so no mock of collect_all() is needed.
+    returns "" for missing CONTRIBUTING.md / ontology.yaml (so those prompt
+    sections are simply omitted).  The FakeProvider ignores the prompt content
+    and always returns valid JSON, so no mock of collect_all() is needed.
     """
     metrics = tmp_path / "m.jsonl"
     collector = ContextCollector(project_root=tmp_path)

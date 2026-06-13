@@ -62,15 +62,23 @@ observe-only — do NOT flag it.
 {drift}
 """
 
-        return f"""Review the following Pull Request diff for real defects.
-
-### 1. ENGINEERING STANDARDS (from CONTRIBUTING.md)
+        contributing_section = ""
+        if contributing:
+            contributing_section = f"""### 1. ENGINEERING STANDARDS (from CONTRIBUTING.md)
 {contributing}
 
-### 2. PROJECT ONTOLOGY (from docs/ontology/)
+"""
+
+        ontology_section = ""
+        if ontology:
+            ontology_section = f"""### 2. PROJECT ONTOLOGY (from docs/ontology/)
 {ontology}
 
-### 3. CHANGES TO REVIEW (git diff)
+"""
+
+        return f"""Review the following Pull Request diff for real defects.
+
+{contributing_section}{ontology_section}### 3. CHANGES TO REVIEW (git diff)
 {diff}
 {graph_section}{full_files_section}{drift_section}
 ---
