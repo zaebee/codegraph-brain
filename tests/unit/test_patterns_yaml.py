@@ -19,8 +19,11 @@ _COMPONENT_NAMES = frozenset(
     }
 )
 
+# funnel = transpose(layered_dag); added per #186 research (the single most common
+# intra-domain archetype across 9 repos) so fit-quality (#177) measures against a
+# transpose-closed alphabet instead of flagging its absence as "no template fits".
 _ALPHABET = frozenset(
-    {"pure_utility", "pipeline_stage", "orchestrator", "layered_dag", "dispatcher"}
+    {"pure_utility", "pipeline_stage", "orchestrator", "layered_dag", "dispatcher", "funnel"}
 )
 
 _TRIAD_ORDER = frozenset(

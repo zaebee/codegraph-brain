@@ -97,6 +97,16 @@ patterns:
       imports: {"021D": 1.0}
       calls:   {"021D": 1.0}
 
+  funnel:
+    # Transpose of layered_dag (021D⇄021U; 021C self-dual) — fan-in WITH internal
+    # staging. Empirically the single most common intra-domain archetype across
+    # 9 repos (#186 best-fit tally: funnel 39 > layered_dag 28 > pure_utility 27).
+    # Convergence/aggregation layers: crud, templating, http clients, composables.
+    description: "Convergent aggregation — many inputs funnel through staged sinks"
+    ideal:
+      imports: {"021U": 0.5, "021C": 0.5}
+      calls:   {"021U": 0.5, "021C": 0.5}
+
 # ── Project domain bindings ──────────────────────────────────────────────────
 # drift_tolerance is a ratchet and may only go DOWN — but fingerprint v2 is a
 # NEW metric, so every tolerance below is re-baselined from the 2026-06-10

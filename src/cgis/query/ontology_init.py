@@ -113,6 +113,13 @@ patterns:
       imports: {"021D": 1.0}
       calls:   {"021D": 1.0}
 
+  funnel:
+    # Transpose of layered_dag — fan-in with internal staging (#186).
+    description: "Convergent aggregation — many inputs funnel through staged sinks"
+    ideal:
+      imports: {"021U": 0.5, "021C": 0.5}
+      calls:   {"021U": 0.5, "021C": 0.5}
+
 """
 
 # ---------------------------------------------------------------------------
