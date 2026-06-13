@@ -44,6 +44,25 @@ class DomainConfig:
 
 
 @dataclass(frozen=True)
+class FitQuality:
+    """How well the closest alphabet template matches a domain's shape (#177).
+
+    ``residual`` is the domain's tolerance-free distance to a template's ideal
+    (``DriftScorer.fit_templates``) — it answers "clean because it MATCHES an
+    archetype" vs "clean because tolerance is loose". ``band``:
+    ``good`` (≤ good-threshold), ``weak``, or ``none`` (> max_residual — no
+    template in the closed alphabet captures this domain: a genuine grab-bag,
+    a mesh/tangle, or a gap the alphabet should fill).
+    """
+
+    nearest_template: str
+    nearest_residual: float
+    runner_up_template: str | None
+    runner_up_residual: float | None
+    band: Literal["good", "weak", "none"]
+
+
+@dataclass(frozen=True)
 class DriftReport:
     """Per-domain drift analysis result."""
 
@@ -60,6 +79,8 @@ class DriftReport:
     tv_calls: float | None = None
     # Human-readable diagnostic (e.g. closest-prefix suggestions for "empty").
     note: str | None = None
+    # Fit quality vs the alphabet (#177); None for hygiene-only/empty/no_signal.
+    fit: FitQuality | None = None
 
 
 def _clip_discount(actual: PatternFingerprint) -> float:
