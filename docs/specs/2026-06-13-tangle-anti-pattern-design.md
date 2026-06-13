@@ -64,12 +64,18 @@ tangle_ratio = max( tangle_mass(t_imports), tangle_mass(t_calls) )
 | File | Change |
 |------|--------|
 | `src/cgis/query/triads.py` | new pure `tangle_mass(census: tuple[float, ...]) -> float` + module-level `_TANGLE_WEIGHTS` aligned to `TRIAD_ORDER` |
-| `src/cgis/query/fingerprint.py` | new field `tangle_ratio: float` on `PatternFingerprint`, computed at build time from `t_imports` / `t_calls` via `max(tangle_mass(...), tangle_mass(...))` |
-| `src/cgis/query/drift.py` | add `"tangle_ratio"` to the hygiene-key list (≈ line 20); `_hygiene_check` reads `actual.tangle_ratio` automatically — no gate-logic change |
+| `src/cgis/query/fingerprint.py` | computed `@property tangle_ratio` on `PatternFingerprint` = `max(tangle_mass(t_imports), tangle_mass(t_calls))` — derived from the census vectors, so it needs no constructor change and cannot drift from them |
+| `src/cgis/query/drift.py` | add `"tangle_ratio"` to `_COMPONENT_NAMES` (the constraint-recognition whitelist `_parse_constraints` iterates); `_hygiene_check` reads `actual.tangle_ratio` automatically — no gate-logic change |
 | `docs/ontology/patterns.yaml` | add `tangle_ratio: {max: <default>}` to the `hygiene:` block |
 | `src/cgis/query/ontology_init.py` | mirror the same line in `_DEFAULT_ONTOLOGY_HEADER` (staleness pin-test keeps the two parse-identical) |
-| `src/cgis/cli.py` | append-only `tangle` column in the drift table render |
-| `src/cgis/api/mcp_server.py` | append-only `tangle_ratio` in the `cgis_drift` payload |
+| `src/cgis/api/mcp_server.py` | append-only `tangle_ratio` in the `cgis_drift` payload (enriched explicitly — `dataclasses.asdict` skips the property) |
+
+**CLI is intentionally not touched.** An early draft listed an append-only
+`tangle` column in the `cgis drift` table, but a breach already surfaces through
+the existing `gate_failed` status plus the hygiene-violation note, and a 7th
+column reintroduces the #177 note-wrapping width pressure. The numeric value is
+exposed via the MCP payload for programmatic consumers; the human table stays as
+is. (YAGNI.)
 
 The `hygiene_baseline` ratchet (#151) works for free: `tangle_ratio` is a valid
 hygiene key like any other, so acknowledged debt is declared per-domain via
@@ -119,8 +125,21 @@ only fires on near-mesh and document the gap.
 4. **Staleness pin**: the existing patterns.yaml ↔ ontology_init header
    parse-identity test must still pass after adding the line to both.
 5. **Self-drift safety**: cgis-self drift run stays green with the chosen
-   default (asserted as part of threshold selection, re-checked in CI's
-   self-parsing path if present).
+   default. The self-parsing guard (`tests/self_parsing/test_drift.py::
+   _assert_within_tolerance`) now asserts `status != "gate_failed"` per domain,
+   so a future hygiene regression — including a `tangle_ratio` rise — fails CI
+   rather than passing silently (tangle has weight 0 in `drift_score`, so the
+   tolerance check alone would miss it).
+
+## Known follow-ups (separate issues)
+
+- **#244 — discount calls-layer tangle by `(1 − unresolved_ratio)`.** The
+  drift-distance path fades the CALLS layer by the resolution confidence; the
+  gate does not, and `max(imports, calls)` picks the worse layer. A domain with
+  mostly-unresolved calls plus one resolved mutual triple can read a high
+  calls-tangle on thin evidence → a false `gate_failed`. The imports layer
+  (always resolved) carries the reliable signal; deferred so this PR ships the
+  metric and the empirical threshold without re-opening the measurement.
 
 ## Out of scope (other #186 deliverables, separate PRs)
 

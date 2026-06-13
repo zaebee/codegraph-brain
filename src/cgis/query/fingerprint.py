@@ -51,6 +51,11 @@ class PatternFingerprint:
         max over the IMPORTS and CALLS census of tangle_mass — a hard hygiene
         signal: a breach in either layer is a breach. 0 for empty or
         antisymmetric (no-mutual-dyad) layers.
+
+        NOTE(#244): the CALLS layer is not yet faded by (1 - unresolved_ratio)
+        as the drift-distance path is, so a sparse/mostly-unresolved call graph
+        can over-report calls-tangle. The IMPORTS layer (always resolved) is the
+        reliable signal until that discount lands.
         """
         return max(tangle_mass(self.t_imports), tangle_mass(self.t_calls))
 

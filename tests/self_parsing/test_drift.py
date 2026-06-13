@@ -37,6 +37,16 @@ def _assert_within_tolerance(store: SQLiteStore, patterns_path: str, graph: str)
     for domain in _selected_domains(scorer, graph):
         fp = extractor.extract(domain.fqn_prefix)
         report = scorer.score(fp, domain)
+        # Hygiene breaches (cycle_ratio, unresolved_ratio, tangle_ratio) force
+        # gate_failed independently of drift_score, so the tolerance check below
+        # would miss them. Assert the gate explicitly so a future hygiene
+        # regression on the self-graph — e.g. a tangle_ratio rise (#186) — fails
+        # CI rather than passing silently with weight 0 in the score.
+        if report.status == "gate_failed":
+            failures.append(
+                f"[gate] {domain.name} ({domain.fqn_prefix}): hygiene gate_failed\n"
+                + ("\n".join(f"  - {v}" for v in report.violations) or "  (none)")
+            )
         if report.drift_score > domain.drift_tolerance:
             failures.append(
                 _EXCEEDED.format(
