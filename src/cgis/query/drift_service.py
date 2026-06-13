@@ -3,6 +3,7 @@
 import dataclasses
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 from cgis.core.models import Node
 from cgis.query.drift import DomainConfig, DriftReport, DriftScorer, FitQuality
@@ -40,8 +41,9 @@ def _fit_quality(
     fits = scorer.fit_templates(report.actual, profile)
     nearest_name, nearest_res = fits[0]
     runner_name, runner_res = fits[1] if len(fits) > 1 else (None, None)
+    band: Literal["good", "weak", "none"]
     if nearest_res > max_residual:
-        band: str = "none"
+        band = "none"
     elif nearest_res <= _GOOD_RESIDUAL:
         band = "good"
     else:
@@ -51,7 +53,7 @@ def _fit_quality(
         nearest_residual=nearest_res,
         runner_up_template=runner_name,
         runner_up_residual=runner_res,
-        band=band,  # type: ignore[arg-type]
+        band=band,
     )
 
 

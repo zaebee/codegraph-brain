@@ -120,19 +120,23 @@ def fit_patterns_yaml() -> str:
     )
 
 
+# Node ids for the shared three-function 'dom' fixtures (#177 fit tests).
+_F1, _F2, _F3 = "dom.f1", "dom.f2", "dom.f3"
+
+
 def _three_func_db(tmp_path: Path, name: str, edges: list[Edge]) -> str:
     """Three FUNCTION nodes f1/f2/f3 under prefix 'dom' wired by ``edges``."""
     db = str(tmp_path / name)
     nodes = [
         Node(
-            id=f"dom.f{i}",
+            id=fid,
             type=NodeType.FUNCTION,
-            name=f"f{i}",
+            name=fid.rsplit(".", maxsplit=1)[-1],
             file_path="dom.py",
             start_line=i,
             end_line=i + 1,
         )
-        for i in (1, 2, 3)
+        for i, fid in enumerate((_F1, _F2, _F3), start=1)
     ]
     with SQLiteStore(db) as store:
         store.save_graph(nodes, edges)
@@ -145,8 +149,8 @@ def instar_db(tmp_path: Path) -> str:
         tmp_path,
         "instar.db",
         [
-            Edge(id="e1", source="dom.f1", target="dom.f3", type=EdgeType.CALLS),
-            Edge(id="e2", source="dom.f2", target="dom.f3", type=EdgeType.CALLS),
+            Edge(id="e1", source=_F1, target=_F3, type=EdgeType.CALLS),
+            Edge(id="e2", source=_F2, target=_F3, type=EdgeType.CALLS),
         ],
     )
 
@@ -157,8 +161,8 @@ def triangle_db(tmp_path: Path) -> str:
         tmp_path,
         "tri.db",
         [
-            Edge(id="e1", source="dom.f1", target="dom.f2", type=EdgeType.CALLS),
-            Edge(id="e2", source="dom.f2", target="dom.f3", type=EdgeType.CALLS),
-            Edge(id="e3", source="dom.f1", target="dom.f3", type=EdgeType.CALLS),
+            Edge(id="e1", source=_F1, target=_F2, type=EdgeType.CALLS),
+            Edge(id="e2", source=_F2, target=_F3, type=EdgeType.CALLS),
+            Edge(id="e3", source=_F1, target=_F3, type=EdgeType.CALLS),
         ],
     )
