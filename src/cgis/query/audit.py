@@ -118,7 +118,9 @@ def audit_reachability(
         msg = "audit_reachability requires from_type or a non-empty from_prefix to select sources."
         raise ValueError(msg)
     engine = QueryEngine(store)
-    edge_types = allowed_edge_types or _ENFORCEMENT_EDGE_TYPES
+    # `is not None`, not `or`: an explicit empty frozenset (no-traversal, target-only)
+    # is a valid intent and must not be overridden by the enforcement default.
+    edge_types = allowed_edge_types if allowed_edge_types is not None else _ENFORCEMENT_EDGE_TYPES
     upstream_nodes, _ = engine.get_impact_graph(
         target_fqn, max_depth=max_depth, allowed_edge_types=edge_types
     )

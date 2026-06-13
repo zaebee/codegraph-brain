@@ -129,3 +129,18 @@ def test_audit_reference_only_is_a_gap_not_covered(tmp_path: Path) -> None:
     # A reference-only link must not be treated as coverage.
     assert {r.fqn for r in result.gaps} == {"app.routes.ref"}
     assert result.covered == []
+
+
+def test_audit_empty_edge_types_disables_traversal(tmp_path: Path) -> None:
+    """An explicit empty allowed_edge_types is target-only — not silently the default."""
+    db = _store(tmp_path, *_graph())
+    with SQLiteStore(db) as store:
+        result = audit_reachability(
+            store,
+            target_fqn="app.verify_owner",
+            from_type=NodeType.ROUTE_HANDLER,
+            allowed_edge_types=frozenset(),
+        )
+    # No edge types → no traversal → no handler reaches the guard.
+    assert result.covered == []
+    assert len(result.gaps) == 4

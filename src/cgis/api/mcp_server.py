@@ -451,14 +451,15 @@ def cgis_audit_reachability(
         return blank
     if not Path(db_path).exists():
         return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
+    # Defensive against agents passing JSON null for omitted optional params.
     node_type: NodeType | None = None
-    if from_type.strip():
+    if from_type and from_type.strip():
         try:
             node_type = NodeType(from_type.strip().upper())
         except ValueError:
             valid = ", ".join(t.value for t in NodeType)
             return f"❌ Unknown node type '{from_type}'. Valid: {valid}"
-    prefix = from_prefix.strip() or None
+    prefix = (from_prefix or "").strip() or None
     if node_type is None and prefix is None:
         return "❌ Provide from_type or from_prefix to select audited sources."
     try:

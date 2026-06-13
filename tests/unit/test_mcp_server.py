@@ -759,3 +759,13 @@ def test_cgis_audit_whitespace_prefix_is_rejected(tmp_path: Path) -> None:
     db = _audit_graph_db(tmp_path)
     result = cgis_audit_reachability("app.guard", db, from_prefix="   ")
     assert "from_type or from_prefix" in result
+
+
+def test_cgis_audit_none_params_do_not_crash(tmp_path: Path) -> None:
+    """JSON null for from_type/from_prefix must not crash on .strip() (#236)."""
+    db = _audit_graph_db(tmp_path)
+    payload = json.loads(
+        cgis_audit_reachability("app.guard", db, from_type=None, from_prefix="app")
+    )
+    assert payload["target"] == "app.guard"
+    assert {g["fqn"] for g in payload["gaps"]} == {"app.h2"}
