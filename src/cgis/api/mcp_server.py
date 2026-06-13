@@ -431,8 +431,8 @@ def cgis_metrics(
 def cgis_audit_reachability(
     target: str,
     db_path: str = _DEFAULT_DB,
-    from_type: str = "",
-    from_prefix: str = "",
+    from_type: str | None = None,
+    from_prefix: str | None = None,
     depth: int = 5,
 ) -> str:
     """Reachability/authorization audit — which sources never reach a checkpoint (#172).
