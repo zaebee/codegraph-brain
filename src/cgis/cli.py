@@ -1188,8 +1188,14 @@ def _render_metrics(report: ArchitectureReport) -> None:
     critical.add_column("Node", style="cyan")
     critical.add_column("Type", style="magenta")
     critical.add_column("PageRank", justify="right", style="green")
+    critical.add_column("In", justify="right", style="dim")
+    critical.add_column("Out", justify="right", style="dim")
     for m in report.critical:
-        critical.add_row(m.node_id, m.node_type, f"{m.page_rank:.4f}")
+        # In/Out are over the same internal graph PageRank ran on; a high rank with
+        # In=0 is a dangling-mass leaf artifact, not a real hub (#237).
+        critical.add_row(
+            m.node_id, m.node_type, f"{m.page_rank:.4f}", str(m.in_degree), str(m.out_degree)
+        )
     console.print(critical)
 
 
