@@ -82,3 +82,34 @@ def test_suggest_mis_rooted_emits_diagnostic(tmp_path: Path) -> None:
     assert report.verdict == "no_signal"
     assert report.note is not None
     assert "mis-rooted" in report.note.lower()
+
+
+def test_two_ingest_roots_yield_same_verdict(tmp_path: Path) -> None:
+    """src/-style (cgis.p.*) and src/cgis/-style (p.*) ingests agree (#242 🔴)."""
+    # Root A: files cgis.p.*, targets cgis.p.* (resolve internally).
+    files_a = [_file(f"cgis.p.{n}") for n in ("a", "b", "c", "x", "y", "z")]
+    edges_a = [
+        _imp(f"cgis.p.{s}", f"cgis.p.{t}")
+        for grp in (("a", "b", "c"), ("x", "y", "z"))
+        for s in grp
+        for t in grp
+        if s != t
+    ]
+    db_a = _store_with(tmp_path / "a", files_a, edges_a)
+
+    # Root B: files p.*, but targets written cgis.p.* (the mis-rooted shape).
+    files_b = [_file(f"p.{n}") for n in ("a", "b", "c", "x", "y", "z")]
+    edges_b = [
+        _imp(f"p.{s}", f"cgis.p.{t}")
+        for grp in (("a", "b", "c"), ("x", "y", "z"))
+        for s in grp
+        for t in grp
+        if s != t
+    ]
+    db_b = _store_with(tmp_path / "b", files_b, edges_b)
+
+    ra = suggest_packages(db_a, prefix="cgis.p")
+    rb = suggest_packages(db_b, prefix="p")
+    assert ra.verdict == rb.verdict == "split"
+    assert ra.modularity_q == pytest.approx(rb.modularity_q)
+    assert ra.file_count == rb.file_count == 6
