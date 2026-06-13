@@ -7,6 +7,10 @@ from cgis.guardian.findings import Finding, ReviewResult
 from cgis.guardian.render import render_inline_comment, render_review_body
 from cgis.guardian.skeptic import visible_findings
 
+#: Below this length a quote is too generic to substring-match safely (``)``,
+#: ``else:``) — only an exact line equality may anchor it (#181 review).
+_MIN_SUBSTRING_ANCHOR = 5
+
 
 def _anchored_line(finding: Finding, content: dict[int, str] | None) -> int | None:
     """Derive the inline line from the finding's verbatim quote, not the model's guess (#181).
@@ -14,11 +18,13 @@ def _anchored_line(finding: Finding, content: dict[int, str] | None) -> int | No
     Searches the file's RIGHT-side lines for the one matching the finding's
     ``anchor`` (falling back to ``evidence``) and returns its real number:
     - no quote or no file content → keep the model's ``line`` (legacy behaviour);
-    - the model's ``line`` is itself a match → trust it;
-    - otherwise → the match nearest the model's guess;
-    - quote present but found nowhere in the changed lines → ``None``, so a
-      hallucinated coordinate demotes to a file-level body comment instead of a
-      confidently-wrong inline anchor.
+    - an **exact** stripped-line match wins; only if there is none do we fall back
+      to a substring match (``needle in line``), and only for quotes long enough
+      that a substring is meaningful — so a ``)`` or ``else:`` can never pull a
+      comment onto an unrelated trivial line;
+    - among the candidates: the model's ``line`` if it is one, else the nearest;
+    - quote present but located nowhere → ``None``, demoting to a body comment
+      instead of a confidently-wrong inline anchor.
     """
     quote = (finding.anchor or finding.evidence or "").strip()
     if not content or not quote:
@@ -26,9 +32,9 @@ def _anchored_line(finding: Finding, content: dict[int, str] | None) -> int | No
     needle = next((seg.strip() for seg in quote.splitlines() if seg.strip()), "")
     if not needle:
         return finding.line
-    matches = [
-        n for n, text in content.items() if (s := text.strip()) and (needle in s or s in needle)
-    ]
+    matches = [n for n, text in content.items() if text.strip() == needle]
+    if not matches and len(needle) >= _MIN_SUBSTRING_ANCHOR:
+        matches = [n for n, text in content.items() if needle in text.strip()]
     if not matches:
         return None
     if finding.line in matches:

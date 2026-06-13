@@ -155,3 +155,31 @@ def test_no_diff_content_keeps_legacy_behaviour() -> None:
     result = ReviewResult(findings=[f], summary="s")
     _, comments = build_review(result, diff_index={"src/x.py": {10, 11, 12}}, skeptic_model=None)
     assert comments[0]["line"] == 11
+
+
+def test_exact_match_beats_a_spurious_substring() -> None:
+    """A trivial line that is a substring of the anchor must not outrank the exact
+    match, even when the model's hallucinated line is nearer to it (#181 review)."""
+    content = {
+        "src/x.py": {
+            4: "from cgis.resolver.indices import IndexBuilder, SymbolIndex",
+            20: ")",  # substring of the anchor — must NOT win
+        }
+    }
+    f = _finding(line=18, anchor="from cgis.resolver.indices import IndexBuilder, SymbolIndex")
+    result = ReviewResult(findings=[f], summary="s")
+    _, comments = build_review(
+        result, diff_index={"src/x.py": {4, 20}}, skeptic_model=None, diff_content=content
+    )
+    assert comments[0]["line"] == 4  # exact match wins over the nearer ")" at 20
+
+
+def test_trivial_anchor_does_not_substring_match() -> None:
+    """A 1-char anchor like ')' can't substring-match 'qux()' — it demotes to body."""
+    content = {"src/x.py": {12: "    qux()"}}
+    f = _finding(line=12, anchor=")")
+    result = ReviewResult(findings=[f], summary="s")
+    _, comments = build_review(
+        result, diff_index={"src/x.py": {12}}, skeptic_model=None, diff_content=content
+    )
+    assert comments == []  # no exact ')' line, too short to substring → demoted
