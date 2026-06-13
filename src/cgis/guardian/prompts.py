@@ -112,11 +112,34 @@ observe-only — do NOT flag it.
    strictly better here, since recall is your job and the skeptic trims the list. Order
    them most-severe first. Zero is still a valid answer when the diff is clean.
 
+6. **Reason per changed function before deciding.** For each function the diff touches,
+   briefly walk these before you write findings for it:
+   - What are its inputs and where do they come from (caller, config/YAML/JSON, env,
+     request)? Is any of them external/untrusted?
+   - What happens on the awkward inputs: empty / None / zero / a non-dict where a dict
+     is assumed / a scalar where an iterable is assumed / unsorted / duplicate / oversized?
+   - Did a deleted or changed line hold an invariant (a guard, a validation, an error
+     path)? Is it re-established?
+   Only after that walk do you decide what to surface. Skipping this walk is the main
+   reason subtle defects (unvalidated data, exact-equality, dropped guards) go unseen.
+
 ---
 ### WHAT TO LOOK FOR (focus areas):
 
 **Logic bugs** — inputs that produce wrong output, division by zero, off-by-one errors,
 incorrect algorithm behaviour. Think: empty collections, None values, boundary conditions.
+
+**Unvalidated external data** — a value read from config/YAML/JSON, env, or a request is
+used as a `dict`/`list`/`set`/iterable (subscripted, iterated, passed to `set()`/`dict()`,
+`.items()`, `for x in value`) without first checking its type or presence. A YAML key the
+author expects to be a mapping can legally be a scalar or a list; a `value or {{}}` idiom
+catches `None` but lets a non-dict truthy value through to operations that then misbehave
+silently rather than erroring. Flag each such use that lacks a type/shape guard.
+
+**Exact-equality on floats / money** — bare `==` or `!=` comparing floating-point or
+Decimal values, *including in test assertions* (`assert x == 0.3`). Floating-point
+rounding makes these flaky or wrong; they should use a tolerance compare. Check changed
+test files for this too.
 
 **Missing test coverage** — code paths in the diff that have no test. Focus on edge cases
 that could silently return wrong results (not just "coverage for coverage's sake").
@@ -135,6 +158,32 @@ If the producing code and consuming code have different assumptions, that's a bu
 
 **Ontology compliance** — wrong NodeType/EdgeType assignments, FQNs not derived from file
 paths, unresolved calls not using `raw_call:` prefix.
+
+---
+### WORKED EXAMPLES (how the per-function walk turns into a finding):
+
+These show the kind of subtle, borderline defect that is easy to skip but worth surfacing.
+Do not look for these exact lines — learn the *pattern* and apply it to the diff above.
+
+Example A — unvalidated config value used as a mapping:
+```
+def layers_for(self, name: str) -> set[str]:
+    cfg = self._patterns.get(name)        # cfg comes from a YAML file
+    return set(cfg)                        # <-- assumes cfg is iterable-of-str
+```
+Walk: input `cfg` is external (YAML); the author assumes a list/mapping, but YAML lets
+that key be a scalar (`name: layered`) → `set("layered")` silently yields `{{'l','a',...}}`,
+not an error. → FINDING: `set(cfg)` lacks a type/shape guard on external config data.
+(confidence ~50 — borderline, but it has a concrete failure scenario, so surface it.)
+
+Example B — exact-equality on floats in a test:
+```
+def test_drift_score():
+    assert scorer.score(fp) == 0.3        # <-- bare == on a float result
+```
+Walk: `score()` returns a computed float; `== 0.3` is exact float equality → rounding can
+make this assert flaky/false. → FINDING: float compared with bare `==` in a test; use a
+tolerance (`pytest.approx` / `math.isclose`). (confidence ~55.)
 
 ---
 ### OUTPUT FORMAT:
