@@ -52,12 +52,15 @@ class PatternFingerprint:
         signal: a breach in either layer is a breach. 0 for empty or
         antisymmetric (no-mutual-dyad) layers.
 
-        NOTE(#244): the CALLS layer is not yet faded by (1 - unresolved_ratio)
-        as the drift-distance path is, so a sparse/mostly-unresolved call graph
-        can over-report calls-tangle. The IMPORTS layer (always resolved) is the
-        reliable signal until that discount lands.
+        The CALLS layer is faded by the confidence discount
+        ``clip(1 - unresolved_ratio)`` before the max (#244), mirroring the
+        drift-distance path (``_clip_discount`` / ``_score_v2``): ``t_calls`` is a
+        census over RESOLVED intra-domain calls only, so a sparse/mostly-unresolved
+        call graph would otherwise over-report calls-tangle and trip the gate on
+        thin evidence. The IMPORTS layer (always resolved) is never discounted.
         """
-        return max(tangle_mass(self.t_imports), tangle_mass(self.t_calls))
+        calls_discount = max(0.0, min(1.0 - self.unresolved_ratio, 1.0))
+        return max(tangle_mass(self.t_imports), calls_discount * tangle_mass(self.t_calls))
 
 
 def _in_domain(fqn: str, prefix: str) -> bool:
