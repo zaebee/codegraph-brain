@@ -182,9 +182,9 @@ def suggest_packages(
     sparse_note: str | None = None
     if verdict in ("split", "borderline") and connected_fraction < thresholds["min_connected"]:
         sparse_note = (
-            f"only {connected_fraction:.0%} of files are coupled to a sibling — "
-            f"mostly independent helpers, so the Q={q:.2f} is a sparse-graph artifact, "
-            "not real community structure; nothing to split"
+            f"only {len(graph.adj)}/{len(graph.files)} ({connected_fraction:.0%}) of files "
+            f"are coupled to a sibling — mostly independent helpers, so the Q={q:.2f} is a "
+            "sparse-graph artifact, not real community structure; nothing to split"
         )
         verdict = "leave"
 
