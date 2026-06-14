@@ -40,19 +40,21 @@ def test_refuted_marks_but_keeps_finding() -> None:
     assert merged[0].verdict == "refuted"
 
 
-def test_uncertain_discounts_to_above_gate() -> None:
-    """uncertain at confidence 89 → round(89*0.9)=80, stays uncertain (boundary)."""
+def test_uncertain_discounts_confidence_but_keeps_finding() -> None:
+    """uncertain → confidence x0.9 (ranking signal), verdict stays uncertain."""
     f = _FINDING.model_copy(update={"confidence": 89})
     merged = apply_verdicts([f], SkepticResult(verdicts=[_verdict(0, "uncertain")]))
     assert merged[0].verdict == "uncertain"
     assert merged[0].confidence == 80
 
 
-def test_uncertain_discount_below_gate_refutes() -> None:
-    """uncertain at confidence 88 → round(88*0.9)=79 < 80 → treated as refuted."""
-    f = _FINDING.model_copy(update={"confidence": 88})
+def test_uncertain_low_confidence_is_kept_not_refuted() -> None:
+    """Recall-lean: a low-confidence uncertain finding survives (no gate auto-refute)."""
+    f = _FINDING.model_copy(update={"confidence": 30})
     merged = apply_verdicts([f], SkepticResult(verdicts=[_verdict(0, "uncertain")]))
-    assert merged[0].verdict == "refuted"
+    assert merged[0].verdict == "uncertain"
+    assert merged[0].confidence == 27  # round(30 * 0.9)
+    assert visible_findings(merged) == merged  # not dropped
 
 
 def test_out_of_range_and_duplicate_indices_discarded() -> None:
