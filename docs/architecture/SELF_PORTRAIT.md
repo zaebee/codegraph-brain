@@ -51,8 +51,9 @@ abstractions on the right side of the main sequence — the base the rest builds
 
 ### 🔌 Coupling
 
-- **Hubs (fan-in):** `get_identifier` (17), `resolve_fqn` (8 — the #145 suffix
-  resolver, reused for slice-1's root-agnostic edges and widely depended on).
+- **Hubs (fan-in):** `cgis.extractors._python_ast.get_identifier` (17),
+  `cgis.query.fqn.resolve_fqn` (8 — the #145 suffix resolver, reused for
+  slice-1's root-agnostic edges and widely depended on).
 - **Orchestrators (fan-out):** `cgis.guardian.chunked.run_chunked_review` (18),
   `cgis.query.analysis.suggest_service.suggest_packages` (16),
   `cgis.query.drift.drift_service.analyze_drift` (15),
