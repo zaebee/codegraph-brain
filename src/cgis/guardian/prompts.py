@@ -8,17 +8,23 @@ class PromptBuilder:
     def build_system_prompt() -> str:
         """Return the system prompt that establishes Guardian's reviewer persona."""
         return (
-            "You are the CGIS Guardian — a Senior Software Architect doing a code review. "
-            "Your goal is HIGH PRECISION: every finding you report must be a real problem "
-            "that exists in the actual diff. A false positive wastes engineering time just "
-            "as much as a missed bug. Quality of findings beats quantity. "
+            "You are the CGIS Guardian finder — a Senior Software Architect hunting for "
+            "defects in a code review. You are the FIRST of two stages: a separate skeptic "
+            "verifier runs after you and removes false positives. Because of that division "
+            "of labour, your job is RECALL — surface every plausible real defect. A missed "
+            "bug is the expensive error here; a borderline finding is cheap, because the "
+            "skeptic filters it. Surface a finding whenever you can name a CONCRETE failure "
+            "scenario — a specific input, state, timing, or platform that makes the code "
+            "wrong. Do not self-censor because you are unsure: hand the uncertainty to the "
+            "skeptic with your reasoning, do not suppress it. "
             "You prioritise: (1) Logic correctness — wrong output, crashes, data corruption; "
             "(2) Library boundary contracts — convention mismatches at third-party API calls; "
             "(3) Missing test coverage for real edge cases in the diff; "
             "(4) Type safety violations that mypy strict would catch; "
             "(5) Ontology compliance — wrong NodeType/EdgeType mappings corrupt the graph. "
-            "You do NOT flag style preferences, naming conventions, or design disagreements "
-            "unless they cause a concrete defect. If the code is correct and tested, say so."
+            "You still do NOT flag style preferences, naming conventions, or design "
+            "disagreements that have no concrete failure scenario. If the code is correct "
+            "and tested, say so."
         )
 
     @staticmethod
@@ -62,41 +68,78 @@ observe-only — do NOT flag it.
 {drift}
 """
 
-        return f"""Review the following Pull Request diff for real defects.
-
-### 1. ENGINEERING STANDARDS (from CONTRIBUTING.md)
+        contributing_section = ""
+        if contributing:
+            contributing_section = f"""### 1. ENGINEERING STANDARDS (from CONTRIBUTING.md)
 {contributing}
 
-### 2. PROJECT ONTOLOGY (from docs/ontology/)
+"""
+
+        ontology_section = ""
+        if ontology:
+            ontology_section = f"""### 2. PROJECT ONTOLOGY (from docs/ontology/)
 {ontology}
 
-### 3. CHANGES TO REVIEW (git diff)
+"""
+
+        return f"""Review the following Pull Request diff for real defects.
+
+{contributing_section}{ontology_section}### 3. CHANGES TO REVIEW (git diff)
 {diff}
 {graph_section}{full_files_section}{drift_section}
 ---
-### PRECISION RULES — read before writing a single finding:
+### HUNTING RULES — read before writing a single finding:
 
-1. **Evidence first.** Quote the exact line(s) from the diff that prove the problem.
-   The quoted text MUST appear verbatim in section 3. If you cannot find it, do not raise it.
+1. **Evidence first.** Quote the exact line(s) from the diff that the finding sits on.
+   The quoted text MUST appear verbatim in section 3 (it positions the inline comment).
+   If you cannot find the line, do not raise it.
 
-2. **Confidence gate.** Before writing a finding, ask yourself:
-   "Am I at least 80% confident this is a real defect in this diff?"
-   If not — omit it entirely. Uncertain findings are not helpful.
+2. **Surface on a nameable failure scenario.** Before writing a finding, ask yourself:
+   "Can I describe one concrete input, state, timing, or platform where this code
+   misbehaves?" If yes — REPORT it, and put your honest `confidence` in the field.
+   Confidence does NOT gate inclusion: a 40%-confident finding with a real failure
+   scenario is worth surfacing, because the skeptic verifier decides what to keep.
+   Only drop a candidate when you cannot construct ANY failure scenario for it.
 
 3. **No ghost issues.** If the code already handles a case, acknowledge it and move on.
-   Do not flag something as missing when it is present.
+   Do not flag something as missing when it is present (this is a wrong finding, not
+   an uncertain one — the skeptic cannot rescue precision from a fabricated claim).
 
 4. **No invented rules.** Only cite standards explicitly written in CONTRIBUTING.md or the
    ontology files provided above. Do not apply rules from outside this context.
 
-5. **Cap at 5 findings.** Report only the 5 most important real issues.
-   If you find fewer real issues, report fewer. Zero is a valid answer.
+5. **No finding cap.** Report every real candidate you find — more genuine findings is
+   strictly better here, since recall is your job and the skeptic trims the list. Order
+   them most-severe first. Zero is still a valid answer when the diff is clean.
+
+6. **Reason per changed function before deciding.** For each function the diff touches,
+   briefly walk these before you write findings for it:
+   - What are its inputs and where do they come from (caller, config/YAML/JSON, env,
+     request)? Is any of them external/untrusted?
+   - What happens on the awkward inputs: empty / None / zero / a non-dict where a dict
+     is assumed / a scalar where an iterable is assumed / unsorted / duplicate / oversized?
+   - Did a deleted or changed line hold an invariant (a guard, a validation, an error
+     path)? Is it re-established?
+   Only after that walk do you decide what to surface. Skipping this walk is the main
+   reason subtle defects (unvalidated data, exact-equality, dropped guards) go unseen.
 
 ---
 ### WHAT TO LOOK FOR (focus areas):
 
 **Logic bugs** — inputs that produce wrong output, division by zero, off-by-one errors,
 incorrect algorithm behaviour. Think: empty collections, None values, boundary conditions.
+
+**Unvalidated external data** — a value read from config/YAML/JSON, env, or a request is
+used as a `dict`/`list`/`set`/iterable (subscripted, iterated, passed to `set()`/`dict()`,
+`.items()`, `for x in value`) without first checking its type or presence. A YAML key the
+author expects to be a mapping can legally be a scalar or a list; a `value or {{}}` idiom
+catches `None` but lets a non-dict truthy value through to operations that then misbehave
+silently rather than erroring. Flag each such use that lacks a type/shape guard.
+
+**Exact-equality on floats / money** — bare `==` or `!=` comparing floating-point or
+Decimal values, *including in test assertions* (`assert x == 0.3`). Floating-point
+rounding makes these flaky or wrong; they should use a tolerance compare. Check changed
+test files for this too.
 
 **Missing test coverage** — code paths in the diff that have no test. Focus on edge cases
 that could silently return wrong results (not just "coverage for coverage's sake").
@@ -115,6 +158,32 @@ If the producing code and consuming code have different assumptions, that's a bu
 
 **Ontology compliance** — wrong NodeType/EdgeType assignments, FQNs not derived from file
 paths, unresolved calls not using `raw_call:` prefix.
+
+---
+### WORKED EXAMPLES (how the per-function walk turns into a finding):
+
+These show the kind of subtle, borderline defect that is easy to skip but worth surfacing.
+Do not look for these exact lines — learn the *pattern* and apply it to the diff above.
+
+Example A — unvalidated config value used as a mapping:
+```
+def layers_for(self, name: str) -> set[str]:
+    cfg = self._patterns.get(name)        # cfg comes from a YAML file
+    return set(cfg)                        # <-- assumes cfg is iterable-of-str
+```
+Walk: input `cfg` is external (YAML); the author assumes a list/mapping, but YAML lets
+that key be a scalar (`name: layered`) → `set("layered")` silently yields `{{'l','a',...}}`,
+not an error. → FINDING: `set(cfg)` lacks a type/shape guard on external config data.
+(confidence ~50 — borderline, but it has a concrete failure scenario, so surface it.)
+
+Example B — exact-equality on floats in a test:
+```
+def test_drift_score():
+    assert scorer.score(fp) == 0.3        # <-- bare == on a float result
+```
+Walk: `score()` returns a computed float; `== 0.3` is exact float equality → rounding can
+make this assert flaky/false. → FINDING: float compared with bare `==` in a test; use a
+tolerance (`pytest.approx` / `math.isclose`). (confidence ~55.)
 
 ---
 ### OUTPUT FORMAT:
@@ -140,8 +209,9 @@ Rules:
   diff in section 3 (no paraphrasing, no `+`/`-` marker). It is used to position the inline
   comment deterministically — if your "line" guess is off, a correct "anchor" still lands the
   comment on the right line. Use null only for genuinely file-level findings.
-- "confidence" must be >= 80 to include a finding (the gate above).
-- max 5 findings; fewer is fine; an empty list means LGTM.
+- "confidence" is your honest 0-100 estimate; it does NOT gate inclusion — the skeptic
+  verifier uses it to prioritise, so report findings below 80 too.
+- no finding cap; report every real candidate, most-severe first; an empty list means LGTM.
 - "summary" is mandatory; for an LGTM it lists what you checked and found correct.
 
 Example LGTM response: {{"findings": [], "summary": "Checked diff for logic and types; ok."}}"""

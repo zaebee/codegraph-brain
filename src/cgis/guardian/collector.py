@@ -111,10 +111,18 @@ class ContextCollector:
         return [p for p in result.stdout.splitlines() if p.endswith(".py")]
 
     def read_file(self, relative_path: str) -> str:
-        """Reads a file from the project root."""
+        """Reads a file from the project root; returns "" when it does not exist.
+
+        An empty string (not an error marker) lets the prompt builder omit the
+        corresponding section entirely — a repo without CONTRIBUTING.md or
+        docs/ontology/ should review cleanly, not get "Error: File ..." injected
+        as if it were the standards/ontology text. `is_file()` (not `exists()`)
+        so a path that resolves to a directory degrades to "" instead of raising
+        IsADirectoryError on read.
+        """
         file_path = self.project_root / relative_path
-        if not file_path.exists():
-            return f"Error: File {relative_path} not found."
+        if not file_path.is_file():
+            return ""
         return file_path.read_text(encoding="utf-8")
 
     def collect_full_files(self, files: list[str] | None = None) -> str:

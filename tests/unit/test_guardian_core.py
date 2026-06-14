@@ -40,6 +40,20 @@ def test_build_user_prompt_includes_all_sections() -> None:
     assert "the ontology" in prompt
 
 
+def test_build_user_prompt_omits_standards_and_ontology_when_empty() -> None:
+    """A repo without CONTRIBUTING.md / ontology (empty strings) drops both sections.
+
+    Guards the universal-reviewer path: no "Error: File ... not found." text and
+    no empty PROJECT ONTOLOGY heading leaking into a non-cgis repo's prompt.
+    """
+    context = {"diff": "the diff", "contributing": "", "ontology": ""}
+    prompt = PromptBuilder.build_user_prompt(context)
+    assert "the diff" in prompt
+    assert "ENGINEERING STANDARDS" not in prompt
+    assert "PROJECT ONTOLOGY" not in prompt
+    assert "not found" not in prompt
+
+
 def test_build_user_prompt_includes_graph_section() -> None:
     """Graph context is injected as section 4 when present."""
     context = {
@@ -320,8 +334,8 @@ def test_get_changed_py_files_on_error(tmp_path: Path) -> None:
 
 
 def test_read_file_missing(tmp_path: Path) -> None:
-    """Returns error string for missing file."""
-    assert "not found" in ContextCollector(project_root=tmp_path).read_file("nonexistent.md")
+    """Returns "" for a missing file so the prompt omits its section."""
+    assert ContextCollector(project_root=tmp_path).read_file("nonexistent.md") == ""
 
 
 def test_read_file_exists(tmp_path: Path) -> None:
