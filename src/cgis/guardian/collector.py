@@ -116,10 +116,12 @@ class ContextCollector:
         An empty string (not an error marker) lets the prompt builder omit the
         corresponding section entirely — a repo without CONTRIBUTING.md or
         docs/ontology/ should review cleanly, not get "Error: File ..." injected
-        as if it were the standards/ontology text.
+        as if it were the standards/ontology text. `is_file()` (not `exists()`)
+        so a path that resolves to a directory degrades to "" instead of raising
+        IsADirectoryError on read.
         """
         file_path = self.project_root / relative_path
-        if not file_path.exists():
+        if not file_path.is_file():
             return ""
         return file_path.read_text(encoding="utf-8")
 
