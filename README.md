@@ -21,6 +21,8 @@ CGIS replaces "textual guessing" with **"structural calculation"**:
 *   **Deterministic Resolution:** Full FQN (Fully Qualified Name) resolution via AST-based extraction.
 *   **Multi-Layer Ontology:** Goes beyond calls. It understands `CONTAINS`, `DECLARES`, `IMPORTS`, and semantic domains.
 *   **Agent-Native (MCP):** Exposes the entire graph as a set of high-performance tools for Claude, Cursor, and custom agents.
+*   **Architectural Drift Gates:** Measures how far a change pushes each domain from its *declared* ideal pattern (a motif-basis fingerprint) — a soft, quantitative CI gate for architectural hygiene.
+*   **Graph-Aware Code Review:** A built-in LLM reviewer (**Guardian**) that reads the graph as context and reviews pull requests — runs on **local (Ollama) or cloud** models, no vendor lock-in.
 *   **Self-Documenting:** The documentation is a living artifact, automatically updated with live architecture diagrams.
 
 ---
@@ -80,6 +82,29 @@ CGIS is designed to be plugged into your AI workflow via the **Model Context Pro
 *   `cgis_trace_flow`: Visualize execution paths.
 *   `cgis_analyze_impact`: Predict regressions before they happen.
 *   `cgis_get_structure`: Understand class/module hierarchy.
+*   `cgis_context`: Compile a GraphRAG context package for a symbol.
+*   `cgis_drift`: Measure architectural drift vs each domain's ideal pattern.
+*   `cgis_metrics`: Coupling, god-classes, PageRank, package cohesion.
+*   `cgis_audit_reachability`: Authz/IDOR coverage — does every handler reach its guard?
+
+---
+
+## 🛡️ Guardian: Graph-Aware Code Review
+
+**Guardian** is CGIS's built-in LLM reviewer — it reviews pull requests using the *graph* as context, not just the diff text. It runs in CI and posts inline comments anchored to the exact line.
+
+*   **Two-stage, recall-first:** a **finder** surfaces every plausible defect (optimised for recall), then a separate **skeptic** pass filters false positives — closer to how human reviewers work, and far more reliable than a single precision-gated prompt.
+*   **Local *or* cloud, no lock-in:** point it at **Ollama** (`qwen2.5-coder`, `llama3.1`, `granite-code`, …) for free local inference, or at **Mistral / Gemini** in the cloud. You can even mix them — a strong cloud finder with a free local *cross-model* skeptic.
+*   **Graph-aware context:** the reviewer sees impact graphs, architectural drift, and project ontology — so it catches structural and convention defects a flat-diff reviewer can't.
+*   **Deterministic anchoring:** every inline comment is positioned by a verbatim quote from the diff, not the model's (often wrong) line guess.
+*   **Dogfooded & measured:** Guardian reviews CGIS's *own* pull requests, and a benchmark harness scores it against curated ground truth — so prompt changes are validated, not guessed.
+
+```bash
+# Build the graph, then review a PR with a local model (no API key)
+cgis ingest ./src --output graph.db
+GUARDIAN_PROVIDER=ollama GUARDIAN_MODEL=qwen2.5-coder:14b \
+  uv run python scripts/guardian_review.py --pr 123 --db graph.db --inline
+```
 
 ---
 
