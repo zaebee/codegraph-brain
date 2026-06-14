@@ -3,32 +3,11 @@
 from pathlib import Path
 
 import pytest
+from conftest import make_file_node, make_import_edge
 
-from cgis.core.models import Edge, EdgeType, Node, NodeType
+from cgis.core.models import Edge, Node
 from cgis.query.suggest_service import suggest_packages
 from cgis.storage.sqlite_store import SQLiteStore
-
-
-def _file(fqn: str) -> Node:
-    return Node(
-        id=fqn,
-        type=NodeType.FILE,
-        name=fqn.rsplit(".", 1)[-1],
-        file_path=fqn.replace(".", "/") + ".py",
-        start_line=0,
-        end_line=0,
-    )
-
-
-def _imp(src: str, tgt: str) -> Edge:
-    return Edge(
-        id=f"{src}:IMPORTS:{tgt}",
-        source=src,
-        target=tgt,
-        type=EdgeType.IMPORTS,
-        weight=1.0,
-        confidence=1.0,
-    )
 
 
 def _store_with(tmp_path: Path, nodes: list[Node], edges: list[Edge]) -> str:
@@ -40,9 +19,9 @@ def _store_with(tmp_path: Path, nodes: list[Node], edges: list[Edge]) -> str:
 
 
 def _two_clusters() -> tuple[list[Node], list[Edge]]:
-    files = [_file(f"p.{n}") for n in ("a", "b", "c", "x", "y", "z")]
+    files = [make_file_node(f"p.{n}") for n in ("a", "b", "c", "x", "y", "z")]
     edges = [
-        _imp(f"p.{s}", f"p.{t}")
+        make_import_edge(f"p.{s}", f"p.{t}")
         for grp in (("a", "b", "c"), ("x", "y", "z"))
         for s in grp
         for t in grp
@@ -66,8 +45,17 @@ def test_suggest_missing_db_raises(tmp_path: Path) -> None:
         suggest_packages(str(tmp_path / "nope.db"), prefix="p")
 
 
+def test_suggest_none_or_blank_prefix_is_no_signal(tmp_path: Path) -> None:
+    """A None/blank prefix (a CLI/MCP client may send either) → no_signal, not a crash."""
+    db = _store_with(tmp_path, *_two_clusters())
+    for bad in (None, "", "   "):
+        report = suggest_packages(db, bad)
+        assert report.verdict == "no_signal"
+        assert report.note == "no fqn_prefix given"
+
+
 def test_suggest_no_files_is_no_signal(tmp_path: Path) -> None:
-    db = _store_with(tmp_path, [_file("other.a")], [])
+    db = _store_with(tmp_path, [make_file_node("other.a")], [])
     report = suggest_packages(db, prefix="p")
     assert report.verdict == "no_signal"
     assert report.note is not None
@@ -75,8 +63,8 @@ def test_suggest_no_files_is_no_signal(tmp_path: Path) -> None:
 
 
 def test_suggest_mis_rooted_emits_diagnostic(tmp_path: Path) -> None:
-    nodes = [_file("p.a"), _file("p.b")]
-    edges = [_imp("p.a", "wholly.external.thing")]
+    nodes = [make_file_node("p.a"), make_file_node("p.b")]
+    edges = [make_import_edge("p.a", "wholly.external.thing")]
     db = _store_with(tmp_path, nodes, edges)
     report = suggest_packages(db, prefix="p")
     assert report.verdict == "no_signal"
@@ -87,9 +75,9 @@ def test_suggest_mis_rooted_emits_diagnostic(tmp_path: Path) -> None:
 def test_two_ingest_roots_yield_same_verdict(tmp_path: Path) -> None:
     """src/-style (cgis.p.*) and src/cgis/-style (p.*) ingests agree (#242 🔴)."""
     # Root A: files cgis.p.*, targets cgis.p.* (resolve internally).
-    files_a = [_file(f"cgis.p.{n}") for n in ("a", "b", "c", "x", "y", "z")]
+    files_a = [make_file_node(f"cgis.p.{n}") for n in ("a", "b", "c", "x", "y", "z")]
     edges_a = [
-        _imp(f"cgis.p.{s}", f"cgis.p.{t}")
+        make_import_edge(f"cgis.p.{s}", f"cgis.p.{t}")
         for grp in (("a", "b", "c"), ("x", "y", "z"))
         for s in grp
         for t in grp
@@ -98,9 +86,9 @@ def test_two_ingest_roots_yield_same_verdict(tmp_path: Path) -> None:
     db_a = _store_with(tmp_path / "a", files_a, edges_a)
 
     # Root B: files p.*, but targets written cgis.p.* (the mis-rooted shape).
-    files_b = [_file(f"p.{n}") for n in ("a", "b", "c", "x", "y", "z")]
+    files_b = [make_file_node(f"p.{n}") for n in ("a", "b", "c", "x", "y", "z")]
     edges_b = [
-        _imp(f"p.{s}", f"cgis.p.{t}")
+        make_import_edge(f"p.{s}", f"cgis.p.{t}")
         for grp in (("a", "b", "c"), ("x", "y", "z"))
         for s in grp
         for t in grp

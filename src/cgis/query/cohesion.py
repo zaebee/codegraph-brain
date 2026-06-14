@@ -35,8 +35,12 @@ class FileGraph:
 
 
 def _under(fqn: str, prefix: str) -> bool:
-    """Return True iff fqn is the prefix itself or a dot-boundary child of it."""
-    return fqn == prefix or fqn.startswith(prefix + ".")
+    """Return True iff fqn is the prefix itself or a dot-boundary child of it.
+
+    An empty prefix matches nothing — the service normalizes a missing/blank
+    prefix to a no_signal report before this is ever reached.
+    """
+    return bool(prefix) and (fqn == prefix or fqn.startswith(prefix + "."))
 
 
 def _build_suffix_index(file_ids: list[str]) -> dict[str, str]:
@@ -132,16 +136,17 @@ def _best_merge(
     best_gain: float = _MIN_GAIN
     best_pair: tuple[str, str] | None = None
     labels = sorted(members)
+    # Precompute each community's normalized degree once (O(V)) rather than
+    # re-summing it inside the O(K²) pair scan.
+    a_of = {c: sum(deg[f] for f in members[c]) / m2 for c in labels}
     for i, c1 in enumerate(labels):
-        a_c1 = sum(deg[f] for f in members[c1]) / m2
         for c2 in labels[i + 1 :]:
             e_ij = (
                 sum(graph.adj.get(f, {}).get(g, 0.0) for f in members[c1] for g in members[c2]) / m2
             )
             if e_ij == 0.0:
                 continue
-            a_c2 = sum(deg[f] for f in members[c2]) / m2
-            dq = 2 * (e_ij - a_c1 * a_c2)
+            dq = 2 * (e_ij - a_of[c1] * a_of[c2])
             if dq > best_gain:
                 best_gain, best_pair = dq, (c1, c2)
     return best_pair

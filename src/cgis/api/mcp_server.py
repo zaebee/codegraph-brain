@@ -280,7 +280,7 @@ def cgis_drift(
 @mcp.tool()
 def cgis_suggest_packages(
     db_path: str = _DEFAULT_DB,
-    prefix: str = "",
+    prefix: str | None = None,
     with_calls: bool = False,
     min_q: float = 0.35,
 ) -> str:

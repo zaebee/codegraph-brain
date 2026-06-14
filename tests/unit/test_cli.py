@@ -4,7 +4,14 @@ import json
 import re
 from pathlib import Path
 
-from conftest import fit_patterns_yaml, make_chain_db, module_with_funcs, triangle_db
+from conftest import (
+    fit_patterns_yaml,
+    make_chain_db,
+    make_file_node,
+    make_import_edge,
+    module_with_funcs,
+    triangle_db,
+)
 from typer.testing import CliRunner
 
 from cgis.cli import _drift_status_label, app
@@ -1349,30 +1356,9 @@ def test_audit_requires_a_selector(tmp_path: Path) -> None:
 
 def _suggest_db(tmp_path: Path) -> str:
     """A db with two well-separated clusters under prefix 'p' (verdict: split)."""
-
-    def _file(fqn: str) -> Node:
-        return Node(
-            id=fqn,
-            type=NodeType.FILE,
-            name=fqn.rsplit(".", 1)[-1],
-            file_path=fqn.replace(".", "/") + ".py",
-            start_line=0,
-            end_line=0,
-        )
-
-    def _imp(src: str, tgt: str) -> Edge:
-        return Edge(
-            id=f"{src}:IMPORTS:{tgt}",
-            source=src,
-            target=tgt,
-            type=EdgeType.IMPORTS,
-            weight=1.0,
-            confidence=1.0,
-        )
-
-    files = [_file(f"p.{n}") for n in ("a", "b", "c", "x", "y", "z")]
+    files = [make_file_node(f"p.{n}") for n in ("a", "b", "c", "x", "y", "z")]
     edges = [
-        _imp(f"p.{s}", f"p.{t}")
+        make_import_edge(f"p.{s}", f"p.{t}")
         for grp in (("a", "b", "c"), ("x", "y", "z"))
         for s in grp
         for t in grp

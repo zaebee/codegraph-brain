@@ -67,7 +67,10 @@ def _dir_group(fqn: str, prefix: str) -> str:
 
     A single remaining segment after the prefix maps to the shared ``"<root>"``
     group; two or more map to the first remaining segment (a real sub-directory).
+    The package node itself (``fqn == prefix``, e.g. an ``__init__``) is ``<root>``.
     """
+    if fqn == prefix:
+        return _ROOT_GROUP
     remainder = fqn[len(prefix) + 1 :] if fqn.startswith(prefix + ".") else fqn
     parts = remainder.split(".")
     return _ROOT_GROUP if len(parts) <= 1 else parts[0]
@@ -92,9 +95,13 @@ def _empty_report(package: str, layer: str, note: str) -> SuggestReport:
 
 
 def suggest_packages(
-    db_path: str, prefix: str, with_calls: bool = False, min_q: float = 0.35
+    db_path: str, prefix: str | None, with_calls: bool = False, min_q: float = 0.35
 ) -> SuggestReport:
     """Detect a package's communities and score layout divergence (#242).
+
+    ``prefix`` is normalized once here: a ``None`` or blank value (a CLI/MCP
+    client may send either) collapses to a ``no_signal`` report rather than a
+    crash, so every downstream helper receives a clean non-empty string.
 
     Raises:
         FileNotFoundError: if ``db_path`` is not an existing file (run ingest first).
@@ -104,33 +111,37 @@ def suggest_packages(
         raise FileNotFoundError(msg)
 
     layer = "imports+calls" if with_calls else "imports"
+    package = (prefix or "").strip()
+    if not package:
+        return _empty_report("", layer, "no fqn_prefix given")
+
     with SQLiteStore(db_path) as store:
         nodes: list[Node] = store.get_all_nodes()
         edges: list[Edge] = store.get_all_edges()
 
-    graph = build_file_graph(nodes, edges, prefix, with_calls)
+    graph = build_file_graph(nodes, edges, package, with_calls)
     if not graph.files:
-        return _empty_report(prefix, layer, f"fqn_prefix '{prefix}' matched 0 nodes")
+        return _empty_report(package, layer, f"fqn_prefix '{package}' matched 0 nodes")
 
     internal_edges = sum(len(v) for v in graph.adj.values()) // 2
     if internal_edges == 0:
         had_import_attempts = any(
-            e.source.startswith(prefix + ".") or e.source == prefix
+            e.source.startswith(package + ".") or e.source == package
             for e in edges
             if e.type.value == "IMPORTS"
         )
         note = (
-            f"{prefix}: files found but no import resolves inside the package — the "
+            f"{package}: files found but no import resolves inside the package — the "
             "graph looks mis-rooted or imports are unresolved; try ingesting the "
             "package's parent directory"
             if had_import_attempts
-            else f"{prefix}: no intra-package imports (a flat leaf bag)"
+            else f"{package}: no intra-package imports (a flat leaf bag)"
         )
-        return _empty_report(prefix, layer, note)
+        return _empty_report(package, layer, note)
 
     communities, q = greedy_modularity(graph)
     comm_of = {f: i for i, c in enumerate(communities) for f in c}
-    dir_of = {f: _dir_group(f, prefix) for f in graph.files}
+    dir_of = {f: _dir_group(f, package) for f in graph.files}
     divergence = partition_divergence(comm_of, dir_of)
     direction = layout_direction(comm_of, dir_of)
     thresholds = {**THRESHOLDS, "split": min_q}
@@ -146,7 +157,7 @@ def suggest_packages(
         key=lambda br: (-br.weight, br.source, br.target),
     )
     return SuggestReport(
-        package=prefix,
+        package=package,
         layer=layer,
         file_count=len(graph.files),
         edge_count=internal_edges,

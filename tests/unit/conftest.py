@@ -11,6 +11,34 @@ from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.storage.sqlite_store import SQLiteStore
 
 
+def make_file_node(fqn: str, path: str | None = None) -> Node:
+    """A FILE node for graph tests; ``path`` defaults to the fqn as a slash path.
+
+    Shared by the cohesion / suggest-packages / CLI tests to avoid duplicating
+    the same Node construction across modules (#242 Sonar dedup).
+    """
+    return Node(
+        id=fqn,
+        type=NodeType.FILE,
+        name=fqn.rsplit(".", 1)[-1],
+        file_path=path if path is not None else fqn.replace(".", "/") + ".py",
+        start_line=0,
+        end_line=0,
+    )
+
+
+def make_import_edge(src: str, tgt: str) -> Edge:
+    """An IMPORTS edge for graph tests (#242 Sonar dedup)."""
+    return Edge(
+        id=f"{src}:IMPORTS:{tgt}",
+        source=src,
+        target=tgt,
+        type=EdgeType.IMPORTS,
+        weight=1.0,
+        confidence=1.0,
+    )
+
+
 def make_chain_nodes_edges(prefix: str, count: int) -> tuple[list[Node], list[Edge]]:
     """Return ``count`` FUNCTION nodes and a CALLS chain wired as f0→f1→…→fn-1.
 
