@@ -176,7 +176,9 @@ def suggest_packages(
     # intra-package edge — a single tiny cluster then inflates Q on a package of
     # otherwise-independent helpers (owner-api/utils: 3 edges over 12 files, Q=0.44,
     # 58% isolated → a false 'split'). Only act on it when enough files are coupled.
-    connected_fraction = sum(1 for f in graph.files if graph.adj.get(f)) / len(graph.files)
+    # build_file_graph only adds non-empty adjacency entries (keyed by files under
+    # the prefix), so adj keys ARE exactly the files with an intra-package edge.
+    connected_fraction = len(graph.adj) / len(graph.files)
     sparse_note: str | None = None
     if verdict in ("split", "borderline") and connected_fraction < thresholds["min_connected"]:
         sparse_note = (
