@@ -40,14 +40,18 @@ def test_cgis_guardian_nested_reads_below_flat(
     """cgis.guardian has a real providers/ subpackage, so its divergence is
     BELOW the flat 1.0 — the nested layout carries some signal.
 
-    HONESTY NOTE: guardian lands 'borderline' because its Q (~0.33) is under the
-    split threshold, NOT because of low divergence (its D ~ 0.76 is still high).
-    So this case does NOT exercise the D=0.2 aligned boundary — that boundary is
-    covered end-to-end by test_suggest_aligned_nested_is_aligned (a synthetic
-    nested-and-aligned package), since cgis has no genuinely well-aligned nested
-    package in-repo. We pin the real numbers rather than a weak ``!= split``."""
+    HONESTY NOTE: guardian reads 'split' because its Q (~0.35) is at/above the
+    split threshold — driven by modularity, NOT by low divergence (its D ~ 0.72
+    is still high). So this case does NOT exercise the D=0.2 aligned boundary —
+    that boundary is covered end-to-end by test_suggest_aligned_nested_is_aligned
+    (a synthetic nested-and-aligned package), since cgis has no genuinely
+    well-aligned nested package in-repo. We pin the real numbers.
+
+    (Re-pinned in #255: adding a 4th provider, providers/ollama.py, tightened the
+    providers/ cluster and pushed Q from ~0.33 over the 0.35 threshold —
+    borderline → split. The nested-reads-below-flat claim, D < 1.0, is unchanged.)"""
     store, _, _ = root_graph_data
     report = suggest_packages(store.db_path, prefix="cgis.guardian", with_calls=False)
-    assert report.verdict == "borderline"
-    assert report.modularity_q < 0.35  # below split threshold → why it's not 'split'
+    assert report.verdict == "split"
+    assert report.modularity_q >= 0.35  # at/above split threshold → why it's 'split'
     assert report.divergence < 1.0  # nested → below the flat-package degenerate 1.0

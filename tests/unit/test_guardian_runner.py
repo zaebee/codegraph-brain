@@ -2,7 +2,8 @@
 
 import subprocess
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from guardian_stubs import FINDING_JSON, StubProvider
@@ -10,6 +11,7 @@ from pydantic import BaseModel
 
 from cgis.guardian.collector import ContextCollector
 from cgis.guardian.providers.base import BaseProvider, ProviderUsage
+from cgis.guardian.providers.ollama import OllamaProvider
 from cgis.guardian.runner import (
     DEFAULT_GEMINI_MODEL,
     DEFAULT_MISTRAL_MODEL,
@@ -147,6 +149,127 @@ def test_build_skeptic_provider_missing_key_degrades_to_none() -> None:
     """No API key for the chosen skeptic → None (graceful single-pass), not an error."""
     env = {"GEMINI_API_KEY": "g"}  # default skeptic for gemini primary is mistral — no key
     assert build_skeptic_provider(env, primary="gemini") is None
+
+
+# ---------------------------------------------------------------------------
+# Ollama provider (local/colab inference, no API key) — issue #255
+# ---------------------------------------------------------------------------
+
+
+def test_build_provider_ollama_requires_a_model() -> None:
+    """GUARDIAN_PROVIDER=ollama without GUARDIAN_MODEL is an explicit error."""
+    with pytest.raises(RuntimeError, match="GUARDIAN_MODEL must name an Ollama model"):
+        build_provider({"GUARDIAN_PROVIDER": "ollama"})
+
+
+def test_build_provider_ollama_selects_model_and_host() -> None:
+    """ollama needs no API key; model + host come from env (no key required)."""
+    provider, model = build_provider(
+        {
+            "GUARDIAN_PROVIDER": "ollama",
+            "GUARDIAN_MODEL": "qwen2.5-coder:14b",
+            "GUARDIAN_OLLAMA_HOST": "http://localhost:11435",
+        }
+    )
+    assert model == "qwen2.5-coder:14b"
+    assert isinstance(provider, OllamaProvider)
+    assert provider._host == "http://localhost:11435"  # noqa: SLF001  # white-box: host wiring
+
+
+def test_build_provider_ollama_num_ctx_from_env() -> None:
+    """GUARDIAN_OLLAMA_NUM_CTX overrides the default context window (VRAM/length tuning)."""
+    provider, _ = build_provider(
+        {"GUARDIAN_PROVIDER": "ollama", "GUARDIAN_MODEL": "m", "GUARDIAN_OLLAMA_NUM_CTX": "8192"}
+    )
+    assert isinstance(provider, OllamaProvider)
+    assert provider._num_ctx == 8192  # noqa: SLF001  # white-box: ctx wiring
+
+
+def test_build_provider_unknown_lists_ollama() -> None:
+    """A typo in GUARDIAN_PROVIDER names all three valid providers."""
+    with pytest.raises(RuntimeError, match="'mistral', 'gemini', or 'ollama'"):
+        build_provider({"GUARDIAN_PROVIDER": "anthropic", "GEMINI_API_KEY": "g"})
+
+
+def test_build_skeptic_provider_ollama_cross_model() -> None:
+    """A distinct ollama skeptic model = free cross-model skeptic (#246)."""
+    env = {
+        "GUARDIAN_SKEPTIC": "ollama",
+        "GUARDIAN_SKEPTIC_MODEL": "llama3.1:8b",
+        "GUARDIAN_MODEL": "qwen2.5-coder:14b",
+    }
+    built = build_skeptic_provider(env, primary="ollama")
+    assert built is not None
+    provider, model = built
+    assert isinstance(provider, OllamaProvider)
+    assert model == "llama3.1:8b"  # skeptic model override wins over GUARDIAN_MODEL
+
+
+def test_build_skeptic_provider_ollama_falls_back_to_finder_model() -> None:
+    """Without GUARDIAN_SKEPTIC_MODEL the skeptic reuses GUARDIAN_MODEL."""
+    env = {"GUARDIAN_SKEPTIC": "ollama", "GUARDIAN_MODEL": "qwen2.5-coder:14b"}
+    built = build_skeptic_provider(env, primary="ollama")
+    assert built is not None
+    _provider, model = built
+    assert model == "qwen2.5-coder:14b"
+
+
+def test_build_skeptic_provider_ollama_needs_a_model() -> None:
+    """No model for an ollama skeptic → None (graceful single-pass), not an error."""
+    assert build_skeptic_provider({"GUARDIAN_SKEPTIC": "ollama"}, primary="ollama") is None
+
+
+def _fake_ollama_client(resp: object) -> AsyncMock:
+    """An AsyncMock usable as `async with AsyncClient(...) as client` whose chat returns resp."""
+    client = AsyncMock()
+    client.chat = AsyncMock(return_value=resp)
+    client.__aenter__.return_value = client  # `async with` yields the client itself
+    client.__aexit__.return_value = False
+    return client
+
+
+@pytest.mark.asyncio
+async def test_ollama_provider_structured_uses_json_format_and_records_usage() -> None:
+    """generate_structured sends format='json' and maps eval counts to usage."""
+    pytest.importorskip("ollama")  # optional guardian-group dep
+
+    class _Schema(BaseModel):
+        x: int
+
+    resp = SimpleNamespace(
+        message=SimpleNamespace(content='{"x": 1}'),
+        prompt_eval_count=11,
+        eval_count=4,
+    )
+    fake_client = _fake_ollama_client(resp)
+    provider = OllamaProvider(model_name="m", host="http://localhost:11435")
+    with patch("ollama.AsyncClient", return_value=fake_client):
+        out = await provider.generate_structured("sys", "usr", schema=_Schema)
+    assert out == '{"x": 1}'
+    kwargs = fake_client.chat.call_args.kwargs
+    # schema-constrained decoding (not plain "json") → conformant object from small models
+    assert kwargs["format"]["title"] == "_Schema"  # schema dict, not the literal "json"
+    assert kwargs["options"]["num_ctx"] == 32768  # explicit window → no silent truncation
+    assert provider.cumulative_usage.prompt_tokens == 11
+    assert provider.cumulative_usage.completion_tokens == 4
+
+
+@pytest.mark.asyncio
+async def test_ollama_provider_content_uses_no_json_format() -> None:
+    """generate_content sends an empty format (free text), not JSON mode."""
+    pytest.importorskip("ollama")  # optional guardian-group dep
+    resp = SimpleNamespace(
+        message=SimpleNamespace(content="plain text"),
+        prompt_eval_count=None,  # some responses omit counts → default to 0
+        eval_count=None,
+    )
+    fake_client = _fake_ollama_client(resp)
+    provider = OllamaProvider(model_name="m")
+    with patch("ollama.AsyncClient", return_value=fake_client):
+        out = await provider.generate_content("sys", "usr")
+    assert out == "plain text"
+    assert fake_client.chat.call_args.kwargs["format"] == ""
+    assert provider.cumulative_usage.total_tokens == 0
 
 
 async def test_run_guardian_smoke(tmp_path: Path) -> None:

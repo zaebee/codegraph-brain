@@ -426,3 +426,13 @@ def test_collect_graph_context_unchanged_without_db(tmp_path: Path) -> None:
     collector = ContextCollector(project_root=tmp_path)
     assert collector.collect_graph_context() == ""
     assert collector.graph_stats == {"total": 0, "with_graph": 0, "flow_fallback": 0}
+
+
+def test_collect_graph_context_skipped_when_include_graph_false(tmp_path: Path) -> None:
+    """include_graph=False short-circuits before touching the db (diff-only prompt)."""
+    db = tmp_path / "graph.db"
+    db.write_text("")  # exists, so only the flag can be why graph is skipped
+    collector = ContextCollector(project_root=tmp_path, db_path=db, include_graph=False)
+    with patch.object(collector, "_graph_sections") as graph_sections:
+        assert collector.collect_graph_context() == ""
+        graph_sections.assert_not_called()
