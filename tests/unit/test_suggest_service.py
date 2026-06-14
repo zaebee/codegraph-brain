@@ -74,6 +74,21 @@ def test_suggest_mis_rooted_emits_diagnostic(tmp_path: Path) -> None:
     assert report.file_count == 2
 
 
+def test_suggest_single_module_prefix_is_not_mis_rooted(tmp_path: Path) -> None:
+    """A prefix that matches exactly ONE module is 'nothing to split', NOT a false
+    'mis-rooted' alarm — even though that lone module imports siblings (found while
+    dogfooding cgis.query.drift through the MCP tool)."""
+    nodes = [make_file_node("p.solo"), make_file_node("other.x")]
+    edges = [make_import_edge("p.solo", "other.x")]  # outbound import to a non-member
+    db = _store_with(tmp_path, nodes, edges)
+    report = suggest_packages(db, prefix="p.solo")
+    assert report.verdict == "no_signal"
+    assert report.file_count == 1
+    assert report.note is not None
+    assert "single module" in report.note
+    assert "mis-rooted" not in report.note.lower()
+
+
 def _two_clusters_nested() -> tuple[list[Node], list[Edge]]:
     """Two cliques whose directory layout (core/ and io/) MATCHES the communities."""
     groups = {"core": ("a", "b", "c"), "io": ("x", "y", "z")}

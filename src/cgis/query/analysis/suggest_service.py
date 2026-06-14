@@ -130,6 +130,18 @@ def suggest_packages(
     if not graph.files:
         return _empty_report(package, layer, f"fqn_prefix '{package}' matched 0 nodes")
 
+    if len(graph.files) < 2:
+        # A single matched file is a module (or a one-file package), not something
+        # to split. Guard BEFORE the no-internal-edges check below — otherwise the
+        # lone module's outbound imports trip the 'mis-rooted' diagnostic falsely
+        # (it has import edges, none of which can resolve inside a 1-file set).
+        return _empty_report(
+            package,
+            layer,
+            f"'{package}' matched a single module, not a multi-file package — nothing to split",
+            file_count=len(graph.files),
+        )
+
     internal_edges = sum(len(v) for v in graph.adj.values()) // 2
     if internal_edges == 0:
         had_import_attempts = any(
