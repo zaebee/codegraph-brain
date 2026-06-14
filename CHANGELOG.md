@@ -1,5 +1,51 @@
 # Changelog
 
+## [0.3.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.2.0...codegraph-brain-v0.3.0) (2026-06-14)
+
+
+### Features
+
+* **audit:** reachability/authz coverage primitive — `cgis audit` ([#172](https://github.com/zaebee/codegraph-brain/issues/172)) ([#236](https://github.com/zaebee/codegraph-brain/issues/236)) ([7ec4a28](https://github.com/zaebee/codegraph-brain/commit/7ec4a289ecd5acd962603b8bf1c2e256018b5b38))
+* cgis_find_symbol — partial name → ranked FQNs ([#173](https://github.com/zaebee/codegraph-brain/issues/173)) ([#206](https://github.com/zaebee/codegraph-brain/issues/206)) ([eaeb5a6](https://github.com/zaebee/codegraph-brain/commit/eaeb5a6e3df86e3a82120bde60ec771fb3747d6e))
+* **drift:** fit-quality reporting + funnel template ([#177](https://github.com/zaebee/codegraph-brain/issues/177), [#186](https://github.com/zaebee/codegraph-brain/issues/186)) ([#232](https://github.com/zaebee/codegraph-brain/issues/232)) ([82aaf15](https://github.com/zaebee/codegraph-brain/commit/82aaf15a8d55da6df6f39cf4d1aced5871398d52))
+* **drift:** gate semantics v2 — intra-domain cycles, gate_failed, tolerance precedence ([#176](https://github.com/zaebee/codegraph-brain/issues/176), [#170](https://github.com/zaebee/codegraph-brain/issues/170)) ([#221](https://github.com/zaebee/codegraph-brain/issues/221)) ([303a502](https://github.com/zaebee/codegraph-brain/commit/303a502afd26ad72d9316b7a17dcb25e39413d24))
+* **drift:** tangle_ratio hygiene gate — the antisymmetry half of health ([#186](https://github.com/zaebee/codegraph-brain/issues/186)) ([#241](https://github.com/zaebee/codegraph-brain/issues/241)) ([96dc2e0](https://github.com/zaebee/codegraph-brain/commit/96dc2e0fdc8cd581c38ecb97424ddfd97c2e604e))
+* **guardian:** Ollama provider for local/colab inference — finder + skeptic ([#256](https://github.com/zaebee/codegraph-brain/issues/256)) ([5748248](https://github.com/zaebee/codegraph-brain/commit/574824868d0efcac23a082874f8bc28381266f6b))
+* **guardian:** recall-lean universal finder + skeptic reconciliation ([#249](https://github.com/zaebee/codegraph-brain/issues/249)) ([7bb1166](https://github.com/zaebee/codegraph-brain/commit/7bb1166e156ab6c4e23b101fb89b892e00d27f2d))
+* **mermaid:** human/AI-readable node ids instead of MD5 hashes ([#210](https://github.com/zaebee/codegraph-brain/issues/210)) ([#213](https://github.com/zaebee/codegraph-brain/issues/213)) ([0b5ae7e](https://github.com/zaebee/codegraph-brain/commit/0b5ae7e86233bcf9d195c8c2a0ef921f96ef36f7))
+* **metrics:** --exclude &lt;segment&gt; to drop test/vendor code from rankings ([#234](https://github.com/zaebee/codegraph-brain/issues/234)) ([#235](https://github.com/zaebee/codegraph-brain/issues/235)) ([19383d0](https://github.com/zaebee/codegraph-brain/commit/19383d0dd0819c2448ff60189703651fe83823c7))
+* **metrics:** DuckDB analytical layer — `cgis metrics` ([#16](https://github.com/zaebee/codegraph-brain/issues/16), slice 1) ([#230](https://github.com/zaebee/codegraph-brain/issues/230)) ([7bd74f9](https://github.com/zaebee/codegraph-brain/commit/7bd74f9aa3b2d7b08a5000ed24eae520c6a7a3e4))
+* **metrics:** surface in/out degree on PageRank rows ([#237](https://github.com/zaebee/codegraph-brain/issues/237)) ([#238](https://github.com/zaebee/codegraph-brain/issues/238)) ([a072438](https://github.com/zaebee/codegraph-brain/commit/a07243871e4bcce6433c3cf66f972c0b16b14b17))
+* **metrics:** vectorized PageRank — critical-nodes ranking ([#231](https://github.com/zaebee/codegraph-brain/issues/231)) ([#233](https://github.com/zaebee/codegraph-brain/issues/233)) ([4ecc011](https://github.com/zaebee/codegraph-brain/commit/4ecc01197eb1863189bbe9bb25fa2693bf7d9603))
+* **query:** cgis init-ontology — auto-proposed patterns.yaml ([#174](https://github.com/zaebee/codegraph-brain/issues/174)) ([#211](https://github.com/zaebee/codegraph-brain/issues/211)) ([e73e3b1](https://github.com/zaebee/codegraph-brain/commit/e73e3b1ca82c94f4d987dd005842209b6f9ea0b7))
+* **query:** cgis suggest-packages — graph-driven sub-package suggestions ([#242](https://github.com/zaebee/codegraph-brain/issues/242) slice 1) ([#245](https://github.com/zaebee/codegraph-brain/issues/245)) ([827bd04](https://github.com/zaebee/codegraph-brain/commit/827bd045f46cc25c72b961dab15e98da3ec9b3a2))
+* **query:** GraphRAG prompt compiler — `cgis context <fqn>` ([#19](https://github.com/zaebee/codegraph-brain/issues/19)) ([#219](https://github.com/zaebee/codegraph-brain/issues/219)) ([f1a79e5](https://github.com/zaebee/codegraph-brain/commit/f1a79e5ca543cefcbb81dd8ec596967fadc4fe9d))
+* **query:** JSON output for trace_flow / analyze_impact / structure ([#171](https://github.com/zaebee/codegraph-brain/issues/171)) ([#209](https://github.com/zaebee/codegraph-brain/issues/209)) ([39e4028](https://github.com/zaebee/codegraph-brain/commit/39e40282a33ab5aa6a52c08bfe06a8f629ffedf7))
+
+
+### Bug Fixes
+
+* **drift:** discount CALLS-layer tangle by unresolved_ratio ([#244](https://github.com/zaebee/codegraph-brain/issues/244)) ([#253](https://github.com/zaebee/codegraph-brain/issues/253)) ([119e5b3](https://github.com/zaebee/codegraph-brain/commit/119e5b3272871106841fbe0b847d9350ce091ff9))
+* **guardian:** anchor inline comments to a verbatim quote, not the model's line ([#181](https://github.com/zaebee/codegraph-brain/issues/181)) ([#243](https://github.com/zaebee/codegraph-brain/issues/243)) ([ccb2503](https://github.com/zaebee/codegraph-brain/commit/ccb2503e7a127bbe1cfbde4196a6ce4db30c0c0a))
+* **mcp:** cgis_ingest full_rebuild flag + whole-graph totals ([#192](https://github.com/zaebee/codegraph-brain/issues/192)) ([#223](https://github.com/zaebee/codegraph-brain/issues/223)) ([397836c](https://github.com/zaebee/codegraph-brain/commit/397836c33850f513c5f29d5cbede50de6c8622e9))
+* **suggest:** connectivity guard — sparse package no longer false-'split' ([#257](https://github.com/zaebee/codegraph-brain/issues/257)) ([0e1ddf7](https://github.com/zaebee/codegraph-brain/commit/0e1ddf7743b3c8a542a1da3613073d43fcb79a51))
+* **suggest:** single-module prefix no longer false-flags 'mis-rooted' ([#254](https://github.com/zaebee/codegraph-brain/issues/254)) ([b7efd13](https://github.com/zaebee/codegraph-brain/commit/b7efd139eab9537f384f88721255a1be1e9b24f9)), closes [#242](https://github.com/zaebee/codegraph-brain/issues/242)
+
+
+### Documentation
+
+* **architecture:** cgis self-portrait snapshot ([#252](https://github.com/zaebee/codegraph-brain/issues/252)) ([df611ce](https://github.com/zaebee/codegraph-brain/commit/df611cebe313432473b70d2f4a4897aec960811e))
+* **architecture:** human/AI-readable reference for the 5 patterns + 13 triads ([#218](https://github.com/zaebee/codegraph-brain/issues/218)) ([1baf316](https://github.com/zaebee/codegraph-brain/commit/1baf316bb30c5ae0f5e2955681bd6a7679c0fa4e))
+* auto-sync architecture graph and MCP reference ([#207](https://github.com/zaebee/codegraph-brain/issues/207)) ([0121536](https://github.com/zaebee/codegraph-brain/commit/01215368ae435585976dd39ecd463ecaff4f36c0))
+* auto-sync architecture graph and MCP reference ([#212](https://github.com/zaebee/codegraph-brain/issues/212)) ([2023c66](https://github.com/zaebee/codegraph-brain/commit/2023c66af286e688fb733861b6103d698d10a929))
+* auto-sync architecture graph and MCP reference ([#217](https://github.com/zaebee/codegraph-brain/issues/217)) ([9465478](https://github.com/zaebee/codegraph-brain/commit/9465478d5bfd51ce15e1601006cb7b2a014a39e6))
+* auto-sync architecture graph and MCP reference ([#222](https://github.com/zaebee/codegraph-brain/issues/222)) ([a688995](https://github.com/zaebee/codegraph-brain/commit/a68899593223a1d62108f2c8aa80a521a3516502))
+* auto-sync architecture graph and MCP reference ([#225](https://github.com/zaebee/codegraph-brain/issues/225)) ([deb94a0](https://github.com/zaebee/codegraph-brain/commit/deb94a013856df56170e1af59476fb1835b00921))
+* auto-sync architecture graph and MCP reference ([#226](https://github.com/zaebee/codegraph-brain/issues/226)) ([adc6282](https://github.com/zaebee/codegraph-brain/commit/adc6282b1e738e958b8a4f3b38905016705487c5))
+* auto-sync architecture graph and MCP reference ([#250](https://github.com/zaebee/codegraph-brain/issues/250)) ([56871db](https://github.com/zaebee/codegraph-brain/commit/56871db03f9f5fc81aff17bbca47a63f883cab48))
+* **readme:** surface Guardian, drift gates, and local/cloud models ([#259](https://github.com/zaebee/codegraph-brain/issues/259)) ([0d8cc99](https://github.com/zaebee/codegraph-brain/commit/0d8cc994092394236fe18725339ce2e894611e4b))
+* **specs:** drift gate semantics v2 — intra-domain cycles, gate_failed, tolerance precedence ([#176](https://github.com/zaebee/codegraph-brain/issues/176) + [#170](https://github.com/zaebee/codegraph-brain/issues/170)) ([#216](https://github.com/zaebee/codegraph-brain/issues/216)) ([ae120a1](https://github.com/zaebee/codegraph-brain/commit/ae120a1b49ac7259d12790d0d59be108ae786bdc))
+
 ## [0.2.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.1.0...codegraph-brain-v0.2.0) (2026-06-12)
 
 
