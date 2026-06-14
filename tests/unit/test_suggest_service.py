@@ -89,6 +89,38 @@ def test_suggest_single_module_prefix_is_not_mis_rooted(tmp_path: Path) -> None:
     assert "mis-rooted" not in report.note.lower()
 
 
+def test_suggest_sparse_package_is_not_split(tmp_path: Path) -> None:
+    """A near-disconnected package — two tiny clusters amid many independent helpers
+    — must NOT be 'split'. Modularity Q is high (the clusters hold all the edges) but
+    it's a sparse-graph artifact, not real structure (the owner-api/utils case found
+    cross-repo: 3 edges over 12 files, Q=0.44, 58% isolated). The connectivity guard
+    downgrades it to 'leave'."""
+    edges = [
+        make_import_edge("p.a", "p.b"),
+        make_import_edge("p.b", "p.c"),
+        make_import_edge("p.a", "p.c"),  # cluster 1: a-b-c triangle
+        make_import_edge("p.x", "p.y"),  # cluster 2: x-y
+    ]
+    files = [make_file_node(f"p.{n}") for n in ("a", "b", "c", "x", "y")]
+    files += [make_file_node(f"p.h{i}") for i in range(7)]  # 7 isolated helpers
+    db = _store_with(tmp_path, files, edges)
+    report = suggest_packages(db, prefix="p")
+    assert report.modularity_q >= 0.35  # Q alone would say 'split'...
+    assert report.connected_fraction < 0.5  # ...but only 5/12 files are coupled
+    assert report.verdict == "leave"  # so the guard downgrades it
+    assert report.note is not None
+    assert "sparse-graph artifact" in report.note
+
+
+def test_suggest_dense_split_survives_connectivity_guard(tmp_path: Path) -> None:
+    """The guard must NOT over-suppress: a genuinely dense, well-clustered package
+    (all files coupled) still reads 'split'."""
+    db = _store_with(tmp_path, *_two_clusters())  # two 3-cliques, every file coupled
+    report = suggest_packages(db, prefix="p")
+    assert report.connected_fraction == pytest.approx(1.0)
+    assert report.verdict == "split"
+
+
 def _two_clusters_nested() -> tuple[list[Node], list[Edge]]:
     """Two cliques whose directory layout (core/ and io/) MATCHES the communities."""
     groups = {"core": ("a", "b", "c"), "io": ("x", "y", "z")}

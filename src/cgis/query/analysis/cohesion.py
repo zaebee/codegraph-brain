@@ -242,8 +242,18 @@ def layout_direction(p_comm: Mapping[str, Hashable], p_dir: Mapping[str, Hashabl
 
 Verdict = Literal["split", "consolidate", "aligned", "leave", "borderline", "no_signal"]
 
-#: Default thresholds (cross-validated for Q; divergence is provisional, #242 spec).
-THRESHOLDS: dict[str, float] = {"split": 0.35, "leave": 0.25, "divergence": 0.2}
+#: Default thresholds. ``split``/``leave`` are cross-validated for Q; ``divergence``
+#: is provisional (#242 spec). ``min_connected`` is the minimum fraction of files
+#: with an intra-package edge before a split/borderline verdict is trusted —
+#: modularity Q is unreliable on a near-disconnected graph, where a single tiny
+#: cluster inflates Q on a package of otherwise-independent files (calibrated on
+#: owner-api/utils 0.42 vs cgis.query 0.68 — see #242 follow-up).
+THRESHOLDS: dict[str, float] = {
+    "split": 0.35,
+    "leave": 0.25,
+    "divergence": 0.2,
+    "min_connected": 0.5,
+}
 
 
 def classify_verdict(
