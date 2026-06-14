@@ -232,18 +232,23 @@ def _fake_ollama_client(resp: object) -> AsyncMock:
 async def test_ollama_provider_structured_uses_json_format_and_records_usage() -> None:
     """generate_structured sends format='json' and maps eval counts to usage."""
     pytest.importorskip("ollama")  # optional guardian-group dep
+
+    class _Schema(BaseModel):
+        x: int
+
     resp = SimpleNamespace(
-        message=SimpleNamespace(content='{"findings": [], "summary": "ok"}'),
+        message=SimpleNamespace(content='{"x": 1}'),
         prompt_eval_count=11,
         eval_count=4,
     )
     fake_client = _fake_ollama_client(resp)
     provider = OllamaProvider(model_name="m", host="http://localhost:11435")
     with patch("ollama.AsyncClient", return_value=fake_client):
-        out = await provider.generate_structured("sys", "usr", schema=BaseModel)
-    assert out == '{"findings": [], "summary": "ok"}'
+        out = await provider.generate_structured("sys", "usr", schema=_Schema)
+    assert out == '{"x": 1}'
     kwargs = fake_client.chat.call_args.kwargs
-    assert kwargs["format"] == "json"
+    # schema-constrained decoding (not plain "json") → conformant object from small models
+    assert kwargs["format"]["title"] == "_Schema"  # schema dict, not the literal "json"
     assert kwargs["options"]["num_ctx"] == 32768  # explicit window → no silent truncation
     assert provider.cumulative_usage.prompt_tokens == 11
     assert provider.cumulative_usage.completion_tokens == 4

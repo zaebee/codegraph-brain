@@ -39,8 +39,16 @@ class OllamaProvider(BaseProvider):
         self._timeout = timeout
         self._num_ctx = num_ctx
 
-    async def _generate(self, system_prompt: str, user_prompt: str, *, json_mode: bool) -> str:
-        """Shared transport: one non-streaming chat call, optional JSON format."""
+    async def _generate(
+        self, system_prompt: str, user_prompt: str, *, fmt: str | dict[str, object]
+    ) -> str:
+        """Shared transport: one non-streaming chat call.
+
+        fmt is "" (free text), "json" (valid JSON, any shape), or a JSON Schema
+        dict (constrained decoding — forces a schema-conformant object). Small
+        local models emit null in required fields under plain "json"; the schema
+        form prevents that.
+        """
         _install_hint = "ollama is required. Install with: uv sync --group guardian"
         try:
             from ollama import AsyncClient  # noqa: PLC0415
@@ -55,7 +63,7 @@ class OllamaProvider(BaseProvider):
                     {"role": "user", "content": user_prompt},
                 ],
                 stream=False,
-                format="json" if json_mode else "",
+                format=fmt,
                 options={"num_ctx": self._num_ctx},
             )
         content = response.message.content
@@ -72,7 +80,7 @@ class OllamaProvider(BaseProvider):
 
     async def generate_content(self, system_prompt: str, user_prompt: str) -> str:
         """Send prompts to Ollama and return the text response."""
-        return await self._generate(system_prompt, user_prompt, json_mode=False)
+        return await self._generate(system_prompt, user_prompt, fmt="")
 
     async def generate_structured(
         self,
@@ -80,11 +88,10 @@ class OllamaProvider(BaseProvider):
         user_prompt: str,
         schema: type[BaseModel],
     ) -> str:
-        """Send prompts in JSON mode (format="json").
+        """Send prompts with Ollama's schema-constrained format (structured output).
 
-        Like Mistral's json_object mode, Ollama's "json" format takes no schema —
-        the schema is described in the user prompt (spec §2.4); the argument
-        exists to satisfy the BaseProvider contract.
+        Passing the model's JSON Schema makes Ollama constrain decoding to a
+        conformant object — small local models otherwise emit null in required
+        fields under plain "json" mode, which fails strict validation downstream.
         """
-        del schema
-        return await self._generate(system_prompt, user_prompt, json_mode=True)
+        return await self._generate(system_prompt, user_prompt, fmt=schema.model_json_schema())
