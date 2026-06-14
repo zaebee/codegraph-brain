@@ -100,6 +100,8 @@ async def _run_one(truth: GroundTruth, run_idx: int, results_path: Path) -> None
                 db_path=worktree / "graph.db",
                 base_ref=truth.base,
                 features=features,
+                # GUARDIAN_NO_GRAPH → diff-only prompt that fits a small local window.
+                include_graph=not (os.environ.get("GUARDIAN_NO_GRAPH") or "").strip(),
             )
             routed = await run_review_routed(
                 provider=provider,
