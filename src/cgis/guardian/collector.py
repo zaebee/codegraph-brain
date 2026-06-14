@@ -47,6 +47,7 @@ class ContextCollector:
         base_ref: str | None = None,
         source_root: str = "src",
         features: frozenset[str] = frozenset(),
+        include_graph: bool = True,
     ) -> None:
         """Set project root, diff base (branch or explicit ref), and optional graph DB.
 
@@ -58,6 +59,10 @@ class ContextCollector:
         so changed-file paths are stripped of it before lookup.
 
         features gates the optional context sections (spec §4): "full_files", "flow", "drift".
+
+        include_graph=False drops the impact-graph Mermaid section — a "diff-only"
+        prompt that fits a smaller context window (e.g. a local Ollama model whose
+        window is exceeded once the graph is appended).
         """
         self.project_root = project_root
         self.base_branch = base_branch
@@ -65,6 +70,7 @@ class ContextCollector:
         self.base_ref = base_ref
         self.source_root = source_root
         self.features = features
+        self.include_graph = include_graph
         self.graph_stats: dict[str, int] = {"total": 0, "with_graph": 0, "flow_fallback": 0}
         self._diff_cache: str | None = None
 
@@ -191,6 +197,8 @@ class ContextCollector:
 
     def collect_graph_context(self) -> str:
         """Query graph.db for impact graphs of changed files; return Mermaid blocks."""
+        if not self.include_graph:
+            return ""  # diff-only prompt (fits a smaller context window)
         if self.db_path is None or not self.db_path.exists():
             return ""
         changed_files = self.get_changed_py_files()
