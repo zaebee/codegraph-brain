@@ -141,8 +141,16 @@ def _best_merge(
     a_of = {c: sum(deg[f] for f in members[c]) / m2 for c in labels}
     for i, c1 in enumerate(labels):
         for c2 in labels[i + 1 :]:
+            # Sum edge weight between c1 and c2 over c1's actual neighbours
+            # (sparse, O(deg)) rather than a |c1|*|c2| Cartesian scan.
             e_ij = (
-                sum(graph.adj.get(f, {}).get(g, 0.0) for f in members[c1] for g in members[c2]) / m2
+                sum(
+                    w
+                    for f in members[c1]
+                    for g, w in graph.adj.get(f, {}).items()
+                    if g in members[c2]
+                )
+                / m2
             )
             if e_ij <= 0.0:  # disconnected (weights are non-negative); merging can't raise Q
                 continue
