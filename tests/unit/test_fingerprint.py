@@ -454,6 +454,7 @@ def _onehot(name: str) -> tuple[float, ...]:
 def _tangle_fp(
     t_imports: tuple[float, ...] = _ZEROS,
     t_calls: tuple[float, ...] = _ZEROS,
+    unresolved_ratio: float = 0.0,
 ) -> PatternFingerprint:
     return PatternFingerprint(
         domain="d",
@@ -463,7 +464,7 @@ def _tangle_fp(
         dag_depth=0,
         router_count=0,
         cycle_ratio=0.0,
-        unresolved_ratio=0.0,
+        unresolved_ratio=unresolved_ratio,
         t_imports=t_imports,
         t_calls=t_calls,
     )
@@ -482,3 +483,30 @@ def test_tangle_ratio_takes_worst_layer() -> None:
 def test_tangle_ratio_pure_dag_is_zero() -> None:
     fp = _tangle_fp(t_imports=_onehot("030T"), t_calls=_onehot("021C"))
     assert fp.tangle_ratio == pytest.approx(0.0)
+
+
+# ── #244: CALLS-layer tangle faded by (1 - unresolved_ratio) ──────────────────
+
+
+def test_tangle_ratio_discounts_calls_layer_by_unresolved() -> None:
+    # calls = pure mesh (tangle 1.0), half the calls unresolved → discount 0.5.
+    fp = _tangle_fp(t_calls=_onehot("300"), unresolved_ratio=0.5)
+    assert fp.tangle_ratio == pytest.approx(0.5)
+
+
+def test_tangle_ratio_fully_unresolved_calls_fade_to_zero() -> None:
+    # all calls unresolved → discount 0 → calls-tangle cannot trip the gate.
+    fp = _tangle_fp(t_calls=_onehot("300"), unresolved_ratio=1.0)
+    assert fp.tangle_ratio == pytest.approx(0.0)
+
+
+def test_tangle_ratio_imports_layer_is_not_discounted() -> None:
+    # imports are always resolved — unresolved_ratio must not fade import tangle.
+    fp = _tangle_fp(t_imports=_onehot("300"), unresolved_ratio=0.9)
+    assert fp.tangle_ratio == pytest.approx(1.0)
+
+
+def test_tangle_ratio_resolved_calls_unchanged() -> None:
+    # unresolved_ratio 0 → discount 1 → calls-tangle unchanged (regression guard).
+    fp = _tangle_fp(t_calls=_onehot("300"), unresolved_ratio=0.0)
+    assert fp.tangle_ratio == pytest.approx(1.0)
