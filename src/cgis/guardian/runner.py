@@ -14,12 +14,18 @@ from cgis.guardian.metrics import record_review
 from cgis.guardian.providers.base import BaseProvider, ProviderUsage
 from cgis.guardian.providers.gemini import GeminiProvider
 from cgis.guardian.providers.mistral import MistralProvider
+from cgis.guardian.providers.ollama import OllamaProvider
 from cgis.guardian.render import render_report
 
 log = structlog.getLogger(__name__)
 
 DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
 DEFAULT_MISTRAL_MODEL = "mistral-medium-latest"
+
+
+def _ollama_host(env: Mapping[str, str]) -> str | None:
+    """GUARDIAN_OLLAMA_HOST, or None so the ollama client uses localhost:11434."""
+    return env.get("GUARDIAN_OLLAMA_HOST") or None
 
 
 def build_provider(env: Mapping[str, str]) -> tuple[BaseProvider, str]:
@@ -43,8 +49,14 @@ def build_provider(env: Mapping[str, str]) -> tuple[BaseProvider, str]:
         model = model_override or DEFAULT_GEMINI_MODEL
         return GeminiProvider(api_key=gemini_key, model_name=model), model
 
-    if provider_name and provider_name != "mistral":
-        _msg = f"Unknown GUARDIAN_PROVIDER={provider_name!r}. Use 'mistral' or 'gemini'."
+    if provider_name == "ollama":
+        if not model_override:
+            _msg = "GUARDIAN_MODEL must name an Ollama model when GUARDIAN_PROVIDER=ollama"
+            raise RuntimeError(_msg)
+        return OllamaProvider(model_name=model_override, host=_ollama_host(env)), model_override
+
+    if provider_name and provider_name not in ("mistral", "gemini", "ollama"):
+        _msg = f"Unknown GUARDIAN_PROVIDER={provider_name!r}. Use 'mistral', 'gemini', or 'ollama'."
         raise RuntimeError(_msg)
 
     gemini_key = env.get("GEMINI_API_KEY")
@@ -62,18 +74,28 @@ def build_skeptic_provider(
     """Return (skeptic_provider, model) or None for single-pass (spec §5.5).
 
     Default skeptic = the provider opposite to the primary; GUARDIAN_SKEPTIC
-    overrides ('gemini'|'mistral'|'off'); GUARDIAN_SKEPTIC_MODEL overrides the
-    model, enabling same-provider/different-model pairs. A missing API key
-    degrades to None — a review never fails because of the skeptic.
+    overrides ('gemini'|'mistral'|'ollama'|'off'); GUARDIAN_SKEPTIC_MODEL overrides
+    the model, enabling same-provider/different-model pairs (incl. two distinct
+    local Ollama models — a cross-model skeptic with no API cost). A missing API
+    key / model degrades to None — a review never fails because of the skeptic.
     """
     choice = env.get("GUARDIAN_SKEPTIC", "").lower()
     if choice == "off":
         return None
-    if choice not in ("", "gemini", "mistral"):
+    if choice not in ("", "gemini", "mistral", "ollama"):
         log.warning("Unknown GUARDIAN_SKEPTIC; skeptic disabled.", value=choice)
         return None
     name = choice or ("mistral" if primary == "gemini" else "gemini")
     model_override = env.get("GUARDIAN_SKEPTIC_MODEL")
+    if name == "ollama":
+        model = model_override or env.get("GUARDIAN_MODEL")
+        if not model:
+            log.warning(
+                "Skeptic disabled: set GUARDIAN_SKEPTIC_MODEL (or GUARDIAN_MODEL) "
+                "for an ollama skeptic."
+            )
+            return None
+        return OllamaProvider(model_name=model, host=_ollama_host(env)), model
     if name == "mistral":
         key = env.get("MISTRAL_API_KEY")
         if not key:

@@ -24,6 +24,7 @@ from cgis.guardian.bench import GroundTruth, load_ground_truth, match_findings, 
 from cgis.guardian.chunked import run_review_routed
 from cgis.guardian.collector import ContextCollector, parse_features
 from cgis.guardian.providers.mistral import MistralProvider
+from cgis.guardian.providers.ollama import OllamaProvider
 from cgis.guardian.runner import build_provider, build_skeptic_provider
 from cgis.guardian.skeptic import visible_findings
 
@@ -74,7 +75,12 @@ def _append_jsonl(path: Path, entry: dict[str, object]) -> None:
 async def _run_one(truth: GroundTruth, run_idx: int, results_path: Path) -> None:
     """Replay one PR once: worktree → ingest → review → score → JSONL line."""
     provider, model = build_provider(os.environ)
-    primary = "mistral" if isinstance(provider, MistralProvider) else "gemini"
+    if isinstance(provider, MistralProvider):
+        primary = "mistral"
+    elif isinstance(provider, OllamaProvider):
+        primary = "ollama"
+    else:
+        primary = "gemini"
     # Bench requires explicit opt-in: an implicit skeptic default would silently
     # change scoring vs the committed baseline (review runs keep the implicit default).
     skeptic = (

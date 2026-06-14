@@ -169,6 +169,10 @@ module = "mistralai.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+module = "ollama.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 module = "mcp.*"
 ignore_missing_imports = true
 
