@@ -207,6 +207,28 @@ Whole-graph architectural metrics — coupling bottlenecks + God classes (#16).
 
 ---
 
+## `cgis_suggest_packages`
+
+Suggest sub-package boundaries for a package from its dependency communities.
+
+    Returns JSON: modularity_q, divergence, direction (under/over/matched),
+    verdict (split/consolidate/aligned/leave/borderline/no_signal), the detected
+    communities (id + member files), the cross-community bridge edges (cost of
+    splitting), and the thresholds used. Default layer is IMPORTS; set
+    ``with_calls`` for the combined import+call graph. Run ``cgis_ingest`` first.
+
+    A mis-rooted graph (import targets resolve to no internal file) returns
+    ``no_signal`` with a diagnostic note rather than a silent clean verdict.
+
+| Argument | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `db_path` | `string` |  |  |
+| `prefix` | `any` |  |  |
+| `with_calls` | `boolean` |  |  |
+| `min_q` | `number` |  |  |
+
+---
+
 ## `cgis_trace_flow`
 
 Trace the execution call-graph starting from a specific FQN downwards.
