@@ -3,8 +3,8 @@
 import structlog
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
-from cgis.query._scc import build_adjacency, tarjan_scc
-from cgis.query.anomaly import AnomalyType, ArchitecturalAnomaly, ArchitecturalReport
+from cgis.query.analysis.anomaly import AnomalyType, ArchitecturalAnomaly, ArchitecturalReport
+from cgis.query.drift._scc import build_adjacency, tarjan_scc
 from cgis.storage.sqlite_store import SQLiteStore
 
 log = structlog.getLogger(__name__)

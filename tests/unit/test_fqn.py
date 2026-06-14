@@ -38,10 +38,10 @@ def test_exact_match(tmp_path: Path) -> None:
 
 def test_unique_suffix_resolves(tmp_path: Path) -> None:
     """A unique dot-boundary suffix resolves to the full FQN with via_suffix=True."""
-    db = _seed_store(tmp_path / "fqn.db", ["src.cgis.query.triads.tv_distance"])
+    db = _seed_store(tmp_path / "fqn.db", ["src.cgis.query.drift.triads.tv_distance"])
     with SQLiteStore(str(db)) as store:
         res = resolve_fqn(store, "tv_distance")
-    assert res.resolved == "src.cgis.query.triads.tv_distance"
+    assert res.resolved == "src.cgis.query.drift.triads.tv_distance"
     assert res.via_suffix is True
     assert res.truncated is False
 

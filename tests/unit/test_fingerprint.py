@@ -8,8 +8,8 @@ from conftest import module_with_funcs
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
 from cgis.extractors.python_extractor import PythonExtractor
 from cgis.pipeline import IngestionPipeline
-from cgis.query.fingerprint import FingerprintExtractor, PatternFingerprint
-from cgis.query.triads import TRIAD_ORDER
+from cgis.query.drift.fingerprint import FingerprintExtractor, PatternFingerprint
+from cgis.query.drift.triads import TRIAD_ORDER
 from cgis.storage.sqlite_store import SQLiteStore
 
 # ── helpers ──────────────────────────────────────────────────────────────────

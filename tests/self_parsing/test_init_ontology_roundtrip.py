@@ -3,8 +3,8 @@
 from pathlib import Path
 
 from cgis.core.models import Edge, Node
-from cgis.query.drift_service import DriftAnalysis, analyze_drift
-from cgis.query.ontology_init import propose_ontology
+from cgis.query.drift.drift_service import DriftAnalysis, analyze_drift
+from cgis.query.drift.ontology_init import propose_ontology
 from cgis.storage.sqlite_store import SQLiteStore
 
 

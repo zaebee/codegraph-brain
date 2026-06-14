@@ -1,7 +1,7 @@
 """Unit tests for HealthScorer."""
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
-from cgis.query.health import HealthScorer
+from cgis.query.analysis.health import HealthScorer
 
 
 def _node(fqn: str, ntype: NodeType = NodeType.FUNCTION, fp: str = "a.py") -> Node:

@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from cgis.query.drift import DomainConfig, DriftScorer
-from cgis.query.fingerprint import PatternFingerprint
-from cgis.query.triads import TRIAD_ORDER
+from cgis.query.drift.drift import DomainConfig, DriftScorer
+from cgis.query.drift.fingerprint import PatternFingerprint
+from cgis.query.drift.triads import TRIAD_ORDER
 
 # ── minimal YAML for tests ────────────────────────────────────────────────────
 

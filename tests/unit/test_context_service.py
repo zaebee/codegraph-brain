@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
-from cgis.query.context_service import build_context
+from cgis.query.context.context_service import build_context
 from cgis.storage.sqlite_store import SQLiteStore
 
 

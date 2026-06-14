@@ -8,8 +8,8 @@ from typing import Any, Literal
 
 import yaml
 
-from cgis.query.fingerprint import PatternFingerprint
-from cgis.query.triads import TRIAD_ORDER, ZERO_TRIADS, tv_distance
+from cgis.query.drift.fingerprint import PatternFingerprint
+from cgis.query.drift.triads import TRIAD_ORDER, ZERO_TRIADS, tv_distance
 
 _COMPONENT_NAMES = (
     "hub_count",

@@ -1,4 +1,4 @@
-"""Unit tests for cgis.query.suggest_service — package-cohesion orchestration (#242)."""
+"""Unit tests for cgis.query.analysis.suggest_service — package-cohesion orchestration (#242)."""
 
 from pathlib import Path
 
@@ -6,7 +6,7 @@ import pytest
 from conftest import make_file_node, make_import_edge
 
 from cgis.core.models import Edge, Node
-from cgis.query.suggest_service import suggest_packages
+from cgis.query.analysis.suggest_service import suggest_packages
 from cgis.storage.sqlite_store import SQLiteStore
 
 

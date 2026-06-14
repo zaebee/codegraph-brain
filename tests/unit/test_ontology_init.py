@@ -7,9 +7,9 @@ import yaml
 from conftest import make_chain_nodes_edges, module_with_funcs
 
 from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeType
-from cgis.query.drift_service import analyze_drift
-from cgis.query.fingerprint import FingerprintExtractor, PatternFingerprint
-from cgis.query.ontology_init import (
+from cgis.query.drift.drift_service import analyze_drift
+from cgis.query.drift.fingerprint import FingerprintExtractor, PatternFingerprint
+from cgis.query.drift.ontology_init import (
     _DEFAULT_ONTOLOGY_HEADER,
     _baseline_lines,
     discover_domains,

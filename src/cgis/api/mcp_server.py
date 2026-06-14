@@ -16,16 +16,16 @@ from cgis.core.models import Edge, Node, NodeType
 from cgis.extractors.python_extractor import PythonExtractor
 from cgis.extractors.typescript_extractor import TypeScriptExtractor
 from cgis.pipeline import IngestionPipeline
-from cgis.query.audit import audit_reachability
-from cgis.query.context_service import build_context
-from cgis.query.drift_service import analyze_drift
+from cgis.query.analysis.suggest_service import report_to_dict, suggest_packages
+from cgis.query.context.audit import audit_reachability
+from cgis.query.context.context_service import build_context
+from cgis.query.drift.drift_service import analyze_drift
+from cgis.query.drift.ontology_init import propose_ontology
 from cgis.query.engine import QueryEngine
 from cgis.query.fqn import resolve_fqn
-from cgis.query.graph_json import graph_to_json
-from cgis.query.mermaid import MermaidCompiler
-from cgis.query.metrics import DuckDBAnalyzer
-from cgis.query.ontology_init import propose_ontology
-from cgis.query.suggest_service import report_to_dict, suggest_packages
+from cgis.query.render.graph_json import graph_to_json
+from cgis.query.render.mermaid import MermaidCompiler
+from cgis.query.render.metrics import DuckDBAnalyzer
 from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 
 print("CGIS MCP Server starting…", file=sys.stderr)

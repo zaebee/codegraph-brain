@@ -10,7 +10,7 @@ Six invariants are enforced:
 """
 
 from cgis.core.models import Edge, EdgeType, Node
-from cgis.query.analyzer import AnalyzerEngine
+from cgis.query.analysis.analyzer import AnalyzerEngine
 from cgis.storage.sqlite_store import SQLiteStore
 
 # ---------------------------------------------------------------------------
@@ -181,7 +181,7 @@ _KNOWN_GOD_OBJECTS = frozenset(
     {
         "storage.sqlite_store.SQLiteStore",  # data-access layer — many CRUD methods by design
         "extractors.typescript_extractor.TypeScriptExtractor",  # complex AST visitor
-        "query.drift.DriftScorer",  # drift scoring — multiple constraint/weight/param operations
+        "query.drift.drift.DriftScorer",  # drift scoring — many ops; #242 slice-2 query/drift/ subpkg  # noqa: E501
         "guardian.collector.ContextCollector",  # slice-2 chunked: _graph_sections + collect_for_chunk  # noqa: E501
     }
 )

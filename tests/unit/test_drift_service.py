@@ -6,7 +6,7 @@ import pytest
 from conftest import fit_patterns_yaml, instar_db, module_with_funcs, triangle_db
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
-from cgis.query.drift_service import DriftAnalysis, analyze_drift
+from cgis.query.drift.drift_service import DriftAnalysis, analyze_drift
 from cgis.storage.sqlite_store import SQLiteStore
 
 _YAML = """\

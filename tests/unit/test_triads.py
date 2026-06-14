@@ -3,7 +3,7 @@
 import pytest
 
 from cgis.core.models import Edge, EdgeType
-from cgis.query.triads import (
+from cgis.query.drift.triads import (
     _TANGLE_WEIGHTS,
     TRIAD_ORDER,
     ZERO_TRIADS,

@@ -14,9 +14,9 @@ enclosing class is recovered separately from the structural layer.
 from pathlib import Path
 
 from cgis.core.models import EdgeType, Node, NodeNamespace, NodeType
+from cgis.query.context.prompt import compile_context
+from cgis.query.context.snippet import extract_snippet
 from cgis.query.engine import QueryEngine
-from cgis.query.prompt import compile_context
-from cgis.query.snippet import extract_snippet
 from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 
 _CALLS: frozenset[EdgeType] = frozenset({EdgeType.CALLS})

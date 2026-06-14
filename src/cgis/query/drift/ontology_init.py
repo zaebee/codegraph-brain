@@ -14,8 +14,8 @@ from pathlib import Path
 import yaml
 
 from cgis.core.models import VIRTUAL_FILE_PATH, Node
-from cgis.query.drift import DomainConfig, DriftScorer
-from cgis.query.fingerprint import FingerprintExtractor, PatternFingerprint
+from cgis.query.drift.drift import DomainConfig, DriftScorer
+from cgis.query.drift.fingerprint import FingerprintExtractor, PatternFingerprint
 from cgis.storage.sqlite_store import SQLiteStore
 
 # ---------------------------------------------------------------------------
