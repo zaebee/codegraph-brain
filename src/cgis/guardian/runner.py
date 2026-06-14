@@ -14,7 +14,7 @@ from cgis.guardian.metrics import record_review
 from cgis.guardian.providers.base import BaseProvider, ProviderUsage
 from cgis.guardian.providers.gemini import GeminiProvider
 from cgis.guardian.providers.mistral import MistralProvider
-from cgis.guardian.providers.ollama import OllamaProvider
+from cgis.guardian.providers.ollama import DEFAULT_OLLAMA_NUM_CTX, OllamaProvider
 from cgis.guardian.render import render_report
 
 log = structlog.getLogger(__name__)
@@ -30,6 +30,18 @@ def _ollama_host(env: Mapping[str, str]) -> str | None:
     env var never reaches the client as an invalid host.
     """
     return (env.get("GUARDIAN_OLLAMA_HOST") or "").strip() or None
+
+
+def _ollama_num_ctx(env: Mapping[str, str]) -> int:
+    """GUARDIAN_OLLAMA_NUM_CTX as an int, or the provider default (avoids silent truncation)."""
+    raw = (env.get("GUARDIAN_OLLAMA_NUM_CTX") or "").strip()
+    if not raw:
+        return DEFAULT_OLLAMA_NUM_CTX
+    try:
+        return int(raw)
+    except ValueError:
+        log.warning("Invalid GUARDIAN_OLLAMA_NUM_CTX; using default.", value=raw)
+        return DEFAULT_OLLAMA_NUM_CTX
 
 
 def _build_mistral(env: Mapping[str, str], model_override: str | None) -> tuple[BaseProvider, str]:
@@ -57,7 +69,10 @@ def _build_ollama(env: Mapping[str, str], model_override: str | None) -> tuple[B
     if not model_override:
         _msg = "GUARDIAN_MODEL must name an Ollama model when GUARDIAN_PROVIDER=ollama"
         raise RuntimeError(_msg)
-    return OllamaProvider(model_name=model_override, host=_ollama_host(env)), model_override
+    provider = OllamaProvider(
+        model_name=model_override, host=_ollama_host(env), num_ctx=_ollama_num_ctx(env)
+    )
+    return provider, model_override
 
 
 def build_provider(env: Mapping[str, str]) -> tuple[BaseProvider, str]:
@@ -114,7 +129,10 @@ def build_skeptic_provider(
                 "for an ollama skeptic."
             )
             return None
-        return OllamaProvider(model_name=model, host=_ollama_host(env)), model
+        provider = OllamaProvider(
+            model_name=model, host=_ollama_host(env), num_ctx=_ollama_num_ctx(env)
+        )
+        return provider, model
     if name == "mistral":
         key = env.get("MISTRAL_API_KEY")
         if not key:

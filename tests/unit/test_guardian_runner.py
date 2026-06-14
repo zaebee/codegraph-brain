@@ -176,6 +176,15 @@ def test_build_provider_ollama_selects_model_and_host() -> None:
     assert provider._host == "http://localhost:11435"  # noqa: SLF001  # white-box: host wiring
 
 
+def test_build_provider_ollama_num_ctx_from_env() -> None:
+    """GUARDIAN_OLLAMA_NUM_CTX overrides the default context window (VRAM/length tuning)."""
+    provider, _ = build_provider(
+        {"GUARDIAN_PROVIDER": "ollama", "GUARDIAN_MODEL": "m", "GUARDIAN_OLLAMA_NUM_CTX": "8192"}
+    )
+    assert isinstance(provider, OllamaProvider)
+    assert provider._num_ctx == 8192  # noqa: SLF001  # white-box: ctx wiring
+
+
 def test_build_provider_unknown_lists_ollama() -> None:
     """A typo in GUARDIAN_PROVIDER names all three valid providers."""
     with pytest.raises(RuntimeError, match="'mistral', 'gemini', or 'ollama'"):
@@ -233,7 +242,9 @@ async def test_ollama_provider_structured_uses_json_format_and_records_usage() -
     with patch("ollama.AsyncClient", return_value=fake_client):
         out = await provider.generate_structured("sys", "usr", schema=BaseModel)
     assert out == '{"findings": [], "summary": "ok"}'
-    assert fake_client.chat.call_args.kwargs["format"] == "json"
+    kwargs = fake_client.chat.call_args.kwargs
+    assert kwargs["format"] == "json"
+    assert kwargs["options"]["num_ctx"] == 32768  # explicit window → no silent truncation
     assert provider.cumulative_usage.prompt_tokens == 11
     assert provider.cumulative_usage.completion_tokens == 4
 
