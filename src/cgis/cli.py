@@ -31,6 +31,7 @@ from cgis.query.health import HealthScorer
 from cgis.query.mermaid import MermaidCompiler
 from cgis.query.metrics import ArchitectureReport, DuckDBAnalyzer
 from cgis.query.ontology_init import propose_ontology
+from cgis.query.suggest_service import SuggestReport, report_to_dict, suggest_packages
 from cgis.resolver.uplift import SemanticUpliftEngine
 from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 
@@ -73,6 +74,13 @@ class OutputFormat(StrEnum):
 
 class DriftOutputFormat(StrEnum):
     """Supported output formats for the drift command."""
+
+    TEXT = "text"
+    JSON = "json"
+
+
+class SuggestOutputFormat(StrEnum):
+    """Supported output formats for the suggest-packages command."""
 
     TEXT = "text"
     JSON = "json"
@@ -1350,6 +1358,85 @@ def audit(
     # Exit non-zero when gaps exist so `cgis audit` can gate CI like a linter.
     if result.gaps:
         raise typer.Exit(code=1)
+
+
+_VERDICT_LABEL = {
+    "split": "✂️  SPLIT",
+    "consolidate": "🔗 CONSOLIDATE",
+    "aligned": "✅ ALIGNED",
+    "leave": "· LEAVE",
+    "borderline": "🟡 BORDERLINE",
+    "no_signal": "◌ no signal",
+}
+
+
+def _render_suggest(report: SuggestReport) -> None:
+    """Render a SuggestReport: verdict, metrics, communities, and bridge edges."""
+    console.print(
+        f"[bold]{_VERDICT_LABEL.get(report.verdict, report.verdict)}[/bold]  "
+        f"{escape(report.package)}  "
+        f"[dim]Q={report.modularity_q:.3f}  divergence={report.divergence:.3f}  "
+        f"direction={report.direction}  ({report.layer})[/dim]"
+    )
+    if report.note:
+        console.print(f"  [dim]{escape(report.note)}[/dim]")
+        return
+    comm_table = Table(title="Communities")
+    comm_table.add_column("#", justify="right", style="cyan")
+    comm_table.add_column("Files", style="white")
+    for c in report.communities:
+        comm_table.add_row(str(c.id), escape(", ".join(c.files)))
+    console.print(comm_table)
+    if report.bridges:
+        bridge_table = Table(title="Bridge edges (cost of splitting)")
+        bridge_table.add_column("Source", style="yellow")
+        bridge_table.add_column("Target", style="yellow")
+        bridge_table.add_column("Weight", justify="right", style="magenta")
+        for b in report.bridges:
+            bridge_table.add_row(escape(b.source), escape(b.target), f"{b.weight:.0f}")
+        console.print(bridge_table)
+
+
+@app.command(name="suggest-packages")
+def suggest_packages_cmd(
+    prefix: str = typer.Argument(
+        ..., help="FQN prefix of the package to analyze (e.g. cgis.query)."
+    ),
+    db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
+    with_calls: bool = typer.Option(
+        False, "--with-calls", help="Include CALLS edges (combined graph), not just IMPORTS."
+    ),
+    output_format: SuggestOutputFormat = typer.Option(
+        SuggestOutputFormat.TEXT, "--format", "-f", help=_TEXT_JSON_FORMAT_HELP
+    ),
+    min_q: float = typer.Option(
+        0.35,
+        "--min-q",
+        min=0.0,
+        max=1.0,
+        help="Modularity threshold above which a divergent package is flagged 'split'.",
+    ),
+) -> None:
+    """Suggest sub-package boundaries from a package's dependency communities.
+
+    Detects communities (greedy modularity Q) over the intra-package import
+    graph, measures how far the directory layout diverges (1-NMI), and reports a
+    verdict (split / consolidate / aligned / leave / borderline). Advisory —
+    always exits 0 on success. Run `ingest` first.
+    """
+    if not Path(db).is_file():
+        console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
+        raise typer.Exit(code=1)
+    try:
+        report = suggest_packages(db, prefix, with_calls=with_calls, min_q=min_q)
+    except Exception as e:
+        console.print(f"[bold red]❌ Error during suggest-packages:[/bold red] {e}")
+        raise typer.Exit(code=1) from e
+
+    if output_format == SuggestOutputFormat.JSON:
+        typer.echo(_json.dumps(report_to_dict(report), indent=2))
+        return
+    _render_suggest(report)
 
 
 if __name__ == "__main__":  # pragma: no cover

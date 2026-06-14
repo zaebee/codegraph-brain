@@ -25,6 +25,7 @@ from cgis.query.graph_json import graph_to_json
 from cgis.query.mermaid import MermaidCompiler
 from cgis.query.metrics import DuckDBAnalyzer
 from cgis.query.ontology_init import propose_ontology
+from cgis.query.suggest_service import report_to_dict, suggest_packages
 from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 
 print("CGIS MCP Server starting…", file=sys.stderr)
@@ -274,6 +275,33 @@ def cgis_drift(
         return json.dumps(payload, indent=2)
     except Exception as exc:
         return f"❌ {exc}"
+
+
+@mcp.tool()
+def cgis_suggest_packages(
+    db_path: str = _DEFAULT_DB,
+    prefix: str | None = None,
+    with_calls: bool = False,
+    min_q: float = 0.35,
+) -> str:
+    """Suggest sub-package boundaries for a package from its dependency communities.
+
+    Returns JSON: modularity_q, divergence, direction (under/over/matched),
+    verdict (split/consolidate/aligned/leave/borderline/no_signal), the detected
+    communities (id + member files), the cross-community bridge edges (cost of
+    splitting), and the thresholds used. Default layer is IMPORTS; set
+    ``with_calls`` for the combined import+call graph. Run ``cgis_ingest`` first.
+
+    A mis-rooted graph (import targets resolve to no internal file) returns
+    ``no_signal`` with a diagnostic note rather than a silent clean verdict.
+    """
+    if not Path(db_path).exists():
+        return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
+    try:
+        report = suggest_packages(db_path, prefix, with_calls=with_calls, min_q=min_q)
+    except Exception as exc:
+        return f"❌ Error during suggest-packages: {exc}"
+    return json.dumps(report_to_dict(report), indent=2)
 
 
 @mcp.tool()

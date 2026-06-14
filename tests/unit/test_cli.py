@@ -4,7 +4,14 @@ import json
 import re
 from pathlib import Path
 
-from conftest import fit_patterns_yaml, make_chain_db, module_with_funcs, triangle_db
+from conftest import (
+    fit_patterns_yaml,
+    make_chain_db,
+    make_file_node,
+    make_import_edge,
+    module_with_funcs,
+    triangle_db,
+)
 from typer.testing import CliRunner
 
 from cgis.cli import _drift_status_label, app
@@ -1342,3 +1349,42 @@ def test_audit_requires_a_selector(tmp_path: Path) -> None:
     result = runner.invoke(app, ["audit", "verify_owner", "--db", db])
     assert result.exit_code == 2
     assert "from-type" in result.output
+
+
+# --- suggest-packages command tests ---
+
+
+def _suggest_db(tmp_path: Path) -> str:
+    """A db with two well-separated clusters under prefix 'p' (verdict: split)."""
+    files = [make_file_node(f"p.{n}") for n in ("a", "b", "c", "x", "y", "z")]
+    edges = [
+        make_import_edge(f"p.{s}", f"p.{t}")
+        for grp in (("a", "b", "c"), ("x", "y", "z"))
+        for s in grp
+        for t in grp
+        if s != t
+    ]
+    db = str(tmp_path / "suggest.db")
+    with SQLiteStore(db) as store:
+        store.save_graph(files, edges)
+    return db
+
+
+def test_suggest_packages_json(tmp_path: Path) -> None:
+    """suggest-packages --format json exits 0 and returns a valid report dict."""
+    db = _suggest_db(tmp_path)
+    result = runner.invoke(app, ["suggest-packages", "p", "--db", db, "--format", "json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert payload["package"] == "p"
+    valid_verdicts = {"split", "borderline", "aligned", "leave", "consolidate", "no_signal"}
+    assert payload["verdict"] in valid_verdicts
+    assert "direction" in payload
+    assert "modularity_q" in payload
+
+
+def test_suggest_packages_missing_db(tmp_path: Path) -> None:
+    """suggest-packages exits 1 and prints 'not found' when --db is absent."""
+    result = runner.invoke(app, ["suggest-packages", "p", "--db", str(tmp_path / "nope.db")])
+    assert result.exit_code == 1
+    assert "not found" in result.output.lower()
