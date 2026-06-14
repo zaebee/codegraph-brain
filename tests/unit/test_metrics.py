@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 
 from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeNamespace, NodeType
-from cgis.query import metrics as metrics_module
-from cgis.query.metrics import DuckDBAnalyzer
+from cgis.query.render import metrics as metrics_module
+from cgis.query.render.metrics import DuckDBAnalyzer
 from cgis.storage.sqlite_store import SQLiteStore
 
 

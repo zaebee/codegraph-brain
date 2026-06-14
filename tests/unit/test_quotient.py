@@ -3,10 +3,10 @@
 import pytest
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
-from cgis.query.drift import DomainConfig
-from cgis.query.fingerprint import FingerprintExtractor
-from cgis.query.quotient import QUOTIENT_PREFIX, build_quotient
-from cgis.query.triads import TRIAD_ORDER
+from cgis.query.drift.drift import DomainConfig
+from cgis.query.drift.fingerprint import FingerprintExtractor
+from cgis.query.drift.quotient import QUOTIENT_PREFIX, build_quotient
+from cgis.query.drift.triads import TRIAD_ORDER
 
 
 def _node(fqn: str) -> Node:

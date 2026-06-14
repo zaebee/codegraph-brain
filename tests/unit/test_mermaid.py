@@ -1,7 +1,7 @@
 """Unit test cases for mermaid queries."""
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
-from cgis.query.mermaid import MermaidCompiler, _fqn_slug, _node_slug
+from cgis.query.render.mermaid import MermaidCompiler, _fqn_slug, _node_slug
 
 
 def _make_node(node_id: str, node_type: NodeType = NodeType.FUNCTION) -> Node:

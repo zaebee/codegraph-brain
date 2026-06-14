@@ -1,7 +1,7 @@
 """Unit tests for the JSON graph serializer (#171)."""
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
-from cgis.query.graph_json import graph_to_json
+from cgis.query.render.graph_json import graph_to_json
 
 
 def _make_node(node_id: str, node_type: NodeType = NodeType.FUNCTION) -> Node:

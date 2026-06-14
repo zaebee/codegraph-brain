@@ -1,10 +1,10 @@
-"""Unit tests for cgis.query.cohesion — intra-package file graph builder (#242)."""
+"""Unit tests for cgis.query.analysis.cohesion — intra-package file graph builder (#242)."""
 
 import pytest
 from conftest import make_file_node, make_import_edge
 
 from cgis.core.models import Edge, EdgeType
-from cgis.query.cohesion import (
+from cgis.query.analysis.cohesion import (
     THRESHOLDS,
     FileGraph,
     build_file_graph,

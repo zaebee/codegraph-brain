@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
-from cgis.query.audit import audit_reachability
+from cgis.query.context.audit import audit_reachability
 from cgis.storage.sqlite_store import SQLiteStore
 
 

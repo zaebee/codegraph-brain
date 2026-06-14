@@ -1229,7 +1229,7 @@ def test_metrics_includes_pagerank_section(tmp_path: Path) -> None:
 # ── fit-quality rendering + roll-ups (#177) ───────────────────────────────────
 
 from cgis.cli import _fit_cell  # noqa: E402
-from cgis.query.drift import FitQuality  # noqa: E402
+from cgis.query.drift.drift import FitQuality  # noqa: E402
 
 
 def test_fit_cell_bands() -> None:

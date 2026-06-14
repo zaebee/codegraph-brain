@@ -6,10 +6,10 @@ from pathlib import Path
 from typing import Literal
 
 from cgis.core.models import Node
-from cgis.query.drift import DomainConfig, DriftReport, DriftScorer, FitQuality
-from cgis.query.fingerprint import FingerprintExtractor
-from cgis.query.ontology_init import discover_domains
-from cgis.query.quotient import build_quotient
+from cgis.query.drift.drift import DomainConfig, DriftReport, DriftScorer, FitQuality
+from cgis.query.drift.fingerprint import FingerprintExtractor
+from cgis.query.drift.ontology_init import discover_domains
+from cgis.query.drift.quotient import build_quotient
 from cgis.storage.sqlite_store import SQLiteStore
 
 

@@ -18,20 +18,20 @@ from cgis.extractors.python_extractor import PythonExtractor, file_path_to_modul
 from cgis.extractors.typescript_extractor import TypeScriptExtractor
 from cgis.guardian.metrics import load_reviews, rate_review
 from cgis.pipeline import IngestionPipeline
-from cgis.query.analyzer import AnalyzerEngine
-from cgis.query.anomaly import AnomalyType, ArchitecturalAnomaly
-from cgis.query.audit import ReachabilityAudit, audit_reachability
-from cgis.query.context_service import build_context
-from cgis.query.drift import DriftReport, FitQuality
-from cgis.query.drift_service import analyze_drift
+from cgis.query.analysis.analyzer import AnalyzerEngine
+from cgis.query.analysis.anomaly import AnomalyType, ArchitecturalAnomaly
+from cgis.query.analysis.health import HealthScorer
+from cgis.query.analysis.suggest_service import SuggestReport, report_to_dict, suggest_packages
+from cgis.query.context.audit import ReachabilityAudit, audit_reachability
+from cgis.query.context.context_service import build_context
+from cgis.query.drift.drift import DriftReport, FitQuality
+from cgis.query.drift.drift_service import analyze_drift
+from cgis.query.drift.ontology_init import propose_ontology
 from cgis.query.engine import BEHAVIORAL_EDGE_TYPES, QueryEngine
 from cgis.query.fqn import resolve_fqn
-from cgis.query.graph_json import graph_to_json
-from cgis.query.health import HealthScorer
-from cgis.query.mermaid import MermaidCompiler
-from cgis.query.metrics import ArchitectureReport, DuckDBAnalyzer
-from cgis.query.ontology_init import propose_ontology
-from cgis.query.suggest_service import SuggestReport, report_to_dict, suggest_packages
+from cgis.query.render.graph_json import graph_to_json
+from cgis.query.render.mermaid import MermaidCompiler
+from cgis.query.render.metrics import ArchitectureReport, DuckDBAnalyzer
 from cgis.resolver.uplift import SemanticUpliftEngine
 from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 

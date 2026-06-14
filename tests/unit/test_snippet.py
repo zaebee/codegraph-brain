@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from cgis.query.snippet import extract_snippet
+from cgis.query.context.snippet import extract_snippet
 
 
 def _write(tmp_path: Path, lines: list[str]) -> str:

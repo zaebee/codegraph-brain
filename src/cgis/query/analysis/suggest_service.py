@@ -11,7 +11,7 @@ from cgis.core.models import EdgeType
 if TYPE_CHECKING:
     from cgis.core.models import Edge, Node
 
-from cgis.query.cohesion import (
+from cgis.query.analysis.cohesion import (
     THRESHOLDS,
     build_file_graph,
     classify_verdict,

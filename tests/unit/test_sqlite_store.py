@@ -681,10 +681,10 @@ def test_find_nodes_by_suffix_escapes_like_wildcards(tmp_path: Path) -> None:
 
 def test_find_nodes_by_suffix_dotted_partial(tmp_path: Path) -> None:
     """Multi-segment suffix (e.g. triads.tv_distance) resolves correctly."""
-    db = _seed_suffix_store(tmp_path, ["src.cgis.query.triads.tv_distance"])
+    db = _seed_suffix_store(tmp_path, ["src.cgis.query.drift.triads.tv_distance"])
     with SQLiteStore(str(db)) as store:
         result = store.find_nodes_by_suffix("triads.tv_distance")
-    assert [n.id for n in result] == ["src.cgis.query.triads.tv_distance"]
+    assert [n.id for n in result] == ["src.cgis.query.drift.triads.tv_distance"]
 
 
 def test_find_nodes_by_suffix_orders_and_limits(tmp_path: Path) -> None:

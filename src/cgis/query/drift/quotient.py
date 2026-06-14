@@ -8,7 +8,7 @@ implementation convenience.
 from collections import Counter
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
-from cgis.query.drift import DomainConfig
+from cgis.query.drift.drift import DomainConfig
 
 #: FQN prefix of quotient nodes; the project_level binding matches it.
 QUOTIENT_PREFIX = "quotient"

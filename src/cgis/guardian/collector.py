@@ -7,11 +7,11 @@ import structlog
 
 from cgis.extractors.python_extractor import file_path_to_module_fqn
 from cgis.guardian.chunker import Chunk
-from cgis.query.drift import DriftScorer
+from cgis.query.drift.drift import DriftScorer
+from cgis.query.drift.fingerprint import FingerprintExtractor
+from cgis.query.drift.quotient import build_quotient
 from cgis.query.engine import QueryEngine
-from cgis.query.fingerprint import FingerprintExtractor
-from cgis.query.mermaid import MermaidCompiler
-from cgis.query.quotient import build_quotient
+from cgis.query.render.mermaid import MermaidCompiler
 from cgis.storage.sqlite_store import SQLiteStore
 
 log = structlog.getLogger(__name__)

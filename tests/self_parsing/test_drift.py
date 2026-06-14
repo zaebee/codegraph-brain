@@ -8,9 +8,9 @@ consciously re-negotiated in the YAML, with a comment).
 """
 
 from cgis.core.models import Edge, Node
-from cgis.query.drift import DomainConfig, DriftScorer
-from cgis.query.fingerprint import FingerprintExtractor
-from cgis.query.quotient import build_quotient
+from cgis.query.drift.drift import DomainConfig, DriftScorer
+from cgis.query.drift.fingerprint import FingerprintExtractor
+from cgis.query.drift.quotient import build_quotient
 from cgis.storage.sqlite_store import SQLiteStore
 
 from .conftest import ONTOLOGY_DIR, skip_if_no_ui

@@ -4,9 +4,9 @@ from collections import Counter
 from dataclasses import dataclass, field
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
-from cgis.query._scc import build_adjacency, tarjan_scc
-from cgis.query.health import HealthScorer
-from cgis.query.triads import ZERO_TRIADS, normalized_census, tangle_mass, triad_census
+from cgis.query.analysis.health import HealthScorer
+from cgis.query.drift._scc import build_adjacency, tarjan_scc
+from cgis.query.drift.triads import ZERO_TRIADS, normalized_census, tangle_mass, triad_census
 from cgis.storage.sqlite_store import SQLiteStore
 
 RAW_CALL_PREFIX = "raw_call:"

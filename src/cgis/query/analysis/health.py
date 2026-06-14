@@ -4,7 +4,7 @@ from collections import deque
 from dataclasses import dataclass
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
-from cgis.query._scc import build_adjacency, tarjan_scc
+from cgis.query.drift._scc import build_adjacency, tarjan_scc
 
 _BEHAVIORAL = frozenset({EdgeType.CALLS, EdgeType.IMPORTS, EdgeType.REFERENCES, EdgeType.USES})
 _STRUCTURAL = frozenset({EdgeType.CONTAINS, EdgeType.DECLARES})

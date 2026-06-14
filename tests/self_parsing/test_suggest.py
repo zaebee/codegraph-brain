@@ -1,27 +1,37 @@
 """Self-parsing validation for suggest-packages: the tool must catch the smell
 it was built for (cgis.query) and read an already-nested package as non-split (#242)."""
 
-import pytest
-
 from cgis.core.models import Edge, Node
-from cgis.query.suggest_service import suggest_packages
+from cgis.query.analysis.suggest_service import suggest_packages
 from cgis.storage.sqlite_store import SQLiteStore
 
 
-def test_cgis_query_is_flagged_split(
+def test_cgis_query_divergence_dropped_after_restructure(
     root_graph_data: tuple[SQLiteStore, list[Node], list[Edge]],
 ) -> None:
-    """cgis.query (19 flat files, Q~0.43) must read as 'split' — the canonical
-    dogfood validation (the self-drift analogue, #242)."""
+    """Slice 2 split query/ into subpackages — cgis.query is no longer flat, so its
+    divergence falls from the flat 1.0 toward alignment (measured ~0.31). Residual
+    remains because the chosen by-responsibility layout (drift/analysis/context/
+    render) is deliberately COARSER than the tool's by-connectivity communities
+    (RFC §4: the algorithm suggests, the human groups). The tool therefore still
+    nominally reports 'split'/'under_split' — it always pursues maximal community
+    granularity — but the divergence drop is the measurable win the restructure
+    bought."""
     store, _, _ = root_graph_data
     report = suggest_packages(store.db_path, prefix="cgis.query", with_calls=False)
-    assert report.verdict == "split"
+    assert report.divergence < 0.5  # was 1.0 when flat; the restructure aligned the layout
     assert report.direction == "under_split"
-    # Flat package → D == 1.0 always; the verdict rides on Q. Band kept wide
-    # because Q creeps up as query/ grows (cohesion/suggest_service lifted it to
-    # ~0.475); slice 2's restructure will reset this domain anyway.
-    assert 0.38 <= report.modularity_q <= 0.52
-    assert report.divergence == pytest.approx(1.0)
+
+
+def test_cgis_query_drift_subpkg_is_cohesive(
+    root_graph_data: tuple[SQLiteStore, list[Node], list[Edge]],
+) -> None:
+    """The new query/drift/ subpackage is internally cohesive (low intra-package Q)
+    → verdict 'leave': a sound boundary, not an arbitrary cut (#242 slice 2)."""
+    store, _, _ = root_graph_data
+    report = suggest_packages(store.db_path, prefix="cgis.query.drift", with_calls=False)
+    assert report.verdict == "leave"
+    assert report.modularity_q < 0.25
 
 
 def test_cgis_guardian_nested_reads_below_flat(

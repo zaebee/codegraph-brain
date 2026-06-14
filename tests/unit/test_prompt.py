@@ -1,7 +1,7 @@
 """Unit tests for the pure GraphRAG context compiler (#19)."""
 
 from cgis.core.models import Node, NodeType
-from cgis.query.prompt import compile_context
+from cgis.query.context.prompt import compile_context
 
 
 def _node(
