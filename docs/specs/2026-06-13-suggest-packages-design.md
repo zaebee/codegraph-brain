@@ -129,12 +129,17 @@ threshold only does work for **already-nested** packages, where it separates `al
 
 **Threshold calibration.** `Q`'s thresholds (`0.35`/`0.25`) are cross-validated across 9
 packages / 5 codebases. The `divergence=0.2` threshold is **provisional**: every high-`Q`
-case measured so far is flat (`D=1.0` by construction), so it has not been calibrated on a
-nested package. Slice 1 measures `D` on ≥1 already-subdivided real package (e.g.
-`cgis.guardian` over its `providers/` split, or a comparable nested target) to confirm
-`0.2` separates `aligned` from `split`; until then the threshold is documented as
-provisional, not validated — the same "measure before fixing the threshold" discipline
-applied to the `tangle_ratio` gate.
+case measured so far is flat (`D=1.0` by construction), so it is not calibrated on a real
+nested package. We checked the in-repo nested candidate `cgis.guardian` (over its
+`providers/` split) and it does **not** exercise the boundary: measured `Q≈0.33, D≈0.76 →
+borderline` — it lands non-split because `Q < 0.35`, NOT because of low divergence. cgis
+has no genuinely well-aligned nested package in-repo, so the `aligned` (low-`D`) side of
+the `0.2` boundary is covered **end-to-end by a synthetic test** (a nested-and-aligned
+package → `D≈0 → aligned`) rather than by a real one. The threshold therefore remains
+**provisional on real-world data** until a low-`D` nested package (e.g. in owner-api) is
+measured — the same "measure before fixing the threshold" honesty applied to the
+`tangle_ratio` gate. The self-parsing guardian test pins the real `Q/D/verdict` numbers
+and states this gap explicitly rather than implying a calibration it doesn't perform.
 
 ### Verdict — gated on BOTH signals, with direction
 
@@ -256,14 +261,16 @@ readability.
    verdict.
 5. **`suggest_service` + MCP:** `SQLiteStore` fixture; verdict and JSON-shape assertions
    (in the spirit of `test_cgis_drift_*`), including the `direction` field.
-6. **Divergence-threshold calibration on a nested package:** measure `D` on an
-   already-subdivided real package (e.g. `cgis.guardian` with its `providers/` subpackage)
-   and assert it lands `aligned` (low D), confirming `0.2` separates aligned from split on
-   a non-flat case (not just flat `D=1.0`).
+6. **Divergence-boundary (`aligned`, low-`D`) coverage:** a synthetic nested-and-aligned
+   package — two cliques whose directories already match the communities → `D≈0`,
+   `direction=matched` → `aligned`. This exercises the `0.2` boundary end-to-end (the real
+   nested in-repo case, `cgis.guardian`, does NOT: it reads `borderline` on low `Q≈0.33`,
+   with `D≈0.76` still high — pinned in the self-parsing test with an honesty note).
 7. **Self-parsing dogfood** (`tests/self_parsing/`): run `suggest-packages` on
-   `cgis.query` in the self-parsed graph → assert `verdict == "split"`, `Q` in the band
-   ~0.40–0.46, `divergence` high. The tool catching the exact smell it was built for is
-   the canonical validation (the self-drift analogue for drift).
+   `cgis.query` in the self-parsed graph → assert `verdict == "split"`, `Q` in a wide band
+   (~0.38–0.52; measured `0.475` and creeping up as `query/` grows — slice 2 resets this
+   domain), `divergence == 1.0`. The tool catching the exact smell it was built for is the
+   canonical validation (the self-drift analogue for drift).
 
 ## Known cost (RFC risk #2 — recorded explicitly)
 

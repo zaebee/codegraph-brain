@@ -70,6 +70,37 @@ def test_suggest_mis_rooted_emits_diagnostic(tmp_path: Path) -> None:
     assert report.verdict == "no_signal"
     assert report.note is not None
     assert "mis-rooted" in report.note.lower()
+    # Files WERE found — the no_signal report must reflect that, not a misleading 0.
+    assert report.file_count == 2
+
+
+def _two_clusters_nested() -> tuple[list[Node], list[Edge]]:
+    """Two cliques whose directory layout (core/ and io/) MATCHES the communities."""
+    groups = {"core": ("a", "b", "c"), "io": ("x", "y", "z")}
+    files = [make_file_node(f"p.{sub}.{n}") for sub, names in groups.items() for n in names]
+    edges = [
+        make_import_edge(f"p.{sub}.{s}", f"p.{sub}.{t}")
+        for sub, names in groups.items()
+        for s in names
+        for t in names
+        if s != t
+    ]
+    return files, edges
+
+
+def test_suggest_aligned_nested_is_aligned(tmp_path: Path) -> None:
+    """Nested layout that matches the communities → low divergence → 'aligned'.
+
+    This is the genuine D-boundary case (Q high, D ~ 0): the directories already
+    express the dependency communities, so the tool must NOT recommend a split.
+    It exercises the divergence threshold that the cgis.guardian self-parsing
+    case does not (guardian lands 'borderline' on low Q, not on low D).
+    """
+    db = _store_with(tmp_path, *_two_clusters_nested())
+    report = suggest_packages(db, prefix="p")
+    assert report.divergence == pytest.approx(0.0)
+    assert report.direction == "matched"
+    assert report.verdict == "aligned"
 
 
 def test_two_ingest_roots_yield_same_verdict(tmp_path: Path) -> None:

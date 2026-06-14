@@ -6,6 +6,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from cgis.core.models import EdgeType
+
 if TYPE_CHECKING:
     from cgis.core.models import Edge, Node
 
@@ -76,12 +78,17 @@ def _dir_group(fqn: str, prefix: str) -> str:
     return _ROOT_GROUP if len(parts) <= 1 else parts[0]
 
 
-def _empty_report(package: str, layer: str, note: str) -> SuggestReport:
-    """Return a no_signal report carrying a diagnostic note (never a silent green)."""
+def _empty_report(package: str, layer: str, note: str, file_count: int = 0) -> SuggestReport:
+    """Return a no_signal report carrying a diagnostic note (never a silent green).
+
+    ``file_count`` is passed through for the mis-rooted / flat-leaf-bag cases —
+    files WERE found, there were just no intra-package edges to score, so a JSON
+    consumer should see the real count, not a misleading 0.
+    """
     return SuggestReport(
         package=package,
         layer=layer,
-        file_count=0,
+        file_count=file_count,
         edge_count=0,
         modularity_q=0.0,
         divergence=0.0,
@@ -128,7 +135,7 @@ def suggest_packages(
         had_import_attempts = any(
             e.source.startswith(package + ".") or e.source == package
             for e in edges
-            if e.type.value == "IMPORTS"
+            if e.type == EdgeType.IMPORTS
         )
         note = (
             f"{package}: files found but no import resolves inside the package — the "
@@ -137,12 +144,14 @@ def suggest_packages(
             if had_import_attempts
             else f"{package}: no intra-package imports (a flat leaf bag)"
         )
-        return _empty_report(package, layer, note)
+        return _empty_report(package, layer, note, file_count=len(graph.files))
 
     communities, q = greedy_modularity(graph)
     comm_of = {f: i for i, c in enumerate(communities) for f in c}
     dir_of = {f: _dir_group(f, package) for f in graph.files}
-    divergence = partition_divergence(comm_of, dir_of)
+    # Clamp to [0, 1]: NMI is mathematically in range, but float error can leak
+    # a tiny negative / >1 value that looks odd in JSON.
+    divergence = max(0.0, min(1.0, partition_divergence(comm_of, dir_of)))
     direction = layout_direction(comm_of, dir_of)
     thresholds = {**THRESHOLDS, "split": min_q}
     verdict = classify_verdict(q=q, d=divergence, direction=direction, thresholds=thresholds)
