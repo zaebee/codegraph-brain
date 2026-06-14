@@ -32,42 +32,57 @@ def _ollama_host(env: Mapping[str, str]) -> str | None:
     return (env.get("GUARDIAN_OLLAMA_HOST") or "").strip() or None
 
 
+def _build_mistral(env: Mapping[str, str], model_override: str | None) -> tuple[BaseProvider, str]:
+    """Construct a MistralProvider; MISTRAL_API_KEY is required."""
+    key = env.get("MISTRAL_API_KEY")
+    if not key:
+        _msg = "MISTRAL_API_KEY must be set when GUARDIAN_PROVIDER=mistral"
+        raise RuntimeError(_msg)
+    model = model_override or DEFAULT_MISTRAL_MODEL
+    return MistralProvider(api_key=key, model_name=model), model
+
+
+def _build_gemini(env: Mapping[str, str], model_override: str | None) -> tuple[BaseProvider, str]:
+    """Construct a GeminiProvider; GEMINI_API_KEY is required."""
+    key = env.get("GEMINI_API_KEY")
+    if not key:
+        _msg = "GEMINI_API_KEY must be set when GUARDIAN_PROVIDER=gemini"
+        raise RuntimeError(_msg)
+    model = model_override or DEFAULT_GEMINI_MODEL
+    return GeminiProvider(api_key=key, model_name=model), model
+
+
+def _build_ollama(env: Mapping[str, str], model_override: str | None) -> tuple[BaseProvider, str]:
+    """Construct an OllamaProvider; GUARDIAN_MODEL names the model (no API key)."""
+    if not model_override:
+        _msg = "GUARDIAN_MODEL must name an Ollama model when GUARDIAN_PROVIDER=ollama"
+        raise RuntimeError(_msg)
+    return OllamaProvider(model_name=model_override, host=_ollama_host(env)), model_override
+
+
 def build_provider(env: Mapping[str, str]) -> tuple[BaseProvider, str]:
-    """Return (provider, model_name) from GUARDIAN_PROVIDER / available API keys."""
+    """Return (provider, model_name) from GUARDIAN_PROVIDER / available API keys.
+
+    With no explicit GUARDIAN_PROVIDER, auto-select: mistral if its key is set,
+    else gemini if its key is set, else an error.
+    """
     model_override = env.get("GUARDIAN_MODEL")
-    provider_name = env.get("GUARDIAN_PROVIDER", "").lower()
+    provider_name = env.get("GUARDIAN_PROVIDER", "").lower() or _autodetect_provider(env)
 
-    if provider_name == "mistral" or (not provider_name and env.get("MISTRAL_API_KEY")):
-        mistral_key = env.get("MISTRAL_API_KEY")
-        if not mistral_key:
-            _msg = "MISTRAL_API_KEY must be set when GUARDIAN_PROVIDER=mistral"
-            raise RuntimeError(_msg)
-        model = model_override or DEFAULT_MISTRAL_MODEL
-        return MistralProvider(api_key=mistral_key, model_name=model), model
-
-    if provider_name == "gemini":
-        gemini_key = env.get("GEMINI_API_KEY")
-        if not gemini_key:
-            _msg = "GEMINI_API_KEY must be set when GUARDIAN_PROVIDER=gemini"
-            raise RuntimeError(_msg)
-        model = model_override or DEFAULT_GEMINI_MODEL
-        return GeminiProvider(api_key=gemini_key, model_name=model), model
-
-    if provider_name == "ollama":
-        if not model_override:
-            _msg = "GUARDIAN_MODEL must name an Ollama model when GUARDIAN_PROVIDER=ollama"
-            raise RuntimeError(_msg)
-        return OllamaProvider(model_name=model_override, host=_ollama_host(env)), model_override
-
-    if provider_name and provider_name not in ("mistral", "gemini", "ollama"):
+    builders = {"mistral": _build_mistral, "gemini": _build_gemini, "ollama": _build_ollama}
+    builder = builders.get(provider_name)
+    if builder is None:
         _msg = f"Unknown GUARDIAN_PROVIDER={provider_name!r}. Use 'mistral', 'gemini', or 'ollama'."
         raise RuntimeError(_msg)
+    return builder(env, model_override)
 
-    gemini_key = env.get("GEMINI_API_KEY")
-    if gemini_key:
-        model = model_override or DEFAULT_GEMINI_MODEL
-        return GeminiProvider(api_key=gemini_key, model_name=model), model
 
+def _autodetect_provider(env: Mapping[str, str]) -> str:
+    """Pick a provider from available API keys when GUARDIAN_PROVIDER is unset."""
+    if env.get("MISTRAL_API_KEY"):
+        return "mistral"
+    if env.get("GEMINI_API_KEY"):
+        return "gemini"
     _msg = "Set MISTRAL_API_KEY or GEMINI_API_KEY to run Guardian."
     raise RuntimeError(_msg)
 
