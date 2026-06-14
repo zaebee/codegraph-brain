@@ -28,16 +28,16 @@ def test_build_file_graph_aggregates_internal_imports() -> None:
     ]
     g = build_file_graph(nodes, edges, prefix="p", with_calls=False)
     assert set(g.files) == {"p.a", "p.b", "p.c"}
-    assert g.adj["p.a"]["p.b"] == 2.0
-    assert g.adj["p.b"]["p.a"] == 2.0
-    assert g.adj["p.b"]["p.c"] == 1.0
+    assert g.adj["p.a"]["p.b"] == pytest.approx(2.0)
+    assert g.adj["p.b"]["p.a"] == pytest.approx(2.0)
+    assert g.adj["p.b"]["p.c"] == pytest.approx(1.0)
 
 
 def test_build_file_graph_reconciles_cross_rooted_targets() -> None:
     nodes = [make_file_node("p.a", "p/a.py"), make_file_node("p.b", "p/b.py")]
     edges = [make_import_edge("p.a", "cgis.p.b")]
     g = build_file_graph(nodes, edges, prefix="p", with_calls=False)
-    assert g.adj["p.a"]["p.b"] == 1.0
+    assert g.adj["p.a"]["p.b"] == pytest.approx(1.0)
 
 
 def test_build_file_graph_keeps_isolated_files() -> None:
@@ -74,7 +74,7 @@ def test_build_file_graph_with_calls_adds_calls_layer() -> None:
         confidence=1.0,
     )
     g = build_file_graph(nodes, [call], prefix="p", with_calls=True)
-    assert g.adj["p.a"]["p.b"] == 1.0
+    assert g.adj["p.a"]["p.b"] == pytest.approx(1.0)
     g_imports_only = build_file_graph(nodes, [call], prefix="p", with_calls=False)
     assert g_imports_only.adj == {}
 

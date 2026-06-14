@@ -144,7 +144,7 @@ def _best_merge(
             e_ij = (
                 sum(graph.adj.get(f, {}).get(g, 0.0) for f in members[c1] for g in members[c2]) / m2
             )
-            if e_ij == 0.0:
+            if e_ij <= 0.0:  # disconnected (weights are non-negative); merging can't raise Q
                 continue
             dq = 2 * (e_ij - a_of[c1] * a_of[c2])
             if dq > best_gain:
@@ -166,7 +166,7 @@ def greedy_modularity(graph: FileGraph) -> tuple[list[list[str]], float]:
         return [], 0.0
     deg = {f: sum(graph.adj.get(f, {}).values()) for f in files}
     m2 = sum(deg.values())
-    if m2 == 0.0:
+    if m2 <= 0.0:  # all isolated (degree sum is non-negative)
         return [[f] for f in files], 0.0
 
     members: dict[str, set[str]] = {f: {f} for f in files}
@@ -211,7 +211,7 @@ def partition_divergence(p_comm: Mapping[str, Hashable], p_dir: Mapping[str, Has
     against a trivial one has MI 0 -> NMI 0 -> D = 1 (the flat-package case).
     """
     h_a, h_b = _entropy(p_comm), _entropy(p_dir)
-    if h_a == 0.0 and h_b == 0.0:
+    if h_a <= 0.0 and h_b <= 0.0:  # both trivial (entropy is non-negative; -0.0 counts)
         return 0.0
     nmi = _mutual_information(p_comm, p_dir) / ((h_a + h_b) / 2)
     return 1.0 - nmi
