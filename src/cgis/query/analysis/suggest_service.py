@@ -56,6 +56,10 @@ class SuggestReport:
     communities: list[Community]
     bridges: list[Bridge]
     thresholds: dict[str, float]
+    # Fraction of files with at least one intra-package edge. A split is only
+    # trusted above thresholds["min_connected"] — below it, a high Q is a
+    # sparse-graph artifact (most files are independent). 0.0 for no_signal.
+    connected_fraction: float = 0.0
     note: str | None = None
 
 
@@ -168,6 +172,20 @@ def suggest_packages(
     thresholds = {**THRESHOLDS, "split": min_q}
     verdict = classify_verdict(q=q, d=divergence, direction=direction, thresholds=thresholds)
 
+    # Sparse-graph guard: modularity Q is unreliable when most files have no
+    # intra-package edge — a single tiny cluster then inflates Q on a package of
+    # otherwise-independent helpers (owner-api/utils: 3 edges over 12 files, Q=0.44,
+    # 58% isolated → a false 'split'). Only act on it when enough files are coupled.
+    connected_fraction = sum(1 for f in graph.files if graph.adj.get(f)) / len(graph.files)
+    sparse_note: str | None = None
+    if verdict in ("split", "borderline") and connected_fraction < thresholds["min_connected"]:
+        sparse_note = (
+            f"only {connected_fraction:.0%} of files are coupled to a sibling — "
+            f"mostly independent helpers, so the Q={q:.2f} is a sparse-graph artifact, "
+            "not real community structure; nothing to split"
+        )
+        verdict = "leave"
+
     bridges = sorted(
         (
             Bridge(source=_leaf(a), target=_leaf(b), weight=w)
@@ -191,6 +209,8 @@ def suggest_packages(
         ],
         bridges=bridges,
         thresholds=thresholds,
+        connected_fraction=round(connected_fraction, 4),
+        note=sparse_note,
     )
 
 
