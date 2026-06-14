@@ -3,7 +3,7 @@
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from guardian_stubs import FINDING_JSON, StubProvider
@@ -210,6 +210,15 @@ def test_build_skeptic_provider_ollama_needs_a_model() -> None:
     assert build_skeptic_provider({"GUARDIAN_SKEPTIC": "ollama"}, primary="ollama") is None
 
 
+def _fake_ollama_client(resp: object) -> AsyncMock:
+    """An AsyncMock usable as `async with AsyncClient(...) as client` whose chat returns resp."""
+    client = AsyncMock()
+    client.chat = AsyncMock(return_value=resp)
+    client.__aenter__.return_value = client  # `async with` yields the client itself
+    client.__aexit__.return_value = False
+    return client
+
+
 @pytest.mark.asyncio
 async def test_ollama_provider_structured_uses_json_format_and_records_usage() -> None:
     """generate_structured sends format='json' and maps eval counts to usage."""
@@ -219,8 +228,7 @@ async def test_ollama_provider_structured_uses_json_format_and_records_usage() -
         prompt_eval_count=11,
         eval_count=4,
     )
-    fake_client = MagicMock()
-    fake_client.chat = AsyncMock(return_value=resp)
+    fake_client = _fake_ollama_client(resp)
     provider = OllamaProvider(model_name="m", host="http://localhost:11435")
     with patch("ollama.AsyncClient", return_value=fake_client):
         out = await provider.generate_structured("sys", "usr", schema=BaseModel)
@@ -239,8 +247,7 @@ async def test_ollama_provider_content_uses_no_json_format() -> None:
         prompt_eval_count=None,  # some responses omit counts → default to 0
         eval_count=None,
     )
-    fake_client = MagicMock()
-    fake_client.chat = AsyncMock(return_value=resp)
+    fake_client = _fake_ollama_client(resp)
     provider = OllamaProvider(model_name="m")
     with patch("ollama.AsyncClient", return_value=fake_client):
         out = await provider.generate_content("sys", "usr")

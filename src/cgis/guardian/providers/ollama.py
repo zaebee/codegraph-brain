@@ -37,16 +37,17 @@ class OllamaProvider(BaseProvider):
             from ollama import AsyncClient  # noqa: PLC0415
         except ImportError as exc:
             raise ImportError(_install_hint) from exc
-        client = AsyncClient(host=self._host, timeout=self._timeout)
-        response = await client.chat(
-            model=self._model_name,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            stream=False,
-            format="json" if json_mode else "",
-        )
+        # Context manager so the underlying httpx pool is closed each call.
+        async with AsyncClient(host=self._host, timeout=self._timeout) as client:
+            response = await client.chat(
+                model=self._model_name,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                stream=False,
+                format="json" if json_mode else "",
+            )
         content = response.message.content
         if content is None:
             _msg = f"Ollama returned null message content for model {self._model_name}"

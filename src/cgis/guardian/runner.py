@@ -24,8 +24,12 @@ DEFAULT_MISTRAL_MODEL = "mistral-medium-latest"
 
 
 def _ollama_host(env: Mapping[str, str]) -> str | None:
-    """GUARDIAN_OLLAMA_HOST, or None so the ollama client uses localhost:11434."""
-    return env.get("GUARDIAN_OLLAMA_HOST") or None
+    """GUARDIAN_OLLAMA_HOST, or None so the ollama client uses localhost:11434.
+
+    Collapses empty/whitespace-only values to None at the boundary so a blank
+    env var never reaches the client as an invalid host.
+    """
+    return (env.get("GUARDIAN_OLLAMA_HOST") or "").strip() or None
 
 
 def build_provider(env: Mapping[str, str]) -> tuple[BaseProvider, str]:
