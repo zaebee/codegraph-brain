@@ -2,8 +2,10 @@
 
 from cgis.guardian.findings import Finding
 from cgis.guardian.skeptic import (
+    FindingJudgement,
     SkepticResult,
     SkepticVerdict,
+    apply_judgements,
     apply_verdicts,
     build_skeptic_prompt,
     visible_findings,
@@ -87,3 +89,52 @@ def test_skeptic_prompt_contains_findings_and_stance() -> None:
     assert "[0]" in prompt
     assert "off-by-one" in prompt
     assert "confirm what you cannot disprove" in prompt
+
+
+# ---------------------------------------------------------------------------
+# Per-finding judgement: two orthogonal axes (#246)
+# ---------------------------------------------------------------------------
+
+
+def _judgement(verdict: str, score: int, rationale: str = "because") -> FindingJudgement:
+    return FindingJudgement(verdict=verdict, impact_score=score, rationale=rationale)  # type: ignore[arg-type]
+
+
+def test_judgement_merges_verdict_note_and_score() -> None:
+    """A judgement writes verdict, note and impact_score onto a new frozen copy."""
+    merged = apply_judgements([_FINDING], [_judgement("confirmed", 7)])
+    assert merged[0].verdict == "confirmed"
+    assert merged[0].skeptic_note == "because"
+    assert merged[0].impact_score == 7
+    assert _FINDING.impact_score is None  # original untouched (frozen)
+
+
+def test_judgement_uncertain_discounts_confidence_and_keeps_finding() -> None:
+    """uncertain keeps the finding and discounts confidence x0.9, exactly as before."""
+    f = _FINDING.model_copy(update={"confidence": 30})
+    merged = apply_judgements([f], [_judgement("uncertain", 4)])
+    assert merged[0].verdict == "uncertain"
+    assert merged[0].confidence == 27
+    assert merged[0].impact_score == 4
+    assert visible_findings(merged) == merged
+
+
+def test_missing_judgement_is_not_a_refutation() -> None:
+    """None = the judgement call failed; the finding survives unruled and visible."""
+    merged = apply_judgements([_FINDING], [None])
+    assert merged[0].verdict is None
+    assert merged[0].impact_score is None
+    assert visible_findings(merged) == merged
+
+
+def test_threshold_hides_low_impact_but_keeps_it_in_the_list() -> None:
+    """Below-threshold findings are hidden from the report, never dropped from the result."""
+    low = _FINDING.model_copy(update={"verdict": "confirmed", "impact_score": 1})
+    high = _FINDING.model_copy(update={"verdict": "confirmed", "impact_score": 8, "title": "x"})
+    assert visible_findings([low, high], threshold=3) == [high]
+    assert visible_findings([low, high]) == [low, high]  # default 0 hides nothing
+
+
+def test_unjudged_finding_survives_a_threshold() -> None:
+    """An unjudged finding has no score to compare; a threshold must not hide it."""
+    assert visible_findings([_FINDING], threshold=5) == [_FINDING]

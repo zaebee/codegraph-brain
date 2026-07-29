@@ -4,7 +4,7 @@ from collections.abc import Iterable
 from typing import Literal
 
 import structlog
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from cgis.guardian.findings import Finding
 
@@ -27,6 +27,21 @@ class SkepticResult(BaseModel, frozen=True):
     """All verdicts from one skeptic call (spec §5.2: one call, not N)."""
 
     verdicts: list[SkepticVerdict]
+
+
+class FindingJudgement(BaseModel, frozen=True):
+    """One skeptic ruling on one finding, on two orthogonal axes (#246 spec §3.1).
+
+    ``verdict`` answers "is this claim true" and only an explicit 'refuted'
+    drops the finding. ``impact_score`` answers "does it matter" and only hides
+    below a threshold. There is no index: a judgement belongs to the call that
+    produced it, which is why the batch API's index-mapping failure modes
+    (out-of-range, duplicate) cannot occur here.
+    """
+
+    verdict: Literal["confirmed", "refuted", "uncertain"]
+    impact_score: int = Field(ge=0, le=10)
+    rationale: str
 
 
 # Confirm-by-default stance. The original refute-by-default wording over-killed
@@ -119,6 +134,44 @@ def apply_verdicts(findings: list[Finding], skeptic: SkepticResult) -> list[Find
     return merged
 
 
-def visible_findings(findings: Iterable[Finding]) -> list[Finding]:
-    """Findings that appear in the rendered report: everything not refuted."""
-    return [f for f in findings if f.verdict != "refuted"]
+def apply_judgements(
+    findings: list[Finding], judgements: list[FindingJudgement | None]
+) -> list[Finding]:
+    """Merge per-finding judgements into new frozen copies, positionally (#246 §3.2).
+
+    ``judgements[i]`` rules on ``findings[i]``; a ``None`` means that call failed
+    and the finding stays unruled — absence of a judgement is not a refutation.
+    'uncertain' discounts confidence x0.9 as a ranking signal only, identical to
+    the batch merge it replaces.
+    """
+    merged: list[Finding] = []
+    for finding, judgement in zip(findings, judgements, strict=True):
+        if judgement is None:
+            merged.append(finding)
+            continue
+        update: dict[str, object] = {
+            "verdict": judgement.verdict,
+            "skeptic_note": judgement.rationale,
+            "impact_score": judgement.impact_score,
+        }
+        if judgement.verdict == "uncertain":
+            update["confidence"] = round(finding.confidence * _UNCERTAIN_MULTIPLIER)
+        merged.append(finding.model_copy(update=update))
+    return merged
+
+
+def visible_findings(findings: Iterable[Finding], threshold: int = 0) -> list[Finding]:
+    """Findings that appear in the rendered report (#246 §3.2).
+
+    Hidden: anything refuted, and anything the skeptic scored below
+    ``threshold``. An unjudged finding (``impact_score is None``) has no score to
+    compare and is always shown — a failed judgement call must never silence a
+    finding. Hidden findings stay in ``ReviewResult.findings`` so metrics and the
+    benchmark still see what was cut.
+    """
+    return [
+        f
+        for f in findings
+        if f.verdict != "refuted"
+        and not (f.impact_score is not None and f.impact_score < threshold)
+    ]
