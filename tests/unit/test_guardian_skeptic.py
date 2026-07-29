@@ -1,9 +1,13 @@
 """Unit tests for skeptic verdict models and the pure merge logic (spec §5)."""
 
+import asyncio
+
 import pytest
 from guardian_stubs import BoomProvider, StubProvider
+from pydantic import BaseModel
 
 from cgis.guardian.findings import Finding
+from cgis.guardian.providers.base import BaseProvider
 from cgis.guardian.skeptic import (
     FindingJudgement,
     SkepticResult,
@@ -12,6 +16,7 @@ from cgis.guardian.skeptic import (
     apply_verdicts,
     build_judgement_prompt,
     build_skeptic_prompt,
+    judge_all,
     judge_finding,
     visible_findings,
 )
@@ -190,3 +195,90 @@ async def test_judge_finding_returns_none_on_unparseable_response() -> None:
 async def test_judge_finding_returns_none_when_the_provider_raises() -> None:
     """Provider errors are contained per finding (#246 §3.4)."""
     assert await judge_finding(BoomProvider(), _FINDING, "") is None
+
+
+@pytest.mark.asyncio
+async def test_judge_all_returns_one_result_per_finding_in_order() -> None:
+    """Positional contract: judgements[i] rules on findings[i]."""
+    provider = StubProvider(
+        [
+            '{"verdict": "confirmed", "impact_score": 8, "rationale": "a"}',
+            '{"verdict": "refuted", "impact_score": 0, "rationale": "b"}',
+        ]
+    )
+    findings = [_FINDING, _FINDING.model_copy(update={"title": "second"})]
+
+    judgements = await judge_all(provider, findings, "", concurrency=1)
+
+    assert [j.verdict for j in judgements if j] == ["confirmed", "refuted"]
+
+
+@pytest.mark.asyncio
+async def test_judge_all_isolates_a_failing_call() -> None:
+    """One bad response costs one verdict, not the whole pass."""
+    provider = StubProvider(
+        ["not json", '{"verdict": "confirmed", "impact_score": 6, "rationale": "ok"}']
+    )
+    findings = [_FINDING, _FINDING.model_copy(update={"title": "second"})]
+
+    judgements = await judge_all(provider, findings, "", concurrency=1)
+
+    assert judgements[0] is None
+    assert judgements[1] is not None
+
+
+@pytest.mark.asyncio
+async def test_judge_all_feeds_each_finding_only_its_own_file_hunks() -> None:
+    """Per-finding context is the point of the isolation (#246 §3.3)."""
+    provider = StubProvider(['{"verdict": "confirmed", "impact_score": 5, "rationale": "x"}'])
+    diff = (
+        "diff --git a/src/cgis/cli.py b/src/cgis/cli.py\n"
+        "--- a/src/cgis/cli.py\n+++ b/src/cgis/cli.py\n"
+        "@@ -1,1 +1,1 @@\n-old\n+cli_line\n"
+        "diff --git a/other.py b/other.py\n"
+        "--- a/other.py\n+++ b/other.py\n"
+        "@@ -1,1 +1,1 @@\n-x\n+other_line\n"
+    )
+
+    await judge_all(provider, [_FINDING], diff, concurrency=1)
+
+    assert "cli_line" in provider.prompts[0]
+    assert "other_line" not in provider.prompts[0]
+
+
+@pytest.mark.asyncio
+async def test_judge_all_never_exceeds_the_concurrency_limit() -> None:
+    """The semaphore is what keeps mistral's per-minute token cap out of reach."""
+
+    class _ConcurrencyProbe(BaseProvider):
+        """Counts how many judgement calls are in flight at once."""
+
+        def __init__(self) -> None:
+            """Start with no calls in flight."""
+            super().__init__()
+            self.active = 0
+            self.peak = 0
+
+        async def generate_content(self, system_prompt: str, user_prompt: str) -> str:
+            """Not used in tests."""
+            raise NotImplementedError
+
+        async def generate_structured(
+            self,
+            system_prompt: str,  # noqa: ARG002
+            user_prompt: str,  # noqa: ARG002
+            schema: type[BaseModel],  # noqa: ARG002
+        ) -> str:
+            """Track overlap, yielding so concurrent calls can pile up."""
+            self.active += 1
+            self.peak = max(self.peak, self.active)
+            await asyncio.sleep(0)
+            self.active -= 1
+            return '{"verdict": "confirmed", "impact_score": 5, "rationale": "x"}'
+
+    probe = _ConcurrencyProbe()
+
+    await judge_all(probe, [_FINDING] * 10, "", concurrency=3)
+
+    assert probe.peak <= 3
+    assert probe.peak > 1  # and it really is concurrent, not accidentally serial

@@ -1,11 +1,13 @@
 """Cross-model skeptic pass: verdict models, prompt, and pure merge logic (spec §5)."""
 
+import asyncio
 from collections.abc import Iterable
 from typing import Literal
 
 import structlog
 from pydantic import BaseModel, Field
 
+from cgis.guardian.diff_index import split_diff_by_file
 from cgis.guardian.findings import Finding, extract_json
 from cgis.guardian.providers.base import BaseProvider
 
@@ -183,6 +185,12 @@ Return ONLY a JSON object:
 {{"verdict": "confirmed|refuted|uncertain", "impact_score": 0, "rationale": "one sentence"}}"""
 
 
+DEFAULT_SKEPTIC_CONCURRENCY = 3
+# Bounded because provider rate limits are the binding constraint, not local CPU:
+# mistral's free tier caps tokens per MINUTE, and a local ollama skeptic
+# serialises on one model instance anyway.
+
+
 async def judge_finding(
     provider: BaseProvider, finding: Finding, hunks: str
 ) -> FindingJudgement | None:
@@ -200,6 +208,28 @@ async def judge_finding(
     except Exception:
         log.warning("Skeptic judgement failed; finding stays unruled.", file=finding.file)
         return None
+
+
+async def judge_all(
+    provider: BaseProvider,
+    findings: list[Finding],
+    diff: str,
+    concurrency: int = DEFAULT_SKEPTIC_CONCURRENCY,
+) -> list[FindingJudgement | None]:
+    """Judge every finding concurrently, each against its own file's hunks.
+
+    Returns one entry per finding, positionally aligned, with None where that
+    finding's call failed — so a single failure costs one verdict instead of the
+    whole pass, which is what the batch call it replaces did.
+    """
+    blocks = split_diff_by_file(diff)
+    semaphore = asyncio.Semaphore(max(1, concurrency))
+
+    async def _one(finding: Finding) -> FindingJudgement | None:
+        async with semaphore:
+            return await judge_finding(provider, finding, blocks.get(finding.file, ""))
+
+    return list(await asyncio.gather(*(_one(f) for f in findings)))
 
 
 def apply_judgements(
