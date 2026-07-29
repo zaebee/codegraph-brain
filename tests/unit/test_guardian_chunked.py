@@ -109,7 +109,7 @@ def _finder_json(file: str, summary: str = "ok") -> str:
 
 
 _LGTM = '{"findings": [], "summary": "clean"}'
-_CONFIRM_ALL = '{"verdicts": [{"finding_index": 0, "verdict": "confirmed", "rationale": "r"}]}'
+_CONFIRM_ONE = '{"verdict": "confirmed", "impact_score": 6, "rationale": "r"}'
 
 
 def _collector(tmp_path: Path, diff: str, *, with_db: bool = True) -> ContextCollector:
@@ -297,10 +297,10 @@ async def test_chunked_unparsable_chunk_marked(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_chunked_single_skeptic_pass_scoped_diff(tmp_path: Path) -> None:
-    """One skeptic call; its prompt contains only chunks WITH findings."""
+    """One judgement call per finding; its prompt carries only that finding's file."""
     diff = fdiff("src/a.py") + fdiff("src/b.py")
     finder = StubProvider([_finder_json("src/a.py"), _LGTM])
-    skeptic = StubProvider([_CONFIRM_ALL])
+    skeptic = StubProvider([_CONFIRM_ONE])
     routed = await run_chunked_review(
         provider=finder, collector=_collector(tmp_path, diff), skeptic_provider=skeptic
     )
@@ -372,3 +372,22 @@ async def test_routed_flag_with_db_chunks(tmp_path: Path) -> None:
     routed = await run_review_routed(provider=provider, collector=collector, skeptic_provider=None)
     assert routed.chunk_count == 2
     assert len(provider.prompts) == 2
+
+
+@pytest.mark.asyncio
+async def test_chunked_review_uses_per_finding_judgement(tmp_path: Path) -> None:
+    """The chunked path must not keep its own batch skeptic call alive (#246 T7)."""
+    diff = fdiff("src/a.py")
+    provider = StubProvider([_finder_json("src/a.py")])
+    skeptic = StubProvider(['{"verdict": "confirmed", "impact_score": 9, "rationale": "real"}'])
+
+    routed = await run_chunked_review(
+        provider=provider, collector=_collector(tmp_path, diff), skeptic_provider=skeptic
+    )
+
+    assert routed.result.findings[0].impact_score == 9
+    assert routed.result.skeptic_status == "ok"
+    assert routed.result.skeptic_judged == 1
+    assert routed.result.skeptic_total == 1
+    # The prompt is the per-finding shape, not the indexed batch list.
+    assert "finding_index" not in skeptic.prompts[0]
