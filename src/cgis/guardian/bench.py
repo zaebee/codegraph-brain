@@ -182,10 +182,31 @@ class FinderRecording(BaseModel, frozen=True):
     diff: str
 
 
+def _validated_recording_path(path: Path, *, must_exist: bool) -> Path:
+    """Resolve and check a CLI-supplied recording path before touching the filesystem.
+
+    Both entry points take their path from a benchmark CLI flag, so the value is
+    untrusted input. Validation mirrors the precedent set for the MCP drift
+    surface (#167): resolve, require the expected suffix, and require an
+    existing file when reading — deliberately WITHOUT confining the path under
+    the CWD, which would break the legitimate cross-repo/tmpdir workflows this
+    tool is used in.
+    """
+    resolved = path.expanduser().resolve()
+    if resolved.suffix != ".json":
+        _msg = f"Recording path must be a .json file: {path}"
+        raise ValueError(_msg)
+    if must_exist and not resolved.is_file():
+        _msg = f"Recording path is not a file: {path}"
+        raise ValueError(_msg)
+    return resolved
+
+
 def save_finder_recording(path: Path, result: ReviewResult, diff: str) -> None:
     """Write a finder pass to disk for later replay."""
+    target = _validated_recording_path(path, must_exist=False)
     recording = FinderRecording(result=result, diff=diff)
-    path.write_text(recording.model_dump_json(), encoding="utf-8")
+    target.write_text(recording.model_dump_json(), encoding="utf-8")
 
 
 def load_finder_recording(path: Path) -> FinderRecording:
@@ -195,7 +216,8 @@ def load_finder_recording(path: Path) -> FinderRecording:
     those verdicts into the next variant's scoring — every replay must start
     from unjudged findings, or the arms are not comparable.
     """
-    recording = FinderRecording.model_validate_json(path.read_text(encoding="utf-8"))
+    source = _validated_recording_path(path, must_exist=True)
+    recording = FinderRecording.model_validate_json(source.read_text(encoding="utf-8"))
     findings = [
         f.model_copy(update={"verdict": None, "skeptic_note": None, "impact_score": None})
         for f in recording.result.findings

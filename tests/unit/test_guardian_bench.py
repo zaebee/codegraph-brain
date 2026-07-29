@@ -271,3 +271,17 @@ def test_recorded_skeptic_fields_are_not_trusted(tmp_path: Path) -> None:
 
     assert loaded.result.findings[0].verdict is None
     assert loaded.result.skeptic_status == "off"
+
+
+def test_recording_path_must_be_json(tmp_path: Path) -> None:
+    """A CLI-supplied path is validated before it reaches the filesystem (Sonar taint)."""
+    with pytest.raises(ValueError, match=r"must be a \.json"):
+        save_finder_recording(tmp_path / "finder.yaml", _RECORDED.result, "d")
+    with pytest.raises(ValueError, match=r"must be a \.json"):
+        load_finder_recording(tmp_path / "finder.yaml")
+
+
+def test_loading_a_missing_recording_is_a_clear_error(tmp_path: Path) -> None:
+    """A typo'd --replay-finder path fails loudly, not with a raw OSError."""
+    with pytest.raises(ValueError, match="not a file"):
+        load_finder_recording(tmp_path / "nope.json")

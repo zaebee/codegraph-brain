@@ -11,7 +11,7 @@ from cgis.guardian.collector import ContextCollector
 from cgis.guardian.diff_index import diff_line_content
 from cgis.guardian.findings import ReviewResult
 from cgis.guardian.github_poster import post_inline_review
-from cgis.guardian.metrics import record_review
+from cgis.guardian.metrics import SkepticRecord, record_review
 from cgis.guardian.providers.base import BaseProvider, ProviderUsage
 from cgis.guardian.providers.gemini import GeminiProvider
 from cgis.guardian.providers.mistral import MistralProvider
@@ -252,11 +252,13 @@ async def run_guardian(
         # flagged something, skeptic killed it" — not a clean LGTM.
         lgtm=not result.findings and not result.parse_failed,
         parse_failed=result.parse_failed,
-        skeptic_model=skeptic[1] if skeptic else None,
-        skeptic_status=result.skeptic_status,
-        skeptic_judged=result.skeptic_judged,
-        skeptic_total=result.skeptic_total,
-        impact_threshold=threshold,
+        skeptic=SkepticRecord(
+            model=skeptic[1] if skeptic else None,
+            status=result.skeptic_status,
+            judged=result.skeptic_judged,
+            total=result.skeptic_total,
+            impact_threshold=threshold,
+        ),
         chunk_count=routed.chunk_count,
         metrics_path=metrics_path,
     )

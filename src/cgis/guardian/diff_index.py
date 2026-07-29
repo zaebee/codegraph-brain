@@ -13,6 +13,8 @@ import structlog
 
 log = structlog.getLogger(__name__)
 
+_DEV_NULL = "/dev/null"  # git's marker for "this side of the diff has no file"
+
 _HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 _NEW_FILE_RE = re.compile(r"^\+\+\+ (?:b/)?(.+)$")
 
@@ -26,7 +28,7 @@ _QUOTED_NEW_FILE_RE = re.compile(r'^\+\+\+ "?(?:b/)?(.+?)"?$')
 def _new_file_path(header: re.Match[str]) -> str | None:
     """New-side path from a matched `+++` header; None for deletions (/dev/null)."""
     path = header.group(1)
-    return None if path == "/dev/null" else path
+    return None if path == _DEV_NULL else path
 
 
 def diff_line_content(diff_text: str) -> dict[str, dict[int, str]]:
@@ -90,9 +92,9 @@ def _block_path(lines: list[str]) -> str | None:
         if line.startswith("@@"):
             break
         if old is None and (m := _QUOTED_OLD_FILE_RE.match(line)):
-            old = None if m.group(1) == "/dev/null" else m.group(1)
+            old = None if m.group(1) == _DEV_NULL else m.group(1)
         elif new is None and (m := _QUOTED_NEW_FILE_RE.match(line)):
-            new = None if m.group(1) == "/dev/null" else m.group(1)
+            new = None if m.group(1) == _DEV_NULL else m.group(1)
     return new or old or _git_header_path(lines[0])
 
 
