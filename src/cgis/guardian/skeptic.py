@@ -6,7 +6,8 @@ from typing import Literal
 import structlog
 from pydantic import BaseModel, Field
 
-from cgis.guardian.findings import Finding
+from cgis.guardian.findings import Finding, extract_json
+from cgis.guardian.providers.base import BaseProvider
 
 log = structlog.getLogger(__name__)
 
@@ -132,6 +133,73 @@ def apply_verdicts(findings: list[Finding], skeptic: SkepticResult) -> list[Find
             )
         )
     return merged
+
+
+IMPACT_RUBRIC = """
+Also rate how much this finding MATTERS, independent of whether it is true,
+as impact_score 0-10:
+
+- 0-2  true but not actionable: style, taste, "consider X for explicitness",
+       or restating something the project's tooling already enforces.
+       If `ruff`, `ruff format` or `mypy --strict` would catch it, score <= 2:
+       those run as mandatory gates in this repo, so such issues are already
+       covered.
+- 3-5  a minor real issue: local clarity or robustness, no behaviour change.
+- 6-8  a real defect with a concrete failure path in this diff.
+- 9-10 a broken contract, a security hole, or data loss.
+
+A true finding can score 0. Scoring is NOT a second chance to refute: judge
+truth and importance independently."""
+
+
+def build_judgement_prompt(finding: Finding, hunks: str) -> str:
+    """Assemble the user prompt judging ONE finding against its own file's hunks.
+
+    The finder's ``confidence`` and ``severity`` are deliberately omitted: both
+    are its own guess at what this pass re-derives independently, and showing
+    them anchors the judge on the claim it is meant to check (#246 §3.3).
+    """
+    location = f"{finding.file}:{finding.line}" if finding.line is not None else finding.file
+    return f"""Another reviewer claims this diff contains a defect.
+
+### THE CLAIM
+Location: {location}
+Title: {finding.title}
+Quoted code: {finding.evidence}
+Problem: {finding.problem}
+Proposed fix: {finding.fix}
+
+### THE DIFF HUNKS FOR THAT FILE
+{hunks or "(no hunks available for this file)"}
+
+### HOW TO JUDGE
+Verify the quoted code against the hunks above. If the claim depends on code
+that is NOT in these hunks, you cannot check it: that is grounds for
+'uncertain', never for 'refuted'.
+{IMPACT_RUBRIC}
+
+### OUTPUT FORMAT
+Return ONLY a JSON object:
+{{"verdict": "confirmed|refuted|uncertain", "impact_score": 0, "rationale": "one sentence"}}"""
+
+
+async def judge_finding(
+    provider: BaseProvider, finding: Finding, hunks: str
+) -> FindingJudgement | None:
+    """Judge one finding; None means this call failed (#246 §3.2).
+
+    Every failure mode — transport error, rate limit, unparseable output —
+    collapses to None so the caller keeps the finding unruled and visible. A
+    skeptic that cannot answer must never be able to silence a finding.
+    """
+    try:
+        raw = await provider.generate_structured(
+            SKEPTIC_SYSTEM_PROMPT, build_judgement_prompt(finding, hunks), FindingJudgement
+        )
+        return FindingJudgement.model_validate_json(extract_json(raw))
+    except Exception:
+        log.warning("Skeptic judgement failed; finding stays unruled.", file=finding.file)
+        return None
 
 
 def apply_judgements(

@@ -1,5 +1,8 @@
 """Unit tests for skeptic verdict models and the pure merge logic (spec §5)."""
 
+import pytest
+from guardian_stubs import BoomProvider, StubProvider
+
 from cgis.guardian.findings import Finding
 from cgis.guardian.skeptic import (
     FindingJudgement,
@@ -7,7 +10,9 @@ from cgis.guardian.skeptic import (
     SkepticVerdict,
     apply_judgements,
     apply_verdicts,
+    build_judgement_prompt,
     build_skeptic_prompt,
+    judge_finding,
     visible_findings,
 )
 
@@ -138,3 +143,50 @@ def test_threshold_hides_low_impact_but_keeps_it_in_the_list() -> None:
 def test_unjudged_finding_survives_a_threshold() -> None:
     """An unjudged finding has no score to compare; a threshold must not hide it."""
     assert visible_findings([_FINDING], threshold=5) == [_FINDING]
+
+
+def test_judgement_prompt_hides_the_finders_self_assessment() -> None:
+    """confidence and severity are the finder's guess at what this pass re-derives."""
+    prompt = build_judgement_prompt(_FINDING, "@@ -1 +1 @@\n+x")
+    assert "off-by-one" in prompt  # the claim itself is shown
+    assert "range(n + 1)" in prompt  # and its evidence
+    assert "85" not in prompt  # but not the finder's confidence
+    assert "major" not in prompt  # nor its severity
+
+
+def test_judgement_prompt_states_out_of_hunk_claims_are_uncertain() -> None:
+    """Narrow context must not become a false-refutation generator (#246 §3.3)."""
+    prompt = build_judgement_prompt(_FINDING, "@@ -1 +1 @@\n+x")
+    assert "cannot check it" in prompt
+    assert "never for 'refuted'" in prompt
+
+
+def test_judgement_prompt_carries_the_impact_rubric() -> None:
+    """The importance axis needs its anchors, including the tooling rule."""
+    prompt = build_judgement_prompt(_FINDING, "")
+    assert "impact_score 0-10" in prompt
+    assert "mypy --strict" in prompt
+
+
+@pytest.mark.asyncio
+async def test_judge_finding_parses_a_judgement() -> None:
+    """A well-formed provider response becomes a FindingJudgement."""
+    provider = StubProvider(
+        ['{"verdict": "confirmed", "impact_score": 7, "rationale": "real off-by-one"}']
+    )
+    judgement = await judge_finding(provider, _FINDING, "@@ -1 +1 @@\n+x")
+    assert judgement is not None
+    assert judgement.verdict == "confirmed"
+    assert judgement.impact_score == 7
+
+
+@pytest.mark.asyncio
+async def test_judge_finding_returns_none_on_unparseable_response() -> None:
+    """A failed call yields None — the caller keeps the finding unruled, never drops it."""
+    assert await judge_finding(StubProvider(["not json"]), _FINDING, "") is None
+
+
+@pytest.mark.asyncio
+async def test_judge_finding_returns_none_when_the_provider_raises() -> None:
+    """Provider errors are contained per finding (#246 §3.4)."""
+    assert await judge_finding(BoomProvider(), _FINDING, "") is None
