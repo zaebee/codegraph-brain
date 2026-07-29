@@ -9,6 +9,7 @@ import structlog
 from cgis.guardian.chunked import run_review_routed
 from cgis.guardian.collector import ContextCollector
 from cgis.guardian.diff_index import diff_line_content
+from cgis.guardian.findings import ReviewResult
 from cgis.guardian.github_poster import post_inline_review
 from cgis.guardian.metrics import record_review
 from cgis.guardian.providers.base import BaseProvider, ProviderUsage
@@ -30,6 +31,23 @@ def _ollama_host(env: Mapping[str, str]) -> str | None:
     env var never reaches the client as an invalid host.
     """
     return (env.get("GUARDIAN_OLLAMA_HOST") or "").strip() or None
+
+
+def impact_threshold(env: Mapping[str, str]) -> int:
+    """GUARDIAN_IMPACT_THRESHOLD clamped to 0-10; 0 (nothing hidden) on absence or garbage.
+
+    Ships inert on purpose (#246 §3.5): the threshold is chosen from the
+    benchmark's score distribution, not guessed. A garbage value must not
+    silently hide findings, so it degrades to "hide nothing".
+    """
+    raw = (env.get("GUARDIAN_IMPACT_THRESHOLD") or "").strip()
+    if not raw:
+        return 0
+    try:
+        return max(0, min(10, int(raw)))
+    except ValueError:
+        log.warning("Invalid GUARDIAN_IMPACT_THRESHOLD; hiding nothing.", value=raw)
+        return 0
 
 
 def _ollama_num_ctx(env: Mapping[str, str]) -> int:
@@ -148,8 +166,14 @@ def build_skeptic_provider(
     return GeminiProvider(api_key=key, model_name=model), model
 
 
-def build_footer(*, model: str, usage: ProviderUsage, stats: dict[str, int]) -> str:
-    """Build the markdown footer with model, token usage, and graph coverage."""
+def build_footer(
+    *,
+    model: str,
+    usage: ProviderUsage,
+    stats: dict[str, int],
+    result: ReviewResult | None = None,
+) -> str:
+    """Build the markdown footer with model, token usage, graph coverage and skeptic reach."""
     parts = [f"🤖 **{model}**"]
     if usage.total_tokens > 0:
         parts.append(
@@ -159,6 +183,8 @@ def build_footer(*, model: str, usage: ProviderUsage, stats: dict[str, int]) -> 
     if stats.get("total", 0) > 0:
         pct = round(stats.get("with_graph", 0) / stats["total"] * 100)
         parts.append(f"graph {stats.get('with_graph', 0)}/{stats['total']} files ({pct}%)")
+    if result is not None and result.skeptic_total:
+        parts.append(f"skeptic {result.skeptic_judged}/{result.skeptic_total}")
     return "\n\n---\n> " + " · ".join(parts)
 
 
@@ -171,6 +197,7 @@ async def run_guardian(
     metrics_path: Path,
     skeptic: tuple[BaseProvider, str] | None = None,
     inline_repo: str | None = None,
+    threshold: int = 0,
 ) -> tuple[str, bool]:
     """Run the review; try the inline path when configured.
 
@@ -184,11 +211,16 @@ async def run_guardian(
         skeptic_provider=skeptic[0] if skeptic else None,
     )
     result = routed.result
-    report = render_report(result)
+    report = render_report(result, threshold)
     # Built BEFORE the inline attempt: a successful inline post skips the
     # fallback comment, so the footer must ride inside the review body too
     # (live finding on PR #157 — inline reviews arrived footerless).
-    footer = build_footer(model=model, usage=provider.cumulative_usage, stats=collector.graph_stats)
+    footer = build_footer(
+        model=model,
+        usage=provider.cumulative_usage,
+        stats=collector.graph_stats,
+        result=result,
+    )
 
     posted = False
     if inline_repo is not None and pr is not None:
@@ -204,6 +236,7 @@ async def run_guardian(
                 skeptic_model=skeptic[1] if skeptic else None,
                 footer=footer,
                 diff_content=content,
+                threshold=threshold,
             )
             posted = True
         except Exception:
@@ -221,6 +254,9 @@ async def run_guardian(
         parse_failed=result.parse_failed,
         skeptic_model=skeptic[1] if skeptic else None,
         skeptic_status=result.skeptic_status,
+        skeptic_judged=result.skeptic_judged,
+        skeptic_total=result.skeptic_total,
+        impact_threshold=threshold,
         chunk_count=routed.chunk_count,
         metrics_path=metrics_path,
     )

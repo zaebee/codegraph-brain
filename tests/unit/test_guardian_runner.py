@@ -18,6 +18,7 @@ from cgis.guardian.runner import (
     build_footer,
     build_provider,
     build_skeptic_provider,
+    impact_threshold,
     run_guardian,
 )
 
@@ -370,3 +371,12 @@ async def test_run_guardian_no_inline_repo_skips_posting(tmp_path: Path) -> None
         )
     assert posted is False
     mock_post.assert_not_called()
+
+
+def test_impact_threshold_defaults_to_zero_and_reads_env() -> None:
+    """Ships inert: the knob only moves once the benchmark shows the distribution."""
+    assert impact_threshold({}) == 0
+    assert impact_threshold({"GUARDIAN_IMPACT_THRESHOLD": "4"}) == 4
+    assert impact_threshold({"GUARDIAN_IMPACT_THRESHOLD": "nonsense"}) == 0
+    assert impact_threshold({"GUARDIAN_IMPACT_THRESHOLD": "-3"}) == 0
+    assert impact_threshold({"GUARDIAN_IMPACT_THRESHOLD": "99"}) == 10

@@ -62,6 +62,7 @@ def build_review(
     skeptic_model: str | None,
     footer: str = "",
     diff_content: dict[str, dict[int, str]] | None = None,
+    threshold: int = 0,
 ) -> tuple[str, list[dict[str, object]]]:
     """Split findings into inline comments vs body text (pure, spec §6.2).
 
@@ -78,7 +79,7 @@ def build_review(
     content_by_file = diff_content if diff_content is not None else {}
     inline: list[Finding] = []
     outside: list[Finding] = []
-    for raw in visible_findings(result.findings):
+    for raw in visible_findings(result.findings, threshold):
         line = _anchored_line(raw, content_by_file.get(raw.file))
         finding = raw if line == raw.line else raw.model_copy(update={"line": line})
         if finding.line is not None and finding.line in diff_index.get(finding.file, set()):
@@ -94,7 +95,7 @@ def build_review(
         }
         for f in inline
     ]
-    return render_review_body(result, outside=outside) + footer, comments
+    return render_review_body(result, outside=outside, threshold=threshold) + footer, comments
 
 
 def post_inline_review(
@@ -106,6 +107,7 @@ def post_inline_review(
     skeptic_model: str | None,
     footer: str = "",
     diff_content: dict[str, dict[int, str]] | None = None,
+    threshold: int = 0,
 ) -> None:
     """POST one COMMENT review via `gh api` (auto-auth in Actions, spec §6.4).
 
@@ -119,6 +121,7 @@ def post_inline_review(
         skeptic_model=skeptic_model,
         footer=footer,
         diff_content=diff_content,
+        threshold=threshold,
     )
     payload = {"event": "COMMENT", "body": body, "comments": comments}
     subprocess.run(

@@ -19,6 +19,9 @@ def record_review(
     parse_failed: bool = False,
     skeptic_model: str | None = None,
     skeptic_status: str = "off",
+    skeptic_judged: int = 0,
+    skeptic_total: int = 0,
+    impact_threshold: int = 0,
     chunk_count: int | None = None,
     metrics_path: Path = _DEFAULT_METRICS_FILE,
 ) -> Path:
@@ -40,6 +43,9 @@ def record_review(
         "parse_failed": parse_failed,
         "skeptic_model": skeptic_model,
         "skeptic_status": skeptic_status,
+        "skeptic_judged": skeptic_judged,
+        "skeptic_total": skeptic_total,
+        "impact_threshold": impact_threshold,
         "chunk_count": chunk_count,
     }
     with metrics_path.open("a", encoding="utf-8") as fh:
