@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.4.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.3.0...codegraph-brain-v0.4.0) (2026-07-29)
+
+
+### Features
+
+* **bench:** report which ground truth the skeptic killed ([#270](https://github.com/zaebee/codegraph-brain/issues/270)) ([#272](https://github.com/zaebee/codegraph-brain/issues/272)) ([a830d92](https://github.com/zaebee/codegraph-brain/commit/a830d92c411d1fccdca26dfab1d3267edc4c103c))
+* **guardian:** per-finding skeptic judgement + impact scoring ([#246](https://github.com/zaebee/codegraph-brain/issues/246)) ([#269](https://github.com/zaebee/codegraph-brain/issues/269)) ([038a501](https://github.com/zaebee/codegraph-brain/commit/038a5013361dfb2465e442760ded1cb26c7d4183))
+* **mcp:** migrate to mcp 2.x (MCPServer), lift the &lt;2 bound ([#273](https://github.com/zaebee/codegraph-brain/issues/273)) ([e0d76da](https://github.com/zaebee/codegraph-brain/commit/e0d76dada2b3f96c816021a729616c5a7d3927b3)), closes [#264](https://github.com/zaebee/codegraph-brain/issues/264)
+
+
+### Bug Fixes
+
+* **context:** resolve source_root against stored paths, first match wins ([#228](https://github.com/zaebee/codegraph-brain/issues/228)) ([#263](https://github.com/zaebee/codegraph-brain/issues/263)) ([ecf87de](https://github.com/zaebee/codegraph-brain/commit/ecf87deb5a683317f49cfdb47e23764e8dfb9464))
+
+
+### Documentation
+
+* auto-sync architecture graph and MCP reference ([#267](https://github.com/zaebee/codegraph-brain/issues/267)) ([4a68804](https://github.com/zaebee/codegraph-brain/commit/4a688049ac77c2edb1f86e8d28df926eb545c5be))
+* **specs:** guardian skeptic — per-finding judgement + impact scoring ([#246](https://github.com/zaebee/codegraph-brain/issues/246)) ([#268](https://github.com/zaebee/codegraph-brain/issues/268)) ([b47bcbe](https://github.com/zaebee/codegraph-brain/commit/b47bcbee2dab06fd7b0aa8ac2c9f367e9746ea58))
+
 ## [0.3.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.2.0...codegraph-brain-v0.3.0) (2026-06-14)
 
 
