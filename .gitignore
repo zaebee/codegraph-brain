@@ -73,6 +73,8 @@ docs/_build/
 
 # Superpowers planning artifacts
 docs/superpowers/
+.superpowers/
+.claude/
 
 # PyBuilder
 .pybuilder/
