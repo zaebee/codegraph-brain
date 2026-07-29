@@ -205,8 +205,14 @@ async def _score_and_record(
         "matched": matches.matched,
         "missed": matches.missed,
         "ambiguous_hits": matches.ambiguous_hits,
+        # Both providers: in replay mode the finder never runs, so recording
+        # only its usage reported a free run for a pass that cost real tokens.
         "prompt_tokens": provider.cumulative_usage.prompt_tokens,
         "completion_tokens": provider.cumulative_usage.completion_tokens,
+        "skeptic_prompt_tokens": skeptic[0].cumulative_usage.prompt_tokens if skeptic else 0,
+        "skeptic_completion_tokens": (
+            skeptic[0].cumulative_usage.completion_tokens if skeptic else 0
+        ),
         "chunks": chunks,
         "skeptic_model": skeptic[1] if skeptic else None,
         "skeptic_status": result.skeptic_status,
