@@ -16,6 +16,7 @@ from cgis.guardian.prompts import PromptBuilder
 from cgis.guardian.providers.base import BaseProvider, ProviderUsage
 from cgis.guardian.providers.gemini import GeminiProvider
 from cgis.guardian.providers.mistral import MistralProvider
+from cgis.guardian.skeptic import visible_findings
 
 _VALID_JSON = '{"findings": [], "summary": "all good"}'
 
@@ -631,9 +632,7 @@ async def test_finder_hallucinated_impact_score_is_reset(tmp_path: Path) -> None
 async def test_skeptic_pass_merges_verdicts(tmp_path: Path) -> None:
     """With a skeptic provider, verdicts land on findings and status is 'ok'."""
     finder = StubProvider([FINDING_JSON])
-    skeptic = StubProvider(
-        ['{"verdicts": [{"finding_index": 0, "verdict": "confirmed", "rationale": "r"}]}']
-    )
+    skeptic = StubProvider(['{"verdict": "confirmed", "impact_score": 7, "rationale": "r"}'])
     collector = ContextCollector(project_root=tmp_path)
     reviewer = GuardianReviewer(
         provider=finder, context_collector=collector, skeptic_provider=skeptic
@@ -642,6 +641,43 @@ async def test_skeptic_pass_merges_verdicts(tmp_path: Path) -> None:
         result = await reviewer.run_review()
     assert result.skeptic_status == "ok"
     assert result.findings[0].verdict == "confirmed"
+    assert result.findings[0].impact_score == 7
+    assert result.skeptic_judged == 1
+    assert result.skeptic_total == 1
+
+
+_TWO_FINDINGS_JSON = (
+    '{"findings": ['
+    '{"file": "a.py", "line": 1, "severity": "major", "category": "logic", "title": "first",'
+    ' "evidence": "e", "problem": "p", "fix": "f", "confidence": 90},'
+    '{"file": "a.py", "line": 2, "severity": "minor", "category": "logic", "title": "second",'
+    ' "evidence": "e", "problem": "p", "fix": "f", "confidence": 60}],'
+    ' "summary": "s"}'
+)
+
+
+@pytest.mark.asyncio
+async def test_skeptic_partial_when_some_judgements_fail(tmp_path: Path) -> None:
+    """Partial is its own status: neither a lie ('ok') nor a discard ('failed').
+
+    The finding whose judgement call failed stays visible — absence of a
+    judgement has never been a refutation (#246 §3.4).
+    """
+    finder = StubProvider([_TWO_FINDINGS_JSON])
+    skeptic = StubProvider(
+        ["not json", '{"verdict": "confirmed", "impact_score": 8, "rationale": "ok"}']
+    )
+    collector = ContextCollector(project_root=tmp_path)
+    reviewer = GuardianReviewer(
+        provider=finder, context_collector=collector, skeptic_provider=skeptic
+    )
+    with patch.object(collector, "collect_all", return_value={"diff": "d"}):
+        result = await reviewer.run_review()
+    assert result.skeptic_status == "partial"
+    assert result.skeptic_judged == 1
+    assert result.skeptic_total == 2
+    assert len(visible_findings(result.findings)) == 2  # the unruled one survives
+    assert result.findings[0].verdict is None
 
 
 @pytest.mark.asyncio
@@ -671,4 +707,5 @@ async def test_skeptic_failure_degrades_to_single_pass(tmp_path: Path) -> None:
     with patch.object(collector, "collect_all", return_value={"diff": "d"}):
         result = await reviewer.run_review()
     assert result.skeptic_status == "failed"
+    assert result.skeptic_judged == 0
     assert result.findings[0].verdict is None

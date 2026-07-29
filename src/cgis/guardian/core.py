@@ -8,10 +8,10 @@ from cgis.guardian.findings import ReviewResult, extract_json
 from cgis.guardian.prompts import PromptBuilder
 from cgis.guardian.providers.base import BaseProvider
 from cgis.guardian.skeptic import (
-    SKEPTIC_SYSTEM_PROMPT,
-    SkepticResult,
-    apply_verdicts,
-    build_skeptic_prompt,
+    DEFAULT_SKEPTIC_CONCURRENCY,
+    apply_judgements,
+    judge_all,
+    skeptic_status_for,
 )
 
 log = structlog.getLogger(__name__)
@@ -82,31 +82,39 @@ class GuardianReviewer:
         provider: BaseProvider,
         context_collector: ContextCollector,
         skeptic_provider: BaseProvider | None = None,
+        concurrency: int = DEFAULT_SKEPTIC_CONCURRENCY,
     ) -> None:
-        """Wire up the LLM provider, context collector, and optional skeptic."""
+        """Wire up the LLM provider, context collector, and optional skeptic.
+
+        ``concurrency`` bounds the per-finding judgement calls; the default keeps
+        provider rate limits out of reach (#246 §3.4).
+        """
         self.provider = provider
         self.context_collector = context_collector
         self.skeptic_provider = skeptic_provider
+        self.concurrency = concurrency
 
     async def _finder_pass(self, context: dict[str, str]) -> ReviewResult:
         """Delegate to the module-level finder_pass (kept for call-site stability)."""
         return await finder_pass(self.provider, context)
 
     async def run_review(self) -> ReviewResult:
-        """Run the review; optionally verify findings with the skeptic pass (spec §5)."""
+        """Run the review; optionally judge each finding with the skeptic pass (#246 §3.4)."""
         context = self.context_collector.collect_all()
         result = await self._finder_pass(context)
         if self.skeptic_provider is None or not result.findings or result.parse_failed:
             return result
-        try:
-            raw = await self.skeptic_provider.generate_structured(
-                SKEPTIC_SYSTEM_PROMPT,
-                build_skeptic_prompt(context, result.findings),
-                SkepticResult,
-            )
-            verdicts = SkepticResult.model_validate_json(extract_json(raw))
-        except Exception:
-            log.warning("Skeptic pass failed; returning single-pass results.", exc_info=True)
-            return result.model_copy(update={"skeptic_status": "failed"})
-        merged = apply_verdicts(result.findings, verdicts)
-        return result.model_copy(update={"findings": merged, "skeptic_status": "ok"})
+        judgements = await judge_all(
+            self.skeptic_provider, result.findings, context.get("diff", ""), self.concurrency
+        )
+        judged = sum(1 for j in judgements if j is not None)
+        if judged == 0:
+            log.warning("Every skeptic judgement failed; returning single-pass results.")
+        return result.model_copy(
+            update={
+                "findings": apply_judgements(result.findings, judgements),
+                "skeptic_status": skeptic_status_for(judged, len(judgements)),
+                "skeptic_judged": judged,
+                "skeptic_total": len(judgements),
+            }
+        )

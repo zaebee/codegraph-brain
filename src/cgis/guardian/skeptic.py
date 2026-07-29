@@ -210,6 +210,17 @@ async def judge_finding(
         return None
 
 
+def skeptic_status_for(judged: int, total: int) -> Literal["ok", "partial", "failed"]:
+    """Map judged/total onto the reported skeptic status (#246 §3.4).
+
+    Public and shared: the chunked orchestrator reports the same statuses, and
+    two copies of this mapping would be free to drift apart.
+    """
+    if judged == 0:
+        return "failed"
+    return "ok" if judged == total else "partial"
+
+
 async def judge_all(
     provider: BaseProvider,
     findings: list[Finding],
