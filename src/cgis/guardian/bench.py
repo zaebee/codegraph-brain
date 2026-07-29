@@ -14,7 +14,7 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, Field, model_validator
 
-from cgis.guardian.findings import Category, Finding, Severity
+from cgis.guardian.findings import Category, Finding, ReviewResult, Severity
 
 
 class GroundTruthEntry(BaseModel, frozen=True):
@@ -168,3 +168,44 @@ def annotate_matches(
     return [
         {**f.model_dump(), "matched_gt": position.get(id(f)) in matched_positions} for f in findings
     ]
+
+
+class FinderRecording(BaseModel, frozen=True):
+    """A frozen finder pass: its findings plus the diff they were found in (#246 §4.1).
+
+    The diff travels with the findings so a replay needs no worktree, ingest or
+    git at all — without it, isolating the skeptic would still pay the whole
+    setup cost the replay exists to avoid.
+    """
+
+    result: ReviewResult
+    diff: str
+
+
+def save_finder_recording(path: Path, result: ReviewResult, diff: str) -> None:
+    """Write a finder pass to disk for later replay."""
+    recording = FinderRecording(result=result, diff=diff)
+    path.write_text(recording.model_dump_json(), encoding="utf-8")
+
+
+def load_finder_recording(path: Path) -> FinderRecording:
+    """Load a recorded finder pass, stripping any skeptic verdicts it carries.
+
+    A recording captured from a run that HAD a skeptic would otherwise smuggle
+    those verdicts into the next variant's scoring — every replay must start
+    from unjudged findings, or the arms are not comparable.
+    """
+    recording = FinderRecording.model_validate_json(path.read_text(encoding="utf-8"))
+    findings = [
+        f.model_copy(update={"verdict": None, "skeptic_note": None, "impact_score": None})
+        for f in recording.result.findings
+    ]
+    clean = recording.result.model_copy(
+        update={
+            "findings": findings,
+            "skeptic_status": "off",
+            "skeptic_judged": 0,
+            "skeptic_total": 0,
+        }
+    )
+    return recording.model_copy(update={"result": clean})

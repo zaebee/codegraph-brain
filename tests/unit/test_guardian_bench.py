@@ -6,16 +6,19 @@ import pytest
 from pydantic import ValidationError
 
 from cgis.guardian.bench import (
+    FinderRecording,
     GroundTruth,
     GroundTruthEntry,
     MatchResult,
     annotate_matches,
+    load_finder_recording,
     load_ground_truth,
     match_findings,
+    save_finder_recording,
     score,
     score_separation,
 )
-from cgis.guardian.findings import Finding
+from cgis.guardian.findings import Finding, ReviewResult
 
 _TRUTH = GroundTruth.model_validate(
     {
@@ -216,3 +219,55 @@ def test_annotate_matches_marks_hidden_findings_as_unmatched() -> None:
     rows = annotate_matches([shown, refuted], [shown], matches)
 
     assert [r["matched_gt"] for r in rows] == [True, False]
+
+
+# ---------------------------------------------------------------------------
+# Frozen finder output: replay (spec §4.1)
+# ---------------------------------------------------------------------------
+
+_RECORDED = FinderRecording(
+    result=ReviewResult(findings=[_pred(file="src/a.py", line=3)], summary="s"),
+    diff="diff --git a/src/a.py b/src/a.py\n--- a/src/a.py\n+++ b/src/a.py\n@@ -1 +1 @@\n+x\n",
+)
+
+
+def test_finder_recording_round_trips(tmp_path: Path) -> None:
+    """A recorded finder pass reloads exactly, so every skeptic variant judges one set."""
+    path = tmp_path / "finder.json"
+    save_finder_recording(path, _RECORDED.result, _RECORDED.diff)
+
+    loaded = load_finder_recording(path)
+
+    assert len(loaded.result.findings) == 1
+    assert loaded.result.findings[0].file == "src/a.py"
+    assert "+x" in loaded.diff
+
+
+def test_finder_recording_carries_the_diff_not_just_findings(tmp_path: Path) -> None:
+    """The diff rides along so replay needs no worktree, ingest or git at all.
+
+    Without it, isolating the skeptic would still pay the whole setup cost the
+    replay exists to avoid.
+    """
+    path = tmp_path / "finder.json"
+    save_finder_recording(path, _RECORDED.result, _RECORDED.diff)
+
+    assert "diff --git" in load_finder_recording(path).diff
+
+
+def test_recorded_skeptic_fields_are_not_trusted(tmp_path: Path) -> None:
+    """A recording made WITH a skeptic must not smuggle old verdicts into a new run."""
+    stale = ReviewResult(
+        findings=[_pred(file="a.py", line=1).model_copy(update={"verdict": "refuted"})],
+        summary="s",
+        skeptic_status="ok",
+        skeptic_judged=1,
+        skeptic_total=1,
+    )
+    path = tmp_path / "finder.json"
+    save_finder_recording(path, stale, "d")
+
+    loaded = load_finder_recording(path)
+
+    assert loaded.result.findings[0].verdict is None
+    assert loaded.result.skeptic_status == "off"
