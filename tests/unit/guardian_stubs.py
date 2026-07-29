@@ -33,3 +33,21 @@ class StubProvider(BaseProvider):
         """Record the prompt and return the next canned response."""
         self.prompts.append(user_prompt)
         return self._responses.pop(0)
+
+
+class BoomProvider(BaseProvider):
+    """Raises on every structured call — simulates a transport/API failure."""
+
+    async def generate_content(self, system_prompt: str, user_prompt: str) -> str:
+        """Not used in tests."""
+        raise NotImplementedError
+
+    async def generate_structured(
+        self,
+        system_prompt: str,  # noqa: ARG002
+        user_prompt: str,  # noqa: ARG002
+        schema: type[BaseModel],  # noqa: ARG002
+    ) -> str:
+        """Simulate a provider/API failure."""
+        _msg = "boom"
+        raise RuntimeError(_msg)

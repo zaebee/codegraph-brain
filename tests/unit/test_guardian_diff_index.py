@@ -1,6 +1,6 @@
 """Unit tests for the pure unified-diff RIGHT-side line indexer (spec §6.2)."""
 
-from cgis.guardian.diff_index import diff_line_content, diff_line_index
+from cgis.guardian.diff_index import diff_line_content, diff_line_index, split_diff_by_file
 
 _SIMPLE = """\
 diff --git a/src/x.py b/src/x.py
@@ -114,3 +114,21 @@ def test_diff_line_content_maps_numbers_to_text() -> None:
 def test_diff_line_content_new_file() -> None:
     """A brand-new file maps every added line to its text."""
     assert diff_line_content(_NEW_FILE)["brand.py"] == {1: "line1", 2: "line2"}
+
+
+def test_split_diff_by_file_is_available_from_the_diff_leaf() -> None:
+    """The per-file splitter lives with the other pure diff parsers (#246 plan T3)."""
+    diff = (
+        "diff --git a/src/a.py b/src/a.py\n"
+        "--- a/src/a.py\n+++ b/src/a.py\n"
+        "@@ -1,2 +1,2 @@\n-old\n+new\n"
+        "diff --git a/src/b.py b/src/b.py\n"
+        "--- a/src/b.py\n+++ b/src/b.py\n"
+        "@@ -1,1 +1,1 @@\n-x\n+y\n"
+    )
+
+    blocks = split_diff_by_file(diff)
+
+    assert set(blocks) == {"src/a.py", "src/b.py"}
+    assert "+new" in blocks["src/a.py"]
+    assert "+new" not in blocks["src/b.py"]

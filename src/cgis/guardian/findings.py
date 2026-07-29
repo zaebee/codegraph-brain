@@ -27,6 +27,10 @@ class Finding(BaseModel, frozen=True):
     anchor: str | None = None
     verdict: Verdict | None = None
     skeptic_note: str | None = None
+    # 0-10 importance from the skeptic (#246 spec §3.1). None = not judged.
+    # Orthogonal to `verdict`: a finding can be true (confirmed) and worthless
+    # (score 1), which one enum value cannot express.
+    impact_score: int | None = Field(default=None, ge=0, le=10)
 
 
 class ReviewResult(BaseModel, frozen=True):
@@ -35,9 +39,13 @@ class ReviewResult(BaseModel, frozen=True):
     findings: list[Finding]
     summary: str
     parse_failed: bool = False
-    # "off" = skeptic not configured; "ok" = verdicts merged; "failed" = skeptic
-    # call errored, single-pass results returned (spec §5.5 — never silent).
-    skeptic_status: Literal["off", "ok", "failed"] = "off"
+    # "off" = skeptic not configured; "ok" = every finding judged; "partial" =
+    # some judgement calls failed (see skeptic_judged/skeptic_total); "failed" =
+    # no finding was judged, single-pass results returned (spec §5.5 / #246
+    # §3.4 — never silent).
+    skeptic_status: Literal["off", "ok", "partial", "failed"] = "off"
+    skeptic_judged: int = 0
+    skeptic_total: int = 0
 
 
 def extract_json(text: str) -> str:

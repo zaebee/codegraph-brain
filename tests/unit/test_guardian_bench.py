@@ -6,13 +6,19 @@ import pytest
 from pydantic import ValidationError
 
 from cgis.guardian.bench import (
+    FinderRecording,
     GroundTruth,
     GroundTruthEntry,
+    MatchResult,
+    annotate_matches,
+    load_finder_recording,
     load_ground_truth,
     match_findings,
+    save_finder_recording,
     score,
+    score_separation,
 )
-from cgis.guardian.findings import Finding
+from cgis.guardian.findings import Finding, ReviewResult
 
 _TRUTH = GroundTruth.model_validate(
     {
@@ -164,3 +170,118 @@ def test_match_result_records_total_predictions() -> None:
     """total_predictions is captured by the matcher, not supplied by the caller."""
     preds = [_pred("tests/unit/test_quotient.py", 68), _pred("src/cgis/other.py", 1)]
     assert match_findings(preds, _TRUTH).total_predictions == 2
+
+
+# ---------------------------------------------------------------------------
+# Impact-score separation: the #246 gate metric (spec §4.3)
+# ---------------------------------------------------------------------------
+
+
+def test_score_separation_is_the_gap_between_gt_and_noise_medians() -> None:
+    """Does the skeptic rank real findings above noise? That is the whole question."""
+    assert score_separation([8, 9, 7], [1, 2, 0, 3]) == 6.5  # median 8 - median 1.5
+
+
+def test_score_separation_is_none_without_both_populations() -> None:
+    """A run with no GT match (or no noise) cannot answer the question."""
+    assert score_separation([], [1, 2]) is None
+    assert score_separation([8], []) is None
+
+
+def test_score_separation_detects_a_flat_distribution() -> None:
+    """The PR #263 pathology: everything scored alike -> zero separation, gate fails."""
+    assert score_separation([5, 5], [5, 5, 5]) == 0.0
+
+
+def test_annotate_matches_flags_gt_matching_predictions() -> None:
+    """Each recorded finding carries whether it matched ground truth (spec §4.2)."""
+    hit = _pred(file="a.py", line=10, confidence=90)
+    miss = _pred(file="zzz.py", line=99, confidence=50)
+    visible = [hit, miss]
+    matches = MatchResult(
+        matched={"gt-1": 0}, missed=[], noise=[1], ambiguous_hits=[], total_predictions=2
+    )
+
+    rows = annotate_matches([hit, miss], visible, matches)
+
+    assert [r["matched_gt"] for r in rows] == [True, False]
+    assert rows[0]["file"] == "a.py"
+
+
+def test_annotate_matches_marks_hidden_findings_as_unmatched() -> None:
+    """A refuted finding never reached the matcher; it cannot count as a GT hit."""
+    shown = _pred(file="a.py", line=10, confidence=90)
+    refuted = _pred(file="b.py", line=1, confidence=90).model_copy(update={"verdict": "refuted"})
+    matches = MatchResult(
+        matched={"gt-1": 0}, missed=[], noise=[], ambiguous_hits=[], total_predictions=1
+    )
+
+    rows = annotate_matches([shown, refuted], [shown], matches)
+
+    assert [r["matched_gt"] for r in rows] == [True, False]
+
+
+# ---------------------------------------------------------------------------
+# Frozen finder output: replay (spec §4.1)
+# ---------------------------------------------------------------------------
+
+_RECORDED = FinderRecording(
+    result=ReviewResult(findings=[_pred(file="src/a.py", line=3)], summary="s"),
+    diff="diff --git a/src/a.py b/src/a.py\n--- a/src/a.py\n+++ b/src/a.py\n@@ -1 +1 @@\n+x\n",
+)
+
+
+def test_finder_recording_round_trips(tmp_path: Path) -> None:
+    """A recorded finder pass reloads exactly, so every skeptic variant judges one set."""
+    path = tmp_path / "finder.json"
+    save_finder_recording(path, _RECORDED.result, _RECORDED.diff)
+
+    loaded = load_finder_recording(path)
+
+    assert len(loaded.result.findings) == 1
+    assert loaded.result.findings[0].file == "src/a.py"
+    assert "+x" in loaded.diff
+
+
+def test_finder_recording_carries_the_diff_not_just_findings(tmp_path: Path) -> None:
+    """The diff rides along so replay needs no worktree, ingest or git at all.
+
+    Without it, isolating the skeptic would still pay the whole setup cost the
+    replay exists to avoid.
+    """
+    path = tmp_path / "finder.json"
+    save_finder_recording(path, _RECORDED.result, _RECORDED.diff)
+
+    assert "diff --git" in load_finder_recording(path).diff
+
+
+def test_recorded_skeptic_fields_are_not_trusted(tmp_path: Path) -> None:
+    """A recording made WITH a skeptic must not smuggle old verdicts into a new run."""
+    stale = ReviewResult(
+        findings=[_pred(file="a.py", line=1).model_copy(update={"verdict": "refuted"})],
+        summary="s",
+        skeptic_status="ok",
+        skeptic_judged=1,
+        skeptic_total=1,
+    )
+    path = tmp_path / "finder.json"
+    save_finder_recording(path, stale, "d")
+
+    loaded = load_finder_recording(path)
+
+    assert loaded.result.findings[0].verdict is None
+    assert loaded.result.skeptic_status == "off"
+
+
+def test_recording_path_must_be_json(tmp_path: Path) -> None:
+    """A CLI-supplied path is validated before it reaches the filesystem (Sonar taint)."""
+    with pytest.raises(ValueError, match=r"must be a \.json"):
+        save_finder_recording(tmp_path / "finder.yaml", _RECORDED.result, "d")
+    with pytest.raises(ValueError, match=r"must be a \.json"):
+        load_finder_recording(tmp_path / "finder.yaml")
+
+
+def test_loading_a_missing_recording_is_a_clear_error(tmp_path: Path) -> None:
+    """A typo'd --replay-finder path fails loudly, not with a raw OSError."""
+    with pytest.raises(ValueError, match="not a file"):
+        load_finder_recording(tmp_path / "nope.json")

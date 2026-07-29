@@ -1,11 +1,19 @@
-"""Unit tests for skeptic verdict models and the pure merge logic (spec §5)."""
+"""Unit tests for per-finding judgement, the pure merge, and the impact threshold (#246)."""
+
+import asyncio
+
+import pytest
+from guardian_stubs import BoomProvider, StubProvider
+from pydantic import BaseModel
 
 from cgis.guardian.findings import Finding
+from cgis.guardian.providers.base import BaseProvider
 from cgis.guardian.skeptic import (
-    SkepticResult,
-    SkepticVerdict,
-    apply_verdicts,
-    build_skeptic_prompt,
+    FindingJudgement,
+    apply_judgements,
+    build_judgement_prompt,
+    judge_all,
+    judge_finding,
     visible_findings,
 )
 
@@ -22,68 +30,204 @@ _FINDING = Finding(
 )
 
 
-def _verdict(index: int, verdict: str, rationale: str = "because") -> SkepticVerdict:
-    return SkepticVerdict(finding_index=index, verdict=verdict, rationale=rationale)  # type: ignore[arg-type]
+# ---------------------------------------------------------------------------
+# Per-finding judgement: two orthogonal axes (#246)
+# ---------------------------------------------------------------------------
 
 
-def test_confirmed_sets_verdict_and_note() -> None:
-    """confirmed → verdict + skeptic_note on a new frozen copy."""
-    merged = apply_verdicts([_FINDING], SkepticResult(verdicts=[_verdict(0, "confirmed")]))
+def _judgement(verdict: str, score: int, rationale: str = "because") -> FindingJudgement:
+    return FindingJudgement(verdict=verdict, impact_score=score, rationale=rationale)  # type: ignore[arg-type]
+
+
+def test_judgement_merges_verdict_note_and_score() -> None:
+    """A judgement writes verdict, note and impact_score onto a new frozen copy."""
+    merged = apply_judgements([_FINDING], [_judgement("confirmed", 7)])
     assert merged[0].verdict == "confirmed"
     assert merged[0].skeptic_note == "because"
-    assert _FINDING.verdict is None  # original untouched (frozen)
+    assert merged[0].impact_score == 7
+    assert _FINDING.impact_score is None  # original untouched (frozen)
 
 
-def test_refuted_marks_but_keeps_finding() -> None:
-    """refuted → marked, kept in the list (metrics must see killed findings)."""
-    merged = apply_verdicts([_FINDING], SkepticResult(verdicts=[_verdict(0, "refuted")]))
-    assert merged[0].verdict == "refuted"
-
-
-def test_uncertain_discounts_confidence_but_keeps_finding() -> None:
-    """uncertain → confidence x0.9 (ranking signal), verdict stays uncertain."""
-    f = _FINDING.model_copy(update={"confidence": 89})
-    merged = apply_verdicts([f], SkepticResult(verdicts=[_verdict(0, "uncertain")]))
-    assert merged[0].verdict == "uncertain"
-    assert merged[0].confidence == 80
-
-
-def test_uncertain_low_confidence_is_kept_not_refuted() -> None:
-    """Recall-lean: a low-confidence uncertain finding survives (no gate auto-refute)."""
+def test_judgement_uncertain_discounts_confidence_and_keeps_finding() -> None:
+    """uncertain keeps the finding and discounts confidence x0.9, exactly as before."""
     f = _FINDING.model_copy(update={"confidence": 30})
-    merged = apply_verdicts([f], SkepticResult(verdicts=[_verdict(0, "uncertain")]))
+    merged = apply_judgements([f], [_judgement("uncertain", 4)])
     assert merged[0].verdict == "uncertain"
-    assert merged[0].confidence == 27  # round(30 * 0.9)
-    assert visible_findings(merged) == merged  # not dropped
-
-
-def test_out_of_range_and_duplicate_indices_discarded() -> None:
-    """Out-of-range or duplicate finding_index verdicts are dropped, not applied."""
-    verdicts = SkepticResult(
-        verdicts=[_verdict(5, "refuted"), _verdict(0, "confirmed"), _verdict(0, "refuted")]
-    )
-    merged = apply_verdicts([_FINDING], verdicts)
-    assert merged[0].verdict == "confirmed"  # first valid verdict wins; duplicate ignored
-
-
-def test_unruled_finding_keeps_none_verdict() -> None:
-    """A finding the skeptic never ruled on keeps verdict=None and is not filtered."""
-    merged = apply_verdicts([_FINDING], SkepticResult(verdicts=[]))
-    assert merged[0].verdict is None
+    assert merged[0].confidence == 27
+    assert merged[0].impact_score == 4
     assert visible_findings(merged) == merged
 
 
-def test_visible_findings_drops_only_refuted() -> None:
-    """visible_findings filters refuted; confirmed/uncertain/None stay."""
-    kept = _FINDING.model_copy(update={"verdict": "confirmed"})
+def test_refuted_is_marked_but_stays_in_the_list() -> None:
+    """refuted hides the finding from the report but never removes it from the result.
+
+    Metrics and the benchmark must still see what the skeptic killed.
+    """
+    merged = apply_judgements([_FINDING], [_judgement("refuted", 0)])
+    assert merged[0].verdict == "refuted"
+    assert len(merged) == 1
+    assert visible_findings(merged) == []
+
+
+def test_visible_findings_drops_only_refuted_at_default_threshold() -> None:
+    """confirmed/uncertain/unjudged all stay; only refuted goes."""
+    kept = _FINDING.model_copy(update={"verdict": "confirmed", "impact_score": 2})
+    unsure = _FINDING.model_copy(update={"verdict": "uncertain", "title": "u"})
+    unjudged = _FINDING.model_copy(update={"title": "n"})
     dropped = _FINDING.model_copy(update={"verdict": "refuted", "title": "x"})
-    assert visible_findings([kept, dropped]) == [kept]
+    assert visible_findings([kept, unsure, unjudged, dropped]) == [kept, unsure, unjudged]
 
 
-def test_skeptic_prompt_contains_findings_and_stance() -> None:
-    """The skeptic prompt lists indexed findings and the confirm-by-default stance."""
-    prompt = build_skeptic_prompt({"diff": "the-diff"}, [_FINDING])
-    assert "the-diff" in prompt
-    assert "[0]" in prompt
-    assert "off-by-one" in prompt
-    assert "confirm what you cannot disprove" in prompt
+def test_missing_judgement_is_not_a_refutation() -> None:
+    """None = the judgement call failed; the finding survives unruled and visible."""
+    merged = apply_judgements([_FINDING], [None])
+    assert merged[0].verdict is None
+    assert merged[0].impact_score is None
+    assert visible_findings(merged) == merged
+
+
+def test_threshold_hides_low_impact_but_keeps_it_in_the_list() -> None:
+    """Below-threshold findings are hidden from the report, never dropped from the result."""
+    low = _FINDING.model_copy(update={"verdict": "confirmed", "impact_score": 1})
+    high = _FINDING.model_copy(update={"verdict": "confirmed", "impact_score": 8, "title": "x"})
+    assert visible_findings([low, high], threshold=3) == [high]
+    assert visible_findings([low, high]) == [low, high]  # default 0 hides nothing
+
+
+def test_unjudged_finding_survives_a_threshold() -> None:
+    """An unjudged finding has no score to compare; a threshold must not hide it."""
+    assert visible_findings([_FINDING], threshold=5) == [_FINDING]
+
+
+def test_judgement_prompt_hides_the_finders_self_assessment() -> None:
+    """confidence and severity are the finder's guess at what this pass re-derives."""
+    prompt = build_judgement_prompt(_FINDING, "@@ -1 +1 @@\n+x")
+    assert "off-by-one" in prompt  # the claim itself is shown
+    assert "range(n + 1)" in prompt  # and its evidence
+    assert "85" not in prompt  # but not the finder's confidence
+    assert "major" not in prompt  # nor its severity
+
+
+def test_judgement_prompt_states_out_of_hunk_claims_are_uncertain() -> None:
+    """Narrow context must not become a false-refutation generator (#246 §3.3)."""
+    prompt = build_judgement_prompt(_FINDING, "@@ -1 +1 @@\n+x")
+    assert "cannot check it" in prompt
+    assert "never for 'refuted'" in prompt
+
+
+def test_judgement_prompt_carries_the_impact_rubric() -> None:
+    """The importance axis needs its anchors, including the tooling rule."""
+    prompt = build_judgement_prompt(_FINDING, "")
+    assert "impact_score 0-10" in prompt
+    assert "mypy --strict" in prompt
+
+
+@pytest.mark.asyncio
+async def test_judge_finding_parses_a_judgement() -> None:
+    """A well-formed provider response becomes a FindingJudgement."""
+    provider = StubProvider(
+        ['{"verdict": "confirmed", "impact_score": 7, "rationale": "real off-by-one"}']
+    )
+    judgement = await judge_finding(provider, _FINDING, "@@ -1 +1 @@\n+x")
+    assert judgement is not None
+    assert judgement.verdict == "confirmed"
+    assert judgement.impact_score == 7
+
+
+@pytest.mark.asyncio
+async def test_judge_finding_returns_none_on_unparseable_response() -> None:
+    """A failed call yields None — the caller keeps the finding unruled, never drops it."""
+    assert await judge_finding(StubProvider(["not json"]), _FINDING, "") is None
+
+
+@pytest.mark.asyncio
+async def test_judge_finding_returns_none_when_the_provider_raises() -> None:
+    """Provider errors are contained per finding (#246 §3.4)."""
+    assert await judge_finding(BoomProvider(), _FINDING, "") is None
+
+
+@pytest.mark.asyncio
+async def test_judge_all_returns_one_result_per_finding_in_order() -> None:
+    """Positional contract: judgements[i] rules on findings[i]."""
+    provider = StubProvider(
+        [
+            '{"verdict": "confirmed", "impact_score": 8, "rationale": "a"}',
+            '{"verdict": "refuted", "impact_score": 0, "rationale": "b"}',
+        ]
+    )
+    findings = [_FINDING, _FINDING.model_copy(update={"title": "second"})]
+
+    judgements = await judge_all(provider, findings, "", concurrency=1)
+
+    assert [j.verdict for j in judgements if j] == ["confirmed", "refuted"]
+
+
+@pytest.mark.asyncio
+async def test_judge_all_isolates_a_failing_call() -> None:
+    """One bad response costs one verdict, not the whole pass."""
+    provider = StubProvider(
+        ["not json", '{"verdict": "confirmed", "impact_score": 6, "rationale": "ok"}']
+    )
+    findings = [_FINDING, _FINDING.model_copy(update={"title": "second"})]
+
+    judgements = await judge_all(provider, findings, "", concurrency=1)
+
+    assert judgements[0] is None
+    assert judgements[1] is not None
+
+
+@pytest.mark.asyncio
+async def test_judge_all_feeds_each_finding_only_its_own_file_hunks() -> None:
+    """Per-finding context is the point of the isolation (#246 §3.3)."""
+    provider = StubProvider(['{"verdict": "confirmed", "impact_score": 5, "rationale": "x"}'])
+    diff = (
+        "diff --git a/src/cgis/cli.py b/src/cgis/cli.py\n"
+        "--- a/src/cgis/cli.py\n+++ b/src/cgis/cli.py\n"
+        "@@ -1,1 +1,1 @@\n-old\n+cli_line\n"
+        "diff --git a/other.py b/other.py\n"
+        "--- a/other.py\n+++ b/other.py\n"
+        "@@ -1,1 +1,1 @@\n-x\n+other_line\n"
+    )
+
+    await judge_all(provider, [_FINDING], diff, concurrency=1)
+
+    assert "cli_line" in provider.prompts[0]
+    assert "other_line" not in provider.prompts[0]
+
+
+@pytest.mark.asyncio
+async def test_judge_all_never_exceeds_the_concurrency_limit() -> None:
+    """The semaphore is what keeps mistral's per-minute token cap out of reach."""
+
+    class _ConcurrencyProbe(BaseProvider):
+        """Counts how many judgement calls are in flight at once."""
+
+        def __init__(self) -> None:
+            """Start with no calls in flight."""
+            super().__init__()
+            self.active = 0
+            self.peak = 0
+
+        async def generate_content(self, system_prompt: str, user_prompt: str) -> str:
+            """Not used in tests."""
+            raise NotImplementedError
+
+        async def generate_structured(
+            self,
+            system_prompt: str,  # noqa: ARG002
+            user_prompt: str,  # noqa: ARG002
+            schema: type[BaseModel],  # noqa: ARG002
+        ) -> str:
+            """Track overlap, yielding so concurrent calls can pile up."""
+            self.active += 1
+            self.peak = max(self.peak, self.active)
+            await asyncio.sleep(0)
+            self.active -= 1
+            return '{"verdict": "confirmed", "impact_score": 5, "rationale": "x"}'
+
+    probe = _ConcurrencyProbe()
+
+    await judge_all(probe, [_FINDING] * 10, "", concurrency=3)
+
+    assert probe.peak <= 3
+    assert probe.peak > 1  # and it really is concurrent, not accidentally serial

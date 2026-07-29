@@ -5,7 +5,24 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel
+
 _DEFAULT_METRICS_FILE = Path("guardian_metrics.jsonl")
+
+
+class SkepticRecord(BaseModel, frozen=True):
+    """What the skeptic pass did, for one review's metrics row (#246).
+
+    Grouped rather than passed as four loose keywords: they are meaningless
+    apart — `judged`/`total` only interpret `status`, and `impact_threshold`
+    only interprets what the report then hid.
+    """
+
+    model: str | None = None
+    status: str = "off"
+    judged: int = 0
+    total: int = 0
+    impact_threshold: int = 0
 
 
 def record_review(
@@ -17,8 +34,7 @@ def record_review(
     findings_total: int,
     lgtm: bool,
     parse_failed: bool = False,
-    skeptic_model: str | None = None,
-    skeptic_status: str = "off",
+    skeptic: SkepticRecord | None = None,
     chunk_count: int | None = None,
     metrics_path: Path = _DEFAULT_METRICS_FILE,
 ) -> Path:
@@ -27,6 +43,7 @@ def record_review(
     Counts come from the structured ReviewResult — no text parsing.
     Note: lgtm is False on parse_failed runs even though findings_total == 0.
     """
+    skeptic = skeptic or SkepticRecord()
     entry = {
         "timestamp": datetime.now(UTC).isoformat(),
         "pr": pr,
@@ -38,8 +55,11 @@ def record_review(
         "findings_applied": None,
         "lgtm": lgtm,
         "parse_failed": parse_failed,
-        "skeptic_model": skeptic_model,
-        "skeptic_status": skeptic_status,
+        "skeptic_model": skeptic.model,
+        "skeptic_status": skeptic.status,
+        "skeptic_judged": skeptic.judged,
+        "skeptic_total": skeptic.total,
+        "impact_threshold": skeptic.impact_threshold,
         "chunk_count": chunk_count,
     }
     with metrics_path.open("a", encoding="utf-8") as fh:

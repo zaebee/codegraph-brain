@@ -144,3 +144,72 @@ def test_render_review_body_lgtm() -> None:
     """No findings at all → the canonical LGTM body."""
     body = render_review_body(ReviewResult(findings=[], summary="all good"), outside=[])
     assert body.startswith("LGTM")
+
+
+# ---------------------------------------------------------------------------
+# Impact ranking and threshold (#246)
+# ---------------------------------------------------------------------------
+
+
+def _scored(severity: str, title: str, impact_score: int | None) -> Finding:
+    """A confirmed finding carrying an impact score."""
+    return _FINDING.model_copy(
+        update={
+            "severity": severity,
+            "title": title,
+            "verdict": "confirmed",
+            "impact_score": impact_score,
+        }
+    )
+
+
+def test_report_orders_by_impact_before_severity() -> None:
+    """A scored report ranks by what matters, not by the finder's severity guess."""
+    low = _scored("critical", "loud but trivial", 1)
+    high = _scored("minor", "quiet but real", 9)
+
+    body = render_report(ReviewResult(findings=[low, high], summary="s"))
+
+    assert body.index("quiet but real") < body.index("loud but trivial")
+
+
+def test_report_shows_the_impact_score() -> None:
+    """A human must see the ranking signal, not just its effect."""
+    body = render_report(ReviewResult(findings=[_scored("major", "t", 7)], summary="s"))
+
+    assert "Impact: 7/10" in body
+
+
+def test_report_notes_findings_hidden_by_the_threshold() -> None:
+    """Hiding is never silent — same rule the refuted counter already follows."""
+    findings = [_scored("major", "trivial", 1), _scored("major", "real", 9)]
+
+    body = render_report(ReviewResult(findings=findings, summary="s"), threshold=5)
+
+    assert "real" in body
+    assert "1 finding was below the impact threshold" in body
+
+
+def test_report_notes_a_partial_skeptic_pass() -> None:
+    """partial must read as partial, not as a clean pass."""
+    body = render_report(
+        ReviewResult(
+            findings=[_scored("major", "t", 8)],
+            summary="s",
+            skeptic_status="partial",
+            skeptic_judged=1,
+            skeptic_total=3,
+        )
+    )
+
+    assert "1 of 3" in body
+
+
+def test_unscored_findings_sort_after_scored_ones() -> None:
+    """An unjudged finding has no ranking signal; it must not outrank a scored one."""
+    unscored = _FINDING.model_copy(update={"title": "unjudged", "severity": "critical"})
+    scored = _scored("minor", "judged high", 9)
+
+    body = render_report(ReviewResult(findings=[unscored, scored], summary="s"))
+
+    assert body.index("judged high") < body.index("unjudged")

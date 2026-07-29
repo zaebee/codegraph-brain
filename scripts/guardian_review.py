@@ -9,7 +9,12 @@ import structlog
 
 from cgis.guardian.collector import ContextCollector, parse_features
 from cgis.guardian.providers.mistral import MistralProvider
-from cgis.guardian.runner import build_provider, build_skeptic_provider, run_guardian
+from cgis.guardian.runner import (
+    build_provider,
+    build_skeptic_provider,
+    impact_threshold,
+    run_guardian,
+)
 
 log = structlog.getLogger(__name__)
 
@@ -77,6 +82,7 @@ async def main() -> None:
         metrics_path=args.metrics,
         skeptic=skeptic,
         inline_repo=inline_repo,
+        threshold=impact_threshold(os.environ),
     )
 
     if args.output:

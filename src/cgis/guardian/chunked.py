@@ -11,13 +11,12 @@ from pydantic import BaseModel
 from cgis.guardian.chunker import Chunk, build_chunks
 from cgis.guardian.collector import ContextCollector
 from cgis.guardian.core import GuardianReviewer, finder_pass
-from cgis.guardian.findings import Finding, ReviewResult, extract_json
+from cgis.guardian.findings import Finding, ReviewResult
 from cgis.guardian.providers.base import BaseProvider
 from cgis.guardian.skeptic import (
-    SKEPTIC_SYSTEM_PROMPT,
-    SkepticResult,
-    apply_verdicts,
-    build_skeptic_prompt,
+    apply_judgements,
+    judge_all,
+    skeptic_status_for,
 )
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -170,28 +169,25 @@ async def run_chunked_review(
     if skeptic_provider is None or not merged.findings or merged.parse_failed:
         return RoutedReview(result=merged, chunk_count=len(chunks))
 
-    # ONE skeptic pass over chunks that produced findings — not the full PR
-    # diff: attention dilution hits the skeptic too (spec §4.5).
+    # Judgement context is limited to chunks that produced findings — not the
+    # full PR diff (spec §4.5); judge_all narrows further, per finding's file.
     skeptic_context = {
         "diff": "\n".join(c["diff"] for c in finding_contexts),
         "full_files": "\n\n".join(c["full_files"] for c in finding_contexts if "full_files" in c),
     }
-    try:
-        raw = await skeptic_provider.generate_structured(
-            SKEPTIC_SYSTEM_PROMPT,
-            build_skeptic_prompt(skeptic_context, merged.findings),
-            SkepticResult,
-        )
-        verdicts = SkepticResult.model_validate_json(extract_json(raw))
-    except Exception:
-        log.warning("Skeptic pass failed; returning unverified findings.", exc_info=True)
-        return RoutedReview(
-            result=merged.model_copy(update={"skeptic_status": "failed"}),
-            chunk_count=len(chunks),
-        )
-    verified = apply_verdicts(merged.findings, verdicts)
+    judgements = await judge_all(skeptic_provider, merged.findings, skeptic_context["diff"])
+    judged = sum(1 for j in judgements if j is not None)
+    if judged == 0:
+        log.warning("Every skeptic judgement failed; returning unverified findings.")
     return RoutedReview(
-        result=merged.model_copy(update={"findings": verified, "skeptic_status": "ok"}),
+        result=merged.model_copy(
+            update={
+                "findings": apply_judgements(merged.findings, judgements),
+                "skeptic_status": skeptic_status_for(judged, len(judgements)),
+                "skeptic_judged": judged,
+                "skeptic_total": len(judgements),
+            }
+        ),
         chunk_count=len(chunks),
     )
 

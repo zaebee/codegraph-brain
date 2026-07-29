@@ -14,15 +14,26 @@ _CATEGORY_LABEL = {
 }
 
 
+def _rank_key(finding: Finding) -> tuple[int, int]:
+    """Sort key: impact descending, then severity (#246 §3.5).
+
+    An unjudged finding scores -1 rather than 0 so it sorts after every scored
+    one — no score is "no ranking signal", not "scored zero".
+    """
+    impact = finding.impact_score if finding.impact_score is not None else -1
+    return (-impact, _SEVERITY_ORDER[finding.severity])
+
+
 def render_finding(finding: Finding) -> str:
     """Render one finding in the **[Category] — title** block format."""
     location = (
         f"`{finding.file}:{finding.line}`" if finding.line is not None else f"`{finding.file}`"
     )
+    impact = f" · Impact: {finding.impact_score}/10" if finding.impact_score is not None else ""
     lines = [
         f"**[{_CATEGORY_LABEL[finding.category]}] — {finding.title}**",
         f"{_SEVERITY_MARKER[finding.severity]} {finding.severity} at {location}"
-        f" · Confidence: {finding.confidence}%",
+        f" · Confidence: {finding.confidence}%{impact}",
         f"Lines: `` {finding.evidence} ``",
         f"Problem: {finding.problem}",
         f"Fix: {finding.fix}",
@@ -46,37 +57,51 @@ def render_inline_comment(finding: Finding, *, skeptic_model: str | None) -> str
     return "\n\n".join(lines)
 
 
-def render_review_body(result: ReviewResult, *, outside: list[Finding]) -> str:
+def render_review_body(result: ReviewResult, *, outside: list[Finding], threshold: int = 0) -> str:
     """The review's top-level body: summary plus any out-of-diff findings (spec §6.3)."""
-    if not visible_findings(result.findings):
-        return render_report(result)
+    if not visible_findings(result.findings, threshold):
+        return render_report(result, threshold)
     parts: list[str] = []
     if outside:
-        ordered = sorted(outside, key=lambda f: _SEVERITY_ORDER[f.severity])
+        ordered = sorted(outside, key=_rank_key)
         blocks = "\n\n".join(render_finding(f) for f in ordered)
         parts.append(f"### Findings outside the diff\n\n{blocks}")
     parts.append(f"**Summary:** {result.summary}")
     return "\n\n".join(parts)
 
 
-def render_report(result: ReviewResult) -> str:
-    """Render the full review; refuted findings are hidden but never silently."""
+def render_report(result: ReviewResult, threshold: int = 0) -> str:
+    """Render the full review; hidden findings are never hidden silently.
+
+    ``threshold`` suppresses findings the skeptic scored below it (#246 §3.5).
+    Both kinds of suppression — refuted and below-threshold — are counted in the
+    notes, and both stay in ``result.findings`` for metrics.
+    """
     if result.parse_failed:
         return (
             "⚠️ Guardian could not produce structured output; raw response below.\n\n"
             + result.summary
         )
-    visible = visible_findings(result.findings)
-    refuted_count = len(result.findings) - len(visible)
+    unrefuted = visible_findings(result.findings)
+    visible = visible_findings(result.findings, threshold)
+    refuted_count = len(result.findings) - len(unrefuted)
+    below_threshold = len(unrefuted) - len(visible)
     notes: list[str] = []
     if refuted_count:
         plural = "finding was" if refuted_count == 1 else "findings were"
         notes.append(f"_{refuted_count} {plural} refuted by the skeptic pass._")
+    if below_threshold:
+        plural = "finding was" if below_threshold == 1 else "findings were"
+        notes.append(f"_{below_threshold} {plural} below the impact threshold ({threshold})._")
     if result.skeptic_status == "failed":
         notes.append("_Skeptic pass failed; findings are single-pass._")
+    if result.skeptic_status == "partial":
+        notes.append(
+            f"_Skeptic judged {result.skeptic_judged} of {result.skeptic_total} findings; "
+            "the rest are single-pass._"
+        )
     suffix = ("\n\n" + "\n".join(notes)) if notes else ""
     if not visible:
         return f"LGTM — no defects found in this diff.\n\n{result.summary}{suffix}"
-    ordered = sorted(visible, key=lambda f: _SEVERITY_ORDER[f.severity])
-    blocks = [render_finding(f) for f in ordered]
+    blocks = [render_finding(f) for f in sorted(visible, key=_rank_key)]
     return "\n\n".join(blocks) + f"\n\n---\n**Summary:** {result.summary}{suffix}"
