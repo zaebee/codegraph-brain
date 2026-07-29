@@ -4,9 +4,74 @@ Feeding an LLM the focal node's real code is the single biggest accuracy lever
 in the GraphRAG context package, yet we never want to load whole files. This
 leaf reads only ``start_line..end_line`` via :mod:`linecache` and degrades to an
 empty string on any I/O problem so context generation never crashes.
+
+It also owns the mapping from a node's *stored* ``file_path`` to a real path on
+disk (``resolve_source_path``), since where the file actually lives is a
+filesystem question, not a graph one.
 """
 
 import linecache
+from pathlib import Path
+
+
+def _collapsed_join(root: Path, parts: tuple[str, ...]) -> Path | None:
+    """Join ``root`` with ``parts`` when the two overlap at the boundary.
+
+    ``root=/repo/src`` and ``parts=("src", "pkg", "m.py")`` describe the same
+    file from two directions; the longest matching overlap is dropped once so
+    the result is ``/repo/src/pkg/m.py`` rather than ``/repo/src/src/pkg/m.py``.
+    Returns ``None`` when the two do not overlap at all.
+    """
+    root_parts = root.parts
+    for size in range(min(len(root_parts), len(parts)), 0, -1):
+        if root_parts[-size:] == parts[:size]:
+            return root.joinpath(*parts[size:])
+    return None
+
+
+def _is_existing_file(path: Path) -> bool:
+    """True when ``path`` is an existing regular file; any OS error means "not a candidate".
+
+    ``Path.is_file()`` swallows only ENOENT/ENOTDIR/EBADF/ELOOP — a candidate the
+    OS refuses to stat (EACCES on an unreadable parent, ENAMETOOLONG on a bogus
+    root) raises. This module promises degradation, never a crash, so an
+    un-stat-able candidate is simply skipped.
+    """
+    try:
+        return path.is_file()
+    except OSError:
+        return False
+
+
+def resolve_source_path(file_path: str, source_root: str = "") -> str:
+    """Locate a node's stored ``file_path`` on disk, first existing candidate wins (#228).
+
+    Stored paths are relative to whatever directory was ingested, so the same
+    file reads as ``pkg/m.py`` (``cgis ingest ./src``) or ``src/pkg/m.py``
+    (``cgis ingest .``). Blindly prepending ``source_root`` breaks the second
+    layout — ``src/src/pkg/m.py`` — and the miss is silent, because a missing
+    snippet degrades to "(source unavailable)". Candidates are therefore tried
+    in order: the explicit ``source_root`` join, the stored path as-is
+    (CWD-relative), then the join with a duplicated boundary segment collapsed.
+
+    Backslash separators from a Windows ingest are normalised first. With no
+    ``source_root`` the stored path is returned untouched; when nothing exists
+    on disk the ``source_root`` join is returned, so the caller's explicit
+    intent is what surfaces in any downstream diagnostics.
+    """
+    relative = file_path.replace("\\", "/")
+    if not source_root:
+        return relative
+    root = Path(source_root)
+    joined = root / relative
+    candidates = [joined, Path(relative)]
+    collapsed = _collapsed_join(root, Path(relative).parts)
+    if collapsed is not None:
+        candidates.append(collapsed)
+    for candidate in candidates:
+        if _is_existing_file(candidate):
+            return str(candidate)
+    return str(joined)
 
 
 def extract_snippet(file_path: str, start_line: int, end_line: int) -> str:

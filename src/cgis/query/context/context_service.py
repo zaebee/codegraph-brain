@@ -11,11 +11,9 @@ Callers/callees are restricted to CALLS edges so structural noise
 enclosing class is recovered separately from the structural layer.
 """
 
-from pathlib import Path
-
 from cgis.core.models import EdgeType, Node, NodeNamespace, NodeType
 from cgis.query.context.prompt import compile_context
-from cgis.query.context.snippet import extract_snippet
+from cgis.query.context.snippet import extract_snippet, resolve_source_path
 from cgis.query.engine import QueryEngine
 from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 
@@ -103,20 +101,18 @@ def build_context(store: SQLiteStore, focus_fqn: str, depth: int = 1, source_roo
     for a focused edit. Higher values pull in transitive neighbours; the
     rendered notes state the hop bound rather than calling them "direct" (a
     future adaptive strategy, #220, will scale depth by the node's out-degree).
-    ``source_root`` is prepended to the node's stored (relative) ``file_path`` to
-    locate the file on disk — needed when the graph was ingested from a
-    sub-directory (e.g. ``cgis ingest ./src`` stores ``cgis/...`` paths). Raises
-    ``ValueError`` if the FQN is absent.
+    ``source_root`` locates the file on disk when the graph was ingested from a
+    sub-directory (e.g. ``cgis ingest ./src`` stores ``cgis/...`` paths); see
+    ``resolve_source_path`` for the candidate order that also covers a stored
+    path already carrying the root segment (#228). Raises ``ValueError`` if the
+    FQN is absent.
     """
     focus = store.get_node(focus_fqn)
     if focus is None:
         msg = f"FQN not found in graph: {focus_fqn}"
         raise ValueError(msg)
     engine = QueryEngine(store)
-    # Normalise Windows-style separators: a graph ingested on Windows stores
-    # backslash paths that POSIX would treat as one literal filename component.
-    relative = focus.file_path.replace("\\", "/")
-    file_path = str(Path(source_root) / relative) if source_root else relative
+    file_path = resolve_source_path(focus.file_path, source_root)
     source = extract_snippet(file_path, focus.start_line, focus.end_line)
     callers = _collect_callers(engine, focus_fqn, depth)
     callees, unresolved = _collect_callees(engine, focus_fqn, depth)

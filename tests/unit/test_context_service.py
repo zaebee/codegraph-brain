@@ -135,6 +135,40 @@ def test_snippet_pulled_from_source_root(tmp_path: Path) -> None:
     assert "```python" in out
 
 
+def test_snippet_found_when_file_path_already_contains_source_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#228: a root ingest stores 'src/...' — passing source_root must not double the prefix."""
+    (tmp_path / "src" / "app").mkdir(parents=True)
+    (tmp_path / "src" / "app" / "svc.py").write_text(
+        "class Engine:\n"
+        "    def run(self):\n"
+        "        return self.helper()\n"
+        "    # pad\n"
+        "    def helper(self):\n"
+        "        return 1\n",
+        encoding="utf-8",
+    )
+    node = Node(
+        id="src.app.svc.Engine.run",
+        type=NodeType.METHOD,
+        name="run",
+        file_path="src/app/svc.py",  # stored WITH the src/ prefix, as a root ingest does
+        start_line=2,
+        end_line=3,
+    )
+    db = str(tmp_path / "dup.db")
+    with SQLiteStore(db) as store:
+        store.save_graph([node], [])
+    monkeypatch.chdir(tmp_path)
+
+    with SQLiteStore(db) as store:
+        out = build_context(store, "src.app.svc.Engine.run", source_root="src")
+
+    assert "def run(self):" in out
+    assert "(source unavailable)" not in out
+
+
 def test_missing_focus_raises_value_error(tmp_path: Path) -> None:
     """An FQN absent from the graph is a programming error, surfaced as ValueError."""
     db = _store(tmp_path)
