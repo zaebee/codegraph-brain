@@ -59,8 +59,10 @@ Compile an agent-facing GraphRAG context package for a focal FQN (#19).
 
     Use ``cgis_ingest`` first if the database does not exist. ``source_root``
     locates source files on disk when the graph was ingested from a
-    sub-directory (e.g. ``"src"`` after ``cgis ingest ./src``); without it the
-    ``<source>`` block degrades gracefully to "unavailable".
+    sub-directory (e.g. ``"src"`` after ``cgis ingest ./src``); it is safe to
+    pass even when the stored paths already start with that segment (#228).
+    When no candidate exists the ``<source>`` block degrades gracefully to
+    "unavailable".
 
 | Argument | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
