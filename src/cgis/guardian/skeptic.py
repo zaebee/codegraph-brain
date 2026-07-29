@@ -1,4 +1,11 @@
-"""Cross-model skeptic pass: verdict models, prompt, and pure merge logic (spec §5)."""
+"""Skeptic pass: one judgement per finding on two axes (spec §5, amended by #246).
+
+Each finding gets its own LLM call carrying only its file's hunks, and comes
+back with a ``verdict`` (is the claim true) and an ``impact_score`` 0-10 (does
+it matter). The batch call this replaced put every finding in one window and
+addressed verdicts by list index; it could neither rank nor survive a partial
+failure.
+"""
 
 import asyncio
 from collections.abc import Iterable
@@ -16,20 +23,6 @@ log = structlog.getLogger(__name__)
 _UNCERTAIN_MULTIPLIER = 0.9  # an 'uncertain' verdict discounts confidence as a
 # ranking signal only — it NEVER refutes. The recall-lean finder emits genuine
 # low-confidence findings on purpose; only an explicit 'refuted' verdict drops one.
-
-
-class SkepticVerdict(BaseModel, frozen=True):
-    """The skeptic's ruling on one pass-1 finding, addressed by list index."""
-
-    finding_index: int
-    verdict: Literal["confirmed", "refuted", "uncertain"]
-    rationale: str
-
-
-class SkepticResult(BaseModel, frozen=True):
-    """All verdicts from one skeptic call (spec §5.2: one call, not N)."""
-
-    verdicts: list[SkepticVerdict]
 
 
 class FindingJudgement(BaseModel, frozen=True):
@@ -64,77 +57,6 @@ SKEPTIC_SYSTEM_PROMPT = (
     "being low-confidence, speculative, or a judgement call — if it is plausible and you "
     "cannot disprove it, mark it 'confirmed' or 'uncertain' (both are kept), never 'refuted'."
 )
-
-
-def build_skeptic_prompt(context: dict[str, str], findings: list[Finding]) -> str:
-    """Assemble the skeptic user prompt: same diff context + indexed findings list."""
-    listed = "\n".join(
-        f"[{i}] {f.severity} {f.category} at {f.file}:{f.line} — {f.title}\n"
-        f"    evidence: {f.evidence}\n    problem: {f.problem}"
-        for i, f in enumerate(findings)
-    )
-    return f"""Another reviewer produced the findings below for this diff.
-Check each one against the diff: refute only with concrete contrary evidence;
-confirm what you cannot disprove.
-
-### DIFF
-{context.get("diff", "")}
-
-### FULL FILE CONTENTS (if available)
-{context.get("full_files", "")}
-
-### FINDINGS TO VERIFY
-{listed}
-
-### OUTPUT FORMAT
-Return ONLY a JSON object: {{"verdicts": [{{"finding_index": 0,
-"verdict": "confirmed|refuted|uncertain", "rationale": "one sentence"}}]}}
-Rule on every finding exactly once, by its [index]."""
-
-
-def apply_verdicts(findings: list[Finding], skeptic: SkepticResult) -> list[Finding]:
-    """Merge skeptic verdicts into new frozen Finding copies (spec §5.3).
-
-    Out-of-range / duplicate indices are discarded and logged. Unruled findings
-    keep verdict=None. uncertain discounts confidence x0.9 as a ranking signal but
-    is KEPT (only an explicit 'refuted' verdict drops a finding) — the recall-lean
-    finder relies on the skeptic to cut hallucinations, not low confidence.
-    """
-    by_index: dict[int, SkepticVerdict] = {}
-    for v in skeptic.verdicts:
-        if not 0 <= v.finding_index < len(findings):
-            log.warning("Skeptic verdict index out of range; discarded.", index=v.finding_index)
-            continue
-        if v.finding_index in by_index:
-            log.warning("Duplicate skeptic verdict index; discarded.", index=v.finding_index)
-            continue
-        by_index[v.finding_index] = v
-
-    merged: list[Finding] = []
-    for i, finding in enumerate(findings):
-        verdict = by_index.get(i)
-        if verdict is None:
-            merged.append(finding)  # absence of a verdict is not a refutation
-            continue
-        if verdict.verdict == "uncertain":
-            # Kept, not refuted: discount confidence as a ranking signal only.
-            discounted = round(finding.confidence * _UNCERTAIN_MULTIPLIER)
-            merged.append(
-                finding.model_copy(
-                    update={
-                        "verdict": "uncertain",
-                        "skeptic_note": verdict.rationale,
-                        "confidence": discounted,
-                    }
-                )
-            )
-            continue
-        merged.append(
-            finding.model_copy(
-                update={"verdict": verdict.verdict, "skeptic_note": verdict.rationale}
-            )
-        )
-    return merged
 
 
 IMPACT_RUBRIC = """

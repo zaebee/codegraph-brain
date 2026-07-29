@@ -291,6 +291,18 @@ filter against plausible-but-wrong findings — the main noise source.
 
 ### 5.2 One skeptic call, not N
 
+> **SUPERSEDED (2026-07-29, #246)** — see
+> `2026-07-29-guardian-skeptic-scoring-design.md`. The reasoning below holds
+> only for a finder capped at 5 findings. That cap was removed in #249 to buy
+> recall (pr-144 0/5 → median 3/5), and the recall-lean finder emits 10–26
+> findings, so the single shared call became the bottleneck rather than the
+> saving: on PR #263 it confirmed all 8 findings at one severity, leaving a
+> real defect indistinguishable from two factually wrong claims. The premise
+> "context is large and shared" also no longer applies — each judgement now
+> carries only its own file's hunks, so N calls are individually far smaller
+> than the one call they replace. The skeptic now judges one finding per call
+> and returns a second axis (`impact_score`) that this schema could not express.
+
 Context (diff + full files) is large and shared; findings are capped at 5.
 Per-finding calls would multiply tokens ~5× for questionable independence
 gains. Response schema:

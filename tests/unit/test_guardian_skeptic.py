@@ -1,4 +1,4 @@
-"""Unit tests for skeptic verdict models and the pure merge logic (spec §5)."""
+"""Unit tests for per-finding judgement, the pure merge, and the impact threshold (#246)."""
 
 import asyncio
 
@@ -10,12 +10,8 @@ from cgis.guardian.findings import Finding
 from cgis.guardian.providers.base import BaseProvider
 from cgis.guardian.skeptic import (
     FindingJudgement,
-    SkepticResult,
-    SkepticVerdict,
     apply_judgements,
-    apply_verdicts,
     build_judgement_prompt,
-    build_skeptic_prompt,
     judge_all,
     judge_finding,
     visible_findings,
@@ -32,73 +28,6 @@ _FINDING = Finding(
     fix="use range(n).",
     confidence=85,
 )
-
-
-def _verdict(index: int, verdict: str, rationale: str = "because") -> SkepticVerdict:
-    return SkepticVerdict(finding_index=index, verdict=verdict, rationale=rationale)  # type: ignore[arg-type]
-
-
-def test_confirmed_sets_verdict_and_note() -> None:
-    """confirmed → verdict + skeptic_note on a new frozen copy."""
-    merged = apply_verdicts([_FINDING], SkepticResult(verdicts=[_verdict(0, "confirmed")]))
-    assert merged[0].verdict == "confirmed"
-    assert merged[0].skeptic_note == "because"
-    assert _FINDING.verdict is None  # original untouched (frozen)
-
-
-def test_refuted_marks_but_keeps_finding() -> None:
-    """refuted → marked, kept in the list (metrics must see killed findings)."""
-    merged = apply_verdicts([_FINDING], SkepticResult(verdicts=[_verdict(0, "refuted")]))
-    assert merged[0].verdict == "refuted"
-
-
-def test_uncertain_discounts_confidence_but_keeps_finding() -> None:
-    """uncertain → confidence x0.9 (ranking signal), verdict stays uncertain."""
-    f = _FINDING.model_copy(update={"confidence": 89})
-    merged = apply_verdicts([f], SkepticResult(verdicts=[_verdict(0, "uncertain")]))
-    assert merged[0].verdict == "uncertain"
-    assert merged[0].confidence == 80
-
-
-def test_uncertain_low_confidence_is_kept_not_refuted() -> None:
-    """Recall-lean: a low-confidence uncertain finding survives (no gate auto-refute)."""
-    f = _FINDING.model_copy(update={"confidence": 30})
-    merged = apply_verdicts([f], SkepticResult(verdicts=[_verdict(0, "uncertain")]))
-    assert merged[0].verdict == "uncertain"
-    assert merged[0].confidence == 27  # round(30 * 0.9)
-    assert visible_findings(merged) == merged  # not dropped
-
-
-def test_out_of_range_and_duplicate_indices_discarded() -> None:
-    """Out-of-range or duplicate finding_index verdicts are dropped, not applied."""
-    verdicts = SkepticResult(
-        verdicts=[_verdict(5, "refuted"), _verdict(0, "confirmed"), _verdict(0, "refuted")]
-    )
-    merged = apply_verdicts([_FINDING], verdicts)
-    assert merged[0].verdict == "confirmed"  # first valid verdict wins; duplicate ignored
-
-
-def test_unruled_finding_keeps_none_verdict() -> None:
-    """A finding the skeptic never ruled on keeps verdict=None and is not filtered."""
-    merged = apply_verdicts([_FINDING], SkepticResult(verdicts=[]))
-    assert merged[0].verdict is None
-    assert visible_findings(merged) == merged
-
-
-def test_visible_findings_drops_only_refuted() -> None:
-    """visible_findings filters refuted; confirmed/uncertain/None stay."""
-    kept = _FINDING.model_copy(update={"verdict": "confirmed"})
-    dropped = _FINDING.model_copy(update={"verdict": "refuted", "title": "x"})
-    assert visible_findings([kept, dropped]) == [kept]
-
-
-def test_skeptic_prompt_contains_findings_and_stance() -> None:
-    """The skeptic prompt lists indexed findings and the confirm-by-default stance."""
-    prompt = build_skeptic_prompt({"diff": "the-diff"}, [_FINDING])
-    assert "the-diff" in prompt
-    assert "[0]" in prompt
-    assert "off-by-one" in prompt
-    assert "confirm what you cannot disprove" in prompt
 
 
 # ---------------------------------------------------------------------------
@@ -127,6 +56,26 @@ def test_judgement_uncertain_discounts_confidence_and_keeps_finding() -> None:
     assert merged[0].confidence == 27
     assert merged[0].impact_score == 4
     assert visible_findings(merged) == merged
+
+
+def test_refuted_is_marked_but_stays_in_the_list() -> None:
+    """refuted hides the finding from the report but never removes it from the result.
+
+    Metrics and the benchmark must still see what the skeptic killed.
+    """
+    merged = apply_judgements([_FINDING], [_judgement("refuted", 0)])
+    assert merged[0].verdict == "refuted"
+    assert len(merged) == 1
+    assert visible_findings(merged) == []
+
+
+def test_visible_findings_drops_only_refuted_at_default_threshold() -> None:
+    """confirmed/uncertain/unjudged all stay; only refuted goes."""
+    kept = _FINDING.model_copy(update={"verdict": "confirmed", "impact_score": 2})
+    unsure = _FINDING.model_copy(update={"verdict": "uncertain", "title": "u"})
+    unjudged = _FINDING.model_copy(update={"title": "n"})
+    dropped = _FINDING.model_copy(update={"verdict": "refuted", "title": "x"})
+    assert visible_findings([kept, unsure, unjudged, dropped]) == [kept, unsure, unjudged]
 
 
 def test_missing_judgement_is_not_a_refutation() -> None:
