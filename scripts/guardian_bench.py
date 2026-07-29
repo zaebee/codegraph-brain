@@ -24,6 +24,7 @@ from cgis.guardian.bench import (
     FinderRecording,
     GroundTruth,
     annotate_matches,
+    killed_ground_truth,
     load_finder_recording,
     load_ground_truth,
     match_findings,
@@ -204,6 +205,10 @@ async def _score_and_record(
         "noise": bench_score.noise,
         "matched": matches.matched,
         "missed": matches.missed,
+        # Ground truth the finder DID match and the skeptic then removed —
+        # invisible in "missed", which cannot distinguish "never found" from
+        # "found then killed" (#270).
+        "killed_gt": killed_ground_truth(result.findings, truth),
         "ambiguous_hits": matches.ambiguous_hits,
         # Both providers: in replay mode the finder never runs, so recording
         # only its usage reported a free run for a pass that cost real tokens.
