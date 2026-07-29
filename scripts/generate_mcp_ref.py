@@ -1,4 +1,4 @@
-"""Auto-generate docs/how-to/MCP_REFERENCE.md from FastMCP tool docstrings.
+"""Auto-generate docs/how-to/MCP_REFERENCE.md from MCP tool docstrings.
 
 Introspects the live cgis MCP server via the public mcp.list_tools() API
 and renders a Markdown reference table for every registered tool.
@@ -21,7 +21,9 @@ def _format_tool(tool: Tool) -> str:
     description = (tool.description or "").strip()
     lines = [f"## `{tool.name}`", "", description, ""]
 
-    schema: dict[str, Any] = tool.inputSchema if isinstance(tool.inputSchema, dict) else {}
+    # mcp 2.x renamed the model field to snake_case; the wire format still
+    # serialises as `inputSchema` via the alias (#264).
+    schema: dict[str, Any] = tool.input_schema if isinstance(tool.input_schema, dict) else {}
     props: dict[str, Any] = schema.get("properties") or {}
     required: list[str] = schema.get("required") or []
 
@@ -41,7 +43,7 @@ def _format_tool(tool: Tool) -> str:
 
 
 def generate_reference() -> None:
-    """Write MCP_REFERENCE.md from all registered FastMCP tool schemas."""
+    """Write MCP_REFERENCE.md from all registered MCP tool schemas."""
     _OUTPUT.parent.mkdir(parents=True, exist_ok=True)
 
     tools: list[Tool] = sorted(asyncio.run(mcp.list_tools()), key=lambda t: t.name)

@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 import structlog
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 from cgis.core.models import Edge, Node, NodeType
 from cgis.extractors.python_extractor import PythonExtractor
@@ -32,7 +32,7 @@ print("CGIS MCP Server starting…", file=sys.stderr)
 
 logger = structlog.getLogger(__name__)
 
-mcp: FastMCP = FastMCP("cgis-code-graph")
+mcp: MCPServer = MCPServer("cgis-code-graph")
 
 _EXTRACTORS = {
     ".py": PythonExtractor(),
