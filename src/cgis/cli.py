@@ -1139,8 +1139,9 @@ def context(
         "",
         "--source-root",
         "-s",
-        help="Directory prepended to stored file paths to locate source for the snippet "
-        "(e.g. 'src' if you ran `cgis ingest ./src`).",
+        help="Directory used to locate source files for the snippet "
+        "(e.g. 'src' if you ran `cgis ingest ./src`). Stored paths that already "
+        "carry the root segment are handled too.",
     ),
 ) -> None:
     """Compile an agent-facing GraphRAG context package for a focal FQN.
