@@ -6,6 +6,7 @@ within the entry's range, or the entry has no range). Greedy by descending
 prediction confidence; each entry matches at most once.
 """
 
+import statistics
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal
@@ -132,3 +133,38 @@ def score(match: MatchResult, truth: GroundTruth) -> BenchScore:
     return BenchScore(
         recall=recall, precision=precision, noise=len(match.noise), missed=match.missed
     )
+
+
+def score_separation(gt_scores: Sequence[int], noise_scores: Sequence[int]) -> float | None:
+    """Median impact_score of GT-matching findings minus that of the rest (#246 §4.3).
+
+    This is the gate metric for the per-finding skeptic: it answers whether the
+    skeptic RANKS, which noise counts alone cannot. A flat distribution scores 0
+    even when noise happens to fall.
+
+    None when either population is empty — with nothing to compare, the run
+    cannot answer the question. Callers pool across benchmark PRs before
+    calling: individual PRs carry 1-6 GT matches, too few for a median to mean
+    anything.
+    """
+    if not gt_scores or not noise_scores:
+        return None
+    return statistics.median(gt_scores) - statistics.median(noise_scores)
+
+
+def annotate_matches(
+    findings: Sequence[Finding], visible: Sequence[Finding], match: MatchResult
+) -> list[dict[str, object]]:
+    """Dump each finding with a ``matched_gt`` flag for the benchmark record (#246 §4.2).
+
+    ``match`` indexes into ``visible`` (what the matcher scored), while the
+    record keeps EVERY finding including the ones the skeptic hid — otherwise
+    "noise fell" would be indistinguishable from "we went blind". Identity, not
+    equality, maps a finding back to its matcher position: two findings can be
+    field-identical, and only one of them may have matched.
+    """
+    position = {id(f): i for i, f in enumerate(visible)}
+    matched_positions = set(match.matched.values())
+    return [
+        {**f.model_dump(), "matched_gt": position.get(id(f)) in matched_positions} for f in findings
+    ]

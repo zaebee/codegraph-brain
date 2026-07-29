@@ -20,7 +20,13 @@ from pathlib import Path
 
 import structlog
 
-from cgis.guardian.bench import GroundTruth, load_ground_truth, match_findings, score
+from cgis.guardian.bench import (
+    GroundTruth,
+    annotate_matches,
+    load_ground_truth,
+    match_findings,
+    score,
+)
 from cgis.guardian.chunked import run_review_routed
 from cgis.guardian.collector import ContextCollector, parse_features
 from cgis.guardian.providers.mistral import MistralProvider
@@ -134,7 +140,9 @@ async def _run_one(truth: GroundTruth, run_idx: int, results_path: Path) -> None
         "chunks": routed.chunk_count,
         "skeptic_model": skeptic[1] if skeptic else None,
         "skeptic_status": result.skeptic_status,
-        "findings": [f.model_dump() for f in result.findings],
+        "skeptic_judged": result.skeptic_judged,
+        "skeptic_total": result.skeptic_total,
+        "findings": annotate_matches(result.findings, visible, matches),
     }
     await asyncio.to_thread(_append_jsonl, results_path, entry)
     log.info(

@@ -8,9 +8,12 @@ from pydantic import ValidationError
 from cgis.guardian.bench import (
     GroundTruth,
     GroundTruthEntry,
+    MatchResult,
+    annotate_matches,
     load_ground_truth,
     match_findings,
     score,
+    score_separation,
 )
 from cgis.guardian.findings import Finding
 
@@ -164,3 +167,52 @@ def test_match_result_records_total_predictions() -> None:
     """total_predictions is captured by the matcher, not supplied by the caller."""
     preds = [_pred("tests/unit/test_quotient.py", 68), _pred("src/cgis/other.py", 1)]
     assert match_findings(preds, _TRUTH).total_predictions == 2
+
+
+# ---------------------------------------------------------------------------
+# Impact-score separation: the #246 gate metric (spec §4.3)
+# ---------------------------------------------------------------------------
+
+
+def test_score_separation_is_the_gap_between_gt_and_noise_medians() -> None:
+    """Does the skeptic rank real findings above noise? That is the whole question."""
+    assert score_separation([8, 9, 7], [1, 2, 0, 3]) == 6.5  # median 8 - median 1.5
+
+
+def test_score_separation_is_none_without_both_populations() -> None:
+    """A run with no GT match (or no noise) cannot answer the question."""
+    assert score_separation([], [1, 2]) is None
+    assert score_separation([8], []) is None
+
+
+def test_score_separation_detects_a_flat_distribution() -> None:
+    """The PR #263 pathology: everything scored alike -> zero separation, gate fails."""
+    assert score_separation([5, 5], [5, 5, 5]) == 0.0
+
+
+def test_annotate_matches_flags_gt_matching_predictions() -> None:
+    """Each recorded finding carries whether it matched ground truth (spec §4.2)."""
+    hit = _pred(file="a.py", line=10, confidence=90)
+    miss = _pred(file="zzz.py", line=99, confidence=50)
+    visible = [hit, miss]
+    matches = MatchResult(
+        matched={"gt-1": 0}, missed=[], noise=[1], ambiguous_hits=[], total_predictions=2
+    )
+
+    rows = annotate_matches([hit, miss], visible, matches)
+
+    assert [r["matched_gt"] for r in rows] == [True, False]
+    assert rows[0]["file"] == "a.py"
+
+
+def test_annotate_matches_marks_hidden_findings_as_unmatched() -> None:
+    """A refuted finding never reached the matcher; it cannot count as a GT hit."""
+    shown = _pred(file="a.py", line=10, confidence=90)
+    refuted = _pred(file="b.py", line=1, confidence=90).model_copy(update={"verdict": "refuted"})
+    matches = MatchResult(
+        matched={"gt-1": 0}, missed=[], noise=[], ambiguous_hits=[], total_predictions=1
+    )
+
+    rows = annotate_matches([shown, refuted], [shown], matches)
+
+    assert [r["matched_gt"] for r in rows] == [True, False]
