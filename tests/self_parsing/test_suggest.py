@@ -49,9 +49,17 @@ def test_cgis_guardian_nested_reads_below_flat(
 
     (Re-pinned in #255: adding a 4th provider, providers/ollama.py, tightened the
     providers/ cluster and pushed Q from ~0.33 over the 0.35 threshold —
-    borderline → split. The nested-reads-below-flat claim, D < 1.0, is unchanged.)"""
+    borderline → split. The nested-reads-below-flat claim, D < 1.0, is unchanged.)
+
+    (Re-pinned again in #246: split_diff_by_file moved from chunker.py to the
+    pure diff leaf diff_index.py, which the skeptic pass needs too. A shared leaf
+    is imported from more clusters — chunker, github_poster, skeptic — so it adds
+    cross-community edges and Q fell 0.3516 → 0.3320, back under the threshold:
+    split → borderline. That is the honest cost of correct layering, and the
+    metric that actually tracks the layout got BETTER: divergence 0.7224 → 0.6705.
+    The load-bearing claim, D < 1.0, holds and strengthened.)"""
     store, _, _ = root_graph_data
     report = suggest_packages(store.db_path, prefix="cgis.guardian", with_calls=False)
-    assert report.verdict == "split"
-    assert report.modularity_q >= 0.35  # at/above split threshold → why it's 'split'
+    assert report.verdict == "borderline"
+    assert report.modularity_q < 0.35  # under the split threshold → why it's 'borderline'
     assert report.divergence < 1.0  # nested → below the flat-package degenerate 1.0

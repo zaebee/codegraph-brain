@@ -9,85 +9,13 @@ import structlog
 from pydantic import BaseModel
 
 from cgis.core.models import EdgeType
+
+# Re-exported: the per-file split moved to the pure diff leaf next to the other
+# unified-diff parsers, since the skeptic pass needs it too (#246 plan T3).
+from cgis.guardian.diff_index import split_diff_by_file as split_diff_by_file  # noqa: PLC0414
 from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 
 log = structlog.getLogger(__name__)
-
-# Git C-quotes paths with special characters: `--- "a/x y.py"` — the optional
-# quotes wrap the WHOLE `a/...` token, so they must be stripped around the prefix.
-_OLD_FILE_RE = re.compile(r'^--- "?(?:a/)?(.+?)"?$')
-_NEW_FILE_RE = re.compile(r'^\+\+\+ "?(?:b/)?(.+?)"?$')
-
-
-def _block_path(lines: list[str]) -> str | None:
-    """Path for one diff block: the new path, or the old path for deletions.
-
-    Headers are only read before the first `@@` line — past that, a
-    `+++ ...` line is added content (the 5e53dd0 lesson, avoided structurally).
-    """
-    old: str | None = None
-    new: str | None = None
-    for line in lines:
-        if line.startswith("@@"):
-            break
-        if old is None and (m := _OLD_FILE_RE.match(line)):
-            old = None if m.group(1) == "/dev/null" else m.group(1)
-        elif new is None and (m := _NEW_FILE_RE.match(line)):
-            new = None if m.group(1) == "/dev/null" else m.group(1)
-    return new or old or _git_header_path(lines[0])
-
-
-def _git_header_path(header: str) -> str | None:
-    """Fallback for blocks without ---/+++ headers (binary, mode-only): b/ side.
-
-    Tries the quoted form first (`diff --git "a/x y.png" "b/x y.png"` — the
-    quote sits before b/, so a bare ` b/` search misses it; gemini review,
-    PR #157), then the plain ` b/` marker.
-    """
-    quoted = ' "b/'
-    idx = header.rfind(quoted)
-    if idx != -1:
-        return header[idx + len(quoted) :].removesuffix('"') or None
-    marker = " b/"
-    idx = header.rfind(marker)
-    if idx == -1:
-        return None
-    return header[idx + len(marker) :] or None
-
-
-def split_diff_by_file(diff_text: str) -> dict[str, str]:
-    """Split a unified diff into per-file blocks keyed by repo-relative path.
-
-    Key = new path; deletions (`+++ /dev/null`) fall back to the old path so
-    deleted files stay reviewable (unlike diff_index, which drops them — no
-    RIGHT side to anchor an inline comment on). Splitting on a column-zero
-    `diff --git` is safe: inside a hunk every content line carries a
-    `+`/`-`/space prefix, so a bare header can only be a real one.
-    """
-    blocks: dict[str, str] = {}
-    current: list[str] = []
-
-    def _flush() -> None:
-        if not current:
-            return
-        path = _block_path(current)
-        if path is None:
-            log.warning("Diff block without parsable path skipped.", head=current[0])
-        else:
-            block = "\n".join(current) + "\n"
-            if path in blocks:
-                log.warning("Duplicate diff block for path; merging.", path=path)
-                blocks[path] += block
-            else:
-                blocks[path] = block
-        current.clear()
-
-    for line in diff_text.splitlines():
-        if line.startswith("diff --git"):
-            _flush()
-        current.append(line)
-    _flush()
-    return blocks
 
 
 class Chunk(BaseModel, frozen=True):
