@@ -101,6 +101,21 @@ def test_resolve_without_source_root_returns_stored_path() -> None:
     assert resolve_source_path("pkg/mod.py", "") == "pkg/mod.py"
 
 
+def test_resolve_skips_candidate_that_cannot_be_stat_ed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An un-stat-able candidate is skipped, never raised — the module degrades, it never crashes.
+
+    ``Path.is_file()`` only swallows ENOENT/ENOTDIR/EBADF/ELOOP; EACCES and (here)
+    ENAMETOOLONG propagate. A source_root the OS refuses to stat must not take
+    down context generation.
+    """
+    _touch(tmp_path, "m.py")
+    monkeypatch.chdir(tmp_path)
+
+    assert resolve_source_path("m.py", "x" * 300) == "m.py"
+
+
 def test_resolve_normalizes_windows_separators(tmp_path: Path) -> None:
     """A backslash path from a Windows ingest is normalised before any join."""
     _touch(tmp_path, "pkg/mod.py")

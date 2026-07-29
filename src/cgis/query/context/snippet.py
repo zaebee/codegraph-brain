@@ -29,6 +29,20 @@ def _collapsed_join(root: Path, parts: tuple[str, ...]) -> Path | None:
     return None
 
 
+def _is_existing_file(path: Path) -> bool:
+    """True when ``path`` is an existing regular file; any OS error means "not a candidate".
+
+    ``Path.is_file()`` swallows only ENOENT/ENOTDIR/EBADF/ELOOP — a candidate the
+    OS refuses to stat (EACCES on an unreadable parent, ENAMETOOLONG on a bogus
+    root) raises. This module promises degradation, never a crash, so an
+    un-stat-able candidate is simply skipped.
+    """
+    try:
+        return path.is_file()
+    except OSError:
+        return False
+
+
 def resolve_source_path(file_path: str, source_root: str = "") -> str:
     """Locate a node's stored ``file_path`` on disk, first existing candidate wins (#228).
 
@@ -55,7 +69,7 @@ def resolve_source_path(file_path: str, source_root: str = "") -> str:
     if collapsed is not None:
         candidates.append(collapsed)
     for candidate in candidates:
-        if candidate.is_file():
+        if _is_existing_file(candidate):
             return str(candidate)
     return str(joined)
 
