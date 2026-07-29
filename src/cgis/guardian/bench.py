@@ -15,6 +15,7 @@ import yaml
 from pydantic import BaseModel, Field, model_validator
 
 from cgis.guardian.findings import Category, Finding, ReviewResult, Severity
+from cgis.guardian.skeptic import visible_findings
 
 
 class GroundTruthEntry(BaseModel, frozen=True):
@@ -150,6 +151,28 @@ def score_separation(gt_scores: Sequence[int], noise_scores: Sequence[int]) -> f
     if not gt_scores or not noise_scores:
         return None
     return statistics.median(gt_scores) - statistics.median(noise_scores)
+
+
+def killed_ground_truth(
+    findings: Sequence[Finding], truth: GroundTruth, threshold: int = 0
+) -> list[str]:
+    """Ground-truth ids the finder matched but the skeptic then made invisible (#270).
+
+    "Before" is every finding the finder produced, judged or not; "after" is what
+    a human would actually read — refuted findings dropped, and anything scored
+    below ``threshold`` hidden. A finding hidden by the threshold is exactly as
+    invisible as a refuted one, so both count.
+
+    This is the failure mode the benchmark exists to catch, and it cannot be
+    derived from ``matched_gt``: that flag is computed on the post-skeptic
+    visible list, so a refuted finding can never carry it and the kill is
+    invisible by construction.
+
+    Ids, not a count: which ground truth was lost is the actionable part.
+    """
+    before = set(match_findings(list(findings), truth).matched)
+    after = set(match_findings(visible_findings(findings, threshold), truth).matched)
+    return sorted(before - after)
 
 
 def annotate_matches(

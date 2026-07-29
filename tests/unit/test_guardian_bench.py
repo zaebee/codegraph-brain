@@ -11,6 +11,7 @@ from cgis.guardian.bench import (
     GroundTruthEntry,
     MatchResult,
     annotate_matches,
+    killed_ground_truth,
     load_finder_recording,
     load_ground_truth,
     match_findings,
@@ -285,3 +286,62 @@ def test_loading_a_missing_recording_is_a_clear_error(tmp_path: Path) -> None:
     """A typo'd --replay-finder path fails loudly, not with a raw OSError."""
     with pytest.raises(ValueError, match="not a file"):
         load_finder_recording(tmp_path / "nope.json")
+
+
+# ---------------------------------------------------------------------------
+# What the skeptic KILLED (#270)
+# ---------------------------------------------------------------------------
+
+
+def test_refuting_a_gt_match_is_reported_as_killed() -> None:
+    """The failure mode this benchmark exists to catch: a real finding refuted away."""
+    kept = _pred(file="src/cgis/query/drift.py", line=5)
+    doomed = _pred(file="tests/unit/test_quotient.py", line=65).model_copy(
+        update={"verdict": "refuted"}
+    )
+
+    assert killed_ground_truth([kept, doomed], _TRUTH) == ["float-eq"]
+
+
+def test_nothing_killed_when_every_match_survives() -> None:
+    """Refuting pure noise costs no ground truth."""
+    gt_hit = _pred(file="src/cgis/query/drift.py", line=5)
+    noise = _pred(file="src/cgis/nowhere.py", line=1).model_copy(update={"verdict": "refuted"})
+
+    assert killed_ground_truth([gt_hit, noise], _TRUTH) == []
+
+
+def test_threshold_hidden_gt_counts_as_killed() -> None:
+    """Hidden by the impact threshold is as invisible to a human as refuted."""
+    hidden = _pred(file="tests/unit/test_quotient.py", line=65).model_copy(
+        update={"verdict": "confirmed", "impact_score": 1}
+    )
+
+    assert killed_ground_truth([hidden], _TRUTH, threshold=5) == ["float-eq"]
+    assert killed_ground_truth([hidden], _TRUTH) == []  # default threshold hides nothing
+
+
+def test_uncertain_confidence_discount_does_not_fake_a_kill() -> None:
+    """'uncertain' discounts confidence x0.9 and matching is greedy by confidence.
+
+    Re-ordering may change WHICH prediction claims a ground-truth slot, but the
+    slot stays claimed — so no kill may be reported.
+    """
+    first = _pred(file="src/cgis/query/drift.py", line=5, confidence=80)
+    second = _pred(file="src/cgis/query/drift.py", line=9, confidence=79).model_copy(
+        update={"verdict": "uncertain", "confidence": 71}
+    )
+
+    assert killed_ground_truth([first, second], _TRUTH) == []
+
+
+def test_killed_ids_are_reported_not_just_counted() -> None:
+    """Which ground truth was lost is the actionable part; a count is not."""
+    both_dead = [
+        _pred(file="tests/unit/test_quotient.py", line=65).model_copy(
+            update={"verdict": "refuted"}
+        ),
+        _pred(file="src/cgis/query/drift.py", line=5).model_copy(update={"verdict": "refuted"}),
+    ]
+
+    assert sorted(killed_ground_truth(both_dead, _TRUTH)) == ["float-eq", "no-lines"]
