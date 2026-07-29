@@ -603,6 +603,31 @@ async def test_finder_hallucinated_skeptic_fields_are_reset(tmp_path: Path) -> N
 
 
 @pytest.mark.asyncio
+async def test_finder_hallucinated_impact_score_is_reset(tmp_path: Path) -> None:
+    """A finder-invented impact_score must not survive into the result.
+
+    impact_score is skeptic-owned but lives on the shared Finding schema, so the
+    finder sees it and can fill it in. A hallucinated 0 would hide a real finding
+    behind the impact threshold — the same defect class as the hallucinated
+    verdict="refuted" above, only quieter: not "refuted", merely "unimportant".
+    """
+    hallucinated = (
+        '{"findings": [{"file": "a.py", "line": 1, "severity": "major", "category": "logic",'
+        ' "title": "t", "evidence": "e", "problem": "p", "fix": "f", "confidence": 90,'
+        ' "impact_score": 0}],'
+        ' "summary": "s", "skeptic_judged": 1, "skeptic_total": 1}'
+    )
+    finder = StubProvider([hallucinated])
+    collector = ContextCollector(project_root=tmp_path)
+    reviewer = GuardianReviewer(provider=finder, context_collector=collector)
+    with patch.object(collector, "collect_all", return_value={"diff": "d"}):
+        result = await reviewer.run_review()
+    assert result.findings[0].impact_score is None
+    assert result.skeptic_judged == 0
+    assert result.skeptic_total == 0
+
+
+@pytest.mark.asyncio
 async def test_skeptic_pass_merges_verdicts(tmp_path: Path) -> None:
     """With a skeptic provider, verdicts land on findings and status is 'ok'."""
     finder = StubProvider([FINDING_JSON])

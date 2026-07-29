@@ -27,15 +27,24 @@ def _sanitize_finder_result(result: ReviewResult) -> ReviewResult:
     """Reset skeptic-owned fields the finder LLM may have hallucinated.
 
     ReviewResult doubles as the finder's structured-output schema, so the
-    model sees `skeptic_status` and per-finding `verdict`/`skeptic_note` and
-    sometimes fills them in. A hallucinated `verdict="refuted"` would make
-    visible_findings() silently drop a finder finding — only the skeptic
-    pass may set these.
+    model sees `skeptic_status`, the judged/total counters and per-finding
+    `verdict`/`skeptic_note`/`impact_score`, and sometimes fills them in. A
+    hallucinated `verdict="refuted"` would make visible_findings() silently drop
+    a finder finding; a hallucinated `impact_score` would hide one behind the
+    impact threshold just as silently — only the skeptic pass may set these.
     """
     findings = [
-        f.model_copy(update={"verdict": None, "skeptic_note": None}) for f in result.findings
+        f.model_copy(update={"verdict": None, "skeptic_note": None, "impact_score": None})
+        for f in result.findings
     ]
-    return result.model_copy(update={"findings": findings, "skeptic_status": "off"})
+    return result.model_copy(
+        update={
+            "findings": findings,
+            "skeptic_status": "off",
+            "skeptic_judged": 0,
+            "skeptic_total": 0,
+        }
+    )
 
 
 async def finder_pass(provider: BaseProvider, context: dict[str, str]) -> ReviewResult:
