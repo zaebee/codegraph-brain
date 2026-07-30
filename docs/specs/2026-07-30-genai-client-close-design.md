@@ -56,8 +56,10 @@ try:
     response = await client.aio.models.generate_content(...)
     ...
 finally:
-    await client.aio.aclose()
-    client.close()
+    try:
+        await client.aio.aclose()
+    finally:
+        client.close()
 ```
 
 **Why an explicit `finally` rather than `async with client.aio`.** The context
@@ -93,11 +95,13 @@ The new test reuses that pattern and asserts both closes happen — appended to
 `tests/unit/test_guardian_core.py`, beside the existing Gemini provider tests
 rather than in a new file.
 
-Two cases:
+Three cases:
 
 - A successful call closes both pools.
 - **A call whose request raises still closes both.** This is the case the
   `finally` exists for, and the one a naive fix would miss.
+- **A call whose `aclose()` raises still closes the sync pool.** This is what the
+  nesting below buys, and it fails against the flat form.
 
 ## Error and edge handling
 
