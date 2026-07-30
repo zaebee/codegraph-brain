@@ -43,6 +43,7 @@ dev = [
 ]
 guardian = [
     "google-genai>=0.8.0",
+    "httpx>=0.27",
     "mistralai>=1.0.0",
     "cohere>=5.0.0",
     "ollama>=0.3.0",

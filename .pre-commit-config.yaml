@@ -13,6 +13,7 @@ repos:
         args: [--config-file=pyproject.toml]
         files: ^src/
         additional_dependencies:
+          - httpx>=0.27  # imported directly by guardian/providers/base.py (#275)
           - pydantic>=2.13.4
           - structlog>=25.5.0
           - types-pyyaml>=6.0.12.20260518
