@@ -1,7 +1,8 @@
 """Unit tests for the structural tier ladder and its entropy slope (#186)."""
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
-from cgis.query.drift.fractal import build_ladder
+from cgis.query.drift.fractal import build_ladder, entropy_bits, measure_layer
+from cgis.query.drift.triads import TRIAD_ORDER
 
 
 def _node(fqn: str, ntype: NodeType, path: str) -> Node:
@@ -126,3 +127,57 @@ def test_empty_graph_yields_no_rungs_beyond_identity() -> None:
 
     assert rungs[0][0] == "T0_symbol"
     assert rungs[0][1] == {}
+
+
+def _files(*paths: str) -> list[Node]:
+    """FILE nodes named after their paths, dots for slashes."""
+    return [_node(p.removesuffix(".py").replace("/", "."), NodeType.FILE, p) for p in paths]
+
+
+def test_entropy_of_a_single_motif_is_zero() -> None:
+    census = tuple(1.0 if name == "021C" else 0.0 for name in TRIAD_ORDER)
+
+    assert entropy_bits(census) == 0.0
+
+
+def test_entropy_of_two_equal_motifs_is_one_bit() -> None:
+    census = tuple(0.5 if name in ("021C", "021D") else 0.0 for name in TRIAD_ORDER)
+
+    assert entropy_bits(census) == 1.0
+
+
+def test_identical_censuses_collapse_to_one_rung() -> None:
+    """IMPORTS edges connect only FILE nodes, so T0/T1/T2 are the same quotient."""
+    nodes = _files("p/f1.py", "p/f2.py", "p/f3.py")
+    edges = [
+        _edge("p.f1", "p.f2", EdgeType.IMPORTS),
+        _edge("p.f2", "p.f3", EdgeType.IMPORTS),
+    ]
+
+    rungs = measure_layer(nodes, edges, EdgeType.IMPORTS)
+
+    assert [r.name for r in rungs] == ["T0_symbol", "T3_up1"]
+
+
+def test_thin_rungs_are_reported_but_not_live() -> None:
+    nodes = _files("p/f1.py", "p/f2.py", "p/f3.py")
+    edges = [
+        _edge("p.f1", "p.f2", EdgeType.IMPORTS),
+        _edge("p.f2", "p.f3", EdgeType.IMPORTS),
+    ]
+
+    rungs = measure_layer(nodes, edges, EdgeType.IMPORTS)
+
+    assert rungs[0].triads == 1
+    assert rungs[0].live is False
+    assert rungs[0].dominant == "021C"
+
+
+def test_a_rung_with_no_triads_has_no_entropy() -> None:
+    nodes = _files("p/f1.py", "p/f2.py")
+
+    rungs = measure_layer(nodes, [], EdgeType.CALLS)
+
+    assert rungs[0].triads == 0
+    assert rungs[0].entropy is None
+    assert rungs[0].live is False

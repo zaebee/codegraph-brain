@@ -6,7 +6,11 @@ rungs is set by the repository, never by a swept parameter: grain-dependence is
 what retired the closure-gap metric on the same issue.
 """
 
+import math
+from dataclasses import dataclass
+
 from cgis.core.models import Edge, EdgeType, Node, NodeType
+from cgis.query.drift.triads import TRIAD_ORDER, normalized_census, tangle_mass, triad_census
 
 #: Layers the ladder is measured on, in report order.
 LADDER_LAYERS: tuple[EdgeType, ...] = (EdgeType.IMPORTS, EdgeType.CALLS)
@@ -106,3 +110,88 @@ def build_ladder(nodes: list[Node], edges: list[Edge]) -> list[tuple[str, Groupi
             )
         )
     return rungs
+
+
+@dataclass(frozen=True)
+class RungReport:
+    """One rung of the ladder measured on one layer.
+
+    ``live`` marks a rung with enough triads to enter the fit; thin and
+    single-group rungs are still reported so the curve stays readable.
+    """
+
+    name: str
+    groups: int
+    triads: int
+    census: tuple[float, ...]
+    entropy: float | None
+    dominant: str
+    dominant_share: float
+    tangle_ratio: float
+    live: bool
+
+
+def entropy_bits(census: tuple[float, ...]) -> float:
+    """Shannon entropy of a normalized census, in bits (max log2(13) ~ 3.70)."""
+    return -sum(p * math.log2(p) for p in census if p > 0)
+
+
+def _quotient_edges(grouping: Grouping, edges: list[Edge], layer: EdgeType) -> list[Edge]:
+    """Distinct cross-group edges of one layer; self-loops dropped."""
+    pairs = {
+        (grouping[e.source], grouping[e.target])
+        for e in edges
+        if e.type is layer
+        and e.source in grouping
+        and e.target in grouping
+        and grouping[e.source] != grouping[e.target]
+    }
+    return [
+        Edge(
+            id=f"{u}:{layer.value}:{v}",
+            source=u,
+            target=v,
+            type=layer,
+            weight=1.0,
+            confidence=1.0,
+        )
+        for u, v in sorted(pairs)
+    ]
+
+
+def _rung_report(name: str, groups: int, counts: dict[str, int]) -> RungReport:
+    """Build one RungReport from a raw triad census."""
+    triads = sum(counts.values())
+    census = normalized_census(counts)
+    dominant, share = (
+        max(zip(TRIAD_ORDER, census, strict=True), key=lambda kv: kv[1]) if triads else ("-", 0.0)
+    )
+    return RungReport(
+        name=name,
+        groups=groups,
+        triads=triads,
+        census=census,
+        entropy=entropy_bits(census) if triads else None,
+        dominant=dominant,
+        dominant_share=share,
+        tangle_ratio=tangle_mass(census),
+        live=triads >= MIN_RUNG_TRIADS and groups > 1,
+    )
+
+
+def measure_layer(nodes: list[Node], edges: list[Edge], layer: EdgeType) -> list[RungReport]:
+    """Measure every rung on one layer, collapsing rungs with identical censuses.
+
+    The dedup is not an optimization. IMPORTS edges connect only FILE nodes, so
+    ``T0``/``T1``/``T2`` are literally the same import quotient — counting them
+    three times would triple-weight one observation in the fit.
+    """
+    rows: list[RungReport] = []
+    for name, grouping in build_ladder(nodes, edges):
+        groups = set(grouping.values())
+        counts = triad_census(groups, _quotient_edges(grouping, edges, layer), layer)
+        row = _rung_report(name, len(groups), counts)
+        if rows and rows[-1].census == row.census and rows[-1].triads == row.triads:
+            continue
+        rows.append(row)
+    return rows
