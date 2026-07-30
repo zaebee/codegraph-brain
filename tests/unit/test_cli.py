@@ -1388,3 +1388,41 @@ def test_suggest_packages_missing_db(tmp_path: Path) -> None:
     result = runner.invoke(app, ["suggest-packages", "p", "--db", str(tmp_path / "nope.db")])
     assert result.exit_code == 1
     assert "not found" in result.output.lower()
+
+
+def test_fractal_reports_a_verdict_per_layer(tmp_path: Path) -> None:
+    db_path = str(tmp_path / "graph.db")
+    nodes = [
+        make_file_node("p.f1", "p/f1.py"),
+        make_file_node("p.f2", "p/f2.py"),
+        make_file_node("p.f3", "p/f3.py"),
+    ]
+    edges = [make_import_edge("p.f1", "p.f2"), make_import_edge("p.f2", "p.f3")]
+    with SQLiteStore(db_path) as store:
+        store.save_graph(nodes, edges)
+
+    result = runner.invoke(app, ["fractal", "--db", db_path])
+
+    assert result.exit_code == 0
+    assert "IMPORTS" in _plain(result.stdout)
+    assert "CALLS" in _plain(result.stdout)
+
+
+def test_fractal_json_format_is_machine_readable(tmp_path: Path) -> None:
+    db_path = str(tmp_path / "graph.db")
+    with SQLiteStore(db_path) as store:
+        store.save_graph([make_file_node("p.f1", "p/f1.py")], [])
+
+    result = runner.invoke(app, ["fractal", "--db", db_path, "--format", "json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert [layer["layer"] for layer in payload["layers"]] == ["IMPORTS", "CALLS"]
+    assert payload["layers"][0]["verdict"] == "no_signal"
+
+
+def test_fractal_missing_db_exits_nonzero(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["fractal", "--db", str(tmp_path / "nope.db")])
+
+    assert result.exit_code == 1
+    assert "not found" in _plain(result.stdout).lower()
