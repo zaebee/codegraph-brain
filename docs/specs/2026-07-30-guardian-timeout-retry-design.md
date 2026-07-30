@@ -141,9 +141,16 @@ unnoticed.
   unchanged.
 - `src/cgis/guardian/metrics.py` — `duration_s` on `record_review`.
 - `src/cgis/guardian/runner.py` — measure around `run_review_routed`.
-- `pyproject.toml` — add `httpx` to the **`guardian` dependency group**. It is
-  already installed transitively via `mcp[cli]`, but `base.py` will now import
-  it directly, and only guardian code does, so that is where it is declared.
+- `pyproject.toml` — add `httpx` to the **core `dependencies`**, not the
+  `guardian` group. It was first placed in the group, on the reasoning that only
+  guardian code imports it — and CI rejected that: `mypy src` type-checks the
+  whole package regardless of which optional groups are installed, and CI syncs
+  only `--group dev`, so the import failed to resolve. Anything imported
+  unconditionally by `src/` must be a core dependency. It costs nothing at
+  install time, since `mcp[cli]` already pulls httpx in.
+- `.pre-commit-config.yaml` — add `httpx` to the mypy hook's
+  `additional_dependencies`. That hook runs mypy in its own isolated
+  environment, so a core dependency is not automatically visible to it.
 
 ## Error and edge handling
 
