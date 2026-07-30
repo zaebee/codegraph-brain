@@ -104,6 +104,25 @@ def _dedup(findings: list[Finding]) -> list[Finding]:
     return [best[k] for k in order]
 
 
+async def _single_pass(
+    provider: BaseProvider,
+    collector: ContextCollector,
+    skeptic_provider: BaseProvider | None,
+) -> RoutedReview:
+    """Run the unchunked reviewer.
+
+    Shared by the routing default and the no-reviewable-files fallback so the
+    two cannot drift apart (#277). chunk_count is None, which is the recorded
+    marker for "this review did not chunk".
+    """
+    reviewer = GuardianReviewer(
+        provider=provider,
+        context_collector=collector,
+        skeptic_provider=skeptic_provider,
+    )
+    return RoutedReview(result=await reviewer.run_review(), chunk_count=None)
+
+
 async def run_chunked_review(
     *,
     provider: BaseProvider,
@@ -209,12 +228,7 @@ async def run_review_routed(
         log.warning("chunked requested but no graph DB; falling back to single pass.")
         chunked = False
     if not chunked:
-        reviewer = GuardianReviewer(
-            provider=provider,
-            context_collector=collector,
-            skeptic_provider=skeptic_provider,
-        )
-        return RoutedReview(result=await reviewer.run_review(), chunk_count=None)
+        return await _single_pass(provider, collector, skeptic_provider)
     return await run_chunked_review(
         provider=provider, collector=collector, skeptic_provider=skeptic_provider
     )
