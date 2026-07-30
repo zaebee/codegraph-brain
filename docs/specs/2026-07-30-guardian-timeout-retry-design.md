@@ -115,6 +115,13 @@ This exists because the 180 s above **is a judgment call, not a measurement**.
 say how close the normal case runs to the ceiling. One field closes that gap:
 after a few reviews the timeout can be set from the observed distribution.
 
+**First measurement, taken on this branch (PR #278):** a successful review of
+this very PR took **64.66 s** on a 22,936-token prompt — *above* the 60 s
+default that was killing runs. So the ceiling was not merely tight for outsized
+diffs; it sat below the normal operating time of an ordinary review. That single
+number moves 180 s from "arbitrary" to "roughly 3× a measured normal run", and
+it is direct evidence that the diagnosis was right.
+
 The value chosen now rests on cost asymmetry rather than data. A timeout that is
 too long costs CI minutes only in a case that is already broken; one that is too
 short costs an entire review. Worst case with a dead API is roughly
