@@ -8,7 +8,7 @@ complete world instead — its own diff, full files, and impact graph.
 import structlog
 from pydantic import BaseModel
 
-from cgis.guardian.chunker import Chunk, build_chunks
+from cgis.guardian.chunker import Chunk, build_chunks, split_diff_by_file
 from cgis.guardian.collector import ContextCollector
 from cgis.guardian.core import GuardianReviewer, finder_pass
 from cgis.guardian.findings import Finding, ReviewResult
@@ -104,6 +104,25 @@ def _dedup(findings: list[Finding]) -> list[Finding]:
     return [best[k] for k in order]
 
 
+async def _single_pass(
+    provider: BaseProvider,
+    collector: ContextCollector,
+    skeptic_provider: BaseProvider | None,
+) -> RoutedReview:
+    """Run the unchunked reviewer.
+
+    Shared by the routing default and the no-reviewable-files fallback so the
+    two cannot drift apart (#277). chunk_count is None, which is the recorded
+    marker for "this review did not chunk".
+    """
+    reviewer = GuardianReviewer(
+        provider=provider,
+        context_collector=collector,
+        skeptic_provider=skeptic_provider,
+    )
+    return RoutedReview(result=await reviewer.run_review(), chunk_count=None)
+
+
 async def run_chunked_review(
     *,
     provider: BaseProvider,
@@ -124,10 +143,16 @@ async def run_chunked_review(
     with SQLiteStore(str(collector.db_path)) as store:
         chunks = build_chunks(diff, store, source_root=collector.source_root)
     if not chunks:
-        return RoutedReview(
-            result=ReviewResult(findings=[], summary="Empty diff — nothing to review."),
-            chunk_count=0,
-        )
+        if not split_diff_by_file(diff):
+            return RoutedReview(
+                result=ReviewResult(findings=[], summary="Empty diff — nothing to review."),
+                chunk_count=0,
+            )
+        # Blocks exist but none are reviewable source: a docs-only PR. Single
+        # pass reviews it today, so returning "nothing to review" here would be
+        # a silent regression — exactly the invisible-skip failure #277 is about.
+        log.info("No reviewable source in the diff; falling back to single pass.")
+        return await _single_pass(provider, collector, skeptic_provider)
     chunks = _cap_chunks(chunks)
 
     bullets: list[str] = []
@@ -209,12 +234,7 @@ async def run_review_routed(
         log.warning("chunked requested but no graph DB; falling back to single pass.")
         chunked = False
     if not chunked:
-        reviewer = GuardianReviewer(
-            provider=provider,
-            context_collector=collector,
-            skeptic_provider=skeptic_provider,
-        )
-        return RoutedReview(result=await reviewer.run_review(), chunk_count=None)
+        return await _single_pass(provider, collector, skeptic_provider)
     return await run_chunked_review(
         provider=provider, collector=collector, skeptic_provider=skeptic_provider
     )

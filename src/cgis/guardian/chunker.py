@@ -29,14 +29,25 @@ def build_chunks(
     diff_text: str,
     store: SQLiteStore | None,
     source_root: str = "",
+    reviewable_suffixes: tuple[str, ...] = (".py",),
 ) -> list[Chunk]:
     """Group changed files into connected-component chunks via IMPORTS/CALLS.
+
+    Only files ending in ``reviewable_suffixes`` are chunked. A markdown or lock
+    file would otherwise cost one finder call and receive no context at all —
+    ``collect_for_chunk`` narrows to .py before assembling one (#277). An
+    all-filtered diff returns [], which the caller distinguishes from an empty
+    diff and answers with a single-pass fallback.
 
     Degrades honestly: no store / file absent from the graph / store errors →
     isolated single-file chunks, never worse than the unchunked status quo.
     Deterministic: files sorted inside a chunk, chunks sorted by first file.
     """
-    blocks = split_diff_by_file(diff_text)
+    blocks = {
+        path: block
+        for path, block in split_diff_by_file(diff_text).items()
+        if path.endswith(reviewable_suffixes)
+    }
     if not blocks:
         return []
     files = sorted(blocks)
