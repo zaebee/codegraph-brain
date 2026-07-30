@@ -160,6 +160,15 @@ be the first to flip to `scale_invariant` as the repo changes — that is the
 metric being honest about thin evidence, not a defect, and the self-parsing test
 below asserts the sign band accordingly.
 
+**The ingest root is part of the ladder.** The self-parsing fixture ingests
+`src/cgis/` rather than `src/` and reads **+0.305** (R² 0.90, SE 0.073, 4 live
+rungs) for the same code that reads +0.145 above. One directory level shallower
+collapses the whole package into 13 groups in a single step, which steepens the
+curve. This is the metric behaving correctly — the ladder is built from the
+repository's own directory structure, and the ingest root is part of that
+structure. The sign is what must hold across roots, and does. Compare slopes
+only between measurements taken at the same ingest root.
+
 IMPORTS behaves as its structure predicts: `scale_invariant` for the two deep
 repos (django −0.001 with R² 0.00, owner-api −0.020 with R² 0.15 — a genuinely
 scale-free import mix, the honest version of the old "FRACTAL" label) and
