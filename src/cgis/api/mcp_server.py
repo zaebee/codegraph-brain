@@ -20,6 +20,7 @@ from cgis.query.analysis.suggest_service import report_to_dict, suggest_packages
 from cgis.query.context.audit import audit_reachability
 from cgis.query.context.context_service import build_context
 from cgis.query.drift.drift_service import analyze_drift
+from cgis.query.drift.fractal import analyze_fractal_db
 from cgis.query.drift.ontology_init import propose_ontology
 from cgis.query.engine import QueryEngine
 from cgis.query.fqn import resolve_fqn
@@ -517,3 +518,33 @@ def cgis_audit_reachability(
 
     note = f"> Resolved '{target}' → '{res.resolved}'\n\n" if res.via_suffix else ""
     return note + json.dumps(dataclasses.asdict(result), indent=2)
+
+
+@mcp.tool()
+def cgis_fractal(db_path: str = _DEFAULT_DB) -> str:
+    """Report the motif census across the repository's structural tiers.
+
+    Coarsens the graph along its own structure — symbol, class, module, then
+    directory levels trimmed from the leaf end — and measures the 13-triad
+    census at every rung. Returns JSON: one entry per layer (IMPORTS, CALLS)
+    with the full per-rung curve (groups, triads, entropy in bits, dominant
+    motif, tangle ratio) and the fit.
+
+    ``verdict`` is the sign of ``slope`` (entropy bits per halving of the group
+    count) outside a ``2 * std_error`` dead-band: ``hierarchical`` means
+    coarsening ADDS motif diversity, ``flat`` means it destroys it,
+    ``scale_invariant`` means the mix is the same at every scale, and
+    ``no_signal`` means fewer than three rungs carried enough triads to fit.
+
+    Read the curve, not just the verdict — the fit is a lossy summary of a
+    non-linear curve. Observe-only: this tool enforces nothing and no gate
+    reads it. Call after ``cgis_ingest``.
+    """
+    if not Path(db_path).exists():
+        return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
+    try:
+        reports = analyze_fractal_db(db_path)
+        payload = {"layers": [dataclasses.asdict(r) for r in reports]}
+        return json.dumps(payload, indent=2)
+    except Exception as exc:
+        return f"❌ {exc}"

@@ -1,5 +1,9 @@
 """Unit tests for the structural tier ladder and its entropy slope (#186)."""
 
+import json
+from pathlib import Path
+
+from cgis.api.mcp_server import cgis_fractal
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.query.drift.fractal import (
     RungReport,
@@ -11,6 +15,7 @@ from cgis.query.drift.fractal import (
     verdict_of,
 )
 from cgis.query.drift.triads import TRIAD_ORDER, ZERO_TRIADS
+from cgis.storage.sqlite_store import SQLiteStore
 
 
 def _node(fqn: str, ntype: NodeType, path: str) -> Node:
@@ -304,3 +309,24 @@ def test_analyze_fractal_reports_both_the_curve_and_the_verdict() -> None:
     assert report.layer == "IMPORTS"
     assert report.verdict == "no_signal"
     assert [r.name for r in report.rungs] == ["T0_symbol", "T3_up1"]
+
+
+def test_mcp_fractal_returns_json_layers(tmp_path: Path) -> None:
+    db_path = str(tmp_path / "graph.db")
+    with SQLiteStore(db_path) as store:
+        store.save_graph(
+            _files("p/f1.py", "p/f2.py", "p/f3.py"),
+            [
+                _edge("p.f1", "p.f2", EdgeType.IMPORTS),
+                _edge("p.f2", "p.f3", EdgeType.IMPORTS),
+            ],
+        )
+
+    payload = json.loads(cgis_fractal(db_path=db_path))
+
+    assert [layer["layer"] for layer in payload["layers"]] == ["IMPORTS", "CALLS"]
+    assert payload["layers"][0]["verdict"] == "no_signal"
+
+
+def test_mcp_fractal_reports_a_missing_database(tmp_path: Path) -> None:
+    assert "❌" in cgis_fractal(db_path=str(tmp_path / "nope.db"))
