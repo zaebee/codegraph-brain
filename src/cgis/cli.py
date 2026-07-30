@@ -26,6 +26,7 @@ from cgis.query.context.audit import ReachabilityAudit, audit_reachability
 from cgis.query.context.context_service import build_context
 from cgis.query.drift.drift import DriftReport, FitQuality
 from cgis.query.drift.drift_service import analyze_drift
+from cgis.query.drift.fractal import FractalReport, analyze_fractal_db
 from cgis.query.drift.ontology_init import propose_ontology
 from cgis.query.engine import BEHAVIORAL_EDGE_TYPES, QueryEngine
 from cgis.query.fqn import resolve_fqn
@@ -81,6 +82,13 @@ class DriftOutputFormat(StrEnum):
 
 class SuggestOutputFormat(StrEnum):
     """Supported output formats for the suggest-packages command."""
+
+    TEXT = "text"
+    JSON = "json"
+
+
+class FractalOutputFormat(StrEnum):
+    """Supported output formats for the fractal command."""
 
     TEXT = "text"
     JSON = "json"
@@ -1438,6 +1446,70 @@ def suggest_packages_cmd(
         typer.echo(_json.dumps(report_to_dict(report), indent=2))
         return
     _render_suggest(report)
+
+
+def _render_fractal(reports: list[FractalReport]) -> None:
+    """Render one table per layer: the ladder, then the fit and verdict."""
+    for report in reports:
+        fit = report.fit
+        summary = (
+            f"slope={fit.slope:+.3f} R²={fit.r_squared:.2f} "
+            f"band=±{2 * fit.std_error:.3f} live={fit.live_rungs}"
+            if fit is not None
+            else "no fit"
+        )
+        console.print(
+            f"\n[bold]{report.layer}[/bold]  [cyan]{report.verdict}[/cyan]  [dim]{summary}[/dim]"
+        )
+        table = Table()
+        table.add_column("Rung", style="white")
+        table.add_column("Groups", justify="right")
+        table.add_column("Triads", justify="right")
+        table.add_column("H (bits)", justify="right")
+        table.add_column("Dominant", style="cyan")
+        table.add_column("Tangle", justify="right")
+        for rung in report.rungs:
+            entropy = "—" if rung.entropy is None else f"{rung.entropy:.2f}"
+            name = rung.name if rung.live else f"{rung.name} [dim](no_signal)[/dim]"
+            table.add_row(
+                name,
+                str(rung.groups),
+                str(rung.triads),
+                entropy,
+                f"{rung.dominant}:{rung.dominant_share:.2f}",
+                f"{rung.tangle_ratio:.3f}",
+            )
+        console.print(table)
+
+
+@app.command()
+def fractal(
+    db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
+    output_format: FractalOutputFormat = typer.Option(
+        FractalOutputFormat.TEXT, "--format", "-f", help=_TEXT_JSON_FORMAT_HELP
+    ),
+) -> None:
+    """Report the motif census across the repository's structural tiers.
+
+    Coarsens the graph along its own structure — symbol, class, module, then
+    directory levels — and fits Shannon entropy against log group count. A
+    positive slope means coarsening adds motif diversity (`hierarchical`); a
+    negative one means it destroys it (`flat`). Observe-only: always exits 0 on
+    success. Run `ingest` first.
+    """
+    try:
+        reports = analyze_fractal_db(db)
+    except FileNotFoundError as e:
+        console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
+        raise typer.Exit(code=1) from e
+    except Exception as e:
+        console.print(f"[bold red]❌ Error during fractal analysis:[/bold red] {e}")
+        raise typer.Exit(code=1) from e
+
+    if output_format == FractalOutputFormat.JSON:
+        typer.echo(_json.dumps({"layers": [dataclasses.asdict(r) for r in reports]}, indent=2))
+        return
+    _render_fractal(reports)
 
 
 if __name__ == "__main__":  # pragma: no cover

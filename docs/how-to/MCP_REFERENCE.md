@@ -127,6 +127,32 @@ Resolve a partial symbol name to candidate FQNs (substring match, ranked).
 
 ---
 
+## `cgis_fractal`
+
+Report the motif census across the repository's structural tiers.
+
+    Coarsens the graph along its own structure — symbol, class, module, then
+    directory levels trimmed from the leaf end — and measures the 13-triad
+    census at every rung. Returns JSON: one entry per layer (IMPORTS, CALLS)
+    with the full per-rung curve (groups, triads, entropy in bits, dominant
+    motif, tangle ratio) and the fit.
+
+    ``verdict`` is the sign of ``slope`` (entropy bits per halving of the group
+    count) outside a ``2 * std_error`` dead-band: ``hierarchical`` means
+    coarsening ADDS motif diversity, ``flat`` means it destroys it,
+    ``scale_invariant`` means the mix is the same at every scale, and
+    ``no_signal`` means fewer than three rungs carried enough triads to fit.
+
+    Read the curve, not just the verdict — the fit is a lossy summary of a
+    non-linear curve. Observe-only: this tool enforces nothing and no gate
+    reads it. Call after ``cgis_ingest``.
+
+| Argument | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `db_path` | `string` |  |  |
+
+---
+
 ## `cgis_get_structure`
 
 Show the structural layout (CONTAINS/DECLARES) of a module or class.
