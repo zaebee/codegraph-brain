@@ -8,9 +8,11 @@ what retired the closure-gap metric on the same issue.
 
 import math
 from dataclasses import dataclass
+from pathlib import Path
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.query.drift.triads import TRIAD_ORDER, normalized_census, tangle_mass, triad_census
+from cgis.storage.sqlite_store import SQLiteStore
 
 #: Layers the ladder is measured on, in report order.
 LADDER_LAYERS: tuple[EdgeType, ...] = (EdgeType.IMPORTS, EdgeType.CALLS)
@@ -195,3 +197,96 @@ def measure_layer(nodes: list[Node], edges: list[Edge], layer: EdgeType) -> list
             continue
         rows.append(row)
     return rows
+
+
+#: Numeric floor below which a sum of squares counts as zero.
+_EPS = 1e-12
+
+
+@dataclass(frozen=True)
+class FractalFit:
+    """Least-squares fit of entropy against log group count."""
+
+    slope: float
+    r_squared: float
+    std_error: float
+    live_rungs: int
+
+
+@dataclass(frozen=True)
+class FractalReport:
+    """One layer's ladder, its fit and the resulting verdict."""
+
+    layer: str
+    rungs: list[RungReport]
+    fit: FractalFit | None
+    verdict: str
+
+
+def fit_ladder(rungs: list[RungReport]) -> FractalFit | None:
+    """Fit entropy against ``-log2(groups)`` over the live rungs.
+
+    ``x`` increases as the graph coarsens, so a positive slope means coarsening
+    ADDS motif diversity. The fit is rung-count invariant by construction: it
+    normalizes by actual collapse, not by rung index. Returns None when there is
+    no curve to fit.
+    """
+    points = [(-math.log2(r.groups), r.entropy) for r in rungs if r.live and r.entropy is not None]
+    if len(points) < MIN_LIVE_RUNGS:
+        return None
+    xs = [x for x, _ in points]
+    ys = [y for _, y in points]
+    mean_x, mean_y = sum(xs) / len(xs), sum(ys) / len(ys)
+    sxx = sum((x - mean_x) ** 2 for x in xs)
+    if sxx < _EPS:
+        return None
+    slope = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys, strict=True)) / sxx
+    ss_res = sum((y - (mean_y + slope * (x - mean_x))) ** 2 for x, y in zip(xs, ys, strict=True))
+    ss_tot = sum((y - mean_y) ** 2 for y in ys)
+    return FractalFit(
+        slope=slope,
+        # A perfectly flat curve has no variance to explain; report 0.0 rather
+        # than NaN so the value stays JSON-serializable.
+        r_squared=1.0 - ss_res / ss_tot if ss_tot > _EPS else 0.0,
+        std_error=math.sqrt(ss_res / (len(points) - 2) / sxx),
+        live_rungs=len(points),
+    )
+
+
+def verdict_of(fit: FractalFit | None) -> str:
+    """Three-way verdict from the sign of the slope with a 2*SE dead-band.
+
+    The dead-band comes from the fit's own residuals rather than a tuned
+    constant: every thresholded verdict in #186's history was falsified by
+    re-measurement.
+    """
+    if fit is None:
+        return "no_signal"
+    band = 2.0 * fit.std_error
+    if fit.slope > band:
+        return "hierarchical"
+    if fit.slope < -band:
+        return "flat"
+    return "scale_invariant"
+
+
+def analyze_fractal(nodes: list[Node], edges: list[Edge], layer: EdgeType) -> FractalReport:
+    """Measure one layer's ladder and band it."""
+    rungs = measure_layer(nodes, edges, layer)
+    fit = fit_ladder(rungs)
+    return FractalReport(layer=layer.value, rungs=rungs, fit=fit, verdict=verdict_of(fit))
+
+
+def analyze_fractal_db(db_path: str) -> list[FractalReport]:
+    """Measure every ladder layer from a graph database.
+
+    Raises:
+        FileNotFoundError: If ``db_path`` does not point to an existing file.
+            Use ``cgis ingest`` to create the graph database first.
+    """
+    if not Path(db_path).is_file():
+        msg = f"Graph database not found: {db_path}"
+        raise FileNotFoundError(msg)
+    with SQLiteStore(db_path) as store:
+        nodes, edges = store.get_all_nodes(), store.get_all_edges()
+    return [analyze_fractal(nodes, edges, layer) for layer in LADDER_LAYERS]

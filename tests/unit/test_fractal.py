@@ -1,8 +1,16 @@
 """Unit tests for the structural tier ladder and its entropy slope (#186)."""
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
-from cgis.query.drift.fractal import build_ladder, entropy_bits, measure_layer
-from cgis.query.drift.triads import TRIAD_ORDER
+from cgis.query.drift.fractal import (
+    RungReport,
+    analyze_fractal,
+    build_ladder,
+    entropy_bits,
+    fit_ladder,
+    measure_layer,
+    verdict_of,
+)
+from cgis.query.drift.triads import TRIAD_ORDER, ZERO_TRIADS
 
 
 def _node(fqn: str, ntype: NodeType, path: str) -> Node:
@@ -181,3 +189,118 @@ def test_a_rung_with_no_triads_has_no_entropy() -> None:
     assert rungs[0].triads == 0
     assert rungs[0].entropy is None
     assert rungs[0].live is False
+
+
+def _rung(name: str, groups: int, entropy: float) -> RungReport:
+    """A live RungReport carrying only the two fields the fit reads."""
+    return RungReport(
+        name=name,
+        groups=groups,
+        triads=100,
+        census=ZERO_TRIADS,
+        entropy=entropy,
+        dominant="021U",
+        dominant_share=1.0,
+        tangle_ratio=0.0,
+        live=True,
+    )
+
+
+def test_rising_diversity_under_coarsening_is_hierarchical() -> None:
+    rungs = [_rung("a", 800, 0.9), _rung("b", 400, 1.1), _rung("c", 200, 1.3), _rung("d", 100, 1.5)]
+
+    fit = fit_ladder(rungs)
+
+    assert fit is not None
+    assert fit.slope > 0
+    assert verdict_of(fit) == "hierarchical"
+
+
+def test_collapsing_diversity_under_coarsening_is_flat() -> None:
+    rungs = [_rung("a", 800, 1.5), _rung("b", 400, 1.1), _rung("c", 200, 0.7), _rung("d", 100, 0.3)]
+
+    fit = fit_ladder(rungs)
+
+    assert fit is not None
+    assert fit.slope < 0
+    assert verdict_of(fit) == "flat"
+
+
+def test_constant_entropy_is_scale_invariant() -> None:
+    rungs = [_rung("a", 800, 1.2), _rung("b", 400, 1.2), _rung("c", 200, 1.2)]
+
+    assert verdict_of(fit_ladder(rungs)) == "scale_invariant"
+
+
+def test_slope_inside_the_dead_band_is_scale_invariant() -> None:
+    """A noisy near-zero trend must not be reported as a direction."""
+    rungs = [_rung("a", 800, 1.0), _rung("b", 400, 1.4), _rung("c", 200, 1.0), _rung("d", 100, 1.4)]
+
+    fit = fit_ladder(rungs)
+
+    assert fit is not None
+    assert abs(fit.slope) <= 2.0 * fit.std_error
+    assert verdict_of(fit) == "scale_invariant"
+
+
+def test_too_few_live_rungs_is_no_signal() -> None:
+    rungs = [_rung("a", 800, 0.9), _rung("b", 400, 1.4)]
+
+    assert fit_ladder(rungs) is None
+    assert verdict_of(None) == "no_signal"
+
+
+def test_dead_rungs_are_excluded_from_the_fit() -> None:
+    live = [_rung("a", 800, 0.9), _rung("b", 400, 1.1), _rung("c", 200, 1.3)]
+    dead = RungReport(
+        name="top",
+        groups=2,
+        triads=1,
+        census=ZERO_TRIADS,
+        entropy=0.0,
+        dominant="300",
+        dominant_share=1.0,
+        tangle_ratio=1.0,
+        live=False,
+    )
+
+    fit = fit_ladder([*live, dead])
+
+    assert fit is not None
+    assert fit.live_rungs == 3
+
+
+def test_verdict_survives_truncating_the_ladder() -> None:
+    """Acceptance criterion 2: the verdict must not depend on rung count.
+
+    This is the property whose absence retired the closure-gap metric — its
+    ranking reshuffled completely when the grain was swept.
+    """
+    rungs = [
+        _rung("a", 1600, 0.8),
+        _rung("b", 800, 1.0),
+        _rung("c", 400, 1.2),
+        _rung("d", 200, 1.4),
+        _rung("e", 100, 1.6),
+    ]
+
+    full = verdict_of(fit_ladder(rungs))
+
+    assert full == "hierarchical"
+    assert verdict_of(fit_ladder(rungs[1:])) == full
+    assert verdict_of(fit_ladder(rungs[:-1])) == full
+    assert verdict_of(fit_ladder(rungs[1:-1])) == full
+
+
+def test_analyze_fractal_reports_both_the_curve_and_the_verdict() -> None:
+    nodes = _files("p/f1.py", "p/f2.py", "p/f3.py")
+    edges = [
+        _edge("p.f1", "p.f2", EdgeType.IMPORTS),
+        _edge("p.f2", "p.f3", EdgeType.IMPORTS),
+    ]
+
+    report = analyze_fractal(nodes, edges, EdgeType.IMPORTS)
+
+    assert report.layer == "IMPORTS"
+    assert report.verdict == "no_signal"
+    assert [r.name for r in report.rungs] == ["T0_symbol", "T3_up1"]
