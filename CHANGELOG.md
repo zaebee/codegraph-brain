@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.4.0...codegraph-brain-v0.5.0) (2026-07-30)
+
+
+### Features
+
+* **fractal:** cgis_fractal — structural tier ladder + entropy slope ([#186](https://github.com/zaebee/codegraph-brain/issues/186)) ([#274](https://github.com/zaebee/codegraph-brain/issues/274)) ([2e768ce](https://github.com/zaebee/codegraph-brain/commit/2e768cef585f10481970697657b0a9b40a411f47))
+
+
+### Bug Fixes
+
+* **guardian:** explicit request timeout + bounded retry ([#275](https://github.com/zaebee/codegraph-brain/issues/275)) ([#278](https://github.com/zaebee/codegraph-brain/issues/278)) ([e2ee313](https://github.com/zaebee/codegraph-brain/commit/e2ee31328dc0e19f362d03431e52d4c33404d188))
+
 ## [0.4.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.3.0...codegraph-brain-v0.4.0) (2026-07-29)
 
 
