@@ -8,7 +8,7 @@ complete world instead — its own diff, full files, and impact graph.
 import structlog
 from pydantic import BaseModel
 
-from cgis.guardian.chunker import Chunk, build_chunks
+from cgis.guardian.chunker import Chunk, build_chunks, split_diff_by_file
 from cgis.guardian.collector import ContextCollector
 from cgis.guardian.core import GuardianReviewer, finder_pass
 from cgis.guardian.findings import Finding, ReviewResult
@@ -143,10 +143,16 @@ async def run_chunked_review(
     with SQLiteStore(str(collector.db_path)) as store:
         chunks = build_chunks(diff, store, source_root=collector.source_root)
     if not chunks:
-        return RoutedReview(
-            result=ReviewResult(findings=[], summary="Empty diff — nothing to review."),
-            chunk_count=0,
-        )
+        if not split_diff_by_file(diff):
+            return RoutedReview(
+                result=ReviewResult(findings=[], summary="Empty diff — nothing to review."),
+                chunk_count=0,
+            )
+        # Blocks exist but none are reviewable source: a docs-only PR. Single
+        # pass reviews it today, so returning "nothing to review" here would be
+        # a silent regression — exactly the invisible-skip failure #277 is about.
+        log.info("No reviewable source in the diff; falling back to single pass.")
+        return await _single_pass(provider, collector, skeptic_provider)
     chunks = _cap_chunks(chunks)
 
     bullets: list[str] = []

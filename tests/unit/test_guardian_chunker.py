@@ -323,3 +323,35 @@ def test_split_duplicate_path_blocks_merged() -> None:
     assert set(blocks) == {"src/cgis/a.py"}
     assert "+x = 1" in blocks["src/cgis/a.py"]
     assert "+y = 2" in blocks["src/cgis/a.py"]
+
+
+def test_non_source_files_are_not_chunked() -> None:
+    """A markdown chunk costs an API call and gets no context — it must not exist (#277)."""
+    diff = fdiff("src/cgis/a.py") + fdiff("docs/specs/design.md") + fdiff("uv.lock")
+
+    chunks = build_chunks(diff, None)
+
+    assert [c.files for c in chunks] == [("src/cgis/a.py",)]
+
+
+def test_reviewable_suffixes_is_a_real_parameter() -> None:
+    """The language assumption is configurable, not welded into the body."""
+    diff = fdiff("src/cgis/a.py") + fdiff("ui/src/app.ts")
+
+    chunks = build_chunks(diff, None, reviewable_suffixes=(".py", ".ts"))
+
+    assert sorted(f for c in chunks for f in c.files) == ["src/cgis/a.py", "ui/src/app.ts"]
+
+
+def test_a_docs_file_cannot_be_pulled_into_a_source_chunk() -> None:
+    """Filtering runs before pairing, so no heuristic can resurrect a dropped file."""
+    diff = fdiff("tests/unit/test_core.py") + fdiff("src/cgis/core.py") + fdiff("src/cgis/core.md")
+
+    chunks = build_chunks(diff, None)
+
+    assert all("src/cgis/core.md" not in c.files for c in chunks)
+
+
+def test_a_diff_of_only_non_source_yields_no_chunks() -> None:
+    """The caller distinguishes this from an empty diff and falls back (see chunked.py)."""
+    assert build_chunks(fdiff("README.md") + fdiff("uv.lock"), None) == []

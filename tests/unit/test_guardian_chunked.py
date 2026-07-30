@@ -391,3 +391,30 @@ async def test_chunked_review_uses_per_finding_judgement(tmp_path: Path) -> None
     assert routed.result.skeptic_total == 1
     # The prompt is the per-finding shape, not the indexed batch list.
     assert "finding_index" not in skeptic.prompts[0]
+
+
+@pytest.mark.asyncio
+async def test_a_docs_only_diff_falls_back_to_single_pass(tmp_path: Path) -> None:
+    """Such a PR is reviewed today by single-pass; filtering must not silence it (#277)."""
+    diff = fdiff("docs/specs/design.md") + fdiff("README.md")
+    provider = StubProvider([_finder_json("docs/specs/design.md")])
+    collector = _collector(tmp_path, diff)
+    collector.features = frozenset({"chunked"})
+
+    routed = await run_review_routed(provider=provider, collector=collector, skeptic_provider=None)
+
+    assert routed.chunk_count is None  # the single-pass marker
+    assert len(provider.prompts) == 1
+
+
+@pytest.mark.asyncio
+async def test_an_empty_diff_still_short_circuits_for_free(tmp_path: Path) -> None:
+    """No blocks at all is genuinely nothing — do not pay for a call to learn that."""
+    provider = StubProvider([])
+
+    routed = await run_chunked_review(
+        provider=provider, collector=_collector(tmp_path, ""), skeptic_provider=None
+    )
+
+    assert routed.chunk_count == 0
+    assert provider.prompts == []
