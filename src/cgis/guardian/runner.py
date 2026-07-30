@@ -228,11 +228,13 @@ async def run_guardian(
         try:
             save_finder_recording(record_finder, result, collector.get_git_diff())
             log.info("Finder pass recorded.", path=str(record_finder))
-        except Exception:
-            # A diagnostic side-channel must never cost the review it observes.
-            # The inline post below is guarded for exactly the same reason: the
-            # work is already done, and losing the report to a failed write
-            # would trade something valuable for something incidental.
+        except OSError:
+            # OSError only, and the narrowness is the point: an environment
+            # failure (disk, permissions) must not cost a review that is already
+            # done, but a bad --record-finder path raises ValueError from the
+            # validator and MUST stay loud. Swallowing that would leave a
+            # misconfigured pipeline silently producing no recordings — the very
+            # failure this feature exists to prevent (#279).
             log.warning(
                 "Finder recording failed; continuing without it.",
                 path=str(record_finder),

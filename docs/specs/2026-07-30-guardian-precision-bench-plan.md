@@ -591,7 +591,11 @@ git commit -m "test(bench): precision baseline entry for PR 278 (#279)"
 
 ## Post-merge verification (needs CI, not the branch)
 
-Comment `/guardian review` on any PR and confirm a `guardian-finder-<pr>`
-artifact appears alongside `guardian-metrics-<pr>`, and that
-`load_finder_recording` parses it. This is acceptance criterion 3 and cannot be
-checked locally — no provider key is available here.
+Comment `/guardian review` on any PR **after this lands on main** and confirm a
+`guardian-finder-<pr>` artifact appears alongside `guardian-metrics-<pr>`, and
+that `load_finder_recording` parses it.
+
+It must be after the merge: `issue_comment`-triggered workflows run the workflow
+file from the DEFAULT branch, so a `guardian.yml` change is inert while it sits
+on a feature branch. Verified on PR #280 — the run produced metrics but no
+finder artifact, and its step list came from main's workflow.

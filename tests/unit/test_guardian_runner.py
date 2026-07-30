@@ -484,3 +484,28 @@ async def test_a_failed_recording_does_not_lose_the_review(tmp_path: Path) -> No
 
     assert "**[Logic Bug]" in report
     assert metrics.exists()
+
+
+async def test_a_bad_recording_path_fails_loudly(tmp_path: Path) -> None:
+    """A config error must not be swallowed like an environment failure (#279).
+
+    The write is guarded against OSError so a full disk cannot cost a completed
+    review — but a mistyped --record-finder suffix raises ValueError from the
+    validator, and silently warning about that every run would leave a pipeline
+    producing no recordings at all.
+    """
+    provider = StubProvider([FINDING_JSON])
+    collector = ContextCollector(project_root=tmp_path)
+    with (
+        patch.object(collector, "collect_all", return_value={"diff": "d"}),
+        patch.object(collector, "get_git_diff", return_value="the-diff"),
+        pytest.raises(ValueError, match=r"must be a \.json file"),
+    ):
+        await run_guardian(
+            provider=provider,
+            model="m",
+            collector=collector,
+            pr=1,
+            metrics_path=tmp_path / "m.jsonl",
+            record_finder=tmp_path / "finder.txt",
+        )

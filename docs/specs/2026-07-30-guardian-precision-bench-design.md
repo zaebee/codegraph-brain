@@ -156,7 +156,7 @@ without a single API call.**
 - Empty diff / no findings: the recording is still written (an empty
   `ReviewResult` is a valid datum — "the finder found nothing here").
 - **A failed recording must not cost the review.** The write is wrapped in
-  `try/except Exception` with a warning, mirroring the `post_inline_review`
+  `try/except OSError` with a warning, mirroring the `post_inline_review`
   call three lines below it: by that point the review is already done, and
   trading the report for a failed diagnostic write is a bad bargain. (Caught
   in review of this branch — the first draft left it unguarded.)
@@ -198,7 +198,15 @@ Benchmark data:
 2. `make format && make lint && make type-check && make pytest && make doc-coverage`
    all pass.
 3. A live `/guardian review` produces a `guardian-finder-<pr>` artifact that
-   `load_finder_recording` parses. Post-merge; cannot be checked from the branch.
+   `load_finder_recording` parses. **Only checkable after merge, and not for the
+   reason first written here.** `issue_comment`-triggered workflows always run
+   the workflow file from the DEFAULT branch — the PR's code is checked out, but
+   its `guardian.yml` changes are not in effect. Confirmed empirically on this
+   branch: the run on PR #280 completed and uploaded `guardian-metrics-280`, but
+   no `guardian-finder-280`, and its step list contains no upload step at all.
+   So "run /guardian review on this PR to cover criterion 3" — which the first
+   draft of this spec, its plan and the PR description all claimed — is
+   impossible by construction.
 
 ## Out of scope
 
