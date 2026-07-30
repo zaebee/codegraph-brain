@@ -126,9 +126,9 @@ Three-way, from the sign of the slope with a significance dead-band:
 | `slope < −2·SE` | `flat` | coarsening destroys diversity — nothing above the module, remnants degenerate to one motif |
 | `< 3` live rungs | `no_signal` | not enough ladder to fit |
 
-`SE` is the standard error of the fitted slope. **The sign split is measured; the
-dead-band is proposed** — see acceptance criterion 3 for what happens if it
-swallows the hierarchical cluster. Using the fit's own error rather
+`SE` is the standard error of the fitted slope. Both the sign split and the
+dead-band are **measured** — every verdict in the baseline below survives its own
+band (see acceptance criterion 3). Using the fit's own error rather
 than an invented constant is deliberate: every thresholded verdict in this issue's
 history has been falsified by re-measurement, and a dead-band derived from the
 residuals cannot be tuned into a desired answer.
@@ -140,23 +140,32 @@ This is an observe-only diagnostic.
 
 CALLS layer, tier ladder, six repositories (2026-07-30):
 
-| repo | slope (bits/halving) | R² | live rungs | verdict |
-|------|---------------------|-----|------------|---------|
-| sqlalchemy 2.x | +0.171 | 0.86 | 4 | hierarchical |
-| cgis | +0.146 | 0.71 | 4 | hierarchical |
-| django 6.x | +0.133 | 0.75 | 6 | hierarchical |
-| owner-api | +0.123 | 0.73 | 6 | hierarchical |
-| httpx 0.28 | −0.676 | 0.89 | 3 | flat |
-| flask 3.1 | −1.020 | 0.97 | 3 | flat |
+| repo | slope (bits/halving) | R² | live rungs | dead-band `2·SE` | verdict |
+|------|---------------------|-----|------------|------------------|---------|
+| sqlalchemy 2.x | +0.171 | 0.86 | 4 | ±0.096 | hierarchical |
+| cgis | +0.146 | 0.71 | 4 | ±0.133 | hierarchical (marginal) |
+| django 6.x | +0.133 | 0.75 | 6 | ±0.076 | hierarchical |
+| owner-api | +0.123 | 0.73 | 6 | ±0.075 | hierarchical |
+| httpx 0.28 | −0.676 | 0.89 | 3 | ±0.477 | flat |
+| flask 3.1 | −1.020 | 0.97 | 3 | ±0.379 | flat |
 
 The split is by **sign**, and it separates repositories with a real package
 hierarchy from flat single-package libraries — the same population split as the
 original FLAT verdict, now expressed as a number with a natural zero.
 
-IMPORTS slopes are all within ±0.03 with erratic R²: after dedup the import
-ladder has too few distinct rungs to fit. Expect `no_signal` or
-`scale_invariant` on IMPORTS for most repositories; that is a true statement
-about the layer, not a defect.
+Every verdict survives its own dead-band, so the three-way scheme holds on this
+sample. **cgis is the marginal case** (+0.146 against a ±0.133 band): its ladder
+has only 4 live rungs, so the fit's error is large. Expect cgis's own verdict to
+be the first to flip to `scale_invariant` as the repo changes — that is the
+metric being honest about thin evidence, not a defect, and the self-parsing test
+below asserts the sign band accordingly.
+
+IMPORTS behaves as its structure predicts: `scale_invariant` for the two deep
+repos (django −0.001 with R² 0.00, owner-api −0.020 with R² 0.15 — a genuinely
+scale-free import mix, the honest version of the old "FRACTAL" label) and
+`no_signal` for the four repos whose import ladder has fewer than 3 live rungs
+after dedup. That is a true statement about a layer whose edges connect only
+`FILE` nodes, not a defect.
 
 ## Where it lives
 
@@ -218,11 +227,14 @@ of magnitude rather than pinning a value that ordinary refactors would break.
 2. **Rung-count invariance is demonstrated, not assumed:** truncating the ladder
    (dropping the top rung, dropping the bottom rung) must not flip any verdict.
    This is the test that deliverable 2 failed and the reason this one exists.
-3. The three-way dead-band is validated: `SE` is computed for all six repos and
-   the `hierarchical` / `flat` assignments above survive it. **The sign split is
-   measured; the dead-band is proposed.** If `2·SE` swallows the +0.12…+0.17
-   cluster, the verdict degrades to two-way (`sign` vs `no_signal`) and the
-   `scale_invariant` band is dropped rather than re-tuned.
+3. ~~The three-way dead-band is validated.~~ **Satisfied ahead of implementation**
+   (`scripts/probe_tier_ladder.py`, 2026-07-30): `SE` computed on all six repos,
+   every `hierarchical` / `flat` assignment survives its own `2·SE` band, and
+   IMPORTS resolves to `scale_invariant` / `no_signal` as predicted. The
+   implementation must reproduce these bands, not re-derive them. The fallback
+   remains recorded in case a wider sample overturns it: if `2·SE` swallows the
+   +0.12…+0.17 cluster, the verdict degrades to two-way (`sign` vs `no_signal`)
+   and the `scale_invariant` band is dropped rather than re-tuned.
 
 ## Out of scope
 
