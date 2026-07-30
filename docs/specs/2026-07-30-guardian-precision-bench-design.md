@@ -138,9 +138,15 @@ holding findings plus a diff already in memory.
 
 ## What this does not give
 
-The recording holds no skeptic verdicts — by the pre-skeptic contract above. So
-"the skeptic confirmed 10/10" is **not** reproducible offline; re-checking the
-skeptic means `--replay-finder` with a key, which is the workflow #246 designed.
+Recording `routed.result` means the saved JSON **does** retain the skeptic's
+verdicts, notes and impact scores — `load_finder_recording` discards them on read
+so replay arms stay comparable, but they are on disk. So "the skeptic confirmed
+10/10" is recoverable by reading the artifact directly, just not through the
+bench replay path.
+
+What is **not** free is re-running the skeptic to see how it would rule on a
+changed prompt or model: that is `--replay-finder` with a key, the workflow #246
+designed.
 
 What becomes free is the half that matters for #279: **finder precision, scored
 without a single API call.**
