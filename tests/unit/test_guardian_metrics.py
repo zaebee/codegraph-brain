@@ -171,3 +171,40 @@ def test_record_review_chunk_count(tmp_path: Path) -> None:
     entries = [json.loads(line) for line in path.read_text().splitlines()]
     assert entries[0]["chunk_count"] == 3
     assert entries[1]["chunk_count"] is None
+
+
+def test_record_review_writes_the_duration(tmp_path: Path) -> None:
+    """The timing field lands in the entry (#275)."""
+    metrics_path = tmp_path / "metrics.jsonl"
+
+    record_review(
+        model="m",
+        pr=1,
+        prompt_tokens=10,
+        completion_tokens=2,
+        findings_total=0,
+        lgtm=True,
+        duration_s=12.5,
+        metrics_path=metrics_path,
+    )
+
+    entry = json.loads(metrics_path.read_text(encoding="utf-8").strip())
+    assert entry["duration_s"] == 12.5
+
+
+def test_record_review_duration_defaults_to_none(tmp_path: Path) -> None:
+    """Historical entries have no timing; the field must be optional, not required."""
+    metrics_path = tmp_path / "metrics.jsonl"
+
+    record_review(
+        model="m",
+        pr=1,
+        prompt_tokens=10,
+        completion_tokens=2,
+        findings_total=0,
+        lgtm=True,
+        metrics_path=metrics_path,
+    )
+
+    entry = json.loads(metrics_path.read_text(encoding="utf-8").strip())
+    assert entry["duration_s"] is None

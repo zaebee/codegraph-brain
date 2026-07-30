@@ -1,8 +1,34 @@
 """Abstract base class for LLM provider implementations."""
 
 import abc
+import asyncio
+from collections.abc import Awaitable, Callable
 
+import httpx
+import structlog
 from pydantic import BaseModel, computed_field
+
+log = structlog.getLogger(__name__)
+
+#: Request timeout in SECONDS. Mistral and Gemini take milliseconds and Ollama
+#: takes seconds, so each provider converts at its own call site — the unit is
+#: visible where the conversion happens rather than buried in a constant's name.
+DEFAULT_REQUEST_TIMEOUT = 180.0
+
+#: Total attempts per call, including the first.
+MAX_ATTEMPTS = 3
+
+#: Backoff base: sleeps are BACKOFF_BASE ** attempt — 2 s, then 4 s.
+BACKOFF_BASE = 2.0
+
+#: Retried transport failures. Deliberately the same set the Mistral SDK itself
+#: retries (mistralai/client/utils/retries.py) rather than a list invented here.
+#: google-genai reraises httpx exceptions too, and httpx.NetworkError is the
+#: parent of ConnectError, so this covers every provider.
+RETRYABLE_EXCEPTIONS: tuple[type[Exception], ...] = (
+    httpx.TimeoutException,
+    httpx.NetworkError,
+)
 
 
 class ProviderUsage(BaseModel, frozen=True):
@@ -39,6 +65,41 @@ class BaseProvider(abc.ABC):
             prompt_tokens=self.cumulative_usage.prompt_tokens + usage.prompt_tokens,
             completion_tokens=self.cumulative_usage.completion_tokens + usage.completion_tokens,
         )
+
+    async def _sleep(self, seconds: float) -> None:
+        """Wait between retries. Overridden in tests so they do not actually wait."""
+        await asyncio.sleep(seconds)
+
+    async def _retry(self, call: Callable[[], Awaitable[str]]) -> str:
+        """Run call, retrying transient transport failures with exponential backoff.
+
+        Retries only RETRYABLE_EXCEPTIONS: an auth or validation failure must
+        fail on the first attempt rather than burn MAX_ATTEMPTS calls. The final
+        exception propagates unchanged so callers' existing degradation paths
+        still see a real error (#275).
+        """
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            try:
+                return await call()
+            except RETRYABLE_EXCEPTIONS as exc:
+                if attempt == MAX_ATTEMPTS:
+                    log.warning(
+                        "Provider call failed; retries exhausted.",
+                        attempts=MAX_ATTEMPTS,
+                        error=repr(exc),
+                    )
+                    raise
+                delay = BACKOFF_BASE**attempt
+                log.warning(
+                    "Provider call failed; retrying.",
+                    attempt=attempt,
+                    of=MAX_ATTEMPTS,
+                    delay_s=delay,
+                    error=repr(exc),
+                )
+                await self._sleep(delay)
+        # Unreachable: the loop either returns or raises on the last attempt.
+        raise AssertionError
 
     @abc.abstractmethod
     async def generate_content(self, system_prompt: str, user_prompt: str) -> str:

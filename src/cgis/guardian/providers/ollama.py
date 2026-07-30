@@ -80,7 +80,7 @@ class OllamaProvider(BaseProvider):
 
     async def generate_content(self, system_prompt: str, user_prompt: str) -> str:
         """Send prompts to Ollama and return the text response."""
-        return await self._generate(system_prompt, user_prompt, fmt="")
+        return await self._retry(lambda: self._generate(system_prompt, user_prompt, fmt=""))
 
     async def generate_structured(
         self,
@@ -94,4 +94,6 @@ class OllamaProvider(BaseProvider):
         conformant object — small local models otherwise emit null in required
         fields under plain "json" mode, which fails strict validation downstream.
         """
-        return await self._generate(system_prompt, user_prompt, fmt=schema.model_json_schema())
+        return await self._retry(
+            lambda: self._generate(system_prompt, user_prompt, fmt=schema.model_json_schema())
+        )

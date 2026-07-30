@@ -261,9 +261,10 @@ wheels = [
 
 [[package]]
 name = "codegraph-brain"
-version = "0.3.0"
+version = "0.4.0"
 source = { editable = "." }
 dependencies = [
+    { name = "httpx" },
     { name = "mcp", extra = ["cli"] },
     { name = "pydantic" },
     { name = "pyyaml" },
@@ -303,6 +304,7 @@ guardian = [
 [package.metadata]
 requires-dist = [
     { name = "duckdb", marker = "extra == 'analytics'", specifier = ">=1.1.0" },
+    { name = "httpx", specifier = ">=0.27" },
     { name = "mcp", extras = ["cli"], specifier = ">=2" },
     { name = "pydantic", specifier = ">=2.13.4" },
     { name = "pyyaml", specifier = ">=6.0.2" },

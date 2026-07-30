@@ -1,6 +1,7 @@
 """Testable orchestration for the guardian review script."""
 
 import asyncio
+import time
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -205,11 +206,15 @@ async def run_guardian(
     covers both "not configured" and "API rejected" — the caller posts the
     big comment in either case (spec §6.5).
     """
+    started = time.monotonic()
     routed = await run_review_routed(
         provider=provider,
         collector=collector,
         skeptic_provider=skeptic[0] if skeptic else None,
     )
+    # monotonic, not time(): a wall-clock adjustment mid-review would otherwise
+    # produce a negative or nonsense duration.
+    duration_s = round(time.monotonic() - started, 2)
     result = routed.result
     report = render_report(result, threshold)
     # Built BEFORE the inline attempt: a successful inline post skips the
@@ -260,6 +265,7 @@ async def run_guardian(
             impact_threshold=threshold,
         ),
         chunk_count=routed.chunk_count,
+        duration_s=duration_s,
         metrics_path=metrics_path,
     )
     return report + footer, posted

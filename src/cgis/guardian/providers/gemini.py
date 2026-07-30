@@ -2,17 +2,27 @@
 
 from pydantic import BaseModel
 
-from cgis.guardian.providers.base import BaseProvider, ProviderUsage
+from cgis.guardian.providers.base import DEFAULT_REQUEST_TIMEOUT, BaseProvider, ProviderUsage
 
 
 class GeminiProvider(BaseProvider):
     """Google Gemini provider. Requires: uv sync --group guardian"""
 
-    def __init__(self, api_key: str, model_name: str = "gemini-2.5-flash") -> None:
-        """Store credentials; google-genai is imported lazily at call time."""
+    def __init__(
+        self,
+        api_key: str,
+        model_name: str = "gemini-2.5-flash",
+        timeout: float = DEFAULT_REQUEST_TIMEOUT,
+    ) -> None:
+        """Store credentials and the request timeout; google-genai is imported lazily.
+
+        HttpOptions.timeout is documented in MILLISECONDS — the same unit trap
+        as Mistral, and the opposite of Ollama's seconds.
+        """
         super().__init__()
         self._api_key = api_key
         self._model_name = model_name
+        self._timeout_ms = int(timeout * 1000)
 
     async def _generate(
         self, system_prompt: str, user_prompt: str, schema: type[BaseModel] | None
@@ -28,7 +38,10 @@ class GeminiProvider(BaseProvider):
         if schema is not None:
             config_kwargs["response_mime_type"] = "application/json"
             config_kwargs["response_schema"] = schema
-        client = genai.Client(api_key=self._api_key)
+        client = genai.Client(
+            api_key=self._api_key,
+            http_options=types.HttpOptions(timeout=self._timeout_ms),
+        )
         response = await client.aio.models.generate_content(
             model=self._model_name,
             contents=user_prompt,
@@ -46,10 +59,10 @@ class GeminiProvider(BaseProvider):
 
     async def generate_content(self, system_prompt: str, user_prompt: str) -> str:
         """Send prompts to Gemini and return the text response."""
-        return await self._generate(system_prompt, user_prompt, None)
+        return await self._retry(lambda: self._generate(system_prompt, user_prompt, None))
 
     async def generate_structured(
         self, system_prompt: str, user_prompt: str, schema: type[BaseModel]
     ) -> str:
         """Send prompts in native JSON mode constrained by schema."""
-        return await self._generate(system_prompt, user_prompt, schema)
+        return await self._retry(lambda: self._generate(system_prompt, user_prompt, schema))

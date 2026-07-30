@@ -36,6 +36,7 @@ def record_review(
     parse_failed: bool = False,
     skeptic: SkepticRecord | None = None,
     chunk_count: int | None = None,
+    duration_s: float | None = None,
     metrics_path: Path = _DEFAULT_METRICS_FILE,
 ) -> Path:
     """Append one review entry to the metrics JSONL file and return the path.
@@ -61,6 +62,10 @@ def record_review(
         "skeptic_total": skeptic.total,
         "impact_threshold": skeptic.impact_threshold,
         "chunk_count": chunk_count,
+        # Wall-clock of the whole LLM phase (finder + skeptic). None on entries
+        # written before #275. Completed runs only — a failing review writes no
+        # record at all, so this data is survivorship-biased by construction.
+        "duration_s": duration_s,
     }
     with metrics_path.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(entry) + "\n")
