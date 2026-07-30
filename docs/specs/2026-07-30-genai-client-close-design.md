@@ -106,8 +106,14 @@ Two cases:
   retry behaviour is unchanged.
 - If `aclose()` itself raises, that exception replaces the original. Accepted:
   closing a pool that failed to close is not a recoverable situation, and
-  swallowing it would hide a genuine transport problem. No `try` around the
-  cleanup.
+  swallowing it would hide a genuine transport problem. The cleanup is not
+  wrapped in `except`.
+- **But the two closes are nested, not sequential.** Written as two flat
+  statements, a throwing `aclose()` would skip `client.close()` and strand the
+  sync pool — the exact class of leak this change removes. So `client.close()`
+  sits in an inner `finally`, which releases it regardless while still letting
+  the `aclose()` exception propagate. Found in review of this branch; the first
+  draft had the flat form.
 
 ## Acceptance criteria
 

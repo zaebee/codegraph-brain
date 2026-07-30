@@ -64,8 +64,13 @@ class GeminiProvider(BaseProvider):
             # get this from `async with`; Gemini's client is not an async context
             # manager, so it is spelled out here (#283). With the retry from #275
             # calling this up to MAX_ATTEMPTS times, leaking would compound.
-            await client.aio.aclose()
-            client.close()
+            try:
+                await client.aio.aclose()
+            finally:
+                # Nested so the sync pool is released even if the async teardown
+                # itself throws — two flat statements would skip it, which is the
+                # exact class of leak this change exists to remove (found in review).
+                client.close()
 
     async def generate_content(self, system_prompt: str, user_prompt: str) -> str:
         """Send prompts to Gemini and return the text response."""

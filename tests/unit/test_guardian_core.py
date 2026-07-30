@@ -412,6 +412,18 @@ async def test_gemini_closes_both_pools_when_the_request_fails() -> None:
     client.close.assert_called_once()
 
 
+async def test_the_sync_pool_is_closed_even_if_the_async_close_fails() -> None:
+    """A failing async teardown must not strand the sync pool (found in review, #283)."""
+    client, modules = _gemini_mocks(MagicMock())
+    client.aio.aclose = AsyncMock(side_effect=RuntimeError("teardown"))
+
+    provider = GeminiProvider(api_key="fake")
+    with patch.dict("sys.modules", modules), pytest.raises(RuntimeError, match="teardown"):
+        await provider.generate_content("sys", "user")
+
+    client.close.assert_called_once()
+
+
 async def test_gemini_provider_import_error() -> None:
     """ImportError is raised with install hint when google-genai is missing."""
     provider = GeminiProvider(api_key="fake")
