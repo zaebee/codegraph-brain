@@ -225,8 +225,19 @@ async def run_guardian(
         # Recorded AFTER the skeptic on purpose: load_finder_recording strips
         # verdicts on read, and refuted findings stay in result.findings — so a
         # replay still starts clean, with no second API call to pay for (#279).
-        save_finder_recording(record_finder, result, collector.get_git_diff())
-        log.info("Finder pass recorded.", path=str(record_finder))
+        try:
+            save_finder_recording(record_finder, result, collector.get_git_diff())
+            log.info("Finder pass recorded.", path=str(record_finder))
+        except Exception:
+            # A diagnostic side-channel must never cost the review it observes.
+            # The inline post below is guarded for exactly the same reason: the
+            # work is already done, and losing the report to a failed write
+            # would trade something valuable for something incidental.
+            log.warning(
+                "Finder recording failed; continuing without it.",
+                path=str(record_finder),
+                exc_info=True,
+            )
     report = render_report(result, threshold)
     # Built BEFORE the inline attempt: a successful inline post skips the
     # fallback comment, so the footer must ride inside the review body too

@@ -155,6 +155,11 @@ without a single API call.**
 
 - Empty diff / no findings: the recording is still written (an empty
   `ReviewResult` is a valid datum — "the finder found nothing here").
+- **A failed recording must not cost the review.** The write is wrapped in
+  `try/except Exception` with a warning, mirroring the `post_inline_review`
+  call three lines below it: by that point the review is already done, and
+  trading the report for a failed diagnostic write is a bad bargain. (Caught
+  in review of this branch — the first draft left it unguarded.)
 - A failed review writes no recording, for the same reason it writes no metrics:
   `run_guardian` has no `try` around the routed call (#275). Recording failures
   is a separate concern and stays out.

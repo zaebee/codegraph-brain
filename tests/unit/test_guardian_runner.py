@@ -453,3 +453,34 @@ async def test_refuted_findings_survive_into_the_recording(tmp_path: Path) -> No
     loaded = load_finder_recording(recording_path)
     assert len(loaded.result.findings) == 1
     assert loaded.result.findings[0].verdict is None
+
+
+async def test_a_failed_recording_does_not_lose_the_review(tmp_path: Path) -> None:
+    """The recording is diagnostic; a failed write must not cost the report (#279).
+
+    Found by review: the sibling post_inline_review call is guarded for the same
+    reason, and an unguarded write here would drop report, comment and metrics
+    for a review that had already completed.
+    """
+    metrics = tmp_path / "m.jsonl"
+    provider = StubProvider([FINDING_JSON])
+    collector = ContextCollector(project_root=tmp_path)
+    with (
+        patch.object(collector, "collect_all", return_value={"diff": "d"}),
+        patch.object(collector, "get_git_diff", return_value="the-diff"),
+        patch(
+            "cgis.guardian.runner.save_finder_recording",
+            side_effect=OSError("disk full"),
+        ),
+    ):
+        report, _posted = await run_guardian(
+            provider=provider,
+            model="m",
+            collector=collector,
+            pr=1,
+            metrics_path=metrics,
+            record_finder=tmp_path / "finder.json",
+        )
+
+    assert "**[Logic Bug]" in report
+    assert metrics.exists()
