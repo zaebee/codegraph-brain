@@ -355,3 +355,12 @@ def test_a_docs_file_cannot_be_pulled_into_a_source_chunk() -> None:
 def test_a_diff_of_only_non_source_yields_no_chunks() -> None:
     """The caller distinguishes this from an empty diff and falls back (see chunked.py)."""
     assert build_chunks(fdiff("README.md") + fdiff("uv.lock"), None) == []
+
+
+def test_an_empty_suffix_tuple_makes_nothing_reviewable() -> None:
+    """ "Nothing counts as source" is coherent: no chunks, so the caller single-passes.
+
+    str.endswith(()) is False for every path, which is the sane reading — but it
+    is unobvious enough to pin. Surfaced by the guardian run on PR #281.
+    """
+    assert build_chunks(fdiff("src/cgis/a.py"), None, reviewable_suffixes=()) == []
