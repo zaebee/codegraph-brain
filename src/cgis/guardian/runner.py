@@ -17,6 +17,7 @@ from cgis.guardian.providers.base import BaseProvider, ProviderUsage
 from cgis.guardian.providers.gemini import GeminiProvider
 from cgis.guardian.providers.mistral import MistralProvider
 from cgis.guardian.providers.ollama import DEFAULT_OLLAMA_NUM_CTX, OllamaProvider
+from cgis.guardian.recording import save_finder_recording
 from cgis.guardian.render import render_report
 
 log = structlog.getLogger(__name__)
@@ -199,12 +200,16 @@ async def run_guardian(
     skeptic: tuple[BaseProvider, str] | None = None,
     inline_repo: str | None = None,
     threshold: int = 0,
+    record_finder: Path | None = None,
 ) -> tuple[str, bool]:
     """Run the review; try the inline path when configured.
 
     Returns (rendered report + footer, posted_inline). posted_inline=False
     covers both "not configured" and "API rejected" — the caller posts the
     big comment in either case (spec §6.5).
+
+    ``record_finder`` writes the finder pass (findings + diff) to that path so
+    the review can be re-scored offline against a benchmark entry (#279).
     """
     started = time.monotonic()
     routed = await run_review_routed(
@@ -216,6 +221,12 @@ async def run_guardian(
     # produce a negative or nonsense duration.
     duration_s = round(time.monotonic() - started, 2)
     result = routed.result
+    if record_finder is not None:
+        # Recorded AFTER the skeptic on purpose: load_finder_recording strips
+        # verdicts on read, and refuted findings stay in result.findings — so a
+        # replay still starts clean, with no second API call to pay for (#279).
+        save_finder_recording(record_finder, result, collector.get_git_diff())
+        log.info("Finder pass recorded.", path=str(record_finder))
     report = render_report(result, threshold)
     # Built BEFORE the inline attempt: a successful inline post skips the
     # fallback comment, so the footer must ride inside the review body too

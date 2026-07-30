@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from cgis.guardian.collector import ContextCollector
 from cgis.guardian.providers.base import BaseProvider, ProviderUsage
 from cgis.guardian.providers.ollama import OllamaProvider
+from cgis.guardian.recording import load_finder_recording
 from cgis.guardian.runner import (
     DEFAULT_GEMINI_MODEL,
     DEFAULT_MISTRAL_MODEL,
@@ -380,3 +381,75 @@ def test_impact_threshold_defaults_to_zero_and_reads_env() -> None:
     assert impact_threshold({"GUARDIAN_IMPACT_THRESHOLD": "nonsense"}) == 0
     assert impact_threshold({"GUARDIAN_IMPACT_THRESHOLD": "-3"}) == 0
     assert impact_threshold({"GUARDIAN_IMPACT_THRESHOLD": "99"}) == 10
+
+
+async def test_run_guardian_records_the_finder_pass(tmp_path: Path) -> None:
+    """The artifact that makes a review re-scorable offline (#279)."""
+    recording_path = tmp_path / "finder.json"
+    provider = StubProvider([FINDING_JSON])
+    collector = ContextCollector(project_root=tmp_path)
+    with (
+        patch.object(collector, "collect_all", return_value={"diff": "d"}),
+        patch.object(collector, "get_git_diff", return_value="the-diff"),
+    ):
+        await run_guardian(
+            provider=provider,
+            model="m",
+            collector=collector,
+            pr=1,
+            metrics_path=tmp_path / "m.jsonl",
+            record_finder=recording_path,
+        )
+
+    loaded = load_finder_recording(recording_path)
+    assert loaded.diff == "the-diff"
+    assert [f.file for f in loaded.result.findings] == ["a.py"]
+
+
+async def test_run_guardian_records_nothing_without_the_flag(tmp_path: Path) -> None:
+    recording_path = tmp_path / "finder.json"
+    provider = StubProvider([FINDING_JSON])
+    collector = ContextCollector(project_root=tmp_path)
+    with (
+        patch.object(collector, "collect_all", return_value={"diff": "d"}),
+        patch.object(collector, "get_git_diff", return_value="the-diff"),
+    ):
+        await run_guardian(
+            provider=provider,
+            model="m",
+            collector=collector,
+            pr=1,
+            metrics_path=tmp_path / "m.jsonl",
+        )
+
+    assert not recording_path.exists()
+
+
+async def test_refuted_findings_survive_into_the_recording(tmp_path: Path) -> None:
+    """The regression test for the whole 'post-skeptic recording is safe' argument.
+
+    apply_judgements annotates rather than drops (tests/unit/test_guardian_skeptic.py
+    guards that directly); this asserts the end-to-end consequence — a refuted
+    finding still reaches the file, and loads back unjudged.
+    """
+    recording_path = tmp_path / "finder.json"
+    provider = StubProvider([FINDING_JSON])
+    skeptic = StubProvider(['{"verdict": "refuted", "impact_score": 0, "rationale": "b"}'])
+    collector = ContextCollector(project_root=tmp_path)
+    with (
+        patch.object(collector, "collect_all", return_value={"diff": "d"}),
+        patch.object(collector, "get_git_diff", return_value="the-diff"),
+    ):
+        await run_guardian(
+            provider=provider,
+            model="m",
+            collector=collector,
+            pr=1,
+            metrics_path=tmp_path / "m.jsonl",
+            skeptic=(skeptic, "stub-skeptic"),
+            record_finder=recording_path,
+        )
+
+    loaded = load_finder_recording(recording_path)
+    assert len(loaded.result.findings) == 1
+    assert loaded.result.findings[0].verdict is None
