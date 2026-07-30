@@ -42,20 +42,35 @@ class GeminiProvider(BaseProvider):
             api_key=self._api_key,
             http_options=types.HttpOptions(timeout=self._timeout_ms),
         )
-        response = await client.aio.models.generate_content(
-            model=self._model_name,
-            contents=user_prompt,
-            config=types.GenerateContentConfig(**config_kwargs),
-        )
-        meta = getattr(response, "usage_metadata", None)
-        if meta is not None:
-            self._record_usage(
-                ProviderUsage(
-                    prompt_tokens=getattr(meta, "prompt_token_count", 0),
-                    completion_tokens=getattr(meta, "candidates_token_count", 0),
-                )
+        try:
+            response = await client.aio.models.generate_content(
+                model=self._model_name,
+                contents=user_prompt,
+                config=types.GenerateContentConfig(**config_kwargs),
             )
-        return str(response.text)
+            meta = getattr(response, "usage_metadata", None)
+            if meta is not None:
+                self._record_usage(
+                    ProviderUsage(
+                        prompt_tokens=getattr(meta, "prompt_token_count", 0),
+                        completion_tokens=getattr(meta, "candidates_token_count", 0),
+                    )
+                )
+            return str(response.text)
+        finally:
+            # genai.Client opens BOTH a sync and an async httpx pool on
+            # construction, and each close covers only its own half — the SDK
+            # docstrings say so explicitly in both directions. Mistral and Ollama
+            # get this from `async with`; Gemini's client is not an async context
+            # manager, so it is spelled out here (#283). With the retry from #275
+            # calling this up to MAX_ATTEMPTS times, leaking would compound.
+            try:
+                await client.aio.aclose()
+            finally:
+                # Nested so the sync pool is released even if the async teardown
+                # itself throws — two flat statements would skip it, which is the
+                # exact class of leak this change exists to remove (found in review).
+                client.close()
 
     async def generate_content(self, system_prompt: str, user_prompt: str) -> str:
         """Send prompts to Gemini and return the text response."""

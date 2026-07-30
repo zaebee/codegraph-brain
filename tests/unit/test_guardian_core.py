@@ -351,29 +351,77 @@ def test_read_file_exists(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _gemini_mocks(response: MagicMock) -> tuple[MagicMock, dict[str, MagicMock]]:
+    """A fake google.genai tree returning `response`, with both closes awaitable.
+
+    google-genai is in the guardian dep-group, not dev — it is absent in CI test
+    runs, so the module tree is injected rather than installed (same reason as
+    _mistral_modules below). aclose is an AsyncMock because the provider awaits
+    it; a plain MagicMock would not be awaitable.
+    """
+    client = MagicMock()
+    client.aio.models.generate_content = AsyncMock(return_value=response)
+    client.aio.aclose = AsyncMock()
+    genai = MagicMock()
+    genai.Client.return_value = client
+    modules = {
+        "google": MagicMock(genai=genai),
+        "google.genai": genai,
+        "google.genai.types": MagicMock(),
+    }
+    return client, modules
+
+
 async def test_gemini_provider_returns_text() -> None:
     """GeminiProvider.generate_content() returns response.text."""
     mock_response = MagicMock()
     mock_response.text = "gemini says LGTM"
-
-    mock_client = MagicMock()
-    mock_client.aio.models.generate_content = AsyncMock(return_value=mock_response)
-
-    mock_genai = MagicMock()
-    mock_genai.Client.return_value = mock_client
+    _client, modules = _gemini_mocks(mock_response)
 
     provider = GeminiProvider(api_key="fake")
-    with patch.dict(
-        "sys.modules",
-        {
-            "google": MagicMock(genai=mock_genai),
-            "google.genai": mock_genai,
-            "google.genai.types": MagicMock(),
-        },
-    ):
+    with patch.dict("sys.modules", modules):
         result = await provider.generate_content("sys", "user")
 
     assert result == "gemini says LGTM"
+
+
+async def test_gemini_closes_both_pools() -> None:
+    """genai.Client opens a sync AND an async httpx pool; both must be released (#283)."""
+    mock_response = MagicMock()
+    mock_response.text = "ok"
+    client, modules = _gemini_mocks(mock_response)
+
+    provider = GeminiProvider(api_key="fake")
+    with patch.dict("sys.modules", modules):
+        await provider.generate_content("sys", "user")
+
+    client.aio.aclose.assert_awaited_once()
+    client.close.assert_called_once()
+
+
+async def test_gemini_closes_both_pools_when_the_request_fails() -> None:
+    """The case the finally exists for — a naive fix leaks exactly here (#283)."""
+    client, modules = _gemini_mocks(MagicMock())
+    client.aio.models.generate_content = AsyncMock(side_effect=RuntimeError("boom"))
+
+    provider = GeminiProvider(api_key="fake")
+    with patch.dict("sys.modules", modules), pytest.raises(RuntimeError, match="boom"):
+        await provider.generate_content("sys", "user")
+
+    client.aio.aclose.assert_awaited_once()
+    client.close.assert_called_once()
+
+
+async def test_the_sync_pool_is_closed_even_if_the_async_close_fails() -> None:
+    """A failing async teardown must not strand the sync pool (found in review, #283)."""
+    client, modules = _gemini_mocks(MagicMock())
+    client.aio.aclose = AsyncMock(side_effect=RuntimeError("teardown"))
+
+    provider = GeminiProvider(api_key="fake")
+    with patch.dict("sys.modules", modules), pytest.raises(RuntimeError, match="teardown"):
+        await provider.generate_content("sys", "user")
+
+    client.close.assert_called_once()
 
 
 async def test_gemini_provider_import_error() -> None:
@@ -466,20 +514,11 @@ async def test_gemini_generate_structured_sets_json_mode() -> None:
     """generate_structured passes response_mime_type + response_schema to the SDK."""
     mock_response = MagicMock()
     mock_response.text = '{"findings": [], "summary": "ok"}'
-    mock_client = MagicMock()
-    mock_client.aio.models.generate_content = AsyncMock(return_value=mock_response)
-    mock_genai = MagicMock()
-    mock_genai.Client.return_value = mock_client
+    _client, modules = _gemini_mocks(mock_response)
+    mock_genai = modules["google.genai"]
 
     provider = GeminiProvider(api_key="fake")
-    with patch.dict(
-        "sys.modules",
-        {
-            "google": MagicMock(genai=mock_genai),
-            "google.genai": mock_genai,
-            "google.genai.types": MagicMock(),
-        },
-    ):
+    with patch.dict("sys.modules", modules):
         result = await provider.generate_structured("sys", "user", ReviewResult)
 
     # `from google.genai import types` resolves via mock_genai.types (attribute lookup),
