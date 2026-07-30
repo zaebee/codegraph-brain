@@ -84,6 +84,17 @@ differs between IMPORTS and CALLS — this is expected and must be reported):
   `FILE` nodes, so `T0`/`T1`/`T2` are literally the same import quotient
   (django: 107 863 triads at all three). Reporting them as three rungs would
   triple-count one observation in the fit.
+  **Which rung of an identical run survives is arbitrary, and deliberately so.**
+  When a layer cannot distinguish several consecutive rungs, the group count —
+  and therefore the fit's `x` coordinate — is ambiguous across that whole range.
+  The implementation keeps the *finest* rung (cgis IMPORTS: `T0_symbol`, 1297
+  groups, rather than `T2_module`, 753). Keeping the coarsest was measured on all
+  six baseline repos: **no verdict changes**. Slopes move only where dedup fires
+  at all, i.e. IMPORTS — django `−0.001 → +0.006` (a sign flip) and owner-api's
+  band `±0.067 → ±0.081`. Both stay `scale_invariant`, because the dead-band
+  absorbs exactly this kind of arbitrary implementation choice. That is the
+  band earning its keep, and the reason this ambiguity does not need resolving.
+
 - **`no_signal` rungs.** A rung with fewer than `_MIN_RUNG_TRIADS = 10` triads,
   or with a single group, is reported but excluded from the fit. Top rungs
   routinely degenerate this way (flask's first directory rung is 3 groups and
