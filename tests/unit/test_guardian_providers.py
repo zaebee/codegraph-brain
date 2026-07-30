@@ -5,6 +5,7 @@ import pytest
 from pydantic import BaseModel
 
 from cgis.guardian.providers.base import DEFAULT_REQUEST_TIMEOUT, MAX_ATTEMPTS, BaseProvider
+from cgis.guardian.providers.gemini import GeminiProvider
 from cgis.guardian.providers.mistral import MistralProvider
 
 
@@ -110,6 +111,21 @@ def test_mistral_converts_the_timeout_to_milliseconds() -> None:
 
 def test_mistral_defaults_to_the_shared_timeout() -> None:
     provider = MistralProvider(api_key="k")
+
+    assert provider._timeout_ms == int(  # noqa: SLF001  # white-box: timeout wiring
+        DEFAULT_REQUEST_TIMEOUT * 1000
+    )
+
+
+def test_gemini_converts_the_timeout_to_milliseconds() -> None:
+    """HttpOptions.timeout is documented in milliseconds, same trap as Mistral."""
+    provider = GeminiProvider(api_key="k", timeout=45.0)
+
+    assert provider._timeout_ms == 45000  # noqa: SLF001  # white-box: timeout wiring
+
+
+def test_gemini_defaults_to_the_shared_timeout() -> None:
+    provider = GeminiProvider(api_key="k")
 
     assert provider._timeout_ms == int(  # noqa: SLF001  # white-box: timeout wiring
         DEFAULT_REQUEST_TIMEOUT * 1000
