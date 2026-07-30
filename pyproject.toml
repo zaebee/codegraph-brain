@@ -7,7 +7,7 @@ packages = ["src/cgis"]
 
 [project]
 name = "codegraph-brain"
-version = "0.4.0"
+version = "0.5.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
