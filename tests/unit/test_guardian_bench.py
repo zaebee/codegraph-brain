@@ -345,3 +345,26 @@ def test_killed_ids_are_reported_not_just_counted() -> None:
     ]
 
     assert sorted(killed_ground_truth(both_dead, _TRUTH)) == ["float-eq", "no-lines"]
+
+
+def test_pr_278_entry_scores_every_prediction_as_noise() -> None:
+    """The precision baseline: an entry with no ground truth measures noise only (#279)."""
+    truth = load_ground_truth(Path("benchmarks/guardian/pr-278.yaml"))
+    predictions = [
+        _pred("src/cgis/guardian/providers/base.py", 102),
+        _pred("src/cgis/guardian/providers/mistral.py", 26),
+    ]
+
+    result = score(match_findings(predictions, truth), truth)
+
+    assert result.precision == 0.0
+    assert result.noise == 2
+    assert result.recall == 1.0  # vacuous: no ground truth to miss
+
+
+def test_pr_278_entry_files_nothing_as_ambiguous() -> None:
+    """Ambiguous exempts per FILE, so one entry would blind the whole baseline."""
+    truth = load_ground_truth(Path("benchmarks/guardian/pr-278.yaml"))
+
+    assert truth.findings == []
+    assert truth.ambiguous == []

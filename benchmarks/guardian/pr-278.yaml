@@ -1,0 +1,10 @@
+# PR 278 — fix(guardian): explicit request timeout + bounded retry. See CURATION.md.
+# Guardian produced 10 findings, skeptic-confirmed 10/10, ALL refuted (#279).
+# head = review head (the snapshot guardian actually ran on); the two later
+# commits on that branch postdate the review.
+# GT findings: NONE → recall vacuously 1.0; this PR measures precision only.
+pr: 278
+base: 2e768cef585f10481970697657b0a9b40a411f47
+head: 6ee175e553c784a363c190e00021be5d365fb8dd
+findings: []
+ambiguous: []
