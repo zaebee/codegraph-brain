@@ -96,6 +96,7 @@ jobs:
             --db graph.db \
             --pr "$PR_NUMBER" \
             --metrics guardian_metrics.jsonl \
+            --record-finder guardian_finder.json \
             --inline \
             --base-branch "$BASE_BRANCH"
 
@@ -104,6 +105,13 @@ jobs:
         with:
           name: guardian-metrics-${{ env.PR_NUMBER }}
           path: guardian_metrics.jsonl
+          retention-days: 7
+
+      - name: Upload finder recording artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: guardian-finder-${{ env.PR_NUMBER }}
+          path: guardian_finder.json
           retention-days: 7
 
       - name: Post review as PR comment
