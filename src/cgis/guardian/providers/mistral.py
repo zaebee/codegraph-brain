@@ -2,17 +2,28 @@
 
 from pydantic import BaseModel
 
-from cgis.guardian.providers.base import BaseProvider, ProviderUsage
+from cgis.guardian.providers.base import DEFAULT_REQUEST_TIMEOUT, BaseProvider, ProviderUsage
 
 
 class MistralProvider(BaseProvider):
     """Mistral AI provider. Requires: uv sync --group guardian"""
 
-    def __init__(self, api_key: str, model_name: str = "mistral-medium-latest") -> None:
-        """Store credentials; mistralai is imported lazily at call time."""
+    def __init__(
+        self,
+        api_key: str,
+        model_name: str = "mistral-medium-latest",
+        timeout: float = DEFAULT_REQUEST_TIMEOUT,
+    ) -> None:
+        """Store credentials and the request timeout; mistralai is imported lazily.
+
+        The SDK takes MILLISECONDS and hard-codes 60 000 when given nothing
+        (mistralai/client/chat.py) — that default is what killed the review on
+        #274, so it is always overridden here.
+        """
         super().__init__()
         self._api_key = api_key
         self._model_name = model_name
+        self._timeout_ms = int(timeout * 1000)
 
     async def _generate(self, system_prompt: str, user_prompt: str, *, json_mode: bool) -> str:
         """Shared transport: one chat.complete_async call, optional json_object mode."""
@@ -24,7 +35,7 @@ class MistralProvider(BaseProvider):
         extra: dict[str, object] = {}
         if json_mode:
             extra["response_format"] = {"type": "json_object"}
-        async with Mistral(api_key=self._api_key) as client:
+        async with Mistral(api_key=self._api_key, timeout_ms=self._timeout_ms) as client:
             response = await client.chat.complete_async(
                 model=self._model_name,
                 messages=[
@@ -52,7 +63,9 @@ class MistralProvider(BaseProvider):
 
     async def generate_content(self, system_prompt: str, user_prompt: str) -> str:
         """Send prompts to Mistral and return the text response."""
-        return await self._generate(system_prompt, user_prompt, json_mode=False)
+        return await self._retry(
+            lambda: self._generate(system_prompt, user_prompt, json_mode=False)
+        )
 
     async def generate_structured(
         self,
@@ -67,4 +80,4 @@ class MistralProvider(BaseProvider):
         satisfy the BaseProvider contract.
         """
         del schema
-        return await self._generate(system_prompt, user_prompt, json_mode=True)
+        return await self._retry(lambda: self._generate(system_prompt, user_prompt, json_mode=True))

@@ -5,6 +5,7 @@ import pytest
 from pydantic import BaseModel
 
 from cgis.guardian.providers.base import DEFAULT_REQUEST_TIMEOUT, MAX_ATTEMPTS, BaseProvider
+from cgis.guardian.providers.mistral import MistralProvider
 
 
 class _Recorder(BaseProvider):
@@ -98,3 +99,18 @@ async def test_a_non_transient_error_is_not_retried() -> None:
 def test_default_request_timeout_is_generous_enough_to_have_slack() -> None:
     """The SDK default that killed #274 was 60 s; ours must exceed it."""
     assert DEFAULT_REQUEST_TIMEOUT > 60.0
+
+
+def test_mistral_converts_the_timeout_to_milliseconds() -> None:
+    """A seconds-vs-milliseconds slip is a factor-of-1000 error nothing else catches."""
+    provider = MistralProvider(api_key="k", timeout=45.0)
+
+    assert provider._timeout_ms == 45000  # noqa: SLF001  # white-box: timeout wiring
+
+
+def test_mistral_defaults_to_the_shared_timeout() -> None:
+    provider = MistralProvider(api_key="k")
+
+    assert provider._timeout_ms == int(  # noqa: SLF001  # white-box: timeout wiring
+        DEFAULT_REQUEST_TIMEOUT * 1000
+    )
