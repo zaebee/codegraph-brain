@@ -73,46 +73,40 @@ so explicitly, so the next curator does not "helpfully" reclassify them:
 
 ## Part 2 — production finder recordings
 
-### The pre-skeptic contract
+### Saving the post-skeptic result is safe — the load path already handles it
 
-`FinderRecording` is a **finder-only** snapshot. The bench enforces this by
-disabling the skeptic whenever recording (`guardian_bench.py:118`):
+An earlier draft of this spec proposed capturing the finder's output at a seam
+before the skeptic runs, and plumbing it up through `RoutedReview`. Reading the
+code closely retired that design: **the codebase already anticipates recordings
+made on a run that had a skeptic.**
 
-```python
-skeptic = (... if os.environ.get("GUARDIAN_SKEPTIC") and record_finder is None else None)
-```
+Three facts, each verified in source:
 
-Replay then re-runs the skeptic over the recorded findings
-(`_judge_recording`). Saving a **post**-skeptic result under the same type would
-poison every replay: already-judged findings would be judged again, and refuted
-ones may already have been filtered out.
+- `apply_judgements` (`skeptic.py:168`) **annotates**; it never drops a finding.
+- `visible_findings` (`skeptic.py:194`) says so explicitly: "Hidden findings stay
+  in `ReviewResult.findings` so metrics and the benchmark still see what was cut."
+  Refuted findings survive in the result.
+- `load_finder_recording` strips the skeptic's marks on read — `verdict`,
+  `skeptic_note`, `impact_score`, and the `skeptic_status`/`judged`/`total`
+  counters — with a docstring naming this exact case: "A recording captured from
+  a run that HAD a skeptic would otherwise smuggle those verdicts into the next
+  variant's scoring."
 
-So production recording must capture the finder's output at the seam, before the
-skeptic runs. Both review paths have one:
+So `run_guardian` can record `routed.result` together with the diff, and a replay
+still starts from unjudged findings. No seam, no `RoutedReview` change, nothing
+threaded through the review core.
 
-- single pass — `core.py:104`, `result = await self._finder_pass(context)`, with
-  the diff at `context["diff"]`
-- chunked — `chunked.py`, the `merged` ReviewResult built before the skeptic block
+The bench disables the skeptic while recording (`guardian_bench.py:118`) because
+paying for a skeptic pass whose output is about to be stripped is waste — not
+because a skeptic-run recording would be invalid.
 
-### Data flows up, not paths down
-
-Rather than threading a filesystem path down through `run_guardian` →
-`run_review_routed` → the reviewer, `RoutedReview` carries the snapshot up:
-
-```python
-class RoutedReview(BaseModel, frozen=True):
-    result: ReviewResult
-    chunk_count: int | None = None
-    finder_result: ReviewResult | None = None   # pre-skeptic snapshot
-    finder_diff: str = ""                       # the diff those findings were found in
-```
-
-Both paths populate the two new fields. `run_guardian` gains
-`record_finder: Path | None` and does the writing, so I/O stays at the edge and
-the review core never learns about the filesystem.
-
-`finder_result` is `None` only when a path produced no reviewable result at all
-(empty diff); callers must handle that rather than assume.
+**One documented fidelity gap.** `apply_judgements:189` rewrites `confidence` to
+`round(confidence * 0.9)` for `uncertain` verdicts, and the load path does not
+restore it. A production recording therefore carries a 10% lower confidence on
+that subset. This does not affect what #279 measures: precision and recall are
+set-membership, and confidence only orders greedy matching — irrelevant against
+an empty ground truth. It is recorded here and in `save_finder_recording`'s
+docstring so nobody later reads a recorded confidence as the finder's own number.
 
 ### The recording model moves out of `bench.py`
 
@@ -153,7 +147,7 @@ without a single API call.**
 
 ## Error and edge handling
 
-- Empty diff / no findings: `finder_result` is still recorded (an empty
+- Empty diff / no findings: the recording is still written (an empty
   `ReviewResult` is a valid datum — "the finder found nothing here").
 - A failed review writes no recording, for the same reason it writes no metrics:
   `run_guardian` has no `try` around the routed call (#275). Recording failures
@@ -170,13 +164,14 @@ without a single API call.**
 
 Unit:
 
-- `RoutedReview` from the single-pass path carries `finder_result` whose findings
-  are the **pre**-skeptic set: a stub skeptic that refutes everything must not
-  change `finder_result`, only `result`.
-- Same assertion for the chunked path.
 - `run_guardian(record_finder=path)` writes a file that `load_finder_recording`
   reads back with identical findings and diff.
 - `run_guardian` without `record_finder` writes nothing.
+- **Refuted findings survive into the recording.** With a stub skeptic that
+  refutes everything, the recorded file still contains every finding, and loading
+  it returns them with `verdict is None`. This is the regression test for the
+  whole "post-skeptic is safe" argument — if `apply_judgements` ever started
+  dropping findings, this fails.
 - Round trip: save a synthetic `FinderRecording`, score it against a ground truth
   with `findings: []`, and assert `precision == 0.0` and `noise == len(findings)`
   — the whole path exercised with no provider key.
@@ -199,5 +194,5 @@ Benchmark data:
 - **Fixing precision.** No prompt or skeptic change here. Any such change must be
   measured against this baseline, which is the reason the baseline exists.
 - Recording skeptic verdicts (see "What this does not give").
-- #277 chunk routing — untouched, though the chunked path does get the same
-  `finder_result` plumbing so it is not left asymmetric.
+- #277 chunk routing — untouched. Recording happens in `run_guardian`, above
+  the routing decision, so both paths are covered without either being touched.
