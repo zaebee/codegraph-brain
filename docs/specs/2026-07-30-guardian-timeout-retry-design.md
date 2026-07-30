@@ -145,9 +145,15 @@ unnoticed.
 - Retries exhausted: the last exception propagates unchanged. The chunked path
   still degrades per chunk and the single-pass path still fails the run, exactly
   as today.
-- `duration_s` is recorded even when the review fails inside `run_guardian`'s
-  existing error handling, so a timing record exists for slow failures too —
-  those are the runs whose timing matters most.
+- `duration_s` covers **completed runs only**. `run_guardian` has no `try`
+  around `run_review_routed`; a failing review propagates out and writes no
+  metrics record at all, which is exactly why #274 left no trace. Recording
+  failures would mean adding error handling that swallows the exception, and
+  the workflow depends on a non-zero exit to mark the job failed — out of scope
+  here. The consequence is worth naming: the timing data this collects is
+  **survivorship-biased**, the same bias that made all 41 existing records
+  successes. It bounds how long successful reviews take, not how long the slow
+  ones needed.
 - Backoff sleeps are real `asyncio.sleep` calls; tests inject a zero-delay sleep
   rather than waiting.
 
