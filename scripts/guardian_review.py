@@ -58,6 +58,12 @@ async def main() -> None:
         help="Base branch for git diff (default: main). Use the PR target branch.",
     )
     parser.add_argument(
+        "--record-finder",
+        type=Path,
+        default=None,
+        help="Write the finder pass (findings + diff) to this .json for offline re-scoring.",
+    )
+    parser.add_argument(
         "--inline",
         action="store_true",
         help="Post findings as an inline GitHub review; fall back to the report file on failure.",
@@ -83,6 +89,7 @@ async def main() -> None:
         skeptic=skeptic,
         inline_repo=inline_repo,
         threshold=impact_threshold(os.environ),
+        record_finder=args.record_finder,
     )
 
     if args.output:

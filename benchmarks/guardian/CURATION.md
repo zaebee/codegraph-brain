@@ -14,6 +14,10 @@ Spec §3.1 erratum: `head` = review head, not final pull head.
 - Review-dialogue resolutions (open questions answered during review) →
   `ambiguous` (not defects present in the diff).
 - Declined-with-reason suggestions → `ambiguous` (per spec §3.1).
+- Refuted claims → omitted from GT entirely, NOT `ambiguous`. A finding
+  disproved by execution (the code cannot behave as claimed) is noise, and
+  `ambiguous` exempts hits per FILE — filing errors there would make the suite
+  structurally unable to observe a precision failure (#279).
 - `lines` required wherever the source provides line provenance (quality
   review I3: rangeless entries are gameable by file-level predictions).
 - Sonar quality-gate findings (cognitive complexity, float equality) stay in
@@ -161,3 +165,27 @@ Ambiguous (3 declined clips, gemini agreed with rationale):
 - src/cgis/query/triads.py: clip tv_distance to [0,1] — violates tv==sum(contribs) invariant
 - src/cgis/query/drift.py: clip drift_sum (v1) — would mask config bugs
 - src/cgis/query/drift.py: clip layered drift_score — convex combo already non-negative
+
+## PR 278 — fix(guardian): request timeout + bounded retry
+
+- merge-base: 2e768cef585f10481970697657b0a9b40a411f47
+- **review_head = 6ee175e553c784a363c190e00021be5d365fb8dd** (later commits on
+  the branch postdate the review)
+
+GT findings: NONE → recall vacuously 1.0; this PR measures precision only.
+Guardian returned 10 findings, all skeptic-confirmed, all refuted (#279):
+
+- `base.py:102` remove the "unreachable" `raise AssertionError` — **would break
+  the build**; deleting it fails mypy with `Missing return statement`
+- `base.py:7` `RETRYABLE_EXCEPTIONS` lacks type annotations — it is annotated
+  `tuple[type[Exception], ...]`, and mypy strict passes
+- `base.py:84` the tuple may miss httpx subclasses — every relevant transport
+  exception is covered; the finding names ones that ARE caught
+- `base.py:69` `_sleep` may receive a negative value — no caller can produce one
+- `mistral.py:26`, `gemini.py:25` integer overflow in `timeout * 1000` — Python
+  ints are arbitrary precision (counted twice, same non-issue)
+- `runner.py:217` 2-dp rounding loses sub-ms precision — 10 ms on a 65 s value
+- `metrics.py:68` no runtime validation of `duration_s` — no field in that
+  module has any; it is a plain dict → JSON
+- two test findings on brittle call counts — one's premise is false, the test
+  already derives its expectation from `MAX_ATTEMPTS`
