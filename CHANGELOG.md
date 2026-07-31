@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.6.0...codegraph-brain-v0.7.0) (2026-07-31)
+
+
+### Features
+
+* **plugin:** ship CGIS as a Claude Code plugin ([#290](https://github.com/zaebee/codegraph-brain/issues/290)) ([c93c7ed](https://github.com/zaebee/codegraph-brain/commit/c93c7ed377943081525c8965bc3a7ce5e5ccf7c1))
+
+
+### Documentation
+
+* **plugin:** disclose the PyPI fetch and the local-only guarantee ([#291](https://github.com/zaebee/codegraph-brain/issues/291)) ([278560c](https://github.com/zaebee/codegraph-brain/commit/278560c74d7d9deae076511ce8659c233c41bcfc))
+* **specs:** finder bug-class taxonomy + a real Resource Management fixture ([#258](https://github.com/zaebee/codegraph-brain/issues/258)) ([#288](https://github.com/zaebee/codegraph-brain/issues/288)) ([1e02d06](https://github.com/zaebee/codegraph-brain/commit/1e02d06a1599d87dbc4958cb6e6db6e0acaae605))
+
 ## [0.6.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.5.0...codegraph-brain-v0.6.0) (2026-07-31)
 
 
