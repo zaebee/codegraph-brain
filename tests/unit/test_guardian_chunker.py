@@ -313,7 +313,9 @@ def test_build_chunks_deterministic(tmp_path: Path) -> None:
         [_edge("src.cgis.a", "src.cgis.b")],
     )
     diff = fdiff("src/cgis/c.py") + fdiff("src/cgis/a.py") + fdiff("src/cgis/b.py")
-    assert build_chunks(diff, store) == build_chunks(diff, store)
+    first = build_chunks(diff, store)
+    second = build_chunks(diff, store)
+    assert first == second, "chunk membership and ordering must be stable across runs"
 
 
 def test_split_duplicate_path_blocks_merged() -> None:

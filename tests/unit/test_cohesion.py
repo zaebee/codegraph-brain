@@ -120,7 +120,9 @@ def test_modularity_isolated_files_are_singletons() -> None:
 def test_modularity_is_deterministic() -> None:
     adj = {**_clique("p", ["a", "b", "c"]), **_clique("p", ["x", "y", "z"])}
     g = FileGraph(files=tuple(sorted(adj)), adj=adj)
-    assert greedy_modularity(g) == greedy_modularity(g)
+    first = greedy_modularity(g)
+    second = greedy_modularity(g)
+    assert first == second, "greedy_modularity must not depend on dict iteration order"
 
 
 def test_divergence_flat_layout_vs_multi_community_is_one() -> None:
