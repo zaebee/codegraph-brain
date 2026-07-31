@@ -348,7 +348,7 @@ def test_killed_ids_are_reported_not_just_counted() -> None:
 
 
 def test_pr_278_entry_scores_every_prediction_as_noise() -> None:
-    """The precision baseline: an entry with no ground truth measures noise only (#279)."""
+    """The precision baseline: predictions that hit no GT are all noise (#279)."""
     truth = load_ground_truth(Path("benchmarks/guardian/pr-278.yaml"))
     predictions = [
         _pred("src/cgis/guardian/providers/base.py", 102),
@@ -359,12 +359,24 @@ def test_pr_278_entry_scores_every_prediction_as_noise() -> None:
 
     assert result.precision == 0.0
     assert result.noise == 2
-    assert result.recall == 1.0  # vacuous: no ground truth to miss
+    # The GT finding added in #258 is missed by these predictions, so recall is a
+    # real 0.0 rather than the vacuous 1.0 an empty ground truth would give.
+    assert result.recall == 0.0
+    assert result.missed == ["gemini-client-never-closed"]
 
 
 def test_pr_278_entry_files_nothing_as_ambiguous() -> None:
     """Ambiguous exempts per FILE, so one entry would blind the whole baseline."""
     truth = load_ground_truth(Path("benchmarks/guardian/pr-278.yaml"))
 
-    assert truth.findings == []
     assert truth.ambiguous == []
+
+
+def test_pr_278_gt_matches_a_finding_on_the_client_construction() -> None:
+    """The resource-leak class the finder lacks, anchored where the diff touched it (#258)."""
+    truth = load_ground_truth(Path("benchmarks/guardian/pr-278.yaml"))
+
+    hit = match_findings([_pred("src/cgis/guardian/providers/gemini.py", 41)], truth)
+
+    assert hit.matched == {"gemini-client-never-closed": 0}
+    assert hit.noise == []

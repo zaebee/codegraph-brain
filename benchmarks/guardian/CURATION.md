@@ -172,7 +172,6 @@ Ambiguous (3 declined clips, gemini agreed with rationale):
 - **review_head = 6ee175e553c784a363c190e00021be5d365fb8dd** (later commits on
   the branch postdate the review)
 
-GT findings: NONE → recall vacuously 1.0; this PR measures precision only.
 Guardian returned 10 findings, all skeptic-confirmed, all refuted (#279):
 
 - `base.py:102` remove the "unreachable" `raise AssertionError` — **would break
@@ -189,3 +188,21 @@ Guardian returned 10 findings, all skeptic-confirmed, all refuted (#279):
   module has any; it is a plain dict → JSON
 - two test findings on brittle call counts — one's premise is false, the test
   already derives its expectation from `MAX_ATTEMPTS`
+
+### PR 278 — one GT finding added 2026-07-31 (#258)
+
+Originally filed with `findings: []` as a pure precision entry. It now carries one:
+
+- `gemini-client-never-closed` (`src/cgis/guardian/providers/gemini.py`, lines
+  41-58, minor, contract, source `fix-commit`)
+
+The diff **modified** the `client = genai.Client(...)` construction line and left
+both httpx pools unclosed. Guardian reviewed that hunk and returned ten findings,
+none about resource cleanup — Resource Management is a class absent from the
+finder's focus areas (see `docs/specs/2026-07-31-finder-bug-class-taxonomy.md`).
+Fixed later by human-directed review as #283 (`b2ae97b`), which is the
+`fix-commit` provenance.
+
+Precision is unaffected: `matched` stays 0, so the entry still scores `0/10`. The
+addition supplies a recall signal — a real **0/1** where the empty ground truth
+gave a vacuous 1.0.
