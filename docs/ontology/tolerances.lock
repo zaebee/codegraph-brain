@@ -1,0 +1,27 @@
+# Drift-tolerance ratchet lock (#151) — generated from patterns.yaml, edited by hand.
+#
+# Project convention since #140/#141: drift_tolerance is a RATCHET. Values may
+# only go DOWN as domains get healthier, never up to mask a regression.
+#
+# test_tolerances_never_exceed_the_lock enforces it: lowering a tolerance means
+# updating this file in the same PR, which puts the change in the diff where a
+# reviewer sees it. Raising one fails the suite.
+#
+# Deliberate re-baselining (e.g. the Part B re-baseline in #144) is allowed —
+# update the lock and justify it in the PR description.
+
+project_domains:
+  extraction: 0.40
+  resolution: 0.40
+  pipeline: 0.25
+  storage: 0.20
+  query: 0.20
+  components: 0.20
+  layout: 0.50
+  hooks: 0.15
+  store: 0.15
+  providers: 0.15
+  utils: 0.15
+
+project_level:
+  cgis-project: 0.15
