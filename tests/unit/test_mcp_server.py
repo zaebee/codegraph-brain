@@ -875,6 +875,11 @@ def test_ingest_accepts_an_existing_empty_file(tmp_path: Path) -> None:
     result = cgis_ingest(str(tmp_path), str(placeholder))
 
     assert "✅" in result
+    # Not just "it did not refuse": the placeholder must now be a real database,
+    # otherwise the guard could pass while ingestion quietly wrote nothing.
+    assert placeholder.stat().st_size > 0
+    with placeholder.open("rb") as fh:
+        assert fh.read(16) == b"SQLite format 3\x00"
 
 
 def test_ingest_still_accepts_an_existing_database(tmp_path: Path) -> None:
