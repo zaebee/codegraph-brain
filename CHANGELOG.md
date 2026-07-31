@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.2](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.7.1...codegraph-brain-v0.7.2) (2026-07-31)
+
+
+### Bug Fixes
+
+* **ci:** install guardian deps with --extra, not --group ([#300](https://github.com/zaebee/codegraph-brain/issues/300)) ([1da003d](https://github.com/zaebee/codegraph-brain/commit/1da003d811db8e60201693905a6f83c2fccf48cf))
+* **cli:** escape data interpolated into Rich console output ([#298](https://github.com/zaebee/codegraph-brain/issues/298)) ([dd4943d](https://github.com/zaebee/codegraph-brain/commit/dd4943d0fea1100b47130fcb0790e940da83276a))
+
+
+### Documentation
+
+* add the chunked-review lab note (a negative result worth keeping) ([#299](https://github.com/zaebee/codegraph-brain/issues/299)) ([265fefd](https://github.com/zaebee/codegraph-brain/commit/265fefda7ee30ece692d13ea0bb171d99ac18bd9)), closes [#160](https://github.com/zaebee/codegraph-brain/issues/160)
+
 ## [0.7.1](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.7.0...codegraph-brain-v0.7.1) (2026-07-31)
 
 
