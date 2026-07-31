@@ -912,3 +912,48 @@ def test_ingest_reports_an_unreadable_path_instead_of_raising(tmp_path: Path) ->
         locked.chmod(0o755)
 
     assert "❌" in result
+
+
+def test_ingest_refuses_a_dangling_symlink(tmp_path: Path) -> None:
+    """A `.db` symlink whose target does not exist must not become a write primitive.
+
+    This is the bypass, and it hinges on the target being absent: `is_file()`
+    returns False for a dangling symlink, so every check passed and SQLite
+    happily created the target. A symlink pointing at an *existing* non-database
+    was already refused by the magic-byte check, so testing that variant would
+    have proved nothing.
+    """
+    (tmp_path / "mod.py").write_text("def fn(): pass\n", encoding="utf-8")
+    target = tmp_path / "elsewhere" / "authorized_keys"
+    target.parent.mkdir()
+    link = tmp_path / "attack.db"
+    link.symlink_to(target)
+
+    result = cgis_ingest(str(tmp_path), str(link))
+
+    assert "❌" in result
+    assert not target.exists(), "the symlink target was created"
+
+
+def test_ingest_refuses_a_symlink_to_a_non_database(tmp_path: Path) -> None:
+    """The already-covered variant, kept as a regression guard."""
+    (tmp_path / "mod.py").write_text("def fn(): pass\n", encoding="utf-8")
+    victim = tmp_path / "secrets.txt"
+    victim.write_text("sensitive\n", encoding="utf-8")
+    link = tmp_path / "attack.db"
+    link.symlink_to(victim)
+
+    result = cgis_ingest(str(tmp_path), str(link))
+
+    assert "❌" in result
+    assert victim.read_text(encoding="utf-8") == "sensitive\n"
+
+
+def test_ingest_accepts_an_uppercase_suffix(tmp_path: Path) -> None:
+    """Suffix matching is case-insensitive — `.DB` is the same intent as `.db`."""
+    (tmp_path / "mod.py").write_text("def fn(): pass\n", encoding="utf-8")
+    db = tmp_path / "graph.DB"
+
+    result = cgis_ingest(str(tmp_path), str(db))
+
+    assert "✅" in result

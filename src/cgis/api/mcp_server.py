@@ -107,13 +107,25 @@ def _reject_db_path(db_path: str) -> str | None:
     database. The last is belt-and-braces — SQLite already declines to open a
     non-database — but it fails with a message that says why.
 
+    Everything is judged on the **resolved** path. A dangling symlink is the
+    bypass this guard exists to stop: ``attack.db`` pointing at a target that
+    does not exist yet makes ``is_file()`` return False, every check passes, and
+    SQLite creates the target. Resolving first means the suffix rule applies to
+    where the write actually lands. (A symlink to an *existing* non-database was
+    already refused by the magic-byte check.)
+
     The filesystem probes are wrapped: this runs *before* ``cgis_ingest``'s own
-    try/except, and ``Path.is_dir()`` and friends propagate ``OSError`` (a
-    ``PermissionError`` on the parent, say), which would escape the tool as a
-    crash instead of a message the agent can act on.
+    try/except, and ``Path.resolve()``, ``Path.is_dir()`` and friends propagate
+    ``OSError`` (a ``PermissionError`` on the parent, or a symlink loop), which
+    would escape the tool as a crash instead of a message the agent can act on.
     """
-    path = Path(db_path)
-    if path.suffix not in _DB_SUFFIXES:
+    try:
+        path = Path(db_path).resolve()
+    except OSError as exc:
+        return f"❌ Refusing db_path '{db_path}': path is inaccessible ({exc})."
+    # Case-insensitive: `.DB` carries the same intent, and on a case-insensitive
+    # filesystem it is literally the same file.
+    if path.suffix.lower() not in _DB_SUFFIXES:
         allowed = ", ".join(sorted(_DB_SUFFIXES))
         return f"❌ Refusing db_path '{db_path}': name must end in one of {allowed}."
     try:
