@@ -17,14 +17,81 @@ jobs:
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
+      release_pr: ${{ steps.release.outputs.pr }}
     steps:
+      - name: Mint a GitHub App token
+        id: app-token
+        # A GITHUB_TOKEN-authored PR leaves its checks parked in
+        # `action_required` forever, so release-please needs an identity of its
+        # own. App tokens beat a PAT: one hour of life, auto-rotated, scoped to
+        # this repo, and not tied to anyone's personal account.
+        # continue-on-error: an unconfigured App must degrade, not break the release.
+        continue-on-error: true
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          app-id: ${{ vars.CGIS_APP_ID }}
+          private-key: ${{ secrets.CGIS_APP_PRIVATE_KEY }}
+
       - name: Run release-please
         id: release
         uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071  # v4.4.1
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # Falls back to GITHUB_TOKEN when the App is not configured — the
+          # release still opens, its checks just need a manual nudge.
+          token: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  relock:
+    name: Re-lock the release PR
+    needs: release-please
+    # Only when release-please actually has an open release PR to amend.
+    if: needs.release-please.outputs.release_pr != ''
+    runs-on: ubuntu-latest
+    permissions:
+      # Narrower than the release job: this one only pushes a lockfile.
+      contents: write
+    steps:
+      - name: Mint a GitHub App token
+        id: app-token
+        # A GITHUB_TOKEN-authored PR leaves its checks parked in
+        # `action_required` forever, so release-please needs an identity of its
+        # own. App tokens beat a PAT: one hour of life, auto-rotated, scoped to
+        # this repo, and not tied to anyone's personal account.
+        # continue-on-error: an unconfigured App must degrade, not break the release.
+        continue-on-error: true
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          app-id: ${{ vars.CGIS_APP_ID }}
+          private-key: ${{ secrets.CGIS_APP_PRIVATE_KEY }}
+
+      - name: Checkout the release branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          ref: ${{ fromJSON(needs.release-please.outputs.release_pr).headBranchName }}
+          token: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39  # v3
+        with:
+          enable-cache: true
+
+      - name: Re-lock and push if the version moved
+        run: |
+          set -euo pipefail
+          # release-please bumps pyproject.toml but never re-resolves uv.lock, so
+          # the lockfile's own version entry falls a release behind and the CI
+          # `uv lock --check` gate fails on every release PR (#303).
+          uv lock
+          if git diff --quiet -- uv.lock; then
+            echo "uv.lock already in step with pyproject.toml"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add uv.lock
+          git commit -m "chore: re-lock uv.lock for the release"
+          git push
 
   publish:
     name: Publish to PyPI
