@@ -85,13 +85,58 @@ def _render_subgraph(
     return f"❌ Unknown format '{output_format}'. Use 'mermaid' or 'json'."
 
 
+#: Names cgis will create a database under. Everything else is refused, so an
+#: agent cannot be talked into materialising `~/.ssh/authorized_keys` (#312).
+_DB_SUFFIXES = frozenset({".db", ".sqlite", ".sqlite3"})
+
+#: First 16 bytes of any SQLite file.
+_SQLITE_MAGIC = b"SQLite format 3\x00"
+
+
+def _reject_db_path(db_path: str) -> str | None:
+    """Return a refusal message for an unusable ``db_path``, or None if it is fine.
+
+    ``cgis_ingest`` is the only MCP tool that creates its database — the other
+    twelve refuse a path that does not already exist, which is guard enough for
+    them. It needs a different one: it reads untrusted repository content and is
+    then told by the same agent where to write, so ``db_path`` is attacker-
+    reachable in a way the read-only tools' paths are not.
+
+    Refuses an unexpected suffix, a missing parent directory (creating a tree is
+    never wanted), a directory target, and an existing file that is not a
+    database. The last is belt-and-braces — SQLite already declines to open a
+    non-database — but it fails with a message that says why.
+    """
+    path = Path(db_path)
+    if path.suffix not in _DB_SUFFIXES:
+        allowed = ", ".join(sorted(_DB_SUFFIXES))
+        return f"❌ Refusing db_path '{db_path}': name must end in one of {allowed}."
+    if path.is_dir():
+        return f"❌ Refusing db_path '{db_path}': it is a directory."
+    if not path.parent.is_dir():
+        return (
+            f"❌ Refusing db_path '{db_path}': parent directory does not exist. "
+            "cgis will not create one."
+        )
+    if path.is_file() and path.stat().st_size > 0:
+        with path.open("rb") as fh:
+            if fh.read(len(_SQLITE_MAGIC)) != _SQLITE_MAGIC:
+                return f"❌ Refusing db_path '{db_path}': existing file is not a SQLite database."
+    return None
+
+
 @mcp.tool()
 def cgis_ingest(project_path: str, db_path: str = _DEFAULT_DB, full_rebuild: bool = False) -> str:
     """Scan a local directory, extract all symbols, resolve links, and build the graph DB.
 
     Use this to initialise or refresh the code knowledge graph for a project.
-    Paths are normalised relative to the workspace root so the database is
+    Node FQNs are normalised relative to the workspace root so the graph is
     portable across machines.
+
+    ``db_path`` must name a database — it has to end in ``.db``, ``.sqlite`` or
+    ``.sqlite3``, live in a directory that already exists, and not point at an
+    existing file that is not a SQLite database. cgis will not create parent
+    directories.
 
     By default the ingest is **incremental**: only changed/new files are
     re-scanned, and the summary reports both what changed this run and the
@@ -99,6 +144,11 @@ def cgis_ingest(project_path: str, db_path: str = _DEFAULT_DB, full_rebuild: boo
     overwrite the database from scratch — use this to drop nodes for files that
     were deleted or renamed, which an incremental run leaves behind.
     """
+    refusal = _reject_db_path(db_path)
+    if refusal is not None:
+        logger.warning("MCP ingest refused db_path", db=db_path)
+        return refusal
+
     pipeline = IngestionPipeline(_EXTRACTORS)
     try:
         with SQLiteStore(db_path) as store:

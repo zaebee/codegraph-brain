@@ -806,3 +806,82 @@ def test_cgis_suggest_packages_missing_db(tmp_path: Path) -> None:
     """A missing db returns an error string, not a crash (#242)."""
     result = cgis_suggest_packages(str(tmp_path / "no.db"), prefix="mod")
     assert "not found" in result.lower()
+
+
+# ---------------------------------------------------------------------------
+# db_path guard for cgis_ingest (#312)
+# ---------------------------------------------------------------------------
+#
+# cgis_ingest is the only MCP tool that creates its database — the other twelve
+# refuse a db_path that does not already exist. It therefore needs a different
+# guard, not the same one: it reads untrusted repository content and is then
+# told by the same agent where to write, so a hostile db_path is a real shape.
+
+
+def test_ingest_refuses_to_clobber_a_non_sqlite_file(tmp_path: Path) -> None:
+    """An existing file that is not a database must survive untouched."""
+    victim = tmp_path / "config.db"
+    original = "PermitRootLogin no\n"
+    victim.write_text(original, encoding="utf-8")
+    (tmp_path / "mod.py").write_text("def fn(): pass\n", encoding="utf-8")
+
+    result = cgis_ingest(str(tmp_path), str(victim))
+
+    assert "❌" in result
+    assert victim.read_text(encoding="utf-8") == original, "the target file was modified"
+
+
+def test_ingest_refuses_to_create_parent_directories(tmp_path: Path) -> None:
+    """A missing parent must be an error, not an invitation to build a tree."""
+    (tmp_path / "mod.py").write_text("def fn(): pass\n", encoding="utf-8")
+    nested = tmp_path / "does" / "not" / "exist" / "graph.db"
+
+    result = cgis_ingest(str(tmp_path), str(nested))
+
+    assert "❌" in result
+    assert not nested.parent.exists(), "parent directories were created"
+
+
+def test_ingest_refuses_an_unexpected_suffix(tmp_path: Path) -> None:
+    """Only database-shaped names are accepted, so `~/.ssh/config` cannot be a target."""
+    (tmp_path / "mod.py").write_text("def fn(): pass\n", encoding="utf-8")
+    target = tmp_path / "authorized_keys"
+
+    result = cgis_ingest(str(tmp_path), str(target))
+
+    assert "❌" in result
+    assert not target.exists()
+
+
+def test_ingest_refuses_a_directory_as_db_path(tmp_path: Path) -> None:
+    """A directory target must be rejected rather than surfacing a sqlite error."""
+    (tmp_path / "mod.py").write_text("def fn(): pass\n", encoding="utf-8")
+    target = tmp_path / "graph.db"
+    target.mkdir()
+
+    result = cgis_ingest(str(tmp_path), str(target))
+
+    assert "❌" in result
+    assert target.is_dir()
+
+
+def test_ingest_accepts_an_existing_empty_file(tmp_path: Path) -> None:
+    """An empty placeholder is what SQLite itself would create — not a clobber."""
+    (tmp_path / "mod.py").write_text("def fn(): pass\n", encoding="utf-8")
+    placeholder = tmp_path / "graph.db"
+    placeholder.touch()
+
+    result = cgis_ingest(str(tmp_path), str(placeholder))
+
+    assert "✅" in result
+
+
+def test_ingest_still_accepts_an_existing_database(tmp_path: Path) -> None:
+    """The guard must not break re-ingesting into a real database."""
+    (tmp_path / "mod.py").write_text("def fn(): pass\n", encoding="utf-8")
+    db = tmp_path / "graph.db"
+    assert "✅" in cgis_ingest(str(tmp_path), str(db))
+
+    result = cgis_ingest(str(tmp_path), str(db), full_rebuild=True)
+
+    assert "✅" in result
