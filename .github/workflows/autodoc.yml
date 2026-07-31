@@ -28,15 +28,15 @@ jobs:
           enable-cache: true
 
       - name: Install CGIS
-        run: uv sync
+        run: uv sync --frozen
 
       - name: Self-ingest core engine
-        run: uv run cgis ingest ./src --output /tmp/self_graph.db
+        run: uv run --frozen cgis ingest ./src --output /tmp/self_graph.db
 
       - name: Generate pipeline flow diagram
         run: |
           mkdir -p docs/architecture/diagrams
-          uv run cgis trace "cgis.pipeline.IngestionPipeline.run" \
+          uv run --frozen cgis trace "cgis.pipeline.IngestionPipeline.run" \
             --db /tmp/self_graph.db \
             --depth 1 \
             --format mermaid \
@@ -44,21 +44,21 @@ jobs:
             > docs/architecture/diagrams/pipeline_flow.mermaid
 
       - name: Compute graph health badge
-        run: uv run python scripts/generate_health.py --db /tmp/self_graph.db
+        run: uv run --frozen python scripts/generate_health.py --db /tmp/self_graph.db
 
       - name: Inject graph into README.md
         run: |
-          uv run python scripts/inject_readme_graph.py \
+          uv run --frozen python scripts/inject_readme_graph.py \
             --db /tmp/self_graph.db \
             --fqn "cgis.pipeline.IngestionPipeline.run" \
             --depth 1 \
             --path-prefix "src/"
 
       - name: Generate MCP reference manual
-        run: uv run python scripts/generate_mcp_ref.py
+        run: uv run --frozen python scripts/generate_mcp_ref.py
 
       - name: Sync schema docs from source
-        run: uv run python scripts/generate_schema_docs.py
+        run: uv run --frozen python scripts/generate_schema_docs.py
 
       - name: Open PR with generated docs
         uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676  # v7

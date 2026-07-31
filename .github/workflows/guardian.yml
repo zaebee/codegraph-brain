@@ -67,10 +67,10 @@ jobs:
         uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39  # v3
 
       - name: Install dependencies
-        run: uv sync --extra guardian
+        run: uv sync --frozen --extra guardian
 
       - name: Build code graph
-        run: uv run cgis ingest ./src --output graph.db
+        run: uv run --frozen cgis ingest ./src --output graph.db
 
       - name: Restore metrics from data branch
         run: |
@@ -91,7 +91,7 @@ jobs:
           GUARDIAN_SKEPTIC: ${{ vars.GUARDIAN_SKEPTIC }}
           GUARDIAN_SKEPTIC_MODEL: ${{ vars.GUARDIAN_SKEPTIC_MODEL }}
         run: |
-          uv run python scripts/guardian_review.py \
+          uv run --frozen python scripts/guardian_review.py \
             --output guardian_report.md \
             --db graph.db \
             --pr "$PR_NUMBER" \
@@ -219,7 +219,7 @@ jobs:
           git show origin/data/guardian-metrics:guardian_metrics.jsonl \
             > guardian_metrics.jsonl
 
-          uv run cgis guardian-rate "$PR_NUMBER" "$APPLIED" \
+          uv run --frozen cgis guardian-rate "$PR_NUMBER" "$APPLIED" \
             --metrics guardian_metrics.jsonl
 
           if git ls-remote --exit-code origin data/guardian-metrics > /dev/null 2>&1; then
