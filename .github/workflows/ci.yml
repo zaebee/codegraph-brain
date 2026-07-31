@@ -19,6 +19,11 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Lockfile in step with pyproject
+        # MUST run before `uv sync`: sync silently re-resolves and rewrites
+        # uv.lock, so a check placed after it would always pass.
+        run: uv lock --check
+
       - name: Install Dependencies
         run: uv sync --group dev
 
