@@ -108,6 +108,14 @@ GUARDIAN_PROVIDER=ollama GUARDIAN_MODEL=qwen2.5-coder:14b \
 
 ---
 
+## 📈 Proof at Real Scale
+
+CGIS runs on a working twelve-repository estate — four languages, 8,146 commits, shipping daily. On its 512-file FastAPI backend it classifies **88.4% of 40,493 edges** definitively, and prints the remaining 11.6% instead of inventing targets for them.
+
+**[Read the case study →](docs/CASE_STUDY.md)** — every figure measured and reproducible, including what CGIS *doesn't* cover.
+
+---
+
 ## 📊 Live System Architecture
 *Kept in sync with the codebase — update this diagram when the core pipeline changes.*
 
