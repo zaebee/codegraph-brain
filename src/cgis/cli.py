@@ -1,4 +1,22 @@
-""" "CLI to run pipeline."""
+""" "CLI to run pipeline.
+
+Rich markup convention (#148)
+-----------------------------
+Rich parses ``[...]`` in everything it renders, so any *data* reaching a console
+sink must be wrapped in ``rich.markup.escape``.  This applies to ``console.print``
+f-strings, ``Table.add_row`` cells, and panel/tree labels alike.
+
+The failure mode is silent: unescaped text is not styled, it *vanishes*.  PR #144
+shipped a line where ``[cgis-project]`` rendered as an empty string, so the
+operator saw a blank where their domain name should have been.
+
+  wrong:  console.print(f"[bold red]Not found:[/bold red] {path}")
+  right:  console.print(f"[bold red]Not found:[/bold red] {escape(path)}")
+
+Escape anything derived from config, the graph, the filesystem, CLI arguments, or
+an exception message — names, FQNs, file paths, pattern names, ``{e}``.  Literal
+style tags you wrote yourself and pure numbers need no escaping.
+"""
 
 import dataclasses
 import json as _json
@@ -190,10 +208,12 @@ def ingest(
     pipeline = IngestionPipeline(extractors, domains_config=domains)
 
     if domains and not Path(domains).is_file():
-        console.print(f"[bold red]❌ Domains config file not found:[/bold red] {domains}")
+        console.print(
+            f"[bold red]❌ Domains config file not found:[/bold red] {escape(str(domains))}"
+        )
         raise typer.Exit(code=1)
 
-    console.print(f"[bold blue]🚀 Starting ingestion for:[/bold blue] {path}")
+    console.print(f"[bold blue]🚀 Starting ingestion for:[/bold blue] {escape(path)}")
 
     if incremental and output.endswith(".json"):
         console.print(
@@ -233,7 +253,7 @@ def ingest(
         console.print("[bold green]✅ Success![/bold green] Graph data ready.")
 
     except Exception as e:
-        console.print(f"[bold red]❌ Error during ingestion:[/bold red] {e}")
+        console.print(f"[bold red]❌ Error during ingestion:[/bold red] {escape(str(e))}")
         raise typer.Exit(code=1) from e
 
 
@@ -272,16 +292,16 @@ def _resolve_cli_fqn(store: SQLiteStore, target: str, kind: str) -> str:
     resolution = resolve_fqn(store, target)
     if resolution.resolved is None:
         if resolution.candidates:
-            console.print(f"[bold red]❌ Ambiguous FQN:[/bold red] {target}")
+            console.print(f"[bold red]❌ Ambiguous FQN:[/bold red] {escape(target)}")
             for candidate in resolution.candidates:
-                console.print(f"  [dim]- {candidate}[/dim]")
+                console.print(f"  [dim]- {escape(candidate)}[/dim]")
             if resolution.truncated:
                 console.print(_TRUNCATED_HINT)
         else:
-            console.print(f"[bold red]❌ {kind} not found in graph:[/bold red] {target}")
+            console.print(f"[bold red]❌ {kind} not found in graph:[/bold red] {escape(target)}")
         raise typer.Exit(code=1)
     if resolution.via_suffix:
-        console.print(f"[dim]Resolved '{target}' → '{resolution.resolved}'[/dim]")
+        console.print(f"[dim]Resolved '{escape(target)}' → '{escape(resolution.resolved)}'[/dim]")
     return resolution.resolved
 
 
@@ -368,7 +388,9 @@ def trace(
     """
     path = Path(db)
     if not path.is_file():
-        console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
+        console.print(
+            f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
+        )
         raise typer.Exit(code=1)
 
     allowed: frozenset[EdgeType] | None = None if show_structure else BEHAVIORAL_EDGE_TYPES
@@ -497,7 +519,9 @@ def impact(
     """
     path = Path(db)
     if not path.is_file():
-        console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
+        console.print(
+            f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
+        )
         raise typer.Exit(code=1)
 
     allowed: frozenset[EdgeType] | None = None if show_structure else BEHAVIORAL_EDGE_TYPES
@@ -562,14 +586,16 @@ def validate(
     """
     path = Path(db)
     if not path.is_file():
-        console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
+        console.print(
+            f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
+        )
         raise typer.Exit(code=1)
 
     try:
         with SQLiteStore(db) as store:
             stats = store.get_edge_stats()
     except Exception as e:
-        console.print(f"[bold red]❌ Error reading database:[/bold red] {e}")
+        console.print(f"[bold red]❌ Error reading database:[/bold red] {escape(str(e))}")
         raise typer.Exit(code=1) from e
 
     def _pct(n: int) -> str:
@@ -600,7 +626,7 @@ def validate(
         top_table.add_column("count", justify="right", style="yellow")
         for target, count in stats.top_unresolved:
             name = target.removeprefix(RAW_CALL_PREFIX)
-            top_table.add_row(name, str(count))
+            top_table.add_row(escape(name), str(count))
         console.print(top_table)
 
     threshold_pct = threshold * 100
@@ -637,7 +663,9 @@ def find(
     """
     path = Path(db)
     if not path.is_file():
-        console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
+        console.print(
+            f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
+        )
         raise typer.Exit(code=1)
 
     kinds = (kind.strip().upper(),) if kind and kind.strip() else ()
@@ -654,7 +682,12 @@ def find(
     table.add_column("FQN", style="yellow")
     table.add_column("Location", style="dim")
     for node in matches:
-        table.add_row(node.name, node.type.value, node.id, f"{node.file_path}:{node.start_line}")
+        table.add_row(
+            escape(node.name),
+            node.type.value,
+            escape(node.id),
+            escape(f"{node.file_path}:{node.start_line}"),
+        )
     console.print(table)
 
 
@@ -675,14 +708,16 @@ def structure(
     """
     path = Path(db)
     if not path.is_file():
-        console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
+        console.print(
+            f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
+        )
         raise typer.Exit(code=1)
 
     # Normalize file path → FQN
     if "/" in target or "\\" in target or target.endswith(".py"):
         normalized = target.replace("\\", "/").removeprefix("./")
         target = file_path_to_module_fqn(normalized)
-        console.print(f"[dim]→ FQN: {target}[/dim]")
+        console.print(f"[dim]→ FQN: {escape(target)}[/dim]")
 
     with SQLiteStore(db) as store:
         target = _resolve_cli_fqn(store, target, "Node")
@@ -696,7 +731,7 @@ def structure(
         typer.echo(_render_graph(output_format, target, nodes, edges))
         return
 
-    console.print(f"[bold blue]📦 Structure of:[/bold blue] {target}\n")
+    console.print(f"[bold blue]📦 Structure of:[/bold blue] {escape(target)}\n")
     root_label = (
         f"[bold cyan]{target_node.type.value}[/bold cyan] [yellow]{target_node.id}[/yellow]"
     )
@@ -765,7 +800,9 @@ def analyze(
     """
     path = Path(db)
     if not path.is_file():
-        console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
+        console.print(
+            f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
+        )
         raise typer.Exit(code=1)
 
     with SQLiteStore(db) as store:
@@ -809,8 +846,8 @@ def analyze(
                 f"severity=[bold {colour}]{a.severity_score:.2f}[/bold {colour}]"
             )
             for key, val in a.metrics.items():
-                console.print(f"    [dim]{key}:[/dim] {val}")
-            console.print(f"  [italic]💡 {a.refactoring_hint}[/italic]\n")
+                console.print(f"    [dim]{escape(str(key))}:[/dim] {escape(str(val))}")
+            console.print(f"  [italic]💡 {escape(a.refactoring_hint)}[/italic]\n")
 
 
 _DEFAULT_METRICS = "guardian_metrics.jsonl"
@@ -827,7 +864,7 @@ def guardian_rate(
     if updated:
         console.print(f"[green]✅ PR #{pr}: recorded {applied} applied findings.[/green]")
     else:
-        console.print(f"[red]❌ No unrated entry found for PR #{pr} in {metrics}.[/red]")
+        console.print(f"[red]❌ No unrated entry found for PR #{pr} in {escape(metrics)}.[/red]")
         raise typer.Exit(code=1)
 
 
@@ -839,7 +876,7 @@ def guardian_stats(
     """Show Guardian review quality metrics trend."""
     reviews = load_reviews(Path(metrics))
     if not reviews:
-        console.print(f"[yellow]No metrics found in {metrics}.[/yellow]")
+        console.print(f"[yellow]No metrics found in {escape(metrics)}.[/yellow]")
         raise typer.Exit
 
     reviews = reviews[-last:]
@@ -871,7 +908,7 @@ def guardian_stats(
         lgtm = "✅" if r.get("lgtm") else ""
         table.add_row(
             pr_str,
-            str(r.get("model", "")),
+            escape(str(r.get("model", ""))),
             f"{tokens:,}",
             str(findings),
             applied_str,
@@ -962,8 +999,8 @@ def _render_drift_table(reports: list[DriftReport]) -> None:
     table.add_column("Status", justify="center")
     for r in reports:
         table.add_row(
-            r.fqn_prefix,
-            r.expected_pattern or "(hygiene)",
+            escape(r.fqn_prefix),
+            escape(r.expected_pattern or "(hygiene)"),
             f"{r.drift_score:.2f}",
             f"{r.tv_imports:.2f}" if r.tv_imports is not None else "—",
             f"{r.tv_calls:.2f}" if r.tv_calls is not None else "—",
@@ -1029,11 +1066,13 @@ def drift(
     Exits with code 1 if any domain drift score meets or exceeds the critical threshold.
     """
     if not Path(db).is_file():
-        console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
+        console.print(
+            f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
+        )
         raise typer.Exit(code=1)
 
     if not Path(patterns).is_file():
-        console.print(f"[bold red]❌ Patterns file not found:[/bold red] {patterns}")
+        console.print(f"[bold red]❌ Patterns file not found:[/bold red] {escape(patterns)}")
         raise typer.Exit(code=1)
 
     try:
@@ -1041,7 +1080,7 @@ def drift(
             db, patterns, max_drift=max_drift, profile=profile, max_residual=max_residual
         )
     except Exception as e:
-        console.print(f"[bold red]❌ Error during drift analysis:[/bold red] {e}")
+        console.print(f"[bold red]❌ Error during drift analysis:[/bold red] {escape(str(e))}")
         raise typer.Exit(code=1) from e
 
     if output_format == DriftOutputFormat.JSON:
@@ -1123,17 +1162,19 @@ def init_ontology(
 ) -> None:
     """Propose a starter patterns.yaml from the measured graph (measure-then-label)."""
     if Path(out).exists() and not force:
-        console.print(f"[bold red]❌ {out} already exists[/bold red] — use --force to overwrite.")
+        console.print(
+            f"[bold red]❌ {escape(out)} already exists[/bold red] — use --force to overwrite."
+        )
         raise typer.Exit(code=1)
     try:
         text = propose_ontology(db, margin=margin, min_nodes=min_nodes, depth=depth)
     except FileNotFoundError as e:
-        console.print(f"[bold red]❌ {e}[/bold red]")
+        console.print(f"[bold red]❌ {escape(str(e))}[/bold red]")
         raise typer.Exit(code=1) from e
     Path(out).write_text(text)
     _render_init_summary(text)
-    console.print(f"[bold green]✅ Proposed ontology written to {out}[/bold green]")
-    console.print(f"Next: [cyan]cgis drift --db {db} --patterns {out}[/cyan]")
+    console.print(f"[bold green]✅ Proposed ontology written to {escape(out)}[/bold green]")
+    console.print(f"Next: [cyan]cgis drift --db {escape(db)} --patterns {escape(out)}[/cyan]")
 
 
 @app.command()
@@ -1163,7 +1204,9 @@ def context(
     """
     path = Path(db)
     if not path.is_file():
-        console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
+        console.print(
+            f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
+        )
         raise typer.Exit(code=1)
 
     err_console = Console(stderr=True)
@@ -1171,16 +1214,18 @@ def context(
         resolution = resolve_fqn(store, fqn)
         if resolution.resolved is None:
             if resolution.candidates:
-                err_console.print(f"[bold red]❌ Ambiguous FQN:[/bold red] {fqn}")
+                err_console.print(f"[bold red]❌ Ambiguous FQN:[/bold red] {escape(fqn)}")
                 for candidate in resolution.candidates:
-                    err_console.print(f"  [dim]- {candidate}[/dim]")
+                    err_console.print(f"  [dim]- {escape(candidate)}[/dim]")
                 if resolution.truncated:
                     err_console.print(_TRUNCATED_HINT)
             else:
-                err_console.print(f"[bold red]❌ Node not found in graph:[/bold red] {fqn}")
+                err_console.print(f"[bold red]❌ Node not found in graph:[/bold red] {escape(fqn)}")
             raise typer.Exit(code=1)
         if resolution.via_suffix:
-            err_console.print(f"[dim]Resolved '{fqn}' → '{resolution.resolved}'[/dim]")
+            err_console.print(
+                f"[dim]Resolved '{escape(fqn)}' → '{escape(resolution.resolved)}'[/dim]"
+            )
         payload = build_context(store, resolution.resolved, depth=depth, source_root=source_root)
     typer.echo(payload)
 
@@ -1193,14 +1238,16 @@ def _render_metrics(report: ArchitectureReport) -> None:
     bottlenecks.add_column("In", justify="right", style="green")
     bottlenecks.add_column("Out", justify="right", style="yellow")
     for m in report.bottlenecks:
-        bottlenecks.add_row(m.node_id, m.node_type, str(m.in_degree), str(m.out_degree))
+        bottlenecks.add_row(
+            escape(m.node_id), escape(m.node_type), str(m.in_degree), str(m.out_degree)
+        )
     console.print(bottlenecks)
 
     gods = Table(title="🏛️  God classes (top by declared members)")
     gods.add_column("Class", style="cyan")
     gods.add_column("Members", justify="right", style="red")
     for m in report.god_classes:
-        gods.add_row(m.node_id, str(m.out_degree))
+        gods.add_row(escape(m.node_id), str(m.out_degree))
     console.print(gods)
 
     critical = Table(title="⭐ Critical nodes (top by PageRank — transitive importance)")
@@ -1213,7 +1260,11 @@ def _render_metrics(report: ArchitectureReport) -> None:
         # In/Out are over the same internal graph PageRank ran on; a high rank with
         # In=0 is a dangling-mass leaf artifact, not a real hub (#237).
         critical.add_row(
-            m.node_id, m.node_type, f"{m.page_rank:.4f}", str(m.in_degree), str(m.out_degree)
+            escape(m.node_id),
+            escape(m.node_type),
+            f"{m.page_rank:.4f}",
+            str(m.in_degree),
+            str(m.out_degree),
         )
     console.print(critical)
 
@@ -1245,7 +1296,9 @@ def metrics(
         console.print("[bold red]❌ metrics supports --format text or json only.[/bold red]")
         raise typer.Exit(code=2)
     if not Path(db).is_file():
-        console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
+        console.print(
+            f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
+        )
         raise typer.Exit(code=1)
     try:
         with DuckDBAnalyzer(db) as analyzer:
@@ -1253,7 +1306,7 @@ def metrics(
                 bottleneck_limit=limit, god_limit=limit, critical_limit=limit, exclude=exclude
             )
     except Exception as e:  # duckdb missing, extension fetch, or a non-SQLite file
-        console.print(f"[bold red]❌ {e}[/bold red]")
+        console.print(f"[bold red]❌ {escape(str(e))}[/bold red]")
         raise typer.Exit(code=1) from e
 
     if output_format == OutputFormat.JSON:
@@ -1271,16 +1324,20 @@ def _resolve_checkpoint(store: SQLiteStore, target: str) -> str:
     resolution = resolve_fqn(store, target)
     if resolution.resolved is None:
         if resolution.candidates:
-            err_console.print(f"[bold red]❌ Ambiguous checkpoint FQN:[/bold red] {target}")
+            err_console.print(f"[bold red]❌ Ambiguous checkpoint FQN:[/bold red] {escape(target)}")
             for candidate in resolution.candidates:
-                err_console.print(f"  [dim]- {candidate}[/dim]")
+                err_console.print(f"  [dim]- {escape(candidate)}[/dim]")
             if resolution.truncated:
                 err_console.print(_TRUNCATED_HINT)
         else:
-            err_console.print(f"[bold red]❌ Checkpoint not found in graph:[/bold red] {target}")
+            err_console.print(
+                f"[bold red]❌ Checkpoint not found in graph:[/bold red] {escape(target)}"
+            )
         raise typer.Exit(code=1)
     if resolution.via_suffix:
-        err_console.print(f"[dim]Resolved '{target}' → '{resolution.resolved}'[/dim]")
+        err_console.print(
+            f"[dim]Resolved '{escape(target)}' → '{escape(resolution.resolved)}'[/dim]"
+        )
     return resolution.resolved
 
 
@@ -1347,7 +1404,9 @@ def audit(
         )
         raise typer.Exit(code=2)
     if not Path(db).is_file():
-        console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
+        console.print(
+            f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
+        )
         raise typer.Exit(code=1)
 
     with SQLiteStore(db) as store:
@@ -1434,12 +1493,14 @@ def suggest_packages_cmd(
     always exits 0 on success. Run `ingest` first.
     """
     if not Path(db).is_file():
-        console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
+        console.print(
+            f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
+        )
         raise typer.Exit(code=1)
     try:
         report = suggest_packages(db, prefix, with_calls=with_calls, min_q=min_q)
     except Exception as e:
-        console.print(f"[bold red]❌ Error during suggest-packages:[/bold red] {e}")
+        console.print(f"[bold red]❌ Error during suggest-packages:[/bold red] {escape(str(e))}")
         raise typer.Exit(code=1) from e
 
     if output_format == SuggestOutputFormat.JSON:
@@ -1472,7 +1533,7 @@ def _render_fractal(reports: list[FractalReport]) -> None:
             entropy = "—" if rung.entropy is None else f"{rung.entropy:.2f}"
             name = rung.name if rung.live else f"{rung.name} [dim](no_signal)[/dim]"
             table.add_row(
-                name,
+                escape(name),
                 str(rung.groups),
                 str(rung.triads),
                 entropy,
@@ -1500,10 +1561,12 @@ def fractal(
     try:
         reports = analyze_fractal_db(db)
     except FileNotFoundError as e:
-        console.print(f"[bold red]❌ Database not found:[/bold red] {db}. Run `ingest` first.")
+        console.print(
+            f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
+        )
         raise typer.Exit(code=1) from e
     except Exception as e:
-        console.print(f"[bold red]❌ Error during fractal analysis:[/bold red] {e}")
+        console.print(f"[bold red]❌ Error during fractal analysis:[/bold red] {escape(str(e))}")
         raise typer.Exit(code=1) from e
 
     if output_format == FractalOutputFormat.JSON:

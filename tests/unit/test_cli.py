@@ -1426,3 +1426,124 @@ def test_fractal_missing_db_exits_nonzero(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "not found" in _plain(result.stdout).lower()
+
+
+# ---------------------------------------------------------------------------
+# Rich markup safety (#148)
+# ---------------------------------------------------------------------------
+#
+# PR #144 shipped (and hotfixed, d0e4cde) a line where console.print(f"...[{b.name}]...")
+# silently swallowed "[cgis-project]" — the name rendered as an empty string.
+# Any console.print f-string interpolating config- or user-derived text has the
+# same latent bug: paths, FQNs, domain names and exception text can all contain
+# square brackets, and Rich reads them as style tags.
+#
+# The failure mode is not "it renders bold" — it is that the text DISAPPEARS, so
+# an error message misreports the very path or FQN the user typed.
+
+#: Opening tags only — a "/" would make the FQN commands treat this as a file
+#: path and legitimately normalize it into an FQN (cli.py `structure`).
+_MARKUP_FQN = "[bold]ghost[dim]"
+
+
+def _unwrapped(output: str) -> str:
+    """Join Rich's width-based line wrapping back together before matching."""
+    return output.replace("\n", "")
+
+
+def test_missing_db_path_with_markup_is_printed_literally(tmp_path: Path) -> None:
+    """A --db path containing square brackets must survive into the error message."""
+    bad_db = tmp_path / "[red]dir[/red]" / "graph.db"
+
+    result = runner.invoke(app, ["trace", "some.fqn", "--db", str(bad_db)])
+
+    assert "[red]dir[/red]" in _unwrapped(result.output), (
+        f"path mangled by Rich markup parsing: {result.output!r}"
+    )
+
+
+def test_unknown_fqn_with_markup_is_printed_literally(tmp_path: Path) -> None:
+    """A not-found FQN must be echoed back exactly as the user typed it."""
+    (tmp_path / "calc.py").write_text("def add(a, b): return a + b", encoding="utf-8")
+    db_file = tmp_path / "graph.db"
+    runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
+
+    result = runner.invoke(app, ["trace", _MARKUP_FQN, "--db", str(db_file)])
+
+    assert _MARKUP_FQN in _unwrapped(result.output), (
+        f"FQN mangled by Rich markup parsing: {result.output!r}"
+    )
+
+
+def test_structure_unknown_fqn_with_markup_is_printed_literally(tmp_path: Path) -> None:
+    """The structure command echoes its target through a different print site."""
+    (tmp_path / "calc.py").write_text("def add(a, b): return a + b", encoding="utf-8")
+    db_file = tmp_path / "graph.db"
+    runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
+
+    result = runner.invoke(app, ["structure", _MARKUP_FQN, "--db", str(db_file)])
+
+    assert _MARKUP_FQN in _unwrapped(result.output), (
+        f"FQN mangled by Rich markup parsing: {result.output!r}"
+    )
+
+
+def test_drift_missing_patterns_path_with_markup_is_printed_literally(tmp_path: Path) -> None:
+    """The drift command reports a missing --patterns path through its own print site."""
+    (tmp_path / "calc.py").write_text("def add(a, b): return a + b", encoding="utf-8")
+    db_file = tmp_path / "graph.db"
+    runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
+    missing = tmp_path / "[i]nope[/i].yaml"
+
+    result = runner.invoke(app, ["drift", "--db", str(db_file), "--patterns", str(missing)])
+
+    assert "[i]nope[/i].yaml" in _unwrapped(result.output), (
+        f"patterns path mangled by Rich markup parsing: {result.output!r}"
+    )
+
+
+def test_drift_table_renders_markup_bearing_domain_literally(tmp_path: Path) -> None:
+    """The #148 acceptance criterion: a domain named with Rich markup in patterns.yaml.
+
+    The drift table renders `fqn_prefix` and `expected_pattern` straight from
+    patterns.yaml. This is the exact shape of the PR #144 bug (hotfix d0e4cde),
+    where `[cgis-project]` rendered as an empty string — the operator saw a blank
+    cell where their domain name should have been.
+    """
+    hostile = "[red]dom[/red]"
+    db_path = str(tmp_path / "g.db")
+    with SQLiteStore(db_path) as store:
+        store.save_graph(
+            [
+                Node(
+                    id=f"{hostile}.mod",
+                    type=NodeType.MODULE,
+                    name="mod",
+                    file_path="mod.py",
+                    start_line=1,
+                    end_line=2,
+                )
+            ],
+            [],
+            overwrite=True,
+        )
+
+    patterns_path = tmp_path / "patterns.yaml"
+    patterns_path.write_text(
+        fit_patterns_yaml().replace(
+            "  - name: dom\n    fqn_prefix: dom\n",
+            f'  - name: "{hostile}"\n    fqn_prefix: "{hostile}"\n',
+        )
+    )
+
+    # Wide terminal: at the default 80 columns the table truncates the cell with an
+    # ellipsis, which is legitimate layout, not the markup-swallowing bug under test.
+    result = runner.invoke(
+        app,
+        ["drift", "--db", db_path, "--patterns", str(patterns_path)],
+        env={"COLUMNS": "200"},
+    )
+
+    assert hostile in _unwrapped(result.output), (
+        f"domain name mangled by Rich markup parsing: {result.output!r}"
+    )
