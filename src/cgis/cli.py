@@ -11,7 +11,7 @@ shipped a line where ``[cgis-project]`` rendered as an empty string, so the
 operator saw a blank where their domain name should have been.
 
   wrong:  console.print(f"[bold red]Not found:[/bold red] {path}")
-  right:  console.print(f"[bold red]Not found:[/bold red] {escape(str(path))}")
+  right:  console.print(f"[bold red]Not found:[/bold red] {escape(path)}")
 
 Escape anything derived from config, the graph, the filesystem, CLI arguments, or
 an exception message — names, FQNs, file paths, pattern names, ``{e}``.  Literal
@@ -213,7 +213,7 @@ def ingest(
         )
         raise typer.Exit(code=1)
 
-    console.print(f"[bold blue]🚀 Starting ingestion for:[/bold blue] {escape(str(path))}")
+    console.print(f"[bold blue]🚀 Starting ingestion for:[/bold blue] {escape(path)}")
 
     if incremental and output.endswith(".json"):
         console.print(
@@ -292,19 +292,17 @@ def _resolve_cli_fqn(store: SQLiteStore, target: str, kind: str) -> str:
     resolution = resolve_fqn(store, target)
     if resolution.resolved is None:
         if resolution.candidates:
-            console.print(f"[bold red]❌ Ambiguous FQN:[/bold red] {escape(str(target))}")
+            console.print(f"[bold red]❌ Ambiguous FQN:[/bold red] {escape(target)}")
             for candidate in resolution.candidates:
-                console.print(f"  [dim]- {escape(str(candidate))}[/dim]")
+                console.print(f"  [dim]- {escape(candidate)}[/dim]")
             if resolution.truncated:
                 console.print(_TRUNCATED_HINT)
         else:
-            console.print(
-                f"[bold red]❌ {kind} not found in graph:[/bold red] {escape(str(target))}"
-            )
+            console.print(f"[bold red]❌ {kind} not found in graph:[/bold red] {escape(target)}")
         raise typer.Exit(code=1)
     if resolution.via_suffix:
         console.print(
-            f"[dim]Resolved '{escape(str(target))}' → '{escape(str(resolution.resolved))}'[/dim]"
+            f"[dim]Resolved '{escape(target)}' → '{escape(str(resolution.resolved))}'[/dim]"
         )
     return resolution.resolved
 
@@ -393,7 +391,7 @@ def trace(
     path = Path(db)
     if not path.is_file():
         console.print(
-            f"[bold red]❌ Database not found:[/bold red] {escape(str(db))}. Run `ingest` first."
+            f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
         )
         raise typer.Exit(code=1)
 
@@ -524,7 +522,7 @@ def impact(
     path = Path(db)
     if not path.is_file():
         console.print(
-            f"[bold red]❌ Database not found:[/bold red] {escape(str(db))}. Run `ingest` first."
+            f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
         )
         raise typer.Exit(code=1)
 
@@ -591,7 +589,7 @@ def validate(
     path = Path(db)
     if not path.is_file():
         console.print(
-            f"[bold red]❌ Database not found:[/bold red] {escape(str(db))}. Run `ingest` first."
+            f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
         )
         raise typer.Exit(code=1)
 
@@ -668,7 +666,7 @@ def find(
     path = Path(db)
     if not path.is_file():
         console.print(
-            f"[bold red]❌ Database not found:[/bold red] {escape(str(db))}. Run `ingest` first."
+            f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
         )
         raise typer.Exit(code=1)
 
@@ -713,7 +711,7 @@ def structure(
     path = Path(db)
     if not path.is_file():
         console.print(
-            f"[bold red]❌ Database not found:[/bold red] {escape(str(db))}. Run `ingest` first."
+            f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
         )
         raise typer.Exit(code=1)
 
@@ -721,7 +719,7 @@ def structure(
     if "/" in target or "\\" in target or target.endswith(".py"):
         normalized = target.replace("\\", "/").removeprefix("./")
         target = file_path_to_module_fqn(normalized)
-        console.print(f"[dim]→ FQN: {escape(str(target))}[/dim]")
+        console.print(f"[dim]→ FQN: {escape(target)}[/dim]")
 
     with SQLiteStore(db) as store:
         target = _resolve_cli_fqn(store, target, "Node")
@@ -735,7 +733,7 @@ def structure(
         typer.echo(_render_graph(output_format, target, nodes, edges))
         return
 
-    console.print(f"[bold blue]📦 Structure of:[/bold blue] {escape(str(target))}\n")
+    console.print(f"[bold blue]📦 Structure of:[/bold blue] {escape(target)}\n")
     root_label = (
         f"[bold cyan]{target_node.type.value}[/bold cyan] [yellow]{target_node.id}[/yellow]"
     )
@@ -805,7 +803,7 @@ def analyze(
     path = Path(db)
     if not path.is_file():
         console.print(
-            f"[bold red]❌ Database not found:[/bold red] {escape(str(db))}. Run `ingest` first."
+            f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
         )
         raise typer.Exit(code=1)
 
@@ -851,7 +849,7 @@ def analyze(
             )
             for key, val in a.metrics.items():
                 console.print(f"    [dim]{escape(str(key))}:[/dim] {escape(str(val))}")
-            console.print(f"  [italic]💡 {escape(str(a.refactoring_hint))}[/italic]\n")
+            console.print(f"  [italic]💡 {escape(a.refactoring_hint)}[/italic]\n")
 
 
 _DEFAULT_METRICS = "guardian_metrics.jsonl"
@@ -868,9 +866,7 @@ def guardian_rate(
     if updated:
         console.print(f"[green]✅ PR #{pr}: recorded {applied} applied findings.[/green]")
     else:
-        console.print(
-            f"[red]❌ No unrated entry found for PR #{pr} in {escape(str(metrics))}.[/red]"
-        )
+        console.print(f"[red]❌ No unrated entry found for PR #{pr} in {escape(metrics)}.[/red]")
         raise typer.Exit(code=1)
 
 
@@ -882,7 +878,7 @@ def guardian_stats(
     """Show Guardian review quality metrics trend."""
     reviews = load_reviews(Path(metrics))
     if not reviews:
-        console.print(f"[yellow]No metrics found in {escape(str(metrics))}.[/yellow]")
+        console.print(f"[yellow]No metrics found in {escape(metrics)}.[/yellow]")
         raise typer.Exit
 
     reviews = reviews[-last:]
@@ -1073,12 +1069,12 @@ def drift(
     """
     if not Path(db).is_file():
         console.print(
-            f"[bold red]❌ Database not found:[/bold red] {escape(str(db))}. Run `ingest` first."
+            f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
         )
         raise typer.Exit(code=1)
 
     if not Path(patterns).is_file():
-        console.print(f"[bold red]❌ Patterns file not found:[/bold red] {escape(str(patterns))}")
+        console.print(f"[bold red]❌ Patterns file not found:[/bold red] {escape(patterns)}")
         raise typer.Exit(code=1)
 
     try:
@@ -1169,7 +1165,7 @@ def init_ontology(
     """Propose a starter patterns.yaml from the measured graph (measure-then-label)."""
     if Path(out).exists() and not force:
         console.print(
-            f"[bold red]❌ {escape(str(out))} already exists[/bold red] — use --force to overwrite."
+            f"[bold red]❌ {escape(out)} already exists[/bold red] — use --force to overwrite."
         )
         raise typer.Exit(code=1)
     try:
@@ -1179,10 +1175,8 @@ def init_ontology(
         raise typer.Exit(code=1) from e
     Path(out).write_text(text)
     _render_init_summary(text)
-    console.print(f"[bold green]✅ Proposed ontology written to {escape(str(out))}[/bold green]")
-    console.print(
-        f"Next: [cyan]cgis drift --db {escape(str(db))} --patterns {escape(str(out))}[/cyan]"
-    )
+    console.print(f"[bold green]✅ Proposed ontology written to {escape(out)}[/bold green]")
+    console.print(f"Next: [cyan]cgis drift --db {escape(db)} --patterns {escape(out)}[/cyan]")
 
 
 @app.command()
@@ -1213,7 +1207,7 @@ def context(
     path = Path(db)
     if not path.is_file():
         console.print(
-            f"[bold red]❌ Database not found:[/bold red] {escape(str(db))}. Run `ingest` first."
+            f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
         )
         raise typer.Exit(code=1)
 
@@ -1222,19 +1216,17 @@ def context(
         resolution = resolve_fqn(store, fqn)
         if resolution.resolved is None:
             if resolution.candidates:
-                err_console.print(f"[bold red]❌ Ambiguous FQN:[/bold red] {escape(str(fqn))}")
+                err_console.print(f"[bold red]❌ Ambiguous FQN:[/bold red] {escape(fqn)}")
                 for candidate in resolution.candidates:
-                    err_console.print(f"  [dim]- {escape(str(candidate))}[/dim]")
+                    err_console.print(f"  [dim]- {escape(candidate)}[/dim]")
                 if resolution.truncated:
                     err_console.print(_TRUNCATED_HINT)
             else:
-                err_console.print(
-                    f"[bold red]❌ Node not found in graph:[/bold red] {escape(str(fqn))}"
-                )
+                err_console.print(f"[bold red]❌ Node not found in graph:[/bold red] {escape(fqn)}")
             raise typer.Exit(code=1)
         if resolution.via_suffix:
             err_console.print(
-                f"[dim]Resolved '{escape(str(fqn))}' → '{escape(str(resolution.resolved))}'[/dim]"
+                f"[dim]Resolved '{escape(fqn)}' → '{escape(str(resolution.resolved))}'[/dim]"
             )
         payload = build_context(store, resolution.resolved, depth=depth, source_root=source_root)
     typer.echo(payload)
@@ -1307,7 +1299,7 @@ def metrics(
         raise typer.Exit(code=2)
     if not Path(db).is_file():
         console.print(
-            f"[bold red]❌ Database not found:[/bold red] {escape(str(db))}. Run `ingest` first."
+            f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
         )
         raise typer.Exit(code=1)
     try:
@@ -1334,21 +1326,19 @@ def _resolve_checkpoint(store: SQLiteStore, target: str) -> str:
     resolution = resolve_fqn(store, target)
     if resolution.resolved is None:
         if resolution.candidates:
-            err_console.print(
-                f"[bold red]❌ Ambiguous checkpoint FQN:[/bold red] {escape(str(target))}"
-            )
+            err_console.print(f"[bold red]❌ Ambiguous checkpoint FQN:[/bold red] {escape(target)}")
             for candidate in resolution.candidates:
-                err_console.print(f"  [dim]- {escape(str(candidate))}[/dim]")
+                err_console.print(f"  [dim]- {escape(candidate)}[/dim]")
             if resolution.truncated:
                 err_console.print(_TRUNCATED_HINT)
         else:
             err_console.print(
-                f"[bold red]❌ Checkpoint not found in graph:[/bold red] {escape(str(target))}"
+                f"[bold red]❌ Checkpoint not found in graph:[/bold red] {escape(target)}"
             )
         raise typer.Exit(code=1)
     if resolution.via_suffix:
         err_console.print(
-            f"[dim]Resolved '{escape(str(target))}' → '{escape(str(resolution.resolved))}'[/dim]"
+            f"[dim]Resolved '{escape(target)}' → '{escape(str(resolution.resolved))}'[/dim]"
         )
     return resolution.resolved
 
@@ -1417,7 +1407,7 @@ def audit(
         raise typer.Exit(code=2)
     if not Path(db).is_file():
         console.print(
-            f"[bold red]❌ Database not found:[/bold red] {escape(str(db))}. Run `ingest` first."
+            f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
         )
         raise typer.Exit(code=1)
 
@@ -1506,7 +1496,7 @@ def suggest_packages_cmd(
     """
     if not Path(db).is_file():
         console.print(
-            f"[bold red]❌ Database not found:[/bold red] {escape(str(db))}. Run `ingest` first."
+            f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
         )
         raise typer.Exit(code=1)
     try:
@@ -1574,7 +1564,7 @@ def fractal(
         reports = analyze_fractal_db(db)
     except FileNotFoundError as e:
         console.print(
-            f"[bold red]❌ Database not found:[/bold red] {escape(str(db))}. Run `ingest` first."
+            f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
         )
         raise typer.Exit(code=1) from e
     except Exception as e:
