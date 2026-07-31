@@ -20,24 +20,27 @@ jobs:
           enable-cache: true
 
       - name: Lockfile in step with pyproject
-        # MUST run before `uv sync`: sync silently re-resolves and rewrites
-        # uv.lock, so a check placed after it would always pass.
+        # This is the only step that validates the lockfile. `--frozen` below stops
+        # uv rewriting uv.lock, but it does not check that the lock is current —
+        # that is `--locked`. Keeping the check explicit gives a clearer failure
+        # than a sync error, and it still runs first so an unfrozen uv could never
+        # repair the lock ahead of it.
         run: uv lock --check
 
       - name: Install Dependencies
-        run: uv sync --group dev
+        run: uv sync --frozen --group dev
 
       - name: Ruff Format Check
-        run: uv run ruff format --check .
+        run: uv run --frozen ruff format --check .
 
       - name: Ruff Lint
-        run: uv run ruff check .
+        run: uv run --frozen ruff check .
 
       - name: Interrogate (≥90% docstring coverage)
-        run: uv run interrogate -v --fail-under 90 src/cgis
+        run: uv run --frozen interrogate -v --fail-under 90 src/cgis
 
       - name: Mypy (strict)
-        run: uv run mypy src
+        run: uv run --frozen mypy src
 
       - name: Pytest
-        run: uv run pytest --cov=cgis --cov-report=term-missing
+        run: uv run --frozen pytest --cov=cgis --cov-report=term-missing
