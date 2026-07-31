@@ -159,9 +159,11 @@ def test_compile_output_is_deterministic() -> None:
     nodes = [_make_node("src/cgis/cli.py:some_function")]
     edges = [_make_edge("src/cgis/cli.py:some_function", "src/cgis/other.py:helper")]
     compiler = MermaidCompiler()
-    assert compiler.compile(nodes, edges) == compiler.compile(nodes, edges)
-    # Hashed IDs must be alphanumeric — no raw slashes or colons in node declarations
     output = compiler.compile(nodes, edges)
+    second = compiler.compile(nodes, edges)
+    assert output == second, "compile output must be stable — IDs are hashed, not counted"
+
+    # Hashed IDs must be alphanumeric — no raw slashes or colons in node declarations
     for line in output.splitlines():
         if "-->|" in line:
             parts = line.strip().split(" -->|")

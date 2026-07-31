@@ -184,7 +184,9 @@ def test_propose_no_fit_goes_hygiene_only(tmp_path: Path) -> None:
 
 def test_propose_deterministic(two_domain_db: str) -> None:
     """Two runs over the same graph are byte-identical."""
-    assert propose_ontology(two_domain_db) == propose_ontology(two_domain_db)
+    first = propose_ontology(two_domain_db)
+    second = propose_ontology(two_domain_db)
+    assert first == second, "propose_ontology must be byte-identical across runs"
 
 
 def test_header_templates_match_repo_ontology() -> None:
