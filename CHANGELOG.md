@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.3](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.7.2...codegraph-brain-v0.7.3) (2026-07-31)
+
+
+### Bug Fixes
+
+* **assets:** drop the argv-driven output path from the avatar generator ([#308](https://github.com/zaebee/codegraph-brain/issues/308)) ([d118074](https://github.com/zaebee/codegraph-brain/commit/d118074a6b2137f789b4978f870f5496ee1135b5))
+* **ci:** read the App ID from a secret as well as a variable ([#306](https://github.com/zaebee/codegraph-brain/issues/306)) ([90513bc](https://github.com/zaebee/codegraph-brain/commit/90513bc3f588241848fd7404f9be5b6479a72293))
+
 ## [0.7.2](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.7.1...codegraph-brain-v0.7.2) (2026-07-31)
 
 
