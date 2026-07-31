@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.6.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.5.0...codegraph-brain-v0.6.0) (2026-07-31)
+
+
+### Features
+
+* **guardian:** chunk only reviewable source ([#277](https://github.com/zaebee/codegraph-brain/issues/277)) ([#281](https://github.com/zaebee/codegraph-brain/issues/281)) ([4b1a187](https://github.com/zaebee/codegraph-brain/commit/4b1a1873a870c3f67d5e627214d1116335eebcbf))
+
+
+### Bug Fixes
+
+* **guardian:** close both Gemini connection pools ([#283](https://github.com/zaebee/codegraph-brain/issues/283)) ([#284](https://github.com/zaebee/codegraph-brain/issues/284)) ([b2ae97b](https://github.com/zaebee/codegraph-brain/commit/b2ae97bfb0d7c73754aa4cb1fa04b22c98811abb))
+
+
+### Documentation
+
+* case study — CGIS on a 12-repository estate ([#286](https://github.com/zaebee/codegraph-brain/issues/286)) ([cdfe6a3](https://github.com/zaebee/codegraph-brain/commit/cdfe6a3c8751768b03d3b31e8f1d66f3c770070e))
+
 ## [0.5.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.4.0...codegraph-brain-v0.5.0) (2026-07-30)
 
 
