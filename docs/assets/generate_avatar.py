@@ -16,7 +16,6 @@ Rendered at 400px for upload and 40px to check legibility at comment size.
 """
 
 import pathlib
-import sys
 
 import cairosvg
 
@@ -99,7 +98,7 @@ v3 = (
 HERE = pathlib.Path(__file__).parent
 # Variants land in a gitignored scratch dir; only the chosen one is versioned,
 # so re-running this never litters docs/assets.
-VARIANTS = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else HERE / "_variants"
+VARIANTS = HERE / "_variants"
 VARIANTS.mkdir(parents=True, exist_ok=True)
 
 CHOSEN = "v3-lit-path"
