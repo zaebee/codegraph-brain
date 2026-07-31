@@ -267,6 +267,76 @@ def test_cyclic_domain_proposal_emits_baseline_and_round_trips(tmp_path: Path) -
     assert all(r.status != "gate_failed" for r in analysis.reports)
 
 
+def _layered_dag_depth2(prefix: str) -> tuple[list[Node], list[Edge]]:
+    """A graph binding ``layered_dag`` (021D .5 / 021C .5) with a max DAG depth of 2.
+
+    ``root -> m1``, ``root -> m2``, ``m1 -> leaf`` yields exactly two connected
+    triads — ``(root, m1, m2)`` is 021D and ``(root, m1, leaf)`` is 021C — which
+    is the layered_dag ideal, while the longest path is only two hops.
+    """
+    nodes: list[Node] = []
+    for mod in (f"{prefix}.root", f"{prefix}.m1", f"{prefix}.m2", f"{prefix}.leaf"):
+        nodes += module_with_funcs(mod, f"{mod.replace('.', '/')}.py", 4)
+    edges = [
+        Edge(id="ld1", source=f"{prefix}.root", target=f"{prefix}.m1", type=EdgeType.IMPORTS),
+        Edge(id="ld2", source=f"{prefix}.root", target=f"{prefix}.m2", type=EdgeType.IMPORTS),
+        Edge(id="ld3", source=f"{prefix}.m1", target=f"{prefix}.leaf", type=EdgeType.IMPORTS),
+    ]
+    return nodes, edges
+
+
+def test_shallow_layered_dag_proposal_has_no_depth_violation(tmp_path: Path) -> None:
+    """A 2-deep layered_dag must not be flagged against the template's min_depth 3 (#229).
+
+    The layered_dag template declares ``params: {min_depth: 3}`` and a
+    ``dag_depth: {min: $min_depth}`` gate.  A domain whose measured depth is 2 is
+    still a legitimate layered DAG (there is no meaningful third layer), so
+    init-ontology must pin the measured depth as a per-domain ``params`` override
+    the same way it acknowledges hygiene breaches at baseline.  Without the
+    override the very first drift report on a fresh repo says
+    ``dag_depth 2.0 < min 3.0``.
+    """
+    db = str(tmp_path / "shallow.db")
+    nodes, edges = _layered_dag_depth2("app.web")
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)
+
+    text = propose_ontology(db, min_nodes=5, depth=2)
+    assert "expected_pattern: layered_dag" in text, "fixture must bind layered_dag"
+
+    out = tmp_path / "p.yaml"
+    out.write_text(text)
+    analysis = analyze_drift(db, str(out))
+
+    depth_violations = [v for r in analysis.reports for v in r.violations if "dag_depth" in v]
+    assert depth_violations == [], f"proposal flags its own graph: {depth_violations}"
+
+
+def test_deep_layered_dag_proposal_keeps_template_default(tmp_path: Path) -> None:
+    """A domain meeting the template's min_depth gets no params override (#229).
+
+    The override is an acknowledgement of measured shallowness, not a blanket
+    opt-out: a 3-deep chain already satisfies ``min_depth: 3``, so pinning it
+    would only lower the bar for future regressions.
+    """
+    db = str(tmp_path / "deep.db")
+    nodes: list[Node] = []
+    for mod in ("app.web.l0", "app.web.l1", "app.web.l2", "app.web.l3", "app.web.side"):
+        nodes += module_with_funcs(mod, f"{mod.replace('.', '/')}.py", 4)
+    edges = [
+        Edge(id="d1", source="app.web.l0", target="app.web.l1", type=EdgeType.IMPORTS),
+        Edge(id="d2", source="app.web.l1", target="app.web.l2", type=EdgeType.IMPORTS),
+        Edge(id="d3", source="app.web.l2", target="app.web.l3", type=EdgeType.IMPORTS),
+        Edge(id="d4", source="app.web.l0", target="app.web.side", type=EdgeType.IMPORTS),
+    ]
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)
+
+    text = propose_ontology(db, min_nodes=5, depth=2)
+    domain_block = text.split("project_domains:", maxsplit=1)[-1]
+    assert "min_depth" not in domain_block, "no override expected when the gate is already met"
+
+
 # ---------------------------------------------------------------------------
 # _baseline_lines: operator-aware rounding (#221 review, spec §2.2)
 # ---------------------------------------------------------------------------

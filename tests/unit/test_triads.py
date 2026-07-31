@@ -1,5 +1,7 @@
 """Tests for the 13-class connected triad census (spec §3.1/§3.2)."""
 
+import random
+
 import pytest
 
 from cgis.core.models import Edge, EdgeType
@@ -232,3 +234,81 @@ def test_tangle_weights_align_with_triad_order() -> None:
     # The MAN first digit per class, derived from the name itself.
     expected = tuple(int(name[0]) for name in TRIAD_ORDER)
     assert expected == _TANGLE_WEIGHTS
+
+
+# ---------------------------------------------------------------------------
+# networkx cross-validation (#147)
+# ---------------------------------------------------------------------------
+#
+# The only real bug of the Part B epic (#144) was a 120D↔120U inversion in
+# _TRICODES.  The plan's hand-built fixtures had two swapped graph/label pairs,
+# the implementer "corrected" the (already correct) table to match them, and all
+# 22 unit tests passed misleadingly.  It was caught by an ad-hoc cross-check
+# against networkx that was run once in review and then discarded.
+#
+# Hand-built fixtures are not ground truth for a 64-entry lookup table; an
+# independent implementation is.  networkx is a DEV-only dependency — the whole
+# point of triads.py is zero networkx at runtime.
+
+try:
+    import networkx as nx
+
+    _HAS_NETWORKX = True
+except ImportError:  # pragma: no cover - exercised only without the dev extra
+    _HAS_NETWORKX = False
+
+# skipif, not importorskip: a module-level importorskip would skip this whole
+# file, silently taking the other 57 triad tests down with it.
+_needs_networkx = pytest.mark.skipif(
+    not _HAS_NETWORKX, reason="networkx is a dev-only cross-check dependency"
+)
+
+
+def _random_digraph(seed: int, n_nodes: int, p: float) -> list[tuple[str, str]]:
+    """Return a deterministic random edge list over ``n_nodes`` labelled nodes."""
+    rng = random.Random(seed)
+    return [
+        (f"n{i}", f"n{j}")
+        for i in range(n_nodes)
+        for j in range(n_nodes)
+        if i != j and rng.random() < p
+    ]
+
+
+@_needs_networkx
+@pytest.mark.parametrize("seed", range(30))
+def test_triad_census_matches_networkx(seed: int) -> None:
+    """Our census must equal networkx's over the 13 connected classes.
+
+    Seeded and deterministic — no flaky randomness.  Re-introducing the
+    120D↔120U swap in ``_TRICODES`` (indices [23]↔[43]) makes this fail.
+    """
+    n_nodes = 12
+    edge_pairs = _random_digraph(seed, n_nodes, p=0.2)
+    node_ids = {f"n{i}" for i in range(n_nodes)}
+
+    ours = triad_census(node_ids, [_e(s, t) for s, t in edge_pairs], EdgeType.CALLS)
+
+    graph = nx.DiGraph()
+    graph.add_nodes_from(sorted(node_ids))
+    graph.add_edges_from(edge_pairs)
+    theirs = nx.triadic_census(graph)
+
+    expected = {name: theirs[name] for name in TRIAD_ORDER}
+    assert ours == expected, f"seed={seed} diverges from networkx"
+
+
+def test_networkx_crosscheck_covers_every_connected_class() -> None:
+    """The 30-graph corpus must actually exercise all 13 classes, not just the easy ones.
+
+    Without this, the cross-check could silently degrade into testing only the
+    sparse classes if the generator or its parameters ever changed.
+    """
+    seen: set[str] = set()
+    for seed in range(30):
+        edge_pairs = _random_digraph(seed, 12, p=0.2)
+        node_ids = {f"n{i}" for i in range(12)}
+        census = triad_census(node_ids, [_e(s, t) for s, t in edge_pairs], EdgeType.CALLS)
+        seen.update(name for name, count in census.items() if count > 0)
+    missing = set(TRIAD_ORDER) - seen
+    assert not missing, f"corpus never produces these classes: {sorted(missing)}"

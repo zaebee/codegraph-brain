@@ -207,3 +207,82 @@ def test_project_level_binding_observe_only() -> None:
     assert b["fqn_prefix"] == "quotient"
     assert b["enforce"] is False
     assert b["expected_pattern"] in data["patterns"]
+
+
+# ---------------------------------------------------------------------------
+# Drift-tolerance ratchet (#151)
+# ---------------------------------------------------------------------------
+
+TOLERANCES_LOCK_PATH = PATTERNS_PATH.parent / "tolerances.lock"
+
+_TOLERANCE_SECTIONS = ("project_domains", "project_level")
+
+
+def _current_tolerances() -> dict[str, dict[str, float]]:
+    """Return {section: {domain_name: drift_tolerance}} as declared in patterns.yaml."""
+    config = _load()
+    return {
+        section: {
+            entry["name"]: float(entry["drift_tolerance"])
+            for entry in (config.get(section) or [])
+            if "drift_tolerance" in entry
+        }
+        for section in _TOLERANCE_SECTIONS
+    }
+
+
+def _locked_tolerances() -> dict[str, dict[str, float]]:
+    """Return {section: {domain_name: locked_tolerance}} from tolerances.lock."""
+    locked = yaml.safe_load(TOLERANCES_LOCK_PATH.read_text()) or {}
+    return {
+        section: {name: float(value) for name, value in (locked.get(section) or {}).items()}
+        for section in _TOLERANCE_SECTIONS
+    }
+
+
+def test_tolerances_lock_exists() -> None:
+    """The ratchet lock must be committed alongside patterns.yaml."""
+    assert TOLERANCES_LOCK_PATH.exists(), f"missing ratchet lock: {TOLERANCES_LOCK_PATH}"
+
+
+def test_tolerances_lock_covers_exactly_the_declared_domains() -> None:
+    """Lock keys and patterns.yaml keys must match exactly, in both directions.
+
+    A domain missing from the lock would dodge the ratchet entirely — including
+    via rename, which otherwise reads as "old domain deleted, new domain added".
+    A stale lock entry is dead weight that hides which bound is still live.
+    """
+    current, locked = _current_tolerances(), _locked_tolerances()
+    for section in _TOLERANCE_SECTIONS:
+        unlocked = sorted(set(current[section]) - set(locked[section]))
+        assert not unlocked, (
+            f"{section}: {unlocked} declare a drift_tolerance but are absent from "
+            f"{TOLERANCES_LOCK_PATH.name} — add them at their current value"
+        )
+        stale = sorted(set(locked[section]) - set(current[section]))
+        assert not stale, (
+            f"{section}: {stale} are locked but no longer declared in patterns.yaml — "
+            f"remove them from {TOLERANCES_LOCK_PATH.name}"
+        )
+
+
+def test_tolerances_never_exceed_the_lock() -> None:
+    """drift_tolerance is a ratchet: values may only go DOWN (#140/#141, #151).
+
+    Raising a tolerance masks a regression. Lowering one is the whole point, and
+    requires updating tolerances.lock in the same PR so the change lands in the
+    diff where a reviewer sees it.
+    """
+    current, locked = _current_tolerances(), _locked_tolerances()
+    raised = [
+        f"{section}.{name}: {value:.2f} > locked {locked[section][name]:.2f}"
+        for section in _TOLERANCE_SECTIONS
+        for name, value in current[section].items()
+        if name in locked[section] and value > locked[section][name] + 1e-9
+    ]
+    assert not raised, (
+        "drift_tolerance may only ratchet DOWN; these were raised:\n  "
+        + "\n  ".join(raised)
+        + f"\nIf this is a deliberate re-baseline, update {TOLERANCES_LOCK_PATH.name} "
+        "and justify it in the PR description."
+    )

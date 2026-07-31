@@ -9,7 +9,9 @@ measured values plus a margin — green by construction on the same graph.
 import math
 import tempfile
 from collections import Counter
+from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -203,6 +205,61 @@ def _floor2(x: float) -> float:
     return math.floor(x * 100) / 100
 
 
+@lru_cache(maxsize=1)
+def _bundled_templates() -> dict[str, Any]:
+    """Return the ``patterns:`` block of the bundled header we are about to emit.
+
+    Parsed from ``_DEFAULT_ONTOLOGY_HEADER`` rather than from the repo's own
+    patterns.yaml so the generated overrides can never disagree with the
+    generated templates — both come from the same string.
+    """
+    raw = yaml.safe_load(_DEFAULT_ONTOLOGY_HEADER) or {}
+    patterns = raw.get("patterns") or {}
+    return patterns if isinstance(patterns, dict) else {}
+
+
+def _depth_param_override(template_name: str, measured_depth: int) -> str | None:
+    """Return a ``params:`` line pinning a shallower-than-declared min depth (#229).
+
+    ``layered_dag`` gates ``dag_depth: {min: $min_depth}`` with a declared default
+    of 3, but plenty of real architectures have exactly two meaningful layers
+    (``types → registry → content`` and JSX component trees both bottom out at 2).
+    Emitting the template default unqualified makes the very first drift report on
+    a fresh repo read ``dag_depth 2.0 < min 3.0`` — a violation that is
+    architecturally wrong and erodes trust in the tool on first use.
+
+    Pinning the *measured* depth mirrors ``_baseline_lines``: acknowledge what is
+    there, keep the gate live for future regressions.  Domains that already clear
+    the declared default get no override — the bar stays where the template put it.
+
+    Args:
+        template_name: Name of the bound template (e.g. ``"layered_dag"``).
+        measured_depth: The domain's measured ``dag_depth``.
+
+    Returns:
+        A YAML ``params:`` line, or None when the template declares no
+        ``$param``-driven depth gate or the domain already meets it.
+    """
+    template = _bundled_templates().get(template_name) or {}
+    constraint = template.get("dag_depth")
+    if not isinstance(constraint, dict) or "min" not in constraint:
+        return None
+
+    reference = constraint["min"]
+    if not (isinstance(reference, str) and reference.startswith("$")):
+        return None  # a literal bound is not overridable via params
+
+    param = reference[1:]
+    declared = (template.get("params") or {}).get(param)
+    if declared is None or measured_depth >= float(declared):
+        return None
+
+    return (
+        f"    params: {{{param}: {measured_depth}}}"
+        f"  # measured depth — {measured_depth} layers is this domain's real shape"
+    )
+
+
 def _hygiene_score(
     fp: PatternFingerprint, prefix: str, scorer: DriftScorer, profile: str | None
 ) -> float:
@@ -329,6 +386,14 @@ def _domain_entry(
         )
         lines.append(f"    expected_pattern: {best_name}")
     lines.append(f"    profile: {profile}{profile_suffix}")
+
+    # A labeled domain shallower than its template's declared depth gate pins the
+    # measured depth, so the proposal stays green on its own graph (#229).
+    if reason is None:
+        depth_override = _depth_param_override(best_name, fp.dag_depth)
+        if depth_override is not None:
+            lines.append(depth_override)
+
     lines.append(f"    drift_tolerance: {tolerance:.2f}  {comment}")
 
     # Emit hygiene_baseline for any measured value that breaches the GLOBAL hygiene bound
