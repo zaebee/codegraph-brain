@@ -1,6 +1,7 @@
 """Unit tests for the MCP server tools."""
 
 import json
+import os
 import re
 from pathlib import Path
 
@@ -885,3 +886,24 @@ def test_ingest_still_accepts_an_existing_database(tmp_path: Path) -> None:
     result = cgis_ingest(str(tmp_path), str(db), full_rebuild=True)
 
     assert "✅" in result
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses directory permissions")
+def test_ingest_reports_an_unreadable_path_instead_of_raising(tmp_path: Path) -> None:
+    """The guard runs before cgis_ingest's own try/except, so it must not raise.
+
+    `Path.is_dir()` and friends propagate OSError (a PermissionError on the
+    parent, for one). Without handling, that escapes the MCP tool as a crash
+    rather than a message the agent can act on.
+    """
+    (tmp_path / "mod.py").write_text("def fn(): pass\n", encoding="utf-8")
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    (locked / "graph.db").write_text("junk", encoding="utf-8")
+    locked.chmod(0o000)
+    try:
+        result = cgis_ingest(str(tmp_path), str(locked / "graph.db"))
+    finally:
+        locked.chmod(0o755)
+
+    assert "❌" in result

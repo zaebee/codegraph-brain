@@ -106,22 +106,32 @@ def _reject_db_path(db_path: str) -> str | None:
     never wanted), a directory target, and an existing file that is not a
     database. The last is belt-and-braces — SQLite already declines to open a
     non-database — but it fails with a message that says why.
+
+    The filesystem probes are wrapped: this runs *before* ``cgis_ingest``'s own
+    try/except, and ``Path.is_dir()`` and friends propagate ``OSError`` (a
+    ``PermissionError`` on the parent, say), which would escape the tool as a
+    crash instead of a message the agent can act on.
     """
     path = Path(db_path)
     if path.suffix not in _DB_SUFFIXES:
         allowed = ", ".join(sorted(_DB_SUFFIXES))
         return f"❌ Refusing db_path '{db_path}': name must end in one of {allowed}."
-    if path.is_dir():
-        return f"❌ Refusing db_path '{db_path}': it is a directory."
-    if not path.parent.is_dir():
-        return (
-            f"❌ Refusing db_path '{db_path}': parent directory does not exist. "
-            "cgis will not create one."
-        )
-    if path.is_file() and path.stat().st_size > 0:
-        with path.open("rb") as fh:
-            if fh.read(len(_SQLITE_MAGIC)) != _SQLITE_MAGIC:
-                return f"❌ Refusing db_path '{db_path}': existing file is not a SQLite database."
+    try:
+        if path.is_dir():
+            return f"❌ Refusing db_path '{db_path}': it is a directory."
+        if not path.parent.is_dir():
+            return (
+                f"❌ Refusing db_path '{db_path}': parent directory does not exist. "
+                "cgis will not create one."
+            )
+        if path.is_file() and path.stat().st_size > 0:
+            with path.open("rb") as fh:
+                if fh.read(len(_SQLITE_MAGIC)) != _SQLITE_MAGIC:
+                    return (
+                        f"❌ Refusing db_path '{db_path}': existing file is not a SQLite database."
+                    )
+    except OSError as exc:
+        return f"❌ Refusing db_path '{db_path}': path is inaccessible ({exc})."
     return None
 
 
