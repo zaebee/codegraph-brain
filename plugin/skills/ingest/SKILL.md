@@ -1,6 +1,8 @@
 ---
+name: ingest
 description: Build or refresh the CGIS code graph for this repository
 argument-hint: "[source path — defaults to autodetected]"
+disable-model-invocation: true
 ---
 
 Build the CGIS semantic graph for this repository so the `cgis_*` tools can answer structural questions.

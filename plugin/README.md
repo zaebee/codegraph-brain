@@ -7,7 +7,7 @@ Gives Claude a deterministic semantic graph of your codebase instead of flat tex
 /plugin install cgis@codegraph-brain
 ```
 
-Then, in any repository, run `/cgis-ingest` once to build the graph.
+Then, in any repository, run `/cgis:ingest` once to build the graph.
 
 ## What it ships
 
@@ -15,7 +15,7 @@ Then, in any repository, run `/cgis-ingest` once to build the graph.
 | :--- | :--- |
 | MCP server `cgis` | 13 tools: impact analysis, flow tracing, structure, symbol search, metrics, architectural drift, authz reachability |
 | Skill `cgis` | Teaches the agent *when* to query the graph instead of reading files |
-| Command `/cgis-ingest` | Builds the graph on first use and reports what it found |
+| Skill `/cgis:ingest`  | Builds the graph on first use and reports what it found |
 
 ## What it does on your machine
 
