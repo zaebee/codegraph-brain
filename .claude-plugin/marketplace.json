@@ -1,0 +1,31 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "codegraph-brain",
+  "description": "Code Graph Intelligence for AI agents — a deterministic semantic graph of your codebase, exposed as MCP tools.",
+  "owner": {
+    "name": "Andrey G",
+    "url": "https://github.com/zaebee"
+  },
+  "plugins": [
+    {
+      "name": "cgis",
+      "source": "./plugin",
+      "description": "Gives Claude a deterministic semantic graph of your codebase instead of flat text. Exact callers, real blast radius, and scoped context in a few hundred tokens rather than whole files.",
+      "version": "0.6.0",
+      "category": "development",
+      "author": {
+        "name": "Andrey G",
+        "url": "https://github.com/zaebee"
+      },
+      "homepage": "https://github.com/zaebee/codegraph-brain",
+      "tags": [
+        "code-graph",
+        "static-analysis",
+        "impact-analysis",
+        "architecture",
+        "python",
+        "typescript"
+      ]
+    }
+  ]
+}

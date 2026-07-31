@@ -74,6 +74,19 @@ cgis impact "my_module.core_function" --depth 5
 
 ---
 
+## 🔌 Install as a Claude Code plugin
+
+The fastest path — no config files, no paths to wire up:
+
+```bash
+/plugin marketplace add zaebee/codegraph-brain
+/plugin install cgis@codegraph-brain
+```
+
+That ships the MCP server, a skill that teaches the agent *when* to query the graph instead of reading files, and `/cgis-ingest` to build the graph on first use. The server is pulled from PyPI on demand via `uvx`, so there is nothing to clone or build.
+
+---
+
 ## 🤖 Agent Integration (MCP)
 
 CGIS is designed to be plugged into your AI workflow via the **Model Context Protocol (MCP)**. Once running, your agent gains "Superpowers":
