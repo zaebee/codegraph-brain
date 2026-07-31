@@ -301,9 +301,7 @@ def _resolve_cli_fqn(store: SQLiteStore, target: str, kind: str) -> str:
             console.print(f"[bold red]❌ {kind} not found in graph:[/bold red] {escape(target)}")
         raise typer.Exit(code=1)
     if resolution.via_suffix:
-        console.print(
-            f"[dim]Resolved '{escape(target)}' → '{escape(str(resolution.resolved))}'[/dim]"
-        )
+        console.print(f"[dim]Resolved '{escape(target)}' → '{escape(resolution.resolved)}'[/dim]")
     return resolution.resolved
 
 
@@ -1226,7 +1224,7 @@ def context(
             raise typer.Exit(code=1)
         if resolution.via_suffix:
             err_console.print(
-                f"[dim]Resolved '{escape(fqn)}' → '{escape(str(resolution.resolved))}'[/dim]"
+                f"[dim]Resolved '{escape(fqn)}' → '{escape(resolution.resolved)}'[/dim]"
             )
         payload = build_context(store, resolution.resolved, depth=depth, source_root=source_root)
     typer.echo(payload)
@@ -1338,7 +1336,7 @@ def _resolve_checkpoint(store: SQLiteStore, target: str) -> str:
         raise typer.Exit(code=1)
     if resolution.via_suffix:
         err_console.print(
-            f"[dim]Resolved '{escape(target)}' → '{escape(str(resolution.resolved))}'[/dim]"
+            f"[dim]Resolved '{escape(target)}' → '{escape(resolution.resolved)}'[/dim]"
         )
     return resolution.resolved
 
