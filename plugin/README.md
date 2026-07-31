@@ -42,3 +42,4 @@ Extractors exist for **Python** and **TypeScript** (`.py`, `.ts`, `.tsx`). Other
 - Source: [github.com/zaebee/codegraph-brain](https://github.com/zaebee/codegraph-brain)
 - Package: [pypi.org/project/codegraph-brain](https://pypi.org/project/codegraph-brain/)
 - Licence: MIT
+- Privacy: [PRIVACY.md](https://github.com/zaebee/codegraph-brain/blob/main/PRIVACY.md) — nothing is collected

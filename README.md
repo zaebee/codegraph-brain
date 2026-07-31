@@ -185,6 +185,12 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
 
 ---
 
+## 🔒 Privacy
+
+CGIS collects nothing: no telemetry, no analytics, no account. Your code and the graph built from it stay on your machine. See [PRIVACY.md](PRIVACY.md).
+
+---
+
 ## 🛠️ Development
 
 ### Requirements
