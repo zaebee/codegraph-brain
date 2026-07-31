@@ -2,7 +2,7 @@
   "name": "cgis",
   "displayName": "CGIS — Code Graph Intelligence",
   "version": "0.6.0",
-  "description": "Gives Claude a deterministic semantic graph of your codebase instead of flat text. Exact callers, real blast radius, and scoped context in a few hundred tokens rather than whole files.",
+  "description": "Gives Claude a deterministic semantic graph of your codebase instead of flat text — exact callers, real blast radius, and scoped context in a few hundred tokens rather than whole files. Runs fully locally: on first use it fetches the open-source codegraph-brain package from PyPI via uvx, then analyses your code on your machine. No hooks, no telemetry, nothing sent anywhere.",
   "author": {
     "name": "Andrey G",
     "url": "https://github.com/zaebee"
