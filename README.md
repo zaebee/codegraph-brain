@@ -185,6 +185,14 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
 
 ---
 
+## 💼 Architecture Audit
+
+CGIS is free and you can run it yourself. If you would rather have the analysis than the tool, I run a fixed-price audit of your codebase's structure — authorisation coverage, blast radius, coupling, architectural drift — delivered in five working days.
+
+**[Read what's included →](docs/AUDIT.md)** — $2,400 fixed, with an explicit list of what the analysis cannot see.
+
+---
+
 ## 🔒 Privacy
 
 CGIS collects nothing: no telemetry, no analytics, no account. Your code and the graph built from it stay on your machine. See [PRIVACY.md](PRIVACY.md).
