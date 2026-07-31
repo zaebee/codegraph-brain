@@ -51,7 +51,6 @@ jobs:
         uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39  # v3
         with:
           enable-cache: true
-          python-version: "3.12"
 
       - name: Build sdist and wheel
         run: uv build
