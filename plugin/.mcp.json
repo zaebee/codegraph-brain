@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "cgis": {
+      "command": "uvx",
+      "args": ["--from", "codegraph-brain>=0.6.0", "cgis-mcp"]
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "cgis",
+  "displayName": "CGIS — Code Graph Intelligence",
+  "version": "0.6.0",
+  "description": "Gives Claude a deterministic semantic graph of your codebase instead of flat text. Exact callers, real blast radius, and scoped context in a few hundred tokens rather than whole files.",
+  "author": {
+    "name": "Andrey G",
+    "url": "https://github.com/zaebee"
+  },
+  "homepage": "https://github.com/zaebee/codegraph-brain",
+  "repository": "https://github.com/zaebee/codegraph-brain",
+  "license": "MIT",
+  "keywords": [
+    "code-graph",
+    "static-analysis",
+    "impact-analysis",
+    "call-graph",
+    "architecture",
+    "python",
+    "typescript"
+  ]
+}
