@@ -31,7 +31,7 @@ The graph lives in `graph.db` in the project root, and every tool resolves that 
 cgis_ingest(project_path="./src")
 ```
 
-Point it at the source root, not the repository root — ingesting `node_modules` or a virtualenv wastes time and pollutes the graph. `/cgis-ingest` does this for you and picks the right path.
+Point it at the source root, not the repository root — ingesting `node_modules` or a virtualenv wastes time and pollutes the graph. `/cgis:ingest` does this for you and picks the right path.
 
 Re-run `cgis_ingest` after any substantial change; it is incremental by default and skips unchanged files. A stale graph is worse than no graph, because it answers confidently and wrongly.
 

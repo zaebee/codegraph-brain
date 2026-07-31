@@ -83,7 +83,7 @@ The fastest path — no config files, no paths to wire up:
 /plugin install cgis@codegraph-brain
 ```
 
-That ships the MCP server, a skill that teaches the agent *when* to query the graph instead of reading files, and `/cgis-ingest` to build the graph on first use. The server is pulled from PyPI on demand via `uvx`, so there is nothing to clone or build.
+That ships the MCP server, a skill that teaches the agent *when* to query the graph instead of reading files, and `/cgis:ingest` to build the graph on first use. The server is pulled from PyPI on demand via `uvx`, so there is nothing to clone or build.
 
 ---
 
