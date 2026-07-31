@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.1](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.7.0...codegraph-brain-v0.7.1) (2026-07-31)
+
+
+### Documentation
+
+* add privacy policy ([#293](https://github.com/zaebee/codegraph-brain/issues/293)) ([33e45c2](https://github.com/zaebee/codegraph-brain/commit/33e45c2623d6d4a4c05106631fe2815ce1acf62e))
+* add the architecture audit offering ([#296](https://github.com/zaebee/codegraph-brain/issues/296)) ([086396d](https://github.com/zaebee/codegraph-brain/commit/086396dbfa569a5091439811d6ec00e1b094386f))
+
 ## [0.7.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.6.0...codegraph-brain-v0.7.0) (2026-07-31)
 
 
