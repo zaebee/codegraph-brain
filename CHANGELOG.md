@@ -7,6 +7,7 @@
 
 * **ci:** install guardian deps with --extra, not --group ([#300](https://github.com/zaebee/codegraph-brain/issues/300)) ([1da003d](https://github.com/zaebee/codegraph-brain/commit/1da003d811db8e60201693905a6f83c2fccf48cf))
 * **cli:** escape data interpolated into Rich console output ([#298](https://github.com/zaebee/codegraph-brain/issues/298)) ([dd4943d](https://github.com/zaebee/codegraph-brain/commit/dd4943d0fea1100b47130fcb0790e940da83276a))
+* **drift:** pin measured depth when a domain is shallower than its gate ([#297](https://github.com/zaebee/codegraph-brain/issues/297)) ([1ebb93a](https://github.com/zaebee/codegraph-brain/commit/1ebb93a888037af5ad333ddffc7896af61f6eb5e)), closes [#229](https://github.com/zaebee/codegraph-brain/issues/229)
 
 
 ### Documentation
