@@ -29,7 +29,9 @@ jobs:
         continue-on-error: true
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
         with:
-          app-id: ${{ vars.CGIS_APP_ID }}
+          # Accepted from either store: the App ID is not sensitive, so a repo
+          # variable is conventional, but it is commonly filed as a secret.
+          app-id: ${{ vars.CGIS_APP_ID || secrets.CGIS_APP_ID }}
           private-key: ${{ secrets.CGIS_APP_PRIVATE_KEY }}
 
       - name: Run release-please
@@ -62,7 +64,9 @@ jobs:
         continue-on-error: true
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
         with:
-          app-id: ${{ vars.CGIS_APP_ID }}
+          # Accepted from either store: the App ID is not sensitive, so a repo
+          # variable is conventional, but it is commonly filed as a secret.
+          app-id: ${{ vars.CGIS_APP_ID || secrets.CGIS_APP_ID }}
           private-key: ${{ secrets.CGIS_APP_PRIVATE_KEY }}
 
       - name: Checkout the release branch
