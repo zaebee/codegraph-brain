@@ -176,8 +176,13 @@ Show the structural layout (CONTAINS/DECLARES) of a module or class.
 Scan a local directory, extract all symbols, resolve links, and build the graph DB.
 
     Use this to initialise or refresh the code knowledge graph for a project.
-    Paths are normalised relative to the workspace root so the database is
+    Node FQNs are normalised relative to the workspace root so the graph is
     portable across machines.
+
+    ``db_path`` must name a database — it has to end in ``.db``, ``.sqlite`` or
+    ``.sqlite3``, live in a directory that already exists, and not point at an
+    existing file that is not a SQLite database. cgis will not create parent
+    directories.
 
     By default the ingest is **incremental**: only changed/new files are
     re-scanned, and the summary reports both what changed this run and the
