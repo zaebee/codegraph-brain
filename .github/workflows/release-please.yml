@@ -5,14 +5,15 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
-permissions:
-  contents: write
-  pull-requests: write
-
 jobs:
   release-please:
     name: Release Please
     runs-on: ubuntu-latest
+    permissions:
+      # Scoped to this job only: the publish job below must never inherit
+      # write access to the repository.
+      contents: write
+      pull-requests: write
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
@@ -56,7 +57,9 @@ jobs:
         run: uv build
 
       - name: Verify metadata
-        run: uvx twine check dist/*
+        # Pinned and wheel-only: this job holds publish rights, so the tooling
+        # it pulls in must not be a floating version that can run setup scripts.
+        run: uvx --no-build --from "twine==7.0.0" twine check dist/*
 
       - name: Verify version matches the tag
         env:
