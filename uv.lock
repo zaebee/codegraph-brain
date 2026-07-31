@@ -261,7 +261,7 @@ wheels = [
 
 [[package]]
 name = "codegraph-brain"
-version = "0.4.0"
+version = "0.5.0"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
@@ -277,8 +277,21 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+all = [
+    { name = "cohere" },
+    { name = "duckdb" },
+    { name = "google-genai" },
+    { name = "mistralai" },
+    { name = "ollama" },
+]
 analytics = [
     { name = "duckdb" },
+]
+guardian = [
+    { name = "cohere" },
+    { name = "google-genai" },
+    { name = "mistralai" },
+    { name = "ollama" },
 ]
 
 [package.dev-dependencies]
@@ -294,18 +307,17 @@ dev = [
     { name = "ruff" },
     { name = "types-pyyaml" },
 ]
-guardian = [
-    { name = "cohere" },
-    { name = "google-genai" },
-    { name = "mistralai" },
-    { name = "ollama" },
-]
 
 [package.metadata]
 requires-dist = [
+    { name = "codegraph-brain", extras = ["analytics", "guardian"], marker = "extra == 'all'" },
+    { name = "cohere", marker = "extra == 'guardian'", specifier = ">=5.0.0" },
     { name = "duckdb", marker = "extra == 'analytics'", specifier = ">=1.1.0" },
+    { name = "google-genai", marker = "extra == 'guardian'", specifier = ">=0.8.0" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "mcp", extras = ["cli"], specifier = ">=2" },
+    { name = "mistralai", marker = "extra == 'guardian'", specifier = ">=1.0.0" },
+    { name = "ollama", marker = "extra == 'guardian'", specifier = ">=0.3.0" },
     { name = "pydantic", specifier = ">=2.13.4" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "rich", specifier = ">=15.0.0" },
@@ -315,7 +327,7 @@ requires-dist = [
     { name = "tree-sitter-typescript", specifier = ">=0.23.2" },
     { name = "typer", specifier = ">=0.26.7" },
 ]
-provides-extras = ["analytics"]
+provides-extras = ["analytics", "guardian", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -329,12 +341,6 @@ dev = [
     { name = "pytest-cov", specifier = ">=7.1.0" },
     { name = "ruff", specifier = ">=0.15.16" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20260518" },
-]
-guardian = [
-    { name = "cohere", specifier = ">=5.0.0" },
-    { name = "google-genai", specifier = ">=0.8.0" },
-    { name = "mistralai", specifier = ">=1.0.0" },
-    { name = "ollama", specifier = ">=0.3.0" },
 ]
 
 [[package]]
