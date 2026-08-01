@@ -18,6 +18,12 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          # Full history: the scanner computes new-code metrics by diffing against
+          # the base branch, and a depth-1 clone makes it log
+          #   WARN Could not find ref 'main' in refs/heads, refs/remotes…
+          # which silently degrades every new_* metric, new_coverage included.
+          fetch-depth: 0
 
       - name: Setup uv
         uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39  # v3
