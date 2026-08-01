@@ -659,7 +659,7 @@ something written above.
 
 ### The instrumentation works
 
-| | |
+| measurement | result |
 |---|---|
 | cost per cycle | **$0.0028** before the context fix, **$0.0056** after |
 | prompt tokens | 1560 → **8112**, identical across all replicates (CV = 0.000) |
@@ -767,7 +767,7 @@ human-written issue, sometimes verbatim.
 
 Twice now, apparent purposefulness has been a property of the input:
 
-| | looked like | was |
+| cycle batch | looked like | was |
 |---|---|---|
 | before aura #247 | focused on the persistence layer | could see 53 of 420 files — nothing else to propose |
 | after aura #247 | consistently diagnoses the top problem | echoing an open issue |
