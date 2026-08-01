@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.10.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.9.0...codegraph-brain-v0.10.0) (2026-08-01)
+
+
+### Features
+
+* **guardian:** kinship-grouped axis batches behind GUARDIAN_FEATURES=axes_paired ([#334](https://github.com/zaebee/codegraph-brain/issues/334)) ([7951dcb](https://github.com/zaebee/codegraph-brain/commit/7951dcb60a2fff2f232b144af76043a9d06d3eee))
+* **guardian:** per-axis review fan-out behind GUARDIAN_FEATURES=axes ([#333](https://github.com/zaebee/codegraph-brain/issues/333)) ([ada3205](https://github.com/zaebee/codegraph-brain/commit/ada3205e54433356f3a1e9ef4944ed5475ed2d7c)), closes [#331](https://github.com/zaebee/codegraph-brain/issues/331)
+
+
+### Documentation
+
+* **spec:** record the Arm A result — fails its gate, and shows the mechanism ([#330](https://github.com/zaebee/codegraph-brain/issues/330)) ([af8d543](https://github.com/zaebee/codegraph-brain/commit/af8d543fb656af233a961ef081bc8fed5f4331a0))
+
 ## [0.9.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.8.0...codegraph-brain-v0.9.0) (2026-08-01)
 
 
