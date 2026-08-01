@@ -22,6 +22,9 @@ project_domains:
   store: 0.15
   providers: 0.15
   utils: 0.15
+  guardian: 0.26
+  cli: 0.28
+  api: 0.21
 
 project_level:
   cgis-project: 0.15
