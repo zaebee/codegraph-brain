@@ -198,3 +198,17 @@ async def test_paired_flag_makes_two_calls_not_seven(tmp_path: Path) -> None:
     await run_axis_review(provider=provider, collector=collector, skeptic_provider=None)
 
     assert len(provider.prompts) == len(AXIS_GROUPS) == 2
+
+
+def test_focus_group_tolerates_spacing() -> None:
+    """A stray space must not surface as a KeyError inside prompt building.
+
+    Our own producer joins without spaces, so this is hardening rather than a
+    bug fix — but `focus_group` is a public context key and the failure mode was
+    a raw KeyError on ' logic'.
+    """
+    spaced = PromptBuilder().build_user_prompt({"diff": "D", "focus_group": "logic, ontology"})
+
+    assert FOCUS_AREAS["logic"] in spaced
+    assert FOCUS_AREAS["ontology"] in spaced
+    assert FOCUS_AREAS["type_safety"] not in spaced

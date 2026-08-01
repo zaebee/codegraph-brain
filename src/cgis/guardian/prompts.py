@@ -157,8 +157,13 @@ observe-only — do NOT flag it.
         # `focus_group` carries the axes for this call, comma-separated. Absent =
         # every axis, which renders exactly the text the inline block used to be.
         group = context.get("focus_group")
+        # Whitespace-tolerant: the only producer joins without spaces, but this is
+        # a public context key and a stray space would surface as a KeyError deep
+        # inside prompt building rather than as anything a caller could act on.
         focus_areas_section = (
-            render_group(tuple(group.split(","))) if group else render_focus_areas()
+            render_group(tuple(part.strip() for part in group.split(",")))
+            if group
+            else render_focus_areas()
         )
 
         return f"""Review the following Pull Request diff for real defects.
