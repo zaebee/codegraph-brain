@@ -1,5 +1,7 @@
 """Unit tests for SymbolIndex and IndexBuilder."""
 
+import pytest
+
 from cgis.core.models import Node, NodeNamespace, NodeType
 from cgis.resolver.indices import IndexBuilder
 
@@ -131,3 +133,58 @@ def test_normalized_file_path_from_node_and_fallback() -> None:
     assert index.normalized_file_path("mod.f", None) == "pkg/mod.py"
     assert index.normalized_file_path("missing", "./x/y.py") == "x/y.py"
     assert index.normalized_file_path("missing", None) is None
+
+
+# ---------------------------------------------------------------------------
+# Index immutability and has_node (#183 items 5 and 7)
+# ---------------------------------------------------------------------------
+
+
+def test_index_mappings_reject_writes() -> None:
+    """A stray write must raise, not silently corrupt resolution for every later lookup.
+
+    The dataclass being frozen only stops field *rebinding*; before this the
+    contained dicts were mutable and "never mutated after construction" was a
+    convention held by comment alone.
+    """
+    index = IndexBuilder().build([_node("mod.fn")])
+
+    for name in (
+        "nodes",
+        "global_symbols",
+        "file_global_symbols",
+        "class_methods",
+        "variable_symbols",
+        "file_variable_symbols",
+        "file_imports",
+        "suffix_map",
+    ):
+        mapping = getattr(index, name)
+        with pytest.raises(TypeError):
+            mapping["injected"] = "value"  # type: ignore[index]
+
+
+def test_index_root_sets_are_frozen() -> None:
+    """The two root sets are frozensets, so `.add()` is not available at all."""
+    index = IndexBuilder().build([_node("mod.fn")])
+
+    assert isinstance(index.internal_roots, frozenset)
+    assert isinstance(index.external_roots, frozenset)
+
+
+def test_index_still_reads_normally_through_the_views() -> None:
+    """Read-only views must not change lookup behaviour."""
+    index = IndexBuilder().build([_node("mod.fn")])
+
+    assert index.nodes["mod.fn"].name == "fn"
+    assert "mod.fn" in index.nodes
+    assert index.nodes.get("absent") is None
+    assert list(index.global_symbols) == ["fn"]
+
+
+def test_has_node_reports_membership() -> None:
+    """has_node replaces callers reaching into `.nodes` for a membership test."""
+    index = IndexBuilder().build([_node("mod.fn")])
+
+    assert index.has_node("mod.fn") is True
+    assert index.has_node("mod.missing") is False

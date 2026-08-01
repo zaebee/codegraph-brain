@@ -3,7 +3,9 @@
 import builtins
 import os
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 
 from cgis.core.models import SELF_PREFIX, Node, NodeNamespace, NodeType
 
@@ -15,30 +17,37 @@ class SymbolIndex:
     """Immutable lookup indices over the extracted node set.
 
     Built by IndexBuilder, consumed by SymbolResolver and ResolverEngine.
-    Frozen by convention (field rebinding prevented); the contained dicts
-    are never mutated after construction.
+
+    Immutable in substance, not only by convention: the dataclass prevents
+    field rebinding, and ``IndexBuilder`` hands over read-only views, so a
+    stray write (a cache line added to a shared index, say) raises instead of
+    silently corrupting resolution for every later lookup (#183).
+
+    The views are shallow — the inner ``list``/``dict`` values are still
+    mutable. Deep-freezing would mean copying every one of them on a hot path;
+    the realistic mistake this guards is adding or replacing a top-level key.
     """
 
     # node id (FQN) -> Node
-    nodes: dict[str, Node]
+    nodes: Mapping[str, Node]
     # name -> list of FQNs
-    global_symbols: dict[str, list[str]]
+    global_symbols: Mapping[str, list[str]]
     # (file_path, name) -> list of FQNs (list handles conditional redefinitions)
-    file_global_symbols: dict[tuple[str, str], list[str]]
+    file_global_symbols: Mapping[tuple[str, str], list[str]]
     # class_fqn -> {method_name -> method_fqn}
-    class_methods: dict[str, dict[str, str]]
+    class_methods: Mapping[str, dict[str, str]]
     # DI-alias (VARIABLE) indices for raw_dep: resolution; kept separate
     # from global_symbols so call resolution behavior does not change.
-    variable_symbols: dict[str, list[str]]
-    file_variable_symbols: dict[tuple[str, str], list[str]]
+    variable_symbols: Mapping[str, list[str]]
+    file_variable_symbols: Mapping[tuple[str, str], list[str]]
     # normalized file_path -> {local_alias: target_fqn}  (from FILE node import_map)
-    file_imports: dict[str, dict[str, str]]
+    file_imports: Mapping[str, dict[str, str]]
     # suffix_fqn -> [full_node_ids]  (handles src/ layout prefix mismatch)
-    suffix_map: dict[str, list[str]]
+    suffix_map: Mapping[str, list[str]]
     # top-level root segments of all internal nodes (for classify)
-    internal_roots: set[str]
+    internal_roots: frozenset[str]
     # root segments of absolute imports (anything else is UNKNOWN)
-    external_roots: set[str]
+    external_roots: frozenset[str]
 
     def map_to_node_fqn(self, imported_fqn: str) -> str | None:
         """Resolve an imported FQN to an actual node in the graph.
@@ -64,6 +73,14 @@ class SymbolIndex:
             if candidate in self.nodes:
                 return candidate
         return None
+
+    def has_node(self, fqn: str) -> bool:
+        """True if the graph holds a node with this exact FQN.
+
+        Saves callers reaching into ``nodes`` for a membership test, which is
+        the one place the index's internals leaked (#183).
+        """
+        return fqn in self.nodes
 
     def classify_fqn(self, fqn: str) -> NodeNamespace:
         """Classify an FQN as STDLIB, INTERNAL, EXTERNAL, or UNKNOWN.
@@ -145,17 +162,19 @@ class IndexBuilder:
             # "src.cgis.pipeline.X" → suffix "cgis.pipeline.X" also points to the node
             self._add_node_to_suffix_map(node.id, suffix_map, internal_roots)
 
+        # Read-only views, not copies: MappingProxyType wraps in O(1), so this
+        # buys write protection without touching ingest cost (#183).
         return SymbolIndex(
-            nodes=nodes_by_id,
-            global_symbols=global_symbols,
-            file_global_symbols=file_global_symbols,
-            class_methods=class_methods,
-            variable_symbols=variable_symbols,
-            file_variable_symbols=file_variable_symbols,
-            file_imports=file_imports,
-            suffix_map=suffix_map,
-            internal_roots=internal_roots,
-            external_roots=self._build_external_roots(file_imports),
+            nodes=MappingProxyType(nodes_by_id),
+            global_symbols=MappingProxyType(global_symbols),
+            file_global_symbols=MappingProxyType(file_global_symbols),
+            class_methods=MappingProxyType(class_methods),
+            variable_symbols=MappingProxyType(variable_symbols),
+            file_variable_symbols=MappingProxyType(file_variable_symbols),
+            file_imports=MappingProxyType(file_imports),
+            suffix_map=MappingProxyType(suffix_map),
+            internal_roots=frozenset(internal_roots),
+            external_roots=frozenset(self._build_external_roots(file_imports)),
         )
 
     def _add_node_to_suffix_map(
