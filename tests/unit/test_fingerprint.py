@@ -11,6 +11,7 @@ from cgis.pipeline import IngestionPipeline
 from cgis.query.drift.fingerprint import (
     FingerprintExtractor,
     PatternFingerprint,
+    _follow_forwarding,
     _reattributed_imports,
 )
 from cgis.query.drift.triads import TRIAD_ORDER
@@ -660,3 +661,22 @@ def test_reexported_module_resolves_to_the_module_not_its_package() -> None:
     ]
 
     assert "d.leaf" in _reattributed_targets(nodes, edges, "d.a")
+
+
+def test_reexport_cycle_terminates() -> None:
+    """Two modules forwarding the same name to each other must not hang.
+
+    The docstring claimed the visited set handles this; review pointed out it
+    was never tested. Both the mutual and the self-referential shape resolve to
+    the symbol they started from, which `_definer_for` then discards.
+    """
+    mutual = {"d.a": {"T": "d.b.T"}, "d.b": {"T": "d.a.T"}}
+    assert _follow_forwarding(mutual, "d.a.T") == "d.a.T"
+
+    self_ref = {"d.a": {"T": "d.a.T"}}
+    assert _follow_forwarding(self_ref, "d.a.T") == "d.a.T"
+
+
+def test_dotless_symbol_is_not_a_forward() -> None:
+    """A top-level name has no `via` part, so it cannot be a passthrough."""
+    assert _follow_forwarding({"d.a": {"T": "d.b.T"}}, "Thing") is None
