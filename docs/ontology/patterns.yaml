@@ -165,24 +165,23 @@ project_domains:
     drift_tolerance: 0.26 # v2 measured 0.2282; dag_depth 5 clears the template's min 3
                           # (runner-up dispatcher 0.34 — a clear win, not a coin flip)
 
+  # cli and api are hygiene-only by rule, not by taste: neither has ANY
+  # intra-domain IMPORTS edge (cli is one file, api is two), so there is no
+  # import structure for a pattern to describe. A label would rest entirely on
+  # intra-file call topology, which is not what the alphabet measures.
+  # `api` made that especially plain — it best-fits pure_utility ("called by
+  # many; depends on nothing") while importing 16 internal modules and being
+  # imported by none. Every multi-file domain here has a populated IMPORTS
+  # layer; these two do not, and are labelled accordingly.
   - name: "cli"
     fqn_prefix: "cgis.cli"
-    expected_pattern: dispatcher
     profile: python
-    # Weakly determined label, recorded rather than papered over:
-    #   ranking distance  dispatcher 0.2468 vs orchestrator 0.2500 — a near-tie
-    #   shape residual    0.46, so the fit-quality report (#177) will advise
-    #                     "no template fits" on this domain
-    # Kept labelled anyway: command dispatch is the honest reading of a Typer
-    # entry point, and cgis.extractors has carried the same advisory at a WORSE
-    # residual (0.52) since it was bound. Revisit if cli.py is ever split.
-    drift_tolerance: 0.28
+    drift_tolerance: 0.03 # hygiene-only; measured 0.00 (no cycles, nothing unresolved)
 
   - name: "api"
     fqn_prefix: "cgis.api"
-    expected_pattern: pure_utility
     profile: python
-    drift_tolerance: 0.21 # v2 measured 0.1742 (MCP tools are leaf handlers over the store)
+    drift_tolerance: 0.03 # hygiene-only; measured 0.00
 
   # TypeScript graph (ingest root: ui/src → components/Foo.tsx = components.Foo)
   - name: "components"
