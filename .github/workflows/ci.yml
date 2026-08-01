@@ -10,6 +10,11 @@ jobs:
   python-ci:
     name: Python Verification
     runs-on: ubuntu-latest
+    # Job level, not step level: a step's own `env` block is not reliably visible
+    # to that same step's `if`, and a condition that silently never fires is a
+    # gate that looks like protection and is not.
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
@@ -43,4 +48,26 @@ jobs:
         run: uv run --frozen mypy src
 
       - name: Pytest
-        run: uv run --frozen pytest --cov=cgis --cov-report=term-missing
+        # xml alongside term-missing: the console form is for a human reading the
+        # log, the XML is the only form SonarCloud can import.
+        run: uv run --frozen pytest --cov=cgis --cov-report=term-missing --cov-report=xml
+
+      - name: SonarQube Cloud scan
+        # Inert until SONAR_TOKEN exists, so this can land before the migration.
+        # Coverage cannot be imported by Automatic Analysis at all — see #317 —
+        # so the token must be added only AFTER Automatic Analysis is switched
+        # off in the SonarCloud UI, or the two modes conflict.
+        if: env.SONAR_TOKEN != ''
+        uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f  # v8.2.1
+        with:
+          # Passed as args rather than a committed sonar-project.properties:
+          # SonarCloud treats that file as a signal to disable Automatic
+          # Analysis, which would break the working setup the moment this
+          # merges rather than when the migration is actually performed.
+          args: >
+            -Dsonar.projectKey=zaebee_codegraph-brain
+            -Dsonar.organization=zaebee
+            -Dsonar.sources=src,scripts
+            -Dsonar.tests=tests
+            -Dsonar.python.version=3.12
+            -Dsonar.python.coverage.reportPaths=coverage.xml
