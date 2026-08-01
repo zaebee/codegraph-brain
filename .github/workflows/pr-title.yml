@@ -1,0 +1,51 @@
+name: PR Title
+
+# The repository squash-merges, so the PR title becomes the commit subject that
+# release-please parses. A title it does not recognise is dropped from the
+# changelog silently — no warning, no failure. That has now happened twice:
+# #297 ("drift trust batch: …", a descriptive title) and #313
+# ("security(mcp): …", a type that does not exist), the second of which would
+# have shipped a security fix invisibly.
+on:
+  pull_request:
+    branches: [ main ]
+    # `edited` matters: without it, fixing a rejected title would not re-run
+    # the check. Kept in a separate workflow from ci.yml so retitling does not
+    # replay the whole test suite.
+    types: [ opened, edited, reopened, synchronize ]
+
+permissions: {}
+
+jobs:
+  conventional-title:
+    name: Conventional commit title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the title release-please will parse
+        env:
+          # Never interpolate an untrusted title straight into `run:` — it is
+          # attacker-controlled text. Through the environment it is just data.
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          # Types release-please understands. Anything else is dropped from the
+          # changelog without complaint, which is the failure being prevented.
+          TYPES='feat|fix|docs|chore|style|refactor|perf|test|build|ci|revert'
+          if printf '%s' "$PR_TITLE" | grep -qE "^($TYPES)(\([a-z0-9._/-]+\))?!?: .+"; then
+            printf '::notice::PR title is a conventional commit.\n'
+            exit 0
+          fi
+          printf '::error::PR title is not a conventional commit: %s\n' "$PR_TITLE"
+          cat >&2 <<'MSG'
+
+          This repository squash-merges, so the PR title becomes the commit
+          subject release-please reads. An unrecognised type is dropped from the
+          CHANGELOG silently.
+
+          Expected:  <type>(<optional scope>): <description>
+          Types:     feat fix docs chore style refactor perf test build ci revert
+
+          Note there is no `security` type — use `fix` with a scope:
+              fix(mcp): validate db_path before cgis_ingest creates a database
+          MSG
+          exit 1
