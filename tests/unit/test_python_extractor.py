@@ -773,3 +773,37 @@ def test_a_name_mentioned_only_in_a_docstring_is_still_a_reexport(
     code = 'from pkg.other import Thing as Thing\n\ndef go():\n    """Mentions Thing."""\n'
 
     assert _reexports(extractor, code) == {"Thing": "pkg.other.Thing"}
+
+
+def test_nested_annotation_string_is_a_use(extractor: PythonExtractor) -> None:
+    """`list["Store"]` counts, because the grammar wraps each element in its own `type`.
+
+    Review raised this as a likely false positive on the assumption that the
+    string's parent would be `subscript`. It is not: tree-sitter nests
+    generic_type -> type_parameter -> type -> string, so the immediate-parent
+    check already covers it. Pinned so a future refactor cannot quietly break it.
+    """
+    code = 'from pkg.store import Store\n\ndef go(s: list["Store"]) -> None:\n    pass\n'
+
+    assert _reexports(extractor, code) == {}
+
+
+def test_attribute_name_does_not_count_as_a_use(extractor: PythonExtractor) -> None:
+    """`o.thing` mentions `thing` without using the import of that name."""
+    code = "from pkg.other import thing as thing\n\ndef go(o):\n    return o.thing\n"
+
+    assert _reexports(extractor, code) == {"thing": "pkg.other.thing"}
+
+
+def test_keyword_argument_name_does_not_count_as_a_use(extractor: PythonExtractor) -> None:
+    """`f(thing=1)` likewise — the keyword is not the imported symbol."""
+    code = "from pkg.other import thing as thing\n\ndef go(f):\n    return f(thing=1)\n"
+
+    assert _reexports(extractor, code) == {"thing": "pkg.other.thing"}
+
+
+def test_object_side_of_an_attribute_is_a_use(extractor: PythonExtractor) -> None:
+    """Only the attribute half is excluded — `thing.attr` genuinely uses `thing`."""
+    code = "from pkg.other import thing as thing\n\ndef go():\n    return thing.attr\n"
+
+    assert _reexports(extractor, code) == {}

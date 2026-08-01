@@ -45,7 +45,19 @@ def _identifiers_outside_imports(root: BaseNode, code_bytes: bytes) -> set[str]:
         if node.type in ("import_statement", "import_from_statement"):
             continue
         if node.type == "identifier":
-            used.add(code_bytes[node.start_byte : node.end_byte].decode("utf8"))
+            # `o.thing` and `f(thing=1)` mention `thing` without using the imported
+            # name — counting them would let an unrelated attribute or keyword
+            # silence a real re-export of that name. Only the `attribute`/`name`
+            # field is excluded; the object side of `o.thing` is a genuine use.
+            parent = node.parent
+            shadowed = parent is not None and (
+                (parent.type == "attribute" and parent.child_by_field_name("attribute") == node)
+                or (
+                    parent.type == "keyword_argument" and parent.child_by_field_name("name") == node
+                )
+            )
+            if not shadowed:
+                used.add(code_bytes[node.start_byte : node.end_byte].decode("utf8"))
         elif node.type == "string" and node.parent is not None and node.parent.type == "type":
             # A forward-reference annotation — `store: "SQLiteStore | None"` — holds
             # no identifier nodes, so without this a TYPE_CHECKING import used only
