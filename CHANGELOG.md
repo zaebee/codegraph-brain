@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.7.5...codegraph-brain-v0.8.0) (2026-08-01)
+
+
+### Features
+
+* **ontology:** bind guardian, cli and api as measured domains ([#325](https://github.com/zaebee/codegraph-brain/issues/325)) ([e7678e8](https://github.com/zaebee/codegraph-brain/commit/e7678e899bf09e5567ea1fa19180835984b652c9))
+
 ## [0.7.5](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.7.4...codegraph-brain-v0.7.5) (2026-08-01)
 
 
