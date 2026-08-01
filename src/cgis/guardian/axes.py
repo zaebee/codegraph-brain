@@ -27,7 +27,7 @@ import structlog
 from cgis.guardian.collector import ContextCollector
 from cgis.guardian.core import finder_pass
 from cgis.guardian.findings import Finding, ReviewResult, dedup_findings
-from cgis.guardian.prompts import FOCUS_AREAS
+from cgis.guardian.prompts import AXIS_GROUPS, PER_AXIS_GROUPS
 from cgis.guardian.providers.base import BaseProvider
 from cgis.guardian.skeptic import apply_judgements, judge_all, skeptic_status_for
 
@@ -35,7 +35,7 @@ log = structlog.getLogger(__name__)
 
 
 async def _axis_pass(
-    provider: BaseProvider, context: dict[str, str], axis: str
+    provider: BaseProvider, context: dict[str, str], label: str, axes: tuple[str, ...]
 ) -> ReviewResult | None:
     """Run the finder for one axis; None when that axis's call fails.
 
@@ -43,9 +43,9 @@ async def _axis_pass(
     orchestrator puts around each chunk.
     """
     try:
-        return await finder_pass(provider, {**context, "focus_axis": axis})
+        return await finder_pass(provider, {**context, "focus_group": ",".join(axes)})
     except Exception:
-        log.warning("Axis finder call failed; axis skipped.", axis=axis, exc_info=True)
+        log.warning("Axis finder call failed; group skipped.", group=label, exc_info=True)
         return None
 
 
@@ -64,13 +64,15 @@ async def run_axis_review(
     finding is real.
     """
     context = collector.collect_all()
-    axes = list(FOCUS_AREAS)
+    # "axes" = one call per axis; "axes_paired" = kinship batches (#331 follow-up).
+    groups = AXIS_GROUPS if "axes_paired" in collector.features else PER_AXIS_GROUPS
+    axes = list(groups)
 
     semaphore = asyncio.Semaphore(concurrency)
 
     async def guarded(axis: str) -> ReviewResult | None:
         async with semaphore:
-            return await _axis_pass(provider, context, axis)
+            return await _axis_pass(provider, context, axis, groups[axis])
 
     results = await asyncio.gather(*(guarded(axis) for axis in axes))
 
