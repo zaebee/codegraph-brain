@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.5](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.7.4...codegraph-brain-v0.7.5) (2026-08-01)
+
+
+### Documentation
+
+* **spec:** record what changed for [#258](https://github.com/zaebee/codegraph-brain/issues/258) — fixture, second lever, pre-registered gate ([#322](https://github.com/zaebee/codegraph-brain/issues/322)) ([fca8da8](https://github.com/zaebee/codegraph-brain/commit/fca8da8120a7542a71c875d9a960df615f59594e))
+
 ## [0.7.4](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.7.3...codegraph-brain-v0.7.4) (2026-08-01)
 
 
