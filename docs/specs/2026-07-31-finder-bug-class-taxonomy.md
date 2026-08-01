@@ -153,3 +153,93 @@ Steps 2–4 need a provider key, which is why they are not done here.
   instructions (we have no such capability in the finder).
 - Copying rule text verbatim — the source is Apache-2.0 Go/agentic tooling for a
   different stack; #258 asks for the taxonomy only.
+
+---
+
+# Addendum — 2026-08-01: the experiment is now runnable, and a second intervention appeared
+
+Three things changed after this document was written. None of them changes the
+conclusion above (**still nothing shipped to `prompts.py`**), but two of them
+change what the deciding experiment should measure.
+
+## 1. The top gap now has a fixture
+
+When the table above was written, the Security-Sensitive Code row was **absent**
+with no ground truth to test it against; only Resource Management (pr-278) had
+one. `benchmarks/guardian/pr-313.yaml` (#315) now carries a real security defect:
+
+    dangling-symlink-write-primitive   (major, category: security)
+
+A `.db` symlink whose target does not exist defeats a path guard —
+`is_file()` is False for a dangling link, so the magic-byte check never runs and
+SQLite creates the target. Reproduced by execution, not mined from dialogue.
+
+`category: security` was added to `Category` with that fixture. The finder prompt
+does **not** offer it — that is this document's subject and still unshipped.
+Scoring is unaffected: `_entry_accepts` compares file and line range, never
+category.
+
+So the experiment can now measure both evidenced gaps rather than one.
+
+## 2. A second, better-evidenced intervention: exculpating guards
+
+Production runs on 2026-07-31 produced a failure mode this document does not
+consider, because it is not a missing class — it is a defect in the classes that
+already exist.
+
+On PR #297 the finder returned **12** "Unvalidated dictionary access" findings
+against code that validates with `isinstance` one line above the use. On #313 it
+returned "floating-point comparison may be flaky" on a line carrying an explicit
+`+ 1e-9`. Both trace to focus-area wording that names a *shape* and never names
+the guard that makes an instance a non-finding:
+
+> **Unvalidated external data** — … used as a `dict`/… **without first checking
+> its type or presence**
+
+The finder matches the shape and does not check whether the guard is present.
+
+This matters for sequencing: **adding classes to a checklist that already
+over-fires multiplies noise.** The precision fix should be measured first, or at
+least separately — otherwise a recall gain from new classes and a noise change
+from the rewrite arrive in the same number and neither can be attributed.
+
+It is also the cheaper experiment. It needs no new fixture: if adding an
+exculpating clause to each existing focus area lowers `noise` without lowering
+`matched` on the current corpus, that is the whole result.
+
+## 3. Replay already exists
+
+This document says steps 2–4 "need a provider key". True, but worth stating
+plainly for whoever picks this up: the *machinery* is not missing.
+`uv run --frozen python scripts/guardian_bench.py --replay-finder <recording.json>`
+freezes a finder set and judges it, and `load_finder_recording` strips prior
+verdicts on read so arms stay comparable.
+(#302 was filed claiming this was absent and has been closed as redundant.)
+
+The only blocker is credentials.
+
+## Pre-registered gate
+
+Writing pass/fail criteria before spending money is what made the chunked-review
+no-go mechanical rather than motivated (#160). Same discipline here.
+
+**Arm A — exculpating-guard rewrite** (no new classes):
+1. mean `noise` per PR drops by ≥ 25% against the frozen baseline
+2. `matched` does not drop on any PR
+3. pr-141, the noise probe, does not regress
+
+**Arm B — class checklist** (security, concurrency, resource, error-handling;
+compact named classes, no per-class few-shot, per #247):
+1. pr-278 `gemini-client-never-closed` OR pr-313 `dangling-symlink-write-primitive`
+   is matched at least once in three runs — the hypothesis must show where it matters
+2. no PR drops more than 0.05 below its baseline recall
+3. mean noise does not exceed the Arm A result
+
+Ship each arm only on its own gate. If Arm B passes only with Arm A applied,
+say so explicitly rather than reporting the combined delta.
+
+## Still out of scope
+
+Unchanged from above, plus: do not run Arm B before Arm A has a number. The
+float few-shot regression happened because two effects were entangled in one
+measurement.
