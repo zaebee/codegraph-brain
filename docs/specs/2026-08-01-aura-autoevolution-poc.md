@@ -222,6 +222,12 @@ heterogeneity, which is expected to dominate the variance.
 - **Arm A** — current Aggregator.
 - **Arm B** — `cgis context`-derived package.
 
+**Arm configuration must be byte-identical apart from the intervention** —
+model, temperature, timeouts, retry policy, env vars, resource limits, logging
+verbosity. Any of these moves token consumption on its own, and a difference
+there produces a win that evaporates on deployment. Record the diff of the two
+configs with the results; it should contain exactly the Aggregator swap.
+
 ### Gate 0 — precondition, costs no LLM spend
 
 Must all hold before Arm A/B spending begins:
@@ -230,12 +236,24 @@ Must all hold before Arm A/B spending begins:
       durably for **≥ 20 baseline cycles** (append-only; not the
       overwritten `HIVE_STATE.md` field)
 - [ ] baseline coefficient of variation reported
-- [ ] **if** detecting a 25% shift at that CV needs more pairs than the cost cap
-      affords → **do not run.** Record "underpowered at budget" and stop.
-      Power is defined against the decision rule actually used below, not a
-      separate significance test: **≥ 80% probability that the 90% bootstrap CI
-      upper bound falls under 1.0 when the true reduction is 25%.** Estimate it
-      by resampling the baseline cycles; report the number of pairs it implies.
+- [ ] **run a 5-pair pilot and measure the paired log-ratio spread directly.**
+      Power in a paired design turns on `Var(ln B − ln A)`, which depends on the
+      A–B correlation — and baseline cycles are Arm A only, so that correlation
+      cannot be estimated from them. Resampling Arm A independently to stand in
+      for Arm B assumes zero correlation and would inflate the required N
+      absurdly. **Do not paper over this with an assumed ρ.** A borrowed
+      constant here is the same defect as a borrowed Hill coefficient: a magic
+      number standing where a measurement belongs. Five pairs (~25% of the N=20
+      budget) removes the assumption instead of parameterising it, and Gate 0
+      already contemplates not running at all — a pilot is cheaper than a wrong N.
+      Pilot pairs are **discarded**, not folded into the verdict sample.
+- [ ] **if** detecting a 25% shift at the measured paired spread needs more
+      pairs than the cost cap affords → **do not run.** Record "underpowered at
+      budget" and stop. Power is defined against the decision rule actually used
+      below, not a separate significance test: **≥ 80% probability that the 90%
+      bootstrap CI upper bound falls under 1.0 when the true reduction is 25%.**
+      Budget for the median's ~⅓ efficiency loss against the mean (see Primary):
+      that cost is paid here, in pairs, and is the price of a fixed estimator.
 - [ ] **pin the cgis version** used for the drift and I/O gates, and record it
       with the results. Both arms must be measured on the same build.
       Precedent from this session: 25b2ce6 (#329) changed the IMPORTS census,
@@ -247,22 +265,58 @@ Must all hold before Arm A/B spending begins:
 
 ### Criteria — fixed before any spend
 
-- **Primary (must pass):** median prompt tokens per cycle,
-  **Arm B ≤ 0.75 × Arm A**, with the upper bound of the 90% bootstrap CI on
-  the ratio **< 1.0**.
-- **Guardrail (must not regress):** proposal acceptance — fraction of proposed
-  improvements clearing deterministic preflight (tests + mypy + ruff + drift).
-  **Arm B ≥ max(Arm A − 10 pp, 0.75 × Arm A).** The stricter of the two binds,
-  so there is no discretion at verdict time. The relative floor exists because
-  a flat 10 pp is meaningless at a low baseline — at Arm A = 12% it would permit
-  2%, a 83% relative collapse; `max()` binds at 9% there. At Arm A = 80% the
-  absolute term binds at 70%.
-- **Hard constraints (any breach = FAIL, no discussion):** drift status no
-  worse than baseline on every domain; zero new direct-I/O edges outside the
-  Connector; no mutation touching the immutable list in §4.
+- **Primary (must pass):** the **paired** log ratio
+  `d_i = ln(tokens_B,i / tokens_A,i)`, bootstrapped **by resampling pairs**.
+  PASS when the 90% CI upper bound on `exp(median(d))` is **< 1.0** *and* the
+  point estimate is **≤ 0.75**.
 
-**N = 20 pairs.** **Cost cap: a hard USD figure, agreed before the first
-call, enforced outside the agent process.**
+  Two things this fixes. First, an earlier draft specified a ratio of two
+  independently-computed medians, which discards the pairing — the one property
+  the design was built to exploit. Second, the estimator is the **median** of
+  `d_i`, not the mean, and the reason is pre-registration rather than skew: the
+  estimator must be fixed before the data, so it is not permissible to see one
+  wild pair and switch. Under a fixed choice, robustness beats efficiency. The
+  ~⅓ efficiency loss is real and is paid in pairs at Gate 0, not argued away.
+
+- **Guardrail (must not regress), both terms:**
+  1. **Acceptance rate** — fraction of proposed improvements clearing
+     deterministic preflight (tests + mypy + ruff + drift).
+     **Arm B ≥ max(Arm A − 10 pp, 0.75 × Arm A).** The stricter binds, so there
+     is no discretion at verdict time. The relative floor exists because a flat
+     10 pp is meaningless at a low baseline — at Arm A = 12% it would permit 2%,
+     an 83% relative collapse; `max()` binds at 9% there. At Arm A = 80% the
+     absolute term binds at 70%.
+  2. **Accepted proposals per cycle** (absolute throughput).
+     **Arm B ≥ 0.80 × Arm A.**
+
+  The second term exists because the first is a *ratio* and cannot see an
+  intervention that cuts tokens by cutting the volume or ambition of proposals
+  rather than their quality: propose three things instead of ten, keep the same
+  acceptance fraction, bank the token saving, deliver less work. That is a
+  clean false PASS against every other criterion here, and it is the same
+  degenerate-solution family as §2's "propose nothing" — which is why F is
+  never scored without a throughput term beside it.
+
+- **Hard constraints (any breach = FAIL, no discussion):**
+  **`drift_after(domain) ≤ drift_baseline(domain)` for every domain — on the
+  score, not the status band**; zero new direct-I/O edges outside the Connector;
+  no mutation touching the immutable list in §4.
+
+  Score, not status, because status is a coarse band: a domain can degrade
+  substantially inside `clean` or inside `warning` without changing label, and
+  the optimiser would be free to spend exactly that slack — trading structure
+  for tokens, which is the precise failure §2 introduces the constraint to
+  prevent. A pure per-domain ratchet also resolves the mismatch with §2's
+  standing `drift ≤ tolerance`: where baseline is under tolerance the ratchet is
+  strictly tighter and implies it, and where a domain is *already* in breach the
+  ratchet is the only honest demand to make of a single mutation. This is #151's
+  convention applied per experiment.
+
+**N = 20 verdict pairs, plus 5 discarded pilot pairs = 25 paired cycles of
+spend.** The pilot is Gate 0's; it never enters the verdict sample, and if the
+pilot says 20 pairs are not enough, the correct move is to stop, not to top up.
+**Cost cap: a hard USD figure covering all 25, agreed before the first call,
+enforced outside the agent process.**
 
 ### Stopping rule — three outcomes, no fourth
 
