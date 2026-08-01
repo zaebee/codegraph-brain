@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.4](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.7.3...codegraph-brain-v0.7.4) (2026-08-01)
+
+
+### Documentation
+
+* auto-sync architecture graph and MCP reference ([#314](https://github.com/zaebee/codegraph-brain/issues/314)) ([7d5b666](https://github.com/zaebee/codegraph-brain/commit/7d5b66669f9dfa40e2fc86dd59a4baf492a9342e))
+
 ## [0.7.3](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.7.2...codegraph-brain-v0.7.3) (2026-07-31)
 
 
