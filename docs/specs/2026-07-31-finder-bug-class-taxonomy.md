@@ -243,3 +243,86 @@ say so explicitly rather than reporting the combined delta.
 Unchanged from above, plus: do not run Arm B before Arm A has a number. The
 float few-shot regression happened because two effects were entangled in one
 measurement.
+
+---
+
+# Arm A result — 2026-08-01: fails its gate, and shows why
+
+Run with the prod pairing (finder `mistral-medium-latest`, skeptic
+`gemini-2.5-flash`), one run per fixture over all eight, baseline and treatment
+sweeps back to back.
+
+**Treatment:** each of five focus areas gained one clause naming what makes an
+instance *not* a finding — a guard that dominates the use, an existing tolerance
+compare, a test that already reaches the path, `Any` as the honest type of
+parsed data. No per-class few-shot, per #247.
+
+## The gate says no
+
+| PR | noise | matched |
+|---|---|---|
+| 122 | 11 → **19** | 4 → 4 |
+| 140 | 20 → 13 | 6 → **5** |
+| 141 | 7 → **8** | 0 → 0 |
+| 142 | 0 → 0 | 0 → 0 |
+| 143 | 6 → **14** | 4 → **3** |
+| 144 | 6 → 2 | 2 → 2 |
+| 278 | 7 → 7 | 1 → 1 |
+| **313** | 6 → 4 | **0 → 2** |
+
+```
+1. mean noise -25%          FAIL   7.88 -> 8.38  (+6%, wrong direction)
+2. matched drops nowhere    FAIL   pr-140, pr-143
+3. pr-141 does not regress  FAIL   7 -> 8
+```
+
+Three of three. The clauses do not ship.
+
+## The finding inside the failure
+
+**pr-313 went from recall 0.000 to 1.000** — the finder surfaced both security
+defects it had previously missed entirely. That is the fixture added in #315
+precisely because the finder was blind to the class.
+
+And the total is unchanged: **matched 17 → 17**. Two lost on pr-140/143, two
+gained on pr-313. Attention moved; precision did not improve.
+
+That is the same mechanism that killed the float few-shot experiment: the model
+reallocates focus rather than applying an extra criterion. It is worth stating
+plainly because the naive reading of "noise went up, recall moved around" is
+"the change did nothing", and that is not what happened — it did something
+specific and undesired.
+
+## What this implies for Arm B
+
+It strengthens the case for testing Arm B rather than weakening it. If a clause
+that merely *mentions* guards can pull the finder onto a class it was blind to,
+an explicit named class is a more direct instrument for the same effect — and
+Arm B's gate is written around exactly that (pr-278 or pr-313 matched at least
+once in three runs).
+
+It also confirms the sequencing rule already in this document: these two effects
+must not be measured together. Had both shipped at once, the pr-313 gain and the
+pr-140/143 loss would have arrived as one number.
+
+## Honest limits
+
+- **n=1 per arm.** Finder variance on an unchanged diff has been measured at
+  6 → 46 → 36 findings. Criteria 2 and 3 turn on single-finding deltas and are
+  fragile at this sample size. Criterion 1 is the sturdier signal: noise moved
+  the wrong way, by +6% across eight fixtures.
+- Cost: ~1.1M tokens for the two sweeps.
+
+## Why the raw rows are not in results.jsonl
+
+Both arms carry the same `guardian_sha` — the treatment was a working-tree edit,
+never committed — so the rows would be indistinguishable once merged into the
+corpus. The aggregate above is the record. Anyone repeating this should either
+commit the prompt variant behind a flag first, or add an arm label to the
+metrics row.
+
+**Methodology note for whoever repeats this:** the first attempt was ruined by
+launching the sweep twice against one results file, after an empty (buffered)
+log was misread as a dead process. Check for a running bench by process name,
+not by looking at its log; `ps -eo comm,cmd | awk '$1 ~ /^python/ && ...'`
+avoids matching the grep itself.
