@@ -211,8 +211,9 @@ exculpating clause to each existing focus area lowers `noise` without lowering
 
 This document says steps 2–4 "need a provider key". True, but worth stating
 plainly for whoever picks this up: the *machinery* is not missing.
-`guardian_bench.py --replay-finder` freezes a finder set and judges it, and
-`load_finder_recording` strips prior verdicts on read so arms stay comparable.
+`uv run --frozen python scripts/guardian_bench.py --replay-finder <recording.json>`
+freezes a finder set and judges it, and `load_finder_recording` strips prior
+verdicts on read so arms stay comparable.
 (#302 was filed claiming this was absent and has been closed as redundant.)
 
 The only blocker is credentials.
