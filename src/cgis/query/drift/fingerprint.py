@@ -1,6 +1,6 @@
 """PatternFingerprint dataclass and FingerprintExtractor."""
 
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
@@ -136,6 +136,121 @@ def _count_routers(domain_node_ids: set[str], all_edges: list[Edge]) -> int:
     return router_count
 
 
+def _follow_forwarding(reexports: dict[str, dict[str, str]], symbol_fqn: str) -> str | None:
+    """Resolve a symbol through every passthrough hop, or None if it is not forwarded.
+
+    One hop is not enough: `A -> B -> C -> D` with both B and C forwarding would
+    otherwise stop at C and leave the A->D coupling hidden — a two-hop bypass of
+    the very check this implements. The visited set makes a re-export cycle
+    terminate instead of hanging.
+    """
+    via, _, name = symbol_fqn.rpartition(".")
+    forwarded = reexports.get(via, {}).get(name)
+    if forwarded is None:
+        return None
+    seen = {symbol_fqn}
+    while forwarded not in seen:
+        seen.add(forwarded)
+        next_via, _, next_name = forwarded.rpartition(".")
+        next_hop = reexports.get(next_via, {}).get(next_name)
+        if next_hop is None:
+            break
+        forwarded = next_hop
+    return forwarded
+
+
+def _owning_module(fqn: str, modules: set[str]) -> str | None:
+    """Longest prefix of fqn that is a real module node — the fqn itself included.
+
+    `rpartition` alone is wrong at both ends. A forwarded *module*
+    (`from pkg import submodule as submodule`) would resolve to its package, and
+    a symbol nested in a class would resolve to the class — but IMPORTS edges
+    must land on FILE/MODULE nodes or the DAG-depth walk counts something that
+    is not a module.
+    """
+    parts = fqn.split(".")
+    for cut in range(len(parts), 0, -1):
+        candidate = ".".join(parts[:cut])
+        if candidate in modules:
+            return candidate
+    return None
+
+
+def _reattributed_imports(
+    domain_nodes: list[Node],
+    domain_ids: set[str],
+    internal_edges: list[Edge],
+    all_edges: list[Edge],
+) -> list[Edge]:
+    """Add the IMPORTS edges that transparent re-exports hide (#182).
+
+    A passthrough — ``from C import X as X`` in B, with X unused there — lets B
+    absorb C's import edge, so ``A -> B -> C`` measures as a 021C chain when the
+    truth is a 030T triangle. Any N-way coupling can be linearised that way
+    without changing what actually depends on what, which is what makes the
+    IMPORTS layer gameable.
+
+    So the census looks *through* the passthrough: when A takes a name from B
+    that B merely forwards from C, the hidden ``A -> C`` edge is added.
+
+    Two deliberate limits:
+
+    - **Add, never replace.** A may also take a real name from B; dropping
+      ``A -> B`` would trade a hidden edge for a lost one.
+    - **Intra-domain only**, enforced by requiring the definer in ``domain_ids``.
+      A package ``__init__.py`` re-exporting for external consumers is legitimate
+      API surface, and punishing it would teach deep-importing internals to keep
+      the dashboard green.
+    """
+    reexports: dict[str, dict[str, str]] = {
+        n.id: rx for n in domain_nodes if (rx := n.metadata.get("reexports"))
+    }
+    if not reexports:
+        return internal_edges
+
+    modules = {n.id for n in domain_nodes if n.type in (NodeType.FILE, NodeType.MODULE)}
+    taken: dict[str, list[str]] = defaultdict(list)
+    for edge in all_edges:
+        if edge.type == EdgeType.IMPORTS_SYMBOL and edge.source in domain_ids:
+            taken[edge.source].append(edge.target)
+
+    seen_pairs = {(e.source, e.target) for e in internal_edges if e.type == EdgeType.IMPORTS}
+    added: list[Edge] = []
+    for importer, symbols in taken.items():
+        for symbol_fqn in symbols:
+            definer = _definer_for(symbol_fqn, reexports, modules, importer, seen_pairs)
+            if definer is None:
+                continue
+            seen_pairs.add((importer, definer))
+            added.append(
+                Edge(
+                    id=f"{importer}:imports:{definer}:reattributed",
+                    type=EdgeType.IMPORTS,
+                    source=importer,
+                    target=definer,
+                    confidence=1.0,
+                )
+            )
+    return internal_edges + added
+
+
+def _definer_for(
+    symbol_fqn: str,
+    reexports: dict[str, dict[str, str]],
+    modules: set[str],
+    importer: str,
+    seen_pairs: set[tuple[str, str]],
+) -> str | None:
+    """The module a forwarded symbol really lives in, or None if nothing to add."""
+    forwarded = _follow_forwarding(reexports, symbol_fqn)
+    if forwarded is None:
+        return None
+    definer = _owning_module(forwarded, modules)
+    if definer is None or definer == importer or (importer, definer) in seen_pairs:
+        return None
+    return definer
+
+
 class FingerprintExtractor:
     """Compute a PatternFingerprint for a given FQN domain prefix from a SQLiteStore."""
 
@@ -212,7 +327,8 @@ class FingerprintExtractor:
         raw_calls = [e for e in calls_edges if e.target.startswith(RAW_CALL_PREFIX)]
         unresolved_ratio = len(raw_calls) / len(calls_edges) if calls_edges else 0.0
 
-        t_imports = normalized_census(triad_census(domain_ids, internal_edges, EdgeType.IMPORTS))
+        imports_edges = _reattributed_imports(domain_nodes, domain_ids, internal_edges, all_edges)
+        t_imports = normalized_census(triad_census(domain_ids, imports_edges, EdgeType.IMPORTS))
         t_calls = normalized_census(triad_census(domain_ids, internal_edges, EdgeType.CALLS))
 
         return PatternFingerprint(
