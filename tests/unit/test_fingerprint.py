@@ -8,7 +8,11 @@ from conftest import module_with_funcs
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
 from cgis.extractors.python_extractor import PythonExtractor
 from cgis.pipeline import IngestionPipeline
-from cgis.query.drift.fingerprint import FingerprintExtractor, PatternFingerprint
+from cgis.query.drift.fingerprint import (
+    FingerprintExtractor,
+    PatternFingerprint,
+    _reattributed_imports,
+)
 from cgis.query.drift.triads import TRIAD_ORDER
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -609,3 +613,50 @@ def test_reattribution_adds_rather_than_replaces() -> None:
 
     # 030T requires all three edges: engine->symbols, symbols->indices, engine->indices.
     assert fp.t_imports[TRIAD_ORDER.index("030T")] == 1.0
+
+
+def _reattributed_targets(nodes: list[Node], edges: list[Edge], importer: str) -> set[str]:
+    """IMPORTS targets seen by the census for `importer`, including revealed ones."""
+    domain_ids = {n.id for n in nodes}
+    internal = [e for e in edges if e.source in domain_ids and e.target in domain_ids]
+    out = _reattributed_imports(nodes, domain_ids, internal, edges)
+    return {e.target for e in out if e.type == EdgeType.IMPORTS and e.source == importer}
+
+
+def test_chained_reexports_are_followed_to_the_definer() -> None:
+    """Two passthroughs in a row must not be a bypass.
+
+    A -> B -> C -> D where both B and C only forward. Asserting on the edge set
+    rather than a triad share: stopping at C still produces a 030T (from the
+    a-b-c triangle), so a share-based check passes for the wrong reason.
+    """
+    nodes = [
+        _mod("d.a"),
+        _mod("d.b", {"Thing": "d.c.Thing"}),
+        _mod("d.c", {"Thing": "d.dd.Thing"}),
+        _mod("d.dd"),
+    ]
+    edges = [
+        _imports("d.a", "d.b"),
+        _imports("d.b", "d.c"),
+        _imports("d.c", "d.dd"),
+        _imports_symbol("d.a", "d.b.Thing"),
+    ]
+
+    assert "d.dd" in _reattributed_targets(nodes, edges, "d.a")
+
+
+def test_reexported_module_resolves_to_the_module_not_its_package() -> None:
+    """`from pkg import submodule as submodule` forwards a module, not a symbol.
+
+    Taking the parent of the forwarded FQN would name the package; the import
+    actually lands on the submodule.
+    """
+    nodes = [_mod("d.a"), _mod("d.facade", {"leaf": "d.leaf"}), _mod("d.leaf")]
+    edges = [
+        _imports("d.a", "d.facade"),
+        _imports("d.facade", "d.leaf"),
+        _imports_symbol("d.a", "d.facade.leaf"),
+    ]
+
+    assert "d.leaf" in _reattributed_targets(nodes, edges, "d.a")
