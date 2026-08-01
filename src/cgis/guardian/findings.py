@@ -5,7 +5,11 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 Severity = Literal["critical", "major", "minor"]
-Category = Literal["logic", "contract", "tests", "types", "ontology"]
+# "security" exists so curated ground truth can name an exploitable defect (#315).
+# The finder prompt does not yet offer it as a choice — teaching the finder to
+# emit it is #258, and needs bench validation. Scoring is unaffected either way:
+# bench matching compares file and line range, never category.
+Category = Literal["logic", "contract", "tests", "types", "ontology", "security"]
 Verdict = Literal["confirmed", "refuted", "uncertain"]
 
 
