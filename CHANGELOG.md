@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.8.0...codegraph-brain-v0.9.0) (2026-08-01)
+
+
+### Features
+
+* **drift:** look through transparent re-exports in the IMPORTS census ([#329](https://github.com/zaebee/codegraph-brain/issues/329)) ([25b2ce6](https://github.com/zaebee/codegraph-brain/commit/25b2ce6049ae878ebeef05cd47b08dd67faa763d))
+* **extractor:** detect transparent re-exports ([#182](https://github.com/zaebee/codegraph-brain/issues/182) direction 1, slice 1) ([#327](https://github.com/zaebee/codegraph-brain/issues/327)) ([6e6e654](https://github.com/zaebee/codegraph-brain/commit/6e6e654b4ce17c52487507d2d425a4f81045f731))
+
 ## [0.8.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.7.5...codegraph-brain-v0.8.0) (2026-08-01)
 
 
