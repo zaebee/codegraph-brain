@@ -1,6 +1,6 @@
 """PatternFingerprint dataclass and FingerprintExtractor."""
 
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
@@ -136,6 +136,70 @@ def _count_routers(domain_node_ids: set[str], all_edges: list[Edge]) -> int:
     return router_count
 
 
+def _reattributed_imports(
+    domain_nodes: list[Node],
+    domain_ids: set[str],
+    internal_edges: list[Edge],
+    all_edges: list[Edge],
+) -> list[Edge]:
+    """Add the IMPORTS edges that transparent re-exports hide (#182).
+
+    A passthrough — ``from C import X as X`` in B, with X unused there — lets B
+    absorb C's import edge, so ``A -> B -> C`` measures as a 021C chain when the
+    truth is a 030T triangle. Any N-way coupling can be linearised that way
+    without changing what actually depends on what, which is what makes the
+    IMPORTS layer gameable.
+
+    So the census looks *through* the passthrough: when A takes a name from B
+    that B merely forwards from C, the hidden ``A -> C`` edge is added.
+
+    Two deliberate limits:
+
+    - **Add, never replace.** A may also take a real name from B; dropping
+      ``A -> B`` would trade a hidden edge for a lost one.
+    - **Intra-domain only**, enforced by requiring C in ``domain_ids``. A package
+      ``__init__.py`` re-exporting for external consumers is legitimate API
+      surface, and punishing it would teach deep-importing internals to keep the
+      dashboard green.
+    """
+    reexports: dict[str, dict[str, str]] = {
+        n.id: rx for n in domain_nodes if (rx := n.metadata.get("reexports"))
+    }
+    if not reexports:
+        return internal_edges
+
+    # Which symbols each module imports, by importer.
+    taken: dict[str, list[str]] = defaultdict(list)
+    for e in all_edges:
+        if e.type == EdgeType.IMPORTS_SYMBOL and e.source in domain_ids:
+            taken[e.source].append(e.target)
+
+    existing = {(e.source, e.target) for e in internal_edges if e.type == EdgeType.IMPORTS}
+    added: list[Edge] = []
+    for importer, symbols in taken.items():
+        for symbol_fqn in symbols:
+            via, _, name = symbol_fqn.rpartition(".")
+            forwarded = reexports.get(via, {}).get(name)
+            if forwarded is None:
+                continue
+            definer = forwarded.rpartition(".")[0]
+            if definer not in domain_ids or definer == importer:
+                continue
+            if (importer, definer) in existing:
+                continue
+            existing.add((importer, definer))
+            added.append(
+                Edge(
+                    id=f"{importer}:imports:{definer}:reattributed",
+                    type=EdgeType.IMPORTS,
+                    source=importer,
+                    target=definer,
+                    confidence=1.0,
+                )
+            )
+    return internal_edges + added
+
+
 class FingerprintExtractor:
     """Compute a PatternFingerprint for a given FQN domain prefix from a SQLiteStore."""
 
@@ -212,7 +276,8 @@ class FingerprintExtractor:
         raw_calls = [e for e in calls_edges if e.target.startswith(RAW_CALL_PREFIX)]
         unresolved_ratio = len(raw_calls) / len(calls_edges) if calls_edges else 0.0
 
-        t_imports = normalized_census(triad_census(domain_ids, internal_edges, EdgeType.IMPORTS))
+        imports_edges = _reattributed_imports(domain_nodes, domain_ids, internal_edges, all_edges)
+        t_imports = normalized_census(triad_census(domain_ids, imports_edges, EdgeType.IMPORTS))
         t_calls = normalized_census(triad_census(domain_ids, internal_edges, EdgeType.CALLS))
 
         return PatternFingerprint(

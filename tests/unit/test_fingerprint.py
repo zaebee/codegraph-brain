@@ -510,3 +510,102 @@ def test_tangle_ratio_resolved_calls_unchanged() -> None:
     # unresolved_ratio 0 → discount 1 → calls-tangle unchanged (regression guard).
     fp = _tangle_fp(t_calls=_onehot("300"), unresolved_ratio=0.0)
     assert fp.tangle_ratio == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# Transparent re-export re-attribution in the IMPORTS census (#182)
+# ---------------------------------------------------------------------------
+
+
+def _mod(fqn: str, reexports: dict[str, str] | None = None) -> Node:
+    """A FILE node, optionally carrying transparent re-exports."""
+    return Node(
+        id=fqn,
+        type=NodeType.FILE,
+        name=fqn.rsplit(".", maxsplit=1)[-1],
+        file_path=fqn.replace(".", "/") + ".py",
+        start_line=1,
+        end_line=9,
+        metadata={"reexports": reexports} if reexports else {},
+    )
+
+
+def _imports(source: str, target: str) -> Edge:
+    return Edge(id=f"{source}:i:{target}", type=EdgeType.IMPORTS, source=source, target=target)
+
+
+def _imports_symbol(source: str, target: str) -> Edge:
+    return Edge(
+        id=f"{source}:s:{target}", type=EdgeType.IMPORTS_SYMBOL, source=source, target=target
+    )
+
+
+def _census(nodes: list[Node], edges: list[Edge], prefix: str) -> dict[str, float]:
+    """Non-zero IMPORTS triad shares, keyed by class name."""
+    fp = FingerprintExtractor.from_graph(nodes, edges).extract(prefix)
+    return {name: share for name, share in zip(TRIAD_ORDER, fp.t_imports, strict=True) if share}
+
+
+#: The PR #180 shape: engine -> symbols -> indices, with symbols forwarding a
+#: name it never uses from indices. The real dependency graph is a triangle.
+_LAUNDERED_EDGES = [
+    _imports("d.engine", "d.symbols"),
+    _imports("d.symbols", "d.indices"),
+    _imports_symbol("d.engine", "d.symbols.SymbolResolver"),
+    _imports_symbol("d.engine", "d.symbols.IndexBuilder"),
+]
+
+
+def test_passthrough_reexport_measures_as_a_triangle() -> None:
+    """The laundering from #180: a chain on paper, a triangle in truth."""
+    nodes = [
+        _mod("d.engine"),
+        _mod("d.symbols", {"IndexBuilder": "d.indices.IndexBuilder"}),
+        _mod("d.indices"),
+    ]
+
+    assert _census(nodes, _LAUNDERED_EDGES, "d") == {"030T": 1.0}
+
+
+def test_same_shape_without_a_reexport_stays_a_chain() -> None:
+    """Control: identical edges, no forwarding declared — nothing is re-attributed."""
+    nodes = [_mod("d.engine"), _mod("d.symbols"), _mod("d.indices")]
+
+    assert _census(nodes, _LAUNDERED_EDGES, "d") == {"021C": 1.0}
+
+
+def test_reattribution_does_not_reach_outside_the_domain() -> None:
+    """A facade forwarding from another domain is API surface, not laundering.
+
+    Punishing it would teach deep-importing internals to keep the dashboard
+    green, so the definer must be in the same domain for the edge to be added.
+    """
+    nodes = [
+        _mod("d.engine"),
+        _mod("d.facade", {"Thing": "other.core.Thing"}),
+        _mod("d.indices"),
+    ]
+    edges = [
+        _imports("d.engine", "d.facade"),
+        _imports("d.facade", "d.indices"),
+        _imports_symbol("d.engine", "d.facade.Thing"),
+    ]
+
+    assert _census(nodes, edges, "d") == {"021C": 1.0}
+
+
+def test_reattribution_adds_rather_than_replaces() -> None:
+    """The real A->B edge survives alongside the revealed A->C one.
+
+    engine takes SymbolResolver (real) as well as IndexBuilder (forwarded);
+    dropping engine->symbols would trade a hidden edge for a lost one.
+    """
+    nodes = [
+        _mod("d.engine"),
+        _mod("d.symbols", {"IndexBuilder": "d.indices.IndexBuilder"}),
+        _mod("d.indices"),
+    ]
+    fp = FingerprintExtractor.from_graph(nodes, _LAUNDERED_EDGES).extract("d")
+
+    # 030T requires all three edges: engine->symbols, symbols->indices, engine->indices.
+    assert fp.t_imports[TRIAD_ORDER.index("030T")] == 1.0
