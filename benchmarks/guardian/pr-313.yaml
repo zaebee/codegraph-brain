@@ -1,0 +1,43 @@
+# PR 313 — security(mcp): validate db_path before cgis_ingest creates a database.
+# See CURATION.md. First security fixture in the corpus (#315, taxonomy gap #258).
+#
+# Provenance is unusually strong: both findings were REPRODUCED BY EXECUTION on
+# the pre-fix code and re-run after the fix, not mined from review dialogue.
+#
+# head = review head (the snapshot the first review ran on). The three later
+# commits on that branch are the fixes, so replaying the final pull head would
+# make both findings unfindable — CURATION.md erratum on spec §3.1.
+#
+# The two ranges overlap on 114-121. That is inherent rather than sloppy: a
+# reviewer can legitimately anchor the symlink bypass either at the unresolved
+# `Path(db_path)` (110) or at the `is_file()` test where it slips through (121),
+# and the OSError leak sits across the whole probe block. Matching is greedy per
+# entry, so one prediction still consumes only one entry.
+pr: 313
+base: 411f8c5894b6
+head: 2d79671547d4
+findings:
+  - id: dangling-symlink-write-primitive
+    file: src/cgis/api/mcp_server.py
+    lines: [110, 121]
+    severity: major
+    category: security
+    summary: >
+      db_path is validated unresolved, so a `.db` symlink whose target does not
+      exist passes every check — is_file() is False for a dangling link, so the
+      magic-byte test never runs — and SQLite then follows it and creates the
+      target. Demonstrated: a symlink to a non-existent .ssh/authorized_keys was
+      created as a SQLite database (header b'SQLite format 3\x00').
+    source: fix-commit
+  - id: oserror-escapes-the-tool
+    file: src/cgis/api/mcp_server.py
+    lines: [114, 124]
+    severity: minor
+    category: logic
+    summary: >
+      The guard runs before cgis_ingest's own try/except, and Path.is_dir(),
+      .stat() and .open() all propagate OSError, so a PermissionError on the
+      parent directory escapes the MCP tool as a crash instead of a message the
+      agent can act on. Demonstrated with a chmod 000 parent directory.
+    source: fix-commit
+ambiguous: []

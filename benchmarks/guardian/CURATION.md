@@ -206,3 +206,69 @@ Fixed later by human-directed review as #283 (`b2ae97b`), which is the
 Precision is unaffected: `matched` stays 0, so the entry still scores `0/10`. The
 addition supplies a recall signal — a real **0/1** where the empty ground truth
 gave a vacuous 1.0.
+
+## pr-313 (added 2026-08-01, #315) — first security fixture
+
+`security(mcp): validate db_path before cgis_ingest creates a database`.
+
+Provenance is stronger than the rest of the corpus: neither entry was mined from
+review dialogue. Both were **reproduced by execution** on the pre-fix code and
+re-run after the fix.
+
+- `dangling-symlink-write-primitive` (110-121, major, **security**, `fix-commit`
+  `8bcda77`). A `.db` symlink whose target does not exist passes every check —
+  `is_file()` is False for a dangling link, so the magic-byte test never runs —
+  and SQLite then follows it and creates the target. Demonstrated by writing a
+  SQLite header into a non-existent `.ssh/authorized_keys`; refused afterwards.
+- `oserror-escapes-the-tool` (114-124, minor, `logic`, `fix-commit` `72c34eb`).
+  The guard runs before `cgis_ingest`'s own try/except and `Path.is_dir()`,
+  `.stat()`, `.open()` propagate `OSError`, so a `PermissionError` on the parent
+  crashes the MCP tool. Demonstrated with a `chmod 000` parent.
+
+### Why `head` is `2d79671` and not the final pull head
+
+Standard policy, restated because this PR has four commits: `2d79671` is the
+snapshot the first review ran on and the only one where **both** findings are
+present. The later three are the fixes.
+
+### Overlapping ranges are deliberate
+
+The two ranges overlap on 114-121. A reviewer can legitimately anchor the
+symlink bypass either at the unresolved `Path(db_path)` (110) or at the
+`is_file()` test where it slips through (121), and the OSError leak sits across
+the whole probe block. Matching is greedy per entry, so one prediction still
+consumes only one entry.
+
+### Scoring the historical runs would be unfair
+
+Three reviews ran over this PR, but on **different commits** — guardian started
+at 23:38:58, after `72c34eb` had already fixed the OSError defect, so it never
+had a shot at that entry:
+
+| reviewer | commit reviewed | findings | GT available | GT hit |
+|---|---|---|---|---|
+| gemini (1st) | `2d79671` | 1 | 2 | 1 (OSError) |
+| guardian | `72c34eb` | 5 | 1 | 0 |
+| gemini (2nd) | `c90bbf8` | 2 | 1 | 1 (symlink) |
+
+A replay at `head` gives every reviewer both findings, which is the point of
+pinning the review head. The table above must not be read as guardian missing
+two.
+
+### A refuted claim that is deliberately absent
+
+Guardian's `multi-dot suffix` finding on this PR was a false positive — it
+asserted `graph.tar.db` should be rejected, when ending in `.db` is exactly the
+stated policy, and its suggested `path.suffixes` fix would have broken a
+legitimate `my.project.db`. Per the policy above, refuted claims are omitted
+from ground truth entirely rather than filed as `ambiguous`, so that precision
+failures stay observable. Recorded here because the cross-family skeptic
+**confirmed** it (`Verified by gemini-2.5-flash`) — the cleanest example yet of
+a skeptic passing a systematic reasoning error (#246).
+
+### `category: security`
+
+New value, added with this fixture (`findings.py`). The finder prompt does not
+yet offer it — teaching the finder to emit it is #258 and needs bench
+validation. Scoring is unaffected: `_entry_accepts` compares file and line
+range, never category.

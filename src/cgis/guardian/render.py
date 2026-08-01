@@ -11,6 +11,7 @@ _CATEGORY_LABEL = {
     "tests": "Test Coverage",
     "types": "Type Safety",
     "ontology": "Ontology",
+    "security": "Security",
 }
 
 
