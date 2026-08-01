@@ -126,7 +126,7 @@ class ResolverEngine:
 
     def _ensure_virtual_node(self, target: str, virtual_nodes: dict[str, Node]) -> None:
         """Create a virtual boundary node for target if it is not already in the graph."""
-        if target not in self._index.nodes and target not in virtual_nodes:
+        if not self._index.has_node(target) and target not in virtual_nodes:
             virtual_nodes[target] = self._make_virtual_node(
                 target, self._index.classify_fqn(target)
             )
