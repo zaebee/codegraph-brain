@@ -16,6 +16,9 @@ project_domains:
   pipeline: 0.25
   storage: 0.20
   query: 0.20
+  guardian: 0.26
+  cli: 0.03
+  api: 0.03
   components: 0.20
   layout: 0.50
   hooks: 0.15

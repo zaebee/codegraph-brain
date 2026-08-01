@@ -153,6 +153,36 @@ project_domains:
     profile: python
     drift_tolerance: 0.20 # v2 re-baselined ≈0.19 after ontology_init joined the domain (#174) — was ≈0.14/0.18
 
+  # Bound in #182: these three were production code with no architectural gate at
+  # all — 207 of 618 internal nodes (33%) sat outside every domain, guardian alone
+  # accounting for 138. A tool that measures other people's architecture should not
+  # leave a third of its own unmeasured. Tolerances are measured + 0.03 margin via
+  # the init-ontology path, and ratchet DOWN from here like every other domain.
+  - name: "guardian"
+    fqn_prefix: "cgis.guardian"
+    expected_pattern: layered_dag
+    profile: python
+    drift_tolerance: 0.26 # v2 measured 0.2282; dag_depth 5 clears the template's min 3
+                          # (runner-up dispatcher 0.34 — a clear win, not a coin flip)
+
+  # cli and api are hygiene-only by rule, not by taste: neither has ANY
+  # intra-domain IMPORTS edge (cli is one file, api is two), so there is no
+  # import structure for a pattern to describe. A label would rest entirely on
+  # intra-file call topology, which is not what the alphabet measures.
+  # `api` made that especially plain — it best-fits pure_utility ("called by
+  # many; depends on nothing") while importing 16 internal modules and being
+  # imported by none. Every multi-file domain here has a populated IMPORTS
+  # layer; these two do not, and are labelled accordingly.
+  - name: "cli"
+    fqn_prefix: "cgis.cli"
+    profile: python
+    drift_tolerance: 0.03 # hygiene-only; measured 0.00 (no cycles, nothing unresolved)
+
+  - name: "api"
+    fqn_prefix: "cgis.api"
+    profile: python
+    drift_tolerance: 0.03 # hygiene-only; measured 0.00
+
   # TypeScript graph (ingest root: ui/src → components/Foo.tsx = components.Foo)
   - name: "components"
     fqn_prefix: "components"
