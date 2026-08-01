@@ -102,8 +102,16 @@ ratchet monotonically shrinks the feasible region. Evolution happens inside it.
 A ratchet on an objective would be a stopping condition; a ratchet on a
 constraint is a safety property.
 
-**F, concretely, for aura:** median tokens (and USD) per *completed* cycle —
-per bee-keeper audit, per bee-evolver evolution cycle, per negotiation.
+**F, concretely, for aura:** median tokens (and USD) per ***successful*** cycle
+— per bee-keeper audit, per bee-evolver evolution cycle, per negotiation.
+"Successful" must be defined per cycle type before measuring (for the evolver:
+a proposal that clears deterministic preflight).
+
+*Per-**completed**-cycle is the wrong denominator and is a second instance of
+the degenerate-solution class below:* a mutation that makes the agent fail fast
+and cheap lowers cost-per-completed-cycle while raising cost-per-success. Cycles
+that fail still count their tokens in the numerator; only successes count in the
+denominator.
 
 **F's degenerate solution, named in advance:** propose nothing, spend nothing,
 score perfectly. So F is never used alone. Every experiment carries a
@@ -222,8 +230,17 @@ Must all hold before Arm A/B spending begins:
       durably for **≥ 20 baseline cycles** (append-only; not the
       overwritten `HIVE_STATE.md` field)
 - [ ] baseline coefficient of variation reported
-- [ ] **if** detecting a 25% shift at that CV needs more pairs than the cost
-      cap affords → **do not run.** Record "underpowered at budget" and stop.
+- [ ] **if** detecting a 25% shift at that CV needs more pairs than the cost cap
+      affords → **do not run.** Record "underpowered at budget" and stop.
+      Power is defined against the decision rule actually used below, not a
+      separate significance test: **≥ 80% probability that the 90% bootstrap CI
+      upper bound falls under 1.0 when the true reduction is 25%.** Estimate it
+      by resampling the baseline cycles; report the number of pairs it implies.
+- [ ] **pin the cgis version** used for the drift and I/O gates, and record it
+      with the results. Both arms must be measured on the same build.
+      Precedent from this session: 25b2ce6 (#329) changed the IMPORTS census,
+      which silently makes pre- and post-#329 IMPORTS figures incomparable.
+      A gate that moves mid-experiment invalidates the experiment.
 - [ ] if baseline cost variance is driven by task heterogeneity rather than
       context size → **the cost-fitness framing is wrong.** Record, and close
       #335 as not-ready. This is a real possible outcome, not a formality.
@@ -235,7 +252,11 @@ Must all hold before Arm A/B spending begins:
   the ratio **< 1.0**.
 - **Guardrail (must not regress):** proposal acceptance — fraction of proposed
   improvements clearing deterministic preflight (tests + mypy + ruff + drift).
-  **Arm B ≥ Arm A − 10 pp.**
+  **Arm B ≥ max(Arm A − 10 pp, 0.75 × Arm A).** The stricter of the two binds,
+  so there is no discretion at verdict time. The relative floor exists because
+  a flat 10 pp is meaningless at a low baseline — at Arm A = 12% it would permit
+  2%, a 83% relative collapse; `max()` binds at 9% there. At Arm A = 80% the
+  absolute term binds at 70%.
 - **Hard constraints (any breach = FAIL, no discussion):** drift status no
   worse than baseline on every domain; zero new direct-I/O edges outside the
   Connector; no mutation touching the immutable list in §4.
@@ -248,9 +269,10 @@ call, enforced outside the agent process.**
 The verdict is computed **once, after all 20 pairs**, from the metrics above.
 No peeking-and-stopping on a good interim result.
 
-Early stop is permitted only for: cost cap reached, or ≥ 3 consecutive Arm B
-cycles producing malformed output (that is an infrastructure failure and is
-recorded as such, not as a result).
+Early stop is permitted only for: cost cap reached, or ≥ 3 consecutive cycles in
+**either** arm producing malformed output (that is an infrastructure failure and
+is recorded as such, not as a result). Watching only Arm B would let a failing
+baseline or a broken harness masquerade as an Arm B win.
 
 - **PASS** — primary met **and** guardrail held **and** hard constraints clean.
   → ship behind a flag, Stage 1.
@@ -319,23 +341,34 @@ IMPORTS  scale_invariant  slope=+0.084  R²=0.19  band=±0.144  live=8
 CALLS    hierarchical     slope=+0.101  R²=0.56  band=±0.068  live=9
 ```
 
-Population for scale (CALLS), from the #186 baseline plus a same-day cgis run:
+Population for scale (CALLS). The first three rows were run **today, on the
+same build**, so they are directly comparable; the rest are the #186 baseline
+and are shown for range only:
 
 | repo | slope | R² | live | verdict |
 |---|---|---|---|---|
 | cgis (today) | +0.194 | 0.88 | 5 | hierarchical |
-| sqlalchemy 2.x | +0.171 | 0.86 | 4 | hierarchical |
-| django 6.x | +0.133 | 0.75 | 6 | hierarchical |
-| owner-api | +0.123 | 0.73 | 6 | hierarchical |
-| **aura** | **+0.101** | **0.56** | **9** | **hierarchical** |
-| httpx 0.28 | −0.676 | 0.89 | 3 | flat |
-| flask 3.1 | −1.020 | 0.97 | 3 | flat |
+| owner-api (today) | +0.148 | 0.75 | 7 | hierarchical |
+| **aura (today)** | **+0.101** | **0.56** | **9** | **hierarchical** |
+| sqlalchemy 2.x (#186) | +0.171 | 0.86 | 4 | hierarchical |
+| django 6.x (#186) | +0.133 | 0.75 | 6 | hierarchical |
+| httpx 0.28 (#186) | −0.676 | 0.89 | 3 | flat |
+| flask 3.1 (#186) | −1.020 | 0.97 | 3 | flat |
+
+> **IMPORTS numbers are not comparable across #329.** owner-api's IMPORTS today
+> reads `hierarchical +0.108 (R² 0.76)`; the #186 baseline recorded
+> `scale_invariant −0.020 (R² 0.15)`. That is not a change in owner-api — 25b2ce6
+> (#329) rewrote `fingerprint.py` so the IMPORTS census looks through transparent
+> re-exports. Any IMPORTS comparison spanning that commit is invalid. CALLS is
+> unaffected. This is also a gate-hardening item — see Gate 0.
 
 **Three findings.**
 
-**a) The claim does not hold on the call graph.** `hierarchical` at
-slope/SE ≈ 3 — coarsening *adds* motif diversity, so the mix is not the same at
-every scale.
+**a) The claim does not hold on the call graph — but aura is the closest of the
+three to holding it.** `hierarchical` at slope/SE ≈ 3, so the motif mix is not
+the same at every rung. It is nonetheless the *lowest* positive slope of the
+three same-build repos (0.101 vs owner-api 0.148 and cgis 0.194). The claim
+fails, and it fails by less than the two repos that never made it.
 
 **b) The declared hierarchy is real in the import graph.** At T3/T4/T5 a single
 motif holds 0.98 / 0.95 / 0.90 of the census, entropy 0.14 / 0.34 / 0.61 —
@@ -343,25 +376,44 @@ unusually clean layering. aura's Genome → Nucleus → Organs → Citizens ladd
 (`FOUNDATIONS.md` §1) shows up as measured structure, not just documentation.
 Confirming a declared property is rare; it usually goes the other way.
 
-**c) The break is localised, and the CALLS curve is a hump, not a line.**
+**c) The CALLS curve is a hump, not a line — in all three repos. The hump is
+not an aura finding.**
 
-| rung | groups | H (bits) | dominant | tangle |
-|---|---|---|---|---|
-| T0–T3 | 3383→119 | 1.02 / 1.12 / 1.07 / 1.07 | 021U, 021D | 0.000 |
-| **T4_up2** | 69 | **1.81** | 021U 0.54 | **0.141** |
-| **T5_up3** | 33 | **2.18** | 111D 0.38 | **0.223** |
-| T6–T7 | 26→17 | 1.95 / 1.71 | 111D | 0.262 / 0.273 |
+An earlier draft of this section read the entropy rise and tangle rise at
+T4/T5 as "ATCG-M holds inside a bee and comes apart between bees." **Running
+the comparison refutes that.** cgis and owner-api produce the same hump in the
+same place, and neither claims fractality:
 
-Below the module the structure is homogeneous with tangle exactly 0. Two to
-three rungs up the directory tree, entropy doubles, the dominant motif flips
-021U → 111D, and tangle goes 0.03 → 0.22. **ATCG-M holds inside a bee and comes
-apart between bees.** That is the "holds at one scale, breaks at another"
-outcome, with a scale attached.
+| repo | CALLS entropy by rung | peak | tangle at peak |
+|---|---|---|---|
+| cgis | 0.91 / 1.34 / 1.34 / 1.96 / **3.00** / 0.92 | T4 (9 groups) | 0.265 |
+| owner-api | 0.33 / 1.20 / 1.29 / 1.20 / 1.61 / **2.66** / 2.35 | T5 (9 groups) | 0.277 |
+| aura | 1.02 / 1.12 / 1.07 / 1.07 / 1.81 / **2.18** / 1.95 / 1.71 / 1.45 | T5 (33 groups) | 0.223 |
 
-aura has the **worst R² of any repo measured (0.56)** while having the **most
-live rungs (9)**. That is not data poverty — it is genuine non-linearity. Per
-the #186 design note, the curve is the evidence and the slope is only the
-headline; here that caveat is load-bearing.
+Coarse rungs have few groups and few triads, and the top of any dependency tree
+is where cross-cutting glue lives. The hump is a property of the measure at
+coarse rungs, not a defect of the repo under it.
+
+What survives the comparison is the *shape*, and it points the other way from
+the earlier draft:
+
+- aura's peak entropy is the **lowest** of the three (2.18 vs 2.66 and 3.00),
+  and its tangle at peak is the **lowest** (0.223 vs 0.277 and 0.265). aura is
+  less tangled at the top of its tree than either of the other two.
+- aura's hump is **broad and shallow** — entropy stays in 1.45–2.18 across four
+  rungs (T4–T7) — where cgis spikes to 3.00 at a single rung and collapses.
+  With 9 live rungs against 5 and 7, aura's ladder is the deepest and its
+  transition the most gradual.
+
+That gradual ramp is also the mechanical reason for the two headline numbers:
+the **lowest slope (0.101)** and the **worst R² (0.56)** are what a long shallow
+ramp looks like under a linear fit. Not data poverty — aura has the *most* live
+rungs of any repo measured. Per the #186 design note, the curve is the evidence
+and the slope only the headline; here that caveat decides the reading.
+
+The measure does not say whether a broad shallow transition is better than a
+narrow spike. It says aura's is different, and it is not the pathology the
+first draft claimed.
 
 **Caveat, stated so the finding is not over-read.** `cgis fractal` measures
 triad-motif entropy across FQN-path coarsening. aura's claim is about repeated
