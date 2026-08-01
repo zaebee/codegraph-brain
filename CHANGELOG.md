@@ -3,6 +3,11 @@
 ## [0.7.4](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.7.3...codegraph-brain-v0.7.4) (2026-08-01)
 
 
+### Bug Fixes
+
+* **mcp:** validate db_path before cgis_ingest creates a database ([#313](https://github.com/zaebee/codegraph-brain/issues/313)) ([2c5499b](https://github.com/zaebee/codegraph-brain/commit/2c5499b8fb7f0d40a03144417c3210900371d499)), closes [#312](https://github.com/zaebee/codegraph-brain/issues/312)
+
+
 ### Documentation
 
 * auto-sync architecture graph and MCP reference ([#314](https://github.com/zaebee/codegraph-brain/issues/314)) ([7d5b666](https://github.com/zaebee/codegraph-brain/commit/7d5b66669f9dfa40e2fc86dd59a4baf492a9342e))
