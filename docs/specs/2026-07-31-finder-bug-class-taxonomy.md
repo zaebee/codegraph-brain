@@ -399,3 +399,58 @@ A caveat for whoever runs it: there is no `security` axis to separate, since Arm
 B was never shipped. The recall gains above therefore came from separation in
 general, not from isolating a blind class — so this variant tests the cheaper
 half of the idea, and the blind-class question stays open in #258.
+
+## Paired grouping — measured the same day, on the same four fixtures
+
+Two calls instead of seven, batched by kinship.
+
+| PR | baseline | paired (2) | per-axis (7) |
+|---|---|---|---|
+| 122 | 11 / 0.364 | **21 / 0.545** | 55 / 0.455 |
+| 140 | 20 / 0.400 | 27 / **0.333** | 70 / 0.533 |
+| 141 | 7 / 1.000 | **9** / 1.000 | 39 / 1.000 |
+| 142 | 0 / 0.000 | 0 / 0.000 | 0 / 0.000 |
+
+```
+mean noise    9.50  ->  14.25 (1.5x)  ->  41.00 (4.3x)
+mean recall   0.441 ->  0.470          ->  0.497
+```
+
+### The linear model held, and the recall did too
+
+Noise was predicted at ~1.2× for two calls from the linear-in-call-count fit;
+the measurement is **1.5×**, against 4.3× at seven. The order of magnitude was
+right.
+
+The part that was **not** predicted: recall barely moved. Seven calls give
+0.497, two give 0.470 — **three times less noise for 0.027 of recall.** Most of
+the benefit of separation is already there at two calls.
+
+On pr-122 two calls beat seven on *both* axes — recall 0.545 against 0.455, at
+noise 21 against 55. More calls is not more recall: seven axes appear to
+fragment too far, leaving each call too little to reason with.
+
+### It still fails the gate
+
+- **Criterion 1** — noise must not exceed baseline. 1.5× does not pass.
+- **Criterion 3** — no PR more than 0.05 below baseline recall. pr-140 dropped
+  0.400 → 0.333.
+
+So this does not ship either. But it is a qualitatively different result from
+the seven-axis run: not "the hypothesis failed" but "the cost is down threefold
+and 1.5× remains".
+
+### Limits
+
+n=1 per variant across four fixtures, against a finder whose variance on an
+unchanged diff has been measured at 6 → 46 → 36 findings. The gap between 0.470
+and 0.497 is well inside that. The noise multipliers (1.5× vs 4.3×) are the
+sturdy part — they are large and consistent per fixture.
+
+### What it points at
+
+Since recall survives batching, the next thing worth testing is **one call that
+walks the axes in sequence** — separation of attention without a second call at
+all. Failing that, keep two calls and attack the residual noise from the skeptic
+side, which is currently tuned for single-prompt volume rather than for a merged
+union.
