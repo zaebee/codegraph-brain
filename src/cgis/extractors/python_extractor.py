@@ -1,5 +1,7 @@
 """Implements Python Extractor."""
 
+import re
+
 import tree_sitter_python as tspython
 from tree_sitter import Language, Parser
 from tree_sitter import Node as BaseNode
@@ -27,6 +29,49 @@ def file_path_to_module_fqn(file_path: str, source_root: str | None = None) -> s
         src/cgis/pipeline.py  -> cgis.pipeline
     """
     return _file_path_to_module_fqn(file_path, source_root)
+
+
+def _identifiers_outside_imports(root: BaseNode, code_bytes: bytes) -> set[str]:
+    """Every identifier used in the module body, excluding import statements.
+
+    The walker already refuses to recurse into import nodes, so the same rule is
+    applied here: a name that appears *only* in an import is never used by this
+    module.
+    """
+    used: set[str] = set()
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        if node.type in ("import_statement", "import_from_statement"):
+            continue
+        if node.type == "identifier":
+            used.add(code_bytes[node.start_byte : node.end_byte].decode("utf8"))
+        elif node.type == "string" and node.parent is not None and node.parent.type == "type":
+            # A forward-reference annotation — `store: "SQLiteStore | None"` — holds
+            # no identifier nodes, so without this a TYPE_CHECKING import used only
+            # in quoted annotations reads as unused. Restricted to annotation
+            # strings (parent `type`): scanning every string would let a docstring
+            # mentioning a name mask a real re-export.
+            text = code_bytes[node.start_byte : node.end_byte].decode("utf8")
+            used.update(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", text))
+        stack.extend(node.children)
+    return used
+
+
+def find_reexports(root: BaseNode, code_bytes: bytes, import_map: dict[str, str]) -> dict[str, str]:
+    """Return the imports this module never uses — i.e. passes straight through (#182).
+
+    A transparent re-export lets one module absorb another's import edges, so an
+    N-way coupling can be linearised on paper without changing what actually
+    depends on what. Naming them is the precondition for the IMPORTS census
+    being able to look through them.
+
+    "Imported but unused" is the whole test, and in a linted tree that is a
+    precise proxy: ruff's F401 removes genuine dead imports, so what survives is
+    deliberate — `X as X`, an `__all__` entry, or an explicit noqa.
+    """
+    used = _identifiers_outside_imports(root, code_bytes)
+    return {local: target for local, target in import_map.items() if local not in used}
 
 
 class PythonExtractor(BaseExtractor):
@@ -83,6 +128,8 @@ class PythonExtractor(BaseExtractor):
                     update={"metadata": {**nodes[i].metadata, "local_types": lt}}
                 )
 
+        reexports = find_reexports(root_node, code_bytes, import_map)
+
         file_node = Node(
             id=module_fqn,
             type=NodeType.FILE,
@@ -90,7 +137,7 @@ class PythonExtractor(BaseExtractor):
             file_path=file_path,
             start_line=1,
             end_line=root_node.end_point.row + 1,
-            metadata={"import_map": import_map},
+            metadata={"import_map": import_map, "reexports": reexports},
         )
         nodes.insert(0, file_node)
 
