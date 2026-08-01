@@ -280,9 +280,12 @@ Three of three. The clauses do not ship.
 
 ## The finding inside the failure
 
-**pr-313 went from recall 0.000 to 1.000** — the finder surfaced both security
-defects it had previously missed entirely. That is the fixture added in #315
-precisely because the finder was blind to the class.
+**pr-313 went from recall 0.000 to 1.000** — the finder surfaced both ground-truth
+entries it had previously missed entirely. Precisely: one is categorised
+`security` (`dangling-symlink-write-primitive`) and one `logic`
+(`oserror-escapes-the-tool`), so this is one security-class hit plus one logic
+hit, not two security hits. That is the fixture added in #315 because the finder
+was blind to the class.
 
 And the total is unchanged: **matched 17 → 17**. Two lost on pr-140/143, two
 gained on pr-313. Attention moved; precision did not improve.
@@ -324,5 +327,16 @@ metrics row.
 **Methodology note for whoever repeats this:** the first attempt was ruined by
 launching the sweep twice against one results file, after an empty (buffered)
 log was misread as a dead process. Check for a running bench by process name,
-not by looking at its log; `ps -eo comm,cmd | awk '$1 ~ /^python/ && ...'`
-avoids matching the grep itself.
+not by looking at its log.
+
+`pgrep -f guardian_bench.py` is **not** enough — measured with the bench fully
+stopped it still returns 2, because the shell wrapper running the check carries
+the pattern in its own command line. pgrep excludes its own pid, not its
+parent's. Match on the process name instead:
+
+```sh
+ps -eo comm,cmd | awk '$1 ~ /^python/ && /guardian_bench\.py/' | wc -l
+```
+
+Returns 0 when nothing is running. A false positive here is not harmless: it
+fires the pre-launch guard and silently skips the sweep.
