@@ -11,13 +11,12 @@ from cgis.guardian.chunked import (
     MAX_CHUNKS,
     RoutedReview,
     _cap_chunks,
-    _dedup,
     run_chunked_review,
     run_review_routed,
 )
 from cgis.guardian.chunker import Chunk
 from cgis.guardian.collector import ContextCollector
-from cgis.guardian.findings import Finding, ReviewResult
+from cgis.guardian.findings import Finding, ReviewResult, dedup_findings
 from cgis.guardian.providers.base import BaseProvider
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -72,13 +71,13 @@ def test_dedup_keeps_higher_confidence() -> None:
     low = _finding(confidence=81, title="low")
     high = _finding(confidence=95, title="high")
     other = _finding(file="b.py", title="other")
-    result = _dedup([low, other, high])
+    result = dedup_findings([low, other, high])
     assert [f.title for f in result] == ["high", "other"]
 
 
 def test_dedup_distinct_lines_kept() -> None:
     """Different lines are different findings."""
-    assert len(_dedup([_finding(line=1), _finding(line=2), _finding(line=None)])) == 3
+    assert len(dedup_findings([_finding(line=1), _finding(line=2), _finding(line=None)])) == 3
 
 
 def fdiff(path: str, body: str = "+x = 1") -> str:

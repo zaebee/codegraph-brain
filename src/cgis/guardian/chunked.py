@@ -8,10 +8,11 @@ complete world instead — its own diff, full files, and impact graph.
 import structlog
 from pydantic import BaseModel
 
+from cgis.guardian.axes import run_axis_review
 from cgis.guardian.chunker import Chunk, build_chunks, split_diff_by_file
 from cgis.guardian.collector import ContextCollector
 from cgis.guardian.core import GuardianReviewer, finder_pass
-from cgis.guardian.findings import Finding, ReviewResult
+from cgis.guardian.findings import Finding, ReviewResult, dedup_findings
 from cgis.guardian.providers.base import BaseProvider
 from cgis.guardian.skeptic import (
     apply_judgements,
@@ -83,25 +84,6 @@ def _chunk_survivors(chunk: Chunk, findings: list[Finding]) -> list[Finding]:
             continue
         log.warning("Out-of-chunk finding dropped.", file=finding.file, title=finding.title)
     return survivors
-
-
-def _dedup(findings: list[Finding]) -> list[Finding]:
-    """Drop duplicate (file, line, category) findings, keeping the higher confidence.
-
-    Cross-chunk duplicates are impossible after the per-chunk file filter
-    (chunks partition files) — this is insurance against intra-pass
-    duplicates. First-occurrence order is preserved.
-    """
-    best: dict[tuple[str, int | None, str], Finding] = {}
-    order: list[tuple[str, int | None, str]] = []
-    for finding in findings:
-        key = (finding.file, finding.line, finding.category)
-        if key not in best:
-            best[key] = finding
-            order.append(key)
-        elif finding.confidence > best[key].confidence:
-            best[key] = finding
-    return [best[k] for k in order]
 
 
 async def _single_pass(
@@ -187,7 +169,7 @@ async def run_chunked_review(
         bullets.append(f"- [{label}]: {result.summary}")
 
     merged = ReviewResult(
-        findings=_dedup(kept),
+        findings=dedup_findings(kept),
         summary="\n".join(bullets),
         parse_failed=failed == len(chunks),
     )
@@ -229,6 +211,17 @@ async def run_review_routed(
     degrade to all-isolated chunks = one API call per file with zero
     connectivity benefit — strictly worse than the status quo.
     """
+    if "axes" in collector.features:
+        # Per-axis fan-out (#331) is checked first: it needs no graph DB, and
+        # combining it with chunked would multiply calls by axes x chunks while
+        # entangling two effects in one measurement — the mistake #330 recorded.
+        return RoutedReview(
+            result=await run_axis_review(
+                provider=provider, collector=collector, skeptic_provider=skeptic_provider
+            ),
+            chunk_count=None,
+        )
+
     chunked = "chunked" in collector.features
     if chunked and (collector.db_path is None or not collector.db_path.exists()):
         log.warning("chunked requested but no graph DB; falling back to single pass.")

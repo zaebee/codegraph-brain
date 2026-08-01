@@ -1,5 +1,52 @@
 """Builds system and user prompts for the Guardian LLM reviewer."""
 
+#: The finder's focus areas, one entry per axis. A mapping rather than one blob
+#: so a review can ask about a single axis at a time (#331): axes sharing a
+#: context window compete for what looks like a fixed attention budget, measured
+#: twice (#247, #330). Joining every value reproduces the original prompt exactly.
+FOCUS_AREAS: dict[str, str] = {
+    "logic": """\
+**Logic bugs** — inputs that produce wrong output, division by zero, off-by-one errors,
+incorrect algorithm behaviour. Think: empty collections, None values, boundary conditions.""",
+    "external_data": """\
+**Unvalidated external data** — a value read from config/YAML/JSON, env, or a request is
+used as a `dict`/`list`/`set`/iterable (subscripted, iterated, passed to `set()`/`dict()`,
+`.items()`, `for x in value`) without first checking its type or presence. A YAML key the
+author expects to be a mapping can legally be a scalar or a list; a `value or {}` idiom
+catches `None` but lets a non-dict truthy value through to operations that then misbehave
+silently rather than erroring. Flag each such use that lacks a type/shape guard.""",
+    "float_equality": """\
+**Exact-equality on floats / money** — bare `==` or `!=` comparing floating-point or
+Decimal values, *including in test assertions* (`assert x == 0.3`). Floating-point
+rounding makes these flaky or wrong; they should use a tolerance compare. Check changed
+test files for this too.""",
+    "test_coverage": """\
+**Missing test coverage** — code paths in the diff that have no test. Focus on edge cases
+that could silently return wrong results (not just "coverage for coverage's sake").""",
+    "type_safety": """\
+**Type safety** — implicit `Any`, missing return type annotations, unsafe casts, Pydantic
+models constructed with wrong field types.""",
+    "library_contract": """\
+**Library boundary contracts** — for each call into a third-party library, verify that
+the data passed in matches the library's expected convention:
+  - Units and coordinate systems (e.g. center vs top-left, row/col vs x/y,
+    naive vs timezone-aware datetimes)
+  - Ordering assumptions (e.g. does array order affect rendering or sort stability?)
+  - Ownership and mutation (e.g. does the library mutate its input?)
+Trace the value from where it's produced to where it's consumed across the library call.
+If the producing code and consuming code have different assumptions, that's a bug.""",
+    "ontology": """\
+**Ontology compliance** — wrong NodeType/EdgeType assignments, FQNs not derived from file
+paths, unresolved calls not using `raw_call:` prefix.""",
+}
+
+
+def render_focus_areas(axis: str | None = None) -> str:
+    """Return every focus area joined, or a single one when `axis` names it."""
+    if axis is not None:
+        return FOCUS_AREAS[axis]
+    return "\n\n".join(FOCUS_AREAS.values())
+
 
 class PromptBuilder:
     """Constructs the system and user prompts."""
@@ -82,6 +129,10 @@ observe-only — do NOT flag it.
 
 """
 
+        # `focus_axis` narrows the prompt to one axis (#331). Absent = every axis,
+        # which renders exactly the text this block replaced.
+        focus_areas_section = render_focus_areas(context.get("focus_axis") or None)
+
         return f"""Review the following Pull Request diff for real defects.
 
 {contributing_section}{ontology_section}### 3. CHANGES TO REVIEW (git diff)
@@ -126,38 +177,7 @@ observe-only — do NOT flag it.
 ---
 ### WHAT TO LOOK FOR (focus areas):
 
-**Logic bugs** — inputs that produce wrong output, division by zero, off-by-one errors,
-incorrect algorithm behaviour. Think: empty collections, None values, boundary conditions.
-
-**Unvalidated external data** — a value read from config/YAML/JSON, env, or a request is
-used as a `dict`/`list`/`set`/iterable (subscripted, iterated, passed to `set()`/`dict()`,
-`.items()`, `for x in value`) without first checking its type or presence. A YAML key the
-author expects to be a mapping can legally be a scalar or a list; a `value or {{}}` idiom
-catches `None` but lets a non-dict truthy value through to operations that then misbehave
-silently rather than erroring. Flag each such use that lacks a type/shape guard.
-
-**Exact-equality on floats / money** — bare `==` or `!=` comparing floating-point or
-Decimal values, *including in test assertions* (`assert x == 0.3`). Floating-point
-rounding makes these flaky or wrong; they should use a tolerance compare. Check changed
-test files for this too.
-
-**Missing test coverage** — code paths in the diff that have no test. Focus on edge cases
-that could silently return wrong results (not just "coverage for coverage's sake").
-
-**Type safety** — implicit `Any`, missing return type annotations, unsafe casts, Pydantic
-models constructed with wrong field types.
-
-**Library boundary contracts** — for each call into a third-party library, verify that
-the data passed in matches the library's expected convention:
-  - Units and coordinate systems (e.g. center vs top-left, row/col vs x/y,
-    naive vs timezone-aware datetimes)
-  - Ordering assumptions (e.g. does array order affect rendering or sort stability?)
-  - Ownership and mutation (e.g. does the library mutate its input?)
-Trace the value from where it's produced to where it's consumed across the library call.
-If the producing code and consuming code have different assumptions, that's a bug.
-
-**Ontology compliance** — wrong NodeType/EdgeType assignments, FQNs not derived from file
-paths, unresolved calls not using `raw_call:` prefix.
+{focus_areas_section}
 
 ---
 ### WORKED EXAMPLES (how the per-function walk turns into a finding):
