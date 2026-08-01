@@ -38,6 +38,7 @@ All against `~/projects/aura` at HEAD, ingested with the current cgis.
 | `cgis drift` against that proposal | all domains within tolerance; `core` 0.28, `agents` 0.27, `tools` 0.27 warning-band |
 | ATCG-M nucleotides visible as FQN prefixes | A 57 nodes / T 58 / C 79 / G 30 / M-ish 99 |
 | direct I/O (`httpx`, `subprocess`) outside the Connector, under `agents/` | **6 call sites** across bee-keeper and bee-evolver (aggregator ×4, generator ×1, metabolism ×1) |
+| `cgis fractal` | IMPORTS `scale_invariant` +0.084 (R² 0.19); CALLS `hierarchical` +0.101 (R² 0.56) — see §8 |
 
 The last row is the load-bearing one. The ATCG-M rule "no direct I/O bypassing
 the Connector" (`docs/FOUNDATIONS.md` §4, *Pattern Heresy*) is expressible as a
@@ -303,6 +304,71 @@ Self-reported, single author. Its numbers are evidence about *that* system on
 - **"~75% of commits written autonomously over months."** That is a multi-month
   token budget, not a PoC. Stage 1 is where this document stops.
 - **Hierarchical markdown memory over vector RAG.** aura already has pgvector.
+
+## 8. Fractality — a declared property, measured
+
+aura states the claim literally, which makes it testable.
+`docs/visual/hive/atcg-fractal.md`: *"This pattern repeats at **every scale** —
+from individual services to the entire Hive organism."* In the vocabulary of
+#186 that is `scale_invariant` — the motif mix is the same at every rung, i.e.
+slope ≈ 0. This is the first time the #186 measure has been pointed at a
+codebase that asserts its own fractality.
+
+```
+IMPORTS  scale_invariant  slope=+0.084  R²=0.19  band=±0.144  live=8
+CALLS    hierarchical     slope=+0.101  R²=0.56  band=±0.068  live=9
+```
+
+Population for scale (CALLS), from the #186 baseline plus a same-day cgis run:
+
+| repo | slope | R² | live | verdict |
+|---|---|---|---|---|
+| cgis (today) | +0.194 | 0.88 | 5 | hierarchical |
+| sqlalchemy 2.x | +0.171 | 0.86 | 4 | hierarchical |
+| django 6.x | +0.133 | 0.75 | 6 | hierarchical |
+| owner-api | +0.123 | 0.73 | 6 | hierarchical |
+| **aura** | **+0.101** | **0.56** | **9** | **hierarchical** |
+| httpx 0.28 | −0.676 | 0.89 | 3 | flat |
+| flask 3.1 | −1.020 | 0.97 | 3 | flat |
+
+**Three findings.**
+
+**a) The claim does not hold on the call graph.** `hierarchical` at
+slope/SE ≈ 3 — coarsening *adds* motif diversity, so the mix is not the same at
+every scale.
+
+**b) The declared hierarchy is real in the import graph.** At T3/T4/T5 a single
+motif holds 0.98 / 0.95 / 0.90 of the census, entropy 0.14 / 0.34 / 0.61 —
+unusually clean layering. aura's Genome → Nucleus → Organs → Citizens ladder
+(`FOUNDATIONS.md` §1) shows up as measured structure, not just documentation.
+Confirming a declared property is rare; it usually goes the other way.
+
+**c) The break is localised, and the CALLS curve is a hump, not a line.**
+
+| rung | groups | H (bits) | dominant | tangle |
+|---|---|---|---|---|
+| T0–T3 | 3383→119 | 1.02 / 1.12 / 1.07 / 1.07 | 021U, 021D | 0.000 |
+| **T4_up2** | 69 | **1.81** | 021U 0.54 | **0.141** |
+| **T5_up3** | 33 | **2.18** | 111D 0.38 | **0.223** |
+| T6–T7 | 26→17 | 1.95 / 1.71 | 111D | 0.262 / 0.273 |
+
+Below the module the structure is homogeneous with tangle exactly 0. Two to
+three rungs up the directory tree, entropy doubles, the dominant motif flips
+021U → 111D, and tangle goes 0.03 → 0.22. **ATCG-M holds inside a bee and comes
+apart between bees.** That is the "holds at one scale, breaks at another"
+outcome, with a scale attached.
+
+aura has the **worst R² of any repo measured (0.56)** while having the **most
+live rungs (9)**. That is not data poverty — it is genuine non-linearity. Per
+the #186 design note, the curve is the evidence and the slope is only the
+headline; here that caveat is load-bearing.
+
+**Caveat, stated so the finding is not over-read.** `cgis fractal` measures
+triad-motif entropy across FQN-path coarsening. aura's claim is about repeated
+*composition* (every bee has A/T/C/G/M). Related predicates, not identical
+ones. This is evidence against the strong sentence "repeats at every scale" as
+applied to the call graph. It is **not** a refutation of the composition claim,
+and should not be reported as one.
 
 ## Recommendation
 
