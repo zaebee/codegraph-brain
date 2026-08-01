@@ -41,6 +41,29 @@ paths, unresolved calls not using `raw_call:` prefix.""",
 }
 
 
+#: How the axes are batched into finder calls. Per-axis measured 4.3x the
+#: single-prompt noise across four fixtures (#331) — the superlinear growth that
+#: killed chunked review (#160) — while recall rose on every fixture that had
+#: anything to find. Noise scaled roughly linearly with call count, so fewer,
+#: kinship-grouped calls should keep part of the recall and most of the quiet.
+#:
+#: The split is by what a defect *is*: "wrong answer" shapes in one call,
+#: "declared contract vs actual" in the other. Axes that competed in the two
+#: measured cases (#247, #330) were dissimilar ones, so kin travel together.
+AXIS_GROUPS: dict[str, tuple[str, ...]] = {
+    "correctness": ("logic", "external_data", "float_equality"),
+    "contracts": ("type_safety", "library_contract", "ontology", "test_coverage"),
+}
+
+#: One call per axis — the seven-way fan-out benched in #331.
+PER_AXIS_GROUPS: dict[str, tuple[str, ...]] = {name: (name,) for name in FOCUS_AREAS}
+
+
+def render_group(axes: tuple[str, ...]) -> str:
+    """Render the focus areas for one batch of axes."""
+    return "\n\n".join(FOCUS_AREAS[axis] for axis in axes)
+
+
 def render_focus_areas(axis: str | None = None) -> str:
     """Return every focus area joined, or a single one when `axis` names it."""
     if axis is not None:
@@ -131,7 +154,17 @@ observe-only — do NOT flag it.
 
         # `focus_axis` narrows the prompt to one axis (#331). Absent = every axis,
         # which renders exactly the text this block replaced.
-        focus_areas_section = render_focus_areas(context.get("focus_axis") or None)
+        # `focus_group` carries the axes for this call, comma-separated. Absent =
+        # every axis, which renders exactly the text the inline block used to be.
+        group = context.get("focus_group")
+        # Whitespace-tolerant: the only producer joins without spaces, but this is
+        # a public context key and a stray space would surface as a KeyError deep
+        # inside prompt building rather than as anything a caller could act on.
+        focus_areas_section = (
+            render_group(tuple(part.strip() for part in group.split(",")))
+            if group
+            else render_focus_areas()
+        )
 
         return f"""Review the following Pull Request diff for real defects.
 

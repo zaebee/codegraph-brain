@@ -211,7 +211,7 @@ async def run_review_routed(
     degrade to all-isolated chunks = one API call per file with zero
     connectivity benefit — strictly worse than the status quo.
     """
-    if "axes" in collector.features:
+    if collector.features & {"axes", "axes_paired"}:
         # Per-axis fan-out (#331) is checked first: it needs no graph DB, and
         # combining it with chunked would multiply calls by axes x chunks while
         # entangling two effects in one measurement — the mistake #330 recorded.

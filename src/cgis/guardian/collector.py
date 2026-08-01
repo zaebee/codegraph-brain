@@ -16,7 +16,7 @@ from cgis.storage.sqlite_store import SQLiteStore
 
 log = structlog.getLogger(__name__)
 
-VALID_FEATURES = frozenset({"full_files", "flow", "drift", "chunked", "axes"})
+VALID_FEATURES = frozenset({"full_files", "flow", "drift", "chunked", "axes", "axes_paired"})
 
 _MAX_FILE_LINES = 1200
 _MAX_TOTAL_CHARS = 120_000

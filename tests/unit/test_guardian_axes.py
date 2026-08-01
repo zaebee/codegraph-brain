@@ -9,7 +9,13 @@ from pydantic import BaseModel
 
 from cgis.guardian.axes import run_axis_review
 from cgis.guardian.collector import ContextCollector
-from cgis.guardian.prompts import FOCUS_AREAS, PromptBuilder, render_focus_areas
+from cgis.guardian.prompts import (
+    AXIS_GROUPS,
+    FOCUS_AREAS,
+    PromptBuilder,
+    render_focus_areas,
+    render_group,
+)
 
 
 def _finding(file: str, line: int, category: str = "logic", confidence: int = 80) -> dict:
@@ -57,11 +63,11 @@ def test_a_single_axis_excludes_the_others() -> None:
     assert FOCUS_AREAS["float_equality"] not in only_logic
 
 
-def test_focus_axis_context_key_narrows_the_prompt() -> None:
-    """`focus_axis` travels through the context dict, like every other toggle."""
+def test_focus_group_context_key_narrows_the_prompt() -> None:
+    """`focus_group` travels through the context dict, like every other toggle."""
     ctx = {"diff": "D"}
     full = PromptBuilder().build_user_prompt(ctx)
-    narrowed = PromptBuilder().build_user_prompt({**ctx, "focus_axis": "ontology"})
+    narrowed = PromptBuilder().build_user_prompt({**ctx, "focus_group": "ontology"})
 
     assert FOCUS_AREAS["ontology"] in narrowed
     assert FOCUS_AREAS["logic"] not in narrowed
@@ -159,3 +165,50 @@ async def test_skeptic_runs_once_over_the_union(collector: ContextCollector) -> 
 
     assert result.skeptic_total == len(FOCUS_AREAS)
     assert len(skeptic.prompts) == len(FOCUS_AREAS)
+
+
+# ---------------------------------------------------------------------------
+# Kinship grouping (#331 follow-up)
+# ---------------------------------------------------------------------------
+
+
+def test_groups_partition_every_axis_exactly_once() -> None:
+    """A missing axis would silently stop being reviewed; a duplicated one doubles noise."""
+    covered = [axis for axes in AXIS_GROUPS.values() for axis in axes]
+
+    assert sorted(covered) == sorted(FOCUS_AREAS)
+
+
+def test_a_group_renders_only_its_own_axes() -> None:
+    """Grouping is only worth anything if the batches really are separate."""
+    correctness = render_group(AXIS_GROUPS["correctness"])
+
+    assert FOCUS_AREAS["logic"] in correctness
+    assert FOCUS_AREAS["ontology"] not in correctness
+
+
+@pytest.mark.asyncio
+async def test_paired_flag_makes_two_calls_not_seven(tmp_path: Path) -> None:
+    """The whole point of the follow-up: noise scaled with call count, so cut calls."""
+    collector = ContextCollector(
+        project_root=tmp_path, db_path=None, base_ref="main", features=frozenset({"axes_paired"})
+    )
+    provider = StubProvider([_response([]) for _ in AXIS_GROUPS])
+
+    await run_axis_review(provider=provider, collector=collector, skeptic_provider=None)
+
+    assert len(provider.prompts) == len(AXIS_GROUPS) == 2
+
+
+def test_focus_group_tolerates_spacing() -> None:
+    """A stray space must not surface as a KeyError inside prompt building.
+
+    Our own producer joins without spaces, so this is hardening rather than a
+    bug fix — but `focus_group` is a public context key and the failure mode was
+    a raw KeyError on ' logic'.
+    """
+    spaced = PromptBuilder().build_user_prompt({"diff": "D", "focus_group": "logic, ontology"})
+
+    assert FOCUS_AREAS["logic"] in spaced
+    assert FOCUS_AREAS["ontology"] in spaced
+    assert FOCUS_AREAS["type_safety"] not in spaced

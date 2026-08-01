@@ -340,3 +340,117 @@ ps -eo comm,cmd | awk '$1 ~ /^python/ && /guardian_bench\.py/' | wc -l
 
 Returns 0 when nothing is running. A false positive here is not harmless: it
 fires the pre-launch guard and silently skips the sweep.
+
+---
+
+# Per-axis fan-out (#331) — measured 2026-08-01: the hypothesis holds, the cost does not
+
+Seven finder calls per PR, one per focus area, each seeing the whole diff.
+Stopped at four of eight fixtures: the verdict was already decided and the
+remaining four could not change it.
+
+| PR | noise | recall |
+|---|---|---|
+| 122 | 11 → **55** (5.0×) | 0.364 → 0.455 |
+| 140 | 20 → **70** (3.5×) | 0.400 → 0.533 |
+| 141 | 7 → **39** (5.6×) | 1.000 → 1.000 |
+| 142 | 0 → 0 | 0.000 → 0.000 |
+
+Mean noise **9.5 → 41.0, a 4.3× rise**. Gate criterion 1 fails by an order of
+magnitude, not a margin.
+
+## Both halves of the hypothesis were right
+
+**Separating axes does lift recall** — up on every fixture that had anything to
+find (+0.09, +0.13). Attention competition is real, and removing it works.
+
+**And it multiplies noise, exactly as chunking did.** pr-141 is the sharpest
+evidence: it is the noise probe, recall was already 1.000, there was nothing to
+gain — and noise still rose 5.6×. On that fixture the change bought only noise.
+
+Raw finding counts show the mechanism directly: 126, 139 and 94 findings per PR
+before dedup (82, 102, 60 after), against roughly 15 for the single prompt.
+Every extra call is another opportunity to invent something.
+
+## Why it stopped at four
+
+#331 pre-registered the rule: *"If noise inflates but per-axis recall improves,
+that is a result, not a partial pass — record it and stop, exactly as #160 did."*
+The multiplier was consistent across all four, so four more fixtures would have
+cost real money to confirm a verdict already in hand.
+
+## What the numbers say about the fix
+
+Noise scaled roughly **linearly with call count**: 7 calls, 4.3×. That predicts
+~1.8× at three calls and ~1.2× at two — the last of which would sit close enough
+to baseline to pass criterion 1 while keeping part of the recall.
+
+So the next variant is not "abandon fan-out", it is "fan out less". Shipped
+behind `GUARDIAN_FEATURES=axes_paired`: two calls, grouped by what a defect *is*
+rather than arbitrarily —
+
+- **correctness**: logic, unvalidated external data, float equality
+- **contracts**: type safety, library boundaries, ontology, test coverage
+
+Kin travel together because the two measured competitions (#247, #330) were both
+between *dissimilar* classes.
+
+A caveat for whoever runs it: there is no `security` axis to separate, since Arm
+B was never shipped. The recall gains above therefore came from separation in
+general, not from isolating a blind class — so this variant tests the cheaper
+half of the idea, and the blind-class question stays open in #258.
+
+## Paired grouping — measured the same day, on the same four fixtures
+
+Two calls instead of seven, batched by kinship.
+
+| PR | baseline | paired (2) | per-axis (7) |
+|---|---|---|---|
+| 122 | 11 / 0.364 | **21 / 0.545** | 55 / 0.455 |
+| 140 | 20 / 0.400 | 27 / **0.333** | 70 / 0.533 |
+| 141 | 7 / 1.000 | **9** / 1.000 | 39 / 1.000 |
+| 142 | 0 / 0.000 | 0 / 0.000 | 0 / 0.000 |
+
+```
+mean noise    9.50  ->  14.25 (1.5x)  ->  41.00 (4.3x)
+mean recall   0.441 ->  0.470          ->  0.497
+```
+
+### The linear model held, and the recall did too
+
+Noise was predicted at ~1.2× for two calls from the linear-in-call-count fit;
+the measurement is **1.5×**, against 4.3× at seven. The order of magnitude was
+right.
+
+The part that was **not** predicted: recall barely moved. Seven calls give
+0.497, two give 0.470 — **three times less noise for 0.027 of recall.** Most of
+the benefit of separation is already there at two calls.
+
+On pr-122 two calls beat seven on *both* axes — recall 0.545 against 0.455, at
+noise 21 against 55. More calls is not more recall: seven axes appear to
+fragment too far, leaving each call too little to reason with.
+
+### It still fails the gate
+
+- **Criterion 1** — noise must not exceed baseline. 1.5× does not pass.
+- **Criterion 3** — no PR more than 0.05 below baseline recall. pr-140 dropped
+  0.400 → 0.333.
+
+So this does not ship either. But it is a qualitatively different result from
+the seven-axis run: not "the hypothesis failed" but "the cost is down threefold
+and 1.5× remains".
+
+### Limits
+
+n=1 per variant across four fixtures, against a finder whose variance on an
+unchanged diff has been measured at 6 → 46 → 36 findings. The gap between 0.470
+and 0.497 is well inside that. The noise multipliers (1.5× vs 4.3×) are the
+sturdy part — they are large and consistent per fixture.
+
+### What it points at
+
+Since recall survives batching, the next thing worth testing is **one call that
+walks the axes in sequence** — separation of attention without a second call at
+all. Failing that, keep two calls and attack the residual noise from the skeptic
+side, which is currently tuned for single-prompt volume rather than for a merged
+union.
