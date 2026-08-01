@@ -720,3 +720,90 @@ def test_module_imports_edge_coexists_with_symbol_edges(extractor: PythonExtract
     module_edges = [e for e in edges if e.type == EdgeType.IMPORTS]
     assert len(module_edges) == 1
     assert module_edges[0].target == "a.b"
+
+
+# ---------------------------------------------------------------------------
+# Transparent re-export detection (#182)
+# ---------------------------------------------------------------------------
+
+
+def _reexports(extractor: PythonExtractor, code: str) -> dict[str, str]:
+    """Return the FILE node's recorded re-exports for a snippet."""
+    nodes, _ = extractor.parse(code, "pkg/mod.py")
+    file_node = next(n for n in nodes if n.type == NodeType.FILE)
+    return file_node.metadata.get("reexports") or {}
+
+
+def test_unused_import_is_recorded_as_a_reexport(extractor: PythonExtractor) -> None:
+    """`X as X` with no use in the body is the laundering shape from #182."""
+    code = "from pkg.other import Thing as Thing\n"
+
+    assert _reexports(extractor, code) == {"Thing": "pkg.other.Thing"}
+
+
+def test_used_import_is_not_a_reexport(extractor: PythonExtractor) -> None:
+    """A re-export that the module also uses is not transparent.
+
+    Regression guard for the real case in guardian/chunker.py, where
+    `split_diff_by_file` is both re-exported and called — a detector that
+    flagged every `import X as X` would be wrong about it.
+    """
+    code = "from pkg.other import Thing as Thing\n\ndef go():\n    return Thing()\n"
+
+    assert _reexports(extractor, code) == {}
+
+
+def test_import_used_only_in_a_quoted_annotation_is_not_a_reexport(
+    extractor: PythonExtractor,
+) -> None:
+    """A forward reference holds no identifier nodes — but it is still a use.
+
+    Regression: this reported cgis.pipeline's TYPE_CHECKING import of SQLiteStore
+    as a re-export, because `store: "SQLiteStore | None"` is a string.
+    """
+    code = 'from pkg.store import Store\n\ndef go(s: "Store | None") -> None:\n    pass\n'
+
+    assert _reexports(extractor, code) == {}
+
+
+def test_a_name_mentioned_only_in_a_docstring_is_still_a_reexport(
+    extractor: PythonExtractor,
+) -> None:
+    """Only annotation strings count as uses — otherwise prose could mask laundering."""
+    code = 'from pkg.other import Thing as Thing\n\ndef go():\n    """Mentions Thing."""\n'
+
+    assert _reexports(extractor, code) == {"Thing": "pkg.other.Thing"}
+
+
+def test_nested_annotation_string_is_a_use(extractor: PythonExtractor) -> None:
+    """`list["Store"]` counts, because the grammar wraps each element in its own `type`.
+
+    Review raised this as a likely false positive on the assumption that the
+    string's parent would be `subscript`. It is not: tree-sitter nests
+    generic_type -> type_parameter -> type -> string, so the immediate-parent
+    check already covers it. Pinned so a future refactor cannot quietly break it.
+    """
+    code = 'from pkg.store import Store\n\ndef go(s: list["Store"]) -> None:\n    pass\n'
+
+    assert _reexports(extractor, code) == {}
+
+
+def test_attribute_name_does_not_count_as_a_use(extractor: PythonExtractor) -> None:
+    """`o.thing` mentions `thing` without using the import of that name."""
+    code = "from pkg.other import thing as thing\n\ndef go(o):\n    return o.thing\n"
+
+    assert _reexports(extractor, code) == {"thing": "pkg.other.thing"}
+
+
+def test_keyword_argument_name_does_not_count_as_a_use(extractor: PythonExtractor) -> None:
+    """`f(thing=1)` likewise — the keyword is not the imported symbol."""
+    code = "from pkg.other import thing as thing\n\ndef go(f):\n    return f(thing=1)\n"
+
+    assert _reexports(extractor, code) == {"thing": "pkg.other.thing"}
+
+
+def test_object_side_of_an_attribute_is_a_use(extractor: PythonExtractor) -> None:
+    """Only the attribute half is excluded — `thing.attr` genuinely uses `thing`."""
+    code = "from pkg.other import thing as thing\n\ndef go():\n    return thing.attr\n"
+
+    assert _reexports(extractor, code) == {}
