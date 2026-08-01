@@ -72,3 +72,23 @@ def extract_json(text: str) -> str:
     # No newline before the closing fence (e.g. `{...}```` on one line):
     # valid JSON never ends with backticks, so stripping the suffix is safe.
     return body.strip().removesuffix("```").strip()
+
+
+def dedup_findings(findings: list[Finding]) -> list[Finding]:
+    """Drop duplicate (file, line, category) findings, keeping the higher confidence.
+
+    Shared by every fan-out reviewer: chunked review partitions files so
+    cross-chunk duplicates cannot occur and this is insurance, but per-axis
+    review (#331) asks several axes about the same lines, where collisions are
+    expected rather than exceptional. First-occurrence order is preserved.
+    """
+    best: dict[tuple[str, int | None, str], Finding] = {}
+    order: list[tuple[str, int | None, str]] = []
+    for finding in findings:
+        key = (finding.file, finding.line, finding.category)
+        if key not in best:
+            best[key] = finding
+            order.append(key)
+        elif finding.confidence > best[key].confidence:
+            best[key] = finding
+    return [best[k] for k in order]
