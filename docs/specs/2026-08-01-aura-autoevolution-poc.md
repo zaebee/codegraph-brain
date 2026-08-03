@@ -1,8 +1,14 @@
 # Auto-evolution PoC — unit of selection, fitness, and the first mutation gate (#335)
 
-**Status:** research input, **nothing shipped** (2026-08-01)
+**Status:** research input + **first live results** (2026-08-01)
 **Issue:** #335
-**Subject repo:** `~/projects/aura` (read-only in this session)
+**Subject repo:** `~/projects/aura`
+
+> **Update.** Gate 0's instrumentation was built and shipped to aura
+> (#243–#247) and has run twelve real cycles. **§9 records what the data
+> showed, including two findings that falsify parts of this document.** Where
+> §9 contradicts an earlier section, §9 wins — the earlier text is left standing
+> rather than edited into agreement, so the falsification stays visible.
 
 ## Verdict up front
 
@@ -270,6 +276,12 @@ there.
 - **Stage 3** — auto-merge of `code`. Explicitly out of scope.
 
 ## 6. Pre-registered gate — first mutation experiment
+
+> **STATUS after first live data (§9): this gate CANNOT RUN AS WRITTEN.**
+> Two of three guardrails have no measurable source, and the drift hard
+> constraint was shown to reward deleting tests. Gate 0 contemplates exactly
+> this outcome. The section is left intact below rather than quietly re-tuned —
+> §9 records what broke and what would have to be true first.
 
 **Hypothesis:** replacing the evolver Aggregator's context assembly (git log +
 filesystem map) with a cgis-derived context package reduces tokens per evolver
@@ -639,18 +651,190 @@ ones. This is evidence against the strong sentence "repeats at every scale" as
 applied to the call graph. It is **not** a refutation of the composition claim,
 and should not be reported as one.
 
+## 9. First live data — and what it breaks
+
+Gate 0's instrumentation shipped to aura (#243–#247) and ran. **Twelve real
+cycles.** Everything below is measured, not argued, and most of it contradicts
+something written above.
+
+### The instrumentation works
+
+| measurement | result |
+|---|---|
+| cost per cycle | **$0.0028** before the context fix, **$0.0056** after |
+| prompt tokens | 1560 → **8112**, identical across all replicates (CV = 0.000) |
+| completion tokens | CV = 0.219 — real sampling variance |
+| wall clock | CV = 0.874 |
+
+**Cost was never the binding constraint.** All 25 cycles of §6 come to roughly
+**14 cents**. The cost cap that §6 spends a paragraph on is a rounding error;
+the real constraints are cadence, provider rate limits, and whether a proposal
+can be applied at all.
+
+### Finding 1 — the drift hard constraint rewards deleting tests
+
+§6 requires `drift_after(domain) ≤ drift_baseline(domain)`. Applied to a real
+patch (aura #247 — a bug fix plus the agent's first regression tests):
+
+```
+baseline (main)                          agents 0.2493
++ the patch (adds 3 tests)               agents 0.2590   → FAIL
+the patch with ALL agent tests deleted   agents 0.2207   → best score
+```
+
+Deleting the suite improves the metric three times more than adding three tests
+worsens it. **An optimiser under this constraint deletes the tests.** The
+component that moved is `T_calls[021U]` (0.34 → 0.37 against an ideal of 0.00) —
+several tests calling one shared fixture is a 021U burst by construction.
+
+Three separable causes, and the first is mine:
+
+1. **A measured baseline was used as a declared ideal.** The `patterns.yaml`
+   came from `cgis init-ontology`, whose own header reads *"a measured baseline,
+   not a verdict."* It was generated from a tree that had no agent tests, so the
+   "ideal" encodes a codebase without tests, and conformance to it means "be
+   like you were yesterday." §2 says drift measures conformance to a *declared*
+   ideal — nobody declared this one.
+2. **Test code and production code share a fingerprint.** Most architecture
+   metrics exclude tests; cgis does not. Folding them together makes the metric
+   structurally anti-test. Fixable: separate domain, or exclusion.
+3. **Used as a zero-slack veto on a single mutation**, the constraint has no
+   discriminating power — it responds to *change*, not to *quality*. §2 argues
+   drift must be a constraint rather than an objective; this shows that a
+   constraint applied at zero slack against an inferred target is a stasis gate
+   wearing a quality gate's clothes.
+
+**Amendment:** drop drift from §6's hard constraints. The write-side I/O gate
+stays — it behaved correctly on the same patch (7 → 7 edges, no regression) and
+is the one gate with demonstrated discriminating power.
+
+### Finding 2 — guardrails 1 and 2 have no source
+
+**`applied` = 0 across all 10 cycles.** Every `code`-type patch fails
+`git apply --check` with `corrupt patch at <stdin>:N` — malformed hunk headers.
+
+This survived the fix that was expected to cause it. Before aura #247 the
+evolver never received its persona (see Finding 4), so it was generating diffs
+having never been told the diff contract. After the fix it receives all 3012
+characters, *including* "Must be valid unified diff format", and **still
+produces zero applicable patches.** The instruction is necessary and not
+sufficient; LLM unified-diff generation fails on hunk line counts regardless.
+
+Guardrail-1 (acceptance rate over preflight) and guardrail-2 (accepted proposals
+per cycle) therefore measure nothing: no proposal ever reaches a preflight.
+
+**Amendment:** §6 is blocked until patches apply. Either loosen application
+(`git apply --3way`), or drop unified diffs for whole-file replacement — the
+`prompt`/`doc` path already works that way and is the only one that never fails.
+
+### Finding 3 — rate limits trip Gate 0's own stop criterion
+
+Ten cycles dispatched in quick succession: **5 succeeded, 5 returned
+`llm_error`** — almost certainly provider rate limiting. That is a **50%
+`unknown_usage` rate**, and Gate 0 already names a high unknown share as a
+"data unusable, do not proceed" outcome.
+
+The first genuine collection attempt hit a pre-registered stop criterion — not
+through any flaw in the metric, but through the pace of dispatch.
+
+**Amendment:** collection must pace requests and record the null rate per batch.
+An unpaced burst cannot produce a usable baseline.
+
+### Finding 4 — the fluctuation test: proposals are retrieval, not diagnosis
+
+Adapted from Luria–Delbrück. The literal method does not transfer — its signal
+comes from inheritance and amplification producing jackpot lineages, and our
+cycles inherit nothing. The *logic* transfers: run parallel replicates and let
+the distribution discriminate, rather than inspecting one case.
+
+Five successful replicates, identical repo state. All five propose the same
+thing first:
+
+```
+Migrate persistence layer to async SQLAlchemy
+Resolve async SQLAlchemy migration in persistence layer
+Migrate persistence layer to async SQLAlchemy
+Resolve async SQLAlchemy migration in persistence layer
+Migrate Persistence Layer to Async SQLAlchemy
+```
+
+Near-total concentration, which reads as a stable expert diagnosis. It is not.
+aura has an **open GitHub issue** titled *"Migrate the persistence layer to
+async SQLAlchemy (remove DB `asyncio.to_thread`)"*; the Aggregator pulls open
+issues into the context, and the persona's priority list says *"2. Address open
+GitHub Issues that have clear, bounded solutions."* The agent is restating a
+human-written issue, sometimes verbatim.
+
+Twice now, apparent purposefulness has been a property of the input:
+
+| cycle batch | looked like | was |
+|---|---|---|
+| before aura #247 | focused on the persistence layer | could see 53 of 420 files — nothing else to propose |
+| after aura #247 | consistently diagnoses the top problem | echoing an open issue |
+
+This is not a failure of the model — it is doing exactly what its persona
+instructs. But "executing priority #2" and "reasoning about what the organism
+needs" are different things, and they are indistinguishable from the outside
+until a fluctuation test separates them.
+
+**Consequence for §6.** The hypothesis is that a cgis-derived context reduces
+tokens "without degrading proposal quality". Proposal content is currently
+dominated by explicit hints already present in the context. Any context swap
+that drops the issues list would change proposals completely — for reasons that
+have nothing to do with cgis. §6 would be measuring hint retrieval, not context
+quality.
+
+### Finding 5 — two more silent failures, found only by running
+
+- **bee.Evolver's LLM had been dead for at least seven weeks** while every
+  scheduled run reported success. Both API keys were unauthorized; each cycle
+  produced zero improvements, exited 0, and sent a Telegram message announcing
+  completion. `main.py` checks `not observation.success and not observation.plan`,
+  and the plan object always exists — carrying the narrative "The Evolver's
+  brain is offline".
+- **`find_hive_root` returned the bee's own directory**, because every bee ships
+  its own `hive-manifest.yaml` and the search stopped at the first. The evolver
+  sensed 53 of 420 files and silently loaded a one-line fallback persona instead
+  of its 3012-character one.
+
+Both are instances of the pathology §5 names: a system reporting health it never
+measured. Neither was found by reading — the first by a workflow step that fails
+when the log is empty, the second by arithmetic that did not add up (a 16 KB
+filesystem map cannot fit in 1563 prompt tokens).
+
+### What has to be true before §6 can run
+
+1. Patches apply at a non-zero rate — otherwise there is nothing to gate.
+2. A preflight exists for evolver proposals — guardrail-1's stated source.
+3. Drift is either excluded from the hard constraints or given a *declared*
+   ideal that does not penalise tests.
+4. Collection is paced so the `unknown_usage` share stays low.
+5. The proposal-hint confound is handled — hold the issues list fixed across
+   arms, or accept that the experiment measures retrieval.
+
+None of these is expensive. All of them were invisible before the first cycle
+ran, and every one of them would have silently corrupted the experiment.
+
 ## Recommendation
 
 Do not build an organelle. Do three bounded things, in order:
 
-1. **Instrument the metabolism** (Gate 0). No LLM spend. Without it every
-   fitness claim downstream is unfalsifiable.
-2. **Add `evaluate`** — a shadow run producing a cost + preflight number per
-   proposed mutation. This is the missing organ; the rest of the loop exists.
-3. **Run §6 once**, honour the stopping rule, and write up whichever of the
-   three outcomes occurs.
+1. ~~**Instrument the metabolism** (Gate 0).~~ **Done** — shipped to aura in
+   #243–#247 and run for twelve live cycles. §9 has the numbers.
+2. **Make patches apply.** This moved ahead of `evaluate`, because §9 Finding 2
+   showed 0 of 10 proposals are applicable: a preflight over patches that never
+   apply measures nothing. Either `git apply --3way` or whole-file replacement.
+3. **Add `evaluate`** — a shadow run producing a cost + preflight number per
+   proposed mutation. Still the missing organ; still the thing that turns
+   variation into selection.
+4. **Then reconsider §6** against the five preconditions at the end of §9. Two
+   of its three guardrails and its main hard constraint are currently
+   non-functional, so "run it once" is not yet an available move.
 
-Reconciles with #305: cgis stays a measurement tool here. Its claim on aura is
-the membrane role in §4 — two deterministic gates nothing else in that stack
-provides — and that claim is testable today, independently of whether the
-auto-evolution PoC ever proceeds.
+**One claim in §4 survived contact with data and one did not.** The write-side
+I/O gate behaved correctly on a real patch (7 → 7 edges) and remains the
+membrane role cgis can defend. The drift ratchet did not: §9 Finding 1 shows it
+scores an empty test suite higher than a tested one. Reconciles with #305 —
+cgis stays a measurement tool, and one of its two proposed gates has now been
+falsified by measurement rather than argument, which is the outcome that
+discipline is for.
