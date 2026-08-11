@@ -7,8 +7,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
+from cgis.extractors.registry import build_extractors
 from cgis.guardian.chunker import Chunk
 from cgis.guardian.collector import ContextCollector, parse_features
+from cgis.pipeline import IngestionPipeline
 from cgis.storage.sqlite_store import SQLiteStore
 
 
@@ -66,7 +68,7 @@ def test_collect_graph_context_missing_db(tmp_path: Path) -> None:
 def test_collect_graph_context_no_changed_files(tmp_db: Path) -> None:
     """When no .py files changed, collect_graph_context returns empty string."""
     collector = ContextCollector(project_root=tmp_db.parent, db_path=tmp_db)
-    with patch.object(collector, "get_changed_py_files", return_value=[]):
+    with patch.object(collector, "get_changed_source_files", return_value=[]):
         assert collector.collect_graph_context() == ""
 
 
@@ -83,7 +85,7 @@ def test_collect_graph_context_injects_mermaid(tmp_db: Path) -> None:
     collector = ContextCollector(project_root=tmp_db.parent, db_path=tmp_db)
 
     with (
-        patch.object(collector, "get_changed_py_files", return_value=["src/cgis/pipeline.py"]),
+        patch.object(collector, "get_changed_source_files", return_value=["src/cgis/pipeline.py"]),
         patch("cgis.guardian.collector.SQLiteStore") as mock_store_cls,
         patch("cgis.guardian.collector.QueryEngine", return_value=mock_engine),
     ):
@@ -107,7 +109,7 @@ def test_collect_graph_context_custom_source_root(tmp_db: Path) -> None:
     collector = ContextCollector(project_root=tmp_db.parent, db_path=tmp_db, source_root="lib")
 
     with (
-        patch.object(collector, "get_changed_py_files", return_value=["lib/pkg/mod.py"]),
+        patch.object(collector, "get_changed_source_files", return_value=["lib/pkg/mod.py"]),
         patch("cgis.guardian.collector.SQLiteStore") as mock_store_cls,
         patch("cgis.guardian.collector.QueryEngine", return_value=mock_engine),
     ):
@@ -161,7 +163,7 @@ def test_base_ref_overrides_origin_prefix(tmp_path: Path) -> None:
     collector = ContextCollector(project_root=tmp_path, base_ref=base_sha)
     diff = collector.get_git_diff()
     assert "x = 2" in diff
-    assert collector.get_changed_py_files() == ["a.py"]
+    assert collector.get_changed_source_files() == ["a.py"]
 
 
 def test_parse_features_valid_and_empty() -> None:
@@ -186,7 +188,7 @@ def test_collect_full_files_reads_changed_files(tmp_path: Path) -> None:
     """Full HEAD text of each changed .py file appears in a fenced block."""
     (tmp_path / "small.py").write_text("x = 1\n")
     collector = ContextCollector(project_root=tmp_path, features=frozenset({"full_files"}))
-    with patch.object(collector, "get_changed_py_files", return_value=["small.py"]):
+    with patch.object(collector, "get_changed_source_files", return_value=["small.py"]):
         result = collector.collect_full_files()
     assert "#### `small.py`" in result
     assert "x = 1" in result
@@ -196,7 +198,7 @@ def test_collect_full_files_per_file_line_cap(tmp_path: Path) -> None:
     """A file over the per-file line cap is omitted with an explicit note."""
     (tmp_path / "big.py").write_text("x = 1\n" * 1300)
     collector = ContextCollector(project_root=tmp_path, features=frozenset({"full_files"}))
-    with patch.object(collector, "get_changed_py_files", return_value=["big.py"]):
+    with patch.object(collector, "get_changed_source_files", return_value=["big.py"]):
         result = collector.collect_full_files()
     assert "file omitted: too large (big.py)" in result
     assert "```python" not in result
@@ -206,7 +208,7 @@ def test_collect_full_files_exact_cap_included(tmp_path: Path) -> None:
     """A file with exactly _MAX_FILE_LINES lines is included (boundary, not off-by-one)."""
     (tmp_path / "edge.py").write_text("x = 1\n" * 1200)
     collector = ContextCollector(project_root=tmp_path, features=frozenset({"full_files"}))
-    with patch.object(collector, "get_changed_py_files", return_value=["edge.py"]):
+    with patch.object(collector, "get_changed_source_files", return_value=["edge.py"]):
         result = collector.collect_full_files()
     assert "#### `edge.py`" in result
     assert "file omitted" not in result
@@ -217,7 +219,7 @@ def test_collect_full_files_global_budget_smallest_first(tmp_path: Path) -> None
     (tmp_path / "tiny.py").write_text("a = 1\n")
     (tmp_path / "mid.py").write_text(("y" * 200 + "\n") * 1000)  # ~201K chars, 1000 lines
     collector = ContextCollector(project_root=tmp_path, features=frozenset({"full_files"}))
-    with patch.object(collector, "get_changed_py_files", return_value=["mid.py", "tiny.py"]):
+    with patch.object(collector, "get_changed_source_files", return_value=["mid.py", "tiny.py"]):
         result = collector.collect_full_files()
     assert "#### `tiny.py`" in result
     assert "file omitted: budget exhausted (mid.py)" in result
@@ -226,7 +228,7 @@ def test_collect_full_files_global_budget_smallest_first(tmp_path: Path) -> None
 def test_collect_full_files_skips_deleted(tmp_path: Path) -> None:
     """A changed file that no longer exists on HEAD (deleted) is skipped silently."""
     collector = ContextCollector(project_root=tmp_path, features=frozenset({"full_files"}))
-    with patch.object(collector, "get_changed_py_files", return_value=["gone.py"]):
+    with patch.object(collector, "get_changed_source_files", return_value=["gone.py"]):
         assert collector.collect_full_files() == ""
 
 
@@ -240,7 +242,7 @@ def test_collect_all_full_files_gated_by_feature(tmp_path: Path) -> None:
         with (
             patch.object(collector, "get_git_diff", return_value=base["get_git_diff"]),
             patch.object(collector, "read_file", return_value=base["read_file"]),
-            patch.object(collector, "get_changed_py_files", return_value=["a.py"]),
+            patch.object(collector, "get_changed_source_files", return_value=["a.py"]),
         ):
             context = collector.collect_all()
         assert ("full_files" in context) == (collector is on)
@@ -257,7 +259,7 @@ def test_flow_fallback_on_empty_impact(tmp_db: Path) -> None:
         project_root=tmp_db.parent, db_path=tmp_db, features=frozenset({"flow"})
     )
     with (
-        patch.object(collector, "get_changed_py_files", return_value=["src/cgis/newmod.py"]),
+        patch.object(collector, "get_changed_source_files", return_value=["src/cgis/newmod.py"]),
         patch("cgis.guardian.collector.SQLiteStore") as mock_store_cls,
         patch("cgis.guardian.collector.QueryEngine", return_value=mock_engine),
     ):
@@ -277,7 +279,7 @@ def test_no_flow_fallback_without_feature(tmp_db: Path) -> None:
 
     collector = ContextCollector(project_root=tmp_db.parent, db_path=tmp_db)
     with (
-        patch.object(collector, "get_changed_py_files", return_value=["src/cgis/newmod.py"]),
+        patch.object(collector, "get_changed_source_files", return_value=["src/cgis/newmod.py"]),
         patch("cgis.guardian.collector.SQLiteStore") as mock_store_cls,
         patch("cgis.guardian.collector.QueryEngine", return_value=mock_engine),
     ):
@@ -436,3 +438,82 @@ def test_collect_graph_context_skipped_when_include_graph_false(tmp_path: Path) 
     with patch.object(collector, "_graph_sections") as graph_sections:
         assert collector.collect_graph_context() == ""
         graph_sections.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# TypeScript context, end to end against a real ingested graph (#344)
+# ---------------------------------------------------------------------------
+
+_TS_HANDLER = "export function helper(value: number): number {\n  return value * 2;\n}\n"
+_TS_MAIN = (
+    "import { helper } from './handler';\n"
+    "export function run(): number {\n  return helper(21);\n}\n"
+)
+
+
+def _ingest_ts_project(tmp_path: Path) -> Path:
+    """A two-file TS project ingested into a real graph.db; returns the db path.
+
+    `main.ts` imports `handler.ts`, so `app.handler` has an inbound IMPORTS edge
+    and therefore a non-empty *impact* graph — the section the collector builds.
+    """
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "handler.ts").write_text(_TS_HANDLER, encoding="utf-8")
+    (tmp_path / "app" / "main.ts").write_text(_TS_MAIN, encoding="utf-8")
+    db = tmp_path / "graph.db"
+    with SQLiteStore(str(db)) as store:
+        IngestionPipeline(build_extractors([])).run(str(tmp_path), store=store)
+    return db
+
+
+def test_changed_ts_file_gets_an_impact_graph(tmp_path: Path) -> None:
+    """The acceptance criterion of #344, against real ingested nodes.
+
+    Before this, `get_changed_py_files` dropped the file before it was ever
+    looked up — and had the suffix filter been lifted alone, the Python FQN
+    helper would have derived `app.handler.ts`, matched nothing, logged at
+    debug, and produced the same empty section while looking healthy.
+    """
+    db = _ingest_ts_project(tmp_path)
+    collector = ContextCollector(project_root=tmp_path, db_path=db)
+    with patch.object(collector, "get_changed_source_files", return_value=["app/handler.ts"]):
+        graph = collector.collect_graph_context()
+    assert "```mermaid" in graph
+    assert "app.handler" in graph
+    assert collector.graph_stats == {"total": 1, "with_graph": 1, "flow_fallback": 0}
+
+
+def test_ts_coverage_footer_counts_the_file_even_when_the_graph_is_empty(tmp_path: Path) -> None:
+    """`with_graph == 0` on a TS PR must be visible, not silent.
+
+    A file the graph does not know is still counted in `total`, so the footer
+    shows 0/1 rather than omitting the file and showing nothing at all.
+    """
+    db = _ingest_ts_project(tmp_path)
+    collector = ContextCollector(project_root=tmp_path, db_path=db)
+    with patch.object(collector, "get_changed_source_files", return_value=["app/absent.ts"]):
+        assert collector.collect_graph_context() == ""
+    assert collector.graph_stats["total"] == 1
+    assert collector.graph_stats["with_graph"] == 0
+
+
+@pytest.mark.parametrize(
+    ("name", "fence"),
+    [("handler.ts", "ts"), ("Widget.tsx", "tsx"), ("mod.py", "python")],
+)
+def test_full_files_fences_each_language_as_itself(tmp_path: Path, name: str, fence: str) -> None:
+    """The fence was hardcoded `python`, so TS reached the model mislabelled."""
+    (tmp_path / name).write_text("const x = 1;\n", encoding="utf-8")
+    collector = ContextCollector(project_root=tmp_path)
+    assert f"```{fence}\n" in collector.collect_full_files([name])
+
+
+def test_chunked_path_keeps_ts_files(tmp_path: Path) -> None:
+    """`collect_for_chunk` had its own independent `.py` filter (collector.py:295)."""
+    db = _ingest_ts_project(tmp_path)
+    collector = ContextCollector(project_root=tmp_path, db_path=db)
+    chunk = Chunk(files=["app/handler.ts", "README.md"], diff="diff --git a/app/handler.ts")
+    context = collector.collect_for_chunk(chunk)
+    assert "app.handler" in context["graph_context"]
+    assert "```ts\n" in context["full_files"]
+    assert "README.md" not in context["full_files"]

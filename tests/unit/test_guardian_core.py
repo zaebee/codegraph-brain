@@ -287,7 +287,8 @@ def test_graph_stats_empty_changed_files(tmp_path: Path) -> None:
     db = tmp_path / "graph.db"
     db.write_bytes(b"")  # db exists but changed files list is empty
     c = ContextCollector(project_root=tmp_path, db_path=db)
-    with patch("cgis.guardian.collector.ContextCollector.get_changed_py_files", return_value=[]):
+    target = "cgis.guardian.collector.ContextCollector.get_changed_source_files"
+    with patch(target, return_value=[]):
         c.collect_graph_context()
     assert c.graph_stats == {"total": 0, "with_graph": 0, "flow_fallback": 0}
 
@@ -315,23 +316,36 @@ def test_get_git_diff_error(tmp_path: Path) -> None:
         assert "Error getting git diff" in c.get_git_diff()
 
 
-def test_get_changed_py_files_filters_non_py(tmp_path: Path) -> None:
-    """Only .py files are returned."""
+def test_get_changed_source_files_keeps_every_language_cgis_can_parse(tmp_path: Path) -> None:
+    """.py, .ts and .tsx are kept; anything with no extractor is dropped (#344).
+
+    This test used to assert the opposite — that only `.py` survived — which is
+    what left TypeScript PRs reviewed on a bare diff while `graph.db` held the
+    TS nodes all along. `.js` stays out on purpose: the TS FQN helper strips it,
+    but no extractor is registered for it, so a JS path would yield a
+    plausible-looking FQN matching nothing.
+    """
     c = ContextCollector(project_root=tmp_path)
     mock_result = MagicMock()
-    mock_result.stdout = "src/cgis/foo.py\nsrc/cgis/bar.ts\nREADME.md\n"
+    mock_result.stdout = (
+        "src/cgis/foo.py\nsrc/app/bar.ts\nsrc/app/Baz.tsx\nsrc/app/old.js\nREADME.md\n"
+    )
     with patch("cgis.guardian.collector.subprocess.run", return_value=mock_result):
-        assert c.get_changed_py_files() == ["src/cgis/foo.py"]
+        assert c.get_changed_source_files() == [
+            "src/cgis/foo.py",
+            "src/app/bar.ts",
+            "src/app/Baz.tsx",
+        ]
 
 
-def test_get_changed_py_files_on_error(tmp_path: Path) -> None:
+def test_get_changed_source_files_on_error(tmp_path: Path) -> None:
     """Returns empty list when git command fails."""
     c = ContextCollector(project_root=tmp_path)
     with patch(
         "cgis.guardian.collector.subprocess.run",
         side_effect=subprocess.CalledProcessError(1, "git"),
     ):
-        assert c.get_changed_py_files() == []
+        assert c.get_changed_source_files() == []
 
 
 def test_read_file_missing(tmp_path: Path) -> None:

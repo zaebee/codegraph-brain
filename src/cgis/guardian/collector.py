@@ -5,7 +5,7 @@ from pathlib import Path
 
 import structlog
 
-from cgis.extractors.python_extractor import file_path_to_module_fqn
+from cgis.extractors.registry import is_supported, language_for
 from cgis.guardian.chunker import Chunk
 from cgis.query.drift.drift import DriftScorer
 from cgis.query.drift.fingerprint import FingerprintExtractor
@@ -102,8 +102,14 @@ class ContextCollector:
             self._diff_cache = result.stdout
             return self._diff_cache
 
-    def get_changed_py_files(self) -> list[str]:
-        """Returns relative paths of .py files changed vs the base branch."""
+    def get_changed_source_files(self) -> list[str]:
+        """Relative paths of changed files cgis has an extractor for (#344).
+
+        Was `.py` only, which meant that on a TypeScript PR the finder
+        received a bare diff — no full-file context and no impact graph —
+        even though `graph.db` was full of TS nodes. Guardian's
+        differentiator was simply absent, and nothing said so.
+        """
         try:
             result = subprocess.run(
                 ["git", "diff", "--name-only", self._diff_range()],
@@ -114,7 +120,7 @@ class ContextCollector:
             )
         except subprocess.CalledProcessError:
             return []
-        return [p for p in result.stdout.splitlines() if p.endswith(".py")]
+        return [p for p in result.stdout.splitlines() if is_supported(p)]
 
     def read_file(self, relative_path: str) -> str:
         """Reads a file from the project root; returns "" when it does not exist.
@@ -132,13 +138,13 @@ class ContextCollector:
         return file_path.read_text(encoding="utf-8")
 
     def collect_full_files(self, files: list[str] | None = None) -> str:
-        """Full HEAD text of given (default: changed) .py files, smallest-first under budgets.
+        """Full HEAD text of given (default: changed) source files, smallest-first.
 
         Per-file cap ~1200 lines and a global ~120K-char budget; omitted files get
         an explicit note so the model never reads absence-of-file as absence-of-code.
         In chunked mode the budget applies per chunk (spec §4.2).
         """
-        changed = files if files is not None else self.get_changed_py_files()
+        changed = files if files is not None else self.get_changed_source_files()
         sized: list[tuple[int, str, str]] = []
         omitted: list[str] = []
         for rel_path in changed:
@@ -158,7 +164,11 @@ class ContextCollector:
                 omitted.append(f"file omitted: budget exhausted ({rel_path})")
                 continue
             used += size
-            sections.append(f"#### `{rel_path}`\n```python\n{text}\n```")
+            # Per-language fence: the label was hardcoded "python", so a TS
+            # file reached the model announced as Python (#344).
+            language = language_for(rel_path)
+            fence = language.code_fence if language else ""
+            sections.append(f"#### `{rel_path}`\n```{fence}\n{text}\n```")
         return "\n\n".join(sections + omitted)
 
     def _graph_sections(
@@ -178,7 +188,12 @@ class ContextCollector:
         with SQLiteStore(str(self.db_path)) as store:
             engine = QueryEngine(store)
             for rel_path in changed_files:
-                module_fqn = file_path_to_module_fqn(rel_path, self.source_root)
+                language = language_for(rel_path)
+                if language is None:
+                    # Callers filter, so this means one stopped doing so.
+                    log.warning("No extractor for changed file.", path=rel_path)
+                    continue
+                module_fqn = language.file_path_to_module_fqn(rel_path, self.source_root)
                 nodes, edges = engine.get_impact_graph(module_fqn, max_depth=2)
                 title = "Impact graph"
                 if not nodes and flow:
@@ -201,7 +216,7 @@ class ContextCollector:
             return ""  # diff-only prompt (fits a smaller context window)
         if self.db_path is None or not self.db_path.exists():
             return ""
-        changed_files = self.get_changed_py_files()
+        changed_files = self.get_changed_source_files()
         if not changed_files:
             return ""
         sections, stats = self._graph_sections(changed_files, flow="flow" in self.features)
@@ -292,18 +307,18 @@ class ContextCollector:
         fallback — each chunk gets a small, complete world. graph_stats
         ACCUMULATE across chunks so the footer coverage stays truthful.
         """
-        py_files = [f for f in chunk.files if f.endswith(".py")]
+        source_files = [f for f in chunk.files if is_supported(f)]
         context: dict[str, str] = {
             "diff": chunk.diff,
             "contributing": self.read_file("CONTRIBUTING.md"),
             "ontology": self.read_file("docs/ontology/core.yaml"),
         }
-        sections, stats = self._graph_sections(py_files, flow=True)
+        sections, stats = self._graph_sections(source_files, flow=True)
         for key, value in stats.items():
             self.graph_stats[key] = self.graph_stats.get(key, 0) + value
         if sections:
             context["graph_context"] = "\n\n".join(sections)
-        full_files = self.collect_full_files(py_files)
+        full_files = self.collect_full_files(source_files)
         if full_files:
             context["full_files"] = full_files
         return context

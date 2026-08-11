@@ -34,7 +34,11 @@ def file_path_to_module_fqn(file_path: str, source_root: str | None = None) -> s
         clean = clean[2:]
     clean = clean.replace("\\", "/").lstrip("/")
     if source_root:
-        sr = source_root.replace("\\", "/").strip("/") + "/"
+        # removeprefix("./") so CI-style roots ("cgis ingest ./src") strip too,
+        # matching the Python helper. Without it a collector configured with
+        # source_root="./src" would leave the prefix on and derive an FQN no
+        # node carries (#344).
+        sr = source_root.replace("\\", "/").removeprefix("./").strip("/") + "/"
         if clean.startswith(sr):
             clean = clean[len(sr) :]
     for ext in (".tsx", ".ts", ".jsx", ".js"):

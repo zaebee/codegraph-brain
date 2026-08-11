@@ -40,6 +40,15 @@ Reading the benchmark's raw results changed what this work is for. Three things:
    absent from four fifths of the test set. This does not invalidate the exercise;
    it dictates how results must be reported (see "Reporting is stratified, and
    this is not optional", under Phase 2).
+
+   **Halved by #344 (2026-08-11): TypeScript is now collected.** The filter,
+   the code fence and the FQN helper all moved behind
+   `cgis.extractors.registry`, so the 10 Cal.com PRs join the 10 Python ones —
+   **20 of 50 with graph context, not 10**. That doubles the evidence behind
+   gate G5 ("graph-enabled slice recall exceeds bare-diff slice recall by ≥10
+   points"), which until now rested on 10 PRs. Java, Go and Ruby — 30 PRs —
+   remain diff-only, so stratified reporting still is not optional, and the
+   claim above should be read as 60%, not 80%.
 3. **The field's recall ceiling is ~66%.** No tool on the leaderboard exceeds it.
    Our recall work (#247, #248, #258) has been implicitly calibrated against
    100%. It should be calibrated against 66%.
