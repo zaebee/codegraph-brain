@@ -51,3 +51,39 @@ class BoomProvider(BaseProvider):
         """Simulate a provider/API failure."""
         _msg = "boom"
         raise RuntimeError(_msg)
+
+
+class FlakyProvider(BaseProvider):
+    """Raises a queued exception per call, then answers; records backoff sleeps.
+
+    Distinct from BoomProvider, which always fails: this one models a provider
+    that recovers, which is what a retry path has to be tested against.
+    """
+
+    def __init__(self, errors: list[Exception], response: str) -> None:
+        """Queue the failures to raise before `response` is finally returned."""
+        super().__init__()
+        self._errors = list(errors)
+        self._response = response
+        self.calls = 0
+        self.slept: list[float] = []
+
+    async def generate_content(self, system_prompt: str, user_prompt: str) -> str:
+        """Not used in tests."""
+        raise NotImplementedError
+
+    async def generate_structured(
+        self,
+        system_prompt: str,  # noqa: ARG002
+        user_prompt: str,  # noqa: ARG002
+        schema: type[BaseModel],  # noqa: ARG002
+    ) -> str:
+        """Raise the next queued error, or return the canned response."""
+        self.calls += 1
+        if self._errors:
+            raise self._errors.pop(0)
+        return self._response
+
+    async def _sleep(self, seconds: float) -> None:
+        """Record the backoff instead of waiting."""
+        self.slept.append(seconds)

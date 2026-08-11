@@ -17,6 +17,7 @@ gate; this is a second opinion on the same evidence.
 """
 
 import asyncio
+import re
 import statistics
 from collections.abc import Sequence
 
@@ -104,20 +105,69 @@ def candidate_text(finding: Finding) -> str:
     return f"{finding.title}\n\n{finding.problem}\n\nSuggested fix: {finding.fix}"
 
 
-async def judge_pair(provider: BaseProvider, golden: str, candidate: str) -> JudgeVerdict | None:
+#: Rate limits, matched on the exception's text. Provider SDKs raise their own
+#: types (`mistralai.SDKError`, google-genai's `ClientError`) and importing them
+#: here would turn optional dependencies into required ones — so the check is on
+#: the message. `\b429\b` rather than `429` so a token count of 1429 is not read
+#: as a status code.
+_RATE_LIMIT_PATTERN = re.compile(r"\b429\b|rate.?limit|resource.?exhausted|too many requests", re.I)
+
+#: Attempts per judge pair, including the first. Backoff is BACKOFF ** attempt.
+DEFAULT_JUDGE_ATTEMPTS = 5
+_JUDGE_BACKOFF_BASE = 2.0
+
+
+def is_rate_limited(exc: Exception) -> bool:
+    """Whether an exception reports a rate limit rather than a real failure.
+
+    `BaseProvider._retry` deliberately retries only transport errors, matching
+    what the Mistral SDK itself retries. That is right for a review — a handful
+    of large calls — and wrong for this workload: a calibration run issues
+    thousands of tiny calls in seconds, where 429 is the *expected* response,
+    not an anomaly. Measured on the first Mistral run: 76.5% of pairs lost.
+
+    Kept local to calibration rather than pushed into the provider so that a
+    measurement task does not silently change how production reviews retry.
+    """
+    return bool(_RATE_LIMIT_PATTERN.search(str(exc)))
+
+
+async def judge_pair(
+    provider: BaseProvider,
+    golden: str,
+    candidate: str,
+    max_attempts: int = DEFAULT_JUDGE_ATTEMPTS,
+) -> JudgeVerdict | None:
     """Ask the judge whether one candidate matches one golden comment.
 
-    None on any failure — transport, rate limit, unparseable output. A failed
-    call must not be recorded as a non-match: that would silently convert judge
-    downtime into a precision result.
+    Retries rate limits with exponential backoff; everything else — auth
+    failure, unparseable output — fails on the first attempt rather than
+    burning the budget on something that cannot succeed.
+
+    None once attempts are exhausted. A failed call must not be recorded as a
+    non-match: that would silently convert judge downtime into a precision
+    result.
     """
     prompt = JUDGE_PROMPT.format(golden_comment=golden, candidate=candidate)
-    try:
-        raw = await provider.generate_structured("", prompt, JudgeVerdict)
-        return JudgeVerdict.model_validate_json(extract_json(raw))
-    except Exception:
-        log.warning("Judge call failed; pair left unruled.", golden=golden[:60])
-        return None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            raw = await provider.generate_structured("", prompt, JudgeVerdict)
+        except Exception as exc:
+            if not is_rate_limited(exc) or attempt == max_attempts:
+                log.warning(
+                    "Judge call failed; pair left unruled.",
+                    golden=golden[:60],
+                    error=str(exc)[:120],
+                )
+                return None
+            await provider._sleep(_JUDGE_BACKOFF_BASE**attempt)  # noqa: SLF001
+            continue
+        try:
+            return JudgeVerdict.model_validate_json(extract_json(raw))
+        except Exception:
+            log.warning("Judge returned unparseable output.", golden=golden[:60])
+            return None
+    return None
 
 
 async def judge_matrix(

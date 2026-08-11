@@ -6,6 +6,7 @@ derived from it, and the two agreement statistics the gates are stated in.
 """
 
 import pytest
+from guardian_stubs import FlakyProvider
 
 from cgis.guardian.bench import GroundTruthEntry
 from cgis.guardian.calibrate import (
@@ -15,6 +16,8 @@ from cgis.guardian.calibrate import (
     candidate_text,
     decision_agreement,
     golden_text,
+    is_rate_limited,
+    judge_pair,
     judge_score,
     spearman,
 )
@@ -218,3 +221,65 @@ class TestDecisionAgreement:
     def test_length_mismatch_is_rejected(self) -> None:
         with pytest.raises(ValueError, match="length"):
             decision_agreement([True], [True, False])
+
+
+VERDICT_JSON = '{"reasoning": "same bug", "match": true, "confidence": 0.9}'
+
+
+def _flaky(errors: list[Exception]) -> FlakyProvider:
+    return FlakyProvider(errors, VERDICT_JSON)
+
+
+class _SDKError(Exception):
+    """Stand-in for mistralai.SDKError, which is an optional dependency here."""
+
+
+def _rate_limited() -> Exception:
+    return _SDKError(
+        'API error occurred: Status 429. Body: {"object":"error",'
+        '"message":"Rate limit exceeded","type":"rate_limited","code":"1300"}'
+    )
+
+
+class TestIsRateLimited:
+    """Rate limits are detected by message, because the SDK types are optional deps."""
+
+    def test_detects_mistral_429(self) -> None:
+        assert is_rate_limited(_rate_limited())
+
+    def test_detects_wording_without_a_status_code(self) -> None:
+        assert is_rate_limited(RuntimeError("RESOURCE_EXHAUSTED: rate limit exceeded"))
+
+    def test_ignores_an_auth_failure(self) -> None:
+        """Retrying a 401 burns attempts on something that will never succeed."""
+        assert not is_rate_limited(RuntimeError("Status 401. Unauthorized: bad api key"))
+
+    def test_ignores_a_429_inside_an_unrelated_number(self) -> None:
+        assert not is_rate_limited(RuntimeError("parsed 1429 tokens"))
+
+
+class TestJudgePairRetries:
+    """The calibration makes thousands of tiny calls; 429 is the expected failure."""
+
+    @pytest.mark.asyncio
+    async def test_retries_a_rate_limit_then_succeeds(self) -> None:
+        provider = _flaky([_rate_limited(), _rate_limited()])
+        verdict = await judge_pair(provider, "golden", "candidate")
+        assert verdict is not None
+        assert verdict.match is True
+        assert provider.calls == 3
+        assert provider.slept == [2.0, 4.0]
+
+    @pytest.mark.asyncio
+    async def test_gives_up_after_max_attempts(self) -> None:
+        provider = _flaky([_rate_limited()] * 10)
+        assert await judge_pair(provider, "golden", "candidate", max_attempts=3) is None
+        assert provider.calls == 3
+
+    @pytest.mark.asyncio
+    async def test_does_not_retry_a_non_rate_limit_error(self) -> None:
+        """A malformed response or an auth failure must cost exactly one call."""
+        provider = _flaky([RuntimeError("Status 401. Unauthorized")])
+        assert await judge_pair(provider, "golden", "candidate") is None
+        assert provider.calls == 1
+        assert provider.slept == []
