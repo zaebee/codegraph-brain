@@ -56,7 +56,16 @@ jobs:
       - name: Pytest
         # xml alongside term-missing: the console form is for a human reading the
         # log, the XML is the only form SonarCloud can import.
-        run: uv run --frozen pytest --cov=cgis --cov-report=term-missing --cov-report=xml
+        #
+        # `--cov=scripts` because `sonar.sources` below is `src,scripts`: Sonar
+        # counts every executable line in scripts/ as a line to cover whether or
+        # not the report mentions it, so omitting the directory does not exclude
+        # it from the coverage metric — it just reports all of it as uncovered.
+        # That alone put new-code coverage at 37.8% on a PR whose script was
+        # covered at 99% locally.
+        run: >
+          uv run --frozen pytest --cov=cgis --cov=scripts
+          --cov-report=term-missing --cov-report=xml
 
       - name: SonarQube Cloud scan
         # Inert until SONAR_TOKEN exists, so this can land before the migration.
