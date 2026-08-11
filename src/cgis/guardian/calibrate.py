@@ -266,15 +266,63 @@ def spearman(xs: Sequence[float], ys: Sequence[float]) -> float | None:
 
 
 def decision_agreement(a: Sequence[bool], b: Sequence[bool]) -> float | None:
-    """Fraction of pair decisions two judges rule identically (gate G3).
+    """Fraction of pair decisions two judges rule identically (gate G3as registered).
 
     Deliberately per-decision rather than per-score: two judges can reach the
     same precision by matching different pairs, and that agreement would be an
     artefact. None when there is nothing to compare.
+
+    **This statistic is near-useless at this task's base rate**, and the number
+    is kept only because G3 was registered in it. A judge matches ~5% of pairs,
+    so two judges agree by chance about 91% of the time — above the 80%
+    threshold before either has said anything. Read `cohen_kappa` and
+    `positive_agreement` instead; see #342.
     """
-    if len(a) != len(b):
-        _msg = f"length mismatch: {len(a)} vs {len(b)}"
-        raise ValueError(_msg)
+    _require_same_length(a, b)
     if not a:
         return None
     return sum(x == y for x, y in zip(a, b, strict=True)) / len(a)
+
+
+def cohen_kappa(a: Sequence[bool], b: Sequence[bool]) -> float | None:
+    """Chance-corrected agreement between two judges' pair decisions.
+
+    What G3 should have been written in: it subtracts the agreement two judges
+    would reach by both saying "no" to almost everything, which is what
+    `decision_agreement` cannot do.
+
+    None when expected agreement is 1.0 — if neither judge ever varies, there is
+    no disagreement to correct for and the denominator vanishes. Returning 1.0
+    there would claim perfect agreement between two judges that never made a
+    distinction.
+    """
+    _require_same_length(a, b)
+    if not a:
+        return None
+    n = len(a)
+    observed = sum(x == y for x, y in zip(a, b, strict=True)) / n
+    p_a, p_b = sum(a) / n, sum(b) / n
+    expected = p_a * p_b + (1 - p_a) * (1 - p_b)
+    if expected >= 1.0:
+        return None
+    return (observed - expected) / (1 - expected)
+
+
+def positive_agreement(a: Sequence[bool], b: Sequence[bool]) -> float | None:
+    """Jaccard overlap on the pairs the judges called a match.
+
+    The substantive question G3 was asking: not "do they agree it is mostly
+    noise" but "do they credit the SAME findings". None when neither judge
+    matched anything, where the question does not arise.
+    """
+    _require_same_length(a, b)
+    both = sum(x and y for x, y in zip(a, b, strict=True))
+    either = sum(x or y for x, y in zip(a, b, strict=True))
+    return both / either if either else None
+
+
+def _require_same_length(a: Sequence[object], b: Sequence[object]) -> None:
+    """Reject misaligned decision vectors — a silent zip would invent agreement."""
+    if len(a) != len(b):
+        _msg = f"length mismatch: {len(a)} vs {len(b)}"
+        raise ValueError(_msg)

@@ -30,10 +30,12 @@ from cgis.guardian.calibrate import (
     JudgePair,
     assign_matches,
     candidate_text,
+    cohen_kappa,
     decision_agreement,
     golden_text,
     judge_matrix,
     judge_score,
+    positive_agreement,
     spearman,
 )
 from cgis.guardian.findings import Finding
@@ -81,9 +83,19 @@ def row_key(row: dict[str, Any]) -> str:
 
 
 def load_rows(results: Path, pr_filter: int | None) -> list[dict[str, Any]]:
-    """Recorded reviews that carry finding text, optionally filtered to one PR."""
+    """Every scored review, optionally filtered to one PR.
+
+    Deliberately includes reviews that found nothing. An earlier version
+    required `r["findings"]` to be non-empty, which silently dropped 51 of 118
+    scored reviews and made both Phase 1 gate verdicts an artefact of an
+    unstated population choice — they flip to PASS on the full set. Empty
+    reviews cost zero judge calls (no candidates, no pairs), so there is no
+    reason to exclude them at collection time; the report separates the two
+    populations instead, because agreement on a review that said nothing is
+    agreement by shared convention rather than by measurement.
+    """
     rows = [json.loads(line) for line in results.read_text(encoding="utf-8").splitlines() if line]
-    scored = [r for r in rows if r.get("findings") and "matched" in r]
+    scored = [r for r in rows if "matched" in r and "precision" in r]
     if pr_filter is not None:
         scored = [r for r in scored if r["pr"] == pr_filter]
     return scored
@@ -227,11 +239,35 @@ def _rho_line(label: str, xs: list[float], ys: list[float]) -> str:
     return f"  {label:<28} rho={rho:+.3f}  n={len(xs)}  [{verdict}]"
 
 
-def _report_one_judge(judge: str, rows: list[dict[str, Any]]) -> None:
-    """Print G1 and G2 for one judge model, plus the per-PR breakdown."""
-    failures = sum(r["judge_failures"] for r in rows)
-    print(f"\n=== judge: {judge} — {len(rows)} reviews, {failures} failed pair calls ===")
+def _report_one_judge(judge: str, all_rows: list[dict[str, Any]]) -> None:
+    """Print G1 and G2 for one judge model, over both populations."""
+    failures = sum(r["judge_failures"] for r in all_rows)
+    dirty = sum(1 for r in all_rows if r["judge_failures"])
+    nonempty = [r for r in all_rows if r["n_candidates"] > 0]
+    print(f"\n=== judge: {judge} — {len(all_rows)} reviews, {failures} failed pair calls ===")
+    if failures:
+        print(
+            f"  WARNING: {dirty} rows carry unruled pairs; their tp is biased low. "
+            "Re-run those rows before quoting their precision."
+        )
+    print(
+        f"  populations: all scored reviews n={len(all_rows)}, "
+        f"non-empty reviews n={len(nonempty)} "
+        f"({len(all_rows) - len(nonempty)} reviews found nothing)"
+    )
+    print(
+        "  Both are reported because neither was pre-registered and the gate\n"
+        "  verdicts differ between them. Empty reviews agree by shared vacuous\n"
+        "  convention (precision 1.0 on both sides), not by measurement."
+    )
+    for label, subset in (("ALL", all_rows), ("NON-EMPTY", nonempty)):
+        if subset:
+            _report_population(label, subset)
 
+
+def _report_population(label: str, rows: list[dict[str, Any]]) -> None:
+    """Print G1 and G2 for one population of reviews, plus the per-PR breakdown."""
+    print(f"\n--- population: {label} (n={len(rows)}) ---")
     by_pr: dict[int, list[dict[str, Any]]] = defaultdict(list)
     for r in rows:
         by_pr[r["pr"]].append(r)
@@ -275,9 +311,17 @@ def _report_one_judge(judge: str, rows: list[dict[str, Any]]) -> None:
 
 
 def _report_agreement(by_judge: dict[str, list[dict[str, Any]]]) -> None:
-    """Print G3: per-decision agreement between every pair of judges."""
+    """Print G3: per-decision agreement between every pair of judges.
+
+    Raw agreement is printed because that is how G3 was registered, and kappa
+    beside it because raw agreement cannot fail at this base rate: a judge
+    matches ~5% of pairs, so two judges agree by chance ~91% of the time,
+    already above the 80% threshold. The registered verdict is shown as
+    registered and then explicitly discounted, rather than swapped for a
+    friendlier statistic after the fact.
+    """
     judges = sorted(by_judge)
-    print(f"\nG3  judge agreement (>= {G3_MIN_AGREEMENT:.0%})")
+    print(f"\nG3  judge agreement (registered form: raw >= {G3_MIN_AGREEMENT:.0%})")
     if len(judges) < 2:
         print("  only one judge present — rerun `run` with a second --model")
         return
@@ -297,7 +341,25 @@ def _report_agreement(by_judge: dict[str, list[dict[str, Any]]]) -> None:
                 print(f"  {first} vs {second}: no comparable decisions")
                 continue
             verdict = "PASS" if agreement >= G3_MIN_AGREEMENT else "FAIL"
-            print(f"  {first} vs {second}: {agreement:.1%} over {len(a)} decisions  [{verdict}]")
+            kappa = cohen_kappa(a, b)
+            positive = positive_agreement(a, b)
+            chance = (sum(a) / len(a)) * (sum(b) / len(b)) + (1 - sum(a) / len(a)) * (
+                1 - sum(b) / len(b)
+            )
+            print(f"\n  {first} vs {second} — {len(a)} comparable decisions")
+            print(f"    raw agreement    {agreement:.1%}  [{verdict} as registered]")
+            print(f"    chance agreement {chance:.1%}  <- what the registered gate mostly measures")
+            print(f"    match rates      {sum(a) / len(a):.1%} vs {sum(b) / len(b):.1%}")
+            print(
+                "    Cohen's kappa    "
+                + ("undefined" if kappa is None else f"{kappa:+.3f}")
+                + "  <- the statistic G3 should have used"
+            )
+            print(
+                "    positive overlap "
+                + ("undefined" if positive is None else f"{positive:.1%}")
+                + f"  ({sum(x and y for x, y in zip(a, b, strict=True))} pairs matched by both)"
+            )
 
 
 def report(args: argparse.Namespace) -> int:

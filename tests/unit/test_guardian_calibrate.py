@@ -14,11 +14,13 @@ from cgis.guardian.calibrate import (
     JudgeVerdict,
     assign_matches,
     candidate_text,
+    cohen_kappa,
     decision_agreement,
     golden_text,
     is_rate_limited,
     judge_pair,
     judge_score,
+    positive_agreement,
     spearman,
 )
 from cgis.guardian.findings import Finding
@@ -283,3 +285,64 @@ class TestJudgePairRetries:
         assert await judge_pair(provider, "golden", "candidate") is None
         assert provider.calls == 1
         assert provider.slept == []
+
+
+class TestCohenKappa:
+    """G3's registered raw-agreement form is uninformative at a low base rate.
+
+    The judge said `match` on 4.8% of pairs in the first run. Two such judges
+    agree by chance ~91% of the time, above the 80% gate — so the gate cannot
+    fail. Kappa is what the gate should have been written in, and these tests
+    pin the degenerate cases that make that true.
+    """
+
+    def test_perfect_agreement_is_one(self) -> None:
+        assert cohen_kappa([True, False, True, False], [True, False, True, False]) == (
+            pytest.approx(1.0)
+        )
+
+    def test_chance_level_agreement_is_about_zero(self) -> None:
+        """Both judges say yes a quarter of the time, independently."""
+        a = [True, False, False, False] * 25
+        b = [False, True, False, False] * 25
+        assert cohen_kappa(a, b) == pytest.approx(-1 / 3, abs=0.01)
+
+    def test_high_raw_agreement_at_a_low_base_rate_scores_poorly(self) -> None:
+        """96% raw agreement — passing G3 as registered — yet kappa is near zero.
+
+        This is the exact failure mode of the registered gate: 100 pairs, each
+        judge says yes twice, never on the same pair.
+        """
+        a = [True, True] + [False] * 98
+        b = [False, False, True, True] + [False] * 96
+        assert decision_agreement(a, b) == pytest.approx(0.96)
+        kappa = cohen_kappa(a, b)
+        assert kappa is not None
+        assert kappa < 0.1
+
+    def test_both_judges_constant_is_undefined(self) -> None:
+        """No expected disagreement means kappa has a zero denominator.
+
+        Returning 1.0 would claim perfect agreement between two judges that
+        never made a distinction; None says the statistic does not apply.
+        """
+        assert cohen_kappa([False] * 10, [False] * 10) is None
+
+    def test_empty_is_undefined(self) -> None:
+        assert cohen_kappa([], []) is None
+
+    def test_length_mismatch_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="length"):
+            cohen_kappa([True], [True, False])
+
+
+class TestPositiveAgreement:
+    """The substantive G3 number: do the judges match the SAME pairs?"""
+
+    def test_jaccard_on_the_positive_class(self) -> None:
+        a = [True, True, False, False]
+        b = [True, False, True, False]
+        assert positive_agreement(a, b) == pytest.approx(1 / 3)
+
+    def test_no_positives_anywhere_is_undefined(self) -> None:
+        assert positive_agreement([False, False], [False, False]) is None
