@@ -20,7 +20,8 @@ Reading the benchmark's raw results changed what this work is for. Three things:
    `p.endswith(".py")`, so on those PRs Guardian collects no file context and no
    graph context — the finder sees a bare diff. Guardian's differentiator is
    absent from four fifths of the test set. This does not invalidate the exercise;
-   it dictates how results must be reported (§5).
+   it dictates how results must be reported (see "Reporting is stratified, and
+   this is not optional", under Phase 2).
 3. **The field's recall ceiling is ~66%.** No tool on the leaderboard exceeds it.
    Our recall work (#247, #248, #258) has been implicitly calibrated against
    100%. It should be calibrated against 66%.
@@ -169,7 +170,7 @@ not supported by the current data.
 ## Where Guardian stands today, in our own units
 
 From `benchmarks/guardian/results.jsonl`, most recent configuration
-(`mistral-medium-latest`, `guardian_sha c4c391b`, 9 PRs, all from this repo):
+(`mistral-medium-latest`, `guardian_sha c4c391b`, all from this repo):
 
 | PR | recall | precision | noise |
 |---|---|---|---|
@@ -190,33 +191,56 @@ concept). Establishing the size of that gap is the entire point of Phase 1.
 
 **Method.**
 
-1. Take the recorded finder outputs from #279's recording artifacts for the 9
-   PRs in `benchmarks/guardian/`. No new LLM review calls — this phase re-scores
-   existing runs.
+1. Take the recorded finder outputs from `benchmarks/guardian/results.jsonl`.
+   No new LLM review calls — this phase re-scores existing runs.
 2. Convert each `benchmarks/guardian/pr-*.yaml` ground truth into the Martian
-   golden-comment shape (`comment` text + `severity`). Our entries already carry
-   prose descriptions; severity needs assigning once, by hand, and recorded in
-   `CURATION.md`.
+   golden-comment shape. Our entries already carry prose descriptions, and
+   `severity` is already a required field on every entry.
 3. Run `step3_judge_comments.py`'s prompt over the (golden × candidate) matrix
    with two judges, so judge variance is visible from the start.
 4. Report both scores side by side per PR, plus the `ambiguous` delta: our
    precision with the per-file exemption vs. without it.
 
-**Cost.** Judge calls only. ~3 GT × ~10 candidates × 9 PRs × 2 judges ≈ 550
-short calls. Negligible.
+### What the corpus actually holds — measured, not estimated
+
+`benchmarks/guardian/` carries **8 curated PRs**, not the 9 an earlier draft of
+this document claimed. Of those, **6 have recorded reviews** in
+`results.jsonl` — pr-278 and pr-313 have fixtures but no recorded run — giving
+**67 scored reviews** across finder models, feature flags and bench arms.
+
+The unit of correlation therefore has two candidates, and they are not
+equivalent:
+
+| unit | n | note |
+|---|---|---|
+| per review (one recorded run) | **67** | primary — this is the spread G1 needs |
+| per PR (runs averaged) | **6** | conservative, but 6 points barely supports a rank correlation |
+
+**The per-run statistic is primary and the per-PR one is reported alongside it.**
+Runs on the same PR share ground truth, so per-run points are not fully
+independent and a high ρ could partly reflect PR-level clustering; the per-PR
+figure is the check on that. Reporting only one of the two would be a choice
+made after seeing which looked better, which is exactly what pre-registration
+exists to prevent. Note also that pr-141 has **no ground-truth findings at all**,
+so it contributes a constant precision column — Spearman is undefined on
+constants, and the calibration reports that as `undefined`, never as 0.
+
+**Cost.** Judge calls only, and now counted rather than guessed: **2430 pair
+calls per judge**, 4860 for two. Negligible on a flash-tier model.
 
 ### Pre-registered gates
 
 Per `guardian_experiment_discipline` — these are written before the run and are
 not to be renegotiated after seeing the numbers.
 
-- **G1 (legibility).** Per-PR precision from the two scorers correlates at
-  Spearman ρ ≥ 0.6 across the 9 PRs. *If G1 fails, the two scorers are measuring
-  different things and Phase 2 is cancelled* — we would instead have found that
-  our benchmark's notion of a "hit" is idiosyncratic, which is a more important
-  result than a leaderboard row.
+- **G1 (legibility).** Precision from the two scorers correlates at Spearman
+  ρ ≥ 0.6 over the 67 recorded reviews, with the 6-point per-PR figure reported
+  beside it. *If G1 fails, the two scorers are measuring different things and
+  Phase 2 is cancelled* — we would instead have found that our benchmark's
+  notion of a "hit" is idiosyncratic, which is a more important result than a
+  leaderboard row.
 - **G2 (ambiguous policy).** The per-file `ambiguous` exemption inflates our
-  precision by ≤ 10 points relative to the judge. *If G2 fails*, the exemption
+  precision by ≤ 10 percentage points relative to the judge. *If G2 fails*, the exemption
   is doing more work than intended and `CURATION.md` needs revision before any
   external comparison — see the §"ambiguous must stay empty" argument in
   `2026-07-30-guardian-precision-bench-design.md`, which already anticipated
@@ -270,7 +294,8 @@ alone would produce a Guardian that appears to have graph context and does not.
   above Graphite's 29.1. A precision-only reviewer that finds nothing is the bar
   to clear, and we have shipped reviews that would not clear it.
 - **G5 (the graph claim).** Python-slice recall exceeds full-corpus recall by
-  ≥ 10 points. *This is the falsifiable form of "graph context helps."* If it
+  ≥ 10 percentage points. *This is the falsifiable form of "graph context
+  helps."* If it
   fails, graph context does not measurably help find bugs on real PRs, and that
   finding outranks the leaderboard position in importance — it goes straight to
   #220 and the context-collector lane.
@@ -307,9 +332,17 @@ enough that G1 must gate it.
 
 ## Open questions
 
-- Do the recorded finder outputs from #279 cover all 9 benchmark PRs, or only
-  #278? If only some, Phase 1 re-runs the finder on the remainder and its cost
-  is no longer negligible.
+- ~~Do the recorded finder outputs cover all the benchmark PRs?~~ **Answered
+  while building the runner, and better than expected.** The recordings are not
+  needed: `results.jsonl` itself stores every finding's full text alongside the
+  score, so all 67 reviews replay from the log. Two facts fell out of checking
+  it. The recorded `findings` list includes findings the skeptic *hid*, while
+  the scorer ran on `visible_findings(...)`; at threshold 0 the only rule that
+  can fire is `verdict == "refuted"`, and reconstructing on that basis matches
+  `len(matched) + noise + len(ambiguous_hits)` exactly on all 67 rows. Coverage
+  is 6 of the 8 fixtures — pr-278 and pr-313 have no recorded run, so the
+  precision-baseline PR the whole exercise was motivated by is, for now, outside
+  the calibration.
 - Is `mistral-medium-latest` the configuration we want measured, or should
   Phase 2 wait for the recall-lean finder prompt from #258/#248? Measuring the
   current configuration produces a baseline; measuring the next one produces a
