@@ -8,9 +8,11 @@ Usage:
     uv run python scripts/guardian_calibrate.py run --dry-run
     uv run python scripts/guardian_calibrate.py run --provider gemini --model gemini-2.5-flash
     uv run python scripts/guardian_calibrate.py report
+    uv run python scripts/guardian_calibrate.py rescore
 
-`run` is resumable: a (row, judge) pair already present in the output file is
-skipped, so an interrupted run continues where it stopped.
+`run` is resumable: a (row, judge) pair already recorded *cleanly* is skipped,
+so an interrupted run continues where it stopped and a row whose judge calls
+partly failed is re-judged rather than left biased low.
 """
 
 import argparse
@@ -19,7 +21,7 @@ import json
 import os
 import statistics
 import sys
-from collections import defaultdict
+from collections import ChainMap, defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -28,6 +30,7 @@ from cgis.guardian.bench import GroundTruth, load_ground_truth
 from cgis.guardian.calibrate import (
     DEFAULT_JUDGE_CONCURRENCY,
     JudgePair,
+    JudgeVerdict,
     assign_matches,
     candidate_text,
     cohen_kappa,
@@ -59,8 +62,9 @@ def visible(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
     `annotate_matches` records every finding including the ones the skeptic hid,
     while `match_findings` ran on `visible_findings(...)` at threshold 0 — where
     the only hiding rule that can fire is `verdict == "refuted"`, because
-    `impact_score` is constrained to >= 0. Verified exact against all 67
-    recorded rows: len(visible) == len(matched) + noise + len(ambiguous_hits).
+    `impact_score` is constrained to >= 0. Verified exact against all 118
+    recorded rows, zero mismatches:
+    len(visible) == len(matched) + noise + len(ambiguous_hits).
     """
     return [f for f in findings if f.get("verdict") != "refuted"]
 
@@ -88,9 +92,16 @@ def load_rows(results: Path, pr_filter: int | None) -> list[dict[str, Any]]:
     Deliberately includes reviews that found nothing. An earlier version
     required `r["findings"]` to be non-empty, which silently dropped 51 of 118
     scored reviews and made both Phase 1 gate verdicts an artefact of an
-    unstated population choice — they flip to PASS on the full set. Empty
-    reviews cost zero judge calls (no candidates, no pairs), so there is no
-    reason to exclude them at collection time; the report separates the two
+    unstated population choice — they flip to PASS on the full set.
+
+    That 51 counts reviews whose *recorded* findings list is empty. `report`
+    separately names 55 reviews as having "found nothing", counting the ones
+    with no finding left after the skeptic's refutations (`n_candidates == 0`).
+    Both are right; they are different questions, and only the second one
+    decides what the judge was ever asked about.
+
+    Empty reviews cost zero judge calls (no candidates, no pairs), so there is
+    no reason to exclude them at collection time; the report separates the two
     populations instead, because agreement on a review that said nothing is
     agreement by shared convention rather than by measurement.
     """
@@ -102,26 +113,55 @@ def load_rows(results: Path, pr_filter: int | None) -> list[dict[str, Any]]:
 
 
 def load_truths(fixtures: Path) -> dict[int, GroundTruth]:
-    """Every pr-N.yaml in the benchmark directory, keyed by PR number."""
-    truths = {}
+    """Every pr-N.yaml in the benchmark directory, keyed by PR number.
+
+    Two fixtures declaring the same `pr:` is a corpus error, not a preference
+    for the alphabetically later file — silently keeping one would rescore a
+    whole PR against ground truth nobody chose.
+    """
+    truths: dict[int, GroundTruth] = {}
+    sources: dict[int, Path] = {}
     for path in sorted(fixtures.glob("pr-*.yaml")):
         truth = load_ground_truth(path)
+        if truth.pr in truths:
+            _msg = f"Duplicate pr: {truth.pr} in {path} and {sources[truth.pr]}"
+            raise ValueError(_msg)
         truths[truth.pr] = truth
+        sources[truth.pr] = path
     return truths
 
 
+def load_records(out: Path) -> list[dict[str, Any]]:
+    """Calibration records, keeping only the last write per (row, judge).
+
+    The file is an append-only log and `run` may legitimately re-judge a row
+    (see `done_keys`), so the same (row_key, judge_model) can appear more than
+    once. Later wins: a re-judged row exists precisely because the earlier one
+    was incomplete.
+    """
+    records = [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines() if line]
+    latest: dict[tuple[str, str], dict[str, Any]] = {}
+    for record in records:
+        latest[record["row_key"], record["judge_model"]] = record
+    return list(latest.values())
+
+
 def done_keys(out: Path, judge_model: str) -> set[str]:
-    """Row keys already judged by this model, so `run` can resume."""
+    """Row keys this model has judged *cleanly*, so `run` can resume.
+
+    A row with unruled pairs is deliberately not "done". `report` tells the
+    operator to "re-run those rows before quoting their precision"; keying
+    resume on the row alone made that instruction impossible to follow without
+    hand-editing the JSONL, because the re-run skipped exactly the rows it was
+    supposed to repair.
+    """
     if not out.exists():
         return set()
-    seen = set()
-    for line in out.read_text(encoding="utf-8").splitlines():
-        if not line:
-            continue
-        record = json.loads(line)
-        if record.get("judge_model") == judge_model:
-            seen.add(record["row_key"])
-    return seen
+    return {
+        record["row_key"]
+        for record in load_records(out)
+        if record.get("judge_model") == judge_model and not record.get("judge_failures")
+    }
 
 
 def dense_decisions(pairs: list[JudgePair], n_goldens: int, n_candidates: int) -> list[int | None]:
@@ -129,8 +169,13 @@ def dense_decisions(pairs: list[JudgePair], n_goldens: int, n_candidates: int) -
 
     Dense and positional so two judges' decision lists align element-wise for
     the G3 agreement statistic without re-deriving which pairs each one saw.
+
+    Confidences are deliberately not stored. They would be dead weight: since
+    `assign_matches` became a maximum matching, the size of the assignment — and
+    so tp, precision and recall — depends only on these booleans, which is what
+    lets `rescore` re-derive every published number from the committed file.
     """
-    grid: list[int | None] = [None] * (n_goldens * n_candidates)
+    grid: list[int | None] = [None for _ in range(n_goldens * n_candidates)]
     for pair in pairs:
         grid[pair.golden_index * n_candidates + pair.candidate_index] = int(pair.verdict.match)
     return grid
@@ -176,6 +221,12 @@ async def calibrate_row(
 
 async def run(args: argparse.Namespace) -> int:
     """Judge every unjudged recorded review; append one record per review."""
+    if not args.results.is_file():
+        print(
+            f"No recorded reviews at {args.results}. Run scripts/guardian_bench.py first.",
+            file=sys.stderr,
+        )
+        return 1
     rows = load_rows(args.results, args.pr)
     truths = load_truths(args.fixtures)
     missing = sorted({r["pr"] for r in rows} - truths.keys())
@@ -194,12 +245,15 @@ async def run(args: argparse.Namespace) -> int:
             print(f"  pr-{pr}: {by_pr[pr]} calls")
         return 0
 
-    env = dict(os.environ)
-    if args.provider:
-        env["GUARDIAN_PROVIDER"] = args.provider
-    if args.model:
-        env["GUARDIAN_MODEL"] = args.model
-    provider, judge_model = build_provider(env)
+    # Layered rather than `dict(os.environ)` plus assignment: `build_provider`
+    # only reads its mapping, so there is no reason for CLI input to ever be
+    # written into a copy of the environment.
+    overrides = {
+        key: value
+        for key, value in (("GUARDIAN_PROVIDER", args.provider), ("GUARDIAN_MODEL", args.model))
+        if value
+    }
+    provider, judge_model = build_provider(ChainMap(overrides, dict(os.environ)))
 
     already = done_keys(args.out, judge_model)
     pending = [r for r in pending if row_key(r) not in already]
@@ -225,12 +279,88 @@ async def run(args: argparse.Namespace) -> int:
     return 0
 
 
-def _col(rows: list[dict[str, Any]], key: str) -> list[float]:
+def pairs_from_decisions(record: dict[str, Any]) -> list[JudgePair]:
+    """Rebuild judge pairs from a stored decision grid.
+
+    Confidence is not stored and is not needed: `assign_matches` is a maximum
+    matching, whose size — and therefore tp, precision and recall — depends only
+    on which pairs the judge called a match. A constant stands in so the
+    replayed pairs typecheck; it cannot influence the score.
+    """
+    n_candidates = record["n_candidates"]
+    return [
+        JudgePair(
+            golden_index=index // n_candidates,
+            candidate_index=index % n_candidates,
+            verdict=JudgeVerdict(reasoning="replayed", match=bool(decision), confidence=1.0),
+        )
+        for index, decision in enumerate(record["decisions"])
+        if decision is not None
+    ]
+
+
+def rescored(record: dict[str, Any]) -> dict[str, Any]:
+    """One record with tp/fp/fn and both judge rates re-derived from its grid."""
+    assignment = assign_matches(pairs_from_decisions(record))
+    scored = judge_score(
+        n_goldens=record["n_goldens"],
+        n_candidates=record["n_candidates"],
+        assignment=assignment,
+    )
+    return record | {
+        "tp": scored.tp,
+        "fp": scored.fp,
+        "fn": scored.fn,
+        "judge_precision": scored.precision,
+        "judge_recall": scored.recall,
+        "assignment": {str(k): v for k, v in sorted(assignment.items())},
+    }
+
+
+def rescore(args: argparse.Namespace) -> int:
+    """Re-derive every stored score from its decision grid; write back with --apply.
+
+    Exists because the scorer was wrong once. `assign_matches` was greedy and
+    under-counted true positives, and the raw judge rulings — which cost real
+    money — were still on disk and still correct. Replaying the scoring is the
+    honest repair; re-running the judge would have burned the budget to
+    reproduce the same decisions.
+
+    It doubles as the reproducibility check the spec needs: on an already-correct
+    file it reports zero changes, which is the assertion that every published
+    number follows from the committed evidence.
+    """
+    if not args.out.exists():
+        print(f"No calibration records at {args.out}. Run `run` first.", file=sys.stderr)
+        return 1
+    records = load_records(args.out)
+    updated = [rescored(r) for r in records]
+    changes = [
+        (old, new) for old, new in zip(records, updated, strict=True) if old["tp"] != new["tp"]
+    ]
+
+    print(f"{len(records)} records, {len(changes)} with a different tp.")
+    for old, new in changes:
+        print(
+            f"  {old['row_key']} [{old['judge_model']}] "
+            f"tp {old['tp']} -> {new['tp']}  "
+            f"P {old['judge_precision']:.3f} -> {new['judge_precision']:.3f}  "
+            f"R {old['judge_recall']:.3f} -> {new['judge_recall']:.3f}"
+        )
+    if not args.apply:
+        print("\nDry run. Re-run with --apply to write these back.")
+        return 0
+    args.out.write_text("".join(json.dumps(record) + "\n" for record in updated), encoding="utf-8")
+    print(f"\nWrote {len(updated)} records to {args.out}.")
+    return 0
+
+
+def numeric_column(rows: list[dict[str, Any]], key: str) -> list[float]:
     """One numeric column out of a list of calibration records."""
     return [float(r[key]) for r in rows]
 
 
-def _rho_line(label: str, xs: list[float], ys: list[float]) -> str:
+def rho_line(label: str, xs: list[float], ys: list[float]) -> str:
     """One correlation line: rho, n, and whether it clears the G1 threshold."""
     rho = spearman(xs, ys)
     if rho is None:
@@ -274,22 +404,34 @@ def _report_population(label: str, rows: list[dict[str, Any]]) -> None:
     prs = sorted(by_pr)
 
     print(f"\nG1  our precision vs judge precision (>= {G1_MIN_RHO:.2f})")
-    print(_rho_line("per-run", _col(rows, "our_precision"), _col(rows, "judge_precision")))
     print(
-        _rho_line(
+        rho_line(
+            "per-run",
+            numeric_column(rows, "our_precision"),
+            numeric_column(rows, "judge_precision"),
+        )
+    )
+    print(
+        rho_line(
             "per-run (strict, no ambig)",
-            _col(rows, "our_precision_strict"),
-            _col(rows, "judge_precision"),
+            numeric_column(rows, "our_precision_strict"),
+            numeric_column(rows, "judge_precision"),
         )
     )
     print(
-        _rho_line(
+        rho_line(
             "per-PR (run-averaged)",
-            [statistics.fmean(_col(by_pr[p], "our_precision")) for p in prs],
-            [statistics.fmean(_col(by_pr[p], "judge_precision")) for p in prs],
+            [statistics.fmean(numeric_column(by_pr[p], "our_precision")) for p in prs],
+            [statistics.fmean(numeric_column(by_pr[p], "judge_precision")) for p in prs],
         )
     )
-    print(_rho_line("per-run recall", _col(rows, "our_recall"), _col(rows, "judge_recall")))
+    print(
+        rho_line(
+            "per-run recall",
+            numeric_column(rows, "our_recall"),
+            numeric_column(rows, "judge_recall"),
+        )
+    )
 
     deltas = [(r["our_precision"] - r["our_precision_strict"]) * 100 for r in rows]
     mean_delta, max_delta = statistics.fmean(deltas), max(deltas)
@@ -302,12 +444,17 @@ def _report_population(label: str, rows: list[dict[str, Any]]) -> None:
         group = by_pr[p]
         print(
             f"      pr-{p}: n={len(group):<3} "
-            f"P {statistics.fmean(_col(group, 'our_precision')):.2f} / "
-            f"{statistics.fmean(_col(group, 'our_precision_strict')):.2f} / "
-            f"{statistics.fmean(_col(group, 'judge_precision')):.2f}   "
-            f"R {statistics.fmean(_col(group, 'our_recall')):.2f} / "
-            f"{statistics.fmean(_col(group, 'judge_recall')):.2f}"
+            f"P {statistics.fmean(numeric_column(group, 'our_precision')):.2f} / "
+            f"{statistics.fmean(numeric_column(group, 'our_precision_strict')):.2f} / "
+            f"{statistics.fmean(numeric_column(group, 'judge_precision')):.2f}   "
+            f"R {statistics.fmean(numeric_column(group, 'our_recall')):.2f} / "
+            f"{statistics.fmean(numeric_column(group, 'judge_recall')):.2f}"
         )
+
+
+def _grid_shape(record: dict[str, Any]) -> tuple[int, int]:
+    """The (goldens, candidates) a record's decision grid describes."""
+    return record["n_goldens"], record["n_candidates"]
 
 
 def _report_agreement(by_judge: dict[str, list[dict[str, Any]]]) -> None:
@@ -332,6 +479,13 @@ def _report_agreement(by_judge: dict[str, list[dict[str, Any]]]) -> None:
             a: list[bool] = []
             b: list[bool] = []
             for key in sorted(left.keys() & right.keys()):
+                # A fixture edited between the two judge runs changes n_goldens,
+                # and the grids stop describing the same pairs. Comparing them
+                # positionally would invent agreement; a bare zip(strict=True)
+                # would abort the whole report over one stale row.
+                if _grid_shape(left[key]) != _grid_shape(right[key]):
+                    print(f"    skipping {key}: grids differ in shape between the two judges")
+                    continue
                 for x, y in zip(left[key]["decisions"], right[key]["decisions"], strict=True):
                     if x is not None and y is not None:
                         a.append(bool(x))
@@ -367,9 +521,7 @@ def report(args: argparse.Namespace) -> int:
     if not args.out.exists():
         print(f"No calibration records at {args.out}. Run `run` first.", file=sys.stderr)
         return 1
-    records = [
-        json.loads(line) for line in args.out.read_text(encoding="utf-8").splitlines() if line
-    ]
+    records = load_records(args.out)
     by_judge: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for r in records:
         by_judge[r["judge_model"]].append(r)
@@ -398,9 +550,15 @@ def main() -> int:
     report_parser = sub.add_parser("report", help="print the pre-registered gates")
     report_parser.add_argument("--out", type=Path, default=CALIBRATION)
 
+    rescore_parser = sub.add_parser("rescore", help="re-derive scores from stored decisions")
+    rescore_parser.add_argument("--out", type=Path, default=CALIBRATION)
+    rescore_parser.add_argument("--apply", action="store_true", help="write the records back")
+
     args = parser.parse_args()
     if args.command == "run":
         return asyncio.run(run(args))
+    if args.command == "rescore":
+        return rescore(args)
     return report(args)
 
 

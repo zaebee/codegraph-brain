@@ -19,7 +19,8 @@ gate; this is a second opinion on the same evidence.
 import asyncio
 import re
 import statistics
-from collections.abc import Sequence
+from collections import defaultdict
+from collections.abc import Awaitable, Callable, Sequence
 
 import structlog
 from pydantic import BaseModel, Field
@@ -137,6 +138,8 @@ async def judge_pair(
     golden: str,
     candidate: str,
     max_attempts: int = DEFAULT_JUDGE_ATTEMPTS,
+    *,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> JudgeVerdict | None:
     """Ask the judge whether one candidate matches one golden comment.
 
@@ -147,6 +150,12 @@ async def judge_pair(
     None once attempts are exhausted. A failed call must not be recorded as a
     non-match: that would silently convert judge downtime into a precision
     result.
+
+    `sleep` is injected rather than taken from the provider. An earlier version
+    called `provider._sleep`, which worked — every provider inherits it and the
+    test doubles already override it — but reached into another class's
+    protected test seam from a module-level function that is not a provider,
+    and silently inherited whatever timing semantics that provider chose.
     """
     prompt = JUDGE_PROMPT.format(golden_comment=golden, candidate=candidate)
     for attempt in range(1, max_attempts + 1):
@@ -160,7 +169,7 @@ async def judge_pair(
                     error=str(exc)[:120],
                 )
                 return None
-            await provider._sleep(_JUDGE_BACKOFF_BASE**attempt)  # noqa: SLF001
+            await sleep(_JUDGE_BACKOFF_BASE**attempt)
             continue
         try:
             return JudgeVerdict.model_validate_json(extract_json(raw))
@@ -175,51 +184,94 @@ async def judge_matrix(
     goldens: Sequence[str],
     candidates: Sequence[str],
     concurrency: int = DEFAULT_JUDGE_CONCURRENCY,
+    *,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> tuple[list[JudgePair], int]:
     """Judge every (golden, candidate) pair; return the rulings and the failure count.
 
     The failure count is returned rather than logged away because it bounds how
     much of the resulting score is real: a run with many failed pairs
     under-reports true positives and must not be quoted as a precision number.
+
+    `return_exceptions=True` for the same reason: `judge_pair` catches
+    everything today, so nothing should escape, but if anything ever did,
+    `gather` would abandon every other in-flight pair of the review and the row
+    would be recorded from a fraction of its grid. An escaped exception is
+    counted as a failed pair, which is what it is.
     """
     semaphore = asyncio.Semaphore(max(1, concurrency))
 
     async def _one(g_index: int, c_index: int) -> JudgePair | None:
         async with semaphore:
-            verdict = await judge_pair(provider, goldens[g_index], candidates[c_index])
+            verdict = await judge_pair(provider, goldens[g_index], candidates[c_index], sleep=sleep)
         if verdict is None:
             return None
         return JudgePair(golden_index=g_index, candidate_index=c_index, verdict=verdict)
 
     results = await asyncio.gather(
-        *(_one(g, c) for g in range(len(goldens)) for c in range(len(candidates)))
+        *(_one(g, c) for g in range(len(goldens)) for c in range(len(candidates))),
+        return_exceptions=True,
     )
-    pairs = [r for r in results if r is not None]
+    for result in results:
+        if isinstance(result, BaseException):
+            log.warning(
+                "Judge task raised; its pair is counted as failed.", error=str(result)[:120]
+            )
+    pairs = [r for r in results if isinstance(r, JudgePair)]
     return pairs, len(results) - len(pairs)
 
 
 def assign_matches(pairs: Sequence[JudgePair]) -> dict[int, int]:
-    """Greedy 1:1 assignment of goldens to candidates, best confidence first.
+    """Maximum 1:1 assignment of goldens to candidates (Kuhn's algorithm).
 
     Martian report a single `tp` per tool, which only holds if a golden and a
     candidate can each be spent once — otherwise precision and recall would
-    disagree about how many true positives there were. Greedy by descending
-    judge confidence mirrors `match_findings`, which is greedy by descending
-    finding confidence; ties break on (golden, candidate) index so the result is
-    deterministic across runs.
+    disagree about how many true positives there were. Given that constraint,
+    `tp` has to be the *largest* such pairing the judge's rulings admit:
+    anything smaller is not a stricter scorer, it is a scoring error.
+
+    This was greedy by descending judge confidence until an audit measured it.
+    Greedy strands a golden whose only candidate was already spent by a
+    higher-confidence pair, and it did so in 3 of the 236 committed calibration
+    records. The bias has a direction — it depresses the judge's score, which
+    widens the very ours-vs-theirs gap Phase 1 publishes — so the old
+    justification ("it mirrors `match_findings`, which is also greedy") was
+    symmetry in the error rather than absence of one.
+
+    All maximum matchings have the same size, so the score does not depend on
+    which one is returned; candidates are still tried in descending judge
+    confidence, so among equally-sized pairings the reported one is both
+    deterministic and the best-supported. Because the *size* is independent of
+    confidence, a record's tp is reproducible from its stored decision grid
+    alone — which is what makes `benchmarks/guardian/calibration.jsonl`
+    self-checking despite storing no confidences.
     """
-    ordered = sorted(
+    adjacency: dict[int, list[int]] = defaultdict(list)
+    for pair in sorted(
         (p for p in pairs if p.verdict.match),
         key=lambda p: (-p.verdict.confidence, p.golden_index, p.candidate_index),
-    )
-    assignment: dict[int, int] = {}
-    used_candidates: set[int] = set()
-    for pair in ordered:
-        if pair.golden_index in assignment or pair.candidate_index in used_candidates:
-            continue
-        assignment[pair.golden_index] = pair.candidate_index
-        used_candidates.add(pair.candidate_index)
-    return assignment
+    ):
+        adjacency[pair.golden_index].append(pair.candidate_index)
+
+    #: candidate -> golden, the inverse of the returned mapping. Kuhn's needs to
+    #: ask "who currently holds this candidate" to try to re-seat them.
+    holder: dict[int, int] = {}
+
+    def _augment(golden: int, visited: set[int]) -> bool:
+        """Find an augmenting path from `golden`, re-seating incumbents if needed."""
+        for candidate in adjacency.get(golden, ()):
+            if candidate in visited:
+                continue
+            visited.add(candidate)
+            incumbent = holder.get(candidate)
+            if incumbent is None or _augment(incumbent, visited):
+                holder[candidate] = golden
+                return True
+        return False
+
+    for golden in sorted(adjacency):
+        _augment(golden, set())
+    return dict(sorted((golden, candidate) for candidate, golden in holder.items()))
 
 
 def judge_score(*, n_goldens: int, n_candidates: int, assignment: dict[int, int]) -> JudgeScore:
@@ -245,6 +297,38 @@ def judge_score(*, n_goldens: int, n_candidates: int, assignment: dict[int, int]
     )
 
 
+def tied_ranks(values: Sequence[float]) -> list[float]:
+    """1-based ranks, averaged across ties — the transform Spearman is Pearson on.
+
+    This is precisely what `statistics.correlation(x, y, method="ranked")`
+    computes internally, and calling that would be the obvious implementation.
+    It is spelled out here because SonarCloud's typeshed snapshot predates the
+    `method` parameter (CPython 3.12) and reads the call as `python:S930`,
+    "unexpected named argument" — a Blocker bug, and one Blocker bug on new
+    code is a Reliability rating of E on its own. The finding is a false
+    positive about a stdlib signature, but it fails the quality gate all the
+    same, and an explicit ten-line transform is cheaper to carry than a
+    permanent suppression that would also mask real S930s on the same line.
+
+    Tie averaging matters here rather than being a formality: 55 of the 118
+    calibration reviews found nothing and score precision 1.0, so the real data
+    is dominated by one large tied block.
+    `TestTiedRanks.test_matches_the_stdlib_ranked_method` pins the equivalence.
+    """
+    order = sorted(range(len(values)), key=lambda index: values[index])
+    ranks = [0.0] * len(values)
+    start = 0
+    while start < len(order):
+        stop = start
+        while stop + 1 < len(order) and values[order[stop + 1]] == values[order[start]]:
+            stop += 1
+        average = (start + stop) / 2 + 1
+        for position in range(start, stop + 1):
+            ranks[order[position]] = average
+        start = stop + 1
+    return ranks
+
+
 def spearman(xs: Sequence[float], ys: Sequence[float]) -> float | None:
     """Rank correlation between two scorers' outputs, or None when undefined.
 
@@ -260,7 +344,7 @@ def spearman(xs: Sequence[float], ys: Sequence[float]) -> float | None:
     if len(xs) < _MIN_CORRELATION_POINTS:
         return None
     try:
-        return statistics.correlation(xs, ys, method="ranked")
+        return statistics.correlation(tied_ranks(xs), tied_ranks(ys))
     except statistics.StatisticsError:
         return None
 

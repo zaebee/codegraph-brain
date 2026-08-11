@@ -5,11 +5,16 @@ the rendering of both sides of a judge pair, the 1:1 assignment, the score
 derived from it, and the two agreement statistics the gates are stated in.
 """
 
+import random
+import statistics
+
 import pytest
 from guardian_stubs import FlakyProvider
+from pydantic import BaseModel
 
 from cgis.guardian.bench import GroundTruthEntry
 from cgis.guardian.calibrate import (
+    _MIN_CORRELATION_POINTS,
     JudgePair,
     JudgeVerdict,
     assign_matches,
@@ -18,10 +23,12 @@ from cgis.guardian.calibrate import (
     decision_agreement,
     golden_text,
     is_rate_limited,
+    judge_matrix,
     judge_pair,
     judge_score,
     positive_agreement,
     spearman,
+    tied_ranks,
 )
 from cgis.guardian.findings import Finding
 
@@ -87,8 +94,16 @@ class TestCandidateText:
         assert "return set(layer)" not in rendered
 
 
+def _match(golden: int, candidate: int, confidence: float, *, match: bool = True) -> JudgePair:
+    return JudgePair(
+        golden_index=golden,
+        candidate_index=candidate,
+        verdict=JudgeVerdict(reasoning="r", match=match, confidence=confidence),
+    )
+
+
 class TestAssignMatches:
-    """Greedy 1:1, descending judge confidence — one golden, one candidate."""
+    """Maximum 1:1 matching — one golden, one candidate, as many pairs as exist."""
 
     def test_empty_input_yields_no_assignment(self) -> None:
         assert assign_matches([]) == {}
@@ -149,6 +164,24 @@ class TestAssignMatches:
         ]
         assert assign_matches(pairs) == {0: 0}
 
+    def test_reseats_an_incumbent_rather_than_stranding_a_golden(self) -> None:
+        """The bug that made this a maximum matching instead of a greedy one.
+
+        Golden 0 can only be matched by candidate 0. Golden 1 can take either.
+        Greedy by confidence spends candidate 0 on golden 1 first — the
+        strongest pair on the board — and golden 0 is then unmatchable, giving
+        one true positive where two exist. Kuhn's re-seats golden 1 onto
+        candidate 1 and keeps both.
+        """
+        pairs = [_match(1, 0, 0.95), _match(0, 0, 0.80), _match(1, 1, 0.70)]
+        assert assign_matches(pairs) == {0: 0, 1: 1}
+
+    def test_size_does_not_depend_on_confidence(self) -> None:
+        """What makes a stored decision grid enough to re-derive tp (`rescore`)."""
+        pairs = [_match(1, 0, 0.95), _match(0, 0, 0.80), _match(1, 1, 0.70)]
+        flattened = [_match(p.golden_index, p.candidate_index, 1.0) for p in pairs]
+        assert len(assign_matches(flattened)) == len(assign_matches(pairs))
+
 
 class TestJudgeScore:
     """TP/FP/FN follow from the assignment; empty sides degrade like score()."""
@@ -174,6 +207,47 @@ class TestJudgeScore:
         """A tp exceeding either axis means the caller mismatched inputs."""
         with pytest.raises(ValueError, match="assignment"):
             judge_score(n_goldens=1, n_candidates=5, assignment={0: 0, 1: 1})
+
+
+class TestTiedRanks:
+    """The rank transform is hand-rolled, so it owes the stdlib an equivalence proof."""
+
+    def test_distinct_values_rank_one_to_n(self) -> None:
+        assert tied_ranks([30.0, 10.0, 20.0]) == [3.0, 1.0, 2.0]
+
+    def test_ties_share_the_average_of_the_positions_they_span(self) -> None:
+        """Ranks 2 and 3 both become 2.5; the next value still gets rank 4."""
+        assert tied_ranks([1.0, 5.0, 5.0, 9.0]) == [1.0, 2.5, 2.5, 4.0]
+
+    def test_all_equal_collapses_to_one_rank(self) -> None:
+        assert tied_ranks([7.0] * 4) == [2.5] * 4
+
+    def test_empty_is_empty(self) -> None:
+        assert tied_ranks([]) == []
+
+    def test_matches_the_stdlib_ranked_method(self) -> None:
+        """Pearson-on-our-ranks == `statistics.correlation(..., method="ranked")`.
+
+        The whole reason `tied_ranks` exists is to avoid a `method=` keyword
+        that SonarCloud's stale typeshed rejects (python:S930, a Blocker). That
+        trade is only acceptable if the number does not move, so this asserts
+        it over tie-heavy random inputs rather than on a hand-picked case.
+        """
+        rng = random.Random(20260811)
+        compared = 0
+        for _ in range(200):
+            size = rng.randint(_MIN_CORRELATION_POINTS, 40)
+            # A small value pool on purpose: real calibration columns are mostly
+            # 0.0 and 1.0, so ties are the common case, not the edge case.
+            xs = [rng.choice([0.0, 0.5, 1.0, rng.random()]) for _ in range(size)]
+            ys = [rng.choice([0.0, 1.0, rng.random()]) for _ in range(size)]
+            try:
+                expected = statistics.correlation(xs, ys, method="ranked")
+            except statistics.StatisticsError:
+                continue
+            assert spearman(xs, ys) == pytest.approx(expected)
+            compared += 1
+        assert compared > 100, "too few non-degenerate cases to call this a comparison"
 
 
 class TestSpearman:
@@ -260,31 +334,108 @@ class TestIsRateLimited:
         assert not is_rate_limited(RuntimeError("parsed 1429 tokens"))
 
 
+class _RecordingSleep:
+    """A stand-in for asyncio.sleep that records the backoff instead of waiting."""
+
+    def __init__(self) -> None:
+        self.seconds: list[float] = []
+
+    async def __call__(self, seconds: float) -> None:
+        """Record one backoff and return immediately."""
+        self.seconds.append(seconds)
+
+
 class TestJudgePairRetries:
     """The calibration makes thousands of tiny calls; 429 is the expected failure."""
 
     @pytest.mark.asyncio
     async def test_retries_a_rate_limit_then_succeeds(self) -> None:
-        provider = _flaky([_rate_limited(), _rate_limited()])
-        verdict = await judge_pair(provider, "golden", "candidate")
+        provider, slept = _flaky([_rate_limited(), _rate_limited()]), _RecordingSleep()
+        verdict = await judge_pair(provider, "golden", "candidate", sleep=slept)
         assert verdict is not None
         assert verdict.match is True
         assert provider.calls == 3
-        assert provider.slept == [2.0, 4.0]
+        assert slept.seconds == [2.0, 4.0]
 
     @pytest.mark.asyncio
     async def test_gives_up_after_max_attempts(self) -> None:
-        provider = _flaky([_rate_limited()] * 10)
-        assert await judge_pair(provider, "golden", "candidate", max_attempts=3) is None
+        provider, slept = _flaky([_rate_limited()] * 10), _RecordingSleep()
+        assert await judge_pair(provider, "golden", "candidate", 3, sleep=slept) is None
         assert provider.calls == 3
 
     @pytest.mark.asyncio
     async def test_does_not_retry_a_non_rate_limit_error(self) -> None:
         """A malformed response or an auth failure must cost exactly one call."""
-        provider = _flaky([RuntimeError("Status 401. Unauthorized")])
-        assert await judge_pair(provider, "golden", "candidate") is None
+        provider, slept = _flaky([RuntimeError("Status 401. Unauthorized")]), _RecordingSleep()
+        assert await judge_pair(provider, "golden", "candidate", sleep=slept) is None
         assert provider.calls == 1
-        assert provider.slept == []
+        assert slept.seconds == []
+
+    @pytest.mark.asyncio
+    async def test_a_budget_of_zero_attempts_asks_nothing(self) -> None:
+        provider = _flaky([])
+        assert await judge_pair(provider, "golden", "candidate", 0) is None
+        assert provider.calls == 0
+
+    @pytest.mark.asyncio
+    async def test_unparseable_output_is_not_recorded_as_a_non_match(self) -> None:
+        """None, not a False verdict — judge downtime must not read as precision."""
+        provider = FlakyProvider([], "not json at all")
+        assert await judge_pair(provider, "golden", "candidate", sleep=_RecordingSleep()) is None
+        assert provider.calls == 1
+
+
+class _Escaped(BaseException):
+    """The one category `judge_pair`'s `except Exception` cannot catch."""
+
+
+class _ExplodingProvider(FlakyProvider):
+    """A provider that fails in a way the retry loop lets through."""
+
+    async def generate_structured(
+        self,
+        system_prompt: str,  # noqa: ARG002
+        user_prompt: str,  # noqa: ARG002
+        schema: type[BaseModel],  # noqa: ARG002
+    ) -> str:
+        """Raise past the retry loop's `except Exception`."""
+        self.calls += 1
+        raise _Escaped
+
+
+class TestJudgeMatrix:
+    """Every pair of one review, and an honest count of the ones that went unruled."""
+
+    @pytest.mark.asyncio
+    async def test_judges_the_full_cross_product(self) -> None:
+        provider = FlakyProvider([], VERDICT_JSON)
+        pairs, failures = await judge_matrix(provider, ["g1", "g2"], ["c1", "c2", "c3"])
+        assert provider.calls == 6
+        assert failures == 0
+        assert {(p.golden_index, p.candidate_index) for p in pairs} == {
+            (g, c) for g in range(2) for c in range(3)
+        }
+
+    @pytest.mark.asyncio
+    async def test_an_unruled_pair_is_counted_not_dropped(self) -> None:
+        """The count is what bounds how much of the resulting score is real."""
+        provider = FlakyProvider([], "not json")
+        pairs, failures = await judge_matrix(provider, ["g1"], ["c1", "c2"])
+        assert pairs == []
+        assert failures == 2
+
+    @pytest.mark.asyncio
+    async def test_an_escaping_exception_costs_one_pair_not_the_whole_review(self) -> None:
+        """Without return_exceptions, gather would abandon every in-flight pair."""
+        pairs, failures = await judge_matrix(_ExplodingProvider([], VERDICT_JSON), ["g"], ["c1"])
+        assert pairs == []
+        assert failures == 1
+
+    @pytest.mark.asyncio
+    async def test_an_empty_side_asks_nothing(self) -> None:
+        provider = FlakyProvider([], VERDICT_JSON)
+        assert await judge_matrix(provider, ["g"], []) == ([], 0)
+        assert provider.calls == 0
 
 
 class TestCohenKappa:
@@ -301,8 +452,12 @@ class TestCohenKappa:
             pytest.approx(1.0)
         )
 
-    def test_chance_level_agreement_is_about_zero(self) -> None:
-        """Both judges say yes a quarter of the time, independently."""
+    def test_systematic_disagreement_scores_below_zero(self) -> None:
+        """Both judges say yes a quarter of the time, and never on the same pair.
+
+        Negative kappa is worse than chance, not chance: at these base rates
+        independence would give 0.0, and never coinciding gives -1/3.
+        """
         a = [True, False, False, False] * 25
         b = [False, True, False, False] * 25
         assert cohen_kappa(a, b) == pytest.approx(-1 / 3, abs=0.01)
