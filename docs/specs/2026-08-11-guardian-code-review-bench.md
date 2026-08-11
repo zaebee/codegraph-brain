@@ -5,11 +5,13 @@
 **Lane:** guardian
 
 > **Update.** Phase 1 has been built, run with two judges, and **audited
-> adversarially — the audit falsified parts of the first write-up of its own
-> results.** §"Phase 1 — results" carries three explicit retractions (a silent
-> population choice that decided both verdicts, a gate amended three minutes
-> into the run while this document claimed it could not be renegotiated, and a
-> gate implemented differently from its registration). Where results contradict
+> adversarially twice — the audits falsified parts of the first write-up of its
+> own results, and then part of the scorer that produced them.** §"Phase 1 —
+> results" carries four explicit retractions (a silent population choice that
+> decided both verdicts, a gate amended three minutes into the run while this
+> document claimed it could not be renegotiated, a gate implemented differently
+> from its registration, and a scorer that under-counted the judge's true
+> positives). Where results contradict
 > an expectation stated earlier in this document, the results win — the earlier
 > text is left standing rather than edited into agreement, so the falsification
 > stays visible.
@@ -289,19 +291,22 @@ tells us whether `benchmarks/guardian/` measures what we think it measures.
 
 ## Phase 1 — results (2026-08-11)
 
-Ran, then audited adversarially. **The audit found three defects in this
-section's first version, two of them in its honesty rather than its code.** What
-follows is the corrected version; the retractions are stated rather than
-quietly edited, because a document arguing for pre-registration discipline
-cannot fix its own record silently.
+Ran, then audited adversarially — twice. **The first audit found three defects
+in this section's first version, two of them in its honesty rather than its
+code; the second found a fourth in the scorer itself.** What follows is the
+corrected version; the retractions are stated rather than quietly edited,
+because a document arguing for pre-registration discipline cannot fix its own
+record silently.
 
 Data: **118 scored reviews × 2 judges** (`gemini-2.5-flash`,
 `mistral-medium-latest`), 4860 pair calls. Gemini: 0 failed pairs. Mistral: 9 of
 2430 (0.4%), on 7 rows, flagged in the report. Records committed at
 `benchmarks/guardian/calibration.jsonl`; reproduce with
-`uv run python scripts/guardian_calibrate.py report`.
+`uv run python scripts/guardian_calibrate.py report`, and check that the
+committed records still imply the published numbers with
+`uv run python scripts/guardian_calibrate.py rescore` (expected: 0 changes).
 
-### Three retractions, up front
+### Four retractions, up front
 
 **R1 — the first version silently dropped 51 of 118 reviews, and that choice
 decided both verdicts.** `load_rows` required a non-empty `findings` list, so
@@ -310,7 +315,7 @@ runs with real scores. Both gates flip on the full population:
 
 | | ALL reviews (n=118) | NON-EMPTY (n=63) |
 |---|---|---|
-| G1 per-run ρ, gemini | **+0.723 PASS** | **+0.423 FAIL** |
+| G1 per-run ρ, gemini | **+0.722 PASS** | **+0.422 FAIL** |
 | G1 per-run ρ, mistral | **+0.714 PASS** | **+0.349 FAIL** |
 | G2 mean inflation | **+8.7 pp PASS** | **+16.2 pp FAIL** |
 
@@ -325,7 +330,7 @@ was never a reason to exclude them at collection time.
 Two consequences for numbers published earlier in this document's history: the
 non-empty population is now defined as "the judge saw at least one candidate"
 (`n_candidates > 0`) rather than "the row had findings" — four reviews had
-findings that the skeptic refuted, so the judge saw nothing. **ρ = +0.423 at
+findings that the skeptic refuted, so the judge saw nothing. **ρ = +0.422 at
 n = 63 supersedes the +0.479 at n = 67 first reported.**
 
 **R2 — the gate that failed is not the gate that was registered, and this
@@ -359,6 +364,43 @@ our_precision_strict`, a self-ablation computable from `results.jsonl` alone.
 The proxy is defensible — strict precision tracks the judge at mean |Δ| ≈ 0.10 —
 but it is not what was registered, and the judge run was not needed to score it.
 
+**R4 — the scorer under-counted the judge, and the bias pointed at our own
+conclusion.** `assign_matches` enforced the 1:1 constraint greedily, taking
+pairs in descending judge confidence. Greedy is not maximum: a golden whose only
+candidate has already been spent by a stronger pair is stranded, and its true
+positive is lost. Measured over the committed decision grids, **3 of 236 records
+under-reported tp by one** (pr-140 under both judges, pr-144 under gemini).
+
+The direction matters more than the size. Under-counting the judge's true
+positives depresses the judge's precision and recall, which **widens the
+ours-versus-theirs gap this section publishes as its finding.** A scoring error
+that flatters the argument is the kind that survives review, and this one did:
+it was written up with a justification ("it mirrors `match_findings`, which is
+also greedy") that is symmetry in the error, not absence of one.
+
+Corrected to a maximum bipartite matching. Every affected number is restated
+below; **no gate verdict changes** — the shifts are in the third decimal:
+
+| | before | after |
+|---|---|---|
+| G1 per-run ρ, gemini (ALL / non-empty) | +0.723 / +0.423 | **+0.722 / +0.422** |
+| G1 per-run ρ, mistral (ALL / non-empty) | +0.714 / +0.349 | **+0.714 / +0.348** |
+| per-run recall ρ, gemini (non-empty) | +0.859 | **+0.863** |
+| G2 mean inflation | +8.7 / +16.2 pp | unchanged |
+| G3 (raw, κ, positive overlap) | — | unchanged — the decision grids were never in doubt |
+
+Two things this bought beyond the correction. The maximum matching's *size* does
+not depend on judge confidence, so a record's score now follows from its stored
+decision grid alone — the committed JSONL reproduces its own published numbers,
+which it previously could not, because confidences were never stored.
+`scripts/guardian_calibrate.py rescore` is that check, and it re-derived these
+corrections from the raw rulings already on disk rather than spending the judge
+budget again.
+
+One number in the §G2 table below was also simply mistyped in the first version,
+unrelated to any of this: pr-122's mistral judge precision is **0.51**, not the
+0.58 that was copied from gemini's column.
+
 ### G1 — FAIL on the non-empty population, PASS on the full one
 
 Both judges agree closely on every statistic, and **the verdict is decided by
@@ -366,11 +408,11 @@ the population choice, not by judge variance**:
 
 | statistic (non-empty, n=63) | gemini | mistral |
 |---|---|---|
-| per-run, precision **as the bench reports it** | +0.423 | +0.349 |
+| per-run, precision **as the bench reports it** | +0.422 | +0.348 |
 | per-run, precision **without** the `ambiguous` exemption | +0.756 | +0.723 |
-| per-run recall | +0.859 | +0.874 |
-| mean \|ours − judge\| | 0.251 | 0.257 |
-| mean \|strict − judge\| | 0.099 | 0.095 |
+| per-run recall | +0.863 | +0.874 |
+| mean \|ours − judge\| | 0.251 | 0.258 |
+| mean \|strict − judge\| | 0.099 | 0.096 |
 
 Removing the exemption is the single largest improvement available, on both
 judges. But the first version's claim — *"the divergence is almost entirely our
@@ -380,12 +422,12 @@ by whether a PR carries `ambiguous` entries at all:
 
 | slice | n | mean \|strict − judge\|, gemini | mistral | exact matches |
 |---|---|---|---|---|
-| PRs **without** `ambiguous` entries | 40 | **0.144** | **0.147** | 24/40, 26/40 |
-| PRs **with** them, exemption removed | 23 | **0.021** | **0.004** | 20/23, 22/23 |
+| PRs **without** `ambiguous` entries | 40 | **0.145** | **0.149** | 24/40, 26/40 |
+| PRs **with** them, exemption removed | 23 | **0.018** | **0.004** | 21/23, 22/23 |
 
 Agreement is **worst on the slice where the exemption cannot fire**. If ambiguity
 policy were the whole story, that slice should agree best. A residual gap of
-~0.145 survives on exactly the PRs where ambiguity cannot explain it — plausibly
+~0.147 survives on exactly the PRs where ambiguity cannot explain it — plausibly
 the line-anchoring-versus-semantic difference this document had declared
 exonerated. Supported claim: **the exemption is the largest single contributor,
 and a residual disagreement of ~0.15 mean absolute precision remains without
@@ -396,7 +438,7 @@ diagnosis, not a test, and on 6 clusters it cannot be more than that.
 
 One further correction: **recall's ρ = 0.86 is partly definitional.** pr-141 has
 no ground-truth findings, so its rows score recall (1.0, 1.0) on both sides
-automatically. Without it: **+0.795 (gemini), +0.817 (mistral)** — still the
+automatically. Without it: **+0.801 (gemini), +0.817 (mistral)** — still the
 strongest agreement in the table, but not 0.86.
 
 ### G2 — FAIL on the non-empty population (+16.2 pp), PASS on the full one (+8.7 pp)
@@ -407,12 +449,12 @@ line:
 
 | PR | `ambiguous` entries | P ours | P strict | P judge (gemini / mistral) |
 |---|---|---|---|---|
-| pr-122 | 0 | 0.66 | 0.66 | 0.58 / 0.58 |
-| pr-140 | 0 | 0.27 | 0.27 | 0.39 / 0.39 |
+| pr-122 | 0 | 0.66 | 0.66 | 0.58 / 0.51 |
+| pr-140 | 0 | 0.27 | 0.27 | 0.40 / 0.40 |
 | pr-143 | 0 | 0.09 | 0.09 | 0.12 / 0.12 |
 | pr-141 | 2 | **0.29** | 0.00 | 0.00 / 0.00 |
 | pr-142 | 1 | **1.00** | 0.14 | 0.19 / 0.14 |
-| pr-144 | 4 | **0.29** | 0.05 | 0.03 / 0.03 |
+| pr-144 | 4 | **0.29** | 0.05 | 0.04 / 0.04 |
 
 (non-empty population, run-averaged)
 
@@ -469,7 +511,7 @@ more than one judge, as Martian themselves do.
    it and stop calling the exempted number precision. They differ in what they
    claim about debatable findings. Filed separately.
 3. **The good news, restated at its real size.** Strict precision correlates at
-   +0.72 to +0.76 and matches the judge exactly on 44–48 of 63 runs; recall
+   +0.72 to +0.76 and matches the judge exactly on 45–48 of 63 runs; recall
    correlates at +0.80 to +0.82 once the definitional rows are removed. Once the
    exemption is resolved, the two scorers are close enough for a Phase 2 number
    to mean something — with the ~0.15 residual of §G1 as the honest error bar,
