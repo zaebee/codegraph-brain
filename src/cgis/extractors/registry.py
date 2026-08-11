@@ -72,6 +72,13 @@ def language_for(file_path: str) -> Language | None:
     None is the "not our file" answer, and every caller must branch on it rather
     than falling back to a default: a default is precisely how a TypeScript path
     used to acquire a Python FQN.
+
+    Case-sensitive on purpose, and it must stay that way while
+    `IngestionPipeline._get_extractor` is — it matches `filename.endswith(ext)`
+    against these same lowercase keys, so `Foo.TS` is never parsed and the graph
+    holds no node for it. Lowercasing here alone would call such a file
+    supported, derive an FQN for it, and miss silently — the exact failure this
+    module exists to remove. `TestCaseSensitivity` pins the agreement.
     """
     return _BY_EXTENSION.get(PurePosixPath(file_path.replace("\\", "/")).suffix)
 

@@ -70,6 +70,30 @@ class TestLanguageFor:
         assert not is_supported(path)
 
 
+class TestCaseSensitivity:
+    """The registry must agree with the ingest pipeline, including where both say no."""
+
+    def test_an_uppercase_extension_is_unsupported_because_ingest_skips_it(
+        self, tmp_path: Path
+    ) -> None:
+        """Deliberate, and verified by execution rather than asserted from the code.
+
+        `IngestionPipeline._get_extractor` matches with `filename.endswith(ext)`
+        against lowercase keys, so `Foo.TS` is never parsed and the graph holds
+        no node for it. Lowercasing the lookup here would therefore *create* the
+        bug #344 removed: the collector would call the file supported, derive
+        `foo` as its FQN, miss in the graph, log at debug and produce a review
+        with no context and no complaint.
+
+        Case-insensitivity is defensible, but only if the pipeline and the
+        registry gain it together — never here alone.
+        """
+        (tmp_path / "Foo.TS").write_text(TS_SOURCE, encoding="utf-8")
+        nodes, _, _ = IngestionPipeline(build_extractors([])).run(str(tmp_path))
+        assert [n for n in nodes if n.type is NodeType.FILE] == []
+        assert language_for("Foo.TS") is None
+
+
 class TestCodeFence:
     """Full-file context announces the language it is actually showing."""
 
