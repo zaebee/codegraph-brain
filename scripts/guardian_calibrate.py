@@ -457,6 +457,59 @@ def _grid_shape(record: dict[str, Any]) -> tuple[int, int]:
     return record["n_goldens"], record["n_candidates"]
 
 
+def _aligned_decisions(
+    left: dict[str, dict[str, Any]], right: dict[str, dict[str, Any]]
+) -> tuple[list[bool], list[bool], list[str]]:
+    """Two judges' rulings on the pairs both of them actually ruled on.
+
+    Returns the two aligned decision vectors and the row keys that had to be
+    skipped. Alignment is positional and only holds while both records describe
+    the same grid: a fixture edited between the two judge runs changes
+    `n_goldens`, after which element *i* is a different (golden, candidate) pair
+    on each side. Comparing those would invent agreement, and a bare
+    `zip(strict=True)` would abort the whole report over one stale row.
+    """
+    a: list[bool] = []
+    b: list[bool] = []
+    skipped: list[str] = []
+    for key in sorted(left.keys() & right.keys()):
+        if _grid_shape(left[key]) != _grid_shape(right[key]):
+            skipped.append(key)
+            continue
+        for x, y in zip(left[key]["decisions"], right[key]["decisions"], strict=True):
+            if x is not None and y is not None:
+                a.append(bool(x))
+                b.append(bool(y))
+    return a, b, skipped
+
+
+def _print_pair_agreement(first: str, second: str, a: list[bool], b: list[bool]) -> None:
+    """Print G3 for one pair of judges: as registered, then chance-corrected."""
+    agreement = decision_agreement(a, b)
+    if agreement is None:
+        print(f"  {first} vs {second}: no comparable decisions")
+        return
+    verdict = "PASS" if agreement >= G3_MIN_AGREEMENT else "FAIL"
+    kappa = cohen_kappa(a, b)
+    positive = positive_agreement(a, b)
+    rate_a, rate_b = sum(a) / len(a), sum(b) / len(b)
+    chance = rate_a * rate_b + (1 - rate_a) * (1 - rate_b)
+    print(f"\n  {first} vs {second} — {len(a)} comparable decisions")
+    print(f"    raw agreement    {agreement:.1%}  [{verdict} as registered]")
+    print(f"    chance agreement {chance:.1%}  <- what the registered gate mostly measures")
+    print(f"    match rates      {rate_a:.1%} vs {rate_b:.1%}")
+    print(
+        "    Cohen's kappa    "
+        + ("undefined" if kappa is None else f"{kappa:+.3f}")
+        + "  <- the statistic G3 should have used"
+    )
+    print(
+        "    positive overlap "
+        + ("undefined" if positive is None else f"{positive:.1%}")
+        + f"  ({sum(x and y for x, y in zip(a, b, strict=True))} pairs matched by both)"
+    )
+
+
 def _report_agreement(by_judge: dict[str, list[dict[str, Any]]]) -> None:
     """Print G3: per-decision agreement between every pair of judges.
 
@@ -472,48 +525,15 @@ def _report_agreement(by_judge: dict[str, list[dict[str, Any]]]) -> None:
     if len(judges) < 2:
         print("  only one judge present — rerun `run` with a second --model")
         return
-    for i, first in enumerate(judges):
-        for second in judges[i + 1 :]:
-            left = {r["row_key"]: r for r in by_judge[first]}
-            right = {r["row_key"]: r for r in by_judge[second]}
-            a: list[bool] = []
-            b: list[bool] = []
-            for key in sorted(left.keys() & right.keys()):
-                # A fixture edited between the two judge runs changes n_goldens,
-                # and the grids stop describing the same pairs. Comparing them
-                # positionally would invent agreement; a bare zip(strict=True)
-                # would abort the whole report over one stale row.
-                if _grid_shape(left[key]) != _grid_shape(right[key]):
-                    print(f"    skipping {key}: grids differ in shape between the two judges")
-                    continue
-                for x, y in zip(left[key]["decisions"], right[key]["decisions"], strict=True):
-                    if x is not None and y is not None:
-                        a.append(bool(x))
-                        b.append(bool(y))
-            agreement = decision_agreement(a, b)
-            if agreement is None:
-                print(f"  {first} vs {second}: no comparable decisions")
-                continue
-            verdict = "PASS" if agreement >= G3_MIN_AGREEMENT else "FAIL"
-            kappa = cohen_kappa(a, b)
-            positive = positive_agreement(a, b)
-            chance = (sum(a) / len(a)) * (sum(b) / len(b)) + (1 - sum(a) / len(a)) * (
-                1 - sum(b) / len(b)
+    for index, first in enumerate(judges):
+        for second in judges[index + 1 :]:
+            a, b, skipped = _aligned_decisions(
+                {r["row_key"]: r for r in by_judge[first]},
+                {r["row_key"]: r for r in by_judge[second]},
             )
-            print(f"\n  {first} vs {second} — {len(a)} comparable decisions")
-            print(f"    raw agreement    {agreement:.1%}  [{verdict} as registered]")
-            print(f"    chance agreement {chance:.1%}  <- what the registered gate mostly measures")
-            print(f"    match rates      {sum(a) / len(a):.1%} vs {sum(b) / len(b):.1%}")
-            print(
-                "    Cohen's kappa    "
-                + ("undefined" if kappa is None else f"{kappa:+.3f}")
-                + "  <- the statistic G3 should have used"
-            )
-            print(
-                "    positive overlap "
-                + ("undefined" if positive is None else f"{positive:.1%}")
-                + f"  ({sum(x and y for x, y in zip(a, b, strict=True))} pairs matched by both)"
-            )
+            for key in skipped:
+                print(f"    skipping {key}: grids differ in shape between the two judges")
+            _print_pair_agreement(first, second, a, b)
 
 
 def report(args: argparse.Namespace) -> int:
