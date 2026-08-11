@@ -1,8 +1,14 @@
 # Guardian vs Martian Code Review Bench — calibration before comparison (#342)
 
-**Status:** research input, **nothing shipped** (2026-08-11)
+**Status:** research input + **Phase 1 results** (2026-08-11)
 **Issue:** #342
 **Lane:** guardian
+
+> **Update.** Phase 1 has been built and run. **§"Phase 1 — results" records
+> what the data showed: G1 and G2 both fail, and Phase 2 is blocked.** Where the
+> results contradict an expectation stated earlier in this document, the results
+> win — the earlier text is left standing rather than edited into agreement, so
+> the falsification stays visible. G3 awaits the second judge.
 
 ## Verdict up front
 
@@ -252,6 +258,116 @@ not to be renegotiated after seeing the numbers.
 
 **Phase 1 is worth running on its own.** Even if we never touch the 50 PRs, it
 tells us whether `benchmarks/guardian/` measures what we think it measures.
+
+## Phase 1 — results (2026-08-11)
+
+Ran as specified: 67 recorded reviews, 2430 pair calls, judge
+`gemini-2.5-flash`, **zero failed pair calls**. Records in
+`benchmarks/guardian/calibration.jsonl`; reproduce with
+`uv run python scripts/guardian_calibrate.py report`.
+
+> G3 requires a second judge. The Mistral run is in progress at the time of
+> writing; **this section reports G1 and G2 only, and the single-judge numbers
+> below are provisional until G3 settles.** That is the gate's own condition,
+> not a caveat added afterwards.
+
+### G1 — FAIL as written (ρ = +0.479, threshold 0.60)
+
+| statistic | ρ | n | |
+|---|---|---|---|
+| per-run, precision **as the bench reports it** | **+0.479** | 67 | **FAIL** |
+| per-run, precision **without** the `ambiguous` exemption | +0.791 | 67 | PASS |
+| per-PR, run-averaged | +0.657 | 6 | PASS |
+| per-run recall | +0.863 | 67 | PASS |
+
+The pre-registered gate is stated on the number the benchmark reports today, and
+that number fails. **Phase 2 is therefore blocked**, exactly as §"Pre-registered
+gates" said it would be.
+
+But the failure is localised rather than diffuse, which changes what follows
+from it. Splitting the 67 runs by whether their PR has any `ambiguous` entries
+(pr-122, pr-140, pr-143 have none; pr-141, pr-142, pr-144 have 2, 1 and 4):
+
+| slice | n | ρ, ours as reported | ρ, ours strict |
+|---|---|---|---|
+| PRs with no `ambiguous` entries | 42 | +0.694 | +0.694 (identical by construction) |
+| PRs with `ambiguous` entries | 25 | **+0.337** | **+0.900** |
+
+On PRs where the exemption cannot fire, our scorer already tracks the judge and
+clears the threshold. On PRs where it fires, removing it takes ρ from 0.337 to
+0.900. **The divergence between the two scorers is almost entirely our ambiguity
+policy — not line-anchoring versus semantic matching**, which was the difference
+this whole exercise was set up to worry about.
+
+Three further measurements point the same way:
+
+- Mean |ours − judge| per run: **0.236**. Without the exemption: **0.093**.
+- **48 of 67 runs have judge precision exactly equal to our strict precision.**
+  Of the rest, the judge is higher on 8 and lower on 11 — no systematic
+  direction, so line-anchoring is not quietly costing us matches.
+- Recall agrees closely on its own: mean |ours − judge| = **0.049**.
+
+### G2 — FAIL (mean +15.3 pp, threshold ≤10 pp)
+
+The per-file `ambiguous` exemption inflates reported precision by **+15.3
+percentage points on average**, with a **maximum of +100** — and it moves 12 of
+67 runs.
+
+| PR | `ambiguous` entries | P ours | P strict | P judge |
+|---|---|---|---|---|
+| pr-122 | 0 | 0.68 | 0.68 | 0.61 |
+| pr-140 | 0 | 0.31 | 0.31 | 0.43 |
+| pr-143 | 0 | 0.09 | 0.09 | 0.12 |
+| pr-141 | 2 | **0.29** | 0.00 | 0.00 |
+| pr-142 | 1 | **1.00** | 0.33 | 0.37 |
+| pr-144 | 4 | **0.29** | 0.05 | 0.03 |
+
+pr-142 is the clearest case: every candidate landed on a file carrying an
+ambiguous entry, the precision denominator emptied, and `score()` returned the
+vacuous **1.0** it reserves for "nothing wrong was said". The judge, which has no
+such concept, said 0.37. Our benchmark reported perfect precision for a review
+that was mostly wrong.
+
+This is the mechanism `2026-07-30-guardian-precision-bench-design.md` predicted
+in its §"`ambiguous` must stay empty" — that the exemption is per **file**, not
+per finding, so one entry exempts every prediction in that file. That document
+argued the point from the code and added a curation rule to contain it. The
+measurement now shows the containment is not sufficient: three of six PRs carry
+ambiguous entries, and on those the reported precision is not a description of
+the review.
+
+### What this changes
+
+1. **Phase 2 stays blocked** until the precision the bench reports is on a
+   legible scale. Not renegotiable by pointing at the strict column: the gate
+   was written on the reported number precisely so that this could not be
+   argued away after the fact.
+2. **The fix is a policy decision, and it belongs to `CURATION.md`, not to this
+   spec.** The options — drop the exemption entirely; make it per-finding rather
+   than per-file; or keep it but stop reporting the exempted number as
+   precision — differ in what they claim about debatable findings, which is a
+   curation question. Filed separately.
+3. **The good news is real and should not be lost in the failure.** Recall
+   correlates at 0.863, strict precision at 0.791, and 48 of 67 runs match the
+   judge exactly. Once the exemption is resolved, our scorer and Martian's are
+   measuring the same thing closely enough for a Phase 2 number to mean
+   something.
+
+### An operational finding, paid for in lost data
+
+The first Mistral judge run lost **76.5% of its pairs (342 of 447) to HTTP 429**
+and had to be discarded. `BaseProvider._retry` retries only httpx transport
+errors — deliberately the set the Mistral SDK itself retries — so a rate limit
+raised as an SDK error fails on the first attempt. That is the right policy for
+a review, which makes a handful of large calls; it is the wrong one for a
+calibration issuing thousands of tiny ones, where 429 is the expected response
+rather than an anomaly.
+
+Fixed inside `calibrate.judge_pair` rather than in the provider, so that a
+measurement task does not silently change how production reviews retry. Loss
+dropped to ~6% at concurrency 1. **Phase 2 inherits this**: 50 finder calls plus
+~1600 judge calls against whatever provider we pick, and the run must report its
+failure rate rather than quietly scoring fewer pairs.
 
 ## Phase 2 — measure (contingent on G1)
 
