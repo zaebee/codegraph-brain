@@ -72,9 +72,15 @@ def visible(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def strict_precision(row: dict[str, Any]) -> float:
     """Our precision WITHOUT the per-file `ambiguous` exemption (gate G2).
 
-    `score()` drops ambiguous hits from the denominator entirely. Martian's
-    judge has no such concept — every candidate is either a match or a false
-    positive — so this is the number that belongs next to theirs.
+    Martian's judge has no such concept — every candidate is either a match or a
+    false positive — so this is the number that belongs next to theirs.
+
+    **Since #345 this is also what `bench.score` reports.** The exemption was
+    removed on the strength of the very comparison this column supplied, so for
+    any row recorded after that the two precision columns are equal by
+    construction and G2's inflation is 0 by definition. The gap remains
+    measurable only over the 118 rows recorded before it — which is why the
+    report labels G2 as historical rather than dropping it.
     """
     tp = len(row["matched"])
     denominator = tp + row["noise"] + len(row["ambiguous_hits"])
@@ -436,8 +442,12 @@ def _report_population(label: str, rows: list[dict[str, Any]]) -> None:
     deltas = [(r["our_precision"] - r["our_precision_strict"]) * 100 for r in rows]
     mean_delta, max_delta = statistics.fmean(deltas), max(deltas)
     g2 = "PASS" if mean_delta <= G2_MAX_POINTS else "FAIL"
-    print(f"\nG2  ambiguous exemption inflates precision (<= {G2_MAX_POINTS:.0f} pts)")
+    print(
+        f"\nG2  ambiguous exemption inflates precision (<= {G2_MAX_POINTS:.0f} pts)"
+        "  [HISTORICAL: exemption removed in #345]"
+    )
     print(f"  mean +{mean_delta:.1f} pts, max +{max_delta:.1f} pts  [{g2}]")
+    print("  Rows recorded after #345 score 0 by construction — the two columns are equal.")
 
     print("\n    per-PR means (ours / ours-strict / judge)")
     for p in prs:

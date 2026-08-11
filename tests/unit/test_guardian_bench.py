@@ -125,8 +125,13 @@ def test_score_empty_ground_truth_perfect_recall() -> None:
     assert s.precision == pytest.approx(1.0)
 
 
-def test_score_ambiguous_hits_do_not_depress_precision() -> None:
-    """A prediction on an ambiguous file is neither TP nor FP for precision."""
+def test_score_ambiguous_hits_count_against_precision() -> None:
+    """A prediction on an ambiguous file is a false positive like any other (#345).
+
+    It is still reported apart from `noise`, so a curator can see how much of a
+    precision failure landed on ground the corpus marks as debatable — but the
+    separation is diagnostic, not a scoring adjustment.
+    """
     preds = [
         _pred("tests/unit/test_quotient.py", 68),  # matches GT
         _pred("src/cgis/query/triads.py", 5),  # ambiguous file
@@ -134,8 +139,44 @@ def test_score_ambiguous_hits_do_not_depress_precision() -> None:
     m = match_findings(preds, _TRUTH)
     s = score(m, _TRUTH)
     assert m.ambiguous_hits == [1]
-    assert s.precision == pytest.approx(1.0)
+    assert s.precision == pytest.approx(0.5)
     assert s.noise == 0
+    assert s.ambiguous_hits == 1
+
+
+def test_score_all_predictions_ambiguous_is_zero_not_vacuous_one() -> None:
+    """The pr-142 shape, which is why the exemption was dropped (#345).
+
+    Every candidate lands on a file carrying an ambiguous entry. Under the old
+    exemption the denominator emptied and `score` returned the 1.0 it reserves
+    for "nothing wrong was said" — for a review that found nothing real. Two
+    independent judges scored the recorded pr-142 runs at 0.14 and 0.19.
+    """
+    preds = [
+        _pred("src/cgis/query/triads.py", 5),
+        _pred("src/cgis/query/triads.py", 6),
+    ]
+    m = match_findings(preds, _TRUTH)
+    s = score(m, _TRUTH)
+    assert m.matched == {}
+    assert m.ambiguous_hits == [0, 1]
+    assert s.precision == pytest.approx(0.0)
+    assert s.ambiguous_hits == 2
+
+
+def test_score_precision_denominator_reconciles_with_its_parts() -> None:
+    """precision == matched / (matched + noise + ambiguous_hits), always."""
+    preds = [
+        _pred("tests/unit/test_quotient.py", 68),  # matches GT
+        _pred("src/cgis/query/triads.py", 5),  # ambiguous file
+        _pred("src/cgis/unrelated.py", 1),  # noise
+    ]
+    m = match_findings(preds, _TRUTH)
+    s = score(m, _TRUTH)
+    assert s.precision == pytest.approx(
+        len(m.matched) / (len(m.matched) + s.noise + s.ambiguous_hits)
+    )
+    assert (s.noise, s.ambiguous_hits) == (1, 1)
 
 
 def test_load_ground_truth_yaml(tmp_path: Path) -> None:

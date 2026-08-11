@@ -77,6 +77,11 @@ class BenchScore(BaseModel, frozen=True):
     recall: float
     precision: float
     noise: int
+    #: Predictions on a file carrying an `ambiguous` entry. Counted in the
+    #: precision denominator like any other false positive (#345) and reported
+    #: apart from `noise` only so a curator can see how much of a precision
+    #: failure landed on ground the corpus already marks as debatable.
+    ambiguous_hits: int
     missed: list[str]
 
 
@@ -129,16 +134,42 @@ def match_findings(predictions: Sequence[Finding], truth: GroundTruth) -> MatchR
 def score(match: MatchResult, truth: GroundTruth) -> BenchScore:
     """Compute recall / precision / noise for one PR.
 
-    Precision is TP / (TP + FP): ambiguous hits are excluded from the
-    denominator — they are neither correct nor noise (spec §3.1), so they
-    must not depress precision.
+    Precision is TP / (TP + FP), and **an ambiguous hit is an FP** (#345).
+
+    It used to be exempt from the denominator, on the reasoning that a
+    debatable suggestion is "neither correct nor noise" (spec §3.1). Two things
+    retired that. First, it made the reported number stop describing the
+    review: the exemption is per *file*, so on pr-142 every candidate landed on
+    a file carrying one ambiguous entry, the denominator emptied, and this
+    function returned the vacuous 1.0 it reserves for "nothing wrong was said"
+    — for a review two independent judges scored at 0.14 and 0.19. Ten of 118
+    recorded reviews reported that vacuous 1.0.
+
+    Second, the exemption was never actually argued for. CURATION.md routes
+    style nits here to keep them from depressing **recall** — but omitting them
+    from `findings` already does that, since recall divides by `len(findings)`.
+    Exempting them from precision as well was a side effect of the same
+    mechanism, and it points the wrong way: guardian's own precision rules
+    forbid style nits, so emitting one *is* a precision failure, and the
+    exemption hid exactly the failure those rules exist to catch.
+
+    Measured against two independent LLM judges over the same 118 reviews
+    (#342 Phase 1), this definition is also the one that tracks them:
+    Spearman +0.92 against +0.72, mean absolute difference 0.10 against 0.25.
+
+    `MatchResult.ambiguous_hits` survives as curation diagnostics — see
+    `BenchScore.ambiguous_hits`.
     """
     gt_total = len(truth.findings)
     recall = len(match.matched) / gt_total if gt_total else 1.0
-    relevant = len(match.matched) + len(match.noise)
+    relevant = len(match.matched) + len(match.noise) + len(match.ambiguous_hits)
     precision = len(match.matched) / relevant if relevant else 1.0
     return BenchScore(
-        recall=recall, precision=precision, noise=len(match.noise), missed=match.missed
+        recall=recall,
+        precision=precision,
+        noise=len(match.noise),
+        ambiguous_hits=len(match.ambiguous_hits),
+        missed=match.missed,
     )
 
 

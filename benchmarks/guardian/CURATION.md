@@ -7,17 +7,69 @@ first review actually ran on; the final `refs/pull/N/head` contains the
 FIXES, so replaying it would make every fixed finding unfindable).
 Spec §3.1 erratum: `head` = review head, not final pull head.
 
+## What `ambiguous` does to the score (decided 2026-08-11, #345)
+
+**An `ambiguous` hit counts as a false positive.** It is recorded apart from
+`noise` — `MatchResult.ambiguous_hits`, `BenchScore.ambiguous_hits` — but that
+separation is curation diagnostics, not a scoring adjustment. Reported
+precision is `TP / (TP + noise + ambiguous_hits)`.
+
+It used to be exempt from the precision denominator. Two findings retired that.
+
+**It stopped the number describing the review.** The exemption was per *file*:
+one entry on `drift.py` exempted every prediction in `drift.py`. On pr-142
+every candidate landed on a file carrying one entry, the denominator emptied,
+and `score()` returned the vacuous `1.0` reserved for "nothing wrong was said".
+Two independent LLM judges scored those same reviews at 0.14 and 0.19. Ten of
+118 recorded reviews reported that vacuous 1.0, across three of the six PRs
+with runs — normal, not exceptional. pr-144 shows the reach: its entries cover
+`drift.py` and `triads.py`, the files carrying 3 of its 5 ground-truth
+findings.
+
+**And the exemption was never argued for.** The rule below routes style nits
+here to keep them from depressing **recall** — but omitting them from
+`findings` already does that, since recall divides by `len(findings)`. Removing
+them from the precision denominator as well came along with the mechanism, and
+it points the wrong way: guardian's precision rules forbid style nits, so
+emitting one *is* a precision failure, and the exemption hid exactly the
+failure those rules exist to catch.
+
+Measured over the same 118 reviews against two judges (#342 Phase 1), the new
+definition is also the one that tracks an independent scorer:
+
+| | old (exempt) | new (strict) |
+|---|---|---|
+| Spearman ρ vs judge, all reviews | +0.72 / +0.71 | **+0.92 / +0.92** |
+| ρ vs judge, non-empty reviews | +0.42 / +0.35 | **+0.76 / +0.72** |
+| mean \|difference from judge\| | 0.25 / 0.26 | **0.10 / 0.10** |
+
+What this costs, stated plainly: a genuinely debatable suggestion — pr-144's
+three declined clip proposals, which gemini raised and then agreed to drop —
+now counts against precision. That is the price of a number an external scorer
+can be compared to, and `ambiguous_hits` keeps the fact visible.
+
+`benchmarks/guardian/results.jsonl` is **not** rescored. Its `precision` was
+correct under the policy in force when each row was written, and every row
+carries `matched`, `noise` and `ambiguous_hits`, so either definition can be
+re-derived from it. (Contrast `calibration.jsonl`, which *was* rewritten — that
+was a scorer bug, wrong under its own stated algorithm, not a policy change.)
+
 ## Curation policy
 
 - Style/idiom-only findings → `ambiguous` (guardian's PRECISION RULES forbid
-  style nits; penalizing recall for them would measure the wrong thing).
+  style nits; penalizing recall for them would measure the wrong thing —
+  keeping them out of GT `findings` is what achieves that, see above).
 - Review-dialogue resolutions (open questions answered during review) →
   `ambiguous` (not defects present in the diff).
 - Declined-with-reason suggestions → `ambiguous` (per spec §3.1).
 - Refuted claims → omitted from GT entirely, NOT `ambiguous`. A finding
-  disproved by execution (the code cannot behave as claimed) is noise, and
-  `ambiguous` exempts hits per FILE — filing errors there would make the suite
-  structurally unable to observe a precision failure (#279).
+  disproved by execution (the code cannot behave as claimed) is an error, not a
+  judgement call. The original reason was that `ambiguous` exempted hits per
+  file, so filing errors there made the suite structurally unable to observe a
+  precision failure (#279); since #345 removed the exemption the rule no longer
+  protects the score, but it still keeps `ambiguous_hits` meaning what it says —
+  "landed on ground we already marked debatable" — rather than becoming a
+  second name for noise.
 - `lines` required wherever the source provides line provenance (quality
   review I3: rangeless entries are gameable by file-level predictions).
 - Sonar quality-gate findings (cognitive complexity, float equality) stay in
