@@ -32,8 +32,8 @@ from rich.tree import Tree
 
 from cgis import __app_name__, __version__
 from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeNamespace, NodeType
-from cgis.extractors.python_extractor import PythonExtractor, file_path_to_module_fqn
-from cgis.extractors.typescript_extractor import TypeScriptExtractor
+from cgis.extractors.python_extractor import file_path_to_module_fqn
+from cgis.extractors.registry import build_extractors, is_supported, language_for
 from cgis.guardian.metrics import load_reviews, rate_review
 from cgis.pipeline import IngestionPipeline
 from cgis.query.analysis.analyzer import AnalyzerEngine
@@ -199,11 +199,7 @@ def ingest(
     Scan a repository, extract code structure, and resolve semantic links.
     """
     roots = source_roots or []
-    extractors = {
-        ".py": PythonExtractor(source_roots=roots),
-        ".ts": TypeScriptExtractor(source_roots=roots),
-        ".tsx": TypeScriptExtractor(tsx=True, source_roots=roots),
-    }
+    extractors = build_extractors(roots)
 
     pipeline = IngestionPipeline(extractors, domains_config=domains)
 
@@ -713,10 +709,16 @@ def structure(
         )
         raise typer.Exit(code=1)
 
-    # Normalize file path → FQN
-    if "/" in target or "\\" in target or target.endswith(".py"):
+    # Normalize file path → FQN. Per-language, because the helpers disagree:
+    # the Python one strips ".py" and collapses "/__init__", so it would turn
+    # "src/app/foo.ts" into "src.app.foo.ts" — an id no extractor emits (#344).
+    if "/" in target or "\\" in target or is_supported(target):
         normalized = target.replace("\\", "/").removeprefix("./")
-        target = file_path_to_module_fqn(normalized)
+        language = language_for(normalized)
+        # An extensionless path ("src/cgis/pipeline") has no language; the
+        # Python helper is then just a slash-to-dot rewrite, which is correct.
+        to_fqn = language.file_path_to_module_fqn if language else file_path_to_module_fqn
+        target = to_fqn(normalized, None)
         console.print(f"[dim]→ FQN: {escape(target)}[/dim]")
 
     with SQLiteStore(db) as store:
