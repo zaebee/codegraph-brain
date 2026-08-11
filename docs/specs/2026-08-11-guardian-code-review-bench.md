@@ -256,10 +256,13 @@ comparable to the leaderboard — and because the gap between the two slices *is
 the measurement of what graph context buys. That comparison is more interesting
 to this project than the rank itself.
 
-The TypeScript slice is the cheap win: lifting the `.py` filter to cover `.ts`
-and `.tsx` makes 20 of 50 PRs graph-enabled instead of 10 and doubles the
-evidence for the graph-context question. Filed separately rather than smuggled
-into this work.
+The TypeScript slice is the cheap win: covering `.ts`/`.tsx` in the collector
+makes 20 of 50 PRs graph-enabled instead of 10 and doubles the evidence behind
+G5. Filed as **#344** rather than smuggled into this work — and it is not the
+one-line change it looks like: the collector imports the *Python*
+`file_path_to_module_fqn`, which on a `.ts` path yields an FQN matching no node
+the TS extractor ever emitted, and fails silently. Lifting the suffix filter
+alone would produce a Guardian that appears to have graph context and does not.
 
 ### Pre-registered gates
 
