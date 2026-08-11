@@ -16,9 +16,11 @@
 > text is left standing rather than edited into agreement, so the falsification
 > stays visible.
 >
-> **Phase 2 remains blocked, but for a different reason than first published:**
-> the mechanism (reported precision 1.00 for a review two judges score at
+> **Phase 2 was blocked, and for a different reason than first published:** the
+> mechanism (reported precision 1.00 for a review two judges score at
 > 0.14–0.19), not the correlation gate, which turned out not to be robust.
+> **Unblocked 2026-08-11 by #345**, which made an `ambiguous` hit count as a
+> false positive — see §"What this changes" item 2.
 
 ## Verdict up front
 
@@ -506,10 +508,46 @@ more than one judge, as Martian themselves do.
    for a review two judges score at 0.14–0.19, with a maximum inflation of
    +100 pp. That is sufficient reason not to publish a Guardian number against
    an external leaderboard, and it is the reason of record.
+
+   **Lifted by #345** — the mechanism is gone, so the reason of record no longer
+   holds. Note what this does *not* clear: the ρ-based FAIL was never robust and
+   is not now retroactively a PASS, and the stratification requirement under
+   Phase 2 (80% of the corpus is a language Guardian collects no context for)
+   stands untouched.
 2. **The remedy is a curation policy decision, and it belongs to `CURATION.md`.**
    Options: drop the exemption; make it per-finding rather than per-file; or keep
    it and stop calling the exempted number precision. They differ in what they
    claim about debatable findings. Filed separately.
+
+   **Resolved 2026-08-11 (#345): the exemption is dropped.** An `ambiguous` hit
+   now counts as a false positive; `ambiguous_hits` survives as curation
+   diagnostics on both `MatchResult` and `BenchScore`, reported apart from
+   `noise` but inside the precision denominator. Rationale and the cost —
+   pr-144's three declined-but-defensible clip suggestions now count against
+   precision — are recorded in `benchmarks/guardian/CURATION.md`.
+
+   The argument that settled it is not in the options list above. CURATION.md
+   routes style nits to `ambiguous` to stop them depressing **recall**, but
+   omitting them from `findings` already does that, since recall divides by
+   `len(findings)`. The precision exemption was a side effect of the same
+   mechanism that was never separately argued — and it runs backwards, because
+   guardian's own precision rules forbid style nits, so emitting one *is* a
+   precision failure and the exemption hid exactly the failure those rules
+   exist to catch.
+
+   **This closes the gap the acceptance criteria asked about without a re-run.**
+   Reported precision is now by definition the "strict, no ambig" column above:
+   ρ **+0.921 / +0.922** against the two judges over all 118 reviews (was
+   +0.722 / +0.714), **+0.756 / +0.723** on the non-empty population (was
+   +0.422 / +0.348), mean absolute difference **0.099 / 0.096** (was
+   0.251 / 0.258). What remains is the ~0.15 residual of §G1 — a separate
+   finding, and the honest error bar on any Phase 2 number.
+
+   `results.jsonl` is deliberately **not** rescored: each row's `precision` was
+   correct under the policy in force when it was written, and `matched`,
+   `noise` and `ambiguous_hits` are all recorded, so either definition can be
+   re-derived. That is the opposite call from `calibration.jsonl` in R4, and for
+   the opposite reason — that one was wrong under its own stated algorithm.
 3. **The good news, restated at its real size.** Strict precision correlates at
    +0.72 to +0.76 and matches the judge exactly on 45–48 of 63 runs; recall
    correlates at +0.80 to +0.82 once the definitional rows are removed. Once the

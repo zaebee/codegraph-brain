@@ -21,6 +21,9 @@ from typing import Any
 import pytest
 from guardian_stubs import FlakyProvider
 
+from cgis.guardian.bench import GroundTruth, match_findings, score
+from cgis.guardian.findings import Finding
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scripts"))
 
 import guardian_calibrate as gc
@@ -164,6 +167,51 @@ class TestStrictPrecision:
     def test_no_candidates_is_vacuously_one(self) -> None:
         """Same degenerate convention as bench.score, so the two stay comparable."""
         assert gc.strict_precision(_row(matched={}, noise=0, ambiguous_hits=[])) == 1.0
+
+    def test_strict_precision_agrees_with_bench_score(self) -> None:
+        """The two definitions converged in #345, and must not drift apart again.
+
+        This also pins the recorded row's shape, which is asymmetric and easy to
+        get wrong: `guardian_bench.py` writes `noise` as `BenchScore`'s *count*
+        but `ambiguous_hits` as `MatchResult`'s *list of indices*. Both models
+        carry both names, so swapping either side is a one-word edit that would
+        silently change the schema — and `strict_precision` reads the row as
+        `noise + len(ambiguous_hits)`.
+        """
+        truth = GroundTruth.model_validate(
+            {
+                "pr": 900,
+                "base": "a",
+                "head": "b",
+                "findings": [
+                    {
+                        "id": "g1",
+                        "file": "src/a.py",
+                        "lines": [1, 10],
+                        "severity": "major",
+                        "category": "types",
+                        "summary": "s",
+                        "source": "human",
+                    }
+                ],
+                "ambiguous": [{"file": "src/b.py", "summary": "debatable"}],
+            }
+        )
+        predictions = [
+            Finding.model_validate(_finding(file="src/a.py", line=5)),  # matches
+            Finding.model_validate(_finding(file="src/b.py", line=1)),  # ambiguous
+            Finding.model_validate(_finding(file="src/c.py", line=1)),  # noise
+        ]
+        matches = match_findings(predictions, truth)
+        scored = score(matches, truth)
+        # Exactly the fields scripts/guardian_bench.py writes, and their shapes.
+        row = _row(
+            matched=matches.matched,
+            noise=scored.noise,
+            ambiguous_hits=matches.ambiguous_hits,
+        )
+        assert gc.strict_precision(row) == pytest.approx(scored.precision)
+        assert scored.precision == pytest.approx(1 / 3)
 
 
 class TestLoadRows:

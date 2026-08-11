@@ -209,6 +209,16 @@ async def _score_and_record(
         # invisible in "missed", which cannot distinguish "never found" from
         # "found then killed" (#270).
         "killed_gt": killed_ground_truth(result.findings, truth),
+        # From `matches`, not `bench_score`: both carry `ambiguous_hits`, but
+        # MatchResult's is the list of prediction indices and BenchScore's is
+        # their count. The list is what belongs in the record — indices let a
+        # reader find which findings were exempted, and a count would not.
+        # `noise` above is the mirror image, and the asymmetry is deliberate:
+        # nothing needs the noise indices, `MatchResult.noise` already has them,
+        # and `calibrate.strict_precision` reads the row as
+        # `noise + len(ambiguous_hits)`. Swapping either side silently changes
+        # the row schema; `test_strict_precision_agrees_with_bench_score` fails
+        # if they drift apart.
         "ambiguous_hits": matches.ambiguous_hits,
         # Both providers: in replay mode the finder never runs, so recording
         # only its usage reported a free run for a pass that cost real tokens.
