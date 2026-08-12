@@ -67,6 +67,12 @@ Reading the benchmark's raw results changed what this work is for. Three things:
 3. **The field's recall ceiling is ~66%.** No tool on the leaderboard exceeds it.
    Our recall work (#247, #248, #258) has been implicitly calibrated against
    100%. It should be calibrated against 66%.
+4. **Added 2026-08-12, after Phase 2 ran: nothing in this document measured an
+   effect larger than its own sampling noise.** See retraction R5. Phase 2's
+   numbers are reproducible and its verdicts stand as registered, but the
+   margins do not support the readings they invite. Phase 3 registers the one
+   lever whose expected size exceeds that floor, and registers it before
+   spending.
 
 ## The source
 
@@ -1044,6 +1050,194 @@ both.
 3. **The harness is reusable and the corpus is re-judgeable.** Every review is
    stored with its untruncated findings and its SHAs, and every judgement with
    its decision grid, so a second judge is one command and no finder calls.
+
+## Phase 3 — the union arm, registered before anything is spent (2026-08-12)
+
+R5 left one question standing: every effect Phase 2 measured was the size of its
+own noise. This phase does not re-measure those effects. It tests the one lever
+whose expected size is larger than that floor and which has never been run —
+**self-consistency union** (#248): run the finder N times, take the union of the
+findings, score that.
+
+Registered here in full before a single call, because Phase 1's R2 was about
+exactly the temptation to write the criterion after seeing the numbers.
+
+### The pilot that motivates it, and what it does not show
+
+The judged records store `decisions`, a flat golden×candidate matrix. The union
+of two runs is therefore computable **offline from data already paid for**:
+concatenate the candidate sets, run the same maximum bipartite matching. Applied
+to the six PRs of the R5 repeat probe (`martian-repeat-judged.jsonl` against the
+graph arm of `martian-judged.jsonl`, judge `gemini-2.5-flash`, profile `core`,
+27 goldens):
+
+| | P | R | F₂ | F₀.₅ |
+|---|---|---|---|---|
+| run 1 | 38.1 | 29.6 | | |
+| run 2 | 42.9 | 33.3 | | |
+| **mean — the expected single run** | **40.5** | **31.5** | 33.0 | 38.3 |
+| **union of the two** | **28.6** | **44.4** | 40.0 | 30.8 |
+| Δ union vs mean | −11.9 | +13.0 | +7.0 | −7.5 |
+
+Three things this table is not allowed to be read as.
+
+**Union is a β dial, not an improvement.** F₂ and F₀.₅ move by the same amount in
+opposite directions. Whether the union is better is a question about β, and β
+was never registered — see the decision below.
+
+**The precision cost is real, not an artefact of missing dedup.** An earlier
+reading of this table called −11.9 pp a worst case that a dedup step would
+recover. That is wrong, and the scorer is why: under maximum matching, two
+duplicate candidates pointing at the same golden cannot both be matched, so the
+second is an unmatched candidate — a false positive. Duplicates are charged as
+FPs whether or not a judge is re-run. Only an actual deduplication step *before*
+scoring recovers them, and no such step exists; it is the unbuilt half of #248.
+
+**The pooled Δ overstates the effect the gate will test.** Pooled recall weights
+PRs by golden count, and one PR here carries 9 of the 27. The paired per-PR
+statistic — the one G7 registers below — comes out at **1.94 against a gate of
+2.0: a marginal fail at n=6.** The effect sits on three of the six PRs and is
+exactly zero on the other three. So the pilot justifies buying the measurement.
+It does not predict that the measurement passes, and this paragraph exists so
+that a later pass cannot be presented as confirmation of a prediction never made.
+
+The pilot is also **not independent**: it reuses the same six PRs that produced
+the noise-floor estimate. It is a go/no-go, nothing more.
+
+Reproducing it currently requires re-deriving the matching by hand from the
+committed grids; the follow-up that adds a `union` subcommand makes it one
+command, and no finder calls.
+
+### Corrections to Phase 2 carried by this registration
+
+**The cost of the run R5 proposed was understated by about three times.** R5 put
+"19 PRs × 2 arms × 3 runs = 114 reviews" at roughly 8–10 PLN, reasoning from the
+38 reviews already spent. Those 38 were the ablation arm, the cheapest of the
+three at 19.8k tokens per review; the graph arm runs 25.6k. Against the
+reconciled rate of ~9.2 PLN per million tokens the true figure is **≈27 PLN**.
+This is the third cost estimate in this document to be wrong, and the third time
+for the same structural reason: a rate measured on one arm applied to another.
+Cost estimates in this document now name the arm they were measured on.
+
+**β was never registered, and the tooling silently chose one.**
+`scripts/guardian_martian.py report` defaults to `--beta 0.5` — precision-weighted
+— so every F figure published above answers the precision-weighted question
+without saying so. Item 1 of "What we take" called for an explicit β and it was
+never applied.
+
+### Registered decisions
+
+**β = 2.0, recall-weighted, is the primary metric.** P and R continue to be
+published separately, and F₀.₅ is published beside F₂ on every row so that a
+reversal of conclusion is visible rather than hidden. The rationale is that the
+gap to the field is a recall gap — 30.7 against ~55 for gemini-code-assist,
+against a field ceiling near 66 — while our precision is not the binding
+constraint. The `report` default changes from 0.5 to 2.0.
+
+**Sampling for the frozen Gemini configuration is not changed.** Phases 1 and 2
+ran at provider defaults and recorded none of them; that is now stated as a
+limitation of those phases rather than repaired in them. Repairing it after
+collection is what R2 was about.
+
+**`temperature = 0.7`, registered explicitly for Phase 3 only.** Phase 3 is a
+new arm on a different model, registered before any spend, so fixing a sampling
+parameter here amends nothing. The value follows the self-consistency result
+(arXiv 2306.00108) that the union arm is built on.
+
+**`temperature = 0` is rejected on mechanism, not only on procedure.** Union
+works *because* runs differ: R5 measured the finder emitting 1→4, 8→6 and 7→4
+findings on identical input. At temperature 0 the three runs collapse toward one
+and the union arm becomes identically equal to a single run. Determinism defined
+at the level of a single call would be applied to a quantity defined over a
+distribution of calls, and the phase would be unable to answer its own question.
+
+**`temperature` is recorded in `ReviewRecord`,** so that future numbers can name
+the sampling that produced them. This is the part of the reproducibility problem
+that costs nothing and is fixed now.
+
+### Configuration under test
+
+- finder `mistral-medium-latest`, temperature 0.7
+- skeptic: same-family Mistral
+- judge: Mistral, `--concurrency 1`
+- slice: the 19-PR graph arm, profile `core`, 61 goldens
+- N = 3 runs, recorded to separate files, unioned offline
+
+**This produces a mechanism result, not a leaderboard row.** The published
+Guardian figures measure `gemini-2.5-flash`. A Mistral union number answers "does
+unioning N runs raise recall by more than that configuration's own noise" and
+must never be transferred into the Martian table or compared against the numbers
+above. Different model, different level, different question.
+
+**The noise floor is measured inside this run.** The ±4.8 / ±3.7 of R5 belongs to
+Gemini and does not transfer. N = 3 yields the dispersion of this configuration,
+and the gates reference that and nothing imported.
+
+### Registered limitation: the skeptic is a pass-through, by choice
+
+A same-family Mistral skeptic was measured to refute essentially nothing —
+28 of 28 confirmed on pr-143, noise unchanged. It is chosen here *because* of
+that: recall is unaffected by a skeptic that refutes nothing, so the union arm
+measures the union and not a skeptic interaction, and the arm does not become
+hostage to a cross-family setup that is separately unfinished (#246).
+
+The cost is stated rather than discovered later. **This configuration makes G8
+easier to pass than the production configuration would**, because a real skeptic
+would remove some of the union's added false positives and also some of its
+added true positives. G8's verdict is therefore a statement about raw union
+under a pass-through skeptic, and carries no claim about the shipped reviewer.
+Whether a cross-family skeptic recovers the precision is a separate arm, run
+over the frozen union finding set at no finder cost — the method that already
+worked in #246.
+
+### Pre-registered gates
+
+- **G7 (union raises recall).** Per PR *i*, let `d_i = tp(union of the 3 runs) −
+  mean(tp of each run)`, in true-positive counts. **PASS if `mean(d) > 2 ·
+  se(d)`**, where `se(d) = sd(d)/√19` over the 19 PRs. FAIL otherwise.
+
+  The statistic is paired and per-PR deliberately. The alternative — dispersion
+  across three pooled aggregates — has two degrees of freedom and can pass on a
+  small sd drawn by chance. It also silently changes the unit: pooled recall
+  weights PRs by golden count, and on the pilot that difference is the difference
+  between an effect that looks like 3.5 noise floors and a paired statistic of
+  1.94. Pooled ΔR is still published as the headline; the gate is decided on the
+  paired statistic, and both are named wherever either appears.
+
+- **G8 (union wins on the registered β).** **PASS if F₂(union) > F₂(mean of the
+  3 runs).** F₀.₅ is published alongside. β was fixed at 2.0 above, before any
+  data.
+
+- **Stop rule.** If any of the three runs fails or is interrupted, the phase is
+  recorded as **stop-and-record** at the N actually completed. The missing run is
+  not backfilled later: a run collected after its siblings have been seen is a
+  different draw under different conditions, and a partial N=3 is not a partial
+  pass.
+
+- **Not claimed.** Deduplicated union is not measured by this phase and no
+  statement about it is published. It requires a deduplication step that does not
+  exist; when it does, it gets its own registration.
+
+- **Reporting.** Every published row names judge model, profile, slice, N, and
+  temperature. G6 stands, extended by the last two.
+
+### Cost, as an assumption rather than a fact
+
+The graph arm measures 25.6k tokens per review (finder plus skeptic, from the 18
+rows carrying complete token accounting). Three runs over 19 PRs projects to
+**≈1.46M tokens, input-dominated**, plus judging.
+
+The Mistral rate is an **unverified assumption** and is deliberately not quoted
+here as a number. It will be reconciled against the account after the run, the
+way R5 reconciled Gemini. Two estimates in this document have already been wrong
+by 5× and 3×; the pattern is that the token counts predict well and the rate does
+not, so only the token count is stated in advance.
+
+The Google budget is exhausted (45.35 of 50.00 PLN), which is why this phase runs
+on Mistral at all. A second run of the Gemini graph arm — 487k tokens, ≈4.5 PLN,
+which would give union-of-2 on the full 61 goldens — does not fit the 4.65 PLN
+remaining with any margin a 5×-wrong cost model has earned, and is deferred
+rather than attempted.
 
 ## What we take even if both phases are cancelled
 
