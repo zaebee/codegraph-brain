@@ -301,7 +301,14 @@ def require_alignment(db_path: Path, changed_files: Sequence[str]) -> str:
 
 
 async def review_one(row: PrPlan, args: argparse.Namespace) -> ReviewRecord:
-    """Review one prepared PR and return its record. Costs finder + skeptic calls."""
+    """Review one prepared PR and return its record. Costs finder + skeptic calls.
+
+    `--no-graph` runs the ablation arm: the same PR, the same checkout, the same
+    models, with the graph withheld. That is the comparison G5 should have been
+    — in this corpus "has a graph" and "is Python or TypeScript" are the same
+    partition, so the registered cross-slice gap cannot separate graph context
+    from language. Holding the PR fixed and removing only the graph can.
+    """
     checkout = args.workspace / row.repo.replace("/", "__")
     if not (checkout / ".git").is_dir():
         _msg = f"not prepared: {checkout} is not a checkout. Run `prepare --pr {row.number}`."
@@ -310,6 +317,7 @@ async def review_one(row: PrPlan, args: argparse.Namespace) -> ReviewRecord:
     _git("checkout", "--quiet", "--force", head, cwd=checkout)
 
     db = args.workspace / f"{row.repo.replace('/', '__')}.db"
+    ablated = bool(getattr(args, "no_graph", False))
     # The graph is per repository but the corpus has several PRs per repository,
     # each at its own commit. `prepare` rebuilds the database for whichever PR
     # it ran last, so reviewing an earlier one would silently use a graph of a
@@ -318,10 +326,13 @@ async def review_one(row: PrPlan, args: argparse.Namespace) -> ReviewRecord:
     # Rebuilt unless the marker *proves* the graph is this commit's. An earlier
     # version skipped when the marker was absent, which let a database of
     # unknown provenance through — the very case the marker exists to catch.
-    if row.pr_slice == "graph" and graph_commit(db) != head:
+    if row.pr_slice == "graph" and not ablated and graph_commit(db) != head:
         ensure_graph(checkout, db, head)
     had_graph = (
-        row.pr_slice == "graph" and db.is_file() and graph_alignment(db, row.changed_files)[0] > 0
+        row.pr_slice == "graph"
+        and not ablated
+        and db.is_file()
+        and graph_alignment(db, row.changed_files)[0] > 0
     )
 
     provider, model = build_provider(os.environ)
@@ -346,6 +357,7 @@ async def review_one(row: PrPlan, args: argparse.Namespace) -> ReviewRecord:
         url=row.url,
         project=row.project,
         pr_slice=row.pr_slice,
+        arm="ablated" if ablated else "graph",
         base_sha=base,
         head_sha=head,
         had_graph=had_graph,
@@ -375,17 +387,22 @@ def guardian_version() -> str:
         return os.environ.get("GUARDIAN_SHA", "unknown")
 
 
-def done_urls(path: Path) -> set[str]:
-    """URLs already reviewed, so a rerun does not pay for them twice."""
+def done_urls(path: Path) -> set[tuple[str, str]]:
+    """(url, arm) pairs already reviewed, so a rerun does not pay for them twice.
+
+    Keyed on the arm as well as the URL: the ablation reviews the same PRs, and
+    keying on the URL alone would make the second arm look already done.
+    """
     if not path.is_file():
         return set()
-    urls: set[str] = set()
+    urls: set[tuple[str, str]] = set()
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
         try:
-            urls.add(json.loads(line)["url"])
-        except (json.JSONDecodeError, KeyError, TypeError):
+            row = json.loads(line)
+            urls.add((row["url"], row.get("arm", "graph")))
+        except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
             # A crash mid-append leaves a truncated last line. Refusing to parse
             # it would block resume entirely, which is the one thing protecting
             # work already paid for; skipping it costs at most one re-review.
@@ -396,10 +413,11 @@ def done_urls(path: Path) -> set[str]:
 async def review(args: argparse.Namespace) -> int:
     """Review prepared PRs, appending one record each. THIS SPENDS MONEY."""
     rows = selected(load_plan(args.plan), args.pr, args.limit)
+    arm = "ablated" if args.no_graph else "graph"
     already = done_urls(args.out)
-    pending = [r for r in rows if r.url not in already]
+    pending = [r for r in rows if (r.url, arm) not in already]
     print(
-        f"{len(rows)} selected, {len(already & {r.url for r in rows})} already done, "
+        f"{len(rows)} selected (arm={arm}), {len(rows) - len(pending)} already done, "
         f"{len(pending)} to review."
     )
     if args.dry_run:
@@ -444,7 +462,7 @@ def load_reviews(path: Path) -> list[ReviewRecord]:
     if not path.is_file():
         _msg = f"No reviews at {path}. Run `guardian_martian.py review` first."
         raise FileNotFoundError(_msg)
-    latest: dict[str, ReviewRecord] = {}
+    latest: dict[tuple[str, str], ReviewRecord] = {}
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
@@ -456,7 +474,7 @@ def load_reviews(path: Path) -> list[ReviewRecord]:
             # already paid for.
             print(f"Skipping unreadable review in {path}: {line[:80]!r}", file=sys.stderr)
             continue
-        latest[record.url] = record
+        latest[record.url, record.arm] = record
     return list(latest.values())
 
 
@@ -486,6 +504,7 @@ async def judge_one(
         url=record.url,
         project=record.project,
         pr_slice=record.pr_slice,
+        arm=record.arm,
         had_graph=record.had_graph,
         profile=profile,
         judge_model=model,
@@ -502,18 +521,18 @@ async def judge_one(
     )
 
 
-def judged_keys(path: Path) -> set[tuple[str, str]]:
-    """(url, judge_model) pairs already scored cleanly, so a rerun resumes."""
+def judged_keys(path: Path) -> set[tuple[str, str, str]]:
+    """(url, judge, arm) triples already scored cleanly, so a rerun resumes."""
     if not path.is_file():
         return set()
-    keys: set[tuple[str, str]] = set()
+    keys: set[tuple[str, str, str]] = set()
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
         try:
             row = json.loads(line)
             if not row["judge_failures"]:
-                keys.add((row["url"], row["judge_model"]))
+                keys.add((row["url"], row["judge_model"], row.get("arm", "graph")))
         except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
             # A bare list or a row missing its keys is as unusable as broken
             # JSON, and none of them may stop a resume.
@@ -547,7 +566,7 @@ async def judge(args: argparse.Namespace) -> int:
 
     provider, model = build_provider(os.environ)
     already = judged_keys(args.out)
-    pending = [r for r in reviews if (r.url, model) not in already]
+    pending = [r for r in reviews if (r.url, model, r.arm) not in already]
     print(
         f"{len(reviews)} reviews, {len(reviews) - len(pending)} already judged by {model}, "
         f"{len(pending)} to judge."
@@ -590,7 +609,7 @@ def load_judged(path: Path) -> list[JudgedReview]:
     if not path.is_file():
         _msg = f"No judged reviews at {path}. Run `guardian_martian.py judge` first."
         raise FileNotFoundError(_msg)
-    latest: dict[tuple[str, str], JudgedReview] = {}
+    latest: dict[tuple[str, str, str], JudgedReview] = {}
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
@@ -599,7 +618,7 @@ def load_judged(path: Path) -> list[JudgedReview]:
         except ValidationError:
             print(f"Skipping unreadable judged row in {path}: {line[:80]!r}", file=sys.stderr)
             continue
-        latest[row.url, row.judge_model] = row
+        latest[row.url, row.judge_model, row.arm] = row
     return list(latest.values())
 
 
@@ -615,18 +634,21 @@ def _score_line(score: SliceScore) -> str:
 
 def report(args: argparse.Namespace) -> int:
     """Print G4/G5/G6 from the judged records. Free; reads only what is on disk."""
-    rows = load_judged(args.judged)
+    rows = [r for r in load_judged(args.judged) if r.arm == args.arm]
     if not rows:
         # Exiting 0 here would let a CI step that was supposed to evaluate
         # something pass by evaluating nothing — the quietest possible failure.
-        print(f"No judged reviews in {args.judged}; nothing to report.", file=sys.stderr)
+        print(
+            f"No judged reviews for arm {args.arm!r} in {args.judged}; nothing to report.",
+            file=sys.stderr,
+        )
         return 1
     judges = sorted({r.judge_model for r in rows})
     profiles = sorted({r.profile for r in rows})
     exit_code = 0
 
     print(
-        f"\n{len(rows)} judged reviews | judges: {', '.join(judges)} | "
+        f"\n{len(rows)} judged rows | arm: {args.arm} | judges: {', '.join(judges)} | "
         f"profile: {', '.join(profiles)}"
     )
     if len(profiles) > 1:
@@ -654,7 +676,40 @@ def report(args: argparse.Namespace) -> int:
             )
 
         exit_code |= _gates(mine, slices)
+    _ablation(load_judged(args.judged), args.beta)
     return exit_code
+
+
+def _ablation(rows: Sequence[JudgedReview], beta: float = 0.5) -> None:
+    """Compare the two arms on the PRs that have both. Silent when there is one arm.
+
+    This is the contrast G5 could not draw. In this corpus "has a graph" and "is
+    Python or TypeScript" are the same partition, so the registered cross-slice
+    gap cannot separate graph context from language; holding the PR fixed and
+    removing only the graph can.
+    """
+    arms = {r.arm for r in rows}
+    if len(arms) < 2:
+        return
+    print("\n=== ablation: the same PRs, with the graph and without ===")
+    for judge_model in sorted({r.judge_model for r in rows}):
+        mine = [r for r in rows if r.judge_model == judge_model]
+        with_graph = {r.url: r for r in mine if r.arm == "graph"}
+        without = {r.url: r for r in mine if r.arm == "ablated"}
+        both = sorted(with_graph.keys() & without.keys())
+        if not both:
+            continue
+        # Same beta as the gates above: two F-scores under different weightings
+        # in one report, with nothing saying so, is a number that misleads.
+        on = score_slice("with graph", [with_graph[u] for u in both], beta)
+        off = score_slice("graph withheld", [without[u] for u in both], beta)
+        print(f"\n  {judge_model} — {len(both)} PRs reviewed both ways")
+        print(_score_line(on))
+        print(_score_line(off))
+        print(
+            f"    difference   R {(on.recall - off.recall) * 100:+.1f} pp   "
+            f"P {(on.precision - off.precision) * 100:+.1f} pp"
+        )
 
 
 def _gates(rows: Sequence[JudgedReview], slices: dict[str, list[JudgedReview]]) -> int:
@@ -779,6 +834,11 @@ def main() -> int:
     rev.add_argument("--out", type=Path, default=REVIEWS_FILE)
     rev.add_argument("--pr", type=int, default=None)
     rev.add_argument("--limit", type=int, default=None)
+    rev.add_argument(
+        "--no-graph",
+        action="store_true",
+        help="ablation arm: withhold the graph from PRs that have one",
+    )
     rev.add_argument("--dry-run", action="store_true", help="print what would be reviewed")
 
     jud = sub.add_parser("judge", help="score recorded reviews semantically (COSTS MONEY)")
@@ -798,6 +858,12 @@ def main() -> int:
     rep = sub.add_parser("report", help="print G4/G5/G6 from the judged records")
     rep.add_argument("--judged", type=Path, default=JUDGED_FILE)
     rep.add_argument("--beta", type=float, default=0.5, help="F-beta; 0.5 weights precision")
+    rep.add_argument(
+        "--arm",
+        default="graph",
+        choices=("graph", "ablated"),
+        help="which arm the gates are computed on; the ablation is reported separately",
+    )
 
     args = parser.parse_args()
     if args.command == "report":
