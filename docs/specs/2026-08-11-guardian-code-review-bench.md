@@ -1075,9 +1075,9 @@ graph arm of `martian-judged.jsonl`, judge `gemini-2.5-flash`, profile `core`,
 |---|---|---|---|---|
 | run 1 | 38.1 | 29.6 | | |
 | run 2 | 42.9 | 33.3 | | |
-| **mean — the expected single run** | **40.5** | **31.5** | 33.0 | 38.3 |
+| **mean — the expected single run** | **40.5** | **31.5** | 32.9 | 38.3 |
 | **union of the two** | **28.6** | **44.4** | 40.0 | 30.8 |
-| Δ union vs mean | −11.9 | +13.0 | +7.0 | −7.5 |
+| Δ union vs mean | −11.9 | +13.0 | +7.1 | −7.5 |
 
 Three things this table is not allowed to be read as.
 
@@ -1104,9 +1104,18 @@ that a later pass cannot be presented as confirmation of a prediction never made
 The pilot is also **not independent**: it reuses the same six PRs that produced
 the noise-floor estimate. It is a go/no-go, nothing more.
 
-Reproducing it currently requires re-deriving the matching by hand from the
-committed grids; the follow-up that adds a `union` subcommand makes it one
-command, and no finder calls.
+Reproduce, free and from committed data:
+
+```
+uv run python scripts/guardian_martian.py union \
+  benchmarks/martian-judged.jsonl benchmarks/martian-repeat-judged.jsonl \
+  --judge gemini-2.5-flash
+```
+
+The two F₂ figures were first written here as 33.0 and +7.1 as +7.0, computed by
+hand from the rounded P and R in this table rather than from the underlying
+counts. The subcommand computes from the counts, and the table now carries what
+it prints.
 
 ### Corrections to Phase 2 carried by this registration
 

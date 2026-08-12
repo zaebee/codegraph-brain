@@ -20,7 +20,7 @@ import asyncio
 import re
 import statistics
 from collections import defaultdict
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 
 import structlog
 from pydantic import BaseModel, Field
@@ -252,7 +252,17 @@ def assign_matches(pairs: Sequence[JudgePair]) -> dict[int, int]:
         key=lambda p: (-p.verdict.confidence, p.golden_index, p.candidate_index),
     ):
         adjacency[pair.golden_index].append(pair.candidate_index)
+    return _max_matching(adjacency)
 
+
+def _max_matching(adjacency: Mapping[int, Sequence[int]]) -> dict[int, int]:
+    """Kuhn's algorithm over a golden -> candidates adjacency.
+
+    Shared by both entry points on purpose. `assign_matches` scores a judge's
+    pairs and `assign_from_grid` re-scores a stored decision grid; a second copy
+    of this loop is exactly the shape of retraction R4, where a scorer was wrong
+    and its justification was that it mirrored another scorer.
+    """
     #: candidate -> golden, the inverse of the returned mapping. Kuhn's needs to
     #: ask "who currently holds this candidate" to try to re-seat them.
     holder: dict[int, int] = {}
@@ -272,6 +282,34 @@ def assign_matches(pairs: Sequence[JudgePair]) -> dict[int, int]:
     for golden in sorted(adjacency):
         _augment(golden, set())
     return dict(sorted((golden, candidate) for candidate, golden in holder.items()))
+
+
+def assign_from_grid(
+    decisions: Sequence[int | None], n_goldens: int, n_candidates: int
+) -> dict[int, int]:
+    """Maximum 1:1 assignment re-derived from a stored decision grid.
+
+    The grid is flat and row-major over (golden, candidate), so this is the
+    inverse of `dense_grid`. Because a maximum matching's *size* does not depend
+    on judge confidence — which the grid does not store — the tp of any judged
+    record replays from its grid alone, and so does the tp of several records'
+    grids concatenated. That is what makes the union arm free.
+
+    `None` marks a judge call that failed. It is scored as a non-match: an
+    unknown is not a true positive, and treating it as one would let a broken
+    judge inflate the score it was supposed to measure.
+    """
+    if len(decisions) != n_goldens * n_candidates:
+        _msg = (
+            f"grid of {len(decisions)} does not fit goldens={n_goldens} "
+            f"by candidates={n_candidates}"
+        )
+        raise ValueError(_msg)
+    adjacency: dict[int, list[int]] = defaultdict(list)
+    for golden in range(n_goldens):
+        row = golden * n_candidates
+        adjacency[golden] = [c for c in range(n_candidates) if decisions[row + c]]
+    return _max_matching(adjacency)
 
 
 def judge_score(*, n_goldens: int, n_candidates: int, assignment: dict[int, int]) -> JudgeScore:
