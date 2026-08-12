@@ -548,8 +548,13 @@ class TestGraphProvenance:
     def test_the_commit_is_recorded_beside_the_database(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _fake_runner(monkeypatch, {})
         db = tmp_path / "g.db"
+
+        def fake_run(cmd: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+            db.write_text("a graph", encoding="utf-8")  # what a real ingest leaves
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        monkeypatch.setattr(gm.subprocess, "run", fake_run)
         gm.ensure_graph(tmp_path / "tree", db, "abc123")
         assert gm.graph_commit(db) == "abc123"
 
@@ -659,8 +664,8 @@ class TestWorkspaceHygiene:
             (tmp_path / name).write_text("stale", encoding="utf-8")
         _fake_runner(monkeypatch, {})
         gm.ensure_graph(tmp_path / "tree", db, "headsha")
-        # The commit marker is written after a successful ingest; the stubbed
-        # run reports success, so it is the only g.db* left.
+        # The stubbed ingest creates no database, so only the marker it writes
+        # on success survives — the point is that the stale -wal/-shm are gone.
         assert [p.name for p in sorted(tmp_path.glob("g.db*"))] == ["g.db.commit"]
 
     def test_a_file_where_the_clone_should_be_is_removed(
