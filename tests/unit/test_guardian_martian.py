@@ -7,6 +7,7 @@ asserts against the real vendored corpus rather than a fixture, because a gate
 registered on 19 vs 26 is worth nothing if the loader disagrees.
 """
 
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -14,12 +15,16 @@ import pytest
 from cgis.guardian.martian import (
     DEFAULT_PROFILE,
     PROFILE_CATEGORIES,
+    UNKNOWN_SLICE,
     BenchPr,
     GoldenComment,
+    PrPlan,
     SliceCounts,
+    build_plan,
     evaluated,
     golden_texts,
     load_corpus,
+    plan_population,
     slice_counts,
     slice_of,
 )
@@ -186,6 +191,22 @@ class TestTheRealCorpus:
         totals = {p: sum(len(golden_texts(pr, p)) for pr in prs) for p in PROFILE_CATEGORIES}
         assert totals == {"strict": 139, "core": 158, "all": 173}
 
+    def test_the_corpus_directory_holds_only_vendored_files(self) -> None:
+        """Nothing generated may live in there, and this is not tidiness.
+
+        `load_corpus` globs `*.json`, so a generated file in that directory is
+        parsed as corpus and crashes the loader — the first version of the plan
+        script wrote `plan.json` there and broke itself. The directory is also
+        documented as a verbatim copy of upstream.
+        """
+        assert {p.name for p in CORPUS.glob("*.json")} == {
+            "cal_dot_com.json",
+            "discourse.json",
+            "grafana.json",
+            "keycloak.json",
+            "sentry.json",
+        }
+
     def test_load_is_deterministic(self) -> None:
         """Two separate loads, bound first — a determinism check, not a tautology.
 
@@ -196,3 +217,89 @@ class TestTheRealCorpus:
         first = load_corpus(CORPUS)
         second = load_corpus(CORPUS)
         assert [p.url for p in first] == [p.url for p in second]
+
+
+class TestBuildPlan:
+    """Resolving each PR's slice before anything is spent."""
+
+    @staticmethod
+    def _fetch(mapping: dict[str, tuple[str, ...]]) -> Callable[[BenchPr], tuple[str, ...]]:
+        def fetch(pr: BenchPr) -> tuple[str, ...]:
+            if pr.url not in mapping:
+                _msg = f"no diff for {pr.url}"
+                raise RuntimeError(_msg)
+            return mapping[pr.url]
+
+        return fetch
+
+    def test_resolves_slice_and_carries_the_corpus_facts(self) -> None:
+        pr = _pr()
+        [plan] = build_plan([pr], self._fetch({pr.url: ("src/a.py",)}))
+        assert plan.pr_slice == "graph"
+        assert plan.changed_files == ("src/a.py",)
+        assert (plan.repo, plan.number) == ("getsentry/sentry", 80168)
+        assert plan.reproducible
+        assert plan.golden_comments == 2  # core profile drops the style nit
+        assert plan.fetch_error is None
+
+    def test_a_fetch_failure_is_unknown_not_diff_only(self) -> None:
+        """The distinction the whole model exists for.
+
+        A failure classified as diff-only would quietly inflate that slice and
+        move a gate that compares the two — and it would look like data.
+        """
+        [plan] = build_plan([_pr()], self._fetch({}))
+        assert plan.pr_slice == UNKNOWN_SLICE
+        assert plan.fetch_error is not None
+        assert "no diff for" in plan.fetch_error
+
+    def test_one_unreachable_pr_does_not_lose_the_others(self) -> None:
+        """How the reconnaissance for this work first mis-counted the corpus at 49."""
+        good, bad = (
+            _pr(url="https://github.com/o/r/pull/1"),
+            _pr(url="https://github.com/o/r/pull/2"),
+        )
+        plans = build_plan([good, bad], self._fetch({good.url: ("a.py",)}))
+        assert [p.pr_slice for p in plans] == ["graph", UNKNOWN_SLICE]
+
+    def test_unreproducible_rows_are_planned_but_flagged(self) -> None:
+        """Planned so the report can name them; excluded only when populations are counted."""
+        [plan] = build_plan([_pr(az_comment="mix of many PRs")], self._fetch({_pr().url: ()}))
+        assert not plan.reproducible
+
+
+class TestPlanPopulation:
+    """The numbers G5 is registered on, derived by tested code rather than by hand."""
+
+    def _plans(self) -> list[PrPlan]:
+        rows = [
+            ("https://github.com/o/r/pull/1", ("a.py",), None),
+            ("https://github.com/o/r/pull/2", ("a.ts",), None),
+            ("https://github.com/o/r/pull/3", ("a.rb",), None),
+            ("https://github.com/o/r/pull/4", ("a.py",), "flagged"),
+        ]
+        prs = [_pr(url=u, az_comment=az) for u, _, az in rows]
+        return build_plan(prs, self._fetch_map({u: f for u, f, _ in rows}))
+
+    @staticmethod
+    def _fetch_map(mapping: dict[str, tuple[str, ...]]) -> Callable[[BenchPr], tuple[str, ...]]:
+        return lambda pr: mapping[pr.url]
+
+    def test_excludes_the_unreproducible(self) -> None:
+        """pull/4 is graph-enabled and flagged, so it is planned but not counted."""
+        pop = plan_population(self._plans())
+        assert pop["graph"].prs == 2
+        assert pop["diff-only"].prs == 1
+        assert sum(s.prs for s in pop.values()) == 3
+
+    def test_unknown_gets_its_own_row_rather_than_joining_a_slice(self) -> None:
+        prs = [_pr(url="https://github.com/o/r/pull/9")]
+
+        def boom(pr: BenchPr) -> tuple[str, ...]:  # noqa: ARG001
+            _msg = "gh exploded"
+            raise RuntimeError(_msg)
+
+        pop = plan_population(build_plan(prs, boom))
+        assert pop[UNKNOWN_SLICE].prs == 1
+        assert pop["graph"].prs == 0
+        assert pop["diff-only"].prs == 0
