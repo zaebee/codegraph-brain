@@ -370,3 +370,29 @@ def test_a_whitespace_only_file_is_accepted(tmp_path: Path) -> None:
     path = tmp_path / "m.jsonl"
     path.write_text("\n  \n\n", encoding="utf-8")
     assert reject_metrics_path(path) is None
+
+
+def test_a_huge_file_with_no_newlines_is_refused_without_reading_it_all(tmp_path: Path) -> None:
+    """`for line in fh` is unbounded when there are no newlines (gemini, #350).
+
+    A binary blob is exactly that shape, and it is exactly what this check
+    exists to refuse — so the frugal-looking form failed in its own headline
+    case. 8 MB is far past the 4 KB budget while staying quick to write.
+    """
+    path = tmp_path / "blob.jsonl"
+    path.write_bytes(b"\xff" * 8_000_000)
+    with pytest.raises(ValueError, match="not a Guardian metrics log"):
+        _record(path)
+
+
+def test_whitespace_padded_beyond_the_budget_is_refused(tmp_path: Path) -> None:
+    """Blank-within-the-budget is ambiguous, and size resolves it.
+
+    Ours is blank only when nearly empty (an interrupted first run). A file
+    padded with kilobytes of whitespace is someone else's, so the accept must
+    not extend to it.
+    """
+    path = tmp_path / "padded.jsonl"
+    path.write_text(" " * 5000 + '{"pr": 1}\n', encoding="utf-8")
+    with pytest.raises(ValueError, match="not a Guardian metrics log"):
+        _record(path)

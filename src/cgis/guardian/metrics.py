@@ -58,26 +58,39 @@ def reject_metrics_path(metrics_path: Path) -> str | None:
             return "it is a directory"
         if not path.parent.is_dir():
             return "parent directory does not exist; cgis will not create one"
-        if path.is_file() and path.stat().st_size > 0:
-            first = _first_nonblank_line(path)
-            if first is not None and not _looks_like_a_record(first):
-                return "existing file is not a Guardian metrics log"
+        if path.is_file() and path.stat().st_size > 0 and not _looks_like_our_log(path):
+            return "existing file is not a Guardian metrics log"
     except OSError as exc:
         return f"path is inaccessible ({exc})"
     return None
 
 
-def _first_nonblank_line(path: Path) -> str | None:
-    """The first line with content, or None for a file that is all whitespace.
+#: Characters read to find the first line. A record is a JSON object well under
+#: 1 KB, so this is generous by design.
+_HEAD_BUDGET = 4096
 
-    Read line-by-line rather than `read_text()`: the point of the check is to
-    refuse files that are not ours, and some of those are large.
+
+def _looks_like_our_log(path: Path) -> bool:
+    """Whether the file's first line is one of our records.
+
+    Reads a bounded head rather than iterating lines. `for line in fh` looks
+    frugal but is unbounded when the file contains no newline at all: a binary
+    blob or a disk image is read entirely as one "line". The files this check
+    exists to refuse are exactly the ones most likely to be shaped like that,
+    so the old form failed in the case its own comment claimed to handle
+    (gemini on #350).
+
+    A head that is entirely blank is ambiguous — the file is either ours and
+    nearly empty (an interrupted first run leaves a stray newline) or it is
+    padded with whitespace past the budget, which ours never is. Size tells
+    them apart.
     """
     with path.open("r", encoding="utf-8", errors="replace") as fh:
-        for line in fh:
-            if line.strip():
-                return line
-    return None
+        head = fh.read(_HEAD_BUDGET + 1)
+    for line in head.splitlines():
+        if line.strip():
+            return _looks_like_a_record(line)
+    return len(head) <= _HEAD_BUDGET
 
 
 def _looks_like_a_record(line: str) -> bool:
