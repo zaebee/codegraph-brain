@@ -725,6 +725,7 @@ class TestReview:
             "out": tmp_path / "reviews.jsonl",
             "pr": None,
             "limit": None,
+            "no_graph": False,
             "dry_run": False,
         }
         return argparse.Namespace(**(base | overrides))
@@ -935,7 +936,7 @@ class TestResumeRobustness:
         """A crash mid-append leaves one. Refusing to parse it would re-buy everything."""
         path = tmp_path / "reviews.jsonl"
         path.write_text('{"url": "u1"}\n{"url": "u2", "find', encoding="utf-8")
-        assert gm.done_urls(path) == {"u1"}
+        assert gm.done_urls(path) == {("u1", "graph")}
         assert "Skipping unreadable record" in capsys.readouterr().err
 
     def test_the_skeptic_is_the_opposite_of_whatever_the_finder_is(
@@ -1073,7 +1074,7 @@ class TestJudge:
             + "\n",
             encoding="utf-8",
         )
-        assert gm.judged_keys(path) == {("u1", "m")}
+        assert gm.judged_keys(path) == {("u1", "m", "graph")}
 
     def test_a_corrupt_judged_row_does_not_block_resume(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -1082,7 +1083,7 @@ class TestJudge:
         path.write_text(
             '{"url":"u1","judge_model":"m","judge_failures":0}\n{"url": tr', encoding="utf-8"
         )
-        assert gm.judged_keys(path) == {("u1", "m")}
+        assert gm.judged_keys(path) == {("u1", "m", "graph")}
         assert "Skipping unreadable judged row" in capsys.readouterr().err
 
     def test_dry_run_needs_no_credentials(
@@ -1236,7 +1237,7 @@ class TestJudge:
             '{"url": tr\n',
             encoding="utf-8",
         )
-        assert gm.judged_keys(path) == {("u1", "m")}
+        assert gm.judged_keys(path) == {("u1", "m", "graph")}
         assert capsys.readouterr().err.count("Skipping unreadable judged row") == 3
 
     def test_the_loop_writes_a_row_per_review_and_survives_one_failure(
@@ -1428,3 +1429,59 @@ class TestArgsContract:
         # dry_run returns before the provider, so this reaches the read itself.
         with pytest.raises(AttributeError, match="concurrency"):
             asyncio.run(gm.judge(args))
+
+
+class TestAblationArm:
+    """The comparison G5 should have been: same PR, graph withheld."""
+
+    def _wire(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
+        (tmp_path / "ws" / "o__r" / ".git").mkdir(parents=True)
+        (tmp_path / "ws" / "o__r.db").write_text("db", encoding="utf-8")
+        captured: dict[str, object] = {}
+        ingested: list[str] = []
+
+        def collector(**kwargs: object) -> object:
+            captured.update(kwargs)
+            return object()
+
+        async def routed(**_: object) -> object:
+            return SimpleNamespace(result=SimpleNamespace(findings=[], parse_failed=False))
+
+        monkeypatch.setattr(gm, "pr_refs", lambda _url: ("b", "h"))
+        monkeypatch.setattr(gm, "_git", lambda *a, **k: "sha\n")  # noqa: ARG005
+        monkeypatch.setattr(gm, "graph_alignment", lambda *a: (1, 1))  # noqa: ARG005
+        monkeypatch.setattr(gm, "ensure_graph", lambda _c, _d, head: ingested.append(head))
+        monkeypatch.setattr(gm, "build_provider", lambda _env: (_StubProvider(), "m"))
+        monkeypatch.setattr(gm, "build_skeptic_provider", lambda _env, primary: None)  # noqa: ARG005
+        monkeypatch.setattr(gm, "ContextCollector", collector)
+        monkeypatch.setattr(gm, "run_review_routed", routed)
+        captured["_ingested"] = ingested
+        return captured
+
+    def test_the_ablation_withholds_the_graph_and_says_so(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured = self._wire(tmp_path, monkeypatch)
+        args = argparse.Namespace(workspace=tmp_path / "ws", no_graph=True)
+        record = asyncio.run(gm.review_one(_review_row(), args))
+        assert captured["db_path"] is None
+        assert record.arm == "ablated"
+        assert record.had_graph is False
+        assert record.pr_slice == "graph", "the plan's classification is unchanged"
+        assert captured["_ingested"] == [], "no point rebuilding a graph nobody will read"
+
+    def test_the_normal_arm_is_unaffected(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured = self._wire(tmp_path, monkeypatch)
+        args = argparse.Namespace(workspace=tmp_path / "ws", no_graph=False)
+        record = asyncio.run(gm.review_one(_review_row(), args))
+        assert captured["db_path"] is not None
+        assert (record.arm, record.had_graph) == ("graph", True)
+
+    def test_resume_does_not_confuse_the_two_arms(self, tmp_path: Path) -> None:
+        """Keyed on the URL alone, the ablation would look already paid for."""
+        path = tmp_path / "r.jsonl"
+        path.write_text(json.dumps({"url": "u1", "arm": "graph"}) + "\n", encoding="utf-8")
+        assert gm.done_urls(path) == {("u1", "graph")}
+        assert ("u1", "ablated") not in gm.done_urls(path)

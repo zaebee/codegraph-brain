@@ -332,6 +332,12 @@ class ReviewRecord(BaseModel, frozen=True):
     url: str
     project: str
     pr_slice: str
+    #: Which arm produced this review. "graph" is the normal run; "ablated" is
+    #: the same PR reviewed with the graph deliberately withheld. Explicit
+    #: rather than inferred from `had_graph=False`, which already means
+    #: something else — that the ingest produced nothing useful. A failure and
+    #: a controlled removal must not look alike in the record.
+    arm: Literal["graph", "ablated"] = "graph"
     base_sha: str
     head_sha: str
     #: True when a graph database was present for this review — the difference
@@ -387,6 +393,7 @@ class JudgedReview(BaseModel, frozen=True):
     url: str
     project: str
     pr_slice: str
+    arm: Literal["graph", "ablated"] = "graph"
     had_graph: bool
     profile: str
     judge_model: str
