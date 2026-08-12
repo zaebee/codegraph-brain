@@ -1288,6 +1288,42 @@ Only the expectation recorded beside it is corrected, and corrected before the
 numbers exist, so that neither outcome can be narrated afterwards as the one we
 predicted.
 
+### Run 1 completed, and two of the figures above were wrong
+
+Both corrections are to numbers this document produced, and both were made from
+the finished run before anything was judged.
+
+**Candidate volume: 15.2 per PR, not "22-26".** That figure was extrapolated
+from the first two PRs while the run was still going. The distribution over the
+18 judgeable reviews is 6 to 26, mean 15.2, median 14.5. The comparison it was
+making is understated rather than overstated: Phase 2's graph arm judged **2.9
+candidates per PR**, so the gap is 5.2x, and the argument about G8 stands on a
+firmer footing than the number that was quoted for it.
+
+**Cost: 2.9M tokens for three runs, not 1.46M.** Run 1 measured **963,813
+tokens** — finder 338,336 + 74,625, skeptic 534,304 + 16,548 — putting the phase
+at roughly 2.9M, twice what was registered.
+
+This is the **fourth** cost estimate in this document to be wrong, and it repeats
+the structural fault the third one was corrected for. The registered figure came
+from the Gemini graph arm's 25.6k tokens per review. The arm was named, as the
+correction required — but the *model* was not, and the rate does not transfer
+across models.
+
+The mechanism is worth stating because it generalises. Phase 2 measured the
+skeptic at **0.35x the finder**; here it is **1.58x**. That ratio is not a
+property of the two models: the skeptic runs per finding and re-sends a file's
+hunks once per finding in it, so its cost is roughly linear in how many findings
+the finder emits. At 3.2 findings per PR it is a third of the finder; at 15.2 it
+is more than half again as much. **A recall-lean finder does not cost 5x more, it
+costs 5x more twice** — once for its own output and once for the skeptic pass it
+multiplies.
+
+The lesson the third correction drew — name the arm a rate was measured on — is
+insufficient. A per-review rate is only transferable between configurations that
+emit a comparable number of findings, and that is now a condition to state
+alongside the arm.
+
 ### Cost, as an assumption rather than a fact
 
 The graph arm measures 25.6k tokens per review (finder plus skeptic, from the 18
