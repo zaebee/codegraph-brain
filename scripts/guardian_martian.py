@@ -66,6 +66,13 @@ SOURCE_ROOT = ""
 
 REVIEWS_FILE = Path("benchmarks/martian-reviews.jsonl")
 
+#: This repository, resolved from the script's own location. `guardian_sha` must
+#: describe the reviewer, and `review_one` spends most of its time with a
+#: checkout of somebody else's repository on disk — a `rev-parse` without an
+#: explicit cwd would record whichever repository the caller happened to be
+#: standing in, which is a wrong value that looks entirely right.
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
 #: Registered in docs/specs/2026-08-11-guardian-code-review-bench.md, §"Corpus
 #: reconnaissance". The plan asserts against these rather than reporting
 #: whatever it finds: a population that has drifted from the one the gate was
@@ -312,9 +319,21 @@ async def review_one(row: PrPlan, args: argparse.Namespace) -> ReviewRecord:
         skeptic_completion_tokens=skeptic[0].cumulative_usage.completion_tokens if skeptic else 0,
         duration_s=round(time.monotonic() - started, 2),
         parse_failed=routed.result.parse_failed,
-        guardian_sha=_git("rev-parse", "HEAD").strip(),
+        guardian_sha=guardian_version(),
         reviewed_at=datetime.now(UTC).isoformat(),
     )
+
+
+def guardian_version() -> str:
+    """The reviewer's commit, or "unknown" outside a checkout.
+
+    Provenance, not correctness: a tarball deployment with no `.git` should not
+    lose a paid review over a field that only says which Guardian produced it.
+    """
+    try:
+        return _git("rev-parse", "HEAD", cwd=REPO_ROOT).strip()
+    except (RuntimeError, OSError):
+        return os.environ.get("GUARDIAN_SHA", "unknown")
 
 
 def done_urls(path: Path) -> set[str]:

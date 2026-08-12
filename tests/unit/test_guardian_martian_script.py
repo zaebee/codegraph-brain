@@ -865,3 +865,49 @@ class TestResumeRobustness:
 
         asyncio.run(gm.review_one(_review_row(), argparse.Namespace(workspace=tmp_path / "ws")))
         assert seen["primary"] == "mistral"
+
+
+class TestGuardianVersion:
+    """`guardian_sha` says which reviewer produced a record."""
+
+    def test_asks_this_repository_not_the_working_directory(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`review_one` works with someone else's checkout on disk.
+
+        Without an explicit cwd, a caller standing in that checkout would have
+        recorded the *reviewed* project's SHA as the reviewer's — wrong, and
+        indistinguishable from right.
+        """
+        seen: dict[str, object] = {}
+
+        def fake_git(*args: str, **kwargs: object) -> str:
+            seen["args"] = args
+            seen["cwd"] = kwargs.get("cwd")
+            return "abc123\n"
+
+        monkeypatch.setattr(gm, "_git", fake_git)
+        assert gm.guardian_version() == "abc123"
+        assert seen["cwd"] == gm.REPO_ROOT
+
+    def test_outside_a_checkout_it_degrades_rather_than_losing_the_review(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def boom(*_a: str, **_k: object) -> str:
+            _msg = "not a git repository"
+            raise RuntimeError(_msg)
+
+        monkeypatch.setattr(gm, "_git", boom)
+        monkeypatch.delenv("GUARDIAN_SHA", raising=False)
+        assert gm.guardian_version() == "unknown"
+
+    def test_an_explicit_sha_wins_when_git_is_unavailable(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def boom(*_a: str, **_k: object) -> str:
+            _msg = "not a git repository"
+            raise RuntimeError(_msg)
+
+        monkeypatch.setattr(gm, "_git", boom)
+        monkeypatch.setenv("GUARDIAN_SHA", "deadbeef")
+        assert gm.guardian_version() == "deadbeef"
