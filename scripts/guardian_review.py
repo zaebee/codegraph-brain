@@ -8,6 +8,7 @@ from pathlib import Path
 import structlog
 
 from cgis.guardian.collector import ContextCollector, parse_features
+from cgis.guardian.metrics import reject_metrics_path
 from cgis.guardian.providers.mistral import MistralProvider
 from cgis.guardian.runner import (
     build_provider,
@@ -69,6 +70,15 @@ async def main() -> None:
         help="Post findings as an inline GitHub review; fall back to the report file on failure.",
     )
     args = parser.parse_args()
+
+    # Checked here as well as inside record_review, because record_review runs
+    # last: an unusable --metrics would otherwise surface only after every LLM
+    # call is paid for. `--output` below has had the same shape of guard all
+    # along; --metrics was simply missed (#347).
+    refusal = reject_metrics_path(args.metrics)
+    if refusal is not None:
+        _msg = f"Refusing metrics path '{args.metrics}': {refusal}."
+        raise ValueError(_msg)
 
     provider, model = build_provider(os.environ)
     primary = "mistral" if isinstance(provider, MistralProvider) else "gemini"

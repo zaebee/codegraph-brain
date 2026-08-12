@@ -3,7 +3,14 @@
 import json
 from pathlib import Path
 
-from cgis.guardian.metrics import load_reviews, rate_review, record_review
+import pytest
+
+from cgis.guardian.metrics import (
+    load_reviews,
+    rate_review,
+    record_review,
+    reject_metrics_path,
+)
 
 
 def test_record_review_creates_file(tmp_path: Path) -> None:
@@ -208,3 +215,119 @@ def test_record_review_duration_defaults_to_none(tmp_path: Path) -> None:
 
     entry = json.loads(metrics_path.read_text(encoding="utf-8").strip())
     assert entry["duration_s"] is None
+
+
+# ---------------------------------------------------------------------------
+# Path guard (#347) — the sink is library code, the path starts as a CLI arg
+# ---------------------------------------------------------------------------
+
+
+def _record(path: Path) -> Path:
+    """record_review with the boring arguments filled in."""
+    return record_review(
+        model="m",
+        pr=1,
+        prompt_tokens=1,
+        completion_tokens=1,
+        findings_total=0,
+        lgtm=True,
+        metrics_path=path,
+    )
+
+
+def test_a_fresh_jsonl_path_is_accepted(tmp_path: Path) -> None:
+    """The guard must not get in the way of the normal case."""
+    assert reject_metrics_path(tmp_path / "guardian_metrics.jsonl") is None
+
+
+def test_an_existing_metrics_log_is_accepted(tmp_path: Path) -> None:
+    path = tmp_path / "m.jsonl"
+    _record(path)
+    assert reject_metrics_path(path) is None
+
+
+def test_refuses_to_append_to_a_file_that_is_not_ours(tmp_path: Path) -> None:
+    """The attack this guard exists for: JSON appended to someone else's file.
+
+    Named `.jsonl` so only the content check can catch it.
+    """
+    victim = tmp_path / "authorized_keys.jsonl"
+    victim.write_text("ssh-ed25519 AAAAC3Nz real-key\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="not a Guardian metrics log"):
+        _record(victim)
+    assert victim.read_text(encoding="utf-8") == "ssh-ed25519 AAAAC3Nz real-key\n"
+
+
+def test_refuses_a_path_that_is_not_a_jsonl(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match=r"must end in \.jsonl"):
+        _record(tmp_path / "authorized_keys")
+
+
+def test_refuses_a_dangling_symlink_pointing_outside(tmp_path: Path) -> None:
+    """The pr-313 primitive, in this sink.
+
+    A symlink whose target does not exist passes `is_file()`, so without
+    resolving first every check would pass and the append would CREATE the
+    target — a write primitive at an arbitrary path.
+    """
+    target = tmp_path / "secrets" / "authorized_keys"
+    target.parent.mkdir()
+    link = tmp_path / "metrics.jsonl"
+    link.symlink_to(target)
+    assert not link.exists(), "fixture must be a dangling link for this to test anything"
+    with pytest.raises(ValueError, match=r"must end in \.jsonl"):
+        _record(link)
+    assert not target.exists(), "the guard must not have created the target"
+
+
+def test_a_symlink_to_a_real_metrics_log_is_still_fine(tmp_path: Path) -> None:
+    """Resolving must not turn every symlink into a refusal."""
+    real = tmp_path / "real.jsonl"
+    _record(real)
+    link = tmp_path / "link.jsonl"
+    link.symlink_to(real)
+    assert reject_metrics_path(link) is None
+
+
+def test_refuses_a_directory(tmp_path: Path) -> None:
+    directory = tmp_path / "logs.jsonl"
+    directory.mkdir()
+    with pytest.raises(ValueError, match="is a directory"):
+        _record(directory)
+
+
+def test_refuses_a_missing_parent_rather_than_creating_a_tree(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="parent directory does not exist"):
+        _record(tmp_path / "nope" / "deep" / "m.jsonl")
+
+
+def test_an_empty_file_is_accepted(tmp_path: Path) -> None:
+    """A zero-byte file is what the first run leaves behind if it is interrupted."""
+    path = tmp_path / "m.jsonl"
+    path.write_text("", encoding="utf-8")
+    assert reject_metrics_path(path) is None
+
+
+def test_a_json_array_is_not_a_record(tmp_path: Path) -> None:
+    """Our records are objects, one per line; a JSON array is some other file."""
+    path = tmp_path / "m.jsonl"
+    path.write_text("[1, 2, 3]\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="not a Guardian metrics log"):
+        _record(path)
+
+
+def test_binary_content_is_refused_rather_than_raising(tmp_path: Path) -> None:
+    """errors="replace" on read: a refusal, not a UnicodeDecodeError."""
+    path = tmp_path / "m.jsonl"
+    path.write_bytes(b"\x00\x01\x02binary\xff\n")
+    with pytest.raises(ValueError, match="not a Guardian metrics log"):
+        _record(path)
+
+
+def test_rate_review_guards_the_same_path(tmp_path: Path) -> None:
+    """rate_review rewrites the whole file, so it is the more destructive one."""
+    victim = tmp_path / "notes.jsonl"
+    victim.write_text("not json\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="not a Guardian metrics log"):
+        rate_review(pr=1, applied=1, metrics_path=victim)
+    assert victim.read_text(encoding="utf-8") == "not json\n"
