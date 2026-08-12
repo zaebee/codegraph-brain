@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from cgis.guardian.collector import ContextCollector
 from cgis.guardian.providers.base import BaseProvider, ProviderUsage
+from cgis.guardian.providers.mistral import MistralProvider
 from cgis.guardian.providers.ollama import OllamaProvider
 from cgis.guardian.recording import load_finder_recording
 from cgis.guardian.runner import (
@@ -509,3 +510,56 @@ async def test_a_bad_recording_path_fails_loudly(tmp_path: Path) -> None:
             metrics_path=tmp_path / "m.jsonl",
             record_finder=tmp_path / "finder.txt",
         )
+
+
+class TestTemperatureFromEnv:
+    """GUARDIAN_TEMPERATURE, so a registered sampling value is a run-time input.
+
+    Phase 3 (#342) registers a temperature before spending. It has to arrive
+    from configuration rather than a literal, or the spec and the run drift
+    apart with nothing to notice.
+    """
+
+    def test_the_value_reaches_the_provider(self) -> None:
+        env = {"MISTRAL_API_KEY": "k", "GUARDIAN_TEMPERATURE": "0.7"}
+
+        provider, _ = build_provider(env)
+
+        assert isinstance(provider, MistralProvider)
+        assert provider._temperature == 0.7  # noqa: SLF001  # white-box: sampling wiring
+
+    def test_absent_means_the_api_default_rather_than_an_invented_one(self) -> None:
+        """Phases 1 and 2 ran on provider defaults, and that is left untouched."""
+        provider, _ = build_provider({"MISTRAL_API_KEY": "k"})
+
+        assert isinstance(provider, MistralProvider)
+        assert provider._temperature is None  # noqa: SLF001  # white-box: sampling wiring
+
+    def test_zero_survives_the_parse(self) -> None:
+        """0.0 is falsy and would be lost by a truthiness check on the raw string."""
+        provider, _ = build_provider({"MISTRAL_API_KEY": "k", "GUARDIAN_TEMPERATURE": "0"})
+
+        assert isinstance(provider, MistralProvider)
+        assert provider._temperature == 0.0  # noqa: SLF001  # white-box: sampling wiring
+
+    def test_an_unparseable_value_warns_and_falls_back(self) -> None:
+        """Mirrors GUARDIAN_OLLAMA_NUM_CTX: a typo must not abort a paid run."""
+        provider, _ = build_provider({"MISTRAL_API_KEY": "k", "GUARDIAN_TEMPERATURE": "warm"})
+
+        assert isinstance(provider, MistralProvider)
+        assert provider._temperature is None  # noqa: SLF001  # white-box: sampling wiring
+
+    def test_the_skeptic_gets_the_same_temperature(self) -> None:
+        """One registered sampling setting, not one per pass."""
+        env = {
+            "MISTRAL_API_KEY": "k",
+            "GUARDIAN_SKEPTIC": "mistral",
+            "GUARDIAN_TEMPERATURE": "0.7",
+        }
+
+        built = build_skeptic_provider(env, primary="mistral")
+
+        assert built is not None
+        provider, _ = built
+        assert isinstance(provider, MistralProvider)
+        assert provider._temperature == 0.7  # noqa: SLF001  # white-box: sampling wiring

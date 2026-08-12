@@ -64,6 +64,27 @@ def _ollama_num_ctx(env: Mapping[str, str]) -> int:
         return DEFAULT_OLLAMA_NUM_CTX
 
 
+def temperature(env: Mapping[str, str]) -> float | None:
+    """GUARDIAN_TEMPERATURE as a float, or None to leave the API's own default.
+
+    None rather than an invented default, because Phases 1 and 2 of #342 ran on
+    provider defaults and the spec keeps that frozen; only a phase that
+    registered a value before spending sets one.
+
+    An unparseable value warns and falls back rather than raising: the same
+    policy as GUARDIAN_OLLAMA_NUM_CTX, and a typo should not abort a run that
+    costs money partway through.
+    """
+    raw = (env.get("GUARDIAN_TEMPERATURE") or "").strip()
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        log.warning("Invalid GUARDIAN_TEMPERATURE; using the provider default.", value=raw)
+        return None
+
+
 def _build_mistral(env: Mapping[str, str], model_override: str | None) -> tuple[BaseProvider, str]:
     """Construct a MistralProvider; MISTRAL_API_KEY is required."""
     key = env.get("MISTRAL_API_KEY")
@@ -71,7 +92,8 @@ def _build_mistral(env: Mapping[str, str], model_override: str | None) -> tuple[
         _msg = "MISTRAL_API_KEY must be set when GUARDIAN_PROVIDER=mistral"
         raise RuntimeError(_msg)
     model = model_override or DEFAULT_MISTRAL_MODEL
-    return MistralProvider(api_key=key, model_name=model), model
+    provider = MistralProvider(api_key=key, model_name=model, temperature=temperature(env))
+    return provider, model
 
 
 def _build_gemini(env: Mapping[str, str], model_override: str | None) -> tuple[BaseProvider, str]:
@@ -159,7 +181,10 @@ def build_skeptic_provider(
             log.warning("Skeptic disabled: MISTRAL_API_KEY not set.")
             return None
         model = model_override or DEFAULT_MISTRAL_MODEL
-        return MistralProvider(api_key=key, model_name=model), model
+        # Same temperature as the finder: the run registers one sampling
+        # setting, not one per pass.
+        skeptic = MistralProvider(api_key=key, model_name=model, temperature=temperature(env))
+        return skeptic, model
     key = env.get("GEMINI_API_KEY")
     if not key:
         log.warning("Skeptic disabled: GEMINI_API_KEY not set.")

@@ -466,7 +466,17 @@ def _mistral_modules(mock_instance: MagicMock) -> dict[str, MagicMock]:
     mock_client_mod.Mistral = MagicMock(return_value=mock_instance)
     mock_top = MagicMock()
     mock_top.client = mock_client_mod
-    return {"mistralai": mock_top, "mistralai.client": mock_client_mod}
+    # The provider also imports its rate-limit retry types from the SDK, and a
+    # plain module object is not a package — `mistralai.client.utils.retries`
+    # has to be its own sys.modules entry or the import fails with a message
+    # about the wrong thing.
+    mock_retries = MagicMock()
+    return {
+        "mistralai": mock_top,
+        "mistralai.client": mock_client_mod,
+        "mistralai.client.utils": MagicMock(),
+        "mistralai.client.utils.retries": mock_retries,
+    }
 
 
 def _make_mistral_client(response: MagicMock) -> MagicMock:
