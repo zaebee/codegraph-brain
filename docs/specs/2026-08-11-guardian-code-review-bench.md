@@ -1112,8 +1112,9 @@ uv run python scripts/guardian_martian.py union \
   --judge gemini-2.5-flash
 ```
 
-The two F₂ figures were first written here as 33.0 and +7.1 as +7.0, computed by
-hand from the rounded P and R in this table rather than from the underlying
+Two F₂ figures in the table above were corrected when the subcommand first ran:
+the mean run from 33.0 to 32.9, and Δ from +7.0 to +7.1. Both had been computed
+by hand from the rounded P and R printed here rather than from the underlying
 counts. The subcommand computes from the counts, and the table now carries what
 it prints.
 

@@ -11,6 +11,7 @@ is spent.
 """
 
 import json
+import math
 import re
 import statistics
 from collections.abc import Callable, Iterable, Sequence
@@ -527,9 +528,28 @@ def paired_effect(deltas: Sequence[float]) -> PairedEffect:
         mean=mean,
         standard_deviation=deviation,
         standard_error=error,
-        ratio=mean / error if error else float("inf") if mean else 0.0,
+        ratio=_effect_ratio(mean, error),
         passes=mean > 2 * error,
     )
+
+
+def _effect_ratio(mean: float, standard_error: float) -> float:
+    """`mean / se`, with the zero-dispersion case spelled out rather than nested.
+
+    A uniform effect has no dispersion, so the ratio is unbounded — and infinite
+    *with the sign of the mean*, because a uniformly negative effect is as
+    certainly negative as a uniformly positive one is positive.
+
+    This was a nested conditional returning a bare `float("inf")` for any
+    non-zero mean, which made a uniform regression print as an overwhelming win
+    while `passes` correctly reported FAIL. The gate was never wrong; the number
+    beside it was. Zero mean with zero dispersion is the null, and reports 0.0.
+    """
+    if standard_error:
+        return mean / standard_error
+    if mean:
+        return math.copysign(float("inf"), mean)
+    return 0.0
 
 
 def union_judged(runs: Sequence[Sequence[JudgedReview]]) -> list[JudgedReview]:

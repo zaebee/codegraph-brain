@@ -163,8 +163,10 @@ class TestUnionJudged:
 
     def test_refuses_a_single_run(self) -> None:
         """A union of one is a single run wearing the union's name."""
+        only = [_judged("u", n_goldens=1, n_candidates=1, decisions=[1])]
+
         with pytest.raises(ValueError, match="at least two runs"):
-            union_judged([[_judged("u", n_goldens=1, n_candidates=1, decisions=[1])]])
+            union_judged([only])
 
 
 class TestPairedEffect:
@@ -199,6 +201,20 @@ class TestPairedEffect:
     def test_a_uniform_zero_effect_does_not_pass(self) -> None:
         """Zero mean with zero dispersion is the null, and `0 > 0` is false."""
         assert paired_effect([0.0, 0.0, 0.0]).passes is False
+
+    def test_a_uniform_regression_reports_a_negative_ratio(self) -> None:
+        """The union being consistently worse must not print as an infinite win.
+
+        Zero dispersion sends the ratio to infinity, and it has to carry the
+        sign of the mean. An earlier nested conditional returned bare `+inf` for
+        any non-zero mean, so a uniform regression printed as an overwhelming
+        effect next to a correct FAIL.
+        """
+        effect = paired_effect([-2.0, -2.0, -2.0])
+
+        assert effect.mean == -2.0
+        assert effect.ratio == float("-inf")
+        assert effect.passes is False
 
     def test_refuses_fewer_than_two_pairs(self) -> None:
         """A standard error over one observation is undefined, not zero."""
