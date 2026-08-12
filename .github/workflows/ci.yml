@@ -67,6 +67,28 @@ jobs:
           uv run --frozen pytest --cov=cgis --cov=scripts
           --cov-report=term-missing --cov-report=xml
 
+      - name: Project version for Sonar
+        id: version
+        # Without this every analysis records the version as the literal string
+        # "not provided", which is both a lie in the history and, if the
+        # new-code period is "previous version", a baseline that can never move
+        # again — no VERSION event fires when the string never changes, so the
+        # window grows without bound and the gate quietly becomes a
+        # whole-project gate (#309).
+        #
+        # Validated before use: the value reaches the scanner's args, and a
+        # version string is not somewhere to discover that pyproject can carry
+        # arbitrary text.
+        if: env.SONAR_TOKEN != ''
+        run: |
+          version="$(uv version --short)"
+          case "$version" in
+            "" | *[!0-9A-Za-z.+-]* )
+              echo "Refusing unexpected project version: '$version'" >&2
+              exit 1 ;;
+          esac
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+
       - name: SonarQube Cloud scan
         # Inert until SONAR_TOKEN exists, so this can land before the migration.
         # Coverage cannot be imported by Automatic Analysis at all — see #317 —
@@ -129,6 +151,7 @@ jobs:
           args: >
             -Dsonar.projectKey=zaebee_codegraph-brain
             -Dsonar.organization=zaebee
+            -Dsonar.projectVersion=${{ steps.version.outputs.value }}
             -Dsonar.sources=src,scripts,.github
             -Dsonar.tests=tests
             -Dsonar.python.version=3.12
