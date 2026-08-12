@@ -1768,6 +1768,34 @@ class TestUnion:
         assert "judge: j" in out
         assert "N=2 runs" in out
 
+    def test_an_unruled_row_is_excluded_and_the_hole_is_printed(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A row with failed judge pairs leaves the arm, loudly.
+
+        Silence here would be the worst case: the excluded PR is a hole in the
+        population, and an unstated population is what decided both Phase 1
+        gates.
+        """
+        second = "https://github.com/o/r/pull/2"
+        paths = [
+            self._write(
+                tmp_path,
+                "a.jsonl",
+                [self._row(), self._row(url=second)],
+            ),
+            self._write(
+                tmp_path,
+                "b.jsonl",
+                [self._row(decisions=[0, 1]), self._row(url=second, judge_failures=1)],
+            ),
+        ]
+
+        gm.union(self._args(paths))
+        out = capsys.readouterr().out
+
+        assert "1 judged row(s) excluded as not scorable" in out
+
     def test_reports_why_a_union_is_impossible_instead_of_raising(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -1938,6 +1966,46 @@ class TestAllPairsFailed:
     Not writing it is also what lets a resumed run retry the PR — `judged_keys`
     would otherwise skip it as already judged, and the hole would be permanent.
     """
+
+    def test_the_writer_refuses_a_fully_failed_row(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Nothing is appended and the reason is on stderr, not swallowed."""
+        path = tmp_path / "judged.jsonl"
+        with path.open("a", encoding="utf-8") as fh:
+            recorded = gm.record_judgement(
+                fh, "[1/1] p 1", _judged_row(n_goldens=2, n_candidates=3, judge_failures=6)
+            )
+
+        assert recorded is False
+        assert path.read_text(encoding="utf-8") == ""
+        assert "all 6 judge calls failed" in capsys.readouterr().err
+
+    def test_the_writer_appends_a_usable_row(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        path = tmp_path / "judged.jsonl"
+        with path.open("a", encoding="utf-8") as fh:
+            recorded = gm.record_judgement(
+                fh, "[1/1] p 1", _judged_row(n_goldens=2, n_candidates=3, judge_failures=0)
+            )
+
+        assert recorded is True
+        assert len(path.read_text(encoding="utf-8").splitlines()) == 1
+        assert "NOT SCORABLE" not in capsys.readouterr().out
+
+    def test_a_partially_failed_row_is_written_but_flagged(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Kept as data, and the line says it will not be counted."""
+        path = tmp_path / "judged.jsonl"
+        with path.open("a", encoding="utf-8") as fh:
+            recorded = gm.record_judgement(
+                fh, "[1/1] p 1", _judged_row(n_goldens=2, n_candidates=3, judge_failures=1)
+            )
+
+        assert recorded is True
+        assert "NOT SCORABLE" in capsys.readouterr().out
 
     def test_a_row_with_every_pair_failed_is_not_written(self) -> None:
         row = _judged_row(n_goldens=2, n_candidates=3, judge_failures=6)

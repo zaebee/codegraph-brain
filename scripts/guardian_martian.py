@@ -31,6 +31,7 @@ import time
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TextIO
 
 from pydantic import ValidationError
 
@@ -661,28 +662,37 @@ async def judge(args: argparse.Namespace) -> int:
                 failures += 1
                 print(f"{label}: FAILED - {type(exc).__name__}: {exc}"[:250], file=sys.stderr)
                 continue
-            if nothing_was_ruled(judged):
+            if not record_judgement(fh, label, judged):
                 failures += 1
-                pairs = judged.n_goldens * judged.n_candidates
-                print(
-                    f"{label}: FAILED - all {pairs} judge calls failed; not recorded",
-                    file=sys.stderr,
-                    flush=True,
-                )
-                continue
-            fh.write(judged.model_dump_json() + "\n")
-            fh.flush()
-            print(
-                f"{label}: tp={judged.tp} fp={judged.fp} fn={judged.fn} "
-                f"P={judged.precision:.2f} R={judged.recall:.2f}"
-                + (
-                    f"  ({judged.judge_failures} unruled - NOT SCORABLE)"
-                    if judged.judge_failures
-                    else ""
-                ),
-                flush=True,
-            )
     return 1 if failures else 0
+
+
+def record_judgement(fh: TextIO, label: str, judged: JudgedReview) -> bool:
+    """Append one judged row, or refuse it and say why. True when recorded.
+
+    Split out of `judge` so the refusal has a test of its own: it is the guard
+    that stands between a dead judge and nine rows of fabricated zeros, and it
+    was previously an inline branch that only an end-to-end run could exercise.
+    """
+    if nothing_was_ruled(judged):
+        pairs = judged.n_goldens * judged.n_candidates
+        print(
+            f"{label}: FAILED - all {pairs} judge calls failed; not recorded",
+            file=sys.stderr,
+            flush=True,
+        )
+        return False
+    fh.write(judged.model_dump_json() + "\n")
+    fh.flush()
+    # "NOT SCORABLE" rather than a bare count: the row is kept as data but
+    # `scorable` excludes it, and the printed line is where a reader finds out.
+    unruled = f"  ({judged.judge_failures} unruled - NOT SCORABLE)" if judged.judge_failures else ""
+    print(
+        f"{label}: tp={judged.tp} fp={judged.fp} fn={judged.fn} "
+        f"P={judged.precision:.2f} R={judged.recall:.2f}{unruled}",
+        flush=True,
+    )
+    return True
 
 
 def load_judged(path: Path) -> list[JudgedReview]:
