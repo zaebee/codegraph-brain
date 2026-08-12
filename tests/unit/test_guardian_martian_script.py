@@ -13,7 +13,10 @@ from pathlib import Path
 
 import pytest
 
+from cgis.extractors.registry import build_extractors
 from cgis.guardian.martian import SliceCounts
+from cgis.pipeline import IngestionPipeline
+from cgis.storage.sqlite_store import SQLiteStore
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scripts"))
 
@@ -291,3 +294,238 @@ class TestMain:
             ],
         )
         assert gm.main() == 0
+
+
+class TestSelected:
+    """Nothing expensive may be spent on a PR whose result could not be used."""
+
+    @staticmethod
+    def _plans() -> list[gm.PrPlan]:
+        return [
+            gm.PrPlan(
+                project="p",
+                url=f"https://github.com/o/r/pull/{n}",
+                repo="o/r",
+                number=n,
+                reproducible=repro,
+                pr_slice="graph",
+                changed_files=("a.py",),
+                golden_comments=1,
+            )
+            for n, repro in ((1, True), (2, False), (3, True))
+        ]
+
+    def test_drops_the_unreproducible(self) -> None:
+        assert [p.number for p in gm.selected(self._plans(), None, None)] == [1, 3]
+
+    def test_narrows_to_one_pr(self) -> None:
+        assert [p.number for p in gm.selected(self._plans(), 3, None)] == [3]
+
+    def test_a_flagged_pr_cannot_be_selected_by_number(self) -> None:
+        """Asking for it by hand must not override the exclusion."""
+        assert gm.selected(self._plans(), 2, None) == []
+
+    def test_limit_applies_after_filtering(self) -> None:
+        assert [p.number for p in gm.selected(self._plans(), None, 1)] == [1]
+
+
+class TestGraphAlignment:
+    """The check that turns an invisible failure into a loud one."""
+
+    def _db(self, tmp_path: Path, files: dict[str, str]) -> Path:
+        tree = tmp_path / "tree"
+        for rel, src in files.items():
+            (tree / rel).parent.mkdir(parents=True, exist_ok=True)
+            (tree / rel).write_text(src, encoding="utf-8")
+        db = tmp_path / "g.db"
+        with SQLiteStore(str(db)) as store:
+            IngestionPipeline(build_extractors([])).run(str(tree), store=store)
+        return db
+
+    def test_counts_the_changed_files_the_graph_knows(self, tmp_path: Path) -> None:
+        db = self._db(tmp_path, {"src/pkg/mod.py": "def f() -> int:\n    return 1\n"})
+        assert gm.graph_alignment(db, ["src/pkg/mod.py", "src/pkg/absent.py"]) == (1, 2)
+
+    def test_unsupported_files_are_not_counted_against_the_graph(self, tmp_path: Path) -> None:
+        db = self._db(tmp_path, {"src/pkg/mod.py": "def f() -> int:\n    return 1\n"})
+        assert gm.graph_alignment(db, ["README.md", "a.rb"]) == (0, 0)
+
+    def test_a_graph_that_knows_nothing_is_refused(self, tmp_path: Path) -> None:
+        """The real bug this catches: whole-checkout ingest vs source_root="src".
+
+        Node ids keep the full relative path, so a collector configured with
+        source_root="src" derives `pkg.mod` for a node stored as `src.pkg.mod`.
+        Every lookup misses, the review is produced with no graph context, and
+        nothing says so.
+        """
+        db = self._db(tmp_path, {"src/pkg/mod.py": "def f() -> int:\n    return 1\n"})
+        with pytest.raises(RuntimeError, match="silently have no graph context"):
+            gm.require_alignment(db, ["src/pkg/other.py"])
+
+    def test_alignment_holds_for_the_root_this_runner_uses(self, tmp_path: Path) -> None:
+        """SOURCE_ROOT must be the empty string while `prepare` ingests whole checkouts."""
+        assert gm.SOURCE_ROOT == ""
+        db = self._db(tmp_path, {"src/pkg/mod.py": "def f() -> int:\n    return 1\n"})
+        assert gm.require_alignment(db, ["src/pkg/mod.py"]).endswith("1/1 changed files")
+
+
+def _fake_runner(
+    monkeypatch: pytest.MonkeyPatch, outcomes: dict[str, tuple[int, str, str]]
+) -> list[list[str]]:
+    """Record every subprocess command; answer by first-matching key."""
+    seen: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        seen.append(cmd)
+        joined = " ".join(cmd)
+        for key, (code, out, err) in outcomes.items():
+            if key in joined:
+                return subprocess.CompletedProcess(cmd, code, stdout=out, stderr=err)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(gm.subprocess, "run", fake_run)
+    return seen
+
+
+class TestPrRefs:
+    def test_returns_base_and_head(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _fake_runner(monkeypatch, {"gh pr view": (0, '{"baseRefOid":"b1","headRefOid":"h1"}', "")})
+        assert gm.pr_refs("https://github.com/o/r/pull/1") == ("b1", "h1")
+
+    def test_a_failure_carries_stderr(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _fake_runner(monkeypatch, {"gh pr view": (1, "", "could not resolve to a PullRequest")})
+        with pytest.raises(RuntimeError, match="could not resolve"):
+            gm.pr_refs("https://github.com/o/r/pull/1")
+
+
+class TestEnsureCheckout:
+    def test_clones_once_then_fetches_both_shas_and_checks_out(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Both SHAs, not just the head.
+
+        `ContextCollector` diffs `base...HEAD`; a missing base makes the diff
+        silently empty — a review of nothing, scored as finding nothing.
+        """
+        seen = _fake_runner(monkeypatch, {})
+        clone = gm.ensure_checkout("o/r", "baseaaa", "headbbb", tmp_path)
+        verbs = [c[1] for c in seen]
+        assert verbs == ["clone", "fetch", "fetch", "checkout"]
+        assert [c[-1] for c in seen if c[1] == "fetch"] == ["baseaaa", "headbbb"]
+        assert clone == tmp_path / "o__r"
+
+    def test_an_existing_clone_is_reused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        (tmp_path / "o__r" / ".git").mkdir(parents=True)
+        seen = _fake_runner(monkeypatch, {})
+        gm.ensure_checkout("o/r", "b", "h", tmp_path)
+        assert "clone" not in [c[1] for c in seen]
+
+    def test_git_failures_name_the_stderr(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _fake_runner(monkeypatch, {"clone": (128, "", "repository not found")})
+        with pytest.raises(RuntimeError, match="repository not found"):
+            gm.ensure_checkout("o/r", "b", "h", tmp_path)
+
+
+class TestEnsureGraph:
+    def test_removes_the_previous_database_first(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A graph carried over from another commit answers with absent nodes."""
+        db = tmp_path / "g.db"
+        db.write_text("stale", encoding="utf-8")
+        existed: list[bool] = []
+
+        def fake_run(cmd: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+            existed.append(db.exists())
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        monkeypatch.setattr(gm.subprocess, "run", fake_run)
+        gm.ensure_graph(tmp_path / "tree", db)
+        assert existed == [False]
+
+    def test_a_failed_ingest_raises_with_stderr(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _fake_runner(monkeypatch, {"ingest": (1, "", "tree-sitter exploded")})
+        with pytest.raises(RuntimeError, match="tree-sitter exploded"):
+            gm.ensure_graph(tmp_path / "tree", tmp_path / "g.db")
+
+
+class TestPrepare:
+    @staticmethod
+    def _plan_file(tmp_path: Path, *, pr_slice: str = "graph") -> Path:
+        path = tmp_path / "plan.json"
+        path.write_text(
+            json.dumps(
+                [
+                    {
+                        "project": "p",
+                        "url": "https://github.com/o/r/pull/1",
+                        "repo": "o/r",
+                        "number": 1,
+                        "reproducible": True,
+                        "pr_slice": pr_slice,
+                        "changed_files": ["src/a.py"],
+                        "golden_comments": 1,
+                    }
+                ]
+            ),
+            encoding="utf-8",
+        )
+        return path
+
+    def _args(self, tmp_path: Path, **overrides: object) -> argparse.Namespace:
+        base: dict[str, object] = {
+            "plan": self._plan_file(tmp_path),
+            "workspace": tmp_path / "ws",
+            "pr": None,
+            "limit": None,
+            "no_graph": False,
+        }
+        return argparse.Namespace(**(base | overrides))
+
+    def test_missing_plan_says_what_to_run(self, tmp_path: Path) -> None:
+        args = self._args(tmp_path, plan=tmp_path / "absent.json")
+        with pytest.raises(FileNotFoundError, match=r"Run `guardian_martian\.py plan` first"):
+            gm.prepare(args)
+
+    def test_checks_out_and_ingests_a_graph_pr(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.setattr(gm, "pr_refs", lambda url: ("b", "h" * 12))  # noqa: ARG005
+        monkeypatch.setattr(gm, "ensure_checkout", lambda *a: tmp_path / "co")  # noqa: ARG005
+        monkeypatch.setattr(gm, "ensure_graph", lambda *a: None)  # noqa: ARG005
+        monkeypatch.setattr(gm, "require_alignment", lambda *a: "ingested, graph knows 1/1")  # noqa: ARG005
+        assert gm.prepare(self._args(tmp_path)) == 0
+        assert "graph knows 1/1" in capsys.readouterr().out
+
+    def test_no_graph_skips_ingest(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(gm, "pr_refs", lambda url: ("b", "h"))  # noqa: ARG005
+        monkeypatch.setattr(gm, "ensure_checkout", lambda *a: tmp_path / "co")  # noqa: ARG005
+
+        def boom(*_: object) -> None:
+            _msg = "ingest must not run"
+            raise AssertionError(_msg)
+
+        monkeypatch.setattr(gm, "ensure_graph", boom)
+        assert gm.prepare(self._args(tmp_path, no_graph=True)) == 0
+
+    def test_a_failing_pr_is_recorded_and_exits_non_zero(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """One unreachable repository must not abort the other forty-nine."""
+
+        def boom(url: str) -> tuple[str, str]:  # noqa: ARG001
+            _msg = "gh pr view exited 1: not found"
+            raise RuntimeError(_msg)
+
+        monkeypatch.setattr(gm, "pr_refs", boom)
+        assert gm.prepare(self._args(tmp_path)) == 1
+        assert "prepared 0/1" in capsys.readouterr().out
+
+    def test_nothing_selected_is_an_error(self, tmp_path: Path) -> None:
+        assert gm.prepare(self._args(tmp_path, pr=999)) == 1
