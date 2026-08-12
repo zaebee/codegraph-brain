@@ -870,7 +870,15 @@ def graph_commit(db_path: Path) -> str | None:
 
     Recorded in a sidecar because the database itself does not know: the store
     holds nodes, not provenance.
+
+    A marker without its database is not provenance either — it describes a
+    graph that no longer exists — so the database's absence answers None here
+    rather than at each call site. Otherwise a stray marker left by a partial
+    cleanup would vouch for a graph that was deleted, and the review would run
+    with no graph context and no complaint.
     """
+    if not db_path.is_file():
+        return None
     marker = db_path.with_name(db_path.name + COMMIT_MARKER_SUFFIX)
     return marker.read_text(encoding="utf-8").strip() if marker.is_file() else None
 

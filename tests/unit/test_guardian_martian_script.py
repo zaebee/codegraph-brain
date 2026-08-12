@@ -557,6 +557,16 @@ class TestGraphProvenance:
         (tmp_path / "g.db").write_text("db", encoding="utf-8")
         assert gm.graph_commit(tmp_path / "g.db") is None
 
+    def test_a_marker_without_its_database_is_not_provenance(self, tmp_path: Path) -> None:
+        """It describes a graph that no longer exists.
+
+        Trusting it would skip the rebuild and run a graph-slice PR with no
+        graph at all — the same silent absence, one level down.
+        """
+        db = tmp_path / "g.db"
+        db.with_name(db.name + gm.COMMIT_MARKER_SUFFIX).write_text("abc", encoding="utf-8")
+        assert gm.graph_commit(db) is None
+
     def test_an_unmarked_database_is_rebuilt_rather_than_trusted(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
