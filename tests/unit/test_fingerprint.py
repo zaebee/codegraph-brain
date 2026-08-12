@@ -307,8 +307,10 @@ def test_from_graph_skips_store() -> None:
 
 def test_extractor_without_store_or_preload_raises() -> None:
     """Constructing with store=None and no from_graph() preload fails loud."""
+    extractor = FingerprintExtractor(None)
+
     with pytest.raises(RuntimeError, match="store or a from_graph"):
-        FingerprintExtractor(None).extract("m")
+        extractor.extract("m")
 
 
 # ── node_count / edge_count (#178 task 1) ────────────────────────────────────
