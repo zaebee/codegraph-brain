@@ -92,13 +92,51 @@ jobs:
           #
           # Deliberately scoped to scripts/. src/ keeps the rule — metrics.py:70
           # is library code and its instance deserves a real answer (#342).
+          #
+          # `.github` is in sources because leaving it out did not mean "no
+          # findings there", it meant "nobody is looking". Automatic Analysis
+          # used to scan it and reported 34 workflow vulnerabilities; the moment
+          # this scanner took over with `src,scripts`, SonarCloud closed all 34
+          # as FIXED. Nothing had been fixed. Silent closure in the one
+          # directory where supply-chain surface actually matters is worse than
+          # a red count (#309).
+          #
+          # The two workflow rules are then exempted — on evidence, not
+          # preference, which is the difference between this and the silent
+          # closure above:
+          #
+          #   S8541 "omitting --no-build can execute setup scripts": the
+          #   remediation is impossible here, verified by running it. This
+          #   project installs itself as an editable distribution, so both
+          #   `uv sync --frozen --no-build` and `uv run --frozen --no-build`
+          #   exit with "Distribution `codegraph-brain==0.10.0 @ editable+.`
+          #   can't be installed because it is marked as `--no-build` but has no
+          #   binary distribution". Every third-party dependency ships a wheel,
+          #   so the only source distribution `uv sync` builds is ours — which
+          #   is not the untrusted code the rule is about. #309 called this
+          #   "mechanical, pattern already established"; the established pattern
+          #   (release-please.yml's `uvx --no-build --from twine==7.0.0`) works
+          #   only because uvx runs a *foreign* tool, and does not transplant.
+          #
+          #   S8544 "dependencies without locked resolved versions": untrue
+          #   here. Every invocation passes --frozen against a committed
+          #   uv.lock, and the "Lockfile in step with pyproject" step above
+          #   fails the build if that lock is stale.
+          #
+          # Residual risk, stated because the glob cannot be narrower: a future
+          # `uvx` invocation would go unchecked by S8541, where it WOULD be both
+          # applicable and fixable. Keep passing --no-build to uvx by hand.
           args: >
             -Dsonar.projectKey=zaebee_codegraph-brain
             -Dsonar.organization=zaebee
-            -Dsonar.sources=src,scripts
+            -Dsonar.sources=src,scripts,.github
             -Dsonar.tests=tests
             -Dsonar.python.version=3.12
             -Dsonar.python.coverage.reportPaths=coverage.xml
-            -Dsonar.issue.ignore.multicriteria=e1
+            -Dsonar.issue.ignore.multicriteria=e1,e2,e3
             -Dsonar.issue.ignore.multicriteria.e1.ruleKey=pythonsecurity:S8707
             -Dsonar.issue.ignore.multicriteria.e1.resourceKey=scripts/**/*.py
+            -Dsonar.issue.ignore.multicriteria.e2.ruleKey=githubactions:S8541
+            -Dsonar.issue.ignore.multicriteria.e2.resourceKey=.github/workflows/*.yml
+            -Dsonar.issue.ignore.multicriteria.e3.ruleKey=githubactions:S8544
+            -Dsonar.issue.ignore.multicriteria.e3.resourceKey=.github/workflows/*.yml
