@@ -1288,6 +1288,48 @@ Only the expectation recorded beside it is corrected, and corrected before the
 numbers exist, so that neither outcome can be narrated afterwards as the one we
 predicted.
 
+### Amendment, 2026-08-12: a dead judge is not a reviewer that found nothing
+
+Run 3 stopped at PR 8 of 19 on **HTTP 402** — the Mistral subscription's limit,
+not a rate limit. Everything after failed the same way.
+
+What the stop exposed matters more than the stop. Judging continued to be
+attempted, every call failed, and **a row was written anyway**: `tp=0`, every
+candidate a false positive, `P=0.00 R=0.00`. Nine of eleven rows in the first
+judged file looked exactly like measurements of a reviewer that had found
+nothing, and `report` and the union arm would have read them as such.
+
+`judge_failures` already existed, and `judge_matrix`'s own docstring already
+said such a row "must not be quoted as a precision number". **Nothing enforced
+it.** This is the second field in one day — after `parse_failed` — that faithfully
+recorded a problem which no code consulted. The lesson is not about either field:
+a recorded caveat that only a human reads is not a safeguard, and every such
+field should be traced to the code that acts on it or treated as absent.
+
+Registered rules, both strict and both leaving Phase 2 untouched, since it
+carries zero failed pairs across all 115 judged rows:
+
+1. **A row where every pair failed is not written.** There is nothing to record,
+   and writing it would also make the hole permanent — `judged_keys` skips a PR
+   that has a row, so a resumed run would never retry it.
+2. **A row with any failed pair is not scored.** A failed pair is an *unknown*
+   and the scorer counts unknowns as non-matches, so any failure makes `tp` a
+   lower bound rather than a value. Strict rather than proportional for that
+   reason. The row is kept as data; `scorable` keeps it out of the arithmetic.
+
+The nine fabricated rows were quarantined to
+`benchmarks/martian-p3-judged-run1.jsonl.corrupted-backup` rather than deleted.
+
+**Phase 3 is therefore stop-and-record at N=2**, per the registered stop rule.
+Run 3's seven completed reviews are not a third arm. One honesty note attaches to
+any later attempt to finish it: the rule forbids backfilling because "a run
+collected after its siblings have been seen is a different draw", and two PRs of
+run 1 had been judged — to measure the judge's token rate — before the limit was
+reached. Those two results were seen. A completed run 3 would have to be
+published with that disclosed, or N=2 stands.
+
+N=2 is not empty: the pilot that motivated this phase was itself N=2.
+
 ### Run 1 completed, and two of the figures above were wrong
 
 Both corrections are to numbers this document produced, and both were made from

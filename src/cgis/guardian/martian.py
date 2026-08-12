@@ -557,6 +557,28 @@ def _effect_ratio(mean: float, standard_error: float) -> float:
     return 0.0
 
 
+def scorable(rows: Sequence[JudgedReview]) -> list[JudgedReview]:
+    """Judged rows where every pair was actually ruled on.
+
+    Registered 2026-08-12, after a subscription limit was reached mid-run. The
+    judge kept being called, every call failed with HTTP 402, and a row was
+    written anyway — `tp=0`, every candidate a false positive, `P=0.00 R=0.00`.
+    Nine rows of eleven looked exactly like measurements of a reviewer that had
+    found nothing, and `report` and the union arm would have read them as such.
+
+    `judge_failures` already existed, and `judge_matrix` already documented that
+    such a row "must not be quoted as a precision number". Nothing enforced it —
+    the same shape as `parse_failed`, recorded faithfully and read by nobody.
+
+    Strict rather than proportional, because a failed pair is an *unknown* and
+    the scorer counts unknowns as non-matches: any failure makes `tp` a lower
+    bound rather than a value, and a lower bound is not a precision figure.
+    Phase 2 carries zero failed pairs across all 115 judged rows, so nothing
+    already published moves.
+    """
+    return [r for r in rows if r.judge_failures == 0]
+
+
 def union_judged(runs: Sequence[Sequence[JudgedReview]]) -> list[JudgedReview]:
     """Merge N judged runs into one union row per PR. No API calls.
 

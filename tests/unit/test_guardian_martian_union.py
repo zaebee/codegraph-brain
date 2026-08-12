@@ -22,6 +22,7 @@ from cgis.guardian.martian import (
     UnionRun,
     f_beta,
     paired_effect,
+    scorable,
     union_judged,
 )
 
@@ -291,3 +292,56 @@ class TestUnionRun:
 
         assert 0.0 <= run.mean_f_beta <= 1.0
         assert 0.0 <= run.union.f_beta <= 1.0
+
+
+class TestScorable:
+    """A judged row is a measurement only if every pair was actually ruled on.
+
+    Registered 2026-08-12, after the Mistral subscription hit its limit mid-run.
+    The judge kept being called, every call failed with HTTP 402, and a row was
+    written anyway — `tp=0`, every candidate a false positive, `P=0.00 R=0.00`.
+    Nine of eleven rows looked exactly like measurements of a reviewer that found
+    nothing, and `union` and `report` would have read them as such.
+
+    `judge_failures` already existed and its docstring already said such a row
+    "must not be quoted as a precision number". Nothing enforced it — the same
+    shape as `parse_failed`, which was recorded and read by nobody.
+
+    A failed pair is an *unknown*, not a non-match, and the scorer counts
+    unknowns as non-matches. So any failure makes the row's tp a lower bound
+    rather than a value, which is why the rule is strict rather than
+    proportional. Phase 2 carries zero failed pairs, so nothing already
+    published moves.
+    """
+
+    def _row(self, url: str, *, failures: int) -> JudgedReview:
+        return _judged(url, n_goldens=1, n_candidates=1, decisions=[1]).model_copy(
+            update={"judge_failures": failures}
+        )
+
+    def test_a_row_with_no_failures_is_scorable(self) -> None:
+        assert len(scorable([self._row("u", failures=0)])) == 1
+
+    def test_a_single_failed_pair_disqualifies_the_row(self) -> None:
+        """tp becomes a lower bound, and a lower bound is not a precision figure."""
+        assert scorable([self._row("u", failures=1)]) == []
+
+    def test_the_exclusion_removes_the_pr_from_every_run(self) -> None:
+        """Via the rule already registered for parse failures: missing in one, out of all.
+
+        Otherwise a run whose judge died would contribute an artificial zero to
+        the mean while the union, which loses nothing to an empty candidate set,
+        kept its findings — inflating the very advantage G7 and G8 test.
+        """
+        run_a = [
+            _judged("kept", n_goldens=1, n_candidates=1, decisions=[1]),
+            _judged("lost", n_goldens=1, n_candidates=1, decisions=[1]),
+        ]
+        run_b = [
+            _judged("kept", n_goldens=1, n_candidates=1, decisions=[1]),
+            self._row("lost", failures=1),
+        ]
+
+        rows = union_judged([scorable(run_a), scorable(run_b)])
+
+        assert [r.url for r in rows] == ["kept"]

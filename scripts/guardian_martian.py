@@ -31,6 +31,7 @@ import time
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TextIO
 
 from pydantic import ValidationError
 
@@ -66,6 +67,7 @@ from cgis.guardian.martian import (
     load_corpus,
     plan_population,
     pr_number,
+    scorable,
     score_slice,
 )
 from cgis.guardian.providers.base import BaseProvider
@@ -558,6 +560,24 @@ def judged_keys(path: Path) -> set[tuple[str, str, str]]:
     return keys
 
 
+def nothing_was_ruled(row: JudgedReview) -> bool:
+    """Whether every judge pair for this row failed, leaving nothing measured.
+
+    Such a row must not be written. Recorded, it reads as tp=0 with every
+    candidate a false positive — indistinguishable from a reviewer that found
+    nothing, which is how a dead judge produced nine "measurements" when a
+    subscription limit was reached mid-run.
+
+    Not writing it is also what lets a resumed run retry the PR: `judged_keys`
+    would otherwise skip it as already judged and the hole would be permanent.
+
+    A row with no pairs at all is vacuous, not failed — there was nothing to
+    rule on — and is recorded like any other.
+    """
+    pairs = row.n_goldens * row.n_candidates
+    return bool(pairs) and row.judge_failures >= pairs
+
+
 def judgeable(reviews: Sequence[ReviewRecord]) -> list[ReviewRecord]:
     """Reviews that can be scored: no parse failure, no recorded error.
 
@@ -642,15 +662,37 @@ async def judge(args: argparse.Namespace) -> int:
                 failures += 1
                 print(f"{label}: FAILED - {type(exc).__name__}: {exc}"[:250], file=sys.stderr)
                 continue
-            fh.write(judged.model_dump_json() + "\n")
-            fh.flush()
-            print(
-                f"{label}: tp={judged.tp} fp={judged.fp} fn={judged.fn} "
-                f"P={judged.precision:.2f} R={judged.recall:.2f}"
-                + (f"  ({judged.judge_failures} unruled)" if judged.judge_failures else ""),
-                flush=True,
-            )
+            if not record_judgement(fh, label, judged):
+                failures += 1
     return 1 if failures else 0
+
+
+def record_judgement(fh: TextIO, label: str, judged: JudgedReview) -> bool:
+    """Append one judged row, or refuse it and say why. True when recorded.
+
+    Split out of `judge` so the refusal has a test of its own: it is the guard
+    that stands between a dead judge and nine rows of fabricated zeros, and it
+    was previously an inline branch that only an end-to-end run could exercise.
+    """
+    if nothing_was_ruled(judged):
+        pairs = judged.n_goldens * judged.n_candidates
+        print(
+            f"{label}: FAILED - all {pairs} judge calls failed; not recorded",
+            file=sys.stderr,
+            flush=True,
+        )
+        return False
+    fh.write(judged.model_dump_json() + "\n")
+    fh.flush()
+    # "NOT SCORABLE" rather than a bare count: the row is kept as data but
+    # `scorable` excludes it, and the printed line is where a reader finds out.
+    unruled = f"  ({judged.judge_failures} unruled - NOT SCORABLE)" if judged.judge_failures else ""
+    print(
+        f"{label}: tp={judged.tp} fp={judged.fp} fn={judged.fn} "
+        f"P={judged.precision:.2f} R={judged.recall:.2f}{unruled}",
+        flush=True,
+    )
+    return True
 
 
 def load_judged(path: Path) -> list[JudgedReview]:
@@ -683,7 +725,7 @@ def _score_line(score: SliceScore) -> str:
 
 def report(args: argparse.Namespace) -> int:
     """Print G4/G5/G6 from the judged records. Free; reads only what is on disk."""
-    rows = [r for r in load_judged(args.judged) if r.arm == args.arm]
+    rows = scorable([r for r in load_judged(args.judged) if r.arm == args.arm])
     if not rows:
         # Exiting 0 here would let a CI step that was supposed to evaluate
         # something pass by evaluating nothing — the quietest possible failure.
@@ -740,7 +782,15 @@ def union(args: argparse.Namespace) -> int:
     def keep(row: JudgedReview) -> bool:
         return row.arm == args.arm and (args.judge is None or row.judge_model == args.judge)
 
-    runs = [[r for r in load_judged(path) if keep(r)] for path in args.judged]
+    runs = [scorable([r for r in load_judged(path) if keep(r)]) for path in args.judged]
+    unruled = sum(
+        len([r for r in load_judged(path) if keep(r)]) - len(run)
+        for path, run in zip(args.judged, runs, strict=True)
+    )
+    if unruled:
+        # Printed, not silent: an excluded row is a hole in the population, and
+        # the population is what decided both Phase 1 gates.
+        print(f"{unruled} judged row(s) excluded as not scorable (unruled judge pairs).")
     empty = [str(p) for p, rows in zip(args.judged, runs, strict=True) if not rows]
     if empty:
         # Same reasoning as `report`: exiting 0 on an empty population lets a
