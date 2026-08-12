@@ -13,6 +13,7 @@ diff rather than re-derived on every run.
 
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 from collections.abc import Sequence
@@ -222,6 +223,11 @@ def graph_alignment(db_path: Path, changed_files: Sequence[str]) -> tuple[int, i
     supported = [f for f in changed_files if is_supported(f)]
     if not supported:
         return 0, 0
+    if not db_path.is_file():
+        # SQLiteStore creates a 48 KB empty database when the file is absent,
+        # so opening one here would litter the workspace as a side effect of a
+        # read-only check — and then report zero anyway.
+        return 0, len(supported)
     with SQLiteStore(str(db_path)) as store:
         found = 0
         for path in supported:
@@ -344,10 +350,10 @@ def pr_refs(pr_url: str) -> tuple[str, str]:
     return refs["baseRefOid"], refs["headRefOid"]
 
 
-def _git(*args: str, cwd: Path | None = None, timeout: int = 900) -> str:
+def _git(verb: str, *args: str, cwd: Path | None = None, timeout: int = 900) -> str:
     """Run git, raising with stderr rather than a bare exit code."""
     result = subprocess.run(
-        ["git", *args],
+        ["git", verb, *args],
         capture_output=True,
         encoding="utf-8",
         check=False,
@@ -356,7 +362,7 @@ def _git(*args: str, cwd: Path | None = None, timeout: int = 900) -> str:
         timeout=timeout,
     )
     if result.returncode != 0:
-        _msg = f"git {args[0]} exited {result.returncode}: {result.stderr.strip()[:300]}"
+        _msg = f"git {verb} exited {result.returncode}: {result.stderr.strip()[:300]}"
         raise RuntimeError(_msg)
     return result.stdout
 
@@ -373,6 +379,11 @@ def ensure_checkout(repo: str, base_sha: str, head_sha: str, workspace: Path) ->
     loudly absent — a review of nothing, scored as finding nothing.
     """
     clone = workspace / repo.replace("/", "__")
+    if clone.exists() and not (clone / ".git").is_dir():
+        # An interrupted clone leaves a directory git will refuse to clone into
+        # ("destination path already exists and is not an empty directory"),
+        # which would then fail every run until someone cleared it by hand.
+        shutil.rmtree(clone)
     if not (clone / ".git").is_dir():
         clone.parent.mkdir(parents=True, exist_ok=True)
         _git(

@@ -529,3 +529,33 @@ class TestPrepare:
 
     def test_nothing_selected_is_an_error(self, tmp_path: Path) -> None:
         assert gm.prepare(self._args(tmp_path, pr=999)) == 1
+
+
+class TestWorkspaceHygiene:
+    """Two ways the workspace can defeat a run before any model is called."""
+
+    def test_alignment_does_not_create_a_database_it_only_reads(self, tmp_path: Path) -> None:
+        """SQLiteStore makes a 48 KB empty file when the path is absent."""
+        db = tmp_path / "absent.db"
+        assert gm.graph_alignment(db, ["src/a.py"]) == (0, 1)
+        assert not db.exists()
+
+    def test_an_interrupted_clone_is_cleared_before_retrying(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """git refuses a non-empty destination, so a partial clone poisons every rerun."""
+        stale = tmp_path / "o__r"
+        (stale / "half-downloaded").mkdir(parents=True)
+        seen = _fake_runner(monkeypatch, {})
+        gm.ensure_checkout("o/r", "b", "h", tmp_path)
+        assert not stale.joinpath("half-downloaded").exists()
+        assert next(c[1] for c in seen) == "clone"
+
+    def test_git_needs_a_verb(self) -> None:
+        """`_git()` with no arguments used to raise IndexError while building its message.
+
+        Now the signature refuses it, so the failure is at the call site with a
+        name attached rather than inside the error handler.
+        """
+        with pytest.raises(TypeError):
+            gm._git()  # type: ignore[call-arg]  # noqa: SLF001
