@@ -22,10 +22,13 @@
 > **Unblocked 2026-08-11 by #345**, which made an `ambiguous` hit count as a
 > false positive — see §"What this changes" item 2.
 >
-> **Phase 2 has now run** (2026-08-12): 45 PRs, one judge. G4 PASS, **G5 FAIL at
-> +9.5 pp against a ≥10 pp threshold**, G6 PASS. The near-miss is recorded as a
-> failure rather than rounded, and no Guardian row is published — one judge is
-> not a measurement. See §"Phase 2 — results".
+> **Phase 2 has now run** (2026-08-12): 45 PRs, **two judges**. G4 PASS, **G5
+> FAIL under both** (+9.5 pp on gemini, +6.6 pp on mistral, against ≥10 pp), G6
+> PASS. The near-miss is recorded as a failure rather than rounded. The judges
+> agree at κ +0.920 with 86.9% positive-class overlap, which clears the bar
+> Phase 1 set, so **a Guardian row is now published — with the condition that
+> neither judge is the leaderboard's Claude Opus 4.5.** See §"Phase 2 —
+> results".
 
 ## Verdict up front
 
@@ -856,6 +859,81 @@ anywhere near their table.
 An erratum found while placing it: the leaderboard table in §"The leaderboard,
 recomputed from source" is captioned *ordered by F₀.₅* and is in fact ordered
 by **F1**. The values are right; the caption is not.
+
+### The second judge (2026-08-12) — the verdict holds, the margin does not
+
+`mistral-medium-latest` re-judged the same 45 stored reviews. Zero finder calls:
+the reviews carry their untruncated findings, so a second judge is a re-score,
+not a re-run. Concurrency 1, on Phase 1's evidence — its first Mistral judge
+lost 76.5% of its pairs to 429s at the default of 4. **45/45 judged, 0 failures,
+0 unruled pairs.**
+
+| gate | gemini-2.5-flash | mistral-medium-latest |
+|---|---|---|
+| ALL | P 33.6 / R 30.7 / F0.5 33.0 | P 33.6 / R 30.7 / F0.5 33.0 |
+| graph slice | R 36.1, P 39.3 | R 34.4, P 37.5 |
+| diff-only slice | R 26.6, P 29.2 | R 27.8, P 30.6 |
+| **G5** | **+9.5 pp FAIL** | **+6.6 pp FAIL** |
+| G4 (Python, n=6) | F0.5 39.5 PASS | F0.5 32.9 PASS |
+
+**G5 fails under both judges, and that is the finding.** Phase 1's verdict was
+decided by an unregistered population choice rather than by data (R1); this one
+survives a change of judge. The *margin* does not — it moves 3 pp between them —
+so "+9.5" is not a quantity to quote to one decimal place. The direction and the
+sub-threshold verdict are what replicate.
+
+### Inter-judge agreement, and one coincidence worth not misreading
+
+484 comparable decisions, no reshaped grids.
+
+| | Phase 1 | Phase 2 |
+|---|---|---|
+| Cohen's κ | +0.768 | **+0.920** |
+| positive-class overlap | 63.8% | **86.9%** |
+| match rate | 4.8% / 4.5% | 11.6% / 12.0% |
+| chance agreement | 91.1% | 79.2% |
+
+The judges differ on `tp` for **4 of 45 PRs**, in both directions (discourse and
+sentry to gemini, grafana and keycloak to mistral).
+
+Most of the κ improvement is base rate, not virtue: the judges call 12% of pairs
+a match here against 4.8% in Phase 1, so chance agreement drops from 91% to 79%
+and κ has room to move. The task stopped being degenerately rare; the judges did
+not obviously get better at it.
+
+**The coincidence.** Both judges report exactly `tp=43 fp=85 fn=97` — identical
+totals, so identical P, R and F0.5. The per-project rows are not identical
+(sentry 6 vs 5, keycloak 5 vs 6, grafana 10 vs 11, discourse 9 vs 8): they
+credited *different* findings and the totals happened to match. Anyone reading
+"both judges say 33.0" as strong corroboration is reading a coincidence. This is
+exactly why agreement is computed over decisions rather than over scores.
+
+### Publishing the row
+
+**Now defensible, with its conditions attached.** Phase 1's bar was two
+independent judges; this clears it, at κ +0.920 and 86.9% positive overlap —
+both better than the Phase 1 figures on which the bar was set.
+
+> **Guardian, 45 of the 50 offline PRs, profile `core`: P 33.6 / R 30.7 /
+> F0.5 33.0 / F1 32.1.** Judges: `gemini-2.5-flash` and
+> `mistral-medium-latest`, agreeing at κ +0.920. Configuration:
+> `gemini-2.5-flash` finder, `gemini-3.5-flash` skeptic, `GUARDIAN_FEATURES`
+> unset.
+
+Three conditions travel with it and are not optional:
+
+1. **Neither judge is Claude Opus 4.5**, which produced the leaderboard column.
+   Phase 1 measured that judge choice moves absolutes 4–8 points. This row is
+   comparable to *itself over time*; placing it in their table is still a
+   category error.
+2. **45 of 50**, with the five the corpus itself flags as unreproducible
+   excluded and named.
+3. **Contamination is unaddressed.** The PRs are public and predate the model
+   cutoffs, as upstream acknowledges for the offline track.
+
+By F0.5 the figure would sit second from last of 21 — above Graphite alone.
+That is not a rank we have earned the right to state, per condition 1; it is
+recorded here as the shape of the result, not as a placement.
 
 ### Cost, reconciled against the bill rather than estimated
 
