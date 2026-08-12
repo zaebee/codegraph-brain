@@ -643,17 +643,100 @@ one-line change it looks like: the collector imports the *Python*
 the TS extractor ever emitted, and fails silently. Lifting the suffix filter
 alone would produce a Guardian that appears to have graph context and does not.
 
+### Corpus reconnaissance (2026-08-12) — three things this section got wrong
+
+Measured before spending anything, and it moves the plan.
+
+**1. The URLs are not all upstream.** This section says "the golden comments
+carry upstream PR URLs". 35 of 50 do; **15 live in the benchmark's own fork org**
+`ai-code-review-evaluation` (discourse 10/10, sentry 4, keycloak 1). All are
+public and `gh pr diff` works on every one of them, so the method survives — but
+"upstream" was wrong, and **the corpus flags 5 PRs as not reproducible itself**:
+four `az_comment: "reviewed commit is not in the repo"` and one
+`"there is no such PR, it is a mix of many PRs"`. Those five must be reported as
+excluded rather than scored as misses.
+
+**2. Graph context on repos this size is cheap, which was the open risk.**
+Measured on `sentry` at a review head: 3792 Python files / 569,538 lines →
+**29 s** to ingest, 46,965 nodes, 192,385 resolved edges, 133 MB database; the
+blob-filtered clone and checkout cost another 23 s. Whatever blocks Phase 2, it
+is not ingest.
+
+**3. The stratification table above is wrong, because it splits by repository
+language rather than by what each PR touches.** Measured from
+`gh pr diff --name-only` on all 50:
+
+| project | PRs | evaluated | graph-enabled (eval) | diff-only (eval) | golden comments (eval) |
+|---|---|---|---|---|---|
+| sentry | 10 | **6** | 6 | 0 | 19 |
+| cal.com | 10 | 10 | 10 | 0 | 41 |
+| grafana | 10 | 10 | 3 | 7 | 25 |
+| discourse | 10 | 10 | 0 | 10 | 41 |
+| keycloak | 10 | **9** | 0 | 9 | 28 |
+| **total** | **50** | **45** | **19** | **26** | **154** |
+
+Grafana is filed above as Go and diff-only; three of its PRs touch `.ts`/`.tsx`
+and two are purely front-end. With #344 landed, **23 of 50 PRs carry graph
+context — not the 10 this section assumed nor the 20 #344 predicted.**
+
+**The evaluated counts are what the gates are registered on**, and they are
+smaller: the five unreproducible PRs are not spread evenly. Four of them are
+sentry and all four are graph-enabled, so the graph slice loses 23 → 19 while
+diff-only loses 27 → 26. (Caught in review by gemini-code-assist on the PR that
+introduced this section; its 19/26 arithmetic was exactly right.)
+
+Two consequences that matter more than the arithmetic, registered here so they
+cannot be produced as excuses afterwards:
+
+- **The graph-enabled slice is now two-thirds TypeScript** — 13 of 19 PRs
+  (cal.com 10 + grafana 3) against 6 Python. G5 will therefore mostly measure
+  the *TypeScript* extractor and collector path, which #344 shipped days ago and
+  which has never been exercised at this scale. A G5 pass is evidence about TS
+  graph context; a G5 failure does not distinguish "graph context does not help"
+  from "our TS graph is weaker than our Python one". The per-language split is
+  published alongside.
+- **G4's Python slice is down to 6 PRs and 19 golden comments.** An F₀.₅
+  computed on that is too noisy to be a headline number, whatever it says. It is
+  still reported, with n stated next to it; the full-corpus figure remains the
+  only leaderboard-comparable one.
+
 ### Pre-registered gates
 
 - **G4 (floor).** Guardian on the Python slice is not last. Concretely: F₀.₅
   above Graphite's 29.1. A precision-only reviewer that finds nothing is the bar
   to clear, and we have shipped reviews that would not clear it.
-- **G5 (the graph claim).** Python-slice recall exceeds full-corpus recall by
-  ≥ 10 percentage points. *This is the falsifiable form of "graph context
-  helps."* If it
-  fails, graph context does not measurably help find bugs on real PRs, and that
-  finding outranks the leaderboard position in importance — it goes straight to
-  #220 and the context-collector lane.
+- **G5 (the graph claim).** ~~Python-slice recall exceeds full-corpus recall by
+  ≥ 10 percentage points.~~ **Amended 2026-08-12, before any Phase 2 data was
+  collected** (see reconnaissance above), and disclosed here rather than
+  silently rewritten because Phase 1's retraction R2 was exactly this failure
+  made too late:
+
+  > **Recall on the graph-enabled slice (19 evaluated PRs, 68 golden comments)
+  > exceeds recall on the diff-only slice (26 evaluated PRs, 86 golden comments)
+  > by ≥ 10 percentage points.**
+
+  Two reasons the original form was the wrong measurement, both structural
+  rather than convenient. It compared a slice against a **superset containing
+  it**, so the graph-enabled PRs sat on both sides and damped whatever effect
+  exists. And it discarded 13 of the 23 PRs that actually have graph context, in
+  a comparison whose entire subject is graph context. The amended form is two
+  disjoint slices of comparable size — 23 against 27 rather than 10 against 50.
+
+  *This is the falsifiable form of "graph context helps."* If it fails, graph
+  context does not measurably help find bugs on real PRs, and that finding
+  outranks the leaderboard position in importance — it goes straight to #220 and
+  the context-collector lane.
+
+  Registered alongside it, so a null result cannot be explained away afterwards:
+  the slices differ in language (Python+TS vs Ruby/Java/Go) and in project, so a
+  failure is "graph context did not help **here**", not "graph context is
+  useless". The per-project breakdown is published either way — and since the
+  graph slice is 13 TypeScript PRs against 6 Python, so is the per-language one.
+
+- **Configuration under test, fixed before the run:** the current production
+  config — `gemini-2.5-flash` finder, gemini skeptic, `GUARDIAN_FEATURES` unset.
+  Baseline first; the recall-lean prompt from #258/#248 is a second run with
+  something to compare against, not a substitute for having one.
 - **G6 (honest reporting).** Every published Guardian number names its judge
   model, its profile, and its slice. A number without all three is not published.
 
