@@ -109,7 +109,22 @@ class TestFetchChangedFiles:
         pr = gm.BenchPr(project="p", pr_title="t", url="https://github.com/o/r/pull/1", comments=[])
         gm.fetch_changed_files(pr)
         assert seen["stdin"] == subprocess.DEVNULL
-        assert seen["check"] is True
+
+    def test_a_failure_carries_ghs_stderr(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The recorded message is the only diagnostic, so it has to say something.
+
+        `check=True` would raise `CalledProcessError`, which stringifies without
+        the captured stderr — an expired token and a rate limit would look
+        identical on the plan row.
+        """
+
+        def fake_run(cmd: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="gh: rate limited\n")
+
+        monkeypatch.setattr(gm.subprocess, "run", fake_run)
+        pr = gm.BenchPr(project="p", pr_title="t", url="https://github.com/o/r/pull/1", comments=[])
+        with pytest.raises(RuntimeError, match="rate limited"):
+            gm.fetch_changed_files(pr)
 
 
 class TestLoadCached:
@@ -129,6 +144,20 @@ class TestLoadCached:
             encoding="utf-8",
         )
         assert gm.load_cached(path) == {"u1": ("a.py",)}
+
+    def test_an_unreadable_cache_degrades_loudly(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Falling back to fetching is free and correct; doing so in silence is not."""
+        path = tmp_path / "plan.json"
+        path.write_text("{ truncated", encoding="utf-8")
+        assert gm.load_cached(path) == {}
+        assert "Ignoring unreadable cache" in capsys.readouterr().err
+
+    def test_a_cache_whose_schema_moved_is_also_ignored(self, tmp_path: Path) -> None:
+        path = tmp_path / "plan.json"
+        path.write_text(json.dumps([{"url": "u1", "files": ["a.py"]}]), encoding="utf-8")
+        assert gm.load_cached(path) == {}
 
 
 class TestPlan:

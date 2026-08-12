@@ -49,27 +49,49 @@ def fetch_changed_files(pr: BenchPr) -> tuple[str, ...]:
     `stdin=DEVNULL` is not decoration. `gh` reads stdin, so calling it inside a
     loop that itself reads stdin makes it swallow the remaining input — which
     is exactly how this corpus was first mis-counted at 49 PRs instead of 50.
+
+    Raises with gh's stderr included rather than passing `check=True`.
+    `CalledProcessError` stringifies to "Command '[...]' returned non-zero exit
+    status 1" and drops the captured stderr entirely — and since `build_plan`
+    records the message on the row instead of raising, that message is the only
+    diagnostic anyone gets. An expired token and a rate limit would be
+    indistinguishable.
     """
     result = subprocess.run(
         ["gh", "pr", "diff", pr.url, "--name-only"],
         capture_output=True,
         text=True,
-        check=True,
+        check=False,
         stdin=subprocess.DEVNULL,
         timeout=120,
     )
+    if result.returncode != 0:
+        _msg = f"gh exited {result.returncode}: {result.stderr.strip() or '(no stderr)'}"
+        raise RuntimeError(_msg)
     return tuple(line for line in result.stdout.splitlines() if line.strip())
 
 
 def load_cached(path: Path) -> dict[str, tuple[str, ...]]:
-    """Previously fetched file lists, keyed by PR URL; empty when absent."""
+    """Previously fetched file lists, keyed by PR URL; empty when absent.
+
+    An unreadable cache degrades to an empty one *loudly*. This is a pure
+    optimisation — nothing about the plan's correctness depends on it, and the
+    fallback is to fetch, which is free — so a half-written file from an
+    interrupted run should not require deleting it by hand. It warns rather
+    than passing silently, because a cache that has quietly stopped working
+    (a renamed field, say) otherwise just looks like a slow script.
+    """
     if not path.is_file():
         return {}
-    return {
-        row["url"]: tuple(row["changed_files"])
-        for row in json.loads(path.read_text(encoding="utf-8"))
-        if row.get("fetch_error") is None
-    }
+    try:
+        return {
+            row["url"]: tuple(row["changed_files"])
+            for row in json.loads(path.read_text(encoding="utf-8"))
+            if row.get("fetch_error") is None
+        }
+    except (json.JSONDecodeError, KeyError, TypeError, AttributeError) as exc:
+        print(f"Ignoring unreadable cache {path}: {exc}", file=sys.stderr)
+        return {}
 
 
 def plan(args: argparse.Namespace) -> int:
