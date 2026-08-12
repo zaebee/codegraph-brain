@@ -666,18 +666,39 @@ is not ingest.
 language rather than by what each PR touches.** Measured from
 `gh pr diff --name-only` on all 50:
 
-| project | PRs | graph-enabled | diff-only |
-|---|---|---|---|
-| sentry | 10 | **10** | 0 |
-| cal.com | 10 | **10** | 0 |
-| grafana | 10 | **3** | 7 |
-| discourse | 10 | 0 | 10 |
-| keycloak | 10 | 0 | 10 |
-| **total** | 50 | **23** | 27 |
+| project | PRs | evaluated | graph-enabled (eval) | diff-only (eval) | golden comments (eval) |
+|---|---|---|---|---|---|
+| sentry | 10 | **6** | 6 | 0 | 19 |
+| cal.com | 10 | 10 | 10 | 0 | 41 |
+| grafana | 10 | 10 | 3 | 7 | 25 |
+| discourse | 10 | 10 | 0 | 10 | 41 |
+| keycloak | 10 | **9** | 0 | 9 | 28 |
+| **total** | **50** | **45** | **19** | **26** | **154** |
 
 Grafana is filed above as Go and diff-only; three of its PRs touch `.ts`/`.tsx`
-and two are purely front-end. With #344 landed, **23 PRs carry graph context,
-not the 10 this section assumed nor the 20 #344 predicted.**
+and two are purely front-end. With #344 landed, **23 of 50 PRs carry graph
+context — not the 10 this section assumed nor the 20 #344 predicted.**
+
+**The evaluated counts are what the gates are registered on**, and they are
+smaller: the five unreproducible PRs are not spread evenly. Four of them are
+sentry and all four are graph-enabled, so the graph slice loses 23 → 19 while
+diff-only loses 27 → 26. (Caught in review by gemini-code-assist on the PR that
+introduced this section; its 19/26 arithmetic was exactly right.)
+
+Two consequences that matter more than the arithmetic, registered here so they
+cannot be produced as excuses afterwards:
+
+- **The graph-enabled slice is now two-thirds TypeScript** — 13 of 19 PRs
+  (cal.com 10 + grafana 3) against 6 Python. G5 will therefore mostly measure
+  the *TypeScript* extractor and collector path, which #344 shipped days ago and
+  which has never been exercised at this scale. A G5 pass is evidence about TS
+  graph context; a G5 failure does not distinguish "graph context does not help"
+  from "our TS graph is weaker than our Python one". The per-language split is
+  published alongside.
+- **G4's Python slice is down to 6 PRs and 19 golden comments.** An F₀.₅
+  computed on that is too noisy to be a headline number, whatever it says. It is
+  still reported, with n stated next to it; the full-corpus figure remains the
+  only leaderboard-comparable one.
 
 ### Pre-registered gates
 
@@ -690,8 +711,9 @@ not the 10 this section assumed nor the 20 #344 predicted.**
   silently rewritten because Phase 1's retraction R2 was exactly this failure
   made too late:
 
-  > **Recall on the graph-enabled slice (23 PRs) exceeds recall on the
-  > diff-only slice (27 PRs) by ≥ 10 percentage points.**
+  > **Recall on the graph-enabled slice (19 evaluated PRs, 68 golden comments)
+  > exceeds recall on the diff-only slice (26 evaluated PRs, 86 golden comments)
+  > by ≥ 10 percentage points.**
 
   Two reasons the original form was the wrong measurement, both structural
   rather than convenient. It compared a slice against a **superset containing
@@ -708,7 +730,8 @@ not the 10 this section assumed nor the 20 #344 predicted.**
   Registered alongside it, so a null result cannot be explained away afterwards:
   the slices differ in language (Python+TS vs Ruby/Java/Go) and in project, so a
   failure is "graph context did not help **here**", not "graph context is
-  useless". The per-project breakdown is published either way.
+  useless". The per-project breakdown is published either way — and since the
+  graph slice is 13 TypeScript PRs against 6 Python, so is the per-language one.
 
 - **Configuration under test, fixed before the run:** the current production
   config — `gemini-2.5-flash` finder, gemini skeptic, `GUARDIAN_FEATURES` unset.

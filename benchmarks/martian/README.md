@@ -58,15 +58,22 @@ charge Guardian for a commit nobody can fetch.
 Graph context depends on the files a PR touches, not on the repository's
 headline language. Measured from `gh pr diff --name-only` on all 50:
 
-| project | PRs | graph-enabled | diff-only |
-|---|---|---|---|
-| sentry | 10 | 10 | 0 |
-| cal.com | 10 | 10 | 0 |
-| grafana | 10 | 3 | 7 |
-| discourse | 10 | 0 | 10 |
-| keycloak | 10 | 0 | 10 |
-| **total** | **50** | **23** | **27** |
+| project | PRs | evaluated | graph-enabled (eval) | diff-only (eval) | comments (eval) |
+|---|---|---|---|---|---|
+| sentry | 10 | 6 | 6 | 0 | 19 |
+| cal.com | 10 | 10 | 10 | 0 | 41 |
+| grafana | 10 | 10 | 3 | 7 | 25 |
+| discourse | 10 | 10 | 0 | 10 | 41 |
+| keycloak | 10 | 9 | 0 | 9 | 28 |
+| **total** | **50** | **45** | **19** | **26** | **154** |
 
 Grafana is a Go backend with a TypeScript front end; three of its PRs are
-front-end and two are purely so. This 23/27 split is what gate **G5** is
-registered on — see the spec, §"Pre-registered gates".
+front-end and two are purely so.
+
+Across all 50 the split is 23/27. **The evaluated split is 19/26**, because the
+five unreproducible PRs are not spread evenly — four are sentry and all four
+are graph-enabled. Gate **G5** is registered on the evaluated numbers; see the
+spec, §"Pre-registered gates".
+
+Note what that does to the slice's composition: graph-enabled is **13
+TypeScript PRs against 6 Python**. G5 mostly measures the TypeScript path.
