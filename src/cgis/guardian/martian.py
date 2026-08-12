@@ -19,6 +19,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from cgis.extractors.registry import is_supported
+from cgis.guardian.findings import Finding
 
 #: Severity vocabulary of the upstream corpus. Four values, not three — the
 #: spec's §"Ground truth format" omits `Critical` (12 of the 173 comments).
@@ -278,3 +279,54 @@ def plan_population(plans: Sequence[PrPlan]) -> dict[str, SliceCounts]:
         entry[0] += 1
         entry[1] += plan.golden_comments
     return {name: SliceCounts(prs=n, comments=c) for name, (n, c) in totals.items()}
+
+
+class ReviewRecord(BaseModel, frozen=True):
+    """One Guardian review of one benchmark PR, stored so it can be re-judged.
+
+    Deliberately self-sufficient. Phase 1 could re-score 118 reviews with a
+    second judge, and later correct a scoring bug across all of them, only
+    because `results.jsonl` happened to keep every finding's full text — the
+    finder never had to run again. That was luck; here it is a requirement, so
+    the record carries the SHAs it was produced from, the model that produced
+    it, and the untruncated findings.
+
+    What it does NOT carry is any score. Judging is a separate pass over these
+    rows, which is what keeps "re-judge with a different model" from meaning
+    "re-run the benchmark".
+    """
+
+    url: str
+    project: str
+    pr_slice: str
+    base_sha: str
+    head_sha: str
+    #: True when a graph database was present for this review — the difference
+    #: G5 measures. Recorded per row rather than inferred from `pr_slice`,
+    #: because ingest can fail on a PR the plan called graph-enabled, and that
+    #: row must not silently count as evidence for graph context.
+    had_graph: bool
+    finder_model: str
+    skeptic_model: str | None
+    findings: list[Finding]
+    prompt_tokens: int
+    completion_tokens: int
+    duration_s: float
+    parse_failed: bool
+    guardian_sha: str
+    reviewed_at: str
+    #: Non-null when the review could not be produced. Such a row is reported
+    #: and excluded, never scored as "found nothing" — a crashed run and a
+    #: clean LGTM are opposite evidence.
+    error: str | None = None
+
+
+def candidate_findings(record: ReviewRecord) -> list[Finding]:
+    """The findings a judge should see: everything the skeptic left standing.
+
+    Mirrors what `bench.score` was given, and what Phase 1's calibration
+    reconstructed after the fact — a refuted finding was never shown to anyone,
+    so charging the reviewer for it would measure the finder rather than the
+    review.
+    """
+    return [f for f in record.findings if f.verdict != "refuted"]

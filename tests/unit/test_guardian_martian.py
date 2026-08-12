@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from cgis.guardian.findings import Finding
 from cgis.guardian.martian import (
     DEFAULT_PROFILE,
     PROFILE_CATEGORIES,
@@ -19,8 +20,10 @@ from cgis.guardian.martian import (
     BenchPr,
     GoldenComment,
     PrPlan,
+    ReviewRecord,
     SliceCounts,
     build_plan,
+    candidate_findings,
     evaluated,
     golden_texts,
     load_corpus,
@@ -303,3 +306,67 @@ class TestPlanPopulation:
         assert pop[UNKNOWN_SLICE].prs == 1
         assert pop["graph"].prs == 0
         assert pop["diff-only"].prs == 0
+
+
+class TestReviewRecord:
+    """The trajectory record: enough to re-judge without paying the finder again."""
+
+    @staticmethod
+    def _finding(**overrides: object) -> Finding:
+        base: dict[str, object] = {
+            "file": "a.py",
+            "line": 1,
+            "severity": "major",
+            "category": "logic",
+            "title": "t",
+            "evidence": "e",
+            "problem": "p",
+            "fix": "f",
+            "confidence": 90,
+        }
+        return Finding.model_validate(base | overrides)
+
+    def _record(self, **overrides: object) -> ReviewRecord:
+        base: dict[str, object] = {
+            "url": "https://github.com/o/r/pull/1",
+            "project": "p",
+            "pr_slice": "graph",
+            "base_sha": "b",
+            "head_sha": "h",
+            "had_graph": True,
+            "finder_model": "gemini-2.5-flash",
+            "skeptic_model": None,
+            "findings": [],
+            "prompt_tokens": 1,
+            "completion_tokens": 2,
+            "duration_s": 3.0,
+            "parse_failed": False,
+            "guardian_sha": "deadbeef",
+            "reviewed_at": "2026-08-12T00:00:00+00:00",
+        }
+        return ReviewRecord.model_validate(base | overrides)
+
+    def test_refuted_findings_are_not_shown_to_the_judge(self) -> None:
+        """They were shown to nobody, so charging the reviewer measures the finder."""
+        record = self._record(
+            findings=[
+                self._finding(title="kept"),
+                self._finding(title="killed", verdict="refuted"),
+                self._finding(title="confirmed", verdict="confirmed"),
+            ]
+        )
+        assert [f.title for f in candidate_findings(record)] == ["kept", "confirmed"]
+
+    def test_had_graph_is_recorded_not_inferred_from_the_slice(self) -> None:
+        """Ingest can fail on a PR the plan called graph-enabled.
+
+        Such a row must not count as evidence for graph context, which is what
+        inferring the flag from `pr_slice` would do.
+        """
+        record = self._record(pr_slice="graph", had_graph=False)
+        assert record.pr_slice == "graph"
+        assert not record.had_graph
+
+    def test_the_record_carries_no_score(self) -> None:
+        """Judging is a separate pass, so re-judging never means re-running."""
+        assert not {"precision", "recall", "tp", "matched"} & set(self._record().model_dump())
