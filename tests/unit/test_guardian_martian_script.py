@@ -11,6 +11,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import ClassVar
 
 import pytest
@@ -725,21 +726,22 @@ class TestDoneUrls:
         assert gm.done_urls(tmp_path / "nope.jsonl") == set()
 
 
+def _review_row(pr_slice: str = "graph") -> gm.PrPlan:
+    """One prepared, reproducible PR plan."""
+    return gm.PrPlan(
+        project="p",
+        url="https://github.com/o/r/pull/1",
+        repo="o/r",
+        number=1,
+        reproducible=True,
+        pr_slice=pr_slice,
+        changed_files=("src/a.py",),
+        golden_comments=1,
+    )
+
+
 class TestReviewOne:
     """The paid step. What it hands the collector decides what G5 measures."""
-
-    @staticmethod
-    def _row(pr_slice: str = "graph") -> gm.PrPlan:
-        return gm.PrPlan(
-            project="p",
-            url="https://github.com/o/r/pull/1",
-            repo="o/r",
-            number=1,
-            reproducible=True,
-            pr_slice=pr_slice,
-            changed_files=("src/a.py",),
-            golden_comments=1,
-        )
 
     def _wire(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, aligned: int
@@ -784,7 +786,7 @@ class TestReviewOne:
     ) -> None:
         captured = self._wire(tmp_path, monkeypatch, aligned=1)
         args = argparse.Namespace(workspace=tmp_path / "ws")
-        record = asyncio.run(gm.review_one(self._row(), args))
+        record = asyncio.run(gm.review_one(_review_row(), args))
         assert captured["db_path"] == tmp_path / "ws" / "o__r.db"
         assert captured["source_root"] == ""
         assert captured["base_ref"] == "basesha"
@@ -801,7 +803,7 @@ class TestReviewOne:
         """
         captured = self._wire(tmp_path, monkeypatch, aligned=0)
         args = argparse.Namespace(workspace=tmp_path / "ws")
-        record = asyncio.run(gm.review_one(self._row(), args))
+        record = asyncio.run(gm.review_one(_review_row(), args))
         assert captured["db_path"] is None
         assert record.pr_slice == "graph"
         assert record.had_graph is False
@@ -811,5 +813,55 @@ class TestReviewOne:
     ) -> None:
         monkeypatch.setattr(gm, "pr_refs", lambda _url: ("b", "h"))
         args = argparse.Namespace(workspace=tmp_path / "empty")
+        coroutine = gm.review_one(_review_row(), args)
         with pytest.raises(RuntimeError, match="prepare --pr 1"):
-            asyncio.run(gm.review_one(self._row(), args))
+            asyncio.run(coroutine)
+
+
+class TestResumeRobustness:
+    """Resume is what protects work already paid for, so it must not be fragile."""
+
+    def test_a_truncated_last_line_does_not_block_resume(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A crash mid-append leaves one. Refusing to parse it would re-buy everything."""
+        path = tmp_path / "reviews.jsonl"
+        path.write_text('{"url": "u1"}\n{"url": "u2", "find', encoding="utf-8")
+        assert gm.done_urls(path) == {"u1"}
+        assert "Skipping unreadable record" in capsys.readouterr().err
+
+    def test_the_skeptic_is_the_opposite_of_whatever_the_finder_is(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Hardcoding "gemini" handed a mistral finder a mistral skeptic.
+
+        `build_skeptic_provider` picks the *opposite* provider, so the argument
+        has to describe the finder that was actually built, not the one the
+        script expects.
+        """
+        (tmp_path / "ws" / "o__r" / ".git").mkdir(parents=True)
+        seen: dict[str, str] = {}
+
+        class _Mistral(gm.MistralProvider):
+            cumulative_usage = SimpleNamespace(prompt_tokens=0, completion_tokens=0)
+
+            def __init__(self) -> None:
+                pass
+
+        async def fake_routed(**_: object) -> object:
+            return SimpleNamespace(result=SimpleNamespace(findings=[], parse_failed=False))
+
+        def spy(_env: object, primary: str) -> None:
+            seen["primary"] = primary
+            return
+
+        monkeypatch.setattr(gm, "pr_refs", lambda _url: ("b", "h"))
+        monkeypatch.setattr(gm, "_git", lambda *a, **k: "sha\n")  # noqa: ARG005
+        monkeypatch.setattr(gm, "graph_alignment", lambda *a: (0, 1))  # noqa: ARG005
+        monkeypatch.setattr(gm, "build_provider", lambda _env: (_Mistral(), "mistral-medium"))
+        monkeypatch.setattr(gm, "build_skeptic_provider", spy)
+        monkeypatch.setattr(gm, "ContextCollector", lambda **_: object())
+        monkeypatch.setattr(gm, "run_review_routed", fake_routed)
+
+        asyncio.run(gm.review_one(_review_row(), argparse.Namespace(workspace=tmp_path / "ws")))
+        assert seen["primary"] == "mistral"

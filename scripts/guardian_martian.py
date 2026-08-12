@@ -38,6 +38,7 @@ from cgis.guardian.martian import (
     load_corpus,
     plan_population,
 )
+from cgis.guardian.providers.mistral import MistralProvider
 from cgis.guardian.runner import build_provider, build_skeptic_provider
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -278,7 +279,12 @@ async def review_one(row: PrPlan, args: argparse.Namespace) -> ReviewRecord:
     )
 
     provider, model = build_provider(os.environ)
-    skeptic = build_skeptic_provider(os.environ, primary="gemini")
+    # Asked of the provider, not of the model name: `build_skeptic_provider`
+    # picks the *opposite* provider, so a hardcoded "gemini" would hand a
+    # mistral finder a mistral skeptic and quietly retire the cross-provider
+    # design. Same test `scripts/guardian_review.py` uses.
+    primary = "mistral" if isinstance(provider, MistralProvider) else "gemini"
+    skeptic = build_skeptic_provider(os.environ, primary=primary)
     collector = ContextCollector(
         project_root=checkout,
         base_ref=base,
@@ -313,11 +319,18 @@ def done_urls(path: Path) -> set[str]:
     """URLs already reviewed, so a rerun does not pay for them twice."""
     if not path.is_file():
         return set()
-    return {
-        json.loads(line)["url"]
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    }
+    urls: set[str] = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            urls.add(json.loads(line)["url"])
+        except (json.JSONDecodeError, KeyError, TypeError):
+            # A crash mid-append leaves a truncated last line. Refusing to parse
+            # it would block resume entirely, which is the one thing protecting
+            # work already paid for; skipping it costs at most one re-review.
+            print(f"Skipping unreadable record in {path}: {line[:80]!r}", file=sys.stderr)
+    return urls
 
 
 async def review(args: argparse.Namespace) -> int:
@@ -329,7 +342,11 @@ async def review(args: argparse.Namespace) -> int:
         f"{len(rows)} selected, {len(already & {r.url for r in rows})} already done, "
         f"{len(pending)} to review."
     )
-    if args.dry_run or not pending:
+    if args.dry_run:
+        for index, row in enumerate(pending, 1):
+            print(f"  [{index}/{len(pending)}] {row.project} #{row.number} {row.url}")
+        return 0
+    if not pending:
         return 0
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
