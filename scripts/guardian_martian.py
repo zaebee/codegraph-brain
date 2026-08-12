@@ -308,6 +308,8 @@ async def review_one(row: PrPlan, args: argparse.Namespace) -> ReviewRecord:
         findings=routed.result.findings,
         prompt_tokens=provider.cumulative_usage.prompt_tokens,
         completion_tokens=provider.cumulative_usage.completion_tokens,
+        skeptic_prompt_tokens=skeptic[0].cumulative_usage.prompt_tokens if skeptic else 0,
+        skeptic_completion_tokens=skeptic[0].cumulative_usage.completion_tokens if skeptic else 0,
         duration_s=round(time.monotonic() - started, 2),
         parse_failed=routed.result.parse_failed,
         guardian_sha=_git("rev-parse", "HEAD").strip(),
