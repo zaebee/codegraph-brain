@@ -311,6 +311,12 @@ class ReviewRecord(BaseModel, frozen=True):
     findings: list[Finding]
     prompt_tokens: int
     completion_tokens: int
+    #: The skeptic runs on its own provider, so its usage is not in the two
+    #: fields above. Recorded separately because otherwise the bill cannot be
+    #: reconciled against the run — the old bench has no row carrying both, so
+    #: the skeptic's share of the cost was simply unknown when this was planned.
+    skeptic_prompt_tokens: int = 0
+    skeptic_completion_tokens: int = 0
     duration_s: float
     parse_failed: bool
     guardian_sha: str

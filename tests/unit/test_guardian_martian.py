@@ -370,3 +370,14 @@ class TestReviewRecord:
     def test_the_record_carries_no_score(self) -> None:
         """Judging is a separate pass, so re-judging never means re-running."""
         assert not {"precision", "recall", "tp", "matched"} & set(self._record().model_dump())
+
+    def test_skeptic_usage_is_recorded_separately(self) -> None:
+        """The skeptic has its own provider, so it is absent from the finder's counters.
+
+        Without this the run's bill cannot be reconciled — which is exactly the
+        hole found while estimating Phase 2's cost: no row in the old bench
+        carries both, so the skeptic's share was unknown.
+        """
+        record = self._record(skeptic_prompt_tokens=900, skeptic_completion_tokens=90)
+        assert record.prompt_tokens == 1
+        assert record.skeptic_prompt_tokens == 900
