@@ -133,6 +133,20 @@ class BenchPr(BaseModel, frozen=True):
         return int(self._parsed_url()["number"])
 
 
+def pr_number(url: str) -> int:
+    """The PR number in a GitHub URL.
+
+    Shared so callers stop inventing their own. `f"/{n}" in url` — the obvious
+    substring test — matches PR 1234 when asked for 123, and `rsplit("/")`
+    breaks on `.../pull/7/files`.
+    """
+    match = _PR_URL.search(url)
+    if match is None:
+        _msg = f"Not a GitHub PR URL: {url!r}"
+        raise ValueError(_msg)
+    return int(match["number"])
+
+
 def golden_texts(pr: BenchPr, profile: Profile = DEFAULT_PROFILE) -> list[str]:
     """The golden comments of one PR under a severity profile, as plain text.
 

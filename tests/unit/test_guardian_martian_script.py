@@ -1084,3 +1084,96 @@ class TestJudge:
         monkeypatch.setattr(gm, "judge_matrix", fake_matrix)
         asyncio.run(gm.judge_one(record, pr, object(), "judge-x", "core"))
         assert seen["candidates"] == 1
+
+    def test_pr_filter_is_exact_not_a_substring(self, tmp_path: Path) -> None:
+        """`--pr 123` matched PR 1234, because the filter was `f"/{n}" in url`."""
+        reviews = tmp_path / "r.jsonl"
+        reviews.write_text(
+            self._review(url="https://github.com/o/r/pull/123").model_dump_json()
+            + "\n"
+            + self._review(url="https://github.com/o/r/pull/1234").model_dump_json()
+            + "\n",
+            encoding="utf-8",
+        )
+        args = argparse.Namespace(
+            corpus=Path("benchmarks/martian"),
+            reviews=reviews,
+            out=tmp_path / "j.jsonl",
+            profile="core",
+            pr=123,
+            dry_run=True,
+        )
+        assert asyncio.run(gm.judge(args)) == 0
+
+    def test_an_unreadable_review_row_does_not_strand_the_rest(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        path = tmp_path / "r.jsonl"
+        path.write_text(self._review().model_dump_json() + "\n{ truncated", encoding="utf-8")
+        assert len(gm.load_reviews(path)) == 1
+        assert "Skipping unreadable review" in capsys.readouterr().err
+
+    def test_judged_rows_that_are_not_objects_are_skipped(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A bare list or a row missing its keys is as unusable as broken JSON."""
+        path = tmp_path / "j.jsonl"
+        path.write_text(
+            '{"url":"u1","judge_model":"m","judge_failures":0}\n'
+            "[]\n"
+            '{"judge_failures":0}\n'
+            '{"url": tr\n',
+            encoding="utf-8",
+        )
+        assert gm.judged_keys(path) == {("u1", "m")}
+        assert capsys.readouterr().err.count("Skipping unreadable judged row") == 3
+
+    def test_the_loop_writes_a_row_per_review_and_survives_one_failure(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        urls = [f"https://github.com/getsentry/sentry/pull/{n}" for n in (80168, 80528)]
+        reviews = tmp_path / "r.jsonl"
+        reviews.write_text(
+            "".join(self._review(url=u).model_dump_json() + "\n" for u in urls), encoding="utf-8"
+        )
+        out = tmp_path / "j.jsonl"
+
+        async def half(record: gm.ReviewRecord, *_a: object) -> gm.JudgedReview:
+            if record.url.endswith("80528"):
+                _msg = "judge exploded"
+                raise RuntimeError(_msg)
+            return gm.JudgedReview(
+                url=record.url,
+                project="sentry",
+                pr_slice="graph",
+                had_graph=True,
+                profile="core",
+                judge_model="j",
+                n_goldens=3,
+                n_candidates=1,
+                tp=1,
+                fp=0,
+                fn=2,
+                precision=1.0,
+                recall=1 / 3,
+                judge_failures=0,
+                decisions=[1, 0, 0],
+                judged_at="2026-08-12T00:00:00+00:00",
+            )
+
+        monkeypatch.setattr(gm, "build_provider", lambda _env: (object(), "judge-x"))
+        monkeypatch.setattr(gm, "judge_one", half)
+        args = argparse.Namespace(
+            corpus=Path("benchmarks/martian"),
+            reviews=reviews,
+            out=out,
+            profile="core",
+            pr=None,
+            dry_run=False,
+        )
+        assert asyncio.run(gm.judge(args)) == 1
+        written = [json.loads(ln) for ln in out.read_text(encoding="utf-8").splitlines()]
+        assert [r["url"] for r in written] == [urls[0]]
+        captured = capsys.readouterr()
+        assert "tp=1 fp=0 fn=2" in captured.out
+        assert "judge exploded" in captured.err

@@ -25,6 +25,8 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from cgis.extractors.registry import is_supported, language_for
 from cgis.guardian.calibrate import assign_matches, candidate_text, judge_matrix, judge_score
 from cgis.guardian.chunked import run_review_routed
@@ -42,6 +44,7 @@ from cgis.guardian.martian import (
     golden_texts,
     load_corpus,
     plan_population,
+    pr_number,
 )
 from cgis.guardian.providers.base import BaseProvider
 from cgis.guardian.providers.mistral import MistralProvider
@@ -414,9 +417,17 @@ def load_reviews(path: Path) -> list[ReviewRecord]:
         raise FileNotFoundError(_msg)
     latest: dict[str, ReviewRecord] = {}
     for line in path.read_text(encoding="utf-8").splitlines():
-        if line.strip():
+        if not line.strip():
+            continue
+        try:
             record = ReviewRecord.model_validate_json(line)
-            latest[record.url] = record
+        except ValidationError:
+            # Same reasoning as `done_urls`: a crash mid-append leaves one bad
+            # line, and refusing to read the file would strand every review
+            # already paid for.
+            print(f"Skipping unreadable review in {path}: {line[:80]!r}", file=sys.stderr)
+            continue
+        latest[record.url] = record
     return list(latest.values())
 
 
@@ -461,18 +472,24 @@ def judged_keys(path: Path) -> set[tuple[str, str]]:
             continue
         try:
             row = json.loads(line)
-        except json.JSONDecodeError:
-            print(f"Skipping unreadable judged row in {path}", file=sys.stderr)
-            continue
-        if not row.get("judge_failures"):
-            keys.add((row["url"], row["judge_model"]))
+            if not row["judge_failures"]:
+                keys.add((row["url"], row["judge_model"]))
+        except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
+            # A bare list or a row missing its keys is as unusable as broken
+            # JSON, and none of them may stop a resume.
+            print(f"Skipping unreadable judged row in {path}: {line[:80]!r}", file=sys.stderr)
     return keys
 
 
 async def judge(args: argparse.Namespace) -> int:
     """Score recorded reviews with the semantic judge. Spends judge calls only."""
     corpus = {pr.url: pr for pr in load_corpus(args.corpus)}
-    reviews = [r for r in load_reviews(args.reviews) if args.pr is None or f"/{args.pr}" in r.url]
+    reviews = [
+        r
+        for r in load_reviews(args.reviews)
+        # Not `f"/{args.pr}" in r.url`: that matched PR 1234 when asked for 123.
+        if args.pr is None or pr_number(r.url) == args.pr
+    ]
     if args.dry_run:
         # Deliberately before `build_provider`: a mode that spends nothing must
         # not demand credentials, and the model name is only needed to work out
