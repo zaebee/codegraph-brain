@@ -349,6 +349,11 @@ class ReviewRecord(BaseModel, frozen=True):
     had_graph: bool
     finder_model: str
     skeptic_model: str | None
+    #: The sampling temperature the run was configured with, or None where it
+    #: was left to the provider's default. Phases 1 and 2 recorded nothing here
+    #: and so cannot state what produced their numbers — the gap retraction R5
+    #: found. None is therefore "inherited, unknown", not "zero".
+    temperature: float | None = None
     findings: list[Finding]
     prompt_tokens: int
     completion_tokens: int

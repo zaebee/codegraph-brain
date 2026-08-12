@@ -70,7 +70,7 @@ from cgis.guardian.martian import (
 )
 from cgis.guardian.providers.base import BaseProvider
 from cgis.guardian.providers.mistral import MistralProvider
-from cgis.guardian.runner import build_provider, build_skeptic_provider
+from cgis.guardian.runner import build_provider, build_skeptic_provider, temperature
 from cgis.storage.sqlite_store import SQLiteStore
 
 CORPUS_DIR = Path("benchmarks/martian")
@@ -371,6 +371,7 @@ async def review_one(row: PrPlan, args: argparse.Namespace) -> ReviewRecord:
         had_graph=had_graph,
         finder_model=model,
         skeptic_model=skeptic[1] if skeptic else None,
+        temperature=temperature(os.environ),
         findings=routed.result.findings,
         prompt_tokens=provider.cumulative_usage.prompt_tokens,
         completion_tokens=provider.cumulative_usage.completion_tokens,
