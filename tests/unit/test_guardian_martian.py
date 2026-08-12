@@ -187,4 +187,12 @@ class TestTheRealCorpus:
         assert totals == {"strict": 139, "core": 158, "all": 173}
 
     def test_load_is_deterministic(self) -> None:
-        assert [p.url for p in load_corpus(CORPUS)] == [p.url for p in load_corpus(CORPUS)]
+        """Two separate loads, bound first — a determinism check, not a tautology.
+
+        Written the other way round at first (`load_corpus(...) == load_corpus(...)`),
+        which is #309's item 1 verbatim: a reader cannot tell it from a
+        copy-paste mistake, and neither can the analyser.
+        """
+        first = load_corpus(CORPUS)
+        second = load_corpus(CORPUS)
+        assert [p.url for p in first] == [p.url for p in second]
