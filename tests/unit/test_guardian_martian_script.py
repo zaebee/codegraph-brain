@@ -1399,3 +1399,32 @@ class TestReport:
         for line in capsys.readouterr().out.splitlines():
             if " P=" in line:
                 assert " n=" in line
+
+
+class TestArgsContract:
+    """Malformed arguments must fail loudly, not degrade to a plausible default."""
+
+    def test_a_missing_concurrency_raises_instead_of_defaulting(self, tmp_path: Path) -> None:
+        """Deliberately not `getattr(args, "concurrency", DEFAULT)`.
+
+        A default here would run Mistral at 4 — the setting that cost Phase 1's
+        first judge 76.5% of its pairs — and write a judged file whose tp is
+        biased low but looks exactly like data. The loud failure is the feature;
+        the caller is argparse, which always supplies the field.
+        """
+        reviews = tmp_path / "r.jsonl"
+        reviews.write_text(
+            TestJudge._review().model_dump_json() + "\n",  # noqa: SLF001
+            encoding="utf-8",
+        )
+        args = argparse.Namespace(
+            corpus=Path("benchmarks/martian"),
+            reviews=reviews,
+            out=tmp_path / "j.jsonl",
+            profile="core",
+            pr=None,
+            dry_run=True,
+        )
+        # dry_run returns before the provider, so this reaches the read itself.
+        with pytest.raises(AttributeError, match="concurrency"):
+            asyncio.run(gm.judge(args))
