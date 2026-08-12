@@ -1177,3 +1177,24 @@ class TestJudge:
         captured = capsys.readouterr()
         assert "tp=1 fp=0 fn=2" in captured.out
         assert "judge exploded" in captured.err
+
+    def test_a_review_whose_pr_left_the_corpus_is_reported_not_fatal(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """It cannot be scored against anything, but it must not end the run."""
+        reviews = tmp_path / "r.jsonl"
+        reviews.write_text(
+            self._review(url="https://github.com/o/gone/pull/9").model_dump_json() + "\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(gm, "build_provider", lambda _env: (object(), "judge-x"))
+        args = argparse.Namespace(
+            corpus=Path("benchmarks/martian"),
+            reviews=reviews,
+            out=tmp_path / "j.jsonl",
+            profile="core",
+            pr=None,
+            dry_run=False,
+        )
+        assert asyncio.run(gm.judge(args)) == 1
+        assert "not in the corpus" in capsys.readouterr().err

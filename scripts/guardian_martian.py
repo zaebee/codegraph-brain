@@ -35,9 +35,11 @@ from cgis.guardian.martian import (
     UNKNOWN_SLICE,
     BenchPr,
     JudgedReview,
+    Profile,
     PrPlan,
     ReviewRecord,
     SliceCounts,
+    as_profile,
     build_plan,
     candidate_findings,
     dense_grid,
@@ -432,10 +434,10 @@ def load_reviews(path: Path) -> list[ReviewRecord]:
 
 
 async def judge_one(
-    record: ReviewRecord, pr: BenchPr, provider: BaseProvider, model: str, profile: str
+    record: ReviewRecord, pr: BenchPr, provider: BaseProvider, model: str, profile: Profile
 ) -> JudgedReview:
     """Score one recorded review against its golden comments, semantically."""
-    goldens = golden_texts(pr, profile)  # type: ignore[arg-type]
+    goldens = golden_texts(pr, profile)
     candidates = [candidate_text(f) for f in candidate_findings(record)]
     pairs, failures = await judge_matrix(provider, goldens, candidates)
     assignment = assign_matches(pairs)
@@ -483,6 +485,7 @@ def judged_keys(path: Path) -> set[tuple[str, str]]:
 
 async def judge(args: argparse.Namespace) -> int:
     """Score recorded reviews with the semantic judge. Spends judge calls only."""
+    profile = as_profile(args.profile)
     corpus = {pr.url: pr for pr in load_corpus(args.corpus)}
     reviews = [
         r
@@ -494,7 +497,7 @@ async def judge(args: argparse.Namespace) -> int:
         # Deliberately before `build_provider`: a mode that spends nothing must
         # not demand credentials, and the model name is only needed to work out
         # what has already been judged.
-        print(f"{len(reviews)} reviews would be judged under profile {args.profile}:")
+        print(f"{len(reviews)} reviews would be judged under profile {profile}:")
         for record in reviews:
             candidates = len(candidate_findings(record))
             print(f"  {record.project:10} {record.url}  ({candidates} candidates)")
@@ -515,8 +518,16 @@ async def judge(args: argparse.Namespace) -> int:
     with args.out.open("a", encoding="utf-8") as fh:
         for index, record in enumerate(pending, 1):
             label = f"[{index}/{len(pending)}] {record.project} {record.url.rsplit('/', 1)[-1]}"
+            pr = corpus.get(record.url)
+            if pr is None:
+                # A review whose PR is no longer in the corpus cannot be scored
+                # against anything. Reported per row like any other failure —
+                # the alternative is a KeyError that ends the whole run.
+                failures += 1
+                print(f"{label}: FAILED - not in the corpus: {record.url}", file=sys.stderr)
+                continue
             try:
-                judged = await judge_one(record, corpus[record.url], provider, model, args.profile)
+                judged = await judge_one(record, pr, provider, model, profile)
             except Exception as exc:
                 failures += 1
                 print(f"{label}: FAILED - {type(exc).__name__}: {exc}"[:250], file=sys.stderr)

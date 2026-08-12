@@ -133,6 +133,24 @@ class BenchPr(BaseModel, frozen=True):
         return int(self._parsed_url()["number"])
 
 
+def as_profile(value: str) -> Profile:
+    """Narrow a CLI string to a `Profile`, refusing anything else.
+
+    argparse's `choices` guarantees the value at runtime but says nothing to the
+    type checker, which is how a `# type: ignore[arg-type]` ends up on every
+    call that forwards it. One validated crossing beats a scattering of
+    suppressions, and it also catches a caller that bypassed argparse.
+
+    No cast: `PROFILE_CATEGORIES` is keyed by `Profile`, so the membership test
+    narrows the type on its own. The check is load-bearing at runtime *and* is
+    the whole proof for the type checker.
+    """
+    if value not in PROFILE_CATEGORIES:
+        _msg = f"Unknown profile {value!r}; expected one of {sorted(PROFILE_CATEGORIES)}"
+        raise ValueError(_msg)
+    return value
+
+
 def pr_number(url: str) -> int:
     """The PR number in a GitHub URL.
 

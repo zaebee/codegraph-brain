@@ -22,6 +22,7 @@ from cgis.guardian.martian import (
     PrPlan,
     ReviewRecord,
     SliceCounts,
+    as_profile,
     build_plan,
     candidate_findings,
     evaluated,
@@ -381,3 +382,20 @@ class TestReviewRecord:
         record = self._record(skeptic_prompt_tokens=900, skeptic_completion_tokens=90)
         assert record.prompt_tokens == 1
         assert record.skeptic_prompt_tokens == 900
+
+
+class TestAsProfile:
+    """One validated crossing from CLI string to `Profile`."""
+
+    def test_accepts_the_three_profiles(self) -> None:
+        assert [as_profile(p) for p in ("strict", "core", "all")] == ["strict", "core", "all"]
+
+    def test_refuses_anything_else_by_naming_the_options(self) -> None:
+        """Catches a caller that bypassed argparse's `choices`."""
+        with pytest.raises(ValueError, match="Unknown profile 'High'"):
+            as_profile("High")
+
+    def test_a_severity_is_not_a_profile(self) -> None:
+        """The spec's own confusion, made unrepresentable: profiles filter by category."""
+        with pytest.raises(ValueError, match="Unknown profile"):
+            as_profile("Critical")
