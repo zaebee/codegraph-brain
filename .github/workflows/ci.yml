@@ -115,6 +115,22 @@ jobs:
           # Deliberately scoped to scripts/. src/ keeps the rule — metrics.py:70
           # is library code and its instance deserves a real answer (#342).
           #
+          # `sonar.newCode.referenceBranch` overrides the server-side new-code
+          # definition for this analysis. The instance default is
+          # `previous_version` (confirmed: sonar.leak.period=previous_version,
+          # parentOrigin=INSTANCE), and with the project version unset until
+          # #352 it had nothing to anchor to and collapsed to *everything* —
+          # `new_lines` on main read 39257, i.e. the whole codebase was "new".
+          # A gate measuring the whole project is not the gate anyone intended,
+          # and it fails the day one legacy file dips.
+          #
+          # Reference branch says what the gate actually means: do not make this
+          # worse than main. The known consequence, accepted rather than
+          # discovered: on main's own analysis the reference is main, so its new
+          # code is empty and its gate goes quiet. PR analyses are unaffected
+          # either way — SonarCloud always scopes a PR to its diff against the
+          # target branch (#309).
+          #
           # `.github` is in sources because leaving it out did not mean "no
           # findings there", it meant "nobody is looking". Automatic Analysis
           # used to scan it and reported 34 workflow vulnerabilities; the moment
@@ -152,6 +168,7 @@ jobs:
             -Dsonar.projectKey=zaebee_codegraph-brain
             -Dsonar.organization=zaebee
             -Dsonar.projectVersion=${{ steps.version.outputs.value }}
+            -Dsonar.newCode.referenceBranch=main
             -Dsonar.sources=src,scripts,.github
             -Dsonar.tests=tests
             -Dsonar.python.version=3.12
