@@ -580,6 +580,11 @@ def _score_line(score: SliceScore) -> str:
 def report(args: argparse.Namespace) -> int:
     """Print G4/G5/G6 from the judged records. Free; reads only what is on disk."""
     rows = load_judged(args.judged)
+    if not rows:
+        # Exiting 0 here would let a CI step that was supposed to evaluate
+        # something pass by evaluating nothing — the quietest possible failure.
+        print(f"No judged reviews in {args.judged}; nothing to report.", file=sys.stderr)
+        return 1
     judges = sorted({r.judge_model for r in rows})
     profiles = sorted({r.profile for r in rows})
     exit_code = 0
@@ -590,7 +595,9 @@ def report(args: argparse.Namespace) -> int:
     )
     if len(profiles) > 1:
         print(
-            "  REFUSING to mix profiles in one report — rejudge, or pass --judge.", file=sys.stderr
+            "  REFUSING to mix profiles in one report: they are different corpora. "
+            "Re-judge under one profile, or point --judged at a file holding only one.",
+            file=sys.stderr,
         )
         return 1
 

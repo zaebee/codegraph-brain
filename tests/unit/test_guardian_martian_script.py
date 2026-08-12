@@ -1262,11 +1262,21 @@ class TestReport:
         """Two profiles in one table would be two different corpora silently added up."""
         rows = [self._row(), self._row(url="https://github.com/o/r/pull/2", profile="all")]
         assert gm.report(self._write(tmp_path, rows)) == 1
-        assert "REFUSING to mix profiles" in capsys.readouterr().err
+        err = capsys.readouterr().err
+        assert "REFUSING to mix profiles" in err
+        assert "--judge." not in err, "the message must not cite a flag that does not exist"
 
     def test_missing_judged_file_says_what_to_run(self, tmp_path: Path) -> None:
+        args = argparse.Namespace(judged=tmp_path / "absent.jsonl", beta=0.5)
         with pytest.raises(FileNotFoundError, match="judge"):
-            gm.report(argparse.Namespace(judged=tmp_path / "absent.jsonl", beta=0.5))
+            gm.report(args)
+
+    def test_an_empty_judged_file_does_not_pass_by_evaluating_nothing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Exiting 0 would let a CI step succeed by measuring nothing at all."""
+        assert gm.report(self._write(tmp_path, [])) == 1
+        assert "nothing to report" in capsys.readouterr().err
 
     def test_every_line_carries_its_n(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
