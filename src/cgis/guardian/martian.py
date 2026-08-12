@@ -19,6 +19,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from cgis.extractors.registry import is_supported
+from cgis.guardian.calibrate import JudgePair
 from cgis.guardian.findings import Finding
 
 #: Severity vocabulary of the upstream corpus. Four values, not three — the
@@ -336,3 +337,42 @@ def candidate_findings(record: ReviewRecord) -> list[Finding]:
     review.
     """
     return [f for f in record.findings if f.verdict != "refuted"]
+
+
+class JudgedReview(BaseModel, frozen=True):
+    """One review scored semantically, by one judge.
+
+    Stored apart from the `ReviewRecord` it scores, and keyed by (url, judge),
+    so a second judge is an append rather than a rewrite — Phase 1's two-judge
+    comparison is what showed a single judge's number is not enough to publish.
+
+    `decisions` is the flat (golden, candidate) grid, row-major, `None` where a
+    call failed. It is the reason `tp` can be re-derived later without paying
+    the judge again: `assign_matches` is a maximum matching, so the size depends
+    only on these booleans.
+    """
+
+    url: str
+    project: str
+    pr_slice: str
+    had_graph: bool
+    profile: str
+    judge_model: str
+    n_goldens: int
+    n_candidates: int
+    tp: int
+    fp: int
+    fn: int
+    precision: float
+    recall: float
+    judge_failures: int
+    decisions: list[int | None]
+    judged_at: str
+
+
+def dense_grid(pairs: Sequence[JudgePair], n_goldens: int, n_candidates: int) -> list[int | None]:
+    """Pair verdicts in (golden, candidate) row-major order; None where a call failed."""
+    grid: list[int | None] = [None for _ in range(n_goldens * n_candidates)]
+    for pair in pairs:
+        grid[pair.golden_index * n_candidates + pair.candidate_index] = int(pair.verdict.match)
+    return grid
