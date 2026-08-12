@@ -348,8 +348,16 @@ def pr_refs(pr_url: str) -> tuple[str, str]:
     if result.returncode != 0:
         _msg = f"gh pr view exited {result.returncode}: {result.stderr.strip() or '(no stderr)'}"
         raise RuntimeError(_msg)
-    refs = json.loads(result.stdout)
-    return refs["baseRefOid"], refs["headRefOid"]
+    try:
+        refs = json.loads(result.stdout)
+        return refs["baseRefOid"], refs["headRefOid"]
+    except (json.JSONDecodeError, KeyError, TypeError) as exc:
+        # `prepare` records this message on the row instead of raising, so the
+        # message is the whole diagnostic. A bare JSONDecodeError says
+        # "Expecting value: line 1 column 1" and hides what gh actually said —
+        # which, when gh is misconfigured, is usually the answer.
+        _msg = f"unreadable gh output ({exc}); gh said: {result.stdout[:200]!r}"
+        raise RuntimeError(_msg) from exc
 
 
 def _git(verb: str, *args: str, cwd: Path | None = None, timeout: int = 900) -> str:

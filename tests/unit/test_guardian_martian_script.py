@@ -584,3 +584,17 @@ class TestWorkspaceHygiene:
         seen = _fake_runner(monkeypatch, {})
         gm.ensure_checkout("o/r", "b", "h", tmp_path)
         assert next(c[1] for c in seen) == "clone"
+
+
+class TestPrRefsParsing:
+    """The recorded message is the only diagnostic, so it must quote gh."""
+
+    def test_unparseable_output_is_quoted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _fake_runner(monkeypatch, {"gh pr view": (0, "gh: not logged in\n", "")})
+        with pytest.raises(RuntimeError, match="not logged in"):
+            gm.pr_refs("https://github.com/o/r/pull/1")
+
+    def test_a_missing_key_names_itself(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _fake_runner(monkeypatch, {"gh pr view": (0, '{"baseRefOid":"b"}', "")})
+        with pytest.raises(RuntimeError, match="headRefOid"):
+            gm.pr_refs("https://github.com/o/r/pull/1")
