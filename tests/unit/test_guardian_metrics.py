@@ -1,6 +1,7 @@
 """Unit tests for Guardian review metrics tracking."""
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -331,3 +332,41 @@ def test_rate_review_guards_the_same_path(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="not a Guardian metrics log"):
         rate_review(pr=1, applied=1, metrics_path=victim)
     assert victim.read_text(encoding="utf-8") == "not json\n"
+
+
+def test_refuses_a_symlink_loop_instead_of_crashing(tmp_path: Path) -> None:
+    """A loop makes resolve() raise, and it is NOT the exception you expect.
+
+    CPython catches the ELOOP `OSError` inside `Path.resolve()` and re-raises it
+    as `RuntimeError("Symlink loop from ...")` (pathlib.py:1237), so a guard
+    catching only OSError lets it through as a crash. Mine did, until this test
+    was written; so does nothing else in the repo now.
+    """
+    first = tmp_path / "a.jsonl"
+    second = tmp_path / "b.jsonl"
+    first.symlink_to(second)
+    second.symlink_to(first)
+    assert reject_metrics_path(first) is not None
+    with pytest.raises(ValueError, match="inaccessible"):
+        _record(first)
+
+
+def test_refuses_an_unreadable_file_instead_of_crashing(tmp_path: Path) -> None:
+    """`is_file()` swallows OSError and returns True; the read that follows does not."""
+    path = tmp_path / "m.jsonl"
+    path.write_text('{"pr": 1}\n', encoding="utf-8")
+    path.chmod(0o000)
+    try:
+        if os.access(path, os.R_OK):  # running as root — the mode is not enforced
+            pytest.skip("cannot make a file unreadable as this user")
+        with pytest.raises(ValueError, match="inaccessible"):
+            _record(path)
+    finally:
+        path.chmod(0o600)
+
+
+def test_a_whitespace_only_file_is_accepted(tmp_path: Path) -> None:
+    """No first line to judge means nothing to refuse on."""
+    path = tmp_path / "m.jsonl"
+    path.write_text("\n  \n\n", encoding="utf-8")
+    assert reject_metrics_path(path) is None

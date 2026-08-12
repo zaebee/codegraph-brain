@@ -49,6 +49,25 @@ def test_cgis_ingest_returns_summary(tmp_path: Path) -> None:
     assert db.exists()
 
 
+def test_cgis_ingest_refuses_a_symlink_loop_instead_of_crashing(tmp_path: Path) -> None:
+    """A loop makes resolve() raise, and not the exception the guard expected (#347).
+
+    CPython catches the ELOOP `OSError` inside `Path.resolve()` and re-raises it
+    as `RuntimeError("Symlink loop from ...")` (pathlib.py:1237). `_reject_db_path`
+    caught only OSError while its docstring claimed to cover symlink loops, so
+    the loop escaped `cgis_ingest` as a crash rather than a message the agent
+    could act on — the exact failure mode the guard's OSError wrapping exists to
+    prevent. Found while modelling the same guard for the metrics log.
+    """
+    first = tmp_path / "a.db"
+    second = tmp_path / "b.db"
+    first.symlink_to(second)
+    second.symlink_to(first)
+    result = cgis_ingest(str(tmp_path), str(first))
+    assert "Refusing db_path" in result
+    assert "inaccessible" in result
+
+
 def test_cgis_ingest_nonexistent_path_returns_error(tmp_path: Path) -> None:
     result = cgis_ingest(str(tmp_path / "no_such_dir"), str(tmp_path / "graph.db"))
 

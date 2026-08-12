@@ -39,13 +39,17 @@ def reject_metrics_path(metrics_path: Path) -> str | None:
     not a JSON object. A new file still has to be named `.jsonl` and land in a
     directory that already exists.
 
-    Filesystem probes are wrapped: `resolve`, `is_dir` and `open` propagate
-    `OSError` (a `PermissionError` on the parent, a symlink loop), which would
-    surface as a crash rather than a refusal naming the path.
+    Filesystem probes are wrapped, because they would otherwise surface as a
+    crash rather than a refusal naming the path. `RuntimeError` alongside
+    `OSError` is not defensive padding: on a symlink loop CPython's `resolve()`
+    catches the ELOOP `OSError` and re-raises it as
+    `RuntimeError("Symlink loop from ...")` (pathlib.py:1237), so `except
+    OSError` alone does not cover the case this comment claims it does. Found
+    by writing the test for it.
     """
     try:
         path = metrics_path.resolve()
-    except OSError as exc:
+    except (OSError, RuntimeError) as exc:
         return f"path is inaccessible ({exc})"
     if path.suffix.lower() not in _METRICS_SUFFIXES:
         return f"name must end in {', '.join(sorted(_METRICS_SUFFIXES))}"
