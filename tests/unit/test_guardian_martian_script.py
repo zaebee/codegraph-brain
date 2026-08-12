@@ -725,6 +725,7 @@ class TestReview:
             "out": tmp_path / "reviews.jsonl",
             "pr": None,
             "limit": None,
+            "slice": "all",
             "no_graph": False,
             "dry_run": False,
         }
@@ -1599,6 +1600,7 @@ class TestAblationScope:
             out=tmp_path / "r.jsonl",
             pr=None,
             limit=None,
+            slice="all",
             no_graph=True,
             dry_run=True,
         )
@@ -1616,6 +1618,7 @@ class TestAblationScope:
             out=tmp_path / "r.jsonl",
             pr=None,
             limit=None,
+            slice="all",
             no_graph=False,
             dry_run=True,
         )
@@ -1785,3 +1788,66 @@ class TestUnion:
 
         assert gm.union(self._args(paths)) == 1
         assert "at least two runs" in capsys.readouterr().err
+
+
+class TestSliceSelection:
+    """`review --slice`, so a registered population is a command, not a filter later.
+
+    Phase 2 reviewed all 45 PRs in one pass and sliced at report time, which was
+    right when both arms were wanted. Phase 3 (#342) is registered on the 19-PR
+    graph arm alone, and reviewing the other 26 to discard them costs roughly
+    2.4x the registered budget.
+
+    The obvious workaround — looping `--pr N` over the graph PRs — is unsafe:
+    `selected` matches on number alone and this corpus has four numbers shared
+    across projects, so it would silently review PRs from the wrong repository.
+    """
+
+    def _plans(self) -> list[gm.PrPlan]:
+        return [
+            gm.PrPlan(
+                url="https://github.com/o/r/pull/1",
+                project="a",
+                repo="o/r",
+                number=1,
+                pr_slice="graph",
+                reproducible=True,
+                changed_files=("x.py",),
+                golden_comments=1,
+            ),
+            gm.PrPlan(
+                url="https://github.com/o/s/pull/2",
+                project="b",
+                repo="o/s",
+                number=2,
+                pr_slice="diff-only",
+                reproducible=True,
+                changed_files=("y.rb",),
+                golden_comments=1,
+            ),
+        ]
+
+    def test_graph_keeps_only_the_graph_slice(self) -> None:
+        rows = gm.selected(self._plans(), None, None, "graph")
+
+        assert [r.number for r in rows] == [1]
+
+    def test_diff_only_keeps_only_the_other_slice(self) -> None:
+        rows = gm.selected(self._plans(), None, None, "diff-only")
+
+        assert [r.number for r in rows] == [2]
+
+    def test_all_is_the_default_and_changes_nothing(self) -> None:
+        """Phase 2's behaviour has to survive: it is how the frozen rows were made."""
+        assert len(gm.selected(self._plans(), None, None, "all")) == 2
+        assert len(gm.selected(self._plans(), None, None)) == 2
+
+    def test_the_slice_narrows_before_the_limit(self) -> None:
+        """`--limit 1 --slice diff-only` must mean one diff-only PR, not one of all.
+
+        Applying the limit first would take PR 1, then drop it as the wrong
+        slice, and review nothing while reporting a population of one.
+        """
+        rows = gm.selected(self._plans(), None, 1, "diff-only")
+
+        assert [r.number for r in rows] == [2]
