@@ -268,7 +268,9 @@ def selected(plans: Sequence[PrPlan], only: int | None, limit: int | None) -> li
     rows = [p for p in plans if p.reproducible]
     if only is not None:
         rows = [p for p in rows if p.number == only]
-    return rows[:limit] if limit else rows
+    # `rows[:None]` is the whole list, so no branch is needed — and the branch
+    # that was here read `--limit 0` as "no limit" instead of "nothing".
+    return rows[:limit]
 
 
 def prepare(args: argparse.Namespace) -> int:
@@ -383,7 +385,10 @@ def ensure_checkout(repo: str, base_sha: str, head_sha: str, workspace: Path) ->
         # An interrupted clone leaves a directory git will refuse to clone into
         # ("destination path already exists and is not an empty directory"),
         # which would then fail every run until someone cleared it by hand.
-        shutil.rmtree(clone)
+        if clone.is_dir():
+            shutil.rmtree(clone)
+        else:
+            clone.unlink()
     if not (clone / ".git").is_dir():
         clone.parent.mkdir(parents=True, exist_ok=True)
         _git(
@@ -405,8 +410,15 @@ def ensure_graph(checkout: Path, db_path: Path) -> None:
     Removed first rather than re-ingested in place: the store is incremental,
     and a database carried over from another commit would answer lookups with
     nodes that are not in the tree under review.
+
+    The WAL sidecars go too. A clean close checkpoints and removes them, so they
+    only survive an interrupted ingest — which is precisely the state this
+    workspace gets into, as the partial-clone handling above already attests.
+    Named by appending rather than `with_suffix(".db-wal")`: that happens to be
+    right for a `.db` path and silently wrong for any other extension.
     """
-    db_path.unlink(missing_ok=True)
+    for path in (db_path, *(db_path.with_name(db_path.name + s) for s in ("-wal", "-shm"))):
+        path.unlink(missing_ok=True)
     result = subprocess.run(
         [sys.executable, "-m", "cgis.cli", "ingest", str(checkout), "--output", str(db_path)],
         capture_output=True,

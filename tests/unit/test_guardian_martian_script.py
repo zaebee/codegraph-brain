@@ -328,6 +328,11 @@ class TestSelected:
     def test_limit_applies_after_filtering(self) -> None:
         assert [p.number for p in gm.selected(self._plans(), None, 1)] == [1]
 
+    def test_limit_zero_selects_nothing(self) -> None:
+        """`--limit 0` used to mean "no limit", because 0 is falsy."""
+        assert gm.selected(self._plans(), None, 0) == []
+        assert len(gm.selected(self._plans(), None, None)) == 2
+
 
 class TestGraphAlignment:
     """The check that turns an invisible failure into a loud one."""
@@ -559,3 +564,23 @@ class TestWorkspaceHygiene:
         """
         with pytest.raises(TypeError):
             gm._git()  # type: ignore[call-arg]  # noqa: SLF001
+
+    def test_stale_wal_sidecars_are_removed_with_the_database(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A clean close checkpoints them away; an interrupted ingest does not."""
+        db = tmp_path / "g.db"
+        for name in ("g.db", "g.db-wal", "g.db-shm"):
+            (tmp_path / name).write_text("stale", encoding="utf-8")
+        _fake_runner(monkeypatch, {})
+        gm.ensure_graph(tmp_path / "tree", db)
+        assert not list(tmp_path.glob("g.db*"))
+
+    def test_a_file_where_the_clone_should_be_is_removed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """rmtree raises NotADirectoryError on a file, which would abort the run."""
+        (tmp_path / "o__r").write_text("not a repo", encoding="utf-8")
+        seen = _fake_runner(monkeypatch, {})
+        gm.ensure_checkout("o/r", "b", "h", tmp_path)
+        assert next(c[1] for c in seen) == "clone"
