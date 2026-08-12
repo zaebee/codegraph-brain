@@ -1,6 +1,6 @@
 # Guardian vs Martian Code Review Bench — calibration before comparison (#342)
 
-**Status:** research input + **Phase 1 results** (2026-08-11)
+**Status:** research input + **Phase 1 results** (2026-08-11) + **Phase 2 results** (2026-08-12)
 **Issue:** #342
 **Lane:** guardian
 
@@ -21,6 +21,11 @@
 > 0.14–0.19), not the correlation gate, which turned out not to be robust.
 > **Unblocked 2026-08-11 by #345**, which made an `ambiguous` hit count as a
 > false positive — see §"What this changes" item 2.
+>
+> **Phase 2 has now run** (2026-08-12): 45 PRs, one judge. G4 PASS, **G5 FAIL at
+> +9.5 pp against a ≥10 pp threshold**, G6 PASS. The near-miss is recorded as a
+> failure rather than rounded, and no Guardian row is published — one judge is
+> not a measurement. See §"Phase 2 — results".
 
 ## Verdict up front
 
@@ -153,7 +158,8 @@ Not taken from any blog post. Downloaded
 `offline/analysis/benchmark_dashboard.json` and computed from
 `overall_metrics`; F₀.₅ derived from the published P and R.
 
-Judge = Claude Opus 4.5, profile = `core`, ordered by F₀.₅:
+Judge = Claude Opus 4.5, profile = `core`. ~~ordered by F₀.₅~~ — **ordered by
+F1**; the caption was wrong and the values are not (erratum, Phase 2 results):
 
 | # | tool | P | R | F1 | F₀.₅ | TP | FP | FN |
 |---|---|---|---|---|---|---|---|---|
@@ -765,6 +771,122 @@ cannot be produced as excuses afterwards:
 plus ~1600 judge calls. Order $20–60 depending on finder model — dominated by
 the finder, not the judge. Cheap enough not to need a budget debate; expensive
 enough that G1 must gate it.
+
+## Phase 2 — results (2026-08-12)
+
+Ran. **45 evaluated PRs, judge `gemini-2.5-flash`, profile `core`** — all three
+named because G6 requires it and because none of the numbers below mean
+anything without them.
+
+Reproduce: `uv run python scripts/guardian_martian.py report`. Evidence is
+committed: `benchmarks/martian-plan.json`, `martian-reviews.jsonl` (45 full
+trajectories), `martian-judged.jsonl` (45 scores plus their decision grids).
+
+```
+  ALL          n=45  P= 33.6  R= 30.7  F0.5= 33.0   tp=43  fp=85  fn=97
+  graph        n=19  P= 39.3  R= 36.1  F0.5= 38.6   tp=22  fp=34  fn=39
+  diff-only    n=26  P= 29.2  R= 26.6  F0.5= 28.6   tp=21  fp=51  fn=58
+```
+
+| project | n | P | R | F0.5 | tp | fp | fn |
+|---|---|---|---|---|---|---|---|
+| grafana | 10 | 41.7 | 40.0 | 41.3 | 10 | 14 | 15 |
+| sentry | 6 | 40.0 | 37.5 | 39.5 | 6 | 9 | 10 |
+| cal.com | 10 | 35.1 | 35.1 | 35.1 | 13 | 24 | 24 |
+| discourse | 10 | 27.3 | 23.7 | 26.5 | 9 | 24 | 29 |
+| keycloak | 9 | 26.3 | 20.8 | 25.0 | 5 | 14 | 19 |
+
+Operationally clean: 45/45 reviewed, 0 failures, 0 parse failures, 0 unruled
+judge pairs, 484 pairs judged. Mean 3.3 findings per review. The 429 storm that
+cost Phase 1 76.5% of its pairs did not recur.
+
+### G5 — FAIL, by half a percentage point
+
+> **recall(graph) 36.1 − recall(diff-only) 26.6 = +9.5 pp**, against a
+> registered threshold of ≥ 10 pp.
+
+The effect points the way the hypothesis predicted, and precision moves with it
+(39.3 against 29.2). It is nonetheless a **FAIL**, and it is recorded as one.
+
+This is the case pre-registration exists for. "9.5 is essentially 10" is
+available, tempting, and exactly what fixing the threshold in advance was meant
+to prevent. Phase 1 was retracted for renegotiating a gate three minutes into a
+run (R2); renegotiating one after seeing +9.5 would be worse.
+
+**What may not be concluded from it.** The graph slice is 13 TypeScript PRs
+against 6 Python — registered before the run precisely so it could not be
+produced afterwards as an excuse. So this measures the TypeScript collector
+path more than the Python one, and #344 shipped that path a day earlier. And
+the between-project spread (grafana 41.3, keycloak 25.0) is of the same order
+as the between-slice gap, on 9–10 PRs each, so the slices differ in more than
+whether a graph was present.
+
+**What it does support.** A positive, sub-threshold effect on 19 vs 26 PRs, in
+the predicted direction, on both precision and recall. That is worth another
+measurement, not a claim.
+
+### G4 — PASS
+
+F0.5 **39.5** on the Python slice against Graphite's 29.1 floor. n=6, which
+this document already called too thin to headline; it is reported with its n
+and nothing is built on it.
+
+### G6 — PASS
+
+Every figure above names its judge, profile and slice, and carries n. Enforced
+by a test that walks the report output, not by intention.
+
+### Where this sits, and why it cannot be published as a rank
+
+By F0.5, Guardian's 33.0 would place **second from last of 21** — above only
+Graphite, whose 29.1 comes from precision 100.0 at recall 7.6. By F1 (32.1) it
+is third from last.
+
+**That comparison is not yet legitimate, for a reason Phase 1 established.**
+The leaderboard's numbers were judged by Claude Opus 4.5; ours by
+`gemini-2.5-flash`. Phase 1 measured what changing the judge does: absolute
+values move 4–8 points, and two judges agreed on only **63.8%** of the pairs
+either called a match (κ +0.768). A single-judge number is a measurement of our
+reviewer *and* our judge, and the leaderboard column is not.
+
+So the honest statement is: **Guardian scores F0.5 33.0 on 45 of the 50 PRs
+under a gemini judge**, and a second judge is required before that number goes
+anywhere near their table.
+
+An erratum found while placing it: the leaderboard table in §"The leaderboard,
+recomputed from source" is captioned *ordered by F₀.₅* and is in fact ordered
+by **F1**. The values are right; the caption is not.
+
+### Cost, reconciled against the bill rather than estimated
+
+913,357 input and 59,962 output tokens for the 45 reviews (finder + skeptic),
+plus 484 judge pairs.
+
+**The estimate was wrong by about five times.** It projected ~$0.60 (~2.4 PLN)
+for the run; the account moved ~9 PLN (~$2.22). Measured tokens against
+measured spend imply roughly **$2.03 per million input-equivalent tokens**,
+against the $0.30 the estimate assumed. The token counts were predicted well —
+the price was not, and it was flagged as an unverified assumption at the time.
+Whether the gap is the flash rate, the `gemini-3.5-flash` skeptic, or unrelated
+account activity cannot be told from this side.
+
+One thing the run did settle, because `ReviewRecord` now records it: the
+**skeptic costs 0.35× the finder**, not the 1.0× the estimate assumed. That
+number came from the run, not from history, because no historical row carried
+both.
+
+### What Phase 2 changes
+
+1. **No Guardian row is published yet.** Not because of the score, but because
+   one judge is not a measurement — the same conclusion Phase 1 reached, now
+   with a number attached to it.
+2. **The graph claim is unproven, not disproven.** +9.5 pp is a FAIL and also a
+   positive effect. The next measurement should isolate what this one confounds:
+   language (TS vs Python) and project, both of which move as much as the slice
+   does.
+3. **The harness is reusable and the corpus is re-judgeable.** Every review is
+   stored with its untruncated findings and its SHAs, and every judgement with
+   its decision grid, so a second judge is one command and no finder calls.
 
 ## What we take even if both phases are cancelled
 
