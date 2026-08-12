@@ -689,6 +689,12 @@ language rather than by what each PR touches.** Measured from
 | keycloak | 10 | **9** | 0 | 9 | 28 |
 | **total** | **50** | **45** | **19** | **26** | **154** |
 
+Comment counts in that table are the raw `all` totals. **The gates run on
+`core`**, where the evaluated corpus is **140** comments — 61 on the
+graph-enabled slice and 79 on diff-only. Stating the wrong profile's counts
+next to a gate is the same class of error as computing them under the wrong
+profile; caught by `guardian_martian.py plan` disagreeing with this table.
+
 Grafana is filed above as Go and diff-only; three of its PRs touch `.ts`/`.tsx`
 and two are purely front-end. With #344 landed, **23 of 50 PRs carry graph
 context — not the 10 this section assumed nor the 20 #344 predicted.**
@@ -725,9 +731,9 @@ cannot be produced as excuses afterwards:
   silently rewritten because Phase 1's retraction R2 was exactly this failure
   made too late:
 
-  > **Recall on the graph-enabled slice (19 evaluated PRs, 68 golden comments)
-  > exceeds recall on the diff-only slice (26 evaluated PRs, 86 golden comments)
-  > by ≥ 10 percentage points.**
+  > **Recall on the graph-enabled slice (19 evaluated PRs, 61 golden comments
+  > under `core`) exceeds recall on the diff-only slice (26 evaluated PRs, 79
+  > golden comments under `core`) by ≥ 10 percentage points.**
 
   Two reasons the original form was the wrong measurement, both structural
   rather than convenient. It compared a slice against a **superset containing

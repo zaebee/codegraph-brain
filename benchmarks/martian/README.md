@@ -77,3 +77,11 @@ spec, §"Pre-registered gates".
 
 Note what that does to the slice's composition: graph-enabled is **13
 TypeScript PRs against 6 Python**. G5 mostly measures the TypeScript path.
+
+The comment counts above are raw (`all`). Under `core`, which is what the gates
+use, the evaluated corpus is **140** comments: 61 graph-enabled, 79 diff-only.
+
+`plan.json` beside this file is the resolved plan — one row per PR with its
+slice, changed files and exclusion status. Regenerate with
+`uv run python scripts/guardian_martian.py plan`; it is cached, so that costs
+nothing unless you pass `--refresh`.

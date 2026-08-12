@@ -12,7 +12,7 @@ is spent.
 
 import json
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import Literal
 
@@ -198,4 +198,83 @@ def slice_counts(
         entry = totals[slice_of(pr)]
         entry[0] += 1
         entry[1] += len(golden_texts(pr, profile))
+    return {name: SliceCounts(prs=n, comments=c) for name, (n, c) in totals.items()}
+
+
+#: What a PR's slice is when its file list could not be fetched. Deliberately
+#: not "diff-only": that is a real classification and a failure is not, and the
+#: two must never be summed together into a gate population.
+UNKNOWN_SLICE = "unknown"
+
+
+class PrPlan(BaseModel, frozen=True):
+    """One PR as the runner will treat it, decided before anything is spent."""
+
+    project: str
+    url: str
+    repo: str
+    number: int
+    reproducible: bool
+    pr_slice: Literal["graph", "diff-only", "unknown"]
+    changed_files: tuple[str, ...]
+    golden_comments: int
+    #: Non-null when the file list could not be fetched. Such a row is
+    #: `unknown`, never `diff-only` — see UNKNOWN_SLICE.
+    fetch_error: str | None = None
+
+
+def build_plan(
+    prs: Sequence[BenchPr],
+    fetch: Callable[[BenchPr], tuple[str, ...]],
+    profile: Profile = DEFAULT_PROFILE,
+) -> list[PrPlan]:
+    """Resolve every PR's slice, calling `fetch` for the files it touches.
+
+    `fetch` is injected so the plan can be tested without the network, and so a
+    cached run and a live run are the same code path.
+
+    An exception from `fetch` is captured rather than raised: one unreachable PR
+    should not lose the other forty-nine, and losing rows silently is exactly
+    how the reconnaissance for this work first mis-counted the corpus at 49.
+    The row is recorded as `unknown` and the caller decides what to do about it.
+    """
+    plans: list[PrPlan] = []
+    for pr in prs:
+        error: str | None = None
+        files: tuple[str, ...] = ()
+        try:
+            files = tuple(fetch(pr))
+        except Exception as exc:  # recorded on the row, never swallowed
+            error = f"{type(exc).__name__}: {exc}"[:200]
+        resolved = pr.model_copy(update={"changed_files": files})
+        plans.append(
+            PrPlan(
+                project=pr.project,
+                url=pr.url,
+                repo=pr.repo,
+                number=pr.number,
+                reproducible=pr.is_reproducible,
+                pr_slice=UNKNOWN_SLICE if error else slice_of(resolved),
+                changed_files=files,
+                golden_comments=len(golden_texts(pr, profile)),
+                fetch_error=error,
+            )
+        )
+    return plans
+
+
+def plan_population(plans: Sequence[PrPlan]) -> dict[str, SliceCounts]:
+    """Gate populations from a plan: the evaluated PRs, by slice.
+
+    Only reproducible rows count — the five the corpus flags are excluded, not
+    scored as misses. `unknown` rows are returned under their own key so a
+    fetch failure shows up as a number instead of quietly inflating one slice.
+    """
+    totals: dict[str, list[int]] = {name: [0, 0] for name in ("graph", "diff-only", UNKNOWN_SLICE)}
+    for plan in plans:
+        if not plan.reproducible:
+            continue
+        entry = totals[plan.pr_slice]
+        entry[0] += 1
+        entry[1] += plan.golden_comments
     return {name: SliceCounts(prs=n, comments=c) for name, (n, c) in totals.items()}
