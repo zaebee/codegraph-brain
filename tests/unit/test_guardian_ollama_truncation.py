@@ -182,9 +182,10 @@ class TestTransportFailures:
     ) -> None:
         """The client is imported lazily, so its absence surfaces at call time."""
         monkeypatch.setitem(sys.modules, "ollama", None)
+        provider = _provider(num_ctx=4096)
 
         with pytest.raises(ImportError, match="uv sync --group guardian"):
-            await _provider(num_ctx=4096).generate_content("sys", "user")
+            await provider.generate_content("sys", "user")
 
     @pytest.mark.asyncio
     async def test_null_content_is_an_error_rather_than_an_empty_review(
@@ -197,6 +198,7 @@ class TestTransportFailures:
         shape as the truncation this module exists to refuse.
         """
         install_fake_ollama(_FakeResponse(None, prompt_eval_count=10, eval_count=0))
+        provider = _provider(num_ctx=4096)
 
         with pytest.raises(ValueError, match="null message content"):
-            await _provider(num_ctx=4096).generate_content("sys", "user")
+            await provider.generate_content("sys", "user")
