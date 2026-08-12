@@ -5,6 +5,7 @@
     uv run python scripts/guardian_martian.py prepare --pr N   # clone + ingest, free
     uv run python scripts/guardian_martian.py review --pr N    # COSTS MONEY
     uv run python scripts/guardian_martian.py judge            # COSTS MONEY (little)
+    uv run python scripts/guardian_martian.py report           # free
 
 `plan` resolves which slice each of the 50 PRs belongs to and prints the
 populations gate G5 is registered on. It costs no LLM calls: the only network
@@ -32,6 +33,8 @@ from cgis.guardian.calibrate import assign_matches, candidate_text, judge_matrix
 from cgis.guardian.chunked import run_review_routed
 from cgis.guardian.collector import ContextCollector, parse_features
 from cgis.guardian.martian import (
+    G5_MIN_GAP_PP,
+    GRAPHITE_F05,
     UNKNOWN_SLICE,
     BenchPr,
     JudgedReview,
@@ -39,14 +42,17 @@ from cgis.guardian.martian import (
     PrPlan,
     ReviewRecord,
     SliceCounts,
+    SliceScore,
     as_profile,
     build_plan,
     candidate_findings,
     dense_grid,
     golden_texts,
+    graph_slices,
     load_corpus,
     plan_population,
     pr_number,
+    score_slice,
 )
 from cgis.guardian.providers.base import BaseProvider
 from cgis.guardian.providers.mistral import MistralProvider
@@ -543,6 +549,113 @@ async def judge(args: argparse.Namespace) -> int:
     return 1 if failures else 0
 
 
+def load_judged(path: Path) -> list[JudgedReview]:
+    """Judged rows, last write per (url, judge), skipping anything unreadable."""
+    if not path.is_file():
+        _msg = f"No judged reviews at {path}. Run `guardian_martian.py judge` first."
+        raise FileNotFoundError(_msg)
+    latest: dict[tuple[str, str], JudgedReview] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = JudgedReview.model_validate_json(line)
+        except ValidationError:
+            print(f"Skipping unreadable judged row in {path}: {line[:80]!r}", file=sys.stderr)
+            continue
+        latest[row.url, row.judge_model] = row
+    return list(latest.values())
+
+
+def _score_line(score: SliceScore) -> str:
+    """One slice as a row, with n attached — a rate without its n is not reportable."""
+    return (
+        f"  {score.name:12} n={score.prs:<3} "
+        f"P={score.precision * 100:5.1f}  R={score.recall * 100:5.1f}  "
+        f"F{score.beta:g}={score.f_beta * 100:5.1f}   "
+        f"tp={score.tp:<3} fp={score.fp:<3} fn={score.fn}"
+    )
+
+
+def report(args: argparse.Namespace) -> int:
+    """Print G4/G5/G6 from the judged records. Free; reads only what is on disk."""
+    rows = load_judged(args.judged)
+    judges = sorted({r.judge_model for r in rows})
+    profiles = sorted({r.profile for r in rows})
+    exit_code = 0
+
+    print(
+        f"\n{len(rows)} judged reviews | judges: {', '.join(judges)} | "
+        f"profile: {', '.join(profiles)}"
+    )
+    if len(profiles) > 1:
+        print(
+            "  REFUSING to mix profiles in one report — rejudge, or pass --judge.", file=sys.stderr
+        )
+        return 1
+
+    for judge_model in judges:
+        mine = [r for r in rows if r.judge_model == judge_model]
+        print(f"\n=== judge: {judge_model}, profile {profiles[0]} ===")
+        print(_score_line(score_slice("ALL", mine, args.beta)))
+
+        slices = graph_slices(mine)
+        for name in ("graph", "diff-only"):
+            print(_score_line(score_slice(name, slices[name], args.beta)))
+        print("\n  per project:")
+        for project in sorted({r.project for r in mine}):
+            print(
+                _score_line(
+                    score_slice(project, [r for r in mine if r.project == project], args.beta)
+                )
+            )
+
+        exit_code |= _gates(mine, slices)
+    return exit_code
+
+
+def _gates(rows: Sequence[JudgedReview], slices: dict[str, list[JudgedReview]]) -> int:
+    """Print the three pre-registered gates and return non-zero if any fails."""
+    python_rows = [r for r in rows if r.project == "sentry"]
+    g4 = score_slice("sentry", python_rows, 0.5)
+    g4_pass = g4.f_beta * 100 >= GRAPHITE_F05
+    print(
+        f"\nG4  Python-slice F0.5 >= {GRAPHITE_F05} (Graphite's floor)\n"
+        f"  F0.5={g4.f_beta * 100:.1f} on n={g4.prs}  [{'PASS' if g4_pass else 'FAIL'}]"
+    )
+    if g4.prs < 10:
+        print(f"  n={g4.prs}: too few to headline whatever it says (spec, §reconnaissance).")
+
+    graph = score_slice("graph", slices["graph"])
+    diff = score_slice("diff-only", slices["diff-only"])
+    print(f"\nG5  recall(graph) - recall(diff-only) >= {G5_MIN_GAP_PP:.0f} pp")
+    if not graph.prs or not diff.prs:
+        # UNDEFINED, not FAIL. An empty slice scores recall 1.0 by the vacuous
+        # convention every scorer here shares, so comparing against it produces
+        # a confident-looking number that measures nothing — the exact shape of
+        # the bug #345 was retracted for. A gate with a missing side has no
+        # verdict to give.
+        g5_pass = False
+        print(
+            f"  UNDEFINED: n={graph.prs} graph vs {diff.prs} diff-only. "
+            "An empty slice scores recall 1.0 vacuously, so the difference "
+            "would be an artefact rather than a measurement."
+        )
+    else:
+        gap = (graph.recall - diff.recall) * 100
+        g5_pass = gap >= G5_MIN_GAP_PP
+        print(
+            f"  {graph.recall * 100:.1f} - {diff.recall * 100:.1f} = {gap:+.1f} pp  "
+            f"(n={graph.prs} vs {diff.prs})  [{'PASS' if g5_pass else 'FAIL'}]"
+        )
+
+    print(
+        "\nG6  every number above names its judge, its profile and its slice, "
+        "and carries n.  [PASS by construction]"
+    )
+    return 0 if (g4_pass and g5_pass) else 1
+
+
 def load_plan(path: Path) -> list[PrPlan]:
     """The plan produced by `plan`, or a refusal that says what to run."""
     if not path.is_file():
@@ -633,7 +746,13 @@ def main() -> int:
     jud.add_argument("--pr", type=int, default=None)
     jud.add_argument("--dry-run", action="store_true")
 
+    rep = sub.add_parser("report", help="print G4/G5/G6 from the judged records")
+    rep.add_argument("--judged", type=Path, default=JUDGED_FILE)
+    rep.add_argument("--beta", type=float, default=0.5, help="F-beta; 0.5 weights precision")
+
     args = parser.parse_args()
+    if args.command == "report":
+        return report(args)
     if args.command == "judge":
         return asyncio.run(judge(args))
     if args.command == "prepare":
