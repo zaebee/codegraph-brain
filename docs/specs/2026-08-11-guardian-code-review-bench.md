@@ -109,13 +109,27 @@ currently emits — score as false positives here by construction.
 `file` and `line`; those fields are simply unused on this benchmark, which
 removes one of our failure modes (right bug, wrong anchor) from the measurement.
 
-Severity drives the three profiles. Fixed FP, growing GT:
+~~Severity drives the three profiles.~~ **Wrong — corrected 2026-08-12 (#342
+Phase 2).** The profiles are **category** filters and severity plays no part in
+them. Verbatim from `offline/analysis/score_profiles.py::PROFILE_CATEGORIES`:
 
-| profile | GT comments |
-|---|---|
-| `strict` | 139 |
-| `core` | 158 |
-| `all` | 173 |
+| profile | categories | GT comments |
+|---|---|---|
+| `strict` | bug, security, concurrency, data, api | 139 |
+| `core` | + perf, test_gap, doc_defect | 158 |
+| `all` | + style, speculative | 173 |
+
+The arithmetic refuses the severity reading outright: severity is
+`Critical` 12 / `High` 54 / `Medium` 61 / `Low` 46, so Critical+High+Medium is
+127 comments and `core` is 158. (Four values, not the three listed above —
+`Critical` was missing from this section too.)
+
+Found by a test asserting upstream's published 139/158/173 against the vendored
+corpus, then confirmed against their source. It matters more than a
+documentation slip: filtering by severity would have computed every Guardian
+number over a *different* 158 comments than the leaderboard's, silently
+incomparable — the exact category error this document exists to prevent, and it
+would have looked fine.
 
 `core` is the dashboard default and the basis for every number below.
 
