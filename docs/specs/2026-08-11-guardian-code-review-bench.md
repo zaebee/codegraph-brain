@@ -643,17 +643,77 @@ one-line change it looks like: the collector imports the *Python*
 the TS extractor ever emitted, and fails silently. Lifting the suffix filter
 alone would produce a Guardian that appears to have graph context and does not.
 
+### Corpus reconnaissance (2026-08-12) — three things this section got wrong
+
+Measured before spending anything, and it moves the plan.
+
+**1. The URLs are not all upstream.** This section says "the golden comments
+carry upstream PR URLs". 35 of 50 do; **15 live in the benchmark's own fork org**
+`ai-code-review-evaluation` (discourse 10/10, sentry 4, keycloak 1). All are
+public and `gh pr diff` works on every one of them, so the method survives — but
+"upstream" was wrong, and **the corpus flags 5 PRs as not reproducible itself**:
+four `az_comment: "reviewed commit is not in the repo"` and one
+`"there is no such PR, it is a mix of many PRs"`. Those five must be reported as
+excluded rather than scored as misses.
+
+**2. Graph context on repos this size is cheap, which was the open risk.**
+Measured on `sentry` at a review head: 3792 Python files / 569,538 lines →
+**29 s** to ingest, 46,965 nodes, 192,385 resolved edges, 133 MB database; the
+blob-filtered clone and checkout cost another 23 s. Whatever blocks Phase 2, it
+is not ingest.
+
+**3. The stratification table above is wrong, because it splits by repository
+language rather than by what each PR touches.** Measured from
+`gh pr diff --name-only` on all 50:
+
+| project | PRs | graph-enabled | diff-only |
+|---|---|---|---|
+| sentry | 10 | **10** | 0 |
+| cal.com | 10 | **10** | 0 |
+| grafana | 10 | **3** | 7 |
+| discourse | 10 | 0 | 10 |
+| keycloak | 10 | 0 | 10 |
+| **total** | 50 | **23** | 27 |
+
+Grafana is filed above as Go and diff-only; three of its PRs touch `.ts`/`.tsx`
+and two are purely front-end. With #344 landed, **23 PRs carry graph context,
+not the 10 this section assumed nor the 20 #344 predicted.**
+
 ### Pre-registered gates
 
 - **G4 (floor).** Guardian on the Python slice is not last. Concretely: F₀.₅
   above Graphite's 29.1. A precision-only reviewer that finds nothing is the bar
   to clear, and we have shipped reviews that would not clear it.
-- **G5 (the graph claim).** Python-slice recall exceeds full-corpus recall by
-  ≥ 10 percentage points. *This is the falsifiable form of "graph context
-  helps."* If it
-  fails, graph context does not measurably help find bugs on real PRs, and that
-  finding outranks the leaderboard position in importance — it goes straight to
-  #220 and the context-collector lane.
+- **G5 (the graph claim).** ~~Python-slice recall exceeds full-corpus recall by
+  ≥ 10 percentage points.~~ **Amended 2026-08-12, before any Phase 2 data was
+  collected** (see reconnaissance above), and disclosed here rather than
+  silently rewritten because Phase 1's retraction R2 was exactly this failure
+  made too late:
+
+  > **Recall on the graph-enabled slice (23 PRs) exceeds recall on the
+  > diff-only slice (27 PRs) by ≥ 10 percentage points.**
+
+  Two reasons the original form was the wrong measurement, both structural
+  rather than convenient. It compared a slice against a **superset containing
+  it**, so the graph-enabled PRs sat on both sides and damped whatever effect
+  exists. And it discarded 13 of the 23 PRs that actually have graph context, in
+  a comparison whose entire subject is graph context. The amended form is two
+  disjoint slices of comparable size — 23 against 27 rather than 10 against 50.
+
+  *This is the falsifiable form of "graph context helps."* If it fails, graph
+  context does not measurably help find bugs on real PRs, and that finding
+  outranks the leaderboard position in importance — it goes straight to #220 and
+  the context-collector lane.
+
+  Registered alongside it, so a null result cannot be explained away afterwards:
+  the slices differ in language (Python+TS vs Ruby/Java/Go) and in project, so a
+  failure is "graph context did not help **here**", not "graph context is
+  useless". The per-project breakdown is published either way.
+
+- **Configuration under test, fixed before the run:** the current production
+  config — `gemini-2.5-flash` finder, gemini skeptic, `GUARDIAN_FEATURES` unset.
+  Baseline first; the recall-lean prompt from #258/#248 is a second run with
+  something to compare against, not a substitute for having one.
 - **G6 (honest reporting).** Every published Guardian number names its judge
   model, its profile, and its slice. A number without all three is not published.
 
