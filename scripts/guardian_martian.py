@@ -402,7 +402,7 @@ def done_urls(path: Path) -> set[tuple[str, str]]:
         try:
             row = json.loads(line)
             urls.add((row["url"], row.get("arm", "graph")))
-        except (json.JSONDecodeError, KeyError, TypeError):
+        except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
             # A crash mid-append leaves a truncated last line. Refusing to parse
             # it would block resume entirely, which is the one thing protecting
             # work already paid for; skipping it costs at most one re-review.
@@ -676,11 +676,11 @@ def report(args: argparse.Namespace) -> int:
             )
 
         exit_code |= _gates(mine, slices)
-    _ablation(load_judged(args.judged))
+    _ablation(load_judged(args.judged), args.beta)
     return exit_code
 
 
-def _ablation(rows: Sequence[JudgedReview]) -> None:
+def _ablation(rows: Sequence[JudgedReview], beta: float = 0.5) -> None:
     """Compare the two arms on the PRs that have both. Silent when there is one arm.
 
     This is the contrast G5 could not draw. In this corpus "has a graph" and "is
@@ -699,8 +699,10 @@ def _ablation(rows: Sequence[JudgedReview]) -> None:
         both = sorted(with_graph.keys() & without.keys())
         if not both:
             continue
-        on = score_slice("with graph", [with_graph[u] for u in both])
-        off = score_slice("graph withheld", [without[u] for u in both])
+        # Same beta as the gates above: two F-scores under different weightings
+        # in one report, with nothing saying so, is a number that misleads.
+        on = score_slice("with graph", [with_graph[u] for u in both], beta)
+        off = score_slice("graph withheld", [without[u] for u in both], beta)
         print(f"\n  {judge_model} — {len(both)} PRs reviewed both ways")
         print(_score_line(on))
         print(_score_line(off))

@@ -1425,6 +1425,37 @@ class TestReport:
         gm.report(args)
         assert "ablation" not in capsys.readouterr().out
 
+    def test_a_non_object_review_row_does_not_crash_resume(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """`judged_keys` beside it already tolerated this; `done_urls` did not."""
+        path = tmp_path / "r.jsonl"
+        path.write_text('{"url":"u1","arm":"graph"}\n[]\n"a string"\n', encoding="utf-8")
+        assert gm.done_urls(path) == {("u1", "graph")}
+        assert capsys.readouterr().err.count("Skipping unreadable record") == 2
+
+    def test_the_ablation_uses_the_reports_beta(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Two F-scores under different weightings in one report is a misleading number."""
+        rows = [
+            self._row(url="https://github.com/o/r/pull/1", arm="graph", tp=4, fp=1, fn=1),
+            self._row(
+                url="https://github.com/o/r/pull/1",
+                arm="ablated",
+                had_graph=False,
+                tp=1,
+                fp=4,
+                fn=4,
+            ),
+        ]
+        args = self._write(tmp_path, rows)
+        args.arm, args.beta = "graph", 2.0
+        gm.report(args)
+        ablation = capsys.readouterr().out.split("ablation:")[1]
+        assert "F2=" in ablation
+        assert "F0.5=" not in ablation
+
     def test_missing_judged_file_says_what_to_run(self, tmp_path: Path) -> None:
         args = argparse.Namespace(judged=tmp_path / "absent.jsonl", beta=0.5)
         with pytest.raises(FileNotFoundError, match="judge"):
