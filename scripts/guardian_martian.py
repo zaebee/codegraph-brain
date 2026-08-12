@@ -3,6 +3,7 @@
     uv run python scripts/guardian_martian.py plan            # cached, free
     uv run python scripts/guardian_martian.py plan --refresh   # hits the network
     uv run python scripts/guardian_martian.py prepare --pr N   # clone + ingest, free
+    uv run python scripts/guardian_martian.py review --pr N    # COSTS MONEY
 
 `plan` resolves which slice each of the 50 PRs belongs to and prints the
 populations gate G5 is registered on. It costs no LLM calls: the only network
@@ -12,23 +13,32 @@ diff rather than re-derived on every run.
 """
 
 import argparse
+import asyncio
 import json
+import os
 import shutil
 import subprocess
 import sys
+import time
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 
 from cgis.extractors.registry import is_supported, language_for
+from cgis.guardian.chunked import run_review_routed
+from cgis.guardian.collector import ContextCollector, parse_features
 from cgis.guardian.martian import (
     UNKNOWN_SLICE,
     BenchPr,
     PrPlan,
+    ReviewRecord,
     SliceCounts,
     build_plan,
+    candidate_findings,
     load_corpus,
     plan_population,
 )
+from cgis.guardian.runner import build_provider, build_skeptic_provider
 from cgis.storage.sqlite_store import SQLiteStore
 
 CORPUS_DIR = Path("benchmarks/martian")
@@ -52,6 +62,8 @@ DEFAULT_WORKSPACE = Path(".martian-workspace")
 #: `src.sentry_plugins.utils`. With the collector's default of "src" every
 #: lookup on this corpus misses — see `graph_alignment`.
 SOURCE_ROOT = ""
+
+REVIEWS_FILE = Path("benchmarks/martian-reviews.jsonl")
 
 #: Registered in docs/specs/2026-08-11-guardian-code-review-bench.md, §"Corpus
 #: reconnaissance". The plan asserts against these rather than reporting
@@ -251,6 +263,101 @@ def require_alignment(db_path: Path, changed_files: Sequence[str]) -> str:
     return f"ingested, graph knows {found}/{checked} changed files"
 
 
+async def review_one(row: PrPlan, args: argparse.Namespace) -> ReviewRecord:
+    """Review one prepared PR and return its record. Costs finder + skeptic calls."""
+    checkout = args.workspace / row.repo.replace("/", "__")
+    if not (checkout / ".git").is_dir():
+        _msg = f"not prepared: {checkout} is not a checkout. Run `prepare --pr {row.number}`."
+        raise RuntimeError(_msg)
+    base, head = pr_refs(row.url)
+    _git("checkout", "--quiet", "--force", head, cwd=checkout)
+
+    db = args.workspace / f"{row.repo.replace('/', '__')}.db"
+    had_graph = (
+        row.pr_slice == "graph" and db.is_file() and graph_alignment(db, row.changed_files)[0] > 0
+    )
+
+    provider, model = build_provider(os.environ)
+    skeptic = build_skeptic_provider(os.environ, primary="gemini")
+    collector = ContextCollector(
+        project_root=checkout,
+        base_ref=base,
+        db_path=db if had_graph else None,
+        source_root=SOURCE_ROOT,
+        features=parse_features(os.environ.get("GUARDIAN_FEATURES", "")),
+    )
+    started = time.monotonic()
+    routed = await run_review_routed(
+        provider=provider, collector=collector, skeptic_provider=skeptic[0] if skeptic else None
+    )
+    return ReviewRecord(
+        url=row.url,
+        project=row.project,
+        pr_slice=row.pr_slice,
+        base_sha=base,
+        head_sha=head,
+        had_graph=had_graph,
+        finder_model=model,
+        skeptic_model=skeptic[1] if skeptic else None,
+        findings=routed.result.findings,
+        prompt_tokens=provider.cumulative_usage.prompt_tokens,
+        completion_tokens=provider.cumulative_usage.completion_tokens,
+        duration_s=round(time.monotonic() - started, 2),
+        parse_failed=routed.result.parse_failed,
+        guardian_sha=_git("rev-parse", "HEAD").strip(),
+        reviewed_at=datetime.now(UTC).isoformat(),
+    )
+
+
+def done_urls(path: Path) -> set[str]:
+    """URLs already reviewed, so a rerun does not pay for them twice."""
+    if not path.is_file():
+        return set()
+    return {
+        json.loads(line)["url"]
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    }
+
+
+async def review(args: argparse.Namespace) -> int:
+    """Review prepared PRs, appending one record each. THIS SPENDS MONEY."""
+    rows = selected(load_plan(args.plan), args.pr, args.limit)
+    already = done_urls(args.out)
+    pending = [r for r in rows if r.url not in already]
+    print(
+        f"{len(rows)} selected, {len(already & {r.url for r in rows})} already done, "
+        f"{len(pending)} to review."
+    )
+    if args.dry_run or not pending:
+        return 0
+
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    failures = 0
+    with args.out.open("a", encoding="utf-8") as fh:
+        for index, row in enumerate(pending, 1):
+            label = f"[{index}/{len(pending)}] {row.project} #{row.number}"
+            try:
+                record = await review_one(row, args)
+            except Exception as exc:
+                failures += 1
+                print(
+                    f"{label}: FAILED - {type(exc).__name__}: {exc}"[:300],
+                    file=sys.stderr,
+                    flush=True,
+                )
+                continue
+            fh.write(record.model_dump_json() + "\n")
+            fh.flush()
+            visible = len(candidate_findings(record))
+            print(
+                f"{label}: {visible} findings, graph={record.had_graph}, "
+                f"{record.prompt_tokens}+{record.completion_tokens} tok, {record.duration_s}s",
+                flush=True,
+            )
+    return 1 if failures else 0
+
+
 def load_plan(path: Path) -> list[PrPlan]:
     """The plan produced by `plan`, or a refusal that says what to run."""
     if not path.is_file():
@@ -325,9 +432,19 @@ def main() -> int:
     prep.add_argument("--limit", type=int, default=None)
     prep.add_argument("--no-graph", action="store_true", help="skip ingest even where it applies")
 
+    rev = sub.add_parser("review", help="review prepared PRs (COSTS MONEY)")
+    rev.add_argument("--plan", type=Path, default=PLAN_FILE)
+    rev.add_argument("--workspace", type=Path, default=DEFAULT_WORKSPACE)
+    rev.add_argument("--out", type=Path, default=REVIEWS_FILE)
+    rev.add_argument("--pr", type=int, default=None)
+    rev.add_argument("--limit", type=int, default=None)
+    rev.add_argument("--dry-run", action="store_true", help="print what would be reviewed")
+
     args = parser.parse_args()
     if args.command == "prepare":
         return prepare(args)
+    if args.command == "review":
+        return asyncio.run(review(args))
     return plan(args)
 
 

@@ -6,10 +6,12 @@ quietly mis-slices two PRs moves G5 without anyone seeing a number change.
 """
 
 import argparse
+import asyncio
 import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
@@ -598,3 +600,216 @@ class TestPrRefsParsing:
         _fake_runner(monkeypatch, {"gh pr view": (0, '{"baseRefOid":"b"}', "")})
         with pytest.raises(RuntimeError, match="headRefOid"):
             gm.pr_refs("https://github.com/o/r/pull/1")
+
+
+class TestReview:
+    """The only step that spends money, so resume and isolation are not niceties."""
+
+    @staticmethod
+    def _plan_file(tmp_path: Path, count: int = 2) -> Path:
+        path = tmp_path / "plan.json"
+        path.write_text(
+            json.dumps(
+                [
+                    {
+                        "project": "p",
+                        "url": f"https://github.com/o/r/pull/{n}",
+                        "repo": "o/r",
+                        "number": n,
+                        "reproducible": True,
+                        "pr_slice": "graph",
+                        "changed_files": ["src/a.py"],
+                        "golden_comments": 1,
+                    }
+                    for n in range(1, count + 1)
+                ]
+            ),
+            encoding="utf-8",
+        )
+        return path
+
+    def _args(self, tmp_path: Path, **overrides: object) -> argparse.Namespace:
+        base: dict[str, object] = {
+            "plan": self._plan_file(tmp_path),
+            "workspace": tmp_path / "ws",
+            "out": tmp_path / "reviews.jsonl",
+            "pr": None,
+            "limit": None,
+            "dry_run": False,
+        }
+        return argparse.Namespace(**(base | overrides))
+
+    @staticmethod
+    def _record(url: str) -> gm.ReviewRecord:
+        return gm.ReviewRecord(
+            url=url,
+            project="p",
+            pr_slice="graph",
+            base_sha="b",
+            head_sha="h",
+            had_graph=True,
+            finder_model="m",
+            skeptic_model=None,
+            findings=[],
+            prompt_tokens=1,
+            completion_tokens=1,
+            duration_s=1.0,
+            parse_failed=False,
+            guardian_sha="sha",
+            reviewed_at="2026-08-12T00:00:00+00:00",
+        )
+
+    def test_dry_run_spends_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        async def boom(_row: object, _args: object) -> gm.ReviewRecord:
+            _msg = "review_one must not run under --dry-run"
+            raise AssertionError(_msg)
+
+        monkeypatch.setattr(gm, "review_one", boom)
+        assert asyncio.run(gm.review(self._args(tmp_path, dry_run=True))) == 0
+        assert "2 to review" in capsys.readouterr().out
+
+    def test_already_reviewed_prs_are_not_paid_for_twice(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        out = tmp_path / "reviews.jsonl"
+        out.write_text(
+            self._record("https://github.com/o/r/pull/1").model_dump_json() + "\n",
+            encoding="utf-8",
+        )
+        asked: list[int] = []
+
+        async def once(row: gm.PrPlan, _args: object) -> gm.ReviewRecord:
+            asked.append(row.number)
+            return self._record(row.url)
+
+        monkeypatch.setattr(gm, "review_one", once)
+        assert asyncio.run(gm.review(self._args(tmp_path, out=out))) == 0
+        assert asked == [2], "a resumed run must skip what it already paid for"
+
+    def test_one_failure_does_not_lose_the_rest(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        async def half(row: gm.PrPlan, _args: object) -> gm.ReviewRecord:
+            if row.number == 1:
+                _msg = "provider exploded"
+                raise RuntimeError(_msg)
+            return self._record(row.url)
+
+        monkeypatch.setattr(gm, "review_one", half)
+        args = self._args(tmp_path)
+        assert asyncio.run(gm.review(args)) == 1
+        written = [json.loads(ln) for ln in args.out.read_text(encoding="utf-8").splitlines()]
+        assert [r["url"] for r in written] == ["https://github.com/o/r/pull/2"]
+        assert "provider exploded" in capsys.readouterr().err
+
+    def test_records_are_flushed_as_they_are_earned(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A crash on PR 40 must not throw away the 39 already paid for."""
+        seen: list[int] = []
+
+        async def peek(row: gm.PrPlan, args: object) -> gm.ReviewRecord:
+            if row.number == 2:
+                seen.append(len(args.out.read_text(encoding="utf-8").splitlines()))  # type: ignore[attr-defined]
+            return self._record(row.url)
+
+        monkeypatch.setattr(gm, "review_one", peek)
+        asyncio.run(gm.review(self._args(tmp_path)))
+        assert seen == [1]
+
+
+class TestDoneUrls:
+    def test_absent_file_is_empty(self, tmp_path: Path) -> None:
+        assert gm.done_urls(tmp_path / "nope.jsonl") == set()
+
+
+class TestReviewOne:
+    """The paid step. What it hands the collector decides what G5 measures."""
+
+    @staticmethod
+    def _row(pr_slice: str = "graph") -> gm.PrPlan:
+        return gm.PrPlan(
+            project="p",
+            url="https://github.com/o/r/pull/1",
+            repo="o/r",
+            number=1,
+            reproducible=True,
+            pr_slice=pr_slice,
+            changed_files=("src/a.py",),
+            golden_comments=1,
+        )
+
+    def _wire(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, aligned: int
+    ) -> dict[str, object]:
+        """Stub every provider and git call; capture the collector's arguments."""
+        (tmp_path / "ws" / "o__r" / ".git").mkdir(parents=True)
+        (tmp_path / "ws" / "o__r.db").write_text("db", encoding="utf-8")
+        captured: dict[str, object] = {}
+
+        class _Usage:
+            prompt_tokens = 11
+            completion_tokens = 22
+
+        class _Provider:
+            cumulative_usage = _Usage()
+
+        class _Result:
+            findings: ClassVar[list[object]] = []
+            parse_failed = False
+
+        class _Routed:
+            result = _Result()
+
+        def fake_collector(**kwargs: object) -> object:
+            captured.update(kwargs)
+            return object()
+
+        async def fake_routed(**_: object) -> object:
+            return _Routed()
+
+        monkeypatch.setattr(gm, "pr_refs", lambda _url: ("basesha", "headsha"))
+        monkeypatch.setattr(gm, "_git", lambda *a, **k: "guardiansha\n")  # noqa: ARG005
+        monkeypatch.setattr(gm, "graph_alignment", lambda *a: (aligned, 1))  # noqa: ARG005
+        monkeypatch.setattr(gm, "build_provider", lambda _env: (_Provider(), "finder-model"))
+        monkeypatch.setattr(gm, "build_skeptic_provider", lambda _env, primary: None)  # noqa: ARG005
+        monkeypatch.setattr(gm, "ContextCollector", fake_collector)
+        monkeypatch.setattr(gm, "run_review_routed", fake_routed)
+        return captured
+
+    def test_a_graph_pr_gets_the_database_and_the_empty_source_root(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured = self._wire(tmp_path, monkeypatch, aligned=1)
+        args = argparse.Namespace(workspace=tmp_path / "ws")
+        record = asyncio.run(gm.review_one(self._row(), args))
+        assert captured["db_path"] == tmp_path / "ws" / "o__r.db"
+        assert captured["source_root"] == ""
+        assert captured["base_ref"] == "basesha"
+        assert record.had_graph is True
+
+    def test_a_graph_pr_whose_graph_knows_nothing_is_recorded_as_ungraphed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Otherwise a failed ingest counts as evidence for graph context.
+
+        The slice still says "graph" — that is the plan's classification — but
+        `had_graph` is what G5 must be computed on, and the collector is given
+        no database rather than one that answers nothing.
+        """
+        captured = self._wire(tmp_path, monkeypatch, aligned=0)
+        args = argparse.Namespace(workspace=tmp_path / "ws")
+        record = asyncio.run(gm.review_one(self._row(), args))
+        assert captured["db_path"] is None
+        assert record.pr_slice == "graph"
+        assert record.had_graph is False
+
+    def test_an_unprepared_checkout_says_which_command_to_run(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(gm, "pr_refs", lambda _url: ("b", "h"))
+        args = argparse.Namespace(workspace=tmp_path / "empty")
+        with pytest.raises(RuntimeError, match="prepare --pr 1"):
+            asyncio.run(gm.review_one(self._row(), args))
