@@ -29,7 +29,13 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from cgis.extractors.registry import is_supported, language_for
-from cgis.guardian.calibrate import assign_matches, candidate_text, judge_matrix, judge_score
+from cgis.guardian.calibrate import (
+    DEFAULT_JUDGE_CONCURRENCY,
+    assign_matches,
+    candidate_text,
+    judge_matrix,
+    judge_score,
+)
 from cgis.guardian.chunked import run_review_routed
 from cgis.guardian.collector import ContextCollector, parse_features
 from cgis.guardian.martian import (
@@ -455,12 +461,23 @@ def load_reviews(path: Path) -> list[ReviewRecord]:
 
 
 async def judge_one(
-    record: ReviewRecord, pr: BenchPr, provider: BaseProvider, model: str, profile: Profile
+    record: ReviewRecord,
+    pr: BenchPr,
+    provider: BaseProvider,
+    model: str,
+    profile: Profile,
+    concurrency: int = DEFAULT_JUDGE_CONCURRENCY,
 ) -> JudgedReview:
-    """Score one recorded review against its golden comments, semantically."""
+    """Score one recorded review against its golden comments, semantically.
+
+    `concurrency` is exposed because it is the difference between a usable run
+    and an unusable one on Mistral: Phase 1's first Mistral judge lost 76.5% of
+    its pairs to 429s at the default of 4, and 0.4% at 1. The retry path handles
+    a rate limit; it cannot handle being rate-limited constantly.
+    """
     goldens = golden_texts(pr, profile)
     candidates = [candidate_text(f) for f in candidate_findings(record)]
-    pairs, failures = await judge_matrix(provider, goldens, candidates)
+    pairs, failures = await judge_matrix(provider, goldens, candidates, concurrency)
     assignment = assign_matches(pairs)
     scored = judge_score(
         n_goldens=len(goldens), n_candidates=len(candidates), assignment=assignment
@@ -507,6 +524,10 @@ def judged_keys(path: Path) -> set[tuple[str, str]]:
 async def judge(args: argparse.Namespace) -> int:
     """Score recorded reviews with the semantic judge. Spends judge calls only."""
     profile = as_profile(args.profile)
+    # Read once, outside the loop. Inside it, a missing or bad value would be
+    # caught by the per-PR `except` and reported as 45 judge failures — a
+    # programming error wearing the costume of a provider outage.
+    concurrency = args.concurrency
     corpus = {pr.url: pr for pr in load_corpus(args.corpus)}
     reviews = [
         r
@@ -548,7 +569,7 @@ async def judge(args: argparse.Namespace) -> int:
                 print(f"{label}: FAILED - not in the corpus: {record.url}", file=sys.stderr)
                 continue
             try:
-                judged = await judge_one(record, pr, provider, model, profile)
+                judged = await judge_one(record, pr, provider, model, profile, concurrency)
             except Exception as exc:
                 failures += 1
                 print(f"{label}: FAILED - {type(exc).__name__}: {exc}"[:250], file=sys.stderr)
@@ -766,6 +787,12 @@ def main() -> int:
     jud.add_argument("--out", type=Path, default=JUDGED_FILE)
     jud.add_argument("--profile", default="core", choices=("strict", "core", "all"))
     jud.add_argument("--pr", type=int, default=None)
+    jud.add_argument(
+        "--concurrency",
+        type=int,
+        default=DEFAULT_JUDGE_CONCURRENCY,
+        help="parallel judge calls; use 1 on Mistral, which 429s hard above it",
+    )
     jud.add_argument("--dry-run", action="store_true")
 
     rep = sub.add_parser("report", help="print G4/G5/G6 from the judged records")

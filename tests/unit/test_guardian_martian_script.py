@@ -1103,6 +1103,7 @@ class TestJudge:
             out=tmp_path / "j.jsonl",
             profile="core",
             pr=None,
+            concurrency=4,
             dry_run=True,
         )
         assert asyncio.run(gm.judge(args)) == 0
@@ -1174,6 +1175,26 @@ class TestJudge:
         asyncio.run(gm.judge_one(record, pr, object(), "judge-x", "core"))
         assert seen["candidates"] == 1
 
+    def test_concurrency_reaches_the_judge(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Phase 1's Mistral judge lost 76.5% of its pairs at the default of 4."""
+        pr = gm.BenchPr(
+            project="p",
+            pr_title="t",
+            url="https://github.com/o/r/pull/1",
+            comments=[{"comment": "g", "severity": "High", "category": "bug"}],
+        )
+        seen: dict[str, int] = {}
+
+        async def fake_matrix(
+            _p: object, _g: list[str], _c: list[str], concurrency: int = 4
+        ) -> tuple[list[gm_cal.JudgePair], int]:
+            seen["concurrency"] = concurrency
+            return [], 0
+
+        monkeypatch.setattr(gm, "judge_matrix", fake_matrix)
+        asyncio.run(gm.judge_one(self._review(), pr, object(), "j", "core", 1))
+        assert seen["concurrency"] == 1
+
     def test_pr_filter_is_exact_not_a_substring(self, tmp_path: Path) -> None:
         """`--pr 123` matched PR 1234, because the filter was `f"/{n}" in url`."""
         reviews = tmp_path / "r.jsonl"
@@ -1190,6 +1211,7 @@ class TestJudge:
             out=tmp_path / "j.jsonl",
             profile="core",
             pr=123,
+            concurrency=4,
             dry_run=True,
         )
         assert asyncio.run(gm.judge(args)) == 0
@@ -1258,6 +1280,7 @@ class TestJudge:
             out=out,
             profile="core",
             pr=None,
+            concurrency=4,
             dry_run=False,
         )
         assert asyncio.run(gm.judge(args)) == 1
@@ -1283,6 +1306,7 @@ class TestJudge:
             out=tmp_path / "j.jsonl",
             profile="core",
             pr=None,
+            concurrency=4,
             dry_run=False,
         )
         assert asyncio.run(gm.judge(args)) == 1
