@@ -1621,3 +1621,167 @@ class TestAblationScope:
         )
         assert asyncio.run(gm.review(args)) == 0
         assert "3 selected (arm=graph)" in capsys.readouterr().out
+
+
+class TestUnion:
+    """The `union` subcommand (#342 Phase 3). Free: it reads committed grids only.
+
+    Its refusals matter more than its arithmetic. A union assembled across two
+    judges, two profiles or an empty file would print a confident number over a
+    population nobody registered — the shape of retraction R1.
+    """
+
+    def _row(self, **overrides: object) -> dict[str, object]:
+        """One judged row; one golden, one candidate, matched."""
+        base: dict[str, object] = {
+            "url": "https://github.com/o/r/pull/1",
+            "project": "p",
+            "pr_slice": "graph",
+            "arm": "graph",
+            "had_graph": True,
+            "profile": "core",
+            "judge_model": "j",
+            "n_goldens": 2,
+            "n_candidates": 1,
+            "tp": 1,
+            "fp": 0,
+            "fn": 1,
+            "precision": 1.0,
+            "recall": 0.5,
+            "judge_failures": 0,
+            "decisions": [1, 0],
+            "judged_at": "2026-08-12T00:00:00+00:00",
+        }
+        return base | overrides
+
+    def _write(self, tmp_path: Path, name: str, rows: list[dict[str, object]]) -> Path:
+        path = tmp_path / name
+        path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+        return path
+
+    def _args(self, paths: list[Path], **overrides: object) -> argparse.Namespace:
+        base: dict[str, object] = {
+            "judged": paths,
+            "beta": 2.0,
+            "arm": "graph",
+            "judge": None,
+        }
+        return argparse.Namespace(**(base | overrides))
+
+    def _two_runs(self, tmp_path: Path) -> list[Path]:
+        """Two runs over two PRs, each finding a golden the other missed on PR 1."""
+        second = "https://github.com/o/r/pull/2"
+        return [
+            self._write(
+                tmp_path,
+                "a.jsonl",
+                [self._row(), self._row(url=second)],
+            ),
+            self._write(
+                tmp_path,
+                "b.jsonl",
+                [self._row(decisions=[0, 1]), self._row(url=second)],
+            ),
+        ]
+
+    def test_prints_both_gates_and_both_statistics(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Pooled headline and paired statistic always appear together."""
+        gm.union(self._args(self._two_runs(tmp_path)))
+        out = capsys.readouterr().out
+
+        assert "pooled headline" in out
+        assert "paired per-PR (tp)" in out
+        assert "G7" in out
+        assert "G8" in out
+
+    def test_exits_non_zero_when_a_gate_fails(self, tmp_path: Path) -> None:
+        """A failing gate must not exit 0; CI would read that as a pass."""
+        assert gm.union(self._args(self._two_runs(tmp_path))) == 1
+
+    def test_refuses_an_empty_file_rather_than_reporting_nothing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Exiting 0 on an empty population is the quietest possible failure."""
+        paths = [
+            self._write(tmp_path, "a.jsonl", [self._row()]),
+            self._write(tmp_path, "b.jsonl", [self._row(arm="ablated")]),
+        ]
+
+        assert gm.union(self._args(paths)) == 1
+        assert "No judged rows" in capsys.readouterr().err
+
+    def test_refuses_to_union_across_two_judges(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Two judges scoring different runs is not one measurement."""
+        paths = [
+            self._write(tmp_path, "a.jsonl", [self._row()]),
+            self._write(tmp_path, "b.jsonl", [self._row(judge_model="other")]),
+        ]
+
+        assert gm.union(self._args(paths)) == 1
+        assert "REFUSING to union" in capsys.readouterr().err
+
+    def test_refuses_to_union_across_two_profiles(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Profiles are different corpora — the same refusal `report` makes."""
+        paths = [
+            self._write(tmp_path, "a.jsonl", [self._row()]),
+            self._write(tmp_path, "b.jsonl", [self._row(profile="strict")]),
+        ]
+
+        assert gm.union(self._args(paths)) == 1
+        assert "REFUSING to union" in capsys.readouterr().err
+
+    def test_the_judge_filter_rescues_a_file_holding_two_judges(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A second judge is an append, so real files carry both. Naming one works."""
+        second = "https://github.com/o/r/pull/2"
+        paths = [
+            self._write(
+                tmp_path,
+                "a.jsonl",
+                [
+                    self._row(),
+                    self._row(url=second),
+                    self._row(judge_model="other"),
+                    self._row(url=second, judge_model="other"),
+                ],
+            ),
+            self._write(
+                tmp_path,
+                "b.jsonl",
+                [self._row(decisions=[0, 1]), self._row(url=second)],
+            ),
+        ]
+
+        gm.union(self._args(paths, judge="j"))
+        out = capsys.readouterr().out
+
+        assert "judge: j" in out
+        assert "N=2 runs" in out
+
+    def test_reports_why_a_union_is_impossible_instead_of_raising(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Mismatched goldens is a data problem, and a traceback is not a report."""
+        paths = [
+            self._write(tmp_path, "a.jsonl", [self._row()]),
+            self._write(tmp_path, "b.jsonl", [self._row(n_goldens=3, decisions=[1, 0, 0])]),
+        ]
+
+        assert gm.union(self._args(paths)) == 1
+        assert "Cannot union these runs" in capsys.readouterr().err
+
+    def test_a_single_file_is_refused_as_a_union_of_one(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """argparse allows one path; the arm does not."""
+        paths = [self._write(tmp_path, "a.jsonl", [self._row()])]
+
+        assert gm.union(self._args(paths)) == 1
+        assert "at least two runs" in capsys.readouterr().err

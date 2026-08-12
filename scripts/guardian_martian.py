@@ -6,12 +6,18 @@
     uv run python scripts/guardian_martian.py review --pr N    # COSTS MONEY
     uv run python scripts/guardian_martian.py judge            # COSTS MONEY (little)
     uv run python scripts/guardian_martian.py report           # free
+    uv run python scripts/guardian_martian.py union A.jsonl B.jsonl   # free
 
 `plan` resolves which slice each of the 50 PRs belongs to and prints the
 populations gate G5 is registered on. It costs no LLM calls: the only network
 traffic is `gh pr diff --name-only`, and the answers are cached in
 `benchmarks/martian/plan.json` so the plan is reproducible and reviewable as a
 diff rather than re-derived on every run.
+
+`union` scores the Phase 3 union arm (G7/G8) from N judged runs. It is free for
+the same reason a second judge is one command: a maximum matching's size does
+not depend on the judge confidences the stored grids omit, so the union of N
+runs replays from disk without paying the finder or the judge again.
 """
 
 import argparse
@@ -39,6 +45,7 @@ from cgis.guardian.calibrate import (
 from cgis.guardian.chunked import run_review_routed
 from cgis.guardian.collector import ContextCollector, parse_features
 from cgis.guardian.martian import (
+    DEFAULT_BETA,
     G5_MIN_GAP_PP,
     GRAPHITE_F05,
     UNKNOWN_SLICE,
@@ -49,6 +56,7 @@ from cgis.guardian.martian import (
     ReviewRecord,
     SliceCounts,
     SliceScore,
+    UnionRun,
     as_profile,
     build_plan,
     candidate_findings,
@@ -689,7 +697,74 @@ def report(args: argparse.Namespace) -> int:
     return exit_code
 
 
-def _ablation(rows: Sequence[JudgedReview], beta: float = 0.5) -> None:
+def union(args: argparse.Namespace) -> int:
+    """Print the Phase 3 union arm from N judged runs. Free; no API calls.
+
+    Reads only committed grids: a maximum matching's size does not depend on the
+    judge confidences the grids omit, so the union of N runs replays without
+    paying the finder or the judge again.
+    """
+
+    def keep(row: JudgedReview) -> bool:
+        return row.arm == args.arm and (args.judge is None or row.judge_model == args.judge)
+
+    runs = [[r for r in load_judged(path) if keep(r)] for path in args.judged]
+    empty = [str(p) for p, rows in zip(args.judged, runs, strict=True) if not rows]
+    if empty:
+        # Same reasoning as `report`: exiting 0 on an empty population lets a
+        # step that was meant to evaluate something pass by evaluating nothing.
+        print(f"No judged rows for arm {args.arm!r} in: {', '.join(empty)}", file=sys.stderr)
+        return 1
+
+    profiles = sorted({r.profile for run in runs for r in run})
+    judges = sorted({r.judge_model for run in runs for r in run})
+    if len(profiles) > 1 or len(judges) > 1:
+        print(
+            f"REFUSING to union across profiles {profiles} or judges {judges}: "
+            "the runs would not be scoring the same thing.",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        arm = UnionRun.build(runs, args.beta)
+    except ValueError as exc:
+        print(f"Cannot union these runs: {exc}", file=sys.stderr)
+        return 1
+
+    print(
+        f"\n=== union arm | N={len(runs)} runs | arm: {args.arm} | "
+        f"judge: {judges[0]} | profile: {profiles[0]} | beta: {args.beta:g} ==="
+    )
+    for score in arm.runs:
+        print(_score_line(score))
+    print(
+        f"  {'mean run':12} n={arm.union.prs:<3} "
+        f"P={arm.mean_precision * 100:5.1f}  R={arm.mean_recall * 100:5.1f}  "
+        f"F{args.beta:g}={arm.mean_f_beta * 100:5.1f}   <- the expected single run"
+    )
+    print(_score_line(arm.union))
+
+    # Pooled first, then paired, then the gate — in that order and always
+    # together, because the pilot's pooled delta reads as three noise floors
+    # while its paired statistic is a marginal fail on the same data.
+    print(
+        f"\n  pooled headline: dP {(arm.union.precision - arm.mean_precision) * 100:+5.1f}  "
+        f"dR {(arm.union.recall - arm.mean_recall) * 100:+5.1f}  "
+        f"dF{args.beta:g} {(arm.union.f_beta - arm.mean_f_beta) * 100:+5.1f}"
+    )
+    effect = arm.effect
+    print(
+        f"  paired per-PR (tp): n={effect.n} mean={effect.mean:+.3f} "
+        f"sd={effect.standard_deviation:.3f} se={effect.standard_error:.3f} "
+        f"mean/se={effect.ratio:.3f}"
+    )
+    print(f"\n  G7 union raises recall (mean > 2*se): {'PASS' if arm.g7_passes else 'FAIL'}")
+    print(f"  G8 union wins at beta={args.beta:g}:        {'PASS' if arm.g8_passes else 'FAIL'}")
+    return 0 if arm.g7_passes and arm.g8_passes else 1
+
+
+def _ablation(rows: Sequence[JudgedReview], beta: float = DEFAULT_BETA) -> None:
     """Compare the two arms on the PRs that have both. Silent when there is one arm.
 
     This is the contrast G5 could not draw. In this corpus "has a graph" and "is
@@ -724,6 +799,9 @@ def _ablation(rows: Sequence[JudgedReview], beta: float = 0.5) -> None:
 def _gates(rows: Sequence[JudgedReview], slices: dict[str, list[JudgedReview]]) -> int:
     """Print the three pre-registered gates and return non-zero if any fails."""
     python_rows = [r for r in rows if r.project == "sentry"]
+    # 0.5 explicitly, and not DEFAULT_BETA: G4 is registered against
+    # Graphite's F0.5, so it is the one gate whose weighting is fixed by
+    # what it compares to rather than by our choice.
     g4 = score_slice("sentry", python_rows, 0.5)
     g4_pass = g4.f_beta * 100 >= GRAPHITE_F05
     print(
@@ -866,7 +944,7 @@ def main() -> int:
 
     rep = sub.add_parser("report", help="print G4/G5/G6 from the judged records")
     rep.add_argument("--judged", type=Path, default=JUDGED_FILE)
-    rep.add_argument("--beta", type=float, default=0.5, help="F-beta; 0.5 weights precision")
+    rep.add_argument("--beta", type=float, default=DEFAULT_BETA, help="F-beta; 2.0 weights recall")
     rep.add_argument(
         "--arm",
         default="graph",
@@ -874,9 +952,26 @@ def main() -> int:
         help="which arm the gates are computed on; the ablation is reported separately",
     )
 
+    uni = sub.add_parser("union", help="score the union of N judged runs (#342 G7/G8); free")
+    uni.add_argument(
+        "judged",
+        type=Path,
+        nargs="+",
+        help="two or more judged files, one per run of the same configuration",
+    )
+    uni.add_argument("--beta", type=float, default=DEFAULT_BETA, help="F-beta; 2.0 weights recall")
+    uni.add_argument("--arm", default="graph", choices=("graph", "ablated"))
+    uni.add_argument(
+        "--judge",
+        default=None,
+        help="restrict to one judge model; required when a file holds more than one",
+    )
+
     args = parser.parse_args()
     if args.command == "report":
         return report(args)
+    if args.command == "union":
+        return union(args)
     if args.command == "judge":
         return asyncio.run(judge(args))
     if args.command == "prepare":

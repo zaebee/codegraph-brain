@@ -11,7 +11,9 @@ is spent.
 """
 
 import json
+import math
 import re
+import statistics
 from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import Literal
@@ -19,7 +21,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from cgis.extractors.registry import is_supported
-from cgis.guardian.calibrate import JudgePair
+from cgis.guardian.calibrate import JudgePair, assign_from_grid
 from cgis.guardian.findings import Finding
 
 #: Severity vocabulary of the upstream corpus. Four values, not three — the
@@ -425,6 +427,17 @@ GRAPHITE_F05 = 29.1
 #: G5's threshold, in percentage points of recall.
 G5_MIN_GAP_PP = 10.0
 
+#: The registered β (#342 Phase 3). Recall-weighted, because the gap to the
+#: field is a recall gap — 30.7 against ~55 for gemini-code-assist, under a
+#: field ceiling near 66 — while precision is not the binding constraint.
+#:
+#: It is a named constant rather than a per-call default because the tooling
+#: silently defaulted to 0.5 through Phases 1 and 2, so every F figure those
+#: phases published answered the precision-weighted question without saying so.
+#: G4 is the one deliberate exception: it is registered against Graphite's F0.5
+#: and passes 0.5 explicitly.
+DEFAULT_BETA = 2.0
+
 
 class SliceScore(BaseModel, frozen=True):
     """Micro-averaged score for one slice of judged reviews.
@@ -453,7 +466,7 @@ def f_beta(precision: float, recall: float, beta: float) -> float:
     return (1 + beta**2) * precision * recall / denominator
 
 
-def score_slice(name: str, rows: Sequence[JudgedReview], beta: float = 0.5) -> SliceScore:
+def score_slice(name: str, rows: Sequence[JudgedReview], beta: float = DEFAULT_BETA) -> SliceScore:
     """Aggregate judged reviews into one slice score.
 
     Vacuous cases follow `bench.score` and `judge_score` so every scorer in this
@@ -476,6 +489,194 @@ def score_slice(name: str, rows: Sequence[JudgedReview], beta: float = 0.5) -> S
         f_beta=f_beta(precision, recall, beta),
         beta=beta,
     )
+
+
+class PairedEffect(BaseModel, frozen=True):
+    """G7's statistic: the paired per-PR effect, in true-positive counts.
+
+    Paired and per-PR by registration. The alternative — dispersion across the
+    pooled aggregates of N runs — has N-1 degrees of freedom and can pass on a
+    small standard deviation drawn by chance. It also changes the unit: pooled
+    recall weights PRs by golden count, and on the Phase 3 pilot that difference
+    is the difference between an effect that reads as three noise floors and a
+    statistic of 1.94 against a gate of 2.0.
+    """
+
+    n: int
+    mean: float
+    standard_deviation: float
+    standard_error: float
+    ratio: float
+    passes: bool
+
+
+def paired_effect(deltas: Sequence[float]) -> PairedEffect:
+    """Summarise per-PR deltas and decide G7: `mean(d) > 2 * se(d)`.
+
+    A uniform effect has zero dispersion, which is an answer rather than a
+    division to guard against — a delta of exactly 2.0 on every PR passes, and a
+    delta of exactly 0.0 on every PR does not, because `0 > 0` is false.
+    """
+    if len(deltas) < 2:
+        _msg = f"a paired effect needs at least two PRs, got {len(deltas)}"
+        raise ValueError(_msg)
+    mean = statistics.fmean(deltas)
+    deviation = statistics.stdev(deltas)
+    error = deviation / len(deltas) ** 0.5
+    return PairedEffect(
+        n=len(deltas),
+        mean=mean,
+        standard_deviation=deviation,
+        standard_error=error,
+        ratio=_effect_ratio(mean, error),
+        passes=mean > 2 * error,
+    )
+
+
+def _effect_ratio(mean: float, standard_error: float) -> float:
+    """`mean / se`, with the zero-dispersion case spelled out rather than nested.
+
+    A uniform effect has no dispersion, so the ratio is unbounded — and infinite
+    *with the sign of the mean*, because a uniformly negative effect is as
+    certainly negative as a uniformly positive one is positive.
+
+    This was a nested conditional returning a bare `float("inf")` for any
+    non-zero mean, which made a uniform regression print as an overwhelming win
+    while `passes` correctly reported FAIL. The gate was never wrong; the number
+    beside it was. Zero mean with zero dispersion is the null, and reports 0.0.
+    """
+    if standard_error:
+        return mean / standard_error
+    if mean:
+        return math.copysign(float("inf"), mean)
+    return 0.0
+
+
+def union_judged(runs: Sequence[Sequence[JudgedReview]]) -> list[JudgedReview]:
+    """Merge N judged runs into one union row per PR. No API calls.
+
+    Candidate sets are concatenated and the maximum matching is re-run over the
+    combined grid, which is valid because golden *i* is the same golden in every
+    run — the goldens come from the corpus, the candidates from the finder. Runs
+    that disagree about the golden count are refused rather than aligned by
+    truncation, since that disagreement means the corpus or profile moved.
+
+    Two consequences of scoring this way, both registered in the spec rather than
+    discovered afterwards. A duplicate finding across runs cannot be matched
+    twice, so it is charged as a false positive — the union's precision cost is a
+    property of maximum matching, not an artefact of the missing dedup step. And
+    a PR absent from any run is dropped, because a union of N over some PRs and
+    of fewer over others is not one arm.
+    """
+    if len(runs) < 2:
+        _msg = f"a union needs at least two runs, got {len(runs)}"
+        raise ValueError(_msg)
+    by_url = [{r.url: r for r in run} for run in runs]
+    shared = set.intersection(*(set(index) for index in by_url))
+
+    rows: list[JudgedReview] = []
+    for url in sorted(shared):
+        parts = [index[url] for index in by_url]
+        goldens = {p.n_goldens for p in parts}
+        if len(goldens) > 1:
+            _msg = f"runs disagree about goldens for {url}: {sorted(goldens)}"
+            raise ValueError(_msg)
+        rows.append(_union_row(parts))
+    return rows
+
+
+def _union_row(parts: Sequence[JudgedReview]) -> JudgedReview:
+    """One PR's runs merged: grids concatenated row-wise, then re-matched."""
+    n_goldens = parts[0].n_goldens
+    n_candidates = sum(p.n_candidates for p in parts)
+    grid: list[int | None] = []
+    for golden in range(n_goldens):
+        for part in parts:
+            start = golden * part.n_candidates
+            grid.extend(part.decisions[start : start + part.n_candidates])
+
+    tp = len(assign_from_grid(grid, n_goldens, n_candidates))
+    return parts[0].model_copy(
+        update={
+            "n_candidates": n_candidates,
+            "tp": tp,
+            "fp": n_candidates - tp,
+            "fn": n_goldens - tp,
+            "precision": tp / n_candidates if n_candidates else 1.0,
+            "recall": tp / n_goldens if n_goldens else 1.0,
+            "judge_failures": sum(p.judge_failures for p in parts),
+            "decisions": grid,
+        }
+    )
+
+
+class UnionRun(BaseModel, frozen=True):
+    """The Phase 3 union arm: the pooled headline and the paired gate together.
+
+    Both are carried on one object because the spec requires them named wherever
+    either appears. Reporting the pooled delta alone is how a marginal effect
+    reads as a large one.
+    """
+
+    union: SliceScore
+    runs: list[SliceScore]
+    deltas: list[float]
+    effect: PairedEffect
+    beta: float
+
+    @property
+    def mean_precision(self) -> float:
+        """Precision of the expected single run — the union's comparison point."""
+        return statistics.fmean(r.precision for r in self.runs)
+
+    @property
+    def mean_recall(self) -> float:
+        """Recall of the expected single run, not of the best one."""
+        return statistics.fmean(r.recall for r in self.runs)
+
+    @property
+    def mean_f_beta(self) -> float:
+        """F-beta of the mean run, at the same beta the union is scored with.
+
+        On the same 0-1 scale as `SliceScore.f_beta`, which is what G8 compares
+        it against. `_score_line` is the only place that multiplies by 100, and
+        a percentage compared against a fraction here would have made G8 pass on
+        every possible input.
+        """
+        return f_beta(self.mean_precision, self.mean_recall, self.beta)
+
+    @property
+    def g7_passes(self) -> bool:
+        """G7: the union raises recall by more than this configuration's own noise."""
+        return self.effect.passes
+
+    @property
+    def g8_passes(self) -> bool:
+        """G8: the union wins on the registered beta."""
+        return self.union.f_beta > self.mean_f_beta
+
+    @classmethod
+    def build(cls, runs: Sequence[Sequence[JudgedReview]], beta: float) -> "UnionRun":
+        """Score N runs and their union, and compute both gates.
+
+        `beta` reaches the mean as well as the union: two F-scores under
+        different weightings, compared to each other, is not a comparison.
+        """
+        union_rows = union_judged(runs)
+        kept = {r.url for r in union_rows}
+        per_run = [[r for r in run if r.url in kept] for run in runs]
+
+        by_url = [{r.url: r for r in run} for run in per_run]
+        deltas = [
+            row.tp - statistics.fmean(index[row.url].tp for index in by_url) for row in union_rows
+        ]
+        return cls(
+            union=score_slice("union", union_rows, beta),
+            runs=[score_slice(f"run {i + 1}", run, beta) for i, run in enumerate(per_run)],
+            deltas=deltas,
+            effect=paired_effect(deltas),
+            beta=beta,
+        )
 
 
 def graph_slices(rows: Sequence[JudgedReview]) -> dict[str, list[JudgedReview]]:
