@@ -1925,3 +1925,56 @@ class TestParseFailedExclusion:
         path.write_text(json.dumps(row) + "\n", encoding="utf-8")
 
         assert gm.judgeable(gm.load_reviews(path)) == []
+
+
+class TestAllPairsFailed:
+    """A judged row where nothing was ruled on is not written at all (#342).
+
+    When a subscription limit was reached mid-run the judge kept being called,
+    every call failed, and a row was still recorded: `tp=0`, every candidate a
+    false positive, `P=0.00 R=0.00`. Nine such rows looked exactly like
+    measurements of a reviewer that had found nothing.
+
+    Not writing it is also what lets a resumed run retry the PR — `judged_keys`
+    would otherwise skip it as already judged, and the hole would be permanent.
+    """
+
+    def test_a_row_with_every_pair_failed_is_not_written(self) -> None:
+        row = _judged_row(n_goldens=2, n_candidates=3, judge_failures=6)
+
+        assert gm.nothing_was_ruled(row) is True
+
+    def test_a_partially_failed_row_is_still_recorded(self) -> None:
+        """The data is kept; `scorable` is what keeps it out of the arithmetic."""
+        row = _judged_row(n_goldens=2, n_candidates=3, judge_failures=1)
+
+        assert gm.nothing_was_ruled(row) is False
+
+    def test_a_vacuous_row_with_no_pairs_is_written(self) -> None:
+        """No goldens or no candidates means nothing to rule on, not a failure."""
+        row = _judged_row(n_goldens=0, n_candidates=3, judge_failures=0)
+
+        assert gm.nothing_was_ruled(row) is False
+
+
+def _judged_row(*, n_goldens: int, n_candidates: int, judge_failures: int) -> gm.JudgedReview:
+    """A judged row carrying only the fields the write guard reads."""
+    return gm.JudgedReview(
+        url="https://github.com/o/r/pull/1",
+        project="p",
+        pr_slice="graph",
+        arm="graph",
+        had_graph=True,
+        profile="core",
+        judge_model="m",
+        n_goldens=n_goldens,
+        n_candidates=n_candidates,
+        tp=0,
+        fp=n_candidates,
+        fn=n_goldens,
+        precision=0.0,
+        recall=0.0,
+        judge_failures=judge_failures,
+        decisions=[0] * (n_goldens * n_candidates),
+        judged_at="2026-08-12T00:00:00+00:00",
+    )
