@@ -22,6 +22,18 @@ DEFAULT_OLLAMA_TIMEOUT = 600.0
 DEFAULT_OLLAMA_NUM_CTX = 32768
 
 
+class PromptTruncatedError(RuntimeError):
+    """The prompt filled the context window, so the model saw only part of it.
+
+    Deliberately not a retryable transport error and deliberately not a warning.
+    Ollama truncates silently, and a truncated review is not a worse review — it
+    is a review of a different input, scored as though it were a review of the
+    whole one. Every bench number computed on it would look ordinary. This is the
+    same failure the spec keeps retracting for: a quantity measured on one thing
+    and reported against another.
+    """
+
+
 class OllamaProvider(BaseProvider):
     """Ollama provider. Requires: uv sync --group guardian (ollama client)."""
 
@@ -66,6 +78,7 @@ class OllamaProvider(BaseProvider):
                 format=fmt,
                 options={"num_ctx": self._num_ctx},
             )
+        self._refuse_if_truncated(response.prompt_eval_count)
         content = response.message.content
         if content is None:
             _msg = f"Ollama returned null message content for model {self._model_name}"
@@ -77,6 +90,29 @@ class OllamaProvider(BaseProvider):
             )
         )
         return str(content)
+
+    def _refuse_if_truncated(self, prompt_eval_count: int | None) -> None:
+        """Raise when the reported prompt tokens reached the context window.
+
+        `prompt_eval_count` cannot exceed the window, so reaching it means the
+        window — not the prompt — decided how much the model saw.
+
+        Only the upper bound is a signal. A *small* count proves nothing: Ollama
+        reports fewer evaluated tokens when a prefix was cached, so comparing
+        against the prompt's own length would fire on healthy calls. `None` is
+        unknown rather than guilty; the field is optional in the API.
+        """
+        if prompt_eval_count is None or prompt_eval_count < self._num_ctx:
+            return
+        _msg = (
+            f"Ollama truncated the prompt for {self._model_name}: it evaluated "
+            f"{prompt_eval_count} tokens against a context window of {self._num_ctx}, "
+            "so the model reviewed only part of the input. Raise "
+            "GUARDIAN_OLLAMA_NUM_CTX (watch VRAM — a 14B-Q4 tops out near 16k on "
+            "16GB, an 8B-Q4 reaches 32-48k), use a longer-context model, or trim "
+            "the prompt with GUARDIAN_NO_GRAPH."
+        )
+        raise PromptTruncatedError(_msg)
 
     async def generate_content(self, system_prompt: str, user_prompt: str) -> str:
         """Send prompts to Ollama and return the text response."""
