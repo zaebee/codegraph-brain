@@ -1342,7 +1342,7 @@ class TestReport:
     def _write(self, tmp_path: Path, rows: list[dict[str, object]]) -> argparse.Namespace:
         path = tmp_path / "j.jsonl"
         path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
-        return argparse.Namespace(judged=path, beta=0.5)
+        return argparse.Namespace(judged=path, beta=0.5, arm="graph")
 
     def test_g5_is_undefined_rather_than_failed_when_a_slice_is_empty(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -1379,6 +1379,51 @@ class TestReport:
         err = capsys.readouterr().err
         assert "REFUSING to mix profiles" in err
         assert "--judge." not in err, "the message must not cite a flag that does not exist"
+
+    def test_the_gates_are_computed_on_one_arm_only(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Ablated rows carry had_graph=False and would land in the diff-only slice.
+
+        Mixed into one report they would double-count ALL and corrupt G5 with
+        rows whose graph was removed on purpose — the gate poisoned by the
+        experiment meant to inform it.
+        """
+        rows = [
+            self._row(url="https://github.com/o/r/pull/1", arm="graph", had_graph=True),
+            self._row(url="https://github.com/o/r/pull/1", arm="ablated", had_graph=False),
+        ]
+        args = self._write(tmp_path, rows)
+        args.arm = "graph"
+        gm.report(args)
+        out = capsys.readouterr().out
+        assert "ALL          n=1 " in out
+        assert "arm: graph" in out
+
+    def test_the_ablation_section_compares_the_arms(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        rows = [
+            self._row(url="https://github.com/o/r/pull/1", arm="graph", had_graph=True, tp=4, fn=1),
+            self._row(
+                url="https://github.com/o/r/pull/1", arm="ablated", had_graph=False, tp=1, fn=4
+            ),
+        ]
+        args = self._write(tmp_path, rows)
+        args.arm = "graph"
+        gm.report(args)
+        out = capsys.readouterr().out
+        assert "ablation: the same PRs" in out
+        assert "1 PRs reviewed both ways" in out
+        assert "R +60.0 pp" in out
+
+    def test_no_ablation_section_when_there_is_one_arm(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        args = self._write(tmp_path, [self._row()])
+        args.arm = "graph"
+        gm.report(args)
+        assert "ablation" not in capsys.readouterr().out
 
     def test_missing_judged_file_says_what_to_run(self, tmp_path: Path) -> None:
         args = argparse.Namespace(judged=tmp_path / "absent.jsonl", beta=0.5)

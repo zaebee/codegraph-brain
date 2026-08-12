@@ -417,7 +417,7 @@ async def review(args: argparse.Namespace) -> int:
     already = done_urls(args.out)
     pending = [r for r in rows if (r.url, arm) not in already]
     print(
-        f"{len(rows)} selected, {len(already & {r.url for r in rows})} already done, "
+        f"{len(rows)} selected (arm={arm}), {len(rows) - len(pending)} already done, "
         f"{len(pending)} to review."
     )
     if args.dry_run:
@@ -634,18 +634,21 @@ def _score_line(score: SliceScore) -> str:
 
 def report(args: argparse.Namespace) -> int:
     """Print G4/G5/G6 from the judged records. Free; reads only what is on disk."""
-    rows = load_judged(args.judged)
+    rows = [r for r in load_judged(args.judged) if r.arm == args.arm]
     if not rows:
         # Exiting 0 here would let a CI step that was supposed to evaluate
         # something pass by evaluating nothing — the quietest possible failure.
-        print(f"No judged reviews in {args.judged}; nothing to report.", file=sys.stderr)
+        print(
+            f"No judged reviews for arm {args.arm!r} in {args.judged}; nothing to report.",
+            file=sys.stderr,
+        )
         return 1
     judges = sorted({r.judge_model for r in rows})
     profiles = sorted({r.profile for r in rows})
     exit_code = 0
 
     print(
-        f"\n{len(rows)} judged reviews | judges: {', '.join(judges)} | "
+        f"\n{len(rows)} judged rows | arm: {args.arm} | judges: {', '.join(judges)} | "
         f"profile: {', '.join(profiles)}"
     )
     if len(profiles) > 1:
@@ -673,7 +676,38 @@ def report(args: argparse.Namespace) -> int:
             )
 
         exit_code |= _gates(mine, slices)
+    _ablation(load_judged(args.judged))
     return exit_code
+
+
+def _ablation(rows: Sequence[JudgedReview]) -> None:
+    """Compare the two arms on the PRs that have both. Silent when there is one arm.
+
+    This is the contrast G5 could not draw. In this corpus "has a graph" and "is
+    Python or TypeScript" are the same partition, so the registered cross-slice
+    gap cannot separate graph context from language; holding the PR fixed and
+    removing only the graph can.
+    """
+    arms = {r.arm for r in rows}
+    if len(arms) < 2:
+        return
+    print("\n=== ablation: the same PRs, with the graph and without ===")
+    for judge_model in sorted({r.judge_model for r in rows}):
+        mine = [r for r in rows if r.judge_model == judge_model]
+        with_graph = {r.url: r for r in mine if r.arm == "graph"}
+        without = {r.url: r for r in mine if r.arm == "ablated"}
+        both = sorted(with_graph.keys() & without.keys())
+        if not both:
+            continue
+        on = score_slice("with graph", [with_graph[u] for u in both])
+        off = score_slice("graph withheld", [without[u] for u in both])
+        print(f"\n  {judge_model} — {len(both)} PRs reviewed both ways")
+        print(_score_line(on))
+        print(_score_line(off))
+        print(
+            f"    difference   R {(on.recall - off.recall) * 100:+.1f} pp   "
+            f"P {(on.precision - off.precision) * 100:+.1f} pp"
+        )
 
 
 def _gates(rows: Sequence[JudgedReview], slices: dict[str, list[JudgedReview]]) -> int:
@@ -822,6 +856,12 @@ def main() -> int:
     rep = sub.add_parser("report", help="print G4/G5/G6 from the judged records")
     rep.add_argument("--judged", type=Path, default=JUDGED_FILE)
     rep.add_argument("--beta", type=float, default=0.5, help="F-beta; 0.5 weights precision")
+    rep.add_argument(
+        "--arm",
+        default="graph",
+        choices=("graph", "ablated"),
+        help="which arm the gates are computed on; the ablation is reported separately",
+    )
 
     args = parser.parse_args()
     if args.command == "report":
