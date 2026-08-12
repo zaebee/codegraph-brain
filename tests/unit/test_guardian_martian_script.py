@@ -1198,3 +1198,91 @@ class TestJudge:
         )
         assert asyncio.run(gm.judge(args)) == 1
         assert "not in the corpus" in capsys.readouterr().err
+
+
+class TestReport:
+    """The gates. Free to run, and the last place a scoring mistake is cheap."""
+
+    @staticmethod
+    def _row(**overrides: object) -> dict[str, object]:
+        base: dict[str, object] = {
+            "url": "https://github.com/o/r/pull/1",
+            "project": "sentry",
+            "pr_slice": "graph",
+            "had_graph": True,
+            "profile": "core",
+            "judge_model": "j",
+            "n_goldens": 3,
+            "n_candidates": 1,
+            "tp": 1,
+            "fp": 0,
+            "fn": 2,
+            "precision": 1.0,
+            "recall": 1 / 3,
+            "judge_failures": 0,
+            "decisions": [1, 0, 0],
+            "judged_at": "2026-08-12T00:00:00+00:00",
+        }
+        return base | overrides
+
+    def _write(self, tmp_path: Path, rows: list[dict[str, object]]) -> argparse.Namespace:
+        path = tmp_path / "j.jsonl"
+        path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+        return argparse.Namespace(judged=path, beta=0.5)
+
+    def test_g5_is_undefined_rather_than_failed_when_a_slice_is_empty(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The #345 shape again: an empty slice scores recall 1.0 vacuously.
+
+        Comparing against it produced a confident "-66.7 pp FAIL" that measured
+        nothing at all.
+        """
+        args = self._write(tmp_path, [self._row()])
+        assert gm.report(args) == 1
+        out = capsys.readouterr().out
+        assert "UNDEFINED" in out
+        assert "FAIL" not in out.split("G5")[1]
+
+    def test_g5_compares_the_two_slices_when_both_exist(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        rows = [
+            self._row(had_graph=True, tp=8, fn=2),
+            self._row(url="https://github.com/o/r/pull/2", had_graph=False, tp=1, fn=9),
+        ]
+        assert gm.report(self._write(tmp_path, rows)) == 0
+        g5 = capsys.readouterr().out.split("G5")[1]
+        assert "+70.0 pp" in g5
+        assert "PASS" in g5
+
+    def test_a_mixed_profile_report_is_refused(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Two profiles in one table would be two different corpora silently added up."""
+        rows = [self._row(), self._row(url="https://github.com/o/r/pull/2", profile="all")]
+        assert gm.report(self._write(tmp_path, rows)) == 1
+        err = capsys.readouterr().err
+        assert "REFUSING to mix profiles" in err
+        assert "--judge." not in err, "the message must not cite a flag that does not exist"
+
+    def test_missing_judged_file_says_what_to_run(self, tmp_path: Path) -> None:
+        args = argparse.Namespace(judged=tmp_path / "absent.jsonl", beta=0.5)
+        with pytest.raises(FileNotFoundError, match="judge"):
+            gm.report(args)
+
+    def test_an_empty_judged_file_does_not_pass_by_evaluating_nothing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Exiting 0 would let a CI step succeed by measuring nothing at all."""
+        assert gm.report(self._write(tmp_path, [])) == 1
+        assert "nothing to report" in capsys.readouterr().err
+
+    def test_every_line_carries_its_n(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """G6: a rate without its n is not reportable."""
+        gm.report(self._write(tmp_path, [self._row()]))
+        for line in capsys.readouterr().out.splitlines():
+            if " P=" in line:
+                assert " n=" in line

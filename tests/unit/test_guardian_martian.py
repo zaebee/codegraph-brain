@@ -19,6 +19,7 @@ from cgis.guardian.martian import (
     UNKNOWN_SLICE,
     BenchPr,
     GoldenComment,
+    JudgedReview,
     PrPlan,
     ReviewRecord,
     SliceCounts,
@@ -26,9 +27,12 @@ from cgis.guardian.martian import (
     build_plan,
     candidate_findings,
     evaluated,
+    f_beta,
     golden_texts,
+    graph_slices,
     load_corpus,
     plan_population,
+    score_slice,
     slice_counts,
     slice_of,
 )
@@ -399,3 +403,59 @@ class TestAsProfile:
         """The spec's own confusion, made unrepresentable: profiles filter by category."""
         with pytest.raises(ValueError, match="Unknown profile"):
             as_profile("Critical")
+
+
+class TestSliceScoring:
+    """Micro-averaged, because that is how the leaderboard derives P and R."""
+
+    @staticmethod
+    def _judged(**overrides: object) -> JudgedReview:
+        base: dict[str, object] = {
+            "url": "https://github.com/o/r/pull/1",
+            "project": "sentry",
+            "pr_slice": "graph",
+            "had_graph": True,
+            "profile": "core",
+            "judge_model": "j",
+            "n_goldens": 3,
+            "n_candidates": 1,
+            "tp": 1,
+            "fp": 0,
+            "fn": 2,
+            "precision": 1.0,
+            "recall": 1 / 3,
+            "judge_failures": 0,
+            "decisions": [1, 0, 0],
+            "judged_at": "2026-08-12T00:00:00+00:00",
+        }
+        return JudgedReview.model_validate(base | overrides)
+
+    def test_totals_are_summed_not_averaged(self) -> None:
+        """Macro would give a different number that looks the same."""
+        rows = [self._judged(tp=1, fp=0, fn=0), self._judged(tp=1, fp=8, fn=0)]
+        score = score_slice("s", rows)
+        assert (score.tp, score.fp) == (2, 8)
+        assert score.precision == pytest.approx(0.2)  # macro would say 0.55
+
+    def test_f_beta_weights_precision_at_half(self) -> None:
+        assert f_beta(1.0, 1 / 3, 0.5) == pytest.approx(0.714, abs=0.001)
+
+    def test_f_beta_is_zero_when_both_are(self) -> None:
+        """Undefined arithmetically; 0.0 is the only honest report."""
+        assert f_beta(0.0, 0.0, 0.5) == 0.0
+
+    def test_an_empty_slice_degrades_like_every_other_scorer_here(self) -> None:
+        """Vacuous 1.0 — which is exactly why G5 must refuse to compare against it."""
+        score = score_slice("empty", [])
+        assert (score.prs, score.precision, score.recall) == (0, 1.0, 1.0)
+
+    def test_slices_split_on_had_graph_not_on_the_plan(self) -> None:
+        """A PR whose ingest produced nothing was reviewed without a graph.
+
+        Counting it as graph-enabled would let a failure argue for the thing it
+        failed at.
+        """
+        rows = [self._judged(pr_slice="graph", had_graph=False), self._judged(had_graph=True)]
+        slices = graph_slices(rows)
+        assert len(slices["graph"]) == 1
+        assert len(slices["diff-only"]) == 1

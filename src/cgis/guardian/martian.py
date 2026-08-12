@@ -408,3 +408,77 @@ def dense_grid(pairs: Sequence[JudgePair], n_goldens: int, n_candidates: int) ->
     for pair in pairs:
         grid[pair.golden_index * n_candidates + pair.candidate_index] = int(pair.verdict.match)
     return grid
+
+
+#: Graphite's F0.5 on the `core` profile — the floor gate G4 is stated against.
+#: A precision-only reviewer that finds almost nothing (P 100.0, R 7.6) still
+#: scores this, which is what makes it a floor rather than a target.
+GRAPHITE_F05 = 29.1
+
+#: G5's threshold, in percentage points of recall.
+G5_MIN_GAP_PP = 10.0
+
+
+class SliceScore(BaseModel, frozen=True):
+    """Micro-averaged score for one slice of judged reviews.
+
+    Micro, not macro: the leaderboard publishes TP/FP/FN totals and derives P
+    and R from them, so a per-PR average would not be the same quantity even
+    when it looks like one.
+    """
+
+    name: str
+    prs: int
+    tp: int
+    fp: int
+    fn: int
+    precision: float
+    recall: float
+    f_beta: float
+    beta: float
+
+
+def f_beta(precision: float, recall: float, beta: float) -> float:
+    """The F-measure, or 0.0 when both inputs are 0 and it is undefined."""
+    denominator = beta**2 * precision + recall
+    if denominator == 0:
+        return 0.0
+    return (1 + beta**2) * precision * recall / denominator
+
+
+def score_slice(name: str, rows: Sequence[JudgedReview], beta: float = 0.5) -> SliceScore:
+    """Aggregate judged reviews into one slice score.
+
+    Vacuous cases follow `bench.score` and `judge_score` so every scorer in this
+    project degrades identically: no candidates means precision 1.0, no goldens
+    means recall 1.0.
+    """
+    tp = sum(r.tp for r in rows)
+    fp = sum(r.fp for r in rows)
+    fn = sum(r.fn for r in rows)
+    precision = tp / (tp + fp) if tp + fp else 1.0
+    recall = tp / (tp + fn) if tp + fn else 1.0
+    return SliceScore(
+        name=name,
+        prs=len(rows),
+        tp=tp,
+        fp=fp,
+        fn=fn,
+        precision=precision,
+        recall=recall,
+        f_beta=f_beta(precision, recall, beta),
+        beta=beta,
+    )
+
+
+def graph_slices(rows: Sequence[JudgedReview]) -> dict[str, list[JudgedReview]]:
+    """Split judged reviews the way G5 is registered: by whether a graph was used.
+
+    Keyed on `had_graph`, not on `pr_slice`. A PR the plan called graph-enabled
+    whose ingest produced nothing was reviewed without a graph, and counting it
+    as graph-enabled would let a failure argue for the thing it failed at.
+    """
+    return {
+        "graph": [r for r in rows if r.had_graph],
+        "diff-only": [r for r in rows if not r.had_graph],
+    }
