@@ -455,7 +455,7 @@ class TestEnsureGraph:
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
         monkeypatch.setattr(gm.subprocess, "run", fake_run)
-        gm.ensure_graph(tmp_path / "tree", db)
+        gm.ensure_graph(tmp_path / "tree", db, "headsha")
         assert existed == [False]
 
     def test_a_failed_ingest_raises_with_stderr(
@@ -463,7 +463,7 @@ class TestEnsureGraph:
     ) -> None:
         _fake_runner(monkeypatch, {"ingest": (1, "", "tree-sitter exploded")})
         with pytest.raises(RuntimeError, match="tree-sitter exploded"):
-            gm.ensure_graph(tmp_path / "tree", tmp_path / "g.db")
+            gm.ensure_graph(tmp_path / "tree", tmp_path / "g.db", "headsha")
 
 
 class TestPrepare:
@@ -542,6 +542,56 @@ class TestPrepare:
         assert gm.prepare(self._args(tmp_path, pr=999)) == 1
 
 
+class TestGraphProvenance:
+    """One database per repository, several PRs per repository, each at its own commit."""
+
+    def test_the_commit_is_recorded_beside_the_database(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _fake_runner(monkeypatch, {})
+        db = tmp_path / "g.db"
+        gm.ensure_graph(tmp_path / "tree", db, "abc123")
+        assert gm.graph_commit(db) == "abc123"
+
+    def test_an_unmarked_database_reports_no_commit(self, tmp_path: Path) -> None:
+        (tmp_path / "g.db").write_text("db", encoding="utf-8")
+        assert gm.graph_commit(tmp_path / "g.db") is None
+
+    def test_a_graph_built_from_another_commit_is_rebuilt_not_reused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The bug this guards: `prepare` over six PRs leaves one graph, of the last.
+
+        Reviewing an earlier PR would then use a graph of a different tree, and
+        `graph_alignment` would pass anyway because the file names mostly still
+        match. Wrong, and plausible.
+        """
+        (tmp_path / "ws" / "o__r" / ".git").mkdir(parents=True)
+        db = tmp_path / "ws" / "o__r.db"
+        db.write_text("db", encoding="utf-8")
+        db.with_name(db.name + ".commit").write_text("some-other-commit", encoding="utf-8")
+        rebuilt: list[str] = []
+
+        monkeypatch.setattr(gm, "pr_refs", lambda _url: ("base", "wanted-head"))
+        monkeypatch.setattr(gm, "_git", lambda *a, **k: "sha\n")  # noqa: ARG005
+        monkeypatch.setattr(gm, "graph_alignment", lambda *a: (1, 1))  # noqa: ARG005
+        monkeypatch.setattr(gm, "ensure_graph", lambda _c, _d, head: rebuilt.append(head))
+        monkeypatch.setattr(gm, "build_provider", lambda _env: (_StubProvider(), "m"))
+        monkeypatch.setattr(gm, "build_skeptic_provider", lambda _env, primary: None)  # noqa: ARG005
+        monkeypatch.setattr(gm, "ContextCollector", lambda **_: object())
+
+        async def fake_routed(**_: object) -> object:
+            return SimpleNamespace(result=SimpleNamespace(findings=[], parse_failed=False))
+
+        monkeypatch.setattr(gm, "run_review_routed", fake_routed)
+        asyncio.run(gm.review_one(_review_row(), argparse.Namespace(workspace=tmp_path / "ws")))
+        assert rebuilt == ["wanted-head"]
+
+
+class _StubProvider:
+    cumulative_usage = SimpleNamespace(prompt_tokens=0, completion_tokens=0)
+
+
 class TestWorkspaceHygiene:
     """Two ways the workspace can defeat a run before any model is called."""
 
@@ -579,8 +629,10 @@ class TestWorkspaceHygiene:
         for name in ("g.db", "g.db-wal", "g.db-shm"):
             (tmp_path / name).write_text("stale", encoding="utf-8")
         _fake_runner(monkeypatch, {})
-        gm.ensure_graph(tmp_path / "tree", db)
-        assert not list(tmp_path.glob("g.db*"))
+        gm.ensure_graph(tmp_path / "tree", db, "headsha")
+        # The commit marker is written after a successful ingest; the stubbed
+        # run reports success, so it is the only g.db* left.
+        assert [p.name for p in sorted(tmp_path.glob("g.db*"))] == ["g.db.commit"]
 
     def test_a_file_where_the_clone_should_be_is_removed(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

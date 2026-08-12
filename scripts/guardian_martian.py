@@ -299,6 +299,14 @@ async def review_one(row: PrPlan, args: argparse.Namespace) -> ReviewRecord:
     _git("checkout", "--quiet", "--force", head, cwd=checkout)
 
     db = args.workspace / f"{row.repo.replace('/', '__')}.db"
+    # The graph is per repository but the corpus has several PRs per repository,
+    # each at its own commit. `prepare` rebuilds the database for whichever PR
+    # it ran last, so reviewing an earlier one would silently use a graph of a
+    # different tree — and `graph_alignment` would not notice, because the file
+    # names mostly still match. The commit is checked, not assumed.
+    built_from = graph_commit(db)
+    if row.pr_slice == "graph" and built_from is not None and built_from != head:
+        ensure_graph(checkout, db, head)
     had_graph = (
         row.pr_slice == "graph" and db.is_file() and graph_alignment(db, row.changed_files)[0] > 0
     )
@@ -707,7 +715,7 @@ def prepare(args: argparse.Namespace) -> int:
             note = "checked out"
             if row.pr_slice == "graph" and not args.no_graph:
                 db = args.workspace / f"{row.repo.replace('/', '__')}.db"
-                ensure_graph(checkout, db)
+                ensure_graph(checkout, db, head)
                 note = require_alignment(db, row.changed_files)
             print(f"{label}: {note} at {head[:12]}", flush=True)
         except Exception as exc:  # recorded per row; one bad repo is not fifty
@@ -850,7 +858,17 @@ def ensure_checkout(repo: str, base_sha: str, head_sha: str, workspace: Path) ->
     return clone
 
 
-def ensure_graph(checkout: Path, db_path: Path) -> None:
+def graph_commit(db_path: Path) -> str | None:
+    """The commit a graph was built from, or None when unknown.
+
+    Recorded in a sidecar because the database itself does not know: the store
+    holds nodes, not provenance.
+    """
+    marker = db_path.with_name(db_path.name + ".commit")
+    return marker.read_text(encoding="utf-8").strip() if marker.is_file() else None
+
+
+def ensure_graph(checkout: Path, db_path: Path, head_sha: str) -> None:
     """Ingest the checkout into `db_path`, replacing any previous graph.
 
     Removed first rather than re-ingested in place: the store is incremental,
@@ -863,7 +881,10 @@ def ensure_graph(checkout: Path, db_path: Path) -> None:
     Named by appending rather than `with_suffix(".db-wal")`: that happens to be
     right for a `.db` path and silently wrong for any other extension.
     """
-    for path in (db_path, *(db_path.with_name(db_path.name + s) for s in ("-wal", "-shm"))):
+    for path in (
+        db_path,
+        *(db_path.with_name(db_path.name + suffix) for suffix in ("-wal", "-shm", ".commit")),
+    ):
         path.unlink(missing_ok=True)
     result = subprocess.run(
         [sys.executable, "-m", "cgis.cli", "ingest", str(checkout), "--output", str(db_path)],
@@ -876,6 +897,7 @@ def ensure_graph(checkout: Path, db_path: Path) -> None:
     if result.returncode != 0:
         _msg = f"ingest exited {result.returncode}: {result.stderr.strip()[:300]}"
         raise RuntimeError(_msg)
+    db_path.with_name(db_path.name + ".commit").write_text(head_sha, encoding="utf-8")
 
 
 if __name__ == "__main__":
