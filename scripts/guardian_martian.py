@@ -414,6 +414,15 @@ async def review(args: argparse.Namespace) -> int:
     """Review prepared PRs, appending one record each. THIS SPENDS MONEY."""
     rows = selected(load_plan(args.plan), args.pr, args.limit)
     arm = "ablated" if args.no_graph else "graph"
+    if args.no_graph:
+        # Only PRs that have a graph to remove. On a diff-only PR the ablation
+        # is a no-op: the row would be identical in configuration to its
+        # counterpart in the other arm, and the comparison would then average
+        # over pairs where nothing was ablated — diluting the effect toward
+        # zero while paying for the privilege.
+        graph_rows = [r for r in rows if r.pr_slice == "graph"]
+        print(f"ablation: {len(rows) - len(graph_rows)} diff-only PRs skipped, nothing to remove.")
+        rows = graph_rows
     already = done_urls(args.out)
     pending = [r for r in rows if (r.url, arm) not in already]
     print(

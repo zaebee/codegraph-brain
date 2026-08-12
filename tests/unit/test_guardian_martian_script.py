@@ -1561,3 +1561,63 @@ class TestAblationArm:
         path.write_text(json.dumps({"url": "u1", "arm": "graph"}) + "\n", encoding="utf-8")
         assert gm.done_urls(path) == {("u1", "graph")}
         assert ("u1", "ablated") not in gm.done_urls(path)
+
+
+class TestAblationScope:
+    """Ablating a PR that never had a graph is a no-op that costs money."""
+
+    @staticmethod
+    def _plan(tmp_path: Path) -> Path:
+        path = tmp_path / "plan.json"
+        path.write_text(
+            json.dumps(
+                [
+                    {
+                        "project": "p",
+                        "url": f"https://github.com/o/r/pull/{n}",
+                        "repo": "o/r",
+                        "number": n,
+                        "reproducible": True,
+                        "pr_slice": sl,
+                        "changed_files": ["a.py"],
+                        "golden_comments": 1,
+                    }
+                    for n, sl in ((1, "graph"), (2, "diff-only"), (3, "graph"))
+                ]
+            ),
+            encoding="utf-8",
+        )
+        return path
+
+    def test_the_ablation_skips_prs_with_no_graph_to_remove(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Their rows would be identical to the other arm's, diluting the comparison."""
+        args = argparse.Namespace(
+            plan=self._plan(tmp_path),
+            workspace=tmp_path / "ws",
+            out=tmp_path / "r.jsonl",
+            pr=None,
+            limit=None,
+            no_graph=True,
+            dry_run=True,
+        )
+        assert asyncio.run(gm.review(args)) == 0
+        out = capsys.readouterr().out
+        assert "1 diff-only PRs skipped" in out
+        assert "2 selected (arm=ablated)" in out
+
+    def test_the_normal_arm_still_reviews_everything(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        args = argparse.Namespace(
+            plan=self._plan(tmp_path),
+            workspace=tmp_path / "ws",
+            out=tmp_path / "r.jsonl",
+            pr=None,
+            limit=None,
+            no_graph=False,
+            dry_run=True,
+        )
+        assert asyncio.run(gm.review(args)) == 0
+        assert "3 selected (arm=graph)" in capsys.readouterr().out
