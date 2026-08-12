@@ -421,7 +421,7 @@ def done_urls(path: Path) -> set[tuple[str, str]]:
 
 async def review(args: argparse.Namespace) -> int:
     """Review prepared PRs, appending one record each. THIS SPENDS MONEY."""
-    rows = selected(load_plan(args.plan), args.pr, args.limit)
+    rows = selected(load_plan(args.plan), args.pr, args.limit, args.slice)
     arm = "ablated" if args.no_graph else "graph"
     if args.no_graph:
         # Only PRs that have a graph to remove. On a diff-only PR the ablation
@@ -850,13 +850,31 @@ def load_plan(path: Path) -> list[PrPlan]:
     return [PrPlan.model_validate(row) for row in json.loads(path.read_text(encoding="utf-8"))]
 
 
-def selected(plans: Sequence[PrPlan], only: int | None, limit: int | None) -> list[PrPlan]:
+def selected(
+    plans: Sequence[PrPlan],
+    only: int | None,
+    limit: int | None,
+    pr_slice: str = "all",
+) -> list[PrPlan]:
     """The PRs to work on: evaluated ones, optionally narrowed.
 
     Unreproducible rows are dropped here rather than at report time so no
     expensive step is ever spent on a PR whose result could not be used.
+
+    `pr_slice` exists so a registered population can be named on the command
+    line instead of applied afterwards. Phase 2 reviewed both arms in one pass
+    and sliced at report time, which was right when both were wanted; Phase 3 is
+    registered on the graph arm alone, and paying for the other 26 PRs to
+    discard them costs roughly 2.4x its budget.
+
+    Note the ordering: the slice narrows *before* the limit. The other way round,
+    `--limit 1 --slice diff-only` would take the first PR overall, then drop it
+    for being the wrong slice, and review nothing while reporting a population
+    of one.
     """
     rows = [p for p in plans if p.reproducible]
+    if pr_slice != "all":
+        rows = [p for p in rows if p.pr_slice == pr_slice]
     if only is not None:
         rows = [p for p in rows if p.number == only]
     # `rows[:None]` is the whole list, so no branch is needed — and the branch
@@ -922,6 +940,12 @@ def main() -> int:
     rev.add_argument("--out", type=Path, default=REVIEWS_FILE)
     rev.add_argument("--pr", type=int, default=None)
     rev.add_argument("--limit", type=int, default=None)
+    rev.add_argument(
+        "--slice",
+        default="all",
+        choices=("all", "graph", "diff-only"),
+        help="restrict to one slice; Phase 3 is registered on 'graph' alone",
+    )
     rev.add_argument(
         "--no-graph",
         action="store_true",
