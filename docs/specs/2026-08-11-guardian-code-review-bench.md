@@ -1141,8 +1141,20 @@ collection is what R2 was about.
 
 **`temperature = 0.7`, registered explicitly for Phase 3 only.** Phase 3 is a
 new arm on a different model, registered before any spend, so fixing a sampling
-parameter here amends nothing. The value follows the self-consistency result
-(arXiv 2306.00108) that the union arm is built on.
+parameter here amends nothing. The value is not ours: it is the working point
+stated in the self-consistency result the union arm is built on — Ahmed &
+Devanbu, *Better patching using LLM prompting, via Self-Consistency*
+(arXiv 2306.00108), which reports "we use a temperature of 0.7 to configure the
+model to generate more diverse reasoning-paths & outputs", against a greedy
+baseline it defines as temperature 0, with accuracy plateauing after the first
+~10 samples.
+
+The title is spelled out because the bare identifier invites a specific
+mis-citation: reviewers reading "self-consistency" reach for Wang et al.
+(arXiv 2203.11171), which is the origin of the technique but evaluates
+arithmetic and commonsense reasoning, names no temperature, and would not
+support the value registered here. This one is the program-repair application,
+which is why it is the one cited.
 
 **`temperature = 0` is rejected on mechanism, not only on procedure.** Union
 works *because* runs differ: R5 measured the finder emitting 1→4, 8→6 and 7→4
