@@ -60,7 +60,9 @@ def fetch_changed_files(pr: BenchPr) -> tuple[str, ...]:
     result = subprocess.run(
         ["gh", "pr", "diff", pr.url, "--name-only"],
         capture_output=True,
-        text=True,
+        # encoding, not text=True: that decodes with the platform's preferred
+        # encoding, and a diff can name a file with non-ASCII characters in it.
+        encoding="utf-8",
         check=False,
         stdin=subprocess.DEVNULL,
         timeout=120,
@@ -89,7 +91,7 @@ def load_cached(path: Path) -> dict[str, tuple[str, ...]]:
             for row in json.loads(path.read_text(encoding="utf-8"))
             if row.get("fetch_error") is None
         }
-    except (json.JSONDecodeError, KeyError, TypeError, AttributeError) as exc:
+    except (json.JSONDecodeError, KeyError, TypeError, AttributeError, OSError) as exc:
         print(f"Ignoring unreadable cache {path}: {exc}", file=sys.stderr)
         return {}
 
@@ -119,12 +121,15 @@ def _report(plans: list[PrPlan], out: Path) -> int:
     failed = [p for p in plans if p.fetch_error]
 
     print(f"\n{len(plans)} PRs planned; written to {out}\n")
-    print(f"{'project':12}{'PRs':>5}{'graph':>7}{'diff':>6}{'unknown':>9}{'excluded':>10}")
+    # Measured, not a constant: `cal_dot_com` is 11 characters and silently
+    # overflowed a hardcoded 10, shifting every column on that one row.
+    width = max((len(p.project) for p in plans), default=0) + 2
+    print(f"{'project':{width}}{'PRs':>5}{'graph':>7}{'diff':>6}{'unknown':>9}{'excluded':>10}")
     for project in sorted({p.project for p in plans}):
         rows = [p for p in plans if p.project == project]
         ok = [p for p in rows if p.reproducible]
         print(
-            f"  {project:10}{len(rows):5}"
+            f"  {project:{width - 2}}{len(rows):5}"
             f"{sum(1 for p in ok if p.pr_slice == 'graph'):7}"
             f"{sum(1 for p in ok if p.pr_slice == 'diff-only'):6}"
             f"{sum(1 for p in ok if p.pr_slice == UNKNOWN_SLICE):9}"
@@ -138,7 +143,7 @@ def _report(plans: list[PrPlan], out: Path) -> int:
     if excluded:
         print(f"\n{len(excluded)} excluded as unreproducible — reported, never scored as misses:")
         for p in excluded:
-            print(f"  {p.project:10} #{p.number:<8} {p.url}")
+            print(f"  {p.project:{width - 2}} #{p.number:<8} {p.url}")
 
     if failed:
         print(f"\n{len(failed)} FAILED TO FETCH — classified `unknown`, not `diff-only`:")

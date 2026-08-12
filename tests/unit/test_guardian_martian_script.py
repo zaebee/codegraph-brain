@@ -216,6 +216,32 @@ class TestPlan:
         assert "FAILED TO FETCH" in captured.out
         assert "could not be classified" in captured.err
 
+    def test_columns_stay_aligned_for_a_long_project_name(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """`cal_dot_com` is 11 characters and overflowed a hardcoded width of 10.
+
+        The width is measured from the data now, so the header and every row
+        agree regardless of what a project is called.
+        """
+        directory = tmp_path / "corpus"
+        directory.mkdir()
+        (directory / "a_very_long_project_name.json").write_text(
+            json.dumps(CORPUS_FIXTURE[:1]), encoding="utf-8"
+        )
+        _stub_fetch(monkeypatch, FILES)
+        monkeypatch.setattr(gm, "REGISTERED", {"graph": 1, "diff-only": 0})
+        gm.plan(_args(directory, tmp_path / "p.json"))
+        lines = capsys.readouterr().out.splitlines()
+        header = next(ln for ln in lines if ln.startswith("project"))
+        row = next(ln for ln in lines if ln.startswith("  a_very_long_project_name"))
+        # Both columns are right-aligned, so the count must end where "PRs" does.
+        end_of_column = header.index("PRs") + len("PRs")
+        assert row[:end_of_column].rstrip().endswith("1")
+
 
 class TestCheckRegistration:
     """A population that drifted from the registration is an error, not a note."""
