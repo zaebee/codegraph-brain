@@ -19,6 +19,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from cgis.extractors.registry import is_supported
+from cgis.guardian.calibrate import JudgePair
 from cgis.guardian.findings import Finding
 
 #: Severity vocabulary of the upstream corpus. Four values, not three — the
@@ -130,6 +131,38 @@ class BenchPr(BaseModel, frozen=True):
     def number(self) -> int:
         """The PR number from the URL."""
         return int(self._parsed_url()["number"])
+
+
+def as_profile(value: str) -> Profile:
+    """Narrow a CLI string to a `Profile`, refusing anything else.
+
+    argparse's `choices` guarantees the value at runtime but says nothing to the
+    type checker, which is how a `# type: ignore[arg-type]` ends up on every
+    call that forwards it. One validated crossing beats a scattering of
+    suppressions, and it also catches a caller that bypassed argparse.
+
+    No cast: `PROFILE_CATEGORIES` is keyed by `Profile`, so the membership test
+    narrows the type on its own. The check is load-bearing at runtime *and* is
+    the whole proof for the type checker.
+    """
+    if value not in PROFILE_CATEGORIES:
+        _msg = f"Unknown profile {value!r}; expected one of {sorted(PROFILE_CATEGORIES)}"
+        raise ValueError(_msg)
+    return value
+
+
+def pr_number(url: str) -> int:
+    """The PR number in a GitHub URL.
+
+    Shared so callers stop inventing their own. `f"/{n}" in url` — the obvious
+    substring test — matches PR 1234 when asked for 123, and `rsplit("/")`
+    breaks on `.../pull/7/files`.
+    """
+    match = _PR_URL.search(url)
+    if match is None:
+        _msg = f"Not a GitHub PR URL: {url!r}"
+        raise ValueError(_msg)
+    return int(match["number"])
 
 
 def golden_texts(pr: BenchPr, profile: Profile = DEFAULT_PROFILE) -> list[str]:
@@ -336,3 +369,42 @@ def candidate_findings(record: ReviewRecord) -> list[Finding]:
     review.
     """
     return [f for f in record.findings if f.verdict != "refuted"]
+
+
+class JudgedReview(BaseModel, frozen=True):
+    """One review scored semantically, by one judge.
+
+    Stored apart from the `ReviewRecord` it scores, and keyed by (url, judge),
+    so a second judge is an append rather than a rewrite — Phase 1's two-judge
+    comparison is what showed a single judge's number is not enough to publish.
+
+    `decisions` is the flat (golden, candidate) grid, row-major, `None` where a
+    call failed. It is the reason `tp` can be re-derived later without paying
+    the judge again: `assign_matches` is a maximum matching, so the size depends
+    only on these booleans.
+    """
+
+    url: str
+    project: str
+    pr_slice: str
+    had_graph: bool
+    profile: str
+    judge_model: str
+    n_goldens: int
+    n_candidates: int
+    tp: int
+    fp: int
+    fn: int
+    precision: float
+    recall: float
+    judge_failures: int
+    decisions: list[int | None]
+    judged_at: str
+
+
+def dense_grid(pairs: Sequence[JudgePair], n_goldens: int, n_candidates: int) -> list[int | None]:
+    """Pair verdicts in (golden, candidate) row-major order; None where a call failed."""
+    grid: list[int | None] = [None for _ in range(n_goldens * n_candidates)]
+    for pair in pairs:
+        grid[pair.golden_index * n_candidates + pair.candidate_index] = int(pair.verdict.match)
+    return grid

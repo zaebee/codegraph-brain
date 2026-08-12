@@ -4,6 +4,7 @@
     uv run python scripts/guardian_martian.py plan --refresh   # hits the network
     uv run python scripts/guardian_martian.py prepare --pr N   # clone + ingest, free
     uv run python scripts/guardian_martian.py review --pr N    # COSTS MONEY
+    uv run python scripts/guardian_martian.py judge            # COSTS MONEY (little)
 
 `plan` resolves which slice each of the 50 PRs belongs to and prints the
 populations gate G5 is registered on. It costs no LLM calls: the only network
@@ -24,20 +25,30 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from cgis.extractors.registry import is_supported, language_for
+from cgis.guardian.calibrate import assign_matches, candidate_text, judge_matrix, judge_score
 from cgis.guardian.chunked import run_review_routed
 from cgis.guardian.collector import ContextCollector, parse_features
 from cgis.guardian.martian import (
     UNKNOWN_SLICE,
     BenchPr,
+    JudgedReview,
+    Profile,
     PrPlan,
     ReviewRecord,
     SliceCounts,
+    as_profile,
     build_plan,
     candidate_findings,
+    dense_grid,
+    golden_texts,
     load_corpus,
     plan_population,
+    pr_number,
 )
+from cgis.guardian.providers.base import BaseProvider
 from cgis.guardian.providers.mistral import MistralProvider
 from cgis.guardian.runner import build_provider, build_skeptic_provider
 from cgis.storage.sqlite_store import SQLiteStore
@@ -65,6 +76,7 @@ DEFAULT_WORKSPACE = Path(".martian-workspace")
 SOURCE_ROOT = ""
 
 REVIEWS_FILE = Path("benchmarks/martian-reviews.jsonl")
+JUDGED_FILE = Path("benchmarks/martian-judged.jsonl")
 
 #: This repository, resolved from the script's own location. `guardian_sha` must
 #: describe the reviewer, and `review_one` spends most of its time with a
@@ -396,6 +408,141 @@ async def review(args: argparse.Namespace) -> int:
     return 1 if failures else 0
 
 
+def load_reviews(path: Path) -> list[ReviewRecord]:
+    """Recorded reviews, last write per URL.
+
+    Later wins: `review` re-reviews a PR only when the earlier attempt was
+    incomplete, so the newest row is the one that should be judged.
+    """
+    if not path.is_file():
+        _msg = f"No reviews at {path}. Run `guardian_martian.py review` first."
+        raise FileNotFoundError(_msg)
+    latest: dict[str, ReviewRecord] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            record = ReviewRecord.model_validate_json(line)
+        except ValidationError:
+            # Same reasoning as `done_urls`: a crash mid-append leaves one bad
+            # line, and refusing to read the file would strand every review
+            # already paid for.
+            print(f"Skipping unreadable review in {path}: {line[:80]!r}", file=sys.stderr)
+            continue
+        latest[record.url] = record
+    return list(latest.values())
+
+
+async def judge_one(
+    record: ReviewRecord, pr: BenchPr, provider: BaseProvider, model: str, profile: Profile
+) -> JudgedReview:
+    """Score one recorded review against its golden comments, semantically."""
+    goldens = golden_texts(pr, profile)
+    candidates = [candidate_text(f) for f in candidate_findings(record)]
+    pairs, failures = await judge_matrix(provider, goldens, candidates)
+    assignment = assign_matches(pairs)
+    scored = judge_score(
+        n_goldens=len(goldens), n_candidates=len(candidates), assignment=assignment
+    )
+    return JudgedReview(
+        url=record.url,
+        project=record.project,
+        pr_slice=record.pr_slice,
+        had_graph=record.had_graph,
+        profile=profile,
+        judge_model=model,
+        n_goldens=len(goldens),
+        n_candidates=len(candidates),
+        tp=scored.tp,
+        fp=scored.fp,
+        fn=scored.fn,
+        precision=scored.precision,
+        recall=scored.recall,
+        judge_failures=failures,
+        decisions=dense_grid(pairs, len(goldens), len(candidates)),
+        judged_at=datetime.now(UTC).isoformat(),
+    )
+
+
+def judged_keys(path: Path) -> set[tuple[str, str]]:
+    """(url, judge_model) pairs already scored cleanly, so a rerun resumes."""
+    if not path.is_file():
+        return set()
+    keys: set[tuple[str, str]] = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+            if not row["judge_failures"]:
+                keys.add((row["url"], row["judge_model"]))
+        except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
+            # A bare list or a row missing its keys is as unusable as broken
+            # JSON, and none of them may stop a resume.
+            print(f"Skipping unreadable judged row in {path}: {line[:80]!r}", file=sys.stderr)
+    return keys
+
+
+async def judge(args: argparse.Namespace) -> int:
+    """Score recorded reviews with the semantic judge. Spends judge calls only."""
+    profile = as_profile(args.profile)
+    corpus = {pr.url: pr for pr in load_corpus(args.corpus)}
+    reviews = [
+        r
+        for r in load_reviews(args.reviews)
+        # Not `f"/{args.pr}" in r.url`: that matched PR 1234 when asked for 123.
+        if args.pr is None or pr_number(r.url) == args.pr
+    ]
+    if args.dry_run:
+        # Deliberately before `build_provider`: a mode that spends nothing must
+        # not demand credentials, and the model name is only needed to work out
+        # what has already been judged.
+        print(f"{len(reviews)} reviews would be judged under profile {profile}:")
+        for record in reviews:
+            candidates = len(candidate_findings(record))
+            print(f"  {record.project:10} {record.url}  ({candidates} candidates)")
+        return 0
+
+    provider, model = build_provider(os.environ)
+    already = judged_keys(args.out)
+    pending = [r for r in reviews if (r.url, model) not in already]
+    print(
+        f"{len(reviews)} reviews, {len(reviews) - len(pending)} already judged by {model}, "
+        f"{len(pending)} to judge."
+    )
+    if not pending:
+        return 0
+
+    failures = 0
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    with args.out.open("a", encoding="utf-8") as fh:
+        for index, record in enumerate(pending, 1):
+            label = f"[{index}/{len(pending)}] {record.project} {record.url.rsplit('/', 1)[-1]}"
+            pr = corpus.get(record.url)
+            if pr is None:
+                # A review whose PR is no longer in the corpus cannot be scored
+                # against anything. Reported per row like any other failure —
+                # the alternative is a KeyError that ends the whole run.
+                failures += 1
+                print(f"{label}: FAILED - not in the corpus: {record.url}", file=sys.stderr)
+                continue
+            try:
+                judged = await judge_one(record, pr, provider, model, profile)
+            except Exception as exc:
+                failures += 1
+                print(f"{label}: FAILED - {type(exc).__name__}: {exc}"[:250], file=sys.stderr)
+                continue
+            fh.write(judged.model_dump_json() + "\n")
+            fh.flush()
+            print(
+                f"{label}: tp={judged.tp} fp={judged.fp} fn={judged.fn} "
+                f"P={judged.precision:.2f} R={judged.recall:.2f}"
+                + (f"  ({judged.judge_failures} unruled)" if judged.judge_failures else ""),
+                flush=True,
+            )
+    return 1 if failures else 0
+
+
 def load_plan(path: Path) -> list[PrPlan]:
     """The plan produced by `plan`, or a refusal that says what to run."""
     if not path.is_file():
@@ -478,7 +625,17 @@ def main() -> int:
     rev.add_argument("--limit", type=int, default=None)
     rev.add_argument("--dry-run", action="store_true", help="print what would be reviewed")
 
+    jud = sub.add_parser("judge", help="score recorded reviews semantically (COSTS MONEY)")
+    jud.add_argument("--corpus", type=Path, default=CORPUS_DIR)
+    jud.add_argument("--reviews", type=Path, default=REVIEWS_FILE)
+    jud.add_argument("--out", type=Path, default=JUDGED_FILE)
+    jud.add_argument("--profile", default="core", choices=("strict", "core", "all"))
+    jud.add_argument("--pr", type=int, default=None)
+    jud.add_argument("--dry-run", action="store_true")
+
     args = parser.parse_args()
+    if args.command == "judge":
+        return asyncio.run(judge(args))
     if args.command == "prepare":
         return prepare(args)
     if args.command == "review":

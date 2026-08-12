@@ -25,6 +25,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scripts"))
 
 import guardian_martian as gm
 
+from cgis.guardian import calibrate as gm_cal
+from cgis.guardian.findings import Finding
+
 CORPUS_FIXTURE = [
     {
         "pr_title": "graph one",
@@ -726,6 +729,22 @@ class TestDoneUrls:
         assert gm.done_urls(tmp_path / "nope.jsonl") == set()
 
 
+def _review_finding(**overrides: object) -> Finding:
+    """A finding as the recorder stores it."""
+    base: dict[str, object] = {
+        "file": "a.py",
+        "line": 1,
+        "severity": "major",
+        "category": "logic",
+        "title": "t",
+        "evidence": "e",
+        "problem": "p",
+        "fix": "f",
+        "confidence": 90,
+    }
+    return Finding.model_validate(base | overrides)
+
+
 def _review_row(pr_slice: str = "graph") -> gm.PrPlan:
     """One prepared, reproducible PR plan."""
     return gm.PrPlan(
@@ -911,3 +930,271 @@ class TestGuardianVersion:
         monkeypatch.setattr(gm, "_git", boom)
         monkeypatch.setenv("GUARDIAN_SHA", "deadbeef")
         assert gm.guardian_version() == "deadbeef"
+
+
+class TestJudge:
+    """Scoring the recorded reviews. Cheap per call, but it decides every gate."""
+
+    @staticmethod
+    def _review(url: str = "https://github.com/o/r/pull/1", **overrides: object) -> gm.ReviewRecord:
+        base: dict[str, object] = {
+            "url": url,
+            "project": "p",
+            "pr_slice": "graph",
+            "base_sha": "b",
+            "head_sha": "h",
+            "had_graph": True,
+            "finder_model": "m",
+            "skeptic_model": None,
+            "findings": [],
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "duration_s": 1.0,
+            "parse_failed": False,
+            "guardian_sha": "sha",
+            "reviewed_at": "2026-08-12T00:00:00+00:00",
+        }
+        return gm.ReviewRecord.model_validate(base | overrides)
+
+    def test_load_reviews_keeps_the_last_row_per_url(self, tmp_path: Path) -> None:
+        """A re-review exists because the earlier one was incomplete."""
+        path = tmp_path / "r.jsonl"
+        path.write_text(
+            self._review(guardian_sha="old").model_dump_json()
+            + "\n"
+            + self._review(guardian_sha="new").model_dump_json()
+            + "\n",
+            encoding="utf-8",
+        )
+        loaded = gm.load_reviews(path)
+        assert len(loaded) == 1
+        assert loaded[0].guardian_sha == "new"
+
+    def test_load_reviews_says_which_command_to_run(self, tmp_path: Path) -> None:
+        with pytest.raises(FileNotFoundError, match="review"):
+            gm.load_reviews(tmp_path / "absent.jsonl")
+
+    def test_rows_with_unruled_pairs_are_not_treated_as_done(self, tmp_path: Path) -> None:
+        """Their tp is biased low, so resuming past them would freeze a bad score."""
+        path = tmp_path / "j.jsonl"
+        path.write_text(
+            json.dumps({"url": "u1", "judge_model": "m", "judge_failures": 0})
+            + "\n"
+            + json.dumps({"url": "u2", "judge_model": "m", "judge_failures": 3})
+            + "\n",
+            encoding="utf-8",
+        )
+        assert gm.judged_keys(path) == {("u1", "m")}
+
+    def test_a_corrupt_judged_row_does_not_block_resume(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        path = tmp_path / "j.jsonl"
+        path.write_text(
+            '{"url":"u1","judge_model":"m","judge_failures":0}\n{"url": tr', encoding="utf-8"
+        )
+        assert gm.judged_keys(path) == {("u1", "m")}
+        assert "Skipping unreadable judged row" in capsys.readouterr().err
+
+    def test_dry_run_needs_no_credentials(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A mode that spends nothing must not demand an API key to say so."""
+        reviews = tmp_path / "r.jsonl"
+        reviews.write_text(self._review().model_dump_json() + "\n", encoding="utf-8")
+
+        def boom(_env: object) -> tuple[object, str]:
+            _msg = "Set MISTRAL_API_KEY or GEMINI_API_KEY to run Guardian."
+            raise RuntimeError(_msg)
+
+        monkeypatch.setattr(gm, "build_provider", boom)
+        args = argparse.Namespace(
+            corpus=Path("benchmarks/martian"),
+            reviews=reviews,
+            out=tmp_path / "j.jsonl",
+            profile="core",
+            pr=None,
+            dry_run=True,
+        )
+        assert asyncio.run(gm.judge(args)) == 0
+        assert "would be judged" in capsys.readouterr().out
+
+    def test_judge_one_scores_and_keeps_the_reproducible_grid(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The grid is why a re-score never has to pay the judge again."""
+        pr = gm.BenchPr(
+            project="p",
+            pr_title="t",
+            url="https://github.com/o/r/pull/1",
+            comments=[
+                {"comment": "g1", "severity": "High", "category": "bug"},
+                {"comment": "g2", "severity": "High", "category": "bug"},
+            ],
+        )
+        finding = _review_finding()
+        record = self._review(findings=[finding])
+
+        async def fake_matrix(
+            _p: object, goldens: list[str], candidates: list[str], *_a: object, **_k: object
+        ) -> tuple[list[gm_cal.JudgePair], int]:
+            pairs = [
+                gm_cal.JudgePair(
+                    golden_index=0,
+                    candidate_index=0,
+                    verdict=gm_cal.JudgeVerdict(reasoning="same", match=True, confidence=0.9),
+                ),
+                gm_cal.JudgePair(
+                    golden_index=1,
+                    candidate_index=0,
+                    verdict=gm_cal.JudgeVerdict(reasoning="no", match=False, confidence=0.8),
+                ),
+            ]
+            assert len(goldens) == 2
+            assert len(candidates) == 1
+            return pairs, 0
+
+        monkeypatch.setattr(gm, "judge_matrix", fake_matrix)
+        judged = asyncio.run(gm.judge_one(record, pr, object(), "judge-x", "core"))
+        assert (judged.tp, judged.fp, judged.fn) == (1, 0, 1)
+        assert judged.decisions == [1, 0]
+        assert judged.precision == pytest.approx(1.0)
+        assert judged.recall == pytest.approx(0.5)
+
+    def test_refuted_findings_never_reach_the_judge(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """They were shown to nobody, so scoring them would measure the finder."""
+        pr = gm.BenchPr(
+            project="p",
+            pr_title="t",
+            url="https://github.com/o/r/pull/1",
+            comments=[{"comment": "g1", "severity": "High", "category": "bug"}],
+        )
+        record = self._review(
+            findings=[_review_finding(), _review_finding(title="killed", verdict="refuted")]
+        )
+        seen: dict[str, int] = {}
+
+        async def fake_matrix(
+            _p: object, goldens: list[str], candidates: list[str], *_a: object, **_k: object
+        ) -> tuple[list[gm_cal.JudgePair], int]:
+            assert goldens
+            seen["candidates"] = len(candidates)
+            return [], 0
+
+        monkeypatch.setattr(gm, "judge_matrix", fake_matrix)
+        asyncio.run(gm.judge_one(record, pr, object(), "judge-x", "core"))
+        assert seen["candidates"] == 1
+
+    def test_pr_filter_is_exact_not_a_substring(self, tmp_path: Path) -> None:
+        """`--pr 123` matched PR 1234, because the filter was `f"/{n}" in url`."""
+        reviews = tmp_path / "r.jsonl"
+        reviews.write_text(
+            self._review(url="https://github.com/o/r/pull/123").model_dump_json()
+            + "\n"
+            + self._review(url="https://github.com/o/r/pull/1234").model_dump_json()
+            + "\n",
+            encoding="utf-8",
+        )
+        args = argparse.Namespace(
+            corpus=Path("benchmarks/martian"),
+            reviews=reviews,
+            out=tmp_path / "j.jsonl",
+            profile="core",
+            pr=123,
+            dry_run=True,
+        )
+        assert asyncio.run(gm.judge(args)) == 0
+
+    def test_an_unreadable_review_row_does_not_strand_the_rest(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        path = tmp_path / "r.jsonl"
+        path.write_text(self._review().model_dump_json() + "\n{ truncated", encoding="utf-8")
+        assert len(gm.load_reviews(path)) == 1
+        assert "Skipping unreadable review" in capsys.readouterr().err
+
+    def test_judged_rows_that_are_not_objects_are_skipped(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A bare list or a row missing its keys is as unusable as broken JSON."""
+        path = tmp_path / "j.jsonl"
+        path.write_text(
+            '{"url":"u1","judge_model":"m","judge_failures":0}\n'
+            "[]\n"
+            '{"judge_failures":0}\n'
+            '{"url": tr\n',
+            encoding="utf-8",
+        )
+        assert gm.judged_keys(path) == {("u1", "m")}
+        assert capsys.readouterr().err.count("Skipping unreadable judged row") == 3
+
+    def test_the_loop_writes_a_row_per_review_and_survives_one_failure(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        urls = [f"https://github.com/getsentry/sentry/pull/{n}" for n in (80168, 80528)]
+        reviews = tmp_path / "r.jsonl"
+        reviews.write_text(
+            "".join(self._review(url=u).model_dump_json() + "\n" for u in urls), encoding="utf-8"
+        )
+        out = tmp_path / "j.jsonl"
+
+        async def half(record: gm.ReviewRecord, *_a: object) -> gm.JudgedReview:
+            if record.url.endswith("80528"):
+                _msg = "judge exploded"
+                raise RuntimeError(_msg)
+            return gm.JudgedReview(
+                url=record.url,
+                project="sentry",
+                pr_slice="graph",
+                had_graph=True,
+                profile="core",
+                judge_model="j",
+                n_goldens=3,
+                n_candidates=1,
+                tp=1,
+                fp=0,
+                fn=2,
+                precision=1.0,
+                recall=1 / 3,
+                judge_failures=0,
+                decisions=[1, 0, 0],
+                judged_at="2026-08-12T00:00:00+00:00",
+            )
+
+        monkeypatch.setattr(gm, "build_provider", lambda _env: (object(), "judge-x"))
+        monkeypatch.setattr(gm, "judge_one", half)
+        args = argparse.Namespace(
+            corpus=Path("benchmarks/martian"),
+            reviews=reviews,
+            out=out,
+            profile="core",
+            pr=None,
+            dry_run=False,
+        )
+        assert asyncio.run(gm.judge(args)) == 1
+        written = [json.loads(ln) for ln in out.read_text(encoding="utf-8").splitlines()]
+        assert [r["url"] for r in written] == [urls[0]]
+        captured = capsys.readouterr()
+        assert "tp=1 fp=0 fn=2" in captured.out
+        assert "judge exploded" in captured.err
+
+    def test_a_review_whose_pr_left_the_corpus_is_reported_not_fatal(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """It cannot be scored against anything, but it must not end the run."""
+        reviews = tmp_path / "r.jsonl"
+        reviews.write_text(
+            self._review(url="https://github.com/o/gone/pull/9").model_dump_json() + "\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(gm, "build_provider", lambda _env: (object(), "judge-x"))
+        args = argparse.Namespace(
+            corpus=Path("benchmarks/martian"),
+            reviews=reviews,
+            out=tmp_path / "j.jsonl",
+            profile="core",
+            pr=None,
+            dry_run=False,
+        )
+        assert asyncio.run(gm.judge(args)) == 1
+        assert "not in the corpus" in capsys.readouterr().err

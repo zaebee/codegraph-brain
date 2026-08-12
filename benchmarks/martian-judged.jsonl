@@ -1,0 +1,1 @@
+{"url":"https://github.com/getsentry/sentry/pull/80168","project":"sentry","pr_slice":"graph","had_graph":true,"profile":"core","judge_model":"gemini-2.5-flash","n_goldens":3,"n_candidates":1,"tp":1,"fp":0,"fn":2,"precision":1.0,"recall":0.3333333333333333,"judge_failures":0,"decisions":[1,0,0],"judged_at":"2026-08-12T12:27:18.392581+00:00"}
