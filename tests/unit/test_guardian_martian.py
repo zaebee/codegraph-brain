@@ -16,6 +16,7 @@ from cgis.guardian.martian import (
     PROFILE_CATEGORIES,
     BenchPr,
     GoldenComment,
+    SliceCounts,
     evaluated,
     golden_texts,
     load_corpus,
@@ -77,9 +78,24 @@ class TestUrlParsing:
         assert pr.repo == "ai-code-review-evaluation/sentry-greptile"
         assert pr.number == 2
 
-    def test_a_trailing_slash_does_not_shift_the_fields(self) -> None:
-        pr = _pr(url="https://github.com/o/r/pull/7/")
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://github.com/o/r/pull/7",
+            "https://github.com/o/r/pull/7/",
+            "https://github.com/o/r/pull/7/files",
+            "https://github.com/o/r/pull/7/files?w=1",
+            "https://github.com/o/r/pull/7#discussion_r1",
+        ],
+    )
+    def test_decorated_urls_do_not_shift_the_fields(self, url: str) -> None:
+        """Index-from-the-end parsing broke on every form but the first two."""
+        pr = _pr(url=url)
         assert (pr.repo, pr.number) == ("o/r", 7)
+
+    def test_a_url_that_is_not_a_pr_fails_by_naming_itself(self) -> None:
+        with pytest.raises(ValueError, match="Not a GitHub PR URL"):
+            _ = _pr(url="https://example.com/nope").repo
 
 
 class TestProfiles:
@@ -142,7 +158,6 @@ class TestSliceCounts:
             _pr(changed_files=("a.rb",)),
         ]
         counts = slice_counts(prs)
-        assert counts["graph"] == counts["graph"].model_copy(update={})
         assert (counts["graph"].prs, counts["graph"].comments) == (2, 4)
         assert (counts["diff-only"].prs, counts["diff-only"].comments) == (1, 2)
 
@@ -150,7 +165,7 @@ class TestSliceCounts:
         """An absent row and a zero row mean different things when a gate compares two."""
         counts = slice_counts([_pr(changed_files=("a.py",))])
         assert set(counts) == {"graph", "diff-only"}
-        assert counts["diff-only"] == counts["diff-only"].model_copy(update={"prs": 0})
+        assert counts["diff-only"] == SliceCounts(prs=0, comments=0)
 
 
 class TestTheRealCorpus:

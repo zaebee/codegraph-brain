@@ -11,6 +11,7 @@ is spent.
 """
 
 import json
+import re
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Literal
@@ -23,6 +24,17 @@ from cgis.extractors.registry import is_supported
 #: spec's §"Ground truth format" omits `Critical` (12 of the 173 comments).
 Severity = Literal["Critical", "High", "Medium", "Low"]
 
+#: The three scoring profiles, as a type rather than a bare string, so a typo
+#: is a type error instead of a KeyError at report time.
+Profile = Literal["strict", "core", "all"]
+
+#: Owner, repo and number out of a PR URL. A regex rather than splitting on "/"
+#: and indexing from the end: the corpus's URLs are all plain today, but
+#: `.../pull/123/files` or `?w=1` would silently shift the fields under the
+#: index form, and `number` would fail with an `int()` ValueError naming
+#: nothing useful.
+_PR_URL = re.compile(r"github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/pull/(?P<number>\d+)")
+
 #: Verbatim from `offline/analysis/score_profiles.py::PROFILE_CATEGORIES` (MIT).
 #:
 #: The spec says "Severity drives the three profiles". **It does not** — the
@@ -33,7 +45,7 @@ Severity = Literal["Critical", "High", "Medium", "Low"]
 #: — the precise category error this whole spec exists to prevent. Caught by
 #: `test_profile_totals_match_upstreams_published_ones`, then confirmed against
 #: upstream source.
-PROFILE_CATEGORIES: dict[str, frozenset[str]] = {
+PROFILE_CATEGORIES: dict[Profile, frozenset[str]] = {
     "strict": frozenset({"bug", "security", "concurrency", "data", "api"}),
     "core": frozenset(
         {"bug", "security", "concurrency", "data", "api", "perf", "test_gap", "doc_defect"}
@@ -56,7 +68,7 @@ PROFILE_CATEGORIES: dict[str, frozenset[str]] = {
 
 #: The dashboard default, and the basis for every leaderboard number in the
 #: spec — a Guardian figure placed beside theirs has to be on the same profile.
-DEFAULT_PROFILE = "core"
+DEFAULT_PROFILE: Profile = "core"
 
 
 class GoldenComment(BaseModel, frozen=True):
@@ -95,6 +107,14 @@ class BenchPr(BaseModel, frozen=True):
         """
         return self.az_comment is None
 
+    def _parsed_url(self) -> re.Match[str]:
+        """The URL's owner/repo/number, or a failure that names the URL."""
+        match = _PR_URL.search(self.url)
+        if match is None:
+            _msg = f"Not a GitHub PR URL: {self.url!r}"
+            raise ValueError(_msg)
+        return match
+
     @property
     def repo(self) -> str:
         """`owner/name` from the PR URL.
@@ -102,16 +122,16 @@ class BenchPr(BaseModel, frozen=True):
         Not always the upstream project: 15 of the 50 live in the benchmark's
         own fork org `ai-code-review-evaluation`, discourse entirely.
         """
-        parts = self.url.rstrip("/").split("/")
-        return f"{parts[-4]}/{parts[-3]}"
+        parsed = self._parsed_url()
+        return f"{parsed['owner']}/{parsed['repo']}"
 
     @property
     def number(self) -> int:
         """The PR number from the URL."""
-        return int(self.url.rstrip("/").split("/")[-1])
+        return int(self._parsed_url()["number"])
 
 
-def golden_texts(pr: BenchPr, profile: str = DEFAULT_PROFILE) -> list[str]:
+def golden_texts(pr: BenchPr, profile: Profile = DEFAULT_PROFILE) -> list[str]:
     """The golden comments of one PR under a severity profile, as plain text.
 
     Text only, because the corpus carries no file and no line — matching is
@@ -164,7 +184,9 @@ class SliceCounts(BaseModel, frozen=True):
     comments: int
 
 
-def slice_counts(prs: Sequence[BenchPr], profile: str = DEFAULT_PROFILE) -> dict[str, SliceCounts]:
+def slice_counts(
+    prs: Sequence[BenchPr], profile: Profile = DEFAULT_PROFILE
+) -> dict[str, SliceCounts]:
     """PR and comment totals per G5 slice, for the population handed in.
 
     Returns both slices always, zeroed when empty, so a report cannot silently
