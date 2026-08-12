@@ -1,48 +1,8 @@
 """Mistral AI LLM provider for Guardian."""
 
-from typing import TYPE_CHECKING, Any
-
 from pydantic import BaseModel
 
 from cgis.guardian.providers.base import DEFAULT_REQUEST_TIMEOUT, BaseProvider, ProviderUsage
-
-if TYPE_CHECKING:  # pragma: no cover - typing only, the SDK is an optional dep
-    from mistralai.client.utils.retries import RetryConfig
-
-
-def _rate_limit_retry() -> "RetryConfig | None":
-    """Back off on 429, or None when the SDK is absent.
-
-    The SDK already knows which statuses to retry — 429, 500, 502, 503, 504 —
-    but only when handed a config: `retry_config` defaults to UNSET, which
-    disables retrying outright. Mistral rate-limits hard, and a sequential
-    benchmark arm loses a whole PR to the first 429 without this.
-
-    `retry_connection_errors=False` on purpose: `BaseProvider._retry` already
-    owns timeouts and network failures, and two layers retrying one failure
-    multiply the wait without improving the odds.
-    """
-    try:
-        from mistralai.client.utils.retries import (  # noqa: PLC0415
-            BackoffStrategy,
-            RetryConfig,
-        )
-    except ImportError:
-        return None
-    return RetryConfig(
-        strategy="backoff",
-        backoff=BackoffStrategy(
-            initial_interval=1_000,
-            max_interval=60_000,
-            exponent=1.5,
-            max_elapsed_time=300_000,
-        ),
-        retry_connection_errors=False,
-    )
-
-
-#: Built once: it is immutable configuration, and the import is the expensive part.
-_RATE_LIMIT_RETRY: Any = _rate_limit_retry()
 
 
 class MistralProvider(BaseProvider):
@@ -77,8 +37,36 @@ class MistralProvider(BaseProvider):
         _install_hint = "mistralai is required. Install with: uv sync --group guardian"
         try:
             from mistralai.client import Mistral  # noqa: PLC0415
+            from mistralai.client.utils.retries import (  # noqa: PLC0415
+                BackoffStrategy,
+                RetryConfig,
+            )
         except ImportError as exc:
             raise ImportError(_install_hint) from exc
+
+        # Built here rather than at module import, where a missing SDK would
+        # have produced a silent None and a run with no rate-limit retry at all.
+        # Past this line the SDK is present by construction, so there is no
+        # degraded path to get wrong.
+        #
+        # The SDK knows which statuses to retry — 429, 500, 502, 503, 504 — but
+        # only when handed a config: `retry_config` defaults to UNSET, which
+        # disables retrying outright. Mistral rate-limits hard, and a sequential
+        # benchmark arm loses a whole PR to the first 429 without this.
+        #
+        # `retry_connection_errors=False` on purpose: `BaseProvider._retry`
+        # already owns timeouts and network failures, and two layers retrying
+        # one failure multiply the wait without improving the odds.
+        retry_config = RetryConfig(
+            strategy="backoff",
+            backoff=BackoffStrategy(
+                initial_interval=1_000,
+                max_interval=60_000,
+                exponent=1.5,
+                max_elapsed_time=300_000,
+            ),
+            retry_connection_errors=False,
+        )
         extra: dict[str, object] = {}
         if json_mode:
             extra["response_format"] = {"type": "json_object"}
@@ -89,7 +77,7 @@ class MistralProvider(BaseProvider):
         async with Mistral(
             api_key=self._api_key,
             timeout_ms=self._timeout_ms,
-            retry_config=_RATE_LIMIT_RETRY,
+            retry_config=retry_config,
         ) as client:
             response = await client.chat.complete_async(
                 model=self._model_name,

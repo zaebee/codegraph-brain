@@ -27,6 +27,31 @@ class _Schema(BaseModel):
     value: str
 
 
+class _FakeBackoff:
+    """The SDK's BackoffStrategy, reduced to the fields the provider sets."""
+
+    def __init__(
+        self,
+        initial_interval: int,
+        max_interval: int,
+        exponent: float,
+        max_elapsed_time: int,
+    ) -> None:
+        self.initial_interval = initial_interval
+        self.max_interval = max_interval
+        self.exponent = exponent
+        self.max_elapsed_time = max_elapsed_time
+
+
+class _FakeRetryConfig:
+    """The SDK's RetryConfig, reduced to the fields the provider sets."""
+
+    def __init__(self, strategy: str, backoff: _FakeBackoff, retry_connection_errors: bool) -> None:
+        self.strategy = strategy
+        self.backoff = backoff
+        self.retry_connection_errors = retry_connection_errors
+
+
 class _FakeChat:
     """Captures the keyword arguments the provider sends to `chat.complete_async`."""
 
@@ -69,6 +94,15 @@ def spy() -> tuple[dict[str, Any], dict[str, Any], Callable[[pytest.MonkeyPatch]
         module = types.ModuleType("mistralai.client")
         module.Mistral = factory  # type: ignore[attr-defined]
         monkeypatch.setitem(sys.modules, "mistralai.client", module)
+
+        # The retries submodule is faked too, so this asserts what the provider
+        # *sends* rather than whether the optional SDK happens to be installed.
+        # CI installs no guardian extras, and the first version of these tests
+        # passed locally and failed there for exactly that reason.
+        retries = types.ModuleType("mistralai.client.utils.retries")
+        retries.RetryConfig = _FakeRetryConfig  # type: ignore[attr-defined]
+        retries.BackoffStrategy = _FakeBackoff  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "mistralai.client.utils.retries", retries)
 
     return ctor, call, install
 
