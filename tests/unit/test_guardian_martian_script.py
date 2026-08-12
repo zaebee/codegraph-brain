@@ -557,6 +557,21 @@ class TestGraphProvenance:
         (tmp_path / "g.db").write_text("db", encoding="utf-8")
         assert gm.graph_commit(tmp_path / "g.db") is None
 
+    def test_an_unmarked_database_is_rebuilt_rather_than_trusted(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Unknown provenance is the case the marker exists to catch.
+
+        A database left by an older run carries no marker; skipping the rebuild
+        for it would reuse a graph nobody can attribute to a commit.
+        """
+        (tmp_path / "ws" / "o__r" / ".git").mkdir(parents=True)
+        (tmp_path / "ws" / "o__r.db").write_text("db", encoding="utf-8")
+        rebuilt: list[str] = []
+        _wire_review(monkeypatch, rebuilt)
+        asyncio.run(gm.review_one(_review_row(), argparse.Namespace(workspace=tmp_path / "ws")))
+        assert rebuilt == ["wanted-head"]
+
     def test_a_graph_built_from_another_commit_is_rebuilt_not_reused(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -571,25 +586,29 @@ class TestGraphProvenance:
         db.write_text("db", encoding="utf-8")
         db.with_name(db.name + ".commit").write_text("some-other-commit", encoding="utf-8")
         rebuilt: list[str] = []
-
-        monkeypatch.setattr(gm, "pr_refs", lambda _url: ("base", "wanted-head"))
-        monkeypatch.setattr(gm, "_git", lambda *a, **k: "sha\n")  # noqa: ARG005
-        monkeypatch.setattr(gm, "graph_alignment", lambda *a: (1, 1))  # noqa: ARG005
-        monkeypatch.setattr(gm, "ensure_graph", lambda _c, _d, head: rebuilt.append(head))
-        monkeypatch.setattr(gm, "build_provider", lambda _env: (_StubProvider(), "m"))
-        monkeypatch.setattr(gm, "build_skeptic_provider", lambda _env, primary: None)  # noqa: ARG005
-        monkeypatch.setattr(gm, "ContextCollector", lambda **_: object())
-
-        async def fake_routed(**_: object) -> object:
-            return SimpleNamespace(result=SimpleNamespace(findings=[], parse_failed=False))
-
-        monkeypatch.setattr(gm, "run_review_routed", fake_routed)
+        _wire_review(monkeypatch, rebuilt)
         asyncio.run(gm.review_one(_review_row(), argparse.Namespace(workspace=tmp_path / "ws")))
         assert rebuilt == ["wanted-head"]
 
 
 class _StubProvider:
     cumulative_usage = SimpleNamespace(prompt_tokens=0, completion_tokens=0)
+
+
+def _wire_review(monkeypatch: pytest.MonkeyPatch, rebuilt: list[str]) -> None:
+    """Stub everything `review_one` touches; record which head was re-ingested."""
+    monkeypatch.setattr(gm, "pr_refs", lambda _url: ("base", "wanted-head"))
+    monkeypatch.setattr(gm, "_git", lambda *a, **k: "sha\n")  # noqa: ARG005
+    monkeypatch.setattr(gm, "graph_alignment", lambda *a: (1, 1))  # noqa: ARG005
+    monkeypatch.setattr(gm, "ensure_graph", lambda _c, _d, head: rebuilt.append(head))
+    monkeypatch.setattr(gm, "build_provider", lambda _env: (_StubProvider(), "m"))
+    monkeypatch.setattr(gm, "build_skeptic_provider", lambda _env, primary: None)  # noqa: ARG005
+    monkeypatch.setattr(gm, "ContextCollector", lambda **_: object())
+
+    async def fake_routed(**_: object) -> object:
+        return SimpleNamespace(result=SimpleNamespace(findings=[], parse_failed=False))
+
+    monkeypatch.setattr(gm, "run_review_routed", fake_routed)
 
 
 class TestWorkspaceHygiene:
@@ -846,6 +865,9 @@ class TestReviewOne:
         monkeypatch.setattr(gm, "pr_refs", lambda _url: ("basesha", "headsha"))
         monkeypatch.setattr(gm, "_git", lambda *a, **k: "guardiansha\n")  # noqa: ARG005
         monkeypatch.setattr(gm, "graph_alignment", lambda *a: (aligned, 1))  # noqa: ARG005
+        # The graph is rebuilt unless its marker proves the commit; the fixture
+        # writes no marker, so this call is expected rather than incidental.
+        monkeypatch.setattr(gm, "ensure_graph", lambda *a: None)  # noqa: ARG005
         monkeypatch.setattr(gm, "build_provider", lambda _env: (_Provider(), "finder-model"))
         monkeypatch.setattr(gm, "build_skeptic_provider", lambda _env, primary: None)  # noqa: ARG005
         monkeypatch.setattr(gm, "ContextCollector", fake_collector)

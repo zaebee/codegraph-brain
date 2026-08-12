@@ -81,6 +81,11 @@ DEFAULT_WORKSPACE = Path(".martian-workspace")
 #: lookup on this corpus misses — see `graph_alignment`.
 SOURCE_ROOT = ""
 
+#: Sidecar naming the commit a graph was built from. A suffix rather than three
+#: string literals: the writer, the reader and the cleanup must agree, and
+#: nothing but convention was holding them together.
+COMMIT_MARKER_SUFFIX = ".commit"
+
 REVIEWS_FILE = Path("benchmarks/martian-reviews.jsonl")
 JUDGED_FILE = Path("benchmarks/martian-judged.jsonl")
 
@@ -304,8 +309,10 @@ async def review_one(row: PrPlan, args: argparse.Namespace) -> ReviewRecord:
     # it ran last, so reviewing an earlier one would silently use a graph of a
     # different tree — and `graph_alignment` would not notice, because the file
     # names mostly still match. The commit is checked, not assumed.
-    built_from = graph_commit(db)
-    if row.pr_slice == "graph" and built_from is not None and built_from != head:
+    # Rebuilt unless the marker *proves* the graph is this commit's. An earlier
+    # version skipped when the marker was absent, which let a database of
+    # unknown provenance through — the very case the marker exists to catch.
+    if row.pr_slice == "graph" and graph_commit(db) != head:
         ensure_graph(checkout, db, head)
     had_graph = (
         row.pr_slice == "graph" and db.is_file() and graph_alignment(db, row.changed_files)[0] > 0
@@ -864,7 +871,7 @@ def graph_commit(db_path: Path) -> str | None:
     Recorded in a sidecar because the database itself does not know: the store
     holds nodes, not provenance.
     """
-    marker = db_path.with_name(db_path.name + ".commit")
+    marker = db_path.with_name(db_path.name + COMMIT_MARKER_SUFFIX)
     return marker.read_text(encoding="utf-8").strip() if marker.is_file() else None
 
 
@@ -883,7 +890,10 @@ def ensure_graph(checkout: Path, db_path: Path, head_sha: str) -> None:
     """
     for path in (
         db_path,
-        *(db_path.with_name(db_path.name + suffix) for suffix in ("-wal", "-shm", ".commit")),
+        *(
+            db_path.with_name(db_path.name + suffix)
+            for suffix in ("-wal", "-shm", COMMIT_MARKER_SUFFIX)
+        ),
     ):
         path.unlink(missing_ok=True)
     result = subprocess.run(
@@ -897,7 +907,7 @@ def ensure_graph(checkout: Path, db_path: Path, head_sha: str) -> None:
     if result.returncode != 0:
         _msg = f"ingest exited {result.returncode}: {result.stderr.strip()[:300]}"
         raise RuntimeError(_msg)
-    db_path.with_name(db_path.name + ".commit").write_text(head_sha, encoding="utf-8")
+    db_path.with_name(db_path.name + COMMIT_MARKER_SUFFIX).write_text(head_sha, encoding="utf-8")
 
 
 if __name__ == "__main__":
