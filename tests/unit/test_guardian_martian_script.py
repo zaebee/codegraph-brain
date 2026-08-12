@@ -1851,3 +1851,77 @@ class TestSliceSelection:
         rows = gm.selected(self._plans(), None, 1, "diff-only")
 
         assert [r.number for r in rows] == [2]
+
+
+class TestParseFailedExclusion:
+    """A truncated review is not a review, and must not be scored as one (#342).
+
+    Registered 2026-08-12, before any Phase 3 record was judged: if a PR's
+    structured output failed to parse in any run, that PR leaves the paired
+    comparison entirely.
+
+    The bias this removes ran in the direction of our own hypothesis. A parse
+    failure records zero findings, which drags the *mean of runs* down while
+    leaving the union untouched — the union takes a union of candidate sets and
+    an empty set costs it nothing. Scored naively, a harness failure would have
+    inflated exactly the union advantage G7 and G8 test.
+
+    Skipping at judge time also means the exclusion propagates for free: the PR
+    is then absent from that run's judged file, and `union_judged` already drops
+    a PR missing from any run.
+    """
+
+    def _review(self, url: str, *, parse_failed: bool) -> dict[str, object]:
+        return {
+            "url": url,
+            "project": "p",
+            "pr_slice": "graph",
+            "arm": "graph",
+            "base_sha": "a",
+            "head_sha": "b",
+            "had_graph": True,
+            "finder_model": "m",
+            "skeptic_model": None,
+            "temperature": 0.7,
+            "findings": [],
+            "prompt_tokens": 1,
+            "completion_tokens": 1,
+            "duration_s": 1.0,
+            "parse_failed": parse_failed,
+            "guardian_sha": "sha",
+            "reviewed_at": "2026-08-12T00:00:00+00:00",
+        }
+
+    def test_a_truncated_review_is_not_judged(self, tmp_path: Path) -> None:
+        """It never reaches the judge, so it cannot be scored as "found nothing"."""
+        rows = [
+            self._review("https://github.com/o/r/pull/1", parse_failed=True),
+            self._review("https://github.com/o/r/pull/2", parse_failed=False),
+        ]
+        path = tmp_path / "reviews.jsonl"
+        path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+
+        kept = gm.judgeable(gm.load_reviews(path))
+
+        assert [r.url for r in kept] == ["https://github.com/o/r/pull/2"]
+
+    def test_a_genuine_empty_review_is_still_judged(self, tmp_path: Path) -> None:
+        """ "Found nothing" is evidence; only a failure to parse is not.
+
+        Phase 2 has three such rows and zero parse failures, so this distinction
+        is the whole difference between the rule and simply dropping empties.
+        """
+        rows = [self._review("https://github.com/o/r/pull/1", parse_failed=False)]
+        path = tmp_path / "reviews.jsonl"
+        path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+
+        assert len(gm.judgeable(gm.load_reviews(path))) == 1
+
+    def test_a_row_that_errored_is_also_excluded(self, tmp_path: Path) -> None:
+        """A crashed run and a clean LGTM are opposite evidence, per ReviewRecord."""
+        row = self._review("https://github.com/o/r/pull/1", parse_failed=False)
+        row["error"] = "boom"
+        path = tmp_path / "reviews.jsonl"
+        path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+
+        assert gm.judgeable(gm.load_reviews(path)) == []
