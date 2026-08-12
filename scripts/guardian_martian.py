@@ -558,6 +558,33 @@ def judged_keys(path: Path) -> set[tuple[str, str, str]]:
     return keys
 
 
+def judgeable(reviews: Sequence[ReviewRecord]) -> list[ReviewRecord]:
+    """Reviews that can be scored: no parse failure, no recorded error.
+
+    Registered 2026-08-12, before any Phase 3 record was judged, because the
+    registration had not said what to do with a review whose structured output
+    did not parse. Nothing read `parse_failed`, so such a row would have been
+    scored as "the reviewer found nothing" — a harness failure counted as a
+    property of the model, which is the distinction `ReviewRecord.error` is
+    documented to preserve and `parse_failed` was silently not.
+
+    The bias ran toward our own hypothesis, which is why it was worth stopping
+    for. A parse failure records zero findings, dragging the *mean of runs* down
+    while leaving the union untouched — a union of candidate sets loses nothing
+    to an empty set — so it would have inflated exactly the union advantage G7
+    and G8 test.
+
+    Excluding here rather than in the scorer does the rest for free: the PR is
+    then absent from that run's judged file, and `union_judged` already drops a
+    PR missing from any run, so the paired comparison stays exact.
+
+    "Found nothing" is still judged. Phase 2 holds three genuinely empty reviews
+    and zero parse failures, so the distinction is the whole difference between
+    this rule and simply dropping empty rows.
+    """
+    return [r for r in reviews if not r.parse_failed and r.error is None]
+
+
 async def judge(args: argparse.Namespace) -> int:
     """Score recorded reviews with the semantic judge. Spends judge calls only."""
     profile = as_profile(args.profile)
@@ -566,12 +593,16 @@ async def judge(args: argparse.Namespace) -> int:
     # programming error wearing the costume of a provider outage.
     concurrency = args.concurrency
     corpus = {pr.url: pr for pr in load_corpus(args.corpus)}
+    loaded = load_reviews(args.reviews)
     reviews = [
         r
-        for r in load_reviews(args.reviews)
+        for r in judgeable(loaded)
         # Not `f"/{args.pr}" in r.url`: that matched PR 1234 when asked for 123.
         if args.pr is None or pr_number(r.url) == args.pr
     ]
+    excluded = len(loaded) - len(judgeable(loaded))
+    if excluded:
+        print(f"{excluded} review(s) excluded as unusable (parse failure or error).")
     if args.dry_run:
         # Deliberately before `build_provider`: a mode that spends nothing must
         # not demand credentials, and the model name is only needed to work out

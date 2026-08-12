@@ -1243,6 +1243,87 @@ worked in #246.
 - **Reporting.** Every published row names judge model, profile, slice, N, and
   temperature. G6 stands, extended by the last two.
 
+### Amendment, 2026-08-12, made during collection and before any judging
+
+Two corrections, both entered while run 1 was still producing finder records and
+**before a single Phase 3 record had been judged**. Timestamped and disclosed
+here rather than quietly folded in, per R2.
+
+**Unusable reviews leave the comparison.** Run 1's third PR returned a truncated
+structured output — the long-output failure of #248 — and `parse_failed` was
+recorded but read by nothing, so the row would have been scored as "the reviewer
+found nothing". A harness failure counted as a property of the model.
+
+Registered rule: **a review with `parse_failed` or a recorded `error` is not
+judged, and a PR excluded from any run leaves the paired comparison in every
+run.** The second half needs no new code — `union_judged` already drops a PR
+missing from a run — and the count of exclusions is published beside the result.
+
+This was worth stopping the analysis for because the bias ran toward our own
+hypothesis: a parse failure records zero findings, which drags the *mean of runs*
+down while leaving the union untouched, since a union of candidate sets loses
+nothing to an empty set. Scored naively it would have inflated exactly the union
+advantage G7 and G8 exist to test.
+
+Two costs are stated rather than discovered later. Truncation correlates with
+diff size — it struck the largest prompt of the first five — so the exclusion is
+not neutral: it removes big PRs preferentially and the surviving population
+skews small. And Phase 2 recorded **zero** parse failures against Mistral's
+several, so this is also a way the two configurations differ, reinforcing that
+their numbers must not be compared.
+
+**The registered rationale for the pass-through skeptic was wrong in direction.**
+The registration says the same-family skeptic "makes G8 easier to pass than the
+production configuration would". That is backwards. The union's precision cost
+scales with how many candidates a run emits per new true positive, and a
+pass-through skeptic holds candidate volume at its maximum — run 1 is emitting
+22-26 findings per PR against Phase 2's 1-8. Tripling that while recall grows by
+perhaps 1.4x costs far more precision than the pilot's did, where 2x candidates
+bought 1.5x true positives and the union won on F₂.
+
+So the configuration makes G8 **harder**, and a failure would be attributable to
+candidate volume rather than to anything about unioning. **The gate is not
+amended** — it stands exactly as registered, and the run continues against it.
+Only the expectation recorded beside it is corrected, and corrected before the
+numbers exist, so that neither outcome can be narrated afterwards as the one we
+predicted.
+
+### Run 1 completed, and two of the figures above were wrong
+
+Both corrections are to numbers this document produced, and both were made from
+the finished run before anything was judged.
+
+**Candidate volume: 15.2 per PR, not "22-26".** That figure was extrapolated
+from the first two PRs while the run was still going. The distribution over the
+18 judgeable reviews is 6 to 26, mean 15.2, median 14.5. The comparison it was
+making is understated rather than overstated: Phase 2's graph arm judged **2.9
+candidates per PR**, so the gap is 5.2x, and the argument about G8 stands on a
+firmer footing than the number that was quoted for it.
+
+**Cost: 2.9M tokens for three runs, not 1.46M.** Run 1 measured **963,813
+tokens** — finder 338,336 + 74,625, skeptic 534,304 + 16,548 — putting the phase
+at roughly 2.9M, twice what was registered.
+
+This is the **fourth** cost estimate in this document to be wrong, and it repeats
+the structural fault the third one was corrected for. The registered figure came
+from the Gemini graph arm's 25.6k tokens per review. The arm was named, as the
+correction required — but the *model* was not, and the rate does not transfer
+across models.
+
+The mechanism is worth stating because it generalises. Phase 2 measured the
+skeptic at **0.35x the finder**; here it is **1.58x**. That ratio is not a
+property of the two models: the skeptic runs per finding and re-sends a file's
+hunks once per finding in it, so its cost is roughly linear in how many findings
+the finder emits. At 3.2 findings per PR it is a third of the finder; at 15.2 it
+is more than half again as much. **A recall-lean finder does not cost 5x more, it
+costs 5x more twice** — once for its own output and once for the skeptic pass it
+multiplies.
+
+The lesson the third correction drew — name the arm a rate was measured on — is
+insufficient. A per-review rate is only transferable between configurations that
+emit a comparable number of findings, and that is now a condition to state
+alongside the arm.
+
 ### Cost, as an assumption rather than a fact
 
 The graph arm measures 25.6k tokens per review (finder plus skeptic, from the 18
