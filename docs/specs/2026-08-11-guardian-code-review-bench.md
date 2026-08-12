@@ -27,8 +27,15 @@
 > PASS. The near-miss is recorded as a failure rather than rounded. The judges
 > agree at κ +0.920 with 86.9% positive-class overlap, which clears the bar
 > Phase 1 set, so **a Guardian row is now published — with the condition that
-> neither judge is the leaderboard's Claude Opus 4.5.** See §"Phase 2 —
-> results".
+> neither judge is the leaderboard's Claude Opus 4.5.**
+>
+> **Then the noise floor was measured, and it equals the effect.** Sampling is
+> unpinned (no temperature, no seed, API defaults), and re-running the same six
+> PRs under an identical configuration moves P by +4.8 pp and R by +3.7 pp — the
+> size of everything Phase 2 measured. **The ablation is therefore not
+> interpretable and the graph-context question is open**, for a reason the phase
+> itself measured. See §"R5". The published row stands; the causal claim does
+> not.
 
 ## Verdict up front
 
@@ -934,6 +941,78 @@ Three conditions travel with it and are not optional:
 By F0.5 the figure would sit second from last of 21 — above Graphite alone.
 That is not a rank we have earned the right to state, per condition 1; it is
 recorded here as the shape of the result, not as a placement.
+
+### R5 — the noise floor equals the effect, and Phase 2 cannot answer its own question
+
+Asked whether sampling settings mattered, checked the providers, and the answer
+retires most of what this phase appeared to establish.
+
+**Nothing pins sampling.** Neither provider sets `temperature`, `top_p`,
+`top_k`, or a seed; `GeminiProvider` builds its `GenerateContentConfig` from
+`system_instruction` and the response schema alone, and `MistralProvider`
+passes only `response_format`. Everything runs at API defaults — Gemini's
+default temperature is 1.0 — so **finder, skeptic and judge are all
+non-deterministic**.
+
+**Measured, rather than argued.** The same six PRs, reviewed twice under an
+identical configuration (`benchmarks/martian-repeat-*.jsonl`):
+
+| PR | run 1 tp/fp/fn | run 2 tp/fp/fn | ΔR | ΔP |
+|---|---|---|---|---|
+| cal.com 10600 | 0/1/4 | 1/3/3 | +25.0 | +25.0 |
+| cal.com 10967 | 1/7/4 | 2/4/3 | +20.0 | +20.8 |
+| cal.com 11059 | 4/3/5 | 3/1/6 | −11.1 | +17.9 |
+| cal.com 14740 | 2/0/4 | 2/1/4 | 0.0 | −33.3 |
+| cal.com 14943 | 1/0/1 | 1/1/1 | 0.0 | −50.0 |
+| cal.com 22345 | 0/2/1 | 0/2/1 | 0.0 | 0.0 |
+| **aggregate** | P 38.1 R 29.6 | P 42.9 R 33.3 | **+3.7** | **+4.8** |
+
+The prompt token counts are identical to the digit across both runs, so the
+input did not move. The finder's *output* did: 1→4, 8→6 and 7→4 findings on
+the first three PRs.
+
+**Against that floor:**
+
+| comparison | ΔP | ΔR |
+|---|---|---|
+| repeat run, nothing changed | **+4.8 pp** | **+3.7 pp** |
+| ablation, graph removed (19 PRs) | +5.4 pp | +4.9 pp |
+| G5, graph vs diff-only slice | +10.1 / +6.9 pp | +9.5 / +6.6 pp |
+
+**The noise floor is the size of every effect this phase measured.**
+
+### What this retracts, and what it does not
+
+**The ablation is not interpretable.** Run at N=1 per arm, its +5 pp cannot be
+distinguished from re-running the same arm twice. It does not show that graph
+context helps, and it does not show that it does not.
+
+**G5's verdict stands; its margin does not.** The gate compares 19 against 26
+*different* PRs, so per-PR sampling noise partially averages across them —
+unlike the paired ablation. But +9.5 pp is the same order as the floor, the
+3 pp spread between the two judges is within it, and "graph context does not
+help by ≥10 pp" is now a statement this design lacks the power to make
+confidently. FAIL was the right verdict on the registered criterion; it should
+not be read as evidence *against* graph context.
+
+**Phase 1 knew this and Phase 2 forgot it.** Phase 1 ran **N=3 per PR**
+precisely to average over run variance — recorded in this document — and
+Phase 2 ran N=1 without noticing the regression. It surfaced only because
+someone asked whether temperature mattered.
+
+### What would answer the question
+
+N≥3 per arm on the ablation: 19 PRs × 2 arms × 3 runs = 114 reviews against the
+38 already spent, roughly 8–10 PLN at the measured rate. Pinning `temperature=0`
+is the other obvious lever and is **deliberately not taken here**: the
+configuration under test was registered as "current production", and changing
+it mid-phase is precisely the amendment-after-collection that retraction R2 was
+about. If determinism is wanted it should be a registered change to the
+production config, measured on its own.
+
+Until then the honest summary of Phase 2 is: **the harness works, the corpus is
+characterised, the numbers are reproducible — and the question the phase was
+built to answer remains open, for a reason the phase itself measured.**
 
 ### Cost, reconciled against the bill rather than estimated
 
