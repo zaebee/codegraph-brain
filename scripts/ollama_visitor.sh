@@ -40,13 +40,32 @@ FRP_VERSION="${FRP_VERSION:-0.61.0}"
 : "${FRP_TOKEN:?set FRP_TOKEN (frps auth token, see /opt/caddy/frps.toml)}"
 : "${AURA_PUNK_KEY:?set AURA_PUNK_KEY (the punk key the worker was started with)}"
 
+#: sha256 of frp_0.61.0_linux_amd64.tar.gz. The same digest aura-worker pins,
+#: re-derived here by downloading the artefact rather than copied across.
+PINNED_VERSION="0.61.0"
+PINNED_SHA256="720a9fe2a3299346572544909a78c023344c88bde13c55b921e298e8c5ded21f"
+
 FRPC="$(command -v frpc || true)"
 if [[ -z "${FRPC}" ]]; then
-  # Same version the worker pins, so both ends speak one protocol revision.
+  # This downloads a binary and then runs it, so the digest is checked rather
+  # than trusted. Overriding the version without supplying its digest is refused
+  # instead of silently falling back to an unverified download.
+  if [[ -z "${FRPC_SHA256:-}" ]]; then
+    if [[ "${FRP_VERSION}" != "${PINNED_VERSION}" ]]; then
+      echo "FRP_VERSION=${FRP_VERSION} overrides the pinned ${PINNED_VERSION};" >&2
+      echo "set FRPC_SHA256 to that release's digest to install it." >&2
+      exit 2
+    fi
+    FRPC_SHA256="${PINNED_SHA256}"
+  fi
+
   echo "==> installing frpc ${FRP_VERSION} to ~/.local/bin"
   mkdir -p "${HOME}/.local/bin"
-  curl -fsSL -o /tmp/frp.tar.gz \
+  # --proto/--proto-redir pin the scheme across redirects: -L alone would follow
+  # a redirect to plain HTTP.
+  curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL -o /tmp/frp.tar.gz \
     "https://github.com/fatedier/frp/releases/download/v${FRP_VERSION}/frp_${FRP_VERSION}_linux_amd64.tar.gz"
+  echo "${FRPC_SHA256}  /tmp/frp.tar.gz" | sha256sum -c -
   tar -xzf /tmp/frp.tar.gz -C /tmp
   install -m 0755 "/tmp/frp_${FRP_VERSION}_linux_amd64/frpc" "${HOME}/.local/bin/frpc"
   FRPC="${HOME}/.local/bin/frpc"
