@@ -119,7 +119,7 @@ GUARDIAN_PROVIDER=ollama GUARDIAN_MODEL=qwen2.5-coder:14b \
   uv run python scripts/guardian_review.py --pr 123 --db graph.db --inline
 ```
 
-No GPU on hand? **[Point Guardian at a remote Ollama →](docs/GUARDIAN_REMOTE_OLLAMA.md)** — over an frp stcp tunnel, no public port, and a guard that refuses a review of a silently truncated prompt.
+No GPU on hand? **[Benchmark it on a notebook GPU →](docs/GUARDIAN_LOCAL_BENCH.md)** — free end to end, since the fixtures score without an LLM judge. Or **[point Guardian at a remote Ollama →](docs/GUARDIAN_REMOTE_OLLAMA.md)** — over an frp stcp tunnel, no public port, and a guard that refuses a review of a silently truncated prompt.
 
 ---
 

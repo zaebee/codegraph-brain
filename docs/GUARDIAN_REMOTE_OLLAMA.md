@@ -85,8 +85,12 @@ Sizing, measured on a 16 GB GPU:
 | 8B-Q4 | ~5 GB | ~32–48k |
 
 Guardian prompts run tens of thousands of tokens, so big-PR work needs an 8B
-model with a long context, not the 14B. `GUARDIAN_NO_GRAPH` drops the graph
-section when a diff alone still overflows.
+model with a long context, not the 14B.
+
+`GUARDIAN_NO_GRAPH` is **not** a way to fit a large diff into a small window.
+Measured across the bench fixtures it saves 2-6%, because the diff dominates the
+prompt and the graph section is small beside it — see
+[the local bench notes](GUARDIAN_LOCAL_BENCH.md).
 
 ## When it breaks
 
