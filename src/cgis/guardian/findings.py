@@ -114,8 +114,11 @@ def salvage_findings(text: str) -> list[Finding]:
     `Finding` is skipped and the scan continues, and the first element that
     cannot be decoded ends it — that is the truncation point.
 
-    Never raises. This runs on the failure path, where an exception would replace
-    a recoverable problem with an unrecoverable one.
+    Does not raise on any input the decoder can reject: both the ordinary
+    truncation error and the recursion error from deeply nested openers end the
+    scan and return what was already recovered. This runs on the failure path,
+    where an exception would replace a recoverable problem with an unrecoverable
+    one — and the default review path has no guard above it.
 
     Salvaging is a rescue, not a measurement. Callers keep `parse_failed` set, so
     the benchmark still excludes such a review; production shows the findings
@@ -136,8 +139,17 @@ def salvage_findings(text: str) -> list[Finding]:
             break
         try:
             element, position = decoder.raw_decode(payload, position)
-        except ValueError:
-            break  # the truncation point
+        except (ValueError, RecursionError):
+            # ValueError (JSONDecodeError) is the ordinary truncation point.
+            # RecursionError is not one: `raw_decode` recurses per nested
+            # opener, and it is a RuntimeError, so `except ValueError` let a
+            # degenerate run of unmatched brackets escape this function. The
+            # default review path is unguarded — `chunked._single_pass` and
+            # `scripts/guardian_review.py` both call downwards with no `try` —
+            # so that escape crashed the run instead of degrading to
+            # `parse_failed`, which is worse than the discard-all behaviour this
+            # function replaced.
+            break
         try:
             recovered.append(Finding.model_validate(element))
         except ValidationError:

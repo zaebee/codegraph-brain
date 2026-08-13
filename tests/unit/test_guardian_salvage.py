@@ -262,3 +262,35 @@ class TestSalvagedFindingsAreSanitized:
         provider = _AlwaysReturns(_body(_GOOD, closed=False) + ", {")
 
         assert (await finder_pass(provider, {"diff": "d"})).parse_failed is True
+
+
+class TestSalvageNeverRaises:
+    """The failure path must not manufacture a worse failure.
+
+    `json.raw_decode` recurses once per nested opener and raises `RecursionError`
+    — a `RuntimeError`, not a `ValueError` — when the input nests too deeply. The
+    loop caught only `ValueError`, so a degenerate run of unmatched brackets
+    escaped `salvage_findings` entirely.
+
+    That mattered because the default review path is unguarded:
+    `chunked._single_pass` calls `run_review` with no `try`, and
+    `scripts/guardian_review.py` calls `run_guardian` with no `try`, so the
+    exception would reach `asyncio.run` and end the run. A truncated response —
+    exactly what this function exists to survive — would have crashed the CLI
+    instead of degrading to `parse_failed`, which is worse than the discard-all
+    behaviour it replaced.
+    """
+
+    def test_a_deeply_nested_run_of_openers_returns_empty(self) -> None:
+        """Bracket repetition is a known degenerate LLM output under sampling."""
+        assert salvage_findings('{"findings": [' + "[" * 60_000) == []
+
+    def test_deep_nesting_after_a_valid_finding_keeps_the_prefix(self) -> None:
+        """The recursion limit is a truncation point like any other."""
+        payload = _body(_GOOD, closed=False) + ", " + "[" * 60_000
+
+        assert len(salvage_findings(payload)) == 1
+
+    def test_deeply_nested_objects_are_survived_too(self) -> None:
+        """Objects recurse the same way arrays do."""
+        assert salvage_findings('{"findings": [' + '{"a":' * 60_000) == []
