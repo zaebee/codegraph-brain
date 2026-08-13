@@ -85,7 +85,15 @@ async def finder_pass(provider: BaseProvider, context: dict[str, str]) -> Review
                 "Structured output failed twice; salvaging what parsed.",
                 salvaged=len(rescued),
             )
-            return ReviewResult(findings=rescued, summary=raw, parse_failed=True)
+            # Sanitised like any other finder output. `ReviewResult` doubles as
+            # the finder's schema, so the model sees `verdict` and
+            # `impact_score` and sometimes fills them in — and a hallucinated
+            # "refuted" makes `visible_findings` delete the finding silently. A
+            # response mangled enough to need salvaging is if anything a likelier
+            # place for those fields to have been filled loosely.
+            return _sanitize_finder_result(
+                ReviewResult(findings=rescued, summary=raw, parse_failed=True)
+            )
 
 
 class GuardianReviewer:

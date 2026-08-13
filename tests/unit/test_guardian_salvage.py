@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from cgis.guardian.core import GuardianReviewer, finder_pass
 from cgis.guardian.findings import salvage_findings
 from cgis.guardian.providers.base import BaseProvider
+from cgis.guardian.skeptic import visible_findings
 
 _GOOD = {
     "file": "a.py",
@@ -211,3 +212,53 @@ class _StubCollector:
     def collect_all(self) -> dict[str, str]:
         """Return a context with just a diff."""
         return {"diff": "d"}
+
+
+class TestSalvagedFindingsAreSanitized:
+    """Salvaged findings must have the skeptic's fields reset, like parsed ones.
+
+    `ReviewResult` doubles as the finder's output schema, so the model sees
+    `verdict`, `skeptic_note` and `impact_score` and sometimes fills them in.
+    `visible_findings` hides anything with `verdict == "refuted"` — so a
+    hallucinated verdict silently deletes a real finding from the report.
+
+    The strict path has always run `_sanitize_finder_result` for exactly this
+    reason. The salvage path did not, and a truncated response is if anything a
+    likelier place for the model to have been filling fields loosely.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_hallucinated_verdict_cannot_silence_a_salvaged_finding(self) -> None:
+        refuted = _GOOD | {"verdict": "refuted"}
+        provider = _AlwaysReturns(_body(refuted, closed=False) + ', {"file": "b')
+
+        result = await finder_pass(provider, {"diff": "d"})
+
+        assert len(result.findings) == 1
+        assert result.findings[0].verdict is None
+        assert visible_findings(result.findings) == result.findings
+
+    @pytest.mark.asyncio
+    async def test_a_hallucinated_impact_score_is_cleared(self) -> None:
+        """Otherwise the finding hides behind an impact threshold it never earned."""
+        scored = _GOOD | {"impact_score": 0}
+        provider = _AlwaysReturns(_body(scored, closed=False) + ", {")
+
+        result = await finder_pass(provider, {"diff": "d"})
+
+        assert result.findings[0].impact_score is None
+
+    @pytest.mark.asyncio
+    async def test_the_skeptic_counters_are_not_taken_from_the_model(self) -> None:
+        provider = _AlwaysReturns(_body(_GOOD, closed=False) + ", {")
+
+        result = await finder_pass(provider, {"diff": "d"})
+
+        assert (result.skeptic_status, result.skeptic_judged, result.skeptic_total) == ("off", 0, 0)
+
+    @pytest.mark.asyncio
+    async def test_sanitising_does_not_clear_the_parse_failure(self) -> None:
+        """`_sanitize_finder_result` copies the result, and the flag must survive."""
+        provider = _AlwaysReturns(_body(_GOOD, closed=False) + ", {")
+
+        assert (await finder_pass(provider, {"diff": "d"})).parse_failed is True
