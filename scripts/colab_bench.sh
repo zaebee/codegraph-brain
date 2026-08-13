@@ -34,8 +34,12 @@ export GUARDIAN_MODEL="${MODEL}"
 #: over a frozen finder set.
 export GUARDIAN_SKEPTIC="${GUARDIAN_SKEPTIC:-off}"
 
+# --proto/--proto-redir pin the scheme across redirects; -L alone would follow
+# one to plain HTTP. It does not remove the trust placed in ollama.com — this
+# pipes a remote script into a shell, which is that project's documented install
+# path and is stated here rather than papered over.
 echo "==> installing ollama"
-curl -fsSL https://ollama.com/install.sh | sh
+curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL https://ollama.com/install.sh | sh
 
 # Weights stay resident: a cold load costs about a minute, and a bench of many
 # calls would otherwise spend most of its wall clock reloading them.
@@ -50,8 +54,12 @@ curl -fsS http://127.0.0.1:11434/api/version >/dev/null
 echo "==> pulling ${MODEL}"
 ollama pull "${MODEL}"
 
+# --only-binary :all: restricts *dependency* resolution to wheels, so nothing in
+# the dependency tree runs a setup script. It does not block this project from
+# building, which is both unavoidable for an editable install and not the risk:
+# the whole point of the next line is to execute this checkout's code.
 echo "==> installing the harness from this checkout"
-pip install -q -e '.[guardian]'
+pip install -q --only-binary :all: -e '.[guardian]'
 
 # The bench builds a worktree per fixture at its recorded head SHA, so the clone
 # needs the history those SHAs live in; `_ensure_full_history` unshallows if the
