@@ -412,6 +412,19 @@ class JudgedReview(BaseModel, frozen=True):
     precision: float
     recall: float
     judge_failures: int
+    #: What this row's judging actually cost. Recorded because Phase 2 published
+    #: "484 judge pairs" with no token figure beside it, so when Phase 3 needed
+    #: the judge's rate the only answer available was an estimate reconstructed
+    #: from the prompts that would have been sent. A cost that cannot be
+    #: reconciled against a bill is how four cost estimates here went wrong.
+    #:
+    #: A per-row delta, not the provider's running total: the provider is shared
+    #: across the arm, so recording `cumulative_usage` directly would make every
+    #: row after the first overstate its cost and the last row of a 19-PR arm
+    #: appear to cost as much as the arm. Defaults to 0 so rows judged before
+    #: this field existed still load.
+    judge_prompt_tokens: int = 0
+    judge_completion_tokens: int = 0
     decisions: list[int | None]
     judged_at: str
 

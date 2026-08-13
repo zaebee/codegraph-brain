@@ -515,7 +515,12 @@ async def judge_one(
     """
     goldens = golden_texts(pr, profile)
     candidates = [candidate_text(f) for f in candidate_findings(record)]
+    # Snapshot around the whole matrix: the provider is shared across the arm,
+    # so its cumulative total is not this row's cost. Retries inside a pair are
+    # inside the delta on purpose — the bill counts them too.
+    before = provider.cumulative_usage
     pairs, failures = await judge_matrix(provider, goldens, candidates, concurrency)
+    after = provider.cumulative_usage
     assignment = assign_matches(pairs)
     scored = judge_score(
         n_goldens=len(goldens), n_candidates=len(candidates), assignment=assignment
@@ -536,6 +541,8 @@ async def judge_one(
         precision=scored.precision,
         recall=scored.recall,
         judge_failures=failures,
+        judge_prompt_tokens=after.prompt_tokens - before.prompt_tokens,
+        judge_completion_tokens=after.completion_tokens - before.completion_tokens,
         decisions=dense_grid(pairs, len(goldens), len(candidates)),
         judged_at=datetime.now(UTC).isoformat(),
     )
@@ -644,6 +651,8 @@ async def judge(args: argparse.Namespace) -> int:
         return 0
 
     failures = 0
+    spent_prompt = 0
+    spent_completion = 0
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("a", encoding="utf-8") as fh:
         for index, record in enumerate(pending, 1):
@@ -662,8 +671,17 @@ async def judge(args: argparse.Namespace) -> int:
                 failures += 1
                 print(f"{label}: FAILED - {type(exc).__name__}: {exc}"[:250], file=sys.stderr)
                 continue
+            spent_prompt += judged.judge_prompt_tokens
+            spent_completion += judged.judge_completion_tokens
             if not record_judgement(fh, label, judged):
                 failures += 1
+    # Printed at the end because a rate is only checkable against a bill if the
+    # run states what it spent. Phase 2 published its judge pair count with no
+    # token figure, and Phase 3 could then only estimate the judge's rate.
+    print(
+        f"\njudge spend: {spent_prompt} prompt + {spent_completion} completion "
+        f"= {spent_prompt + spent_completion} tokens over {len(pending)} reviews"
+    )
     return 1 if failures else 0
 
 
@@ -689,7 +707,8 @@ def record_judgement(fh: TextIO, label: str, judged: JudgedReview) -> bool:
     unruled = f"  ({judged.judge_failures} unruled - NOT SCORABLE)" if judged.judge_failures else ""
     print(
         f"{label}: tp={judged.tp} fp={judged.fp} fn={judged.fn} "
-        f"P={judged.precision:.2f} R={judged.recall:.2f}{unruled}",
+        f"P={judged.precision:.2f} R={judged.recall:.2f} "
+        f"{judged.judge_prompt_tokens}+{judged.judge_completion_tokens} tok{unruled}",
         flush=True,
     )
     return True
