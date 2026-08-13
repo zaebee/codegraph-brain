@@ -4,7 +4,7 @@ import structlog
 from pydantic import ValidationError
 
 from cgis.guardian.collector import ContextCollector
-from cgis.guardian.findings import ReviewResult, extract_json
+from cgis.guardian.findings import ReviewResult, extract_json, salvage_findings
 from cgis.guardian.prompts import PromptBuilder
 from cgis.guardian.providers.base import BaseProvider
 from cgis.guardian.skeptic import (
@@ -70,8 +70,22 @@ async def finder_pass(provider: BaseProvider, context: dict[str, str]) -> Review
         try:
             return _sanitize_finder_result(ReviewResult.model_validate_json(extract_json(raw)))
         except ValidationError:
-            log.exception("Structured output failed twice; falling back to raw text.")
-            return ReviewResult(findings=[], summary=raw, parse_failed=True)
+            # Salvage before giving up: a long finder response is usually severed
+            # part-way through the array, so the findings before the cut are
+            # intact. Discarding them lost fifteen of eighteen on one PR of the
+            # #342 Phase 3 run.
+            #
+            # `parse_failed` stays True even when findings are recovered. The
+            # strict parse did fail, the recovered set is smaller than what the
+            # model produced, and the benchmark's exclusion rule reads this flag
+            # — so a rescue must not quietly become a measurement. Production
+            # renders what was recovered rather than nothing.
+            rescued = salvage_findings(raw)
+            log.exception(
+                "Structured output failed twice; salvaging what parsed.",
+                salvaged=len(rescued),
+            )
+            return ReviewResult(findings=rescued, summary=raw, parse_failed=True)
 
 
 class GuardianReviewer:
@@ -102,7 +116,11 @@ class GuardianReviewer:
         """Run the review; optionally judge each finding with the skeptic pass (#246 §3.4)."""
         context = self.context_collector.collect_all()
         result = await self._finder_pass(context)
-        if self.skeptic_provider is None or not result.findings or result.parse_failed:
+        # Not gated on `parse_failed` any more. It used to imply an empty finding
+        # list, so skipping the skeptic was free; since #248 a failed parse can
+        # still yield salvaged findings, and shipping those unjudged would trade
+        # the old loss of findings for a new gain in noise.
+        if self.skeptic_provider is None or not result.findings:
             return result
         judgements = await judge_all(
             self.skeptic_provider, result.findings, context.get("diff", ""), self.concurrency
