@@ -15,9 +15,11 @@ from types import SimpleNamespace
 from typing import ClassVar
 
 import pytest
+from pydantic import BaseModel
 
 from cgis.extractors.registry import build_extractors
 from cgis.guardian.martian import SliceCounts
+from cgis.guardian.providers.base import BaseProvider, ProviderUsage
 from cgis.pipeline import IngestionPipeline
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -1147,7 +1149,7 @@ class TestJudge:
             return pairs, 0
 
         monkeypatch.setattr(gm, "judge_matrix", fake_matrix)
-        judged = asyncio.run(gm.judge_one(record, pr, object(), "judge-x", "core"))
+        judged = asyncio.run(gm.judge_one(record, pr, _silent_judge(), "judge-x", "core"))
         assert (judged.tp, judged.fp, judged.fn) == (1, 0, 1)
         assert judged.decisions == [1, 0]
         assert judged.precision == pytest.approx(1.0)
@@ -1174,7 +1176,7 @@ class TestJudge:
             return [], 0
 
         monkeypatch.setattr(gm, "judge_matrix", fake_matrix)
-        asyncio.run(gm.judge_one(record, pr, object(), "judge-x", "core"))
+        asyncio.run(gm.judge_one(record, pr, _silent_judge(), "judge-x", "core"))
         assert seen["candidates"] == 1
 
     def test_concurrency_reaches_the_judge(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1194,7 +1196,7 @@ class TestJudge:
             return [], 0
 
         monkeypatch.setattr(gm, "judge_matrix", fake_matrix)
-        asyncio.run(gm.judge_one(self._review(), pr, object(), "j", "core", 1))
+        asyncio.run(gm.judge_one(self._review(), pr, _silent_judge(), "j", "core", 1))
         assert seen["concurrency"] == 1
 
     def test_pr_filter_is_exact_not_a_substring(self, tmp_path: Path) -> None:
@@ -2046,3 +2048,134 @@ def _judged_row(*, n_goldens: int, n_candidates: int, judge_failures: int) -> gm
         decisions=[0] * (n_goldens * n_candidates),
         judged_at="2026-08-12T00:00:00+00:00",
     )
+
+
+class TestJudgeTokenAccounting:
+    """The judge's token cost is recorded, not estimated afterwards (#342).
+
+    Phase 2 published "484 judge pairs" with no token figure beside it, and when
+    Phase 3 needed the judge's rate the only answer available was an estimate
+    reconstructed from the prompts that would have been sent. A cost that cannot
+    be reconciled against a bill is how four cost estimates in this benchmark
+    went wrong.
+    """
+
+    def _pr(self) -> gm.BenchPr:
+        return gm.BenchPr(
+            project="p",
+            pr_title="t",
+            url="https://github.com/o/r/pull/1",
+            comments=[{"comment": "g1", "severity": "High", "category": "bug"}],
+        )
+
+    def _record(self, url: str = "https://github.com/o/r/pull/1") -> gm.ReviewRecord:
+        finding = Finding(
+            file="a.py",
+            line=1,
+            severity="major",
+            category="logic",
+            title="t",
+            evidence="e",
+            problem="p",
+            fix="f",
+            confidence=80,
+        )
+        return gm.ReviewRecord(
+            url=url,
+            project="p",
+            pr_slice="graph",
+            base_sha="a",
+            head_sha="b",
+            had_graph=True,
+            finder_model="m",
+            skeptic_model=None,
+            findings=[finding],
+            prompt_tokens=1,
+            completion_tokens=1,
+            duration_s=1.0,
+            parse_failed=False,
+            guardian_sha="s",
+            reviewed_at="2026-08-13T00:00:00+00:00",
+        )
+
+    def test_the_row_carries_what_the_judge_spent(self) -> None:
+        provider = _CountingJudge(prompt=300, completion=40)
+
+        judged = asyncio.run(
+            gm.judge_one(self._record(), self._pr(), provider, "m", "core", concurrency=1)
+        )
+
+        assert (judged.judge_prompt_tokens, judged.judge_completion_tokens) == (300, 40)
+
+    def test_a_second_row_records_its_own_cost_not_the_running_total(self) -> None:
+        """The provider accumulates across PRs; the row must carry a delta.
+
+        Recording `cumulative_usage` directly would make every row after the
+        first overstate its cost, and the last row of a 19-PR arm would appear to
+        cost as much as the arm.
+        """
+        provider = _CountingJudge(prompt=300, completion=40)
+
+        asyncio.run(gm.judge_one(self._record(), self._pr(), provider, "m", "core", concurrency=1))
+        second = asyncio.run(
+            gm.judge_one(self._record(), self._pr(), provider, "m", "core", concurrency=1)
+        )
+
+        assert (second.judge_prompt_tokens, second.judge_completion_tokens) == (300, 40)
+
+    def test_a_row_judged_before_the_field_existed_still_loads(self) -> None:
+        """Phase 2's committed rows carry no token fields and must stay readable."""
+        row = gm.JudgedReview.model_validate(
+            {
+                "url": "u",
+                "project": "p",
+                "pr_slice": "graph",
+                "had_graph": True,
+                "profile": "core",
+                "judge_model": "m",
+                "n_goldens": 1,
+                "n_candidates": 1,
+                "tp": 1,
+                "fp": 0,
+                "fn": 0,
+                "precision": 1.0,
+                "recall": 1.0,
+                "judge_failures": 0,
+                "decisions": [1],
+                "judged_at": "2026-08-12T00:00:00+00:00",
+            }
+        )
+
+        assert (row.judge_prompt_tokens, row.judge_completion_tokens) == (0, 0)
+
+
+class _CountingJudge(BaseProvider):
+    """A judge that always matches and reports a fixed cost per call."""
+
+    def __init__(self, *, prompt: int, completion: int) -> None:
+        """Store the per-call usage this provider will report."""
+        super().__init__()
+        self._usage = ProviderUsage(prompt_tokens=prompt, completion_tokens=completion)
+
+    async def generate_content(self, system_prompt: str, user_prompt: str) -> str:
+        """Report usage and rule the pair a match."""
+        del system_prompt, user_prompt
+        self._record_usage(self._usage)
+        return '{"reasoning": "r", "match": true, "confidence": 0.9}'
+
+    async def generate_structured(
+        self, system_prompt: str, user_prompt: str, schema: type[BaseModel]
+    ) -> str:
+        """Same as generate_content; the judge does not use a schema."""
+        del schema
+        return await self.generate_content(system_prompt, user_prompt)
+
+
+def _silent_judge() -> BaseProvider:
+    """A provider that reports no usage, for tests that stub out `judge_matrix`.
+
+    `judge_one` reads `cumulative_usage` to record what the row cost, so a bare
+    `object()` no longer stands in for a provider — it never satisfied the
+    annotation, it merely went untouched.
+    """
+    return _CountingJudge(prompt=0, completion=0)
