@@ -38,6 +38,25 @@ DEFAULT_OLLAMA_NUM_CTX = 32768
 #:
 #: Free-text generation keeps the model's own values: only the structured path
 #: has the argument above.
+#: Token budget for a single generation, or None for the model's own behaviour.
+#:
+#: qwen3.5:9b produced 9,358 tokens on a 6.5k-token prompt without emitting a
+#: stop token and hit the client timeout, which returns nothing at all. The
+#: schema's `findings` array carries no `maxItems`, so grammar-constrained
+#: decoding always permits another element and closing the array stays a choice
+#: the model can decline.
+#:
+#: A budget turns that into a truncated response, and a truncated response
+#: yields its valid prefix and is flagged `parse_failed`, so the benchmark
+#: excludes it instead of scoring a finder that was cut off — the budget bounds
+#: cost without quietly shortening a measurement.
+#:
+#: Not the finding cap #249 removed: that limited how many claims the model was
+#: allowed to make and depressed recall by construction. 8192 sits well above
+#: the largest real finder output measured (6,784 tokens on Mistral), so a
+#: healthy run should never reach it.
+DEFAULT_OLLAMA_NUM_PREDICT = 8192
+
 EXTRACTION_PENALTIES: dict[str, float] = {
     "presence_penalty": 0.0,
     "frequency_penalty": 0.0,
@@ -68,6 +87,7 @@ class OllamaProvider(BaseProvider):
         num_ctx: int = DEFAULT_OLLAMA_NUM_CTX,
         temperature: float | None = None,
         penalties: Mapping[str, float] | None = None,
+        num_predict: int | None = None,
     ) -> None:
         """Store model, host (None → localhost:11434), timeout, window and sampling.
 
@@ -77,7 +97,10 @@ class OllamaProvider(BaseProvider):
 
         `penalties` overrides the repetition defaults applied to structured
         output (see `EXTRACTION_PENALTIES`), so an experiment can restore the
-        model's own and say that it did.
+        model's own and say that it did. An empty mapping sends none of them.
+
+        `num_predict` bounds one generation (see `DEFAULT_OLLAMA_NUM_PREDICT`);
+        None leaves the model unbounded.
         """
         super().__init__()
         self._model_name = model_name
@@ -86,6 +109,7 @@ class OllamaProvider(BaseProvider):
         self._num_ctx = num_ctx
         self._temperature = temperature
         self._penalties = dict(penalties) if penalties is not None else None
+        self._num_predict = num_predict
 
     async def _generate(
         self, system_prompt: str, user_prompt: str, *, fmt: str | dict[str, object]
@@ -108,6 +132,8 @@ class OllamaProvider(BaseProvider):
         # something, and a falsy test would drop exactly that value.
         if self._temperature is not None:
             options["temperature"] = self._temperature
+        if self._num_predict is not None:
+            options["num_predict"] = self._num_predict
         if fmt:
             # `fmt` is truthy for "json" and for a schema dict, and empty for
             # free text — so the penalties are neutralised exactly where the

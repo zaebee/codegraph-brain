@@ -92,6 +92,44 @@ model's chat template — qwen3.5:9b ships `temperature 1.0`, `presence_penalty
 now sends neutral repetition penalties, because the finder's JSON repeats its
 keys in every object by construction and nobody chose to penalise that.
 
+## When the model will not stop
+
+Observed on qwen3.5:9b: **9,358 generated tokens on a 6,495-token prompt with no
+stop token**, ending in the 600-second client timeout, which returns nothing at
+all. Not slowness — non-termination.
+
+The likely cause is ours. `ReviewResult.findings` is an array with no `maxItems`,
+so under grammar-constrained decoding another element is *always* permitted and
+closing the array stays a choice the model can decline. Mistral's `json_object`
+mode is not grammar-constrained the same way, which is why it stops on its own
+between 1.4k and 6.8k tokens.
+
+`GUARDIAN_OLLAMA_NUM_PREDICT` (default **8192**) bounds it. Hitting the budget
+produces a truncated response, whose valid prefix is salvaged and whose row is
+flagged `parse_failed` — so the bench **excludes** it rather than scoring a
+finder that was cut off. That is the point: the budget bounds cost without
+quietly shortening a measurement.
+
+It is not the finding cap #249 removed. That limited how many claims the model
+was allowed to make and depressed recall by construction; a token budget does not
+choose which findings get made.
+
+**No `maxItems` was added to the schema.** The schema is shared with Mistral and
+Gemini, so bounding it there would reimpose on them the cap #249 deliberately
+removed.
+
+### An open question, deliberately left as a switch
+
+Neutralising the model's repetition penalties was argued from the shape of the
+task — the finder's JSON repeats its keys in every object — **not from evidence**.
+The run immediately after that change did not terminate. It used a different
+fixture, so it neither confirms nor refutes the change.
+
+`GUARDIAN_OLLAMA_PENALTIES=model` restores the model's own. The experiment is
+one fixture run twice with the flag flipped, comparing `n_decoded` in the
+llama-server log. Until someone runs it, neither setting has evidence behind it,
+and this document should not pretend otherwise.
+
 ## What this can and cannot answer
 
 **Finder.** Runs today, unblocked. The open question is real: local 8B finders
