@@ -38,6 +38,17 @@ export GUARDIAN_SKEPTIC="${GUARDIAN_SKEPTIC:-off}"
 #: sampling cannot be named cannot be described afterwards.
 export GUARDIAN_TEMPERATURE="${GUARDIAN_TEMPERATURE:-0.7}"
 
+#: A generation budget, because qwen3.5:9b wrote 9,358 tokens on a 6.5k prompt
+#: without stopping and hit the client timeout, which returns nothing. Hitting
+#: this instead returns a truncated response, whose valid prefix is salvaged and
+#: whose row is flagged unusable — a bounded cost rather than a silently short
+#: measurement. Well above the largest real finder output seen (6,784 tokens).
+export GUARDIAN_OLLAMA_NUM_PREDICT="${GUARDIAN_OLLAMA_NUM_PREDICT:-8192}"
+
+#: Set to "model" to restore the model's own repetition penalties. Whether
+#: neutralising them helps or hurts is UNMEASURED — see the doc.
+export GUARDIAN_OLLAMA_PENALTIES="${GUARDIAN_OLLAMA_PENALTIES:-neutral}"
+
 # --proto/--proto-redir pin the scheme across redirects; -L alone would follow
 # one to plain HTTP. It does not remove the trust placed in ollama.com — this
 # pipes a remote script into a shell, which is that project's documented install

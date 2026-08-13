@@ -18,7 +18,7 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from cgis.guardian.providers.ollama import OllamaProvider
+from cgis.guardian.providers.ollama import DEFAULT_OLLAMA_NUM_PREDICT, OllamaProvider
 from cgis.guardian.runner import build_provider, build_skeptic_provider
 
 
@@ -156,3 +156,99 @@ class TestEnvWiring:
         provider, _ = built
         assert isinstance(provider, OllamaProvider)
         assert provider._temperature == 0.2  # noqa: SLF001  # white-box: sampling wiring
+
+
+class TestOutputBudget:
+    """A token budget, so a run that will not stop fails usefully instead of late.
+
+    qwen3.5:9b generated 9,358 tokens on a 6.5k-token prompt without emitting a
+    stop token and hit the 600s client timeout, which returns nothing at all.
+    The schema's `findings` array has no `maxItems`, so grammar-constrained
+    decoding always permits another element — closing the array is a choice the
+    model can decline indefinitely.
+
+    A budget converts that into a truncated response, and since #377 a truncated
+    response yields its valid prefix and is flagged `parse_failed`, so the bench
+    excludes it rather than scoring a finder that was cut off. That last part is
+    the point: the budget must not quietly shorten a measurement.
+
+    It is not the finding cap #249 removed. That capped how many claims the model
+    was allowed to make and depressed recall by construction; this bounds cost
+    without choosing which findings get made.
+    """
+
+    @pytest.mark.asyncio
+    async def test_the_budget_is_sent(self, sent: dict[str, Any]) -> None:
+        await OllamaProvider(model_name="m", num_predict=4096).generate_content("s", "u")
+
+        assert _options(sent)["num_predict"] == 4096
+
+    @pytest.mark.asyncio
+    async def test_no_budget_is_sent_when_unset(self, sent: dict[str, Any]) -> None:
+        """Unbounded stays the model's own behaviour rather than a number we chose."""
+        await OllamaProvider(model_name="m").generate_content("s", "u")
+
+        assert "num_predict" not in _options(sent)
+
+    def test_the_environment_supplies_a_default(self) -> None:
+        """The default exists so a local run is bounded without being configured."""
+        provider, _ = build_provider({"GUARDIAN_PROVIDER": "ollama", "GUARDIAN_MODEL": "m"})
+
+        assert isinstance(provider, OllamaProvider)
+        assert provider._num_predict == DEFAULT_OLLAMA_NUM_PREDICT  # noqa: SLF001
+
+    def test_the_environment_can_override_it(self) -> None:
+        provider, _ = build_provider(
+            {
+                "GUARDIAN_PROVIDER": "ollama",
+                "GUARDIAN_MODEL": "m",
+                "GUARDIAN_OLLAMA_NUM_PREDICT": "2048",
+            }
+        )
+
+        assert isinstance(provider, OllamaProvider)
+        assert provider._num_predict == 2048  # noqa: SLF001
+
+    def test_an_unparseable_budget_falls_back_rather_than_raising(self) -> None:
+        """Mirrors GUARDIAN_OLLAMA_NUM_CTX: a typo must not abort a long run."""
+        provider, _ = build_provider(
+            {
+                "GUARDIAN_PROVIDER": "ollama",
+                "GUARDIAN_MODEL": "m",
+                "GUARDIAN_OLLAMA_NUM_PREDICT": "lots",
+            }
+        )
+
+        assert isinstance(provider, OllamaProvider)
+        assert provider._num_predict == DEFAULT_OLLAMA_NUM_PREDICT  # noqa: SLF001
+
+
+class TestPenaltyChoiceIsTestable:
+    """Whether neutral penalties help or hurt is unmeasured, so make it a switch.
+
+    Removing the model's `presence_penalty 1.5` was argued from the structure of
+    the task, not from evidence, and the run after it did not stop. The fixtures
+    differed, so that neither confirms nor refutes it — which is exactly why the
+    setting needs to be flippable from the environment rather than defended.
+    """
+
+    def test_the_model_defaults_can_be_restored_from_the_environment(self) -> None:
+        provider, _ = build_provider(
+            {
+                "GUARDIAN_PROVIDER": "ollama",
+                "GUARDIAN_MODEL": "m",
+                "GUARDIAN_OLLAMA_PENALTIES": "model",
+            }
+        )
+
+        assert isinstance(provider, OllamaProvider)
+        assert provider._penalties == {}  # noqa: SLF001
+
+    @pytest.mark.asyncio
+    async def test_restoring_them_sends_no_penalty_options(self, sent: dict[str, Any]) -> None:
+        """ "Model defaults" means we send nothing and Ollama uses the template's."""
+        await OllamaProvider(model_name="m", penalties={}).generate_structured("s", "u", _Schema)
+
+        options = _options(sent)
+        assert "presence_penalty" not in options
+        assert "repeat_penalty" not in options

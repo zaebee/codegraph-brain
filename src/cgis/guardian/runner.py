@@ -16,7 +16,11 @@ from cgis.guardian.metrics import SkepticRecord, record_review
 from cgis.guardian.providers.base import BaseProvider, ProviderUsage
 from cgis.guardian.providers.gemini import GeminiProvider
 from cgis.guardian.providers.mistral import MistralProvider
-from cgis.guardian.providers.ollama import DEFAULT_OLLAMA_NUM_CTX, OllamaProvider
+from cgis.guardian.providers.ollama import (
+    DEFAULT_OLLAMA_NUM_CTX,
+    DEFAULT_OLLAMA_NUM_PREDICT,
+    OllamaProvider,
+)
 from cgis.guardian.recording import save_finder_recording
 from cgis.guardian.render import render_report
 
@@ -85,6 +89,38 @@ def temperature(env: Mapping[str, str]) -> float | None:
         return None
 
 
+def _ollama_num_predict(env: Mapping[str, str]) -> int:
+    """GUARDIAN_OLLAMA_NUM_PREDICT as an int, or the provider default.
+
+    Warns and falls back on a typo rather than raising: the same policy as
+    GUARDIAN_OLLAMA_NUM_CTX, and a bad value should not abort a run that has
+    already spent an hour.
+    """
+    raw = (env.get("GUARDIAN_OLLAMA_NUM_PREDICT") or "").strip()
+    if not raw:
+        return DEFAULT_OLLAMA_NUM_PREDICT
+    try:
+        return int(raw)
+    except ValueError:
+        log.warning("Invalid GUARDIAN_OLLAMA_NUM_PREDICT; using default.", value=raw)
+        return DEFAULT_OLLAMA_NUM_PREDICT
+
+
+def _ollama_penalties(env: Mapping[str, str]) -> Mapping[str, float] | None:
+    """None for this project's extraction defaults, {} for the model's own.
+
+    A switch rather than a decision, because the decision is unmeasured.
+    Neutralising the repetition penalties was argued from the shape of the task
+    — the finder's JSON repeats its keys by construction — and the run after it
+    did not terminate. The fixtures differed, so that neither confirms nor
+    refutes it, which is precisely why it belongs behind a flag that an
+    experiment can flip and report.
+    """
+    if (env.get("GUARDIAN_OLLAMA_PENALTIES") or "").strip().lower() == "model":
+        return {}
+    return None
+
+
 def _build_mistral(env: Mapping[str, str], model_override: str | None) -> tuple[BaseProvider, str]:
     """Construct a MistralProvider; MISTRAL_API_KEY is required."""
     key = env.get("MISTRAL_API_KEY")
@@ -116,6 +152,8 @@ def _build_ollama(env: Mapping[str, str], model_override: str | None) -> tuple[B
         host=_ollama_host(env),
         num_ctx=_ollama_num_ctx(env),
         temperature=temperature(env),
+        penalties=_ollama_penalties(env),
+        num_predict=_ollama_num_predict(env),
     )
     return provider, model_override
 
@@ -179,6 +217,8 @@ def build_skeptic_provider(
             host=_ollama_host(env),
             num_ctx=_ollama_num_ctx(env),
             temperature=temperature(env),
+            penalties=_ollama_penalties(env),
+            num_predict=_ollama_num_predict(env),
         )
         return provider, model
     if name == "mistral":
