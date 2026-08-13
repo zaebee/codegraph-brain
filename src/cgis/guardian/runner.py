@@ -112,7 +112,10 @@ def _build_ollama(env: Mapping[str, str], model_override: str | None) -> tuple[B
         _msg = "GUARDIAN_MODEL must name an Ollama model when GUARDIAN_PROVIDER=ollama"
         raise RuntimeError(_msg)
     provider = OllamaProvider(
-        model_name=model_override, host=_ollama_host(env), num_ctx=_ollama_num_ctx(env)
+        model_name=model_override,
+        host=_ollama_host(env),
+        num_ctx=_ollama_num_ctx(env),
+        temperature=temperature(env),
     )
     return provider, model_override
 
@@ -172,7 +175,10 @@ def build_skeptic_provider(
             )
             return None
         provider = OllamaProvider(
-            model_name=model, host=_ollama_host(env), num_ctx=_ollama_num_ctx(env)
+            model_name=model,
+            host=_ollama_host(env),
+            num_ctx=_ollama_num_ctx(env),
+            temperature=temperature(env),
         )
         return provider, model
     if name == "mistral":
