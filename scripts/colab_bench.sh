@@ -33,6 +33,10 @@ export GUARDIAN_MODEL="${MODEL}"
 #: the finder rather than a finder-skeptic pair. The skeptic gets its own run
 #: over a frozen finder set.
 export GUARDIAN_SKEPTIC="${GUARDIAN_SKEPTIC:-off}"
+#: Stated rather than inherited. Without it Ollama takes sampling from the
+#: model's chat template — qwen3.5:9b ships temperature 1.0 — and a run whose
+#: sampling cannot be named cannot be described afterwards.
+export GUARDIAN_TEMPERATURE="${GUARDIAN_TEMPERATURE:-0.7}"
 
 # --proto/--proto-redir pin the scheme across redirects; -L alone would follow
 # one to plain HTTP. It does not remove the trust placed in ollama.com — this
@@ -68,5 +72,8 @@ echo "==> running the benchmark (free: no API keys, no judge)"
 python scripts/guardian_bench.py "${@:2}"
 
 echo
-echo "Results appended to benchmarks/guardian/results.jsonl — download it and score locally."
+echo "Results appended to benchmarks/guardian/results.jsonl unless --results said otherwise."
 echo "Expect pr-144 to raise PromptTruncatedError at this window: it needs ~47k."
+echo
+echo "A T4 generates ~24 tok/s and the finder writes 3-4k tokens, so budget 2-4"
+echo "minutes per fixture. Pass --pr N to run one at a time if the cell is short-lived."

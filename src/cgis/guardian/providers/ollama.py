@@ -6,6 +6,8 @@ GUARDIAN_OLLAMA_HOST). The model must already be pulled on that server
 skeptic built from two distinct local models.
 """
 
+from collections.abc import Mapping
+
 from pydantic import BaseModel
 
 from cgis.guardian.providers.base import BaseProvider, ProviderUsage
@@ -20,6 +22,27 @@ DEFAULT_OLLAMA_TIMEOUT = 600.0
 # explicit window. 32768 matches qwen2.5-coder's max; raise it (e.g. for
 # llama3.1's 128k) or lower it for VRAM via GUARDIAN_OLLAMA_NUM_CTX.
 DEFAULT_OLLAMA_NUM_CTX = 32768
+
+#: Repetition penalties applied to schema-constrained output only.
+#:
+#: Ollama takes these from the model's chat template when nothing overrides
+#: them — qwen3.5:9b ships `presence_penalty 1.5`, `repeat_penalty 1.1`. Those
+#: are chat presets: they reward novel tokens, which is a reasonable default for
+#: conversation and an unexamined one for extraction, where the finder's JSON
+#: repeats its keys in every object by construction.
+#:
+#: Neutral rather than tuned. The point is not that 0.0 is optimal, it is that
+#: the value should be one this project chose and can state — a run whose
+#: sampling is inherited cannot be described afterwards, which is the gap
+#: retraction R5 was about.
+#:
+#: Free-text generation keeps the model's own values: only the structured path
+#: has the argument above.
+EXTRACTION_PENALTIES: dict[str, float] = {
+    "presence_penalty": 0.0,
+    "frequency_penalty": 0.0,
+    "repeat_penalty": 1.0,
+}
 
 
 class PromptTruncatedError(RuntimeError):
@@ -43,13 +66,26 @@ class OllamaProvider(BaseProvider):
         host: str | None = None,
         timeout: float = DEFAULT_OLLAMA_TIMEOUT,
         num_ctx: int = DEFAULT_OLLAMA_NUM_CTX,
+        temperature: float | None = None,
+        penalties: Mapping[str, float] | None = None,
     ) -> None:
-        """Store model, host (None → localhost:11434), timeout, and context window."""
+        """Store model, host (None → localhost:11434), timeout, window and sampling.
+
+        `temperature` is None by default and then not sent, leaving the model's
+        own value in place — the same rule the Mistral provider follows, so an
+        unset knob never becomes a value this project invented.
+
+        `penalties` overrides the repetition defaults applied to structured
+        output (see `EXTRACTION_PENALTIES`), so an experiment can restore the
+        model's own and say that it did.
+        """
         super().__init__()
         self._model_name = model_name
         self._host = host
         self._timeout = timeout
         self._num_ctx = num_ctx
+        self._temperature = temperature
+        self._penalties = dict(penalties) if penalties is not None else None
 
     async def _generate(
         self, system_prompt: str, user_prompt: str, *, fmt: str | dict[str, object]
@@ -67,6 +103,17 @@ class OllamaProvider(BaseProvider):
         except ImportError as exc:
             raise ImportError(_install_hint) from exc
         # Context manager so the underlying httpx pool is closed each call.
+        options: dict[str, object] = {"num_ctx": self._num_ctx}
+        # `is not None`, not truthiness: 0.0 is the one temperature that states
+        # something, and a falsy test would drop exactly that value.
+        if self._temperature is not None:
+            options["temperature"] = self._temperature
+        if fmt:
+            # `fmt` is truthy for "json" and for a schema dict, and empty for
+            # free text — so the penalties are neutralised exactly where the
+            # output is required to repeat its own structure.
+            options.update(self._penalties if self._penalties is not None else EXTRACTION_PENALTIES)
+
         async with AsyncClient(host=self._host, timeout=self._timeout) as client:
             response = await client.chat(
                 model=self._model_name,
@@ -76,7 +123,7 @@ class OllamaProvider(BaseProvider):
                 ],
                 stream=False,
                 format=fmt,
-                options={"num_ctx": self._num_ctx},
+                options=options,
             )
         self._refuse_if_truncated(response.prompt_eval_count)
         content = response.message.content

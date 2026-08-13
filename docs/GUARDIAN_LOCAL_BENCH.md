@@ -75,6 +75,23 @@ On a 16GB T4, an 8–9B model at Q4 holds roughly 32–48k, so 40960 is already 
 the ceiling. Raising it far enough for pr-144 risks an out-of-memory that leaves
 the Ollama server unhealthy until restarted.
 
+## How long it takes
+
+A T4 processes the prompt at roughly 1000 tok/s — 14k tokens in 15 seconds — and
+then generates at about **24 tok/s**. Generation is the cost: the recall-lean
+finder writes 3–4k tokens per review (measured on real PRs: median 3100, mean
+3629), so budget **2–4 minutes per fixture** and around half an hour for all
+eight. That is the hardware, not a misconfiguration.
+
+Pass `--pr N` to run one fixture at a time if the notebook cell is short-lived.
+Start with the small ones: pr-313, pr-141, pr-142.
+
+Sampling is stated rather than inherited. Left alone, Ollama takes it from the
+model's chat template — qwen3.5:9b ships `temperature 1.0`, `presence_penalty
+1.5`, `repeat_penalty 1.1`. Those are conversation defaults; the structured path
+now sends neutral repetition penalties, because the finder's JSON repeats its
+keys in every object by construction and nobody chose to penalise that.
+
 ## What this can and cannot answer
 
 **Finder.** Runs today, unblocked. The open question is real: local 8B finders
