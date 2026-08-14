@@ -162,9 +162,25 @@ def test_every_review_shaped_row_under_benchmarks_is_fingerprinted() -> None:
     A corpus file added tomorrow, by anyone, fails this test until it is
     backfilled — a one-time check leaves the next person to notice a gap; this
     notices for them.
+
+    The floor below is a ratchet, not a fixed count: `>=`, so a future corpus
+    file only ever raises it, never breaks this test by existing. Without it,
+    an empty or missing `benchmarks/` — a partial checkout, a wrong cwd, a
+    corpus accidentally emptied — makes `_review_shaped_rows` return `[]`,
+    `offenders` stays empty, and the test passes having inspected nothing.
+    That is not "the corpus is clean"; it is "the corpus was not found," and
+    this test existed once already without noticing the difference (#375
+    review, instance eight of the same shape).
     """
+    rows = _review_shaped_rows(REPO_ROOT)
+    assert len(rows) >= 115, (
+        f"found only {len(rows)} review-shaped rows under benchmarks/, expected "
+        "at least 115 — this usually means benchmarks/ was not found (wrong cwd, "
+        "partial checkout) rather than that the corpus shrank, but either way the "
+        "completeness check below cannot be trusted over an empty result."
+    )
     offenders = set()
-    for path, row in _review_shaped_rows(REPO_ROOT):
+    for path, row in rows:
         fingerprint = row.get("review_fingerprint")
         source = row.get("review_fingerprint_source")
         if not fingerprint or source not in {"measured", "reconstructed"}:
@@ -190,8 +206,15 @@ def test_stored_fingerprints_match_what_current_code_computes() -> None:
     recomputations rather than 115 — the shas and provider pairs repeat
     heavily across rows (measured: 6 distinct pairs over 115 rows). Each
     recomputation walks the ~43-module closure via `git show`, one subprocess
-    per file; measured at ~5.8s for all six, acceptable inside the unit suite
-    (whole-suite runtime moved from ~22s to ~23s with this test added).
+    per file; measured at ~5.1s for all six after `git_reader`'s per-path
+    cache, acceptable inside the unit suite.
+
+    The floor on the pair count below is a ratchet (`>=`), not a fixed count,
+    for the same reason as the completeness test's row floor: without it, an
+    empty or missing `benchmarks/` makes `rows_by_key` empty, the comparison
+    loop below never runs, and `assert not mismatches` passes having checked
+    zero pairs — the reassuring answer produced by inspecting nothing, which
+    is the exact failure shape this branch has now produced eight times.
     """
     rows_by_key: dict[tuple[str, frozenset[str]], list[tuple[Path, str]]] = collections.defaultdict(
         list
@@ -203,6 +226,14 @@ def test_stored_fingerprints_match_what_current_code_computes() -> None:
         active = frozenset({finder} | ({skeptic} if skeptic else set()))
         key = (row["guardian_sha"], active)
         rows_by_key[key].append((path, row["review_fingerprint"]))
+
+    assert len(rows_by_key) >= 6, (
+        f"found only {len(rows_by_key)} distinct (guardian_sha, active_providers) "
+        "pairs, expected at least 6 — this usually means benchmarks/ was not "
+        "found (wrong cwd, partial checkout) rather than that the corpus shrank, "
+        "but either way an empty result must not read as 'every stored "
+        "fingerprint is reproducible' when it means 'nothing was compared.'"
+    )
 
     mismatches: list[str] = []
     for (sha, active), entries in sorted(rows_by_key.items(), key=lambda kv: kv[0][0]):
