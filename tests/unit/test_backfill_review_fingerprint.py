@@ -101,3 +101,49 @@ def test_unresolvable_sha_does_not_yield_an_empty_tree_digest() -> None:
     """
     with pytest.raises(UnresolvableShaError):
         git_reader("0" * 40, REPO_ROOT)
+
+
+def _review_shaped_rows(repo_root: Path) -> list[tuple[Path, dict[str, object]]]:
+    """Every row under `benchmarks/` that has the shape of a `ReviewRecord`.
+
+    Enumerated by globbing `benchmarks/**/*.jsonl`, never a hardcoded filename
+    list — a hardcoded list of three names is exactly what left
+    `martian-p3-run2.jsonl` and `martian-p3-run3.jsonl` unfingerprinted after
+    the first backfill pass (#375), even though they were genuine reviews.
+
+    Classified by fields, not filename or directory: `guardian_sha`,
+    `findings`, and `finder_model` all present. Two of the three are not
+    enough — `benchmarks/guardian/results.jsonl` is a retired, pre-finder/
+    skeptic single-model bench format (it names its model `model`, not
+    `finder_model`) that also carries both `guardian_sha` and `findings` on
+    118 of its 150 rows, and has no provider to resolve a fingerprint against.
+    `finder_model` is the field the fingerprint scheme actually keys its
+    provider lookup on, so its presence is what distinguishes a `ReviewRecord`
+    from that older shape rather than an incidental extra check.
+    """
+    rows: list[tuple[Path, dict[str, object]]] = []
+    for path in sorted((repo_root / "benchmarks").rglob("*.jsonl")):
+        for raw_line in path.read_text().splitlines():
+            stripped = raw_line.strip()
+            if not stripped:
+                continue
+            row = json.loads(stripped)
+            if "guardian_sha" in row and "findings" in row and "finder_model" in row:
+                rows.append((path, row))
+    return rows
+
+
+def test_every_review_shaped_row_under_benchmarks_is_fingerprinted() -> None:
+    """No review-shaped row anywhere under `benchmarks/` may lack a fingerprint.
+
+    A corpus file added tomorrow, by anyone, fails this test until it is
+    backfilled — a one-time check leaves the next person to notice a gap; this
+    notices for them.
+    """
+    offenders = set()
+    for path, row in _review_shaped_rows(REPO_ROOT):
+        fingerprint = row.get("review_fingerprint")
+        source = row.get("review_fingerprint_source")
+        if not fingerprint or source not in {"measured", "reconstructed"}:
+            offenders.add(str(path.relative_to(REPO_ROOT)))
+    assert not offenders, f"review-shaped rows without a fingerprint in: {sorted(offenders)}"
