@@ -39,8 +39,14 @@ and less obviously: 118 of its 150 rows carry both `guardian_sha` and
 `findings`, so a two-field test would sweep them in. They are the Phase 1 bench
 corpus under the pre-finder/skeptic schema, carrying `model` rather than
 `finder_model` and scored fields (`precision`, `recall`, `matched`, `missed`) —
-scores, not reviews. Classification therefore requires `finder_model`, which is
-a required field on `ReviewRecord` and so cannot exclude a genuine review row.
+scores, not reviews. Classification therefore requires `url`: present on every
+row of all five review files and absent from every row of
+`benchmarks/guardian/results.jsonl` and `calibration.jsonl` (measured), and
+resting on "a review without a URL is not a review" — a property of what was
+reviewed, not of which model-name field a retired schema happened to use. A
+narrower predicate is the dangerous direction here: fewer rows classified as
+reviews means fewer rows required to carry a fingerprint, so every conjunct
+added is a way for a row to escape the requirement (§8).
 
 ```
 1ecd9629 (#357) -> d0d807ef (#361) -> f9c36f5c (#367) -> 4d1fe6a8 (#373)
@@ -93,7 +99,14 @@ when behaviour changes.
 
 The set is therefore the **transitive import closure** of the review entry
 points, computed by walking `import` statements with `ast`, restricted to the
-`cgis` package.
+`cgis` package — plus, for every module reached, its ancestor packages. Python
+executes an ancestor package's `__init__.py` on every import of a module
+beneath it; that execution is not optional, so a walk that only follows `import`
+statements understates what a review can read. `src/cgis/__init__.py` (an
+`importlib.metadata.version` lookup) and `src/cgis/guardian/__init__.py` both
+run on every review; neither is named by any `import` statement in the closure,
+so both would otherwise be invisible to the digest — the silent-merge
+direction this whole design exists to avoid.
 
 Seeds:
 
@@ -103,8 +116,9 @@ cgis.guardian.collector   cgis.guardian.chunked
 ```
 
 This is not a cosmetic difference from a declared list. Before the provider
-scoping of §3.3 narrows it, the closure is 37 modules where a hand-written list
-of the guardian package would have been nine, and the eleven it would have
+scoping of §3.3 narrows it, the closure is 43 modules — 37 reached by `import`
+statements plus 6 ancestor-package `__init__.py` files — where a hand-written
+list of the guardian package would have been nine, and the eleven it would have
 missed all shape what the model is shown:
 
 | Module | What it decides in the prompt |
@@ -475,6 +489,26 @@ The tests are asymmetric, because the failure modes are.
   shrinks and passes when it grows, which is correct for safety but means a
   newly-reachable churn-prone module joins with no signal. The churn figures in
   §3.2 and above describe today's closure, not a fixed property.
+- **A module reached by a mechanism other than an import statement or an
+  ancestor package escapes the walk.** §3.1 closed the ancestor-package gap —
+  the class a package's `__init__.py` belongs to — but the walk still only
+  models two ways Python reaches code: an `import` statement and package
+  initialisation. A plugin discovered by entry point, a class registered by a
+  metaclass or decorator side effect at import time in a module the walk
+  never visits, or any other mechanism that runs review-shaping code without
+  a static `import` of it, would move review behaviour without moving the
+  digest. Nothing in `src/cgis` uses such a mechanism today, so this is a
+  named class of gap, not a live instance of one.
+- **`scripts/guardian_bench.py` still writes `model` rather than
+  `finder_model`.** Its 150 scored rows in `benchmarks/guardian/results.jsonl`
+  therefore have no provider to resolve a fingerprint against and are
+  correctly excluded by §6's backfill test (§1, §6). But a future schema
+  tidy-up that renames that field to `finder_model` — for consistency with
+  `ReviewRecord`, say — would make those rows indistinguishable from genuine
+  reviews under a classifier keyed on `finder_model`'s mere presence. This is
+  exactly why §1 and §6's `_review_shaped_rows` classifier keys on `url`
+  instead: a property of what was reviewed, not of which model-name field a
+  schema happens to use.
 
 ## 9. Consumer note
 
