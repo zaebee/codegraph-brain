@@ -2,7 +2,10 @@
 
 import collections
 import json
+import shutil
 import sys
+import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -13,16 +16,44 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scripts"))
 
 from backfill_review_fingerprint import (
+    InvalidShaError,
     UnknownModelError,
     UnresolvableShaError,
+    UnsafeCorpusPathError,
     backfill,
     git_reader,
     provider_for,
+    reject_corpus_path,
 )
 
 from cgis.guardian.review_fingerprint import compute_fingerprint
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+@pytest.fixture
+def corpus_dir() -> Iterator[Path]:
+    """A directory *inside* the repository, for tests that write a corpus file.
+
+    `reject_corpus_path` (the pythonsecurity:S2083 fix) refuses any corpus
+    path outside `repo_root` — deliberately, since `backfill()` overwrites
+    whatever passes it. Pytest's own `tmp_path` fixture resolves under the
+    system temp directory, which is outside this repository, so a corpus
+    written there would be refused by the very validator most of these tests
+    exist to exercise the *legitimate* path through. This fixture gives those
+    tests a real corpus location instead.
+
+    Placed under `.pytest_cache/`, which is already gitignored (it carries
+    its own `.gitignore` besides), so a test interrupted before its `finally`
+    runs leaves nothing for git to see.
+    """
+    cache_dir = REPO_ROOT / ".pytest_cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    created = Path(tempfile.mkdtemp(dir=cache_dir))
+    try:
+        yield created
+    finally:
+        shutil.rmtree(created, ignore_errors=True)
 
 
 def test_provider_for_known_models() -> None:
@@ -48,8 +79,8 @@ def test_git_reader_returns_none_for_a_missing_path() -> None:
     assert read("src/cgis/guardian/does_not_exist.py") is None
 
 
-def test_backfill_marks_rows_reconstructed(tmp_path: Path) -> None:
-    corpus = tmp_path / "reviews.jsonl"
+def test_backfill_marks_rows_reconstructed(corpus_dir: Path) -> None:
+    corpus = corpus_dir / "reviews.jsonl"
     corpus.write_text(
         json.dumps(
             {
@@ -80,9 +111,9 @@ def test_backfill_marks_rows_reconstructed(tmp_path: Path) -> None:
     assert row["skeptic_provider"] == "gemini"
 
 
-def test_unresolvable_sha_is_a_hard_failure(tmp_path: Path) -> None:
+def test_unresolvable_sha_is_a_hard_failure(corpus_dir: Path) -> None:
     """Never a null: a mixed corpus means two identity schemes at once."""
-    corpus = tmp_path / "reviews.jsonl"
+    corpus = corpus_dir / "reviews.jsonl"
     # A *mapped* model on purpose. With an unmapped one, provider_for raises
     # UnknownModelError before git is ever called, and the test would pass
     # without exercising the unresolvable-sha path at all.
@@ -104,6 +135,81 @@ def test_unresolvable_sha_does_not_yield_an_empty_tree_digest() -> None:
     """
     with pytest.raises(UnresolvableShaError):
         git_reader("0" * 40, REPO_ROOT)
+
+
+def test_git_reader_refuses_a_non_hex_sha() -> None:
+    """A sha that is not shaped like a sha never reaches a subprocess argument.
+
+    SonarCloud pythonsecurity:S6350: `guardian_sha` flows from a JSON corpus
+    row straight into `git rev-parse`/`git show` argv. Argv form already
+    blocks classic shell injection, but the taint shape is real regardless,
+    and the fix is the same one #350 already established for a path taint
+    (`reject_metrics_path`): validate the value's shape before it reaches the
+    sink, rather than trust `git` to reject it safely.
+    """
+    with pytest.raises(InvalidShaError, match="not a hex string"):
+        git_reader("not-a-sha; rm -rf /", REPO_ROOT)
+
+
+def test_backfill_refuses_a_non_hex_guardian_sha(corpus_dir: Path) -> None:
+    """The same refusal, reached the way a real corpus row reaches it."""
+    corpus = corpus_dir / "reviews.jsonl"
+    corpus.write_text(
+        json.dumps({"guardian_sha": "../../etc/passwd", "finder_model": "gemini-2.5-flash"}) + "\n"
+    )
+    with pytest.raises(InvalidShaError):
+        backfill(corpus, REPO_ROOT)
+
+
+def test_reject_corpus_path_requires_a_jsonl_suffix(corpus_dir: Path) -> None:
+    not_jsonl = corpus_dir / "reviews.json"
+    not_jsonl.write_text("{}\n")
+    assert reject_corpus_path(not_jsonl, REPO_ROOT) == "name must end in .jsonl"
+
+
+def test_reject_corpus_path_requires_an_existing_file(corpus_dir: Path) -> None:
+    missing = corpus_dir / "does-not-exist.jsonl"
+    assert reject_corpus_path(missing, REPO_ROOT) == "it does not exist, or is not a regular file"
+
+
+def test_reject_corpus_path_requires_an_existing_file_not_a_directory(corpus_dir: Path) -> None:
+    a_directory = corpus_dir / "reviews.jsonl"
+    a_directory.mkdir()
+    assert (
+        reject_corpus_path(a_directory, REPO_ROOT) == "it does not exist, or is not a regular file"
+    )
+
+
+def test_reject_corpus_path_confines_to_the_repo_root(tmp_path: Path) -> None:
+    """The one case pytest's own `tmp_path` is exactly the right fixture for.
+
+    Every other test in this file avoids `tmp_path` in favour of `corpus_dir`
+    *because* it resolves outside the repository — which is precisely the
+    condition this test exists to exercise.
+    """
+    outside = tmp_path / "reviews.jsonl"
+    outside.write_text('{"guardian_sha": "0"}\n')
+    refusal = reject_corpus_path(outside, REPO_ROOT)
+    assert refusal is not None
+    assert "outside the repository root" in refusal
+
+
+def test_backfill_refuses_a_corpus_path_outside_the_repo_root(tmp_path: Path) -> None:
+    """Wired at the call site, and nothing is read or written before the refusal."""
+    outside = tmp_path / "reviews.jsonl"
+    original = json.dumps({"guardian_sha": "0" * 40, "finder_model": "gemini-2.5-flash"}) + "\n"
+    outside.write_text(original)
+    with pytest.raises(UnsafeCorpusPathError, match="outside the repository root"):
+        backfill(outside, REPO_ROOT)
+    assert outside.read_text() == original, "a refused path must not be touched at all"
+
+
+def test_backfill_refuses_a_non_jsonl_corpus_path(corpus_dir: Path) -> None:
+    """Wired at the call site for the suffix check too, not only confinement."""
+    not_jsonl = corpus_dir / "reviews.txt"
+    not_jsonl.write_text("not json\n")
+    with pytest.raises(UnsafeCorpusPathError, match=r"\.jsonl"):
+        backfill(not_jsonl, REPO_ROOT)
 
 
 def _review_shaped_rows(repo_root: Path) -> list[tuple[Path, dict[str, object]]]:

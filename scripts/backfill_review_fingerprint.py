@@ -13,6 +13,7 @@ which one reviewer appears as two entities depending on which run it came from.
 
 import argparse
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -28,12 +29,52 @@ MODEL_PROVIDERS: dict[str, str] = {
     "mistral-medium-latest": "mistral",
 }
 
+#: A git abbreviated-or-full object id: hex only, 7-40 characters. `git`
+#: itself accepts abbreviations down to 4, but this repository's own
+#: `guardian_sha` values are never shorter than 7 (see the fixtures in
+#: `tests/unit/test_backfill_review_fingerprint.py`), so 7 is the floor that
+#: rejects the most garbage without rejecting anything real.
+_SHA_PATTERN = re.compile(r"^[0-9a-fA-F]{7,40}$")
+
+#: Corpus files this script is willing to overwrite. Deliberately narrow: the
+#: whole reason `reject_corpus_path` exists is that `backfill()` overwrites
+#: whatever passes it.
+_CORPUS_SUFFIXES = frozenset({".jsonl"})
+
 
 class UnresolvableShaError(RuntimeError):
     """Raised when a corpus row names a commit this repository does not have.
 
     A row we cannot place is not a row to guess about: the alternative is a
     digest computed over an empty tree, which looks exactly like a real one.
+    """
+
+
+class InvalidShaError(RuntimeError):
+    """Raised when a corpus row's `guardian_sha` is not shaped like a git sha.
+
+    `sha` reaches `git rev-parse`/`git show` as a subprocess argument — argv
+    form already blocks classic shell injection, but a value that never
+    looked like a sha has no business reaching a subprocess regardless
+    (pythonsecurity:S6350). Checked before `UnresolvableShaError`'s own
+    resolution attempt, and for the same reason: a row whose sha does not
+    resolve is already a hard failure here, not a `null`, and this extends
+    that same refusal to a row whose sha is not a sha at all, rather than
+    relying on `git` to safely reject a malformed argument it was never
+    guaranteed to.
+    """
+
+
+class UnsafeCorpusPathError(RuntimeError):
+    """Raised when a corpus path is not one `backfill()` should read or overwrite.
+
+    The path arrives from `argparse` and is then read *and overwritten in
+    place* — the write is the dangerous half (pythonsecurity:S2083), because
+    every real corpus under `benchmarks/` is a committed artefact that cost
+    real review time, and real money for hosted models, to produce. Nothing
+    before this class stopped a mistyped argument, or a wrong `--repo-root`,
+    from truncating one. See `reject_corpus_path` for what is actually
+    checked.
     """
 
 
@@ -52,6 +93,52 @@ def provider_for(model: str) -> str:
         _msg = f"No provider mapping for model {model!r}. Add it to MODEL_PROVIDERS."
         raise UnknownModelError(_msg)
     return provider
+
+
+def reject_corpus_path(corpus_path: Path, repo_root: Path) -> str | None:
+    """Return a refusal for a corpus path `backfill()` must not touch, or None if it is fine.
+
+    Modelled on `reject_metrics_path` (`src/cgis/guardian/metrics.py`, #350),
+    which cleared the same taint shape (pythonsecurity:S2083) to Sonar's
+    satisfaction by validating rather than suppressing — read that function
+    first, this follows its shape. The sink here is more dangerous than the
+    append `reject_metrics_path` guards: `backfill()` reads a corpus and then
+    *overwrites* it, so a bad path is not a stray file created somewhere, it
+    is an existing committed corpus destroyed in place.
+
+    Judged on the **resolved** path for the same reason: a dangling symlink
+    makes `is_file()` False and would otherwise let the checks below it pass
+    while a write lands somewhere unintended.
+
+    Unlike `reject_metrics_path`, this one *does* confine to `repo_root` —
+    deliberately the opposite choice, made explicitly rather than by default.
+    `reject_metrics_path` avoids confinement because the metrics path is a
+    library parameter with a legitimate ad-hoc/`tmp_path` use; a fingerprint
+    backfill's corpus argument has no such use — every real corpus lives
+    under this repository's `benchmarks/`, and the whole point of the check
+    is that a mistyped path argument must not silently reach for a file
+    outside the tree this script is even fingerprinting.
+
+    Requiring an *existing* file (not merely a valid location) is
+    deliberate too: this script never creates a corpus, only rewrites one
+    that is already there, so a nonexistent target is refused rather than
+    quietly begun.
+    """
+    try:
+        root = repo_root.resolve()
+        path = corpus_path.resolve()
+    except (OSError, RuntimeError) as exc:
+        return f"path is inaccessible ({exc})"
+    if path.suffix.lower() not in _CORPUS_SUFFIXES:
+        return f"name must end in {', '.join(sorted(_CORPUS_SUFFIXES))}"
+    try:
+        if not path.is_file():
+            return "it does not exist, or is not a regular file"
+    except OSError as exc:
+        return f"path is inaccessible ({exc})"
+    if not path.is_relative_to(root):
+        return f"it is outside the repository root {root}"
+    return None
 
 
 def git_reader(sha: str, repo_root: Path) -> ReadFile:
@@ -88,6 +175,10 @@ def git_reader(sha: str, repo_root: Path) -> ReadFile:
     specifically, consistency-by-construction has already done the guard's
     job before the guard gets a chance to.
     """
+    if not _SHA_PATTERN.fullmatch(sha):
+        _msg = f"guardian_sha {sha!r} is not a hex string of 7-40 characters."
+        raise InvalidShaError(_msg)
+
     verify = subprocess.run(
         ["git", "rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}"],
         capture_output=True,
@@ -130,7 +221,15 @@ def git_reader(sha: str, repo_root: Path) -> ReadFile:
 
 
 def backfill(path: Path, repo_root: Path) -> int:
-    """Rewrite `path` in place with fingerprints; return the rows touched."""
+    """Rewrite `path` in place with fingerprints; return the rows touched.
+
+    Refuses before touching the filesystem at all — see `reject_corpus_path`.
+    """
+    refusal = reject_corpus_path(path, repo_root)
+    if refusal is not None:
+        _msg = f"Refusing corpus path {path}: {refusal}."
+        raise UnsafeCorpusPathError(_msg)
+
     rows = [
         json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
     ]
