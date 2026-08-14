@@ -212,12 +212,26 @@ def test_safe_corpus_path_refuses_a_symlink_escaping_the_repo(
 ) -> None:
     """A symlink whose own name is inside the repo but whose target is not.
 
-    This is the specific gap the resolve-then-use-the-unresolved-argument
-    version of this check admitted: `.resolve()` follows symlinks, so a
-    validator that checks the resolved path but a caller that operates on the
-    original argument can approve `benchmarks/x.jsonl` while the write lands
-    wherever the symlink actually points — outside the repository entirely.
-    Pinned now that it is known to have been reachable, not merely plausible.
+    This pins the refusal rule itself, not a regression that was ever
+    reachable in a single deterministic run — an earlier version of this
+    docstring claimed the opposite, and that claim was checked and found
+    false. The check: extract the pre-fix script from commit `42f9bc8` into
+    a scratch copy and run this exact scenario against its `backfill()`.
+    Result: the old code refused it too, and left the target byte-unchanged.
+    The reason is that the old validator's internal checks always ran
+    against the *resolved* path — that part was never broken. For a plain
+    symlink with no race, `read_text`/`write_text` on the old code's
+    unresolved argument follow the symlink to the same target the resolve
+    reached, so old and new behave identically here.
+
+    What binding the check to its returned value actually closes is a TOCTOU
+    window: the symlink's target being swapped between the check's
+    `.resolve()` and a later open. No single-threaded, deterministic test
+    can demonstrate that race — demonstrating it requires the swap to land
+    inside a window this test does not control. So this test covers the
+    refusal rule on its own terms (a symlink resolving outside `repo_root`
+    is refused, target untouched), not the TOCTOU fix, which has no
+    deterministic test.
     """
     target = tmp_path / "outside.jsonl"
     original = json.dumps({"guardian_sha": "0" * 40, "finder_model": "gemini-2.5-flash"}) + "\n"
@@ -229,6 +243,44 @@ def test_safe_corpus_path_refuses_a_symlink_escaping_the_repo(
     with pytest.raises(UnsafeCorpusPathError, match="outside the repository root"):
         safe_corpus_path(link, REPO_ROOT)
     assert target.read_text() == original, "the symlink's target must not be touched at all"
+
+
+def test_backfill_rewrites_the_resolved_target_of_an_in_repo_symlink(corpus_dir: Path) -> None:
+    """Coverage of the sink, not a regression test — say that plainly.
+
+    A symlink whose own path and whose target are *both* inside the
+    repository (a legitimate alias, unlike the escaping case above) must be
+    accepted by `safe_corpus_path` and processed by `backfill()`: the real
+    target file ends up rewritten with a fingerprint.
+
+    This would pass against the pre-`c6d43fe` implementation too — a
+    same-process symlink with no race resolves to the same file whether
+    `path` or its resolved form performs the read and write, so nothing
+    here demonstrates a regression the binding fix closed. It earns its
+    place anyway because nothing else in this file drives an actual symlink
+    through `backfill()`'s real read-compute-write path, and it would catch
+    a *different*, plausible future mistake: `safe_corpus_path` being
+    tightened to refuse every symlink outright (over-correcting for the
+    escaping case) would break only this test, not the ones asserting a
+    refusal.
+    """
+    target = corpus_dir / "actual.jsonl"
+    target.write_text(
+        json.dumps(
+            {
+                "guardian_sha": "d0d807ef01c556b882dc85b9fc0d2851d92aa1e5",
+                "finder_model": "gemini-2.5-flash",
+            }
+        )
+        + "\n"
+    )
+    link = corpus_dir / "alias.jsonl"
+    link.symlink_to(target)
+
+    assert backfill(link, REPO_ROOT) == 1
+    row = json.loads(target.read_text().splitlines()[0])
+    assert row["review_fingerprint_source"] == "reconstructed"
+    assert len(row["review_fingerprint"]) == 12
 
 
 def test_backfill_refuses_a_corpus_path_outside_the_repo_root(tmp_path: Path) -> None:
