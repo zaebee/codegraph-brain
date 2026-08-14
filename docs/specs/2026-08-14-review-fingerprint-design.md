@@ -134,6 +134,22 @@ The walk therefore does not traverse into a concrete provider module unless that
 provider produced the review. `providers/base.py` is always included; anything a
 selected provider imports is reached through the selected provider.
 
+This is a **prune during the walk, not a filter afterwards**, and the difference
+is load-bearing. `runner.py` imports all three providers at module level
+(`runner.py:17-23`), so a walk that follows every edge and subtracts later would
+still reach whatever an unselected provider imports. An implementer simplifying
+this into a post-hoc exclusion re-creates the coupling §3.3 exists to remove.
+
+The active set is the **union** of both roles:
+
+```python
+active = {finder_provider} | ({skeptic_provider} if skeptic_provider else set())
+```
+
+A skeptic on a different provider from the finder is a supported configuration
+and its code genuinely shapes the review, so it belongs in the digest; a skeptic
+on the same provider adds nothing; no skeptic prunes both.
+
 The selection is **not inferred from the model name**. `runner.build_provider`
 already knows the provider (`"gemini"` / `"mistral"` / `"ollama"`) and currently
 discards it, returning only the model. Two provenance fields are added to the
@@ -188,6 +204,32 @@ the same `guardian_sha`, because the treatment was an uncommitted working-tree
 edit, and the rows had to be discarded as indistinguishable. A byte-level
 fingerprint distinguishes them.
 
+### 4.1.1 Line endings are rejected, not normalised
+
+Reading bytes from disk makes the digest sensitive to line endings. With
+`core.autocrlf=true`, or a contributor on Windows, the same commit yields CRLF
+in the working tree and LF in the git blob — so the **measured** digest (§4.1)
+and the **reconstructed** digest (§6.1) would disagree for one commit on one
+machine. That is an inconsistency inside this design, not merely a
+cross-platform inconvenience.
+
+The obvious repair is to fold `\r\n` to `\n` before hashing. That is rejected
+for the reason §8 rejects every other normaliser: it is code that can be wrong,
+and its way of being wrong is to merge — a source file whose string literal
+legitimately carries CRLF bytes would hash as though it did not.
+
+Instead: the digest **refuses** a file containing `\r\n` and fails the run. A
+stray line ending is a misconfigured checkout, and repairing it silently lets
+that checkout go on producing subtly different artefacts elsewhere. The same
+reject-rather-than-repair reasoning the repository already applies to paths in
+#350 and #315, and to model strings in #382.
+
+Prevention sits alongside the guard: a `.gitattributes` with `*.py text eol=lf`.
+The repository has no `.gitattributes` today and `core.autocrlf` is unset, and a
+scan of the closure finds no CRLF, so this fires on nobody currently — it exists
+so that the first machine configured differently fails loudly instead of minting
+a second identity for one reviewer.
+
 ### 4.2 Computed at the recording boundary
 
 The module is `src/cgis/guardian/review_fingerprint.py`, and it is called from
@@ -198,6 +240,13 @@ This is structural, not stylistic. If anything in the closure imported it, the
 fingerprint module would enter its own hashed set, and editing the hasher would
 split identities without changing review behaviour. A test asserts
 `cgis.guardian.review_fingerprint` is not in the closure.
+
+The walk takes its file contents through an injected reader
+(`Callable[[str], bytes]`) rather than calling `Path.read_bytes` itself. Live
+runs pass a disk reader; the backfill passes one backed by `git show <sha>:<path>`.
+One traversal, two sources — otherwise the historical closure is computed by a
+second implementation, and the two would have to be kept identical by hand for
+the digests to mean the same thing.
 
 The repository root is an explicit argument, never the CWD. `review_one` spends
 most of its time standing in a checkout of somebody else's repository; the same
@@ -294,7 +343,12 @@ The tests are asymmetric, because the failure modes are.
   statements anywhere, including inside functions, so the providers' lazy
   imports are caught. It cannot see `importlib.import_module(name)` with a
   non-literal argument — a hole in the silent-merge direction. A test rejects
-  such calls within the closure.
+  such calls within the closure. It must key on the *bound name*, not on the
+  attribute expression: `from importlib import import_module` followed by a bare
+  `import_module(...)` evades a detector that only matches
+  `importlib.import_module`, as does `__import__` reached through `getattr`.
+- **No CRLF in the closure** (§4.1.1), so a misconfigured checkout fails rather
+  than mints a second identity.
 - **No packaged data files.** `src/cgis` today contains no data files besides
   `py.typed`, and `patterns.yaml` is read from the analysed repository, so it is
   subject input. But an import walk cannot see a data file by construction, so a
