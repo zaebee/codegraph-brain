@@ -19,10 +19,23 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 def test_digest_is_stable_across_calls() -> None:
-    read = disk_reader(REPO_ROOT)
-    assert compute_fingerprint(read, frozenset({"gemini"})) == compute_fingerprint(
-        read, frozenset({"gemini"})
-    )
+    """Two independently built calls over the same tree must agree.
+
+    Not `x == x` on one shared reader and one shared frozenset (flagged by
+    Sonar python:S5863 — identical expressions on both sides of `==` cannot
+    fail meaningfully, since a bug in either side is a bug in both). Each
+    side below gets its *own* `disk_reader(REPO_ROOT)` closure and its own
+    `frozenset({"gemini"})` object, so this exercises what could actually
+    vary between two computations rather than an object compared against
+    itself. It would now fail if `walk_closure`'s path ordering, or any part
+    of `compute_fingerprint`, depended on a fresh `frozenset`'s iteration
+    order (sets carry no ordering guarantee across separately constructed
+    instances) or on reader/object identity rather than on what the tree
+    actually contains.
+    """
+    first = compute_fingerprint(disk_reader(REPO_ROOT), frozenset({"gemini"}))
+    second = compute_fingerprint(disk_reader(REPO_ROOT), frozenset({"gemini"}))
+    assert first == second
 
 
 def test_digest_has_the_documented_width() -> None:
@@ -87,8 +100,9 @@ def test_crlf_is_refused_not_repaired() -> None:
             return content.replace(b"\n", b"\r\n")
         return content
 
+    active = frozenset({"gemini"})
     with pytest.raises(CarriageReturnError, match=r"prompts\.py"):
-        compute_fingerprint(windows_checkout, frozenset({"gemini"}))
+        compute_fingerprint(windows_checkout, active)
 
 
 def test_broken_reader_raises_instead_of_silently_skipping() -> None:
@@ -122,8 +136,9 @@ def test_broken_reader_raises_instead_of_silently_skipping() -> None:
         seen += 1
         return real(path) if seen <= calls_during_walk else None
 
+    active = frozenset({"gemini"})
     with pytest.raises(BrokenReaderError, match=r"prompts\.py"):
-        compute_fingerprint(flaky, frozenset({"gemini"}))
+        compute_fingerprint(flaky, active)
 
 
 def test_scheme_string_is_in_the_preimage() -> None:

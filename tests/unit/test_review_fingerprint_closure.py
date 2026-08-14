@@ -87,8 +87,9 @@ def test_resolve_active_providers_is_the_union() -> None:
 
 def test_unknown_provider_is_refused() -> None:
     """A provider that maps to no module would silently narrow the closure."""
+    active = frozenset({"anthropic"})
     with pytest.raises(UnknownProviderError, match="anthropic"):
-        walk_closure(disk_reader, frozenset({"anthropic"}))
+        walk_closure(disk_reader, active)
 
 
 def test_reader_is_injected_not_assumed() -> None:
