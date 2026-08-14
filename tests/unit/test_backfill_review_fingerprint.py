@@ -23,7 +23,7 @@ from backfill_review_fingerprint import (
     backfill,
     git_reader,
     provider_for,
-    reject_corpus_path,
+    safe_corpus_path,
 )
 
 from cgis.guardian.review_fingerprint import compute_fingerprint
@@ -35,7 +35,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 def corpus_dir() -> Iterator[Path]:
     """A directory *inside* the repository, for tests that write a corpus file.
 
-    `reject_corpus_path` (the pythonsecurity:S2083 fix) refuses any corpus
+    `safe_corpus_path` (the pythonsecurity:S2083 fix) refuses any corpus
     path outside `repo_root` — deliberately, since `backfill()` overwrites
     whatever passes it. Pytest's own `tmp_path` fixture resolves under the
     system temp directory, which is outside this repository, so a corpus
@@ -161,26 +161,27 @@ def test_backfill_refuses_a_non_hex_guardian_sha(corpus_dir: Path) -> None:
         backfill(corpus, REPO_ROOT)
 
 
-def test_reject_corpus_path_requires_a_jsonl_suffix(corpus_dir: Path) -> None:
+def test_safe_corpus_path_requires_a_jsonl_suffix(corpus_dir: Path) -> None:
     not_jsonl = corpus_dir / "reviews.json"
     not_jsonl.write_text("{}\n")
-    assert reject_corpus_path(not_jsonl, REPO_ROOT) == "name must end in .jsonl"
+    with pytest.raises(UnsafeCorpusPathError, match=r"name must end in \.jsonl"):
+        safe_corpus_path(not_jsonl, REPO_ROOT)
 
 
-def test_reject_corpus_path_requires_an_existing_file(corpus_dir: Path) -> None:
+def test_safe_corpus_path_requires_an_existing_file(corpus_dir: Path) -> None:
     missing = corpus_dir / "does-not-exist.jsonl"
-    assert reject_corpus_path(missing, REPO_ROOT) == "it does not exist, or is not a regular file"
+    with pytest.raises(UnsafeCorpusPathError, match="does not exist"):
+        safe_corpus_path(missing, REPO_ROOT)
 
 
-def test_reject_corpus_path_requires_an_existing_file_not_a_directory(corpus_dir: Path) -> None:
+def test_safe_corpus_path_requires_an_existing_file_not_a_directory(corpus_dir: Path) -> None:
     a_directory = corpus_dir / "reviews.jsonl"
     a_directory.mkdir()
-    assert (
-        reject_corpus_path(a_directory, REPO_ROOT) == "it does not exist, or is not a regular file"
-    )
+    with pytest.raises(UnsafeCorpusPathError, match="does not exist"):
+        safe_corpus_path(a_directory, REPO_ROOT)
 
 
-def test_reject_corpus_path_confines_to_the_repo_root(tmp_path: Path) -> None:
+def test_safe_corpus_path_confines_to_the_repo_root(tmp_path: Path) -> None:
     """The one case pytest's own `tmp_path` is exactly the right fixture for.
 
     Every other test in this file avoids `tmp_path` in favour of `corpus_dir`
@@ -189,9 +190,45 @@ def test_reject_corpus_path_confines_to_the_repo_root(tmp_path: Path) -> None:
     """
     outside = tmp_path / "reviews.jsonl"
     outside.write_text('{"guardian_sha": "0"}\n')
-    refusal = reject_corpus_path(outside, REPO_ROOT)
-    assert refusal is not None
-    assert "outside the repository root" in refusal
+    with pytest.raises(UnsafeCorpusPathError, match="outside the repository root"):
+        safe_corpus_path(outside, REPO_ROOT)
+
+
+def test_safe_corpus_path_returns_the_resolved_path(corpus_dir: Path) -> None:
+    """The value returned is what every downstream read/write must use.
+
+    Not merely "no exception" — pinning the return value is what stops a
+    future edit from reintroducing pythonsecurity:S2083 by having a caller
+    re-derive an unresolved path after calling this function instead of using
+    what it handed back.
+    """
+    corpus = corpus_dir / "reviews.jsonl"
+    corpus.write_text("{}\n")
+    assert safe_corpus_path(corpus, REPO_ROOT) == corpus.resolve()
+
+
+def test_safe_corpus_path_refuses_a_symlink_escaping_the_repo(
+    corpus_dir: Path, tmp_path: Path
+) -> None:
+    """A symlink whose own name is inside the repo but whose target is not.
+
+    This is the specific gap the resolve-then-use-the-unresolved-argument
+    version of this check admitted: `.resolve()` follows symlinks, so a
+    validator that checks the resolved path but a caller that operates on the
+    original argument can approve `benchmarks/x.jsonl` while the write lands
+    wherever the symlink actually points — outside the repository entirely.
+    Pinned now that it is known to have been reachable, not merely plausible.
+    """
+    target = tmp_path / "outside.jsonl"
+    original = json.dumps({"guardian_sha": "0" * 40, "finder_model": "gemini-2.5-flash"}) + "\n"
+    target.write_text(original)
+
+    link = corpus_dir / "reviews.jsonl"
+    link.symlink_to(target)
+
+    with pytest.raises(UnsafeCorpusPathError, match="outside the repository root"):
+        safe_corpus_path(link, REPO_ROOT)
+    assert target.read_text() == original, "the symlink's target must not be touched at all"
 
 
 def test_backfill_refuses_a_corpus_path_outside_the_repo_root(tmp_path: Path) -> None:

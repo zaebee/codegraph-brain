@@ -37,7 +37,7 @@ MODEL_PROVIDERS: dict[str, str] = {
 _SHA_PATTERN = re.compile(r"^[0-9a-fA-F]{7,40}$")
 
 #: Corpus files this script is willing to overwrite. Deliberately narrow: the
-#: whole reason `reject_corpus_path` exists is that `backfill()` overwrites
+#: whole reason `safe_corpus_path` exists is that `backfill()` overwrites
 #: whatever passes it.
 _CORPUS_SUFFIXES = frozenset({".jsonl"})
 
@@ -73,7 +73,7 @@ class UnsafeCorpusPathError(RuntimeError):
     every real corpus under `benchmarks/` is a committed artefact that cost
     real review time, and real money for hosted models, to produce. Nothing
     before this class stopped a mistyped argument, or a wrong `--repo-root`,
-    from truncating one. See `reject_corpus_path` for what is actually
+    from truncating one. See `safe_corpus_path` for what is actually
     checked.
     """
 
@@ -95,29 +95,43 @@ def provider_for(model: str) -> str:
     return provider
 
 
-def reject_corpus_path(corpus_path: Path, repo_root: Path) -> str | None:
-    """Return a refusal for a corpus path `backfill()` must not touch, or None if it is fine.
+def safe_corpus_path(corpus_path: Path, repo_root: Path) -> Path:
+    """Return the resolved corpus path, or raise `UnsafeCorpusPathError`.
 
-    Modelled on `reject_metrics_path` (`src/cgis/guardian/metrics.py`, #350),
-    which cleared the same taint shape (pythonsecurity:S2083) to Sonar's
-    satisfaction by validating rather than suppressing — read that function
-    first, this follows its shape. The sink here is more dangerous than the
-    append `reject_metrics_path` guards: `backfill()` reads a corpus and then
-    *overwrites* it, so a bad path is not a stray file created somewhere, it
-    is an existing committed corpus destroyed in place.
+    Returns the value it validated — rather than a refusal message,
+    `reject_metrics_path`'s shape (`src/cgis/guardian/metrics.py`, #350) —
+    because that shape is what let pythonsecurity:S2083 survive the first
+    fix attempt here even though it was resolved: a string result meant the
+    caller re-derived a fresh, *unresolved* path afterwards and read/wrote
+    that instead of the value actually checked, so Sonar's taint engine
+    correctly followed the object that reaches the sink rather than the one
+    that was validated. `reject_metrics_path` gets away with returning a
+    message because it has two callers that phrase the resulting error
+    differently; this function has exactly one caller, which always raises,
+    so handing back the checked `Path` — and requiring every downstream
+    filesystem call to use it — is both simpler and the only shape that
+    binds the check to what is actually used.
 
-    Judged on the **resolved** path for the same reason: a dangling symlink
-    makes `is_file()` False and would otherwise let the checks below it pass
-    while a write lands somewhere unintended.
+    Same checks as before, same reasoning: the sink is more dangerous than
+    the append `reject_metrics_path` guards, since `backfill()` reads a
+    corpus and then *overwrites* it — a bad path here is an existing
+    committed corpus destroyed in place, not a stray file created somewhere.
 
-    Unlike `reject_metrics_path`, this one *does* confine to `repo_root` —
-    deliberately the opposite choice, made explicitly rather than by default.
-    `reject_metrics_path` avoids confinement because the metrics path is a
-    library parameter with a legitimate ad-hoc/`tmp_path` use; a fingerprint
-    backfill's corpus argument has no such use — every real corpus lives
-    under this repository's `benchmarks/`, and the whole point of the check
-    is that a mistyped path argument must not silently reach for a file
-    outside the tree this script is even fingerprinting.
+    Judged on the **resolved** path: a dangling symlink makes `is_file()`
+    False and would otherwise let the checks below it pass while a write
+    lands somewhere unintended — and, per the finding that produced this
+    version, resolving is worthless unless every later operation uses the
+    *same* resolved value rather than re-deriving one.
+
+    Confines to `repo_root`, unlike `reject_metrics_path`, which avoids that
+    confinement deliberately because its path is a library parameter with a
+    legitimate ad-hoc/`tmp_path` use. A fingerprint backfill's corpus
+    argument has no such use — every real corpus lives under this
+    repository's `benchmarks/`, and a mistyped path argument must not
+    silently reach for a file outside the tree this script is even
+    fingerprinting. `is_relative_to` runs against the *resolved* path, so a
+    symlink inside the repository that points outside it is caught here,
+    not waved through because its own name looked local.
 
     Requiring an *existing* file (not merely a valid location) is
     deliberate too: this script never creates a corpus, only rewrites one
@@ -128,17 +142,26 @@ def reject_corpus_path(corpus_path: Path, repo_root: Path) -> str | None:
         root = repo_root.resolve()
         path = corpus_path.resolve()
     except (OSError, RuntimeError) as exc:
-        return f"path is inaccessible ({exc})"
+        _msg = f"Refusing corpus path {corpus_path}: path is inaccessible ({exc})."
+        raise UnsafeCorpusPathError(_msg) from exc
     if path.suffix.lower() not in _CORPUS_SUFFIXES:
-        return f"name must end in {', '.join(sorted(_CORPUS_SUFFIXES))}"
+        _msg = (
+            f"Refusing corpus path {corpus_path}: name must end in "
+            f"{', '.join(sorted(_CORPUS_SUFFIXES))}."
+        )
+        raise UnsafeCorpusPathError(_msg)
     try:
-        if not path.is_file():
-            return "it does not exist, or is not a regular file"
+        is_file = path.is_file()
     except OSError as exc:
-        return f"path is inaccessible ({exc})"
+        _msg = f"Refusing corpus path {corpus_path}: path is inaccessible ({exc})."
+        raise UnsafeCorpusPathError(_msg) from exc
+    if not is_file:
+        _msg = f"Refusing corpus path {corpus_path}: it does not exist, or is not a regular file."
+        raise UnsafeCorpusPathError(_msg)
     if not path.is_relative_to(root):
-        return f"it is outside the repository root {root}"
-    return None
+        _msg = f"Refusing corpus path {corpus_path}: it is outside the repository root {root}."
+        raise UnsafeCorpusPathError(_msg)
+    return path
 
 
 def git_reader(sha: str, repo_root: Path) -> ReadFile:
@@ -223,15 +246,17 @@ def git_reader(sha: str, repo_root: Path) -> ReadFile:
 def backfill(path: Path, repo_root: Path) -> int:
     """Rewrite `path` in place with fingerprints; return the rows touched.
 
-    Refuses before touching the filesystem at all — see `reject_corpus_path`.
+    Refuses before touching the filesystem at all — see `safe_corpus_path`.
+    Every read and the final write below use the `Path` `safe_corpus_path`
+    returns, never the `path` argument again: the argument is unresolved and
+    may not be the same file a symlink makes it look like, which is exactly
+    the gap that made the previous version of this check not bind to what it
+    validated (pythonsecurity:S2083).
     """
-    refusal = reject_corpus_path(path, repo_root)
-    if refusal is not None:
-        _msg = f"Refusing corpus path {path}: {refusal}."
-        raise UnsafeCorpusPathError(_msg)
+    corpus = safe_corpus_path(path, repo_root)
 
     rows = [
-        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+        json.loads(line) for line in corpus.read_text(encoding="utf-8").splitlines() if line.strip()
     ]
     cache: dict[tuple[str, frozenset[str]], str] = {}
     for row in rows:
@@ -246,7 +271,7 @@ def backfill(path: Path, repo_root: Path) -> int:
         row["review_fingerprint_source"] = "reconstructed"
         row["finder_provider"] = finder
         row["skeptic_provider"] = skeptic
-    path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+    corpus.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
     return len(rows)
 
 
