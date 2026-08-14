@@ -35,8 +35,6 @@ from cgis.guardian.chunked import run_review_routed
 from cgis.guardian.collector import ContextCollector, parse_features
 from cgis.guardian.findings import ReviewResult
 from cgis.guardian.providers.base import BaseProvider
-from cgis.guardian.providers.mistral import MistralProvider
-from cgis.guardian.providers.ollama import OllamaProvider
 from cgis.guardian.runner import build_provider, build_skeptic_provider
 from cgis.guardian.skeptic import (
     apply_judgements,
@@ -105,12 +103,9 @@ async def _run_one(
     skipped, producing exactly that frozen set.
     """
     provider, model = build_provider(os.environ)
-    if isinstance(provider, MistralProvider):
-        primary = "mistral"
-    elif isinstance(provider, OllamaProvider):
-        primary = "ollama"
-    else:
-        primary = "gemini"
+    # Was an isinstance chain (Mistral, then Ollama, else gemini). The provider
+    # knows its own name (#375 Task 1).
+    primary = provider.name
     # Bench requires explicit opt-in: an implicit skeptic default would silently
     # change scoring vs the committed baseline (review runs keep the implicit default).
     skeptic = (

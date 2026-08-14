@@ -71,7 +71,6 @@ from cgis.guardian.martian import (
     score_slice,
 )
 from cgis.guardian.providers.base import BaseProvider
-from cgis.guardian.providers.mistral import MistralProvider
 from cgis.guardian.runner import build_provider, build_skeptic_provider, temperature
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -350,7 +349,11 @@ async def review_one(row: PrPlan, args: argparse.Namespace) -> ReviewRecord:
     # picks the *opposite* provider, so a hardcoded "gemini" would hand a
     # mistral finder a mistral skeptic and quietly retire the cross-provider
     # design. Same test `scripts/guardian_review.py` uses.
-    primary = "mistral" if isinstance(provider, MistralProvider) else "gemini"
+    #
+    # Was an isinstance sniff that returned "gemini" for an Ollama provider,
+    # which then picked the wrong default skeptic. The provider knows its own
+    # name (#375 Task 1).
+    primary = provider.name
     skeptic = build_skeptic_provider(os.environ, primary=primary)
     collector = ContextCollector(
         project_root=checkout,

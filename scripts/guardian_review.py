@@ -9,7 +9,6 @@ import structlog
 
 from cgis.guardian.collector import ContextCollector, parse_features
 from cgis.guardian.metrics import reject_metrics_path
-from cgis.guardian.providers.mistral import MistralProvider
 from cgis.guardian.runner import (
     build_provider,
     build_skeptic_provider,
@@ -81,7 +80,10 @@ async def main() -> None:
         raise ValueError(_msg)
 
     provider, model = build_provider(os.environ)
-    primary = "mistral" if isinstance(provider, MistralProvider) else "gemini"
+    # Was an isinstance sniff that returned "gemini" for an Ollama provider,
+    # which then picked the wrong default skeptic. The provider knows its own
+    # name (#375 Task 1).
+    primary = provider.name
     skeptic = build_skeptic_provider(os.environ, primary=primary)
     features = parse_features(os.environ.get("GUARDIAN_FEATURES", ""))
     inline_repo = os.environ.get("GITHUB_REPOSITORY") if args.inline else None

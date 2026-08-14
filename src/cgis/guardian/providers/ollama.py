@@ -7,6 +7,7 @@ skeptic built from two distinct local models.
 """
 
 from collections.abc import Mapping
+from typing import ClassVar
 
 from pydantic import BaseModel
 
@@ -78,6 +79,8 @@ class PromptTruncatedError(RuntimeError):
 
 class OllamaProvider(BaseProvider):
     """Ollama provider. Requires: uv sync --group guardian (ollama client)."""
+
+    name: ClassVar[str] = "ollama"
 
     def __init__(
         self,

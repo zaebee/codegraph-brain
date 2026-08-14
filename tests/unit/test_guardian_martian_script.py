@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from cgis.extractors.registry import build_extractors
 from cgis.guardian.martian import SliceCounts
 from cgis.guardian.providers.base import BaseProvider, ProviderUsage
+from cgis.guardian.providers.mistral import MistralProvider
 from cgis.pipeline import IngestionPipeline
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -609,6 +610,7 @@ class TestGraphProvenance:
 
 
 class _StubProvider:
+    name = "gemini"
     cumulative_usage = SimpleNamespace(prompt_tokens=0, completion_tokens=0)
 
 
@@ -865,6 +867,7 @@ class TestReviewOne:
             completion_tokens = 22
 
         class _Provider:
+            name = "gemini"
             cumulative_usage = _Usage()
 
         class _Result:
@@ -954,7 +957,7 @@ class TestResumeRobustness:
         (tmp_path / "ws" / "o__r" / ".git").mkdir(parents=True)
         seen: dict[str, str] = {}
 
-        class _Mistral(gm.MistralProvider):
+        class _Mistral(MistralProvider):
             cumulative_usage = SimpleNamespace(prompt_tokens=0, completion_tokens=0)
 
             def __init__(self) -> None:

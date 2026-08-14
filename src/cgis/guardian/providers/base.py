@@ -3,6 +3,7 @@
 import abc
 import asyncio
 from collections.abc import Awaitable, Callable
+from typing import ClassVar
 
 import httpx
 import structlog
@@ -46,6 +47,13 @@ class ProviderUsage(BaseModel, frozen=True):
 
 class BaseProvider(abc.ABC):
     """Abstract base class for LLM providers."""
+
+    #: The GUARDIAN_PROVIDER value that selects this provider. Declared here so
+    #: a new provider that omits it fails type-check rather than being sniffed
+    #: for by isinstance at three call sites — one of which reported Ollama as
+    #: gemini. The review fingerprint is scoped by this value (#375 §3.3), so a
+    #: wrong one computes the digest over the wrong module.
+    name: ClassVar[str]
 
     def __init__(self) -> None:
         """Initialise usage counters to zero.
