@@ -177,6 +177,18 @@ class CarriageReturnError(RuntimeError):
     """
 
 
+class BrokenReaderError(RuntimeError):
+    """Raised when a reader serves `None` for a path the walk already vouched for.
+
+    `walk_closure` reads every path it returns before returning it, so a
+    `None` here is not a missing file — it is a reader that failed between
+    the walk and the hash (a transient `git show` failure, for one). Skipping
+    it would silently drop a behaviourally significant file out of the
+    preimage, merging two reviewers that actually differ into one identity;
+    refusing is the same choice this module already makes for `CarriageReturnError`.
+    """
+
+
 def disk_reader(root: Path) -> ReadFile:
     """A reader over a working tree rooted at `root`.
 
@@ -193,13 +205,19 @@ def disk_reader(root: Path) -> ReadFile:
 
 
 def compute_fingerprint(read: ReadFile, active_providers: frozenset[str]) -> str:
-    """The digest over everything this review could read."""
+    """The digest over everything this review could read.
+
+    Raises `BrokenReaderError` if `read` returns `None` for a path
+    `walk_closure` already read successfully, and `CarriageReturnError` if a
+    closure file contains CRLF.
+    """
     digest = hashlib.sha256()
     digest.update(SCHEME)
     for path in walk_closure(read, active_providers):
         content = read(path)
-        if content is None:  # pragma: no cover - the walk just read it
-            continue
+        if content is None:
+            _msg = f"Reader returned no content for {path}, though the closure walk read it."
+            raise BrokenReaderError(_msg)
         if b"\r\n" in content:
             _msg = f"CRLF line endings in {path}; the checkout must use LF."
             raise CarriageReturnError(_msg)
