@@ -97,9 +97,30 @@ the concrete providers and `runner` itself. They do not change what the model
 sees, so edits to them will split an identity that did not behaviourally change.
 
 They stay in. Excluding them requires a hand-maintained exclusion list, and a
-wrong exclusion is a silent merge — the unrecoverable direction. The cost of
-keeping them is one spurious split per unrelated edit, which the consumer can
-absorb.
+wrong exclusion is a silent merge — the unrecoverable direction.
+
+The cost was measured over this repository's 275 commits, counting how often a
+commit moves the digest, and decomposing why:
+
+```
+commits in the repository                                    275
+commits touching the closure (digest moves)                   95
+  of which extractors-only, code no review executes           33
+  of which output-side-only (the cost of this section)         3
+  touching the model-input side                               62
+```
+
+So the fingerprint is stable across 180 of 275 commits, and keeping the output
+side costs 3 spurious splits — about 1% of history. That is worth paying to have
+no exclusion list at all.
+
+Two corrections to how this section previously argued its case. First, the
+dominant residual is not the output side but `cgis.extractors`, at 33 commits
+(§8). Second, a downstream threshold on when an identity is announced protects
+the *chain* — it stops a permanent record being minted for a spurious entity —
+but it does not protect the *measurement*, which is what this issue exists to
+fix. Three spurious splits still fragment three track records into six. The
+consumer absorbs the irreversible half of the cost, not all of it.
 
 ### 3.3 Providers are scoped to the ones actually used
 
@@ -149,7 +170,13 @@ event rather than an unexplained discontinuity in the corpus.
 
 Truncation to 12 hex characters (48 bits) matches short-sha ergonomics; the
 corpus is on the order of hundreds of records and consumers re-hash the whole
-genome anyway.
+genome anyway. Collision probability is `N²/2^49` — around `2e-7` at ten
+thousand distinct review-path states, against a realistic N in the dozens.
+
+**The truncation length is part of the scheme.** Changing `[:12]` to any other
+width requires bumping the version prefix, because identical code would
+otherwise emit a value that looks different with nothing in the record to say
+why.
 
 ### 4.1 Bytes, not commits
 
@@ -184,9 +211,17 @@ On `ReviewRecord` (`src/cgis/guardian/martian.py`):
 
 ```python
 review_fingerprint: str
+review_fingerprint_source: Literal["measured", "reconstructed"]
 finder_provider: str
 skeptic_provider: str | None = None
 ```
+
+`review_fingerprint_source` distinguishes a digest taken from the working tree
+at review time from one rebuilt from git afterwards. The two do not carry the
+same guarantee (§6), and a record must not claim a precision it does not have —
+the same reason `temperature` is `None` rather than `0.0` when a run inherited
+the provider's default. It is provenance, not identity: a consumer keys on the
+fingerprint and never on this field, so it introduces no second keying scheme.
 
 `finder_provider` / `skeptic_provider` exist so §3.3's set is stated by the
 producer rather than reconstructed by a reader from a model-name prefix, which
@@ -212,6 +247,21 @@ on which run it came from. That is strictly worse than either scheme alone.
 Provider attribution for historical records comes from an explicit model →
 provider table in the backfill script, which raises on an unknown model rather
 than defaulting.
+
+### 6.1 A reconstructed fingerprint is weaker than a measured one
+
+Rebuilding from `git show` reintroduces exactly the blindness §4.1 exists to
+escape: it cannot see an uncommitted working-tree edit, so two behaviourally
+different historical runs sharing a `guardian_sha` collapse to one digest. That
+is the merge direction, and by the citation in §4.1 it has already happened once
+in this repository's own experiment history.
+
+This is not an argument against backfilling — a reconstructed fingerprint is
+still far better than a sha, and a corpus split between records that have the
+field and records that do not is worse than either. It is an argument for the
+record saying which kind it holds, which is what
+`review_fingerprint_source: "reconstructed"` does. Rows written from now on
+carry `"measured"`.
 
 The result is known in advance, from running the algorithm across the five shas:
 
@@ -251,6 +301,13 @@ The tests are asymmetric, because the failure modes are.
   test pins the absence: if a `.yaml`/`.json` ever ships inside the package, it
   fails and forces the question.
 - **The hasher is not in its own set** (§4.2).
+- **A stated provider must resolve.** §3.3 scopes the closure by
+  `finder_provider`, so a wrong or unknown value would compute the digest over
+  the wrong provider module and return a confident wrong answer — the merge
+  direction. The walk raises on a provider name it cannot map to a module, and a
+  test covers the unknown-provider case. At review time the value comes from
+  `build_provider` itself rather than from a caller, so the plumbing, not a
+  human, is what states it.
 - **Positive and negative movement.** Editing `prompts.py` moves the digest;
   editing a file outside the closure does not; ordering is deterministic across
   runs and platforms.
@@ -266,6 +323,27 @@ The tests are asymmetric, because the failure modes are.
   the test in §7, which is a lint rather than a proof.
 - The closure is computed by static analysis, so a plugin-style provider loaded
   by name at runtime would need this design revisited.
+- **Dependency versions are not in the digest.** `uv.lock` is committed and
+  pins the SDKs (`google-genai`, `mistralai`, `ollama`, `httpx`), so two runs at
+  one fingerprint in this repository resolve the same versions — but the lock is
+  not hashed, and it has moved 35 times. A lock bump that changes an SDK's
+  default sampling or request shaping is a behavioural change the digest will
+  not show. Hashing the lock was rejected for now because it inverts the cost: a
+  routine bump would split every identity at once. The floors in
+  `pyproject.toml` are `>=`, so an install that ignores the lock has no
+  guarantee at all.
+- **`cgis.extractors` is the dominant residual, at 33 commits** — more than ten
+  times the cost of §3.2's output-side decision. It enters the closure through
+  `extractors.registry`, which the collector uses only to decide which changed
+  files count as source; no extractor code runs during a review, and the graph
+  was built by a separate ingest whose commit the `.commit` marker already
+  records. Kept in, because dropping it means an exclusion list. Named here
+  because if this churn ever becomes uncomfortable, this edge — not the `runner`
+  seed — is where to look, and §7's ratchet makes narrowing it a reviewed act.
+- **The ratchet permits silent growth.** §7 fails the build when the closure
+  shrinks and passes when it grows, which is correct for safety but means a
+  newly-reachable churn-prone module joins with no signal. The churn figures in
+  §3.2 and above describe today's closure, not a fixed property.
 
 ## 9. Consumer note
 
