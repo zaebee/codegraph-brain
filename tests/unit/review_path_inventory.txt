@@ -1,3 +1,4 @@
+src/cgis/__init__.py
 src/cgis/core/models.py
 src/cgis/extractors/_python_ast.py
 src/cgis/extractors/_python_classes.py
@@ -8,6 +9,7 @@ src/cgis/extractors/base.py
 src/cgis/extractors/python_extractor.py
 src/cgis/extractors/registry.py
 src/cgis/extractors/typescript_extractor.py
+src/cgis/guardian/__init__.py
 src/cgis/guardian/axes.py
 src/cgis/guardian/chunked.py
 src/cgis/guardian/chunker.py
@@ -18,6 +20,7 @@ src/cgis/guardian/findings.py
 src/cgis/guardian/github_poster.py
 src/cgis/guardian/metrics.py
 src/cgis/guardian/prompts.py
+src/cgis/guardian/providers/__init__.py
 src/cgis/guardian/providers/base.py
 src/cgis/guardian/providers/gemini.py
 src/cgis/guardian/providers/mistral.py
@@ -26,12 +29,15 @@ src/cgis/guardian/recording.py
 src/cgis/guardian/render.py
 src/cgis/guardian/runner.py
 src/cgis/guardian/skeptic.py
+src/cgis/query/analysis/__init__.py
 src/cgis/query/analysis/health.py
+src/cgis/query/drift/__init__.py
 src/cgis/query/drift/_scc.py
 src/cgis/query/drift/drift.py
 src/cgis/query/drift/fingerprint.py
 src/cgis/query/drift/quotient.py
 src/cgis/query/drift/triads.py
 src/cgis/query/engine.py
+src/cgis/query/render/__init__.py
 src/cgis/query/render/mermaid.py
 src/cgis/storage/sqlite_store.py

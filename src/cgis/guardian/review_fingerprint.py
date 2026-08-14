@@ -59,14 +59,26 @@ def _module_path(module: str, read: ReadFile) -> str | None:
     return None
 
 
-def _is_pruned_provider(module: str, active: frozenset[str]) -> bool:
-    """True for a concrete provider module that did not produce this review."""
+def _is_pruned_provider(module: str, active: frozenset[str], known: frozenset[str]) -> bool:
+    """True for a concrete, *known* provider module that did not produce this review.
+
+    `known` — the provider names whose module actually exists (`gemini`,
+    `mistral`, `ollama`) — gates the prune. Without it, any non-provider module
+    placed under `providers/` (a retry policy, a usage accumulator, a prompt
+    adapter shared by every provider) reads as an unselected provider and is
+    silently dropped, even though every review reads it. Consulting `known`
+    means only a module whose *leaf* names an actual provider can be pruned; a
+    shared helper's leaf never does, so it always survives. A newly added
+    provider module joins everyone's closure — widening, the acceptable
+    direction — until it is selected, and fails loud via `UnknownProviderError`
+    if `active` ever names a provider absent from `known` (#375 final review).
+    """
     if not module.startswith(f"{_PROVIDER_PACKAGE}."):
         return False
     if module == _PROVIDER_BASE:
         return False
     leaf = module[len(_PROVIDER_PACKAGE) + 1 :].split(".", maxsplit=1)[0]
-    return leaf not in active
+    return leaf in known and leaf not in active
 
 
 def _resolve_relative_module(package: str, level: int, module: str | None) -> str | None:
@@ -126,11 +138,11 @@ def walk_closure(read: ReadFile, active_providers: frozenset[str]) -> list[str]:
     traversal minus a set would still have reached what an unselected provider
     imports.
     """
-    known = {
+    known = frozenset(
         name
         for name in ("gemini", "mistral", "ollama")
         if _module_path(f"{_PROVIDER_PACKAGE}.{name}", read) is not None
-    }
+    )
     unknown = active_providers - known
     if unknown:
         _msg = f"Active provider names no module: {sorted(unknown)}. Known: {sorted(known)}."
@@ -141,7 +153,7 @@ def walk_closure(read: ReadFile, active_providers: frozenset[str]) -> list[str]:
     queue = list(SEEDS)
     while queue:
         module = queue.pop()
-        if module in seen or _is_pruned_provider(module, active_providers):
+        if module in seen or _is_pruned_provider(module, active_providers, known):
             continue
         seen.add(module)
         path = _module_path(module, read)
@@ -153,6 +165,14 @@ def walk_closure(read: ReadFile, active_providers: frozenset[str]) -> list[str]:
         paths.add(path)
         is_package = path.endswith("/__init__.py")
         queue.extend(_imported_modules(source, module, is_package))
+        # Python executes every ancestor package's __init__.py on import, not
+        # only the modules an `import` statement names. A hand-maintained
+        # exclusion of this would be the unrecoverable silent-merge direction
+        # (#375 final review): code that runs on every review must move the
+        # digest, and `cgis/__init__.py` (an `importlib.metadata.version`
+        # lookup) and `cgis/guardian/__init__.py` both do.
+        parts = module.split(".")
+        queue.extend(".".join(parts[:i]) for i in range(1, len(parts)))
     return sorted(paths)
 
 

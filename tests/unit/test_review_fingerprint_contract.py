@@ -14,6 +14,19 @@ import pytest
 from cgis.guardian.review_fingerprint import disk_reader, walk_closure
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+#: Regenerate by running the code, never by hand:
+#:
+#:   uv run python -c "
+#:   from pathlib import Path
+#:   from cgis.guardian.review_fingerprint import walk_closure, disk_reader
+#:   closure = walk_closure(disk_reader(Path('.')), frozenset({'gemini', 'mistral', 'ollama'}))
+#:   Path('tests/unit/review_path_inventory.txt').write_text('\n'.join(closure) + '\n')
+#:   "
+#:
+#: Then diff the result: an addition is a conscious ratchet-forward (a module
+#: newly reachable from the review path); a removal means something left the
+#: closure and demands the same scrutiny `test_closure_covers_the_pinned_inventory`
+#: enforces below.
 INVENTORY = Path(__file__).parent / "review_path_inventory.txt"
 ALL_PROVIDERS = frozenset({"gemini", "mistral", "ollama"})
 
