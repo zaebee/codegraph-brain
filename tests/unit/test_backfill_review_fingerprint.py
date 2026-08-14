@@ -1,5 +1,6 @@
 """Backfill: a historical digest, honestly labelled as reconstructed."""
 
+import collections
 import json
 import sys
 from pathlib import Path
@@ -18,6 +19,8 @@ from backfill_review_fingerprint import (
     git_reader,
     provider_for,
 )
+
+from cgis.guardian.review_fingerprint import compute_fingerprint
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -167,3 +170,59 @@ def test_every_review_shaped_row_under_benchmarks_is_fingerprinted() -> None:
         if not fingerprint or source not in {"measured", "reconstructed"}:
             offenders.add(str(path.relative_to(REPO_ROOT)))
     assert not offenders, f"review-shaped rows without a fingerprint in: {sorted(offenders)}"
+
+
+def test_stored_fingerprints_match_what_current_code_computes() -> None:
+    """A stored digest must be reproducible by the code that ships today.
+
+    Guards against exactly the drift the final review of #375 found: the
+    corpora were backfilled with an older `walk_closure` (37 modules), the
+    walk then widened to include ancestor package `__init__.py` files (43
+    modules), and nothing noticed that every stored digest had gone stale
+    until a downstream consumer tried to regenerate one and could not. That
+    reproducibility — a stranger can recompute the same value from the same
+    inputs — is the one property the downstream genome/address construction
+    depends on, so a change to the walk that outpaces the corpus is a defect,
+    not a footnote.
+
+    Grouped by `(guardian_sha, active_providers)`, same as `backfill()`'s own
+    cache key, so a 115-row corpus costs six `git`-backed closure
+    recomputations rather than 115 — the shas and provider pairs repeat
+    heavily across rows (measured: 6 distinct pairs over 115 rows). Each
+    recomputation walks the ~43-module closure via `git show`, one subprocess
+    per file; measured at ~5.8s for all six, acceptable inside the unit suite
+    (whole-suite runtime moved from ~22s to ~23s with this test added).
+    """
+    rows_by_key: dict[tuple[str, frozenset[str]], list[tuple[Path, str]]] = collections.defaultdict(
+        list
+    )
+    for path, row in _review_shaped_rows(REPO_ROOT):
+        finder = provider_for(row["finder_model"])
+        skeptic_model = row.get("skeptic_model")
+        skeptic = provider_for(skeptic_model) if skeptic_model else None
+        active = frozenset({finder} | ({skeptic} if skeptic else set()))
+        key = (row["guardian_sha"], active)
+        rows_by_key[key].append((path, row["review_fingerprint"]))
+
+    mismatches: list[str] = []
+    for (sha, active), entries in sorted(rows_by_key.items(), key=lambda kv: kv[0][0]):
+        recomputed = compute_fingerprint(git_reader(sha, REPO_ROOT), active)
+        stale = {(path, stored) for path, stored in entries if stored != recomputed}
+        if stale:
+            affected = sorted({str(path.relative_to(REPO_ROOT)) for path, _ in stale})
+            stored_values = sorted({stored for _, stored in stale})
+            mismatches.append(
+                f"guardian_sha={sha}, providers={sorted(active)}: "
+                f"stored={stored_values} but current code computes {recomputed!r} "
+                f"({len(stale)} row(s) in {affected})"
+            )
+    assert not mismatches, (
+        "Stored review_fingerprint values do not match what today's "
+        "compute_fingerprint/walk_closure produce for the same "
+        "(guardian_sha, active_providers) — the walk changed since the "
+        "corpus was last backfilled. Fix: re-run "
+        "`uv run python scripts/backfill_review_fingerprint.py "
+        "benchmarks/martian-reviews.jsonl benchmarks/martian-p3-run1.jsonl "
+        "benchmarks/martian-p3-run2.jsonl benchmarks/martian-p3-run3.jsonl "
+        "benchmarks/martian-repeat-reviews.jsonl`, not edit this test.\n" + "\n".join(mismatches)
+    )
