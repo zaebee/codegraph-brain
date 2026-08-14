@@ -9,6 +9,7 @@ import structlog
 
 from cgis.guardian.collector import ContextCollector, parse_features
 from cgis.guardian.metrics import reject_metrics_path
+from cgis.guardian.review_fingerprint import compute_fingerprint, disk_reader
 from cgis.guardian.runner import (
     build_provider,
     build_skeptic_provider,
@@ -88,6 +89,11 @@ async def main() -> None:
     features = parse_features(os.environ.get("GUARDIAN_FEATURES", ""))
     inline_repo = os.environ.get("GITHUB_REPOSITORY") if args.inline else None
     project_root = Path(__file__).parent.parent.absolute()
+    # Computed here rather than inside runner.py: nothing in the review closure
+    # may import the fingerprint module, or the hasher enters its own hashed set
+    # (#375 §4.2). project_root is this repository, not the reviewed checkout.
+    active_providers = frozenset({provider.name} | ({skeptic[0].name} if skeptic else set()))
+    review_fingerprint = compute_fingerprint(disk_reader(project_root), active_providers)
     collector = ContextCollector(
         project_root=project_root, db_path=args.db, base_branch=args.base_branch, features=features
     )
@@ -102,6 +108,7 @@ async def main() -> None:
         inline_repo=inline_repo,
         threshold=impact_threshold(os.environ),
         record_finder=args.record_finder,
+        review_fingerprint=review_fingerprint,
     )
 
     if args.output:
