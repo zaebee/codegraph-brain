@@ -72,6 +72,21 @@ def git_reader(sha: str, repo_root: Path) -> ReadFile:
 
     Once the commit is known to exist, both messages mean the same thing and
     the path is legitimately absent at that commit, so None is correct.
+
+    Reads are cached by path, on both the hit and the miss branch. This is
+    not only a subprocess-count optimisation — `compute_fingerprint` reads
+    each closure path twice (once while walking, once while hashing) — it is
+    what makes the digest consistent *by construction*: a cached reader
+    cannot return different bytes for the same path within one computation,
+    where an uncached `git show` in principle could (a concurrent write to
+    the object store, a transient failure on the second call). The trade:
+    `compute_fingerprint`'s `BrokenReaderError` guard, which exists to catch
+    exactly a reader going `None` on a path it already served, becomes
+    unreachable for *this* reader, because the walk's read and the hash's
+    read now hit the same cache entry. The guard stays — it still protects
+    every non-caching reader, including `disk_reader` — but for `git_reader`
+    specifically, consistency-by-construction has already done the guard's
+    job before the guard gets a chance to.
     """
     verify = subprocess.run(
         ["git", "rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}"],
@@ -83,13 +98,18 @@ def git_reader(sha: str, repo_root: Path) -> ReadFile:
         _msg = f"Cannot resolve guardian_sha {sha!r} to a commit in {repo_root}."
         raise UnresolvableShaError(_msg)
 
+    cache: dict[str, bytes | None] = {}
+
     def read(path: str) -> bytes | None:
         """Contents of `path` at `sha`, or None if absent at that commit.
 
         `None` here means only "absent" — the commit itself was already
         verified to resolve above, so this can no longer be an unresolvable
-        sha wearing an absent-path disguise.
+        sha wearing an absent-path disguise. Cached either way, so a second
+        call for the same path never shells out again.
         """
+        if path in cache:
+            return cache[path]
         result = subprocess.run(
             ["git", "show", f"{sha}:{path}"],
             capture_output=True,
@@ -97,8 +117,10 @@ def git_reader(sha: str, repo_root: Path) -> ReadFile:
             check=False,
         )
         if result.returncode == 0:
-            return result.stdout
+            cache[path] = result.stdout
+            return cache[path]
         if b"does not exist" in result.stderr or b"exists on disk" in result.stderr:
+            cache[path] = None
             return None
         raise subprocess.CalledProcessError(
             result.returncode, "git show", result.stdout, result.stderr
@@ -109,7 +131,9 @@ def git_reader(sha: str, repo_root: Path) -> ReadFile:
 
 def backfill(path: Path, repo_root: Path) -> int:
     """Rewrite `path` in place with fingerprints; return the rows touched."""
-    rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    rows = [
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
     cache: dict[tuple[str, frozenset[str]], str] = {}
     for row in rows:
         finder = provider_for(row["finder_model"])
@@ -123,7 +147,7 @@ def backfill(path: Path, repo_root: Path) -> int:
         row["review_fingerprint_source"] = "reconstructed"
         row["finder_provider"] = finder
         row["skeptic_provider"] = skeptic
-    path.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+    path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
     return len(rows)
 
 
