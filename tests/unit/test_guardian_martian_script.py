@@ -752,6 +752,9 @@ class TestReview:
             duration_s=1.0,
             parse_failed=False,
             guardian_sha="sha",
+            review_fingerprint="abc123abc123",
+            review_fingerprint_source="measured",
+            finder_provider="gemini",
             reviewed_at="2026-08-12T00:00:00+00:00",
         )
 
@@ -1048,6 +1051,9 @@ class TestJudge:
             "duration_s": 1.0,
             "parse_failed": False,
             "guardian_sha": "sha",
+            "review_fingerprint": "abc123abc123",
+            "review_fingerprint_source": "measured",
+            "finder_provider": "gemini",
             "reviewed_at": "2026-08-12T00:00:00+00:00",
         }
         return gm.ReviewRecord.model_validate(base | overrides)
@@ -1922,6 +1928,9 @@ class TestParseFailedExclusion:
             "duration_s": 1.0,
             "parse_failed": parse_failed,
             "guardian_sha": "sha",
+            "review_fingerprint": "abc123abc123",
+            "review_fingerprint_source": "measured",
+            "finder_provider": "gemini",
             "reviewed_at": "2026-08-12T00:00:00+00:00",
         }
 
@@ -2098,6 +2107,9 @@ class TestJudgeTokenAccounting:
             duration_s=1.0,
             parse_failed=False,
             guardian_sha="s",
+            review_fingerprint="abc123abc123",
+            review_fingerprint_source="measured",
+            finder_provider="gemini",
             reviewed_at="2026-08-13T00:00:00+00:00",
         )
 

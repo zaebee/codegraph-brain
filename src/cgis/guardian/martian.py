@@ -366,6 +366,21 @@ class ReviewRecord(BaseModel, frozen=True):
     duration_s: float
     parse_failed: bool
     guardian_sha: str
+    #: What this reviewer *is*, as opposed to which commit it was cut from.
+    #: `guardian_sha` stays above as provenance, because it moves on every
+    #: commit including ones no review can see — a README edit used to mint a
+    #: new reviewer with an empty track record (#375).
+    review_fingerprint: str
+    #: "measured" = taken from the working tree at review time. "reconstructed"
+    #: = rebuilt from git afterwards, which cannot see an uncommitted edit and
+    #: so may merge two runs that differed. No default: a backfilled row must
+    #: not be able to claim a precision it does not have.
+    review_fingerprint_source: Literal["measured", "reconstructed"]
+    #: Stated by `build_provider`, not inferred from the model name — the
+    #: fingerprint's closure is scoped by it, and a prefix table breaks on the
+    #: first model whose name does not carry its vendor.
+    finder_provider: str
+    skeptic_provider: str | None = None
     reviewed_at: str
     #: Non-null when the review could not be produced. Such a row is reported
     #: and excluded, never scored as "found nothing" — a crashed run and a
