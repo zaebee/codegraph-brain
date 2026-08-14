@@ -1,5 +1,11 @@
 """Each provider states its own name, so nothing has to sniff its type."""
 
+import abc
+from typing import ClassVar
+
+import pytest
+from pydantic import BaseModel
+
 from cgis.guardian.providers.base import BaseProvider
 from cgis.guardian.providers.gemini import GeminiProvider
 from cgis.guardian.providers.mistral import MistralProvider
@@ -46,3 +52,77 @@ def test_ollama_is_not_reported_as_gemini() -> None:
     """
     provider = OllamaProvider(model_name="codellama:13b")
     assert provider.name == "ollama"
+
+
+def test_concrete_subclass_without_name_raises_at_class_definition() -> None:
+    """A provider that forgets `name` is refused when the class is defined.
+
+    Without this, the omission would surface only as an AttributeError
+    wherever `.name` is first read — which, in the review-fingerprint work
+    this exists for (#375 Task 1), is inside the digest scoping.
+    """
+    with pytest.raises(TypeError, match="must declare `name"):
+
+        class _Nameless(BaseProvider):
+            async def generate_content(
+                self,
+                system_prompt: str,  # noqa: ARG002
+                user_prompt: str,  # noqa: ARG002
+            ) -> str:
+                """Unreachable: class definition raises before instantiation."""
+                return ""
+
+            async def generate_structured(
+                self,
+                system_prompt: str,  # noqa: ARG002
+                user_prompt: str,  # noqa: ARG002
+                schema: type[BaseModel],  # noqa: ARG002
+            ) -> str:
+                """Unreachable: class definition raises before instantiation."""
+                return ""
+
+
+def test_concrete_subclass_with_name_does_not_raise() -> None:
+    """A provider that declares `name` defines cleanly, same as the real three."""
+
+    class _Named(BaseProvider):
+        name: ClassVar[str] = "gemini"
+
+        async def generate_content(
+            self,
+            system_prompt: str,  # noqa: ARG002
+            user_prompt: str,  # noqa: ARG002
+        ) -> str:
+            """Unreachable: never called by this test."""
+            return ""
+
+        async def generate_structured(
+            self,
+            system_prompt: str,  # noqa: ARG002
+            user_prompt: str,  # noqa: ARG002
+            schema: type[BaseModel],  # noqa: ARG002
+        ) -> str:
+            """Unreachable: never called by this test."""
+            return ""
+
+    assert _Named.name == "gemini"
+
+
+def test_abstract_intermediate_without_name_does_not_raise() -> None:
+    """A shared base for two concrete providers has no business naming itself.
+
+    It is still abstract (it does not implement both of BaseProvider's
+    abstract methods), so the guard must not demand a `name` from it — only
+    from the concrete leaf that finally implements everything.
+    """
+
+    class _SharedBase(BaseProvider, abc.ABC):
+        async def generate_content(
+            self,
+            system_prompt: str,  # noqa: ARG002
+            user_prompt: str,  # noqa: ARG002
+        ) -> str:
+            """Still abstract: generate_structured is not implemented here."""
+            return ""
+
+    assert "name" not in _SharedBase.__dict__

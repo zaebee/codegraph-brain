@@ -2,6 +2,7 @@
 
 import abc
 import asyncio
+import inspect
 from collections.abc import Awaitable, Callable
 from typing import ClassVar
 
@@ -48,12 +49,48 @@ class ProviderUsage(BaseModel, frozen=True):
 class BaseProvider(abc.ABC):
     """Abstract base class for LLM providers."""
 
-    #: The GUARDIAN_PROVIDER value that selects this provider. Declared here so
-    #: a new provider that omits it fails type-check rather than being sniffed
-    #: for by isinstance at three call sites — one of which reported Ollama as
-    #: gemini. The review fingerprint is scoped by this value (#375 §3.3), so a
-    #: wrong one computes the digest over the wrong module.
+    #: The GUARDIAN_PROVIDER value that selects this provider. A bare
+    #: annotation (no default) so a provider is not handed one it never
+    #: claimed; `__init_subclass__` below is what actually stops a concrete
+    #: provider from omitting it — a plain ClassVar annotation is not enforced
+    #: by mypy across subclasses (verified: a subclass that omits it type-checks
+    #: clean under `mypy --strict`). Without that runtime check the omission
+    #: would surface only as an AttributeError wherever `.name` is first
+    #: read — which, in the work this exists for, is inside the review
+    #: fingerprint's digest scoping (#375 §3.3), silently computing the digest
+    #: over the wrong module. Previously three call sites sniffed the type
+    #: with isinstance instead of asking; one of them reported Ollama as
+    #: gemini.
     name: ClassVar[str]
+
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        """Refuse a concrete provider that has not declared its own `name`.
+
+        Raised at class-definition time, not at first use — see the `name`
+        docstring above for why that matters.
+
+        An abstract intermediate (a shared base for two concrete providers
+        that itself still has unimplemented abstract methods) is exempt: it
+        has no business declaring a name of its own. `cls.__abstractmethods__`
+        cannot answer that here, though — ABCMeta computes it only after
+        `type.__new__` returns, and `__init_subclass__` runs *during*
+        `type.__new__`, before that attribute exists on `cls` at all
+        (confirmed by reproducing an AttributeError on it from inside this
+        hook). `inspect.isabstract` is used instead: it special-cases exactly
+        this ordering, falling back to deriving abstractness by hand when
+        `__abstractmethods__` is not yet set, which is precisely the situation
+        here.
+        """
+        super().__init_subclass__(**kwargs)
+        if inspect.isabstract(cls) or hasattr(cls, "name"):
+            return
+        _msg = (
+            f"{cls.__name__} must declare `name: ClassVar[str]` — one of the "
+            'GUARDIAN_PROVIDER values: "gemini", "mistral", "ollama". Add '
+            f'`name: ClassVar[str] = "..."` as the first line of '
+            f"{cls.__name__}'s class body."
+        )
+        raise TypeError(_msg)
 
     def __init__(self) -> None:
         """Initialise usage counters to zero.

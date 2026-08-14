@@ -2155,6 +2155,8 @@ class TestJudgeTokenAccounting:
 class _CountingJudge(BaseProvider):
     """A judge that always matches and reports a fixed cost per call."""
 
+    name: ClassVar[str] = "gemini"
+
     def __init__(self, *, prompt: int, completion: int) -> None:
         """Store the per-call usage this provider will report."""
         super().__init__()

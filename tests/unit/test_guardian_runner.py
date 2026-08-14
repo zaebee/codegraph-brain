@@ -3,6 +3,7 @@
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
+from typing import ClassVar
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -29,6 +30,8 @@ _VALID_JSON = '{"findings": [], "summary": "all good"}'
 
 class _FakeProvider(BaseProvider):
     """Returns canned structured JSON."""
+
+    name: ClassVar[str] = "gemini"
 
     def __init__(self, response: str = _VALID_JSON) -> None:
         """Store the canned response."""

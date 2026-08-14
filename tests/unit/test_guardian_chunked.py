@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 from guardian_stubs import StubProvider
@@ -126,6 +127,8 @@ def _collector(tmp_path: Path, diff: str, *, with_db: bool = True) -> ContextCol
 
 class _BoomProvider(BaseProvider):
     """Raises on every structured call."""
+
+    name: ClassVar[str] = "gemini"
 
     async def generate_content(self, system_prompt: str, user_prompt: str) -> str:
         """Not used in tests."""
