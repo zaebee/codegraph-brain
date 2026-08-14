@@ -12,9 +12,12 @@ including ones that touch nothing a review sees.
 
 This was measured from both ends.
 
-**From the producing end.** Five distinct `guardian_sha` values produced the 83
-reviews in `benchmarks/martian-reviews.jsonl`, `martian-p3-run1.jsonl` and
-`martian-repeat-reviews.jsonl`:
+**From the producing end.** Five distinct `guardian_sha` values produced the 89
+rows in `benchmarks/martian-reviews.jsonl` (64), `martian-p3-run1.jsonl` (19)
+and `martian-repeat-reviews.jsonl` (6). The issue's figure of 83 is the same
+corpus counted after the repeat run's six re-reviews are deduplicated by URL;
+both numbers are right under their own rule, and this document counts rows,
+because every row gets a fingerprint.
 
 ```
 1ecd9629 (#357) -> d0d807ef (#361) -> f9c36f5c (#367) -> 4d1fe6a8 (#373) -> 112e4373 (#377)
@@ -322,7 +325,7 @@ f9c36f5c  fp=600405522794   changed: none
 112e4373  fp=9dd97d78c6bd   changed: none
 ```
 
-Two digests over 83 reviews, and the boundary falls on the gemini/mistral line,
+Two digests over 89 rows, and the boundary falls on the gemini/mistral line,
 which is already a configuration boundary. Identities become: gemini·graph = 1,
 gemini·diff-only = 1, mistral·graph = 1. Seven identities become three, and the
 fingerprint contributes no split of its own.
