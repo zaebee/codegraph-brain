@@ -382,9 +382,9 @@ fingerprint.
 The backfill ran. Across all 115 rows:
 
 ```
-45  e1df55f9e2eb  gemini-2.5-flash / gemini-3.5-flash          / had_graph=False
-25  e1df55f9e2eb  gemini-2.5-flash / gemini-3.5-flash          / had_graph=True
-45  8deeeec52996  mistral-medium-latest / mistral-medium-latest / had_graph=True
+45  1a2884400bd7  gemini-2.5-flash / gemini-3.5-flash          / had_graph=False
+25  1a2884400bd7  gemini-2.5-flash / gemini-3.5-flash          / had_graph=True
+45  eebfdf98419c  mistral-medium-latest / mistral-medium-latest / had_graph=True
 ```
 
 Two digests, splitting on the gemini/mistral line, **three identities**. The
@@ -399,17 +399,30 @@ fragmentary track records. Under the fingerprint they are one reviewer measured
 three times, which is what they always were: the review path did not move
 between those commits.
 
-The digest *strings* are not the ones an earlier draft of this section
-predicted (`600405522794`, `9dd97d78c6bd`), and that is expected rather than a
-failed prediction. Those came from a throwaway probe written before §4 existed,
-which hashed the path followed by the raw file bytes. The shipped preimage is
-the scheme string, then the path, then a *nested* SHA-256 of the content — so
-the two cannot agree by construction. What was predicted and what was measured
-is the structure: how many distinct values, and where the boundary falls.
+The digest *strings* above have moved twice since this section was first
+drafted, for two different reasons, and both belong in one account rather than
+a second apology stacked on the first. An earlier draft, written before §4
+existed, predicted `600405522794` and `9dd97d78c6bd` from a throwaway probe
+that hashed the path followed by raw file bytes — the shipped preimage is the
+scheme string, then the path, then a *nested* SHA-256 of the content, so those
+could never have matched by construction. The first real backfill then
+measured `e1df55f9e2eb` and `8deeeec52996` — and those stopped being
+reproducible the same day, when the final review of #375 found `walk_closure`
+silently missing every ancestor package's `__init__.py` (37 modules found
+where 43 exist; Python executes an ancestor's `__init__.py` on every import,
+not only the modules an `import` statement names). Widening the walk moved the
+digest a second time, to the values shown above, and the corpus was re-run to
+match.
 
-A reader who re-runs the algorithm gets the measured values above. The earlier
-strings are recorded here only so that anyone holding the first draft of this
-document knows why they differ.
+What was predicted and has held through both moves is the structure: two
+distinct values, splitting on the gemini/mistral line, three identities. What
+did not hold, twice, was the literal string — and the two failures are not the
+same kind. A probe predicting the wrong string before the scheme was even
+implemented is harmless. A *shipped* `walk_closure` outpacing a corpus already
+hashed with its previous version is a silent correctness gap: the values above
+would otherwise be exactly what the earlier probe's were, numbers nobody could
+reproduce by running the code in front of them. §7 describes the test that now
+makes that gap loud instead of silent.
 
 ## 7. Test contract
 
@@ -445,6 +458,17 @@ The tests are asymmetric, because the failure modes are.
 - **Positive and negative movement.** Editing `prompts.py` moves the digest;
   editing a file outside the closure does not; ordering is deterministic across
   runs and platforms.
+- **The corpus matches what the code computes today.**
+  `test_stored_fingerprints_match_what_current_code_computes`
+  (`tests/unit/test_backfill_review_fingerprint.py`) groups every review-shaped
+  row under `benchmarks/` by `(guardian_sha, active_providers)` — a handful of
+  distinct pairs, not one per row — and recomputes each with the *current*
+  `compute_fingerprint`/`walk_closure` over `git_reader`, failing by name if any
+  stored value disagrees. This is the mechanism that keeps §6.2's measured
+  values from going stale silently the way they did once already, when
+  `walk_closure` widened from 37 to 43 modules and the corpus was not
+  immediately re-run. A reader who wants to check the numbers in §6.2 does not
+  have to trust this document — they can run that test.
 
 ## 8. Residual risks
 
