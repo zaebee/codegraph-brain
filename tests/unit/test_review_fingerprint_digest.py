@@ -132,8 +132,16 @@ def test_scheme_string_is_in_the_preimage() -> None:
     The expected value is reconstructed independently from the documented
     preimage rule, not by calling `walk_closure` — sharing that code path with
     the implementation would only prove the implementation equals itself.
+
+    `DIGEST_CHARS` is pinned to its documented value (12) rather than merely
+    read back: both the expected value below and the real call truncate with
+    the *same* imported constant, so a width change moves both sides
+    identically and the docstring's claim about `DIGEST_CHARS` would hold
+    vacuously without this assertion — the test would keep passing through a
+    change it claims to catch.
     """
     assert SCHEME == b"cgis-review-fingerprint/v1\0"
+    assert DIGEST_CHARS == 12
 
     body = b"import cgis.guardian.prompts\n"
     path = "src/cgis/guardian/core.py"

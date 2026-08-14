@@ -112,14 +112,34 @@ def _review_shaped_rows(repo_root: Path) -> list[tuple[Path, dict[str, object]]]
     the first backfill pass (#375), even though they were genuine reviews.
 
     Classified by fields, not filename or directory: `guardian_sha`,
-    `findings`, and `finder_model` all present. Two of the three are not
-    enough — `benchmarks/guardian/results.jsonl` is a retired, pre-finder/
-    skeptic single-model bench format (it names its model `model`, not
-    `finder_model`) that also carries both `guardian_sha` and `findings` on
-    118 of its 150 rows, and has no provider to resolve a fingerprint against.
-    `finder_model` is the field the fingerprint scheme actually keys its
-    provider lookup on, so its presence is what distinguishes a `ReviewRecord`
-    from that older shape rather than an incidental extra check.
+    `findings`, and `url` all present. Two of the three are not enough —
+    `benchmarks/guardian/results.jsonl` is a retired, pre-finder/skeptic
+    single-model bench format that also carries both `guardian_sha` and
+    `findings` on 118 of its 150 rows, and has no provider to resolve a
+    fingerprint against.
+
+    `url` rather than `finder_model`: for *this* test a narrower predicate is
+    the dangerous direction — fewer rows classified as reviews means fewer
+    rows required to carry a fingerprint, so every conjunct added is a way for
+    a row to escape the requirement. That is inverted from the closure walk,
+    where narrowing loses coverage of what is hashed; same word, opposite
+    risk. `finder_model` keys the fingerprint's own provider lookup, which
+    reads like the natural discriminator, but it rests on which model-name
+    field a retired schema happened to use rather than on what a review
+    fundamentally is — and it would silently stop discriminating the day
+    `guardian_bench.py`'s `model` field is renamed to `finder_model` in a
+    schema tidy-up (§8 residual risk), sweeping the 150 scored (not reviewed)
+    rows in `benchmarks/guardian/results.jsonl` into the requirement. `url` is
+    present on every row of all five review files and absent from every row of
+    `benchmarks/guardian/results.jsonl` and `benchmarks/guardian/calibration.jsonl`
+    (measured), and rests on "a review without a URL is not a review" — a
+    property of what was reviewed, not of a field name a schema happens to use.
+
+    Do not be tempted to classify by validating rows against `ReviewRecord`
+    instead: `review_fingerprint` is a required field on it, so a row lacking
+    a fingerprint fails validation and is never classified as a review at
+    all — this test would then pass on exactly the corpus it exists to
+    reject.
     """
     rows: list[tuple[Path, dict[str, object]]] = []
     for path in sorted((repo_root / "benchmarks").rglob("*.jsonl")):
@@ -128,7 +148,7 @@ def _review_shaped_rows(repo_root: Path) -> list[tuple[Path, dict[str, object]]]
             if not stripped:
                 continue
             row = json.loads(stripped)
-            if "guardian_sha" in row and "findings" in row and "finder_model" in row:
+            if "guardian_sha" in row and "findings" in row and "url" in row:
                 rows.append((path, row))
     return rows
 
