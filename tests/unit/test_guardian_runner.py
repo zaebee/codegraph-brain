@@ -1,5 +1,6 @@
 """Tests for the guardian script runner (provider selection + orchestration)."""
 
+import json
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -26,6 +27,8 @@ from cgis.guardian.runner import (
 )
 
 _VALID_JSON = '{"findings": [], "summary": "all good"}'
+
+_FP = "test-fp-0000"  # a stand-in review_fingerprint; run_guardian requires one (#375)
 
 
 class _FakeProvider(BaseProvider):
@@ -295,10 +298,34 @@ async def test_run_guardian_smoke(tmp_path: Path) -> None:
         collector=collector,
         pr=152,
         metrics_path=metrics,
+        review_fingerprint=_FP,
     )
     assert report.startswith("LGTM — no defects found in this diff.")
     assert metrics.exists()
     assert posted_inline is False
+
+
+async def test_run_guardian_forwards_the_fingerprint_to_the_metrics_row(tmp_path: Path) -> None:
+    """A live review is attributable to a reviewer version, not just a commit (#375).
+
+    `review_fingerprint` is keyword-required precisely so this forwarding
+    cannot be silently deleted from `run_guardian` without every caller (and
+    mypy strict) noticing. This test guards the other half: that the value
+    which does arrive actually reaches the metrics row `record_review` writes,
+    rather than merely being accepted and dropped.
+    """
+    metrics = tmp_path / "m.jsonl"
+    collector = ContextCollector(project_root=tmp_path)
+    await run_guardian(
+        provider=_FakeProvider(),
+        model="fake-model",
+        collector=collector,
+        pr=152,
+        metrics_path=metrics,
+        review_fingerprint=_FP,
+    )
+    entry = json.loads(metrics.read_text().splitlines()[0])
+    assert entry["review_fingerprint"] == _FP
 
 
 # ---------------------------------------------------------------------------
@@ -327,6 +354,7 @@ async def test_run_guardian_posts_inline_and_reports_success(tmp_path: Path) -> 
             pr=153,
             metrics_path=tmp_path / "m.jsonl",
             inline_repo="zaebee/codegraph-brain",
+            review_fingerprint=_FP,
         )
     assert posted is True
     mock_post.assert_called_once()
@@ -353,6 +381,7 @@ async def test_run_guardian_inline_failure_falls_back(tmp_path: Path) -> None:
             pr=153,
             metrics_path=tmp_path / "m.jsonl",
             inline_repo="zaebee/codegraph-brain",
+            review_fingerprint=_FP,
         )
     assert posted is False
     assert "**[Logic Bug]" in report
@@ -373,6 +402,7 @@ async def test_run_guardian_no_inline_repo_skips_posting(tmp_path: Path) -> None
             collector=collector,
             pr=None,
             metrics_path=tmp_path / "m.jsonl",
+            review_fingerprint=_FP,
         )
     assert posted is False
     mock_post.assert_not_called()
@@ -403,6 +433,7 @@ async def test_run_guardian_records_the_finder_pass(tmp_path: Path) -> None:
             pr=1,
             metrics_path=tmp_path / "m.jsonl",
             record_finder=recording_path,
+            review_fingerprint=_FP,
         )
 
     loaded = load_finder_recording(recording_path)
@@ -424,6 +455,7 @@ async def test_run_guardian_records_nothing_without_the_flag(tmp_path: Path) -> 
             collector=collector,
             pr=1,
             metrics_path=tmp_path / "m.jsonl",
+            review_fingerprint=_FP,
         )
 
     assert not recording_path.exists()
@@ -452,6 +484,7 @@ async def test_refuted_findings_survive_into_the_recording(tmp_path: Path) -> No
             metrics_path=tmp_path / "m.jsonl",
             skeptic=(skeptic, "stub-skeptic"),
             record_finder=recording_path,
+            review_fingerprint=_FP,
         )
 
     loaded = load_finder_recording(recording_path)
@@ -484,6 +517,7 @@ async def test_a_failed_recording_does_not_lose_the_review(tmp_path: Path) -> No
             pr=1,
             metrics_path=metrics,
             record_finder=tmp_path / "finder.json",
+            review_fingerprint=_FP,
         )
 
     assert "**[Logic Bug]" in report
@@ -512,6 +546,7 @@ async def test_a_bad_recording_path_fails_loudly(tmp_path: Path) -> None:
             pr=1,
             metrics_path=tmp_path / "m.jsonl",
             record_finder=tmp_path / "finder.txt",
+            review_fingerprint=_FP,
         )
 
 

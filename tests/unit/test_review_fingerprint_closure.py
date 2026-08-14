@@ -8,6 +8,7 @@ from cgis.guardian.review_fingerprint import (
     SEEDS,
     UnknownProviderError,
     _imported_modules,
+    resolve_active_providers,
     walk_closure,
 )
 
@@ -71,6 +72,17 @@ def test_both_roles_are_active_when_they_differ() -> None:
     assert "src/cgis/guardian/providers/gemini.py" in closure
     assert "src/cgis/guardian/providers/mistral.py" in closure
     assert "src/cgis/guardian/providers/ollama.py" not in closure
+
+
+def test_resolve_active_providers_is_the_union() -> None:
+    """The shared helper both scripts call, so they cannot drift apart (#375).
+
+    A skeptic on a different provider genuinely shapes the review and belongs
+    in the set; no skeptic contributes nothing beyond the finder.
+    """
+    assert resolve_active_providers("gemini", "mistral") == frozenset({"gemini", "mistral"})
+    assert resolve_active_providers("gemini", None) == frozenset({"gemini"})
+    assert resolve_active_providers("gemini", "gemini") == frozenset({"gemini"})
 
 
 def test_unknown_provider_is_refused() -> None:

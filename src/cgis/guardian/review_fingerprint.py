@@ -50,6 +50,21 @@ class UnknownProviderError(RuntimeError):
     """
 
 
+def resolve_active_providers(finder_provider: str, skeptic_provider: str | None) -> frozenset[str]:
+    """The union of the finder's and (if present) the skeptic's provider names.
+
+    Spec §3.3: a skeptic on a different provider from the finder genuinely
+    shapes the review and belongs in the digest; a skeptic on the same
+    provider or no skeptic at all contributes nothing beyond the finder.
+
+    Extracted (final review, #375) because `scripts/guardian_review.py` and
+    `scripts/guardian_martian.py` each computed this set inline with the same
+    expression — a duplication that drifting apart would make the two paths
+    hash different sets for what should be the same reviewer.
+    """
+    return frozenset({finder_provider} | ({skeptic_provider} if skeptic_provider else set()))
+
+
 def _module_path(module: str, read: ReadFile) -> str | None:
     """The repo-relative file for a module name, or None when it is not one."""
     stem = module.replace(".", "/")

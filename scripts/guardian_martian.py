@@ -71,7 +71,11 @@ from cgis.guardian.martian import (
     score_slice,
 )
 from cgis.guardian.providers.base import BaseProvider
-from cgis.guardian.review_fingerprint import compute_fingerprint, disk_reader
+from cgis.guardian.review_fingerprint import (
+    compute_fingerprint,
+    disk_reader,
+    resolve_active_providers,
+)
 from cgis.guardian.runner import build_provider, build_skeptic_provider, temperature
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -356,8 +360,8 @@ async def review_one(row: PrPlan, args: argparse.Namespace) -> ReviewRecord:
     # name (#375 Task 1).
     primary = provider.name
     skeptic = build_skeptic_provider(os.environ, primary=primary)
-    active_providers = frozenset({provider.name} | ({skeptic[0].name} if skeptic else set()))
-    fingerprint = compute_fingerprint(disk_reader(REPO_ROOT), active_providers)
+    active = resolve_active_providers(provider.name, skeptic[0].name if skeptic else None)
+    fingerprint = compute_fingerprint(disk_reader(REPO_ROOT), active)
     collector = ContextCollector(
         project_root=checkout,
         base_ref=base,
