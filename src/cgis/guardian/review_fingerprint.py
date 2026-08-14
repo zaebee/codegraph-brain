@@ -13,7 +13,9 @@ a single review. `tests/unit/test_review_fingerprint_contract.py` enforces that.
 """
 
 import ast
+import hashlib
 from collections.abc import Callable
+from pathlib import Path
 
 #: Repo-relative path in, file contents out, None when the path does not exist.
 #: Injected rather than assumed so the live run (disk) and the backfill
@@ -152,3 +154,56 @@ def walk_closure(read: ReadFile, active_providers: frozenset[str]) -> list[str]:
         is_package = path.endswith("/__init__.py")
         queue.extend(_imported_modules(source, module, is_package))
     return sorted(paths)
+
+
+#: The scheme, including its truncation width. The two are one unit: identical
+#: code under a different width emits a value that looks different with nothing
+#: in the record to say why, so changing either requires bumping this string.
+SCHEME = b"cgis-review-fingerprint/v1\0"
+
+#: Hex characters kept. 48 bits: collision probability N^2/2^49, about 2e-7 at
+#: ten thousand distinct review-path states against a realistic N in the dozens.
+DIGEST_CHARS = 12
+
+
+class CarriageReturnError(RuntimeError):
+    """Raised when a closure file contains CRLF.
+
+    Refused rather than folded to LF. Folding is a normaliser and its way of
+    being wrong is to merge — a source file whose string literal legitimately
+    carries CRLF would hash as though it did not. A stray line ending is a
+    misconfigured checkout, and repairing it silently lets that checkout go on
+    producing subtly different artefacts elsewhere (spec §4.1.1).
+    """
+
+
+def disk_reader(root: Path) -> ReadFile:
+    """A reader over a working tree rooted at `root`.
+
+    `root` is explicit and never the CWD: a review spends most of its time
+    standing in a checkout of somebody else's repository, where a relative read
+    would return a wrong value that looks entirely right.
+    """
+
+    def read(path: str) -> bytes | None:
+        target = root / path
+        return target.read_bytes() if target.is_file() else None
+
+    return read
+
+
+def compute_fingerprint(read: ReadFile, active_providers: frozenset[str]) -> str:
+    """The digest over everything this review could read."""
+    digest = hashlib.sha256()
+    digest.update(SCHEME)
+    for path in walk_closure(read, active_providers):
+        content = read(path)
+        if content is None:  # pragma: no cover - the walk just read it
+            continue
+        if b"\r\n" in content:
+            _msg = f"CRLF line endings in {path}; the checkout must use LF."
+            raise CarriageReturnError(_msg)
+        digest.update(path.encode())
+        digest.update(b"\0")
+        digest.update(hashlib.sha256(content).digest())
+    return digest.hexdigest()[:DIGEST_CHARS]
