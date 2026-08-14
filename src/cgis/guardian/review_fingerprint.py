@@ -67,21 +67,51 @@ def _is_pruned_provider(module: str, active: frozenset[str]) -> bool:
     return leaf not in active
 
 
-def _imported_modules(source: bytes) -> list[str]:
+def _resolve_relative_module(package: str, level: int, module: str | None) -> str | None:
+    """Absolute dotted name for a relative import, or None if it escapes the tree.
+
+    Mirrors `importlib._bootstrap._resolve_name`: `level=1` means `package`
+    itself, `level=2` its parent, and so on. `package` must already be the
+    *importing package* — see `_imported_modules` for the module-vs-package
+    distinction that feeds into it — not the importing module.
+    """
+    bits = package.rsplit(".", level - 1)
+    if len(bits) < level:
+        return None
+    base = bits[0]
+    return f"{base}.{module}" if module else base
+
+
+def _imported_modules(source: bytes, module: str, is_package: bool) -> list[str]:
     """Every `cgis.*` module named by an import in this source.
 
     Submodule attributes are included as candidates (`from cgis.x import y`
     yields `cgis.x.y`); `_module_path` discards the ones that are not modules.
+
+    `module` is the dotted name of the file this source came from, and
+    `is_package` says whether that file is an `__init__.py`. Both feed
+    relative-import resolution: a package's own name *is* the package a
+    `level=1` import counts from, while a plain module's package is its name
+    minus its own last component — the same asymmetry `importlib` applies at
+    runtime. Without this, `from .base import X` or `from ..core import Y`
+    would silently vanish instead of resolving, because a relative import's
+    `node.module` never starts with `"cgis"`.
     """
+    package = module if is_package else module.rsplit(".", 1)[0]
     found: list[str] = []
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Import):
             found.extend(alias.name for alias in node.names if alias.name.startswith("cgis"))
         elif isinstance(node, ast.ImportFrom):
-            if node.module is None or not node.module.startswith("cgis"):
+            resolved = (
+                _resolve_relative_module(package, node.level, node.module)
+                if node.level
+                else node.module
+            )
+            if resolved is None or not resolved.startswith("cgis"):
                 continue
-            found.append(node.module)
-            found.extend(f"{node.module}.{alias.name}" for alias in node.names)
+            found.append(resolved)
+            found.extend(f"{resolved}.{alias.name}" for alias in node.names)
     return found
 
 
@@ -119,5 +149,6 @@ def walk_closure(read: ReadFile, active_providers: frozenset[str]) -> list[str]:
         if source is None:  # pragma: no cover - _module_path just read it
             continue
         paths.add(path)
-        queue.extend(_imported_modules(source))
+        is_package = path.endswith("/__init__.py")
+        queue.extend(_imported_modules(source, module, is_package))
     return sorted(paths)

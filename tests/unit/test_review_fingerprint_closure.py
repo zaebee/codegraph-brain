@@ -88,3 +88,72 @@ def test_reader_is_injected_not_assumed() -> None:
 
     walk_closure(recording_reader, frozenset({"gemini"}))
     assert calls, "the walk must go through the injected reader"
+
+
+def test_pruned_provider_import_is_never_followed() -> None:
+    """A synthetic fixture where an unselected provider reaches a module no seed does.
+
+    In this repository's real providers, `gemini.py`, `mistral.py` and
+    `ollama.py` import nothing but `providers.base` plus third-party/stdlib —
+    so no file is reachable *only* through an unselected provider, and
+    `test_unselected_providers_are_pruned` alone cannot tell a during-walk
+    prune from a full-traversal-then-filter-by-provider-filename
+    implementation: both would produce the same output against the real repo.
+
+    This fixture breaks that tie. `mistral.py` imports a module
+    (`mistral_only.py`) that is not itself a provider file and that no other
+    seed reaches. A filter that strips only known provider *filenames* from a
+    completed traversal would still contain `mistral_only.py`, because the
+    traversal (unpruned) would have read `mistral.py`'s imports before any
+    filter ran, and the filter never looks at what `mistral.py` pulled in —
+    only at whether a path's own name matches an unselected provider. Only a
+    prune applied *during* the walk — skipping `mistral.py` before its
+    imports are ever read — keeps `mistral_only.py` out.
+    """
+    fake_files = {
+        "src/cgis/guardian/core.py": (
+            b"import cgis.guardian.providers.gemini\nimport cgis.guardian.providers.mistral\n"
+        ),
+        "src/cgis/guardian/providers/base.py": b"",
+        "src/cgis/guardian/providers/gemini.py": b"import cgis.guardian.providers.base\n",
+        "src/cgis/guardian/providers/mistral.py": b"import cgis.guardian.mistral_only\n",
+        "src/cgis/guardian/providers/ollama.py": b"",
+        "src/cgis/guardian/mistral_only.py": b"",
+    }
+
+    def fake_reader(path: str) -> bytes | None:
+        return fake_files.get(path)
+
+    closure = walk_closure(fake_reader, frozenset({"gemini"}))
+    assert "src/cgis/guardian/providers/gemini.py" in closure
+    assert "src/cgis/guardian/providers/base.py" in closure
+    assert "src/cgis/guardian/providers/mistral.py" not in closure
+    assert "src/cgis/guardian/mistral_only.py" not in closure
+
+
+def test_relative_imports_are_resolved_into_the_closure() -> None:
+    """`from .x import y` and `from ..a.b import y` must resolve, not vanish.
+
+    A relative import's `ast.ImportFrom.module` never starts with `"cgis"`
+    (`from .base import X` parses to `module="base"`), so a walk that only
+    checks that prefix silently drops it and everything reachable only
+    through it — no error, just a smaller closure. This fixture chains a
+    level-1 relative import (`core.py` -> `rel_level1_target.py`, both in
+    `cgis.guardian`) into a level-2 one (`rel_level1_target.py` ->
+    `cgis.extractors.rel_level2_target`, crossing up to the parent package)
+    and asserts both resolved targets are present.
+    """
+    fake_files = {
+        "src/cgis/guardian/core.py": b"from .rel_level1_target import X\n",
+        "src/cgis/guardian/rel_level1_target.py": (
+            b"from ..extractors.rel_level2_target import Y\n"
+        ),
+        "src/cgis/extractors/rel_level2_target.py": b"",
+    }
+
+    def fake_reader(path: str) -> bytes | None:
+        return fake_files.get(path)
+
+    closure = walk_closure(fake_reader, frozenset())
+    assert "src/cgis/guardian/rel_level1_target.py" in closure
+    assert "src/cgis/extractors/rel_level2_target.py" in closure
