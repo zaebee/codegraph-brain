@@ -12,15 +12,39 @@ including ones that touch nothing a review sees.
 
 This was measured from both ends.
 
-**From the producing end.** Five distinct `guardian_sha` values produced the 89
-rows in `benchmarks/martian-reviews.jsonl` (64), `martian-p3-run1.jsonl` (19)
-and `martian-repeat-reviews.jsonl` (6). The issue's figure of 83 is the same
-corpus counted after the repeat run's six re-reviews are deduplicated by URL;
-both numbers are right under their own rule, and this document counts rows,
-because every row gets a fingerprint.
+**From the producing end.** Six distinct `guardian_sha` values produced the 115
+review records under `benchmarks/`:
+
+| file | rows |
+|---|---|
+| `martian-reviews.jsonl` | 64 |
+| `martian-p3-run1.jsonl` | 19 |
+| `martian-p3-run2.jsonl` | 19 |
+| `martian-p3-run3.jsonl` | 7 |
+| `martian-repeat-reviews.jsonl` | 6 |
+
+The set is listed here in full because getting it wrong is this document's own
+worst mistake: an earlier draft named three of these files, taking the list from
+the issue's prose without enumerating the directory. Every number computed from
+those three was internally consistent and agreed with the prediction, so nothing
+prompted a recount — a figure that is correct about the wrong set reports the
+reassuring answer. It surfaced only because the downstream consumer's manifest
+said 115 where this said 89, and a provenance digest travelling with its output
+made the disagreement visible.
+
+The judged corpora (`martian-judged.jsonl`, `martian-p3-judged-run1.jsonl`,
+`martian-repeat-judged.jsonl`) hold `JudgedReview` records keyed on (url, judge)
+and take no fingerprint. `benchmarks/guardian/results.jsonl` is excluded too,
+and less obviously: 118 of its 150 rows carry both `guardian_sha` and
+`findings`, so a two-field test would sweep them in. They are the Phase 1 bench
+corpus under the pre-finder/skeptic schema, carrying `model` rather than
+`finder_model` and scored fields (`precision`, `recall`, `matched`, `missed`) —
+scores, not reviews. Classification therefore requires `finder_model`, which is
+a required field on `ReviewRecord` and so cannot exclude a genuine review row.
 
 ```
-1ecd9629 (#357) -> d0d807ef (#361) -> f9c36f5c (#367) -> 4d1fe6a8 (#373) -> 112e4373 (#377)
+1ecd9629 (#357) -> d0d807ef (#361) -> f9c36f5c (#367) -> 4d1fe6a8 (#373)
+                -> 112e4373 (#377) -> aeebde91
 ```
 
 Diffing those shas over the prompt and context path — `prompts.py`,
@@ -286,10 +310,17 @@ One field and one call site; the call stays at the script boundary per §4.2.
 
 ## 6. Backfill
 
-All three corpora are backfilled by a one-shot
+All five corpora (§1) are backfilled by a one-shot
 `scripts/backfill_review_fingerprint.py`. For each record it takes that record's
 `guardian_sha`, rebuilds the closure **at that sha** via `git show`, and computes
 the digest. No review is re-run and no model is called.
+
+The set is enforced rather than remembered. A test globs every `*.jsonl` under
+`benchmarks/`, classifies each row as a review record by its fields rather than
+its filename, and fails when a review-shaped row carries no fingerprint. A
+corpus file added later, by anyone, fails that test until it is backfilled — a
+one-time check would have left the next person to notice, which is precisely
+what went wrong the first time.
 
 A sha that does not resolve is a hard failure, not a `null`. A mixed corpus —
 some records keyed on a fingerprint, some on a sha — would mean two identity
@@ -334,17 +365,25 @@ fingerprint.
 
 ### 6.2 Measured
 
-The backfill ran. Across all 89 rows:
+The backfill ran. Across all 115 rows:
 
 ```
-45  e1df55f9e2eb  gemini-2.5-flash / gemini-3.5-flash    / had_graph=False
-25  e1df55f9e2eb  gemini-2.5-flash / gemini-3.5-flash    / had_graph=True
-19  8deeeec52996  mistral-medium-latest / mistral-medium-latest / had_graph=True
+45  e1df55f9e2eb  gemini-2.5-flash / gemini-3.5-flash          / had_graph=False
+25  e1df55f9e2eb  gemini-2.5-flash / gemini-3.5-flash          / had_graph=True
+45  8deeeec52996  mistral-medium-latest / mistral-medium-latest / had_graph=True
 ```
 
-Two digests, splitting on the gemini/mistral line, **three identities**. Seven
-identities become three, and the fingerprint contributes no split of its own.
-Every row carries `review_fingerprint_source: "reconstructed"`.
+Two digests, splitting on the gemini/mistral line, **three identities**. The
+fingerprint contributes no split of its own. Every row carries
+`review_fingerprint_source: "reconstructed"`.
+
+The mistral row is the one that shows what this is for. Those 45 rows span three
+`guardian_sha` values — `4d1fe6a8`, `112e4373` and `aeebde91` — because Phase 3
+ran the same configuration three times to measure the noise floor that
+retraction R5 exposed. Under `guardian_sha` those are three reviewers with three
+fragmentary track records. Under the fingerprint they are one reviewer measured
+three times, which is what they always were: the review path did not move
+between those commits.
 
 The digest *strings* are not the ones an earlier draft of this section
 predicted (`600405522794`, `9dd97d78c6bd`), and that is expected rather than a
