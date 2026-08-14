@@ -84,6 +84,12 @@ def git_reader(sha: str, repo_root: Path) -> ReadFile:
         raise UnresolvableShaError(_msg)
 
     def read(path: str) -> bytes | None:
+        """Contents of `path` at `sha`, or None if absent at that commit.
+
+        `None` here means only "absent" — the commit itself was already
+        verified to resolve above, so this can no longer be an unresolvable
+        sha wearing an absent-path disguise.
+        """
         result = subprocess.run(
             ["git", "show", f"{sha}:{path}"],
             capture_output=True,
