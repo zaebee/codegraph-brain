@@ -308,6 +308,15 @@ different historical runs sharing a `guardian_sha` collapse to one digest. That
 is the merge direction, and by the citation in §4.1 it has already happened once
 in this repository's own experiment history.
 
+Reconstruction has one trap worth recording, because it was nearly walked into.
+`git show` reports an absent path as `does not exist in '<sha>'` but reports a
+*nonexistent commit* as `exists on disk, but not in '<sha>'` whenever the file
+exists in the working tree. A reader that classifies by substring alone reads an
+unresolvable sha as a tree in which every path is missing — an empty closure and
+a confident digest of nothing, identical for every bad sha, merging rows from
+different reviewers. The backfill therefore resolves the commit once, up front,
+and refuses; only after that do both messages legitimately mean "absent here".
+
 This is not an argument against backfilling — a reconstructed fingerprint is
 still far better than a sha, and a corpus split between records that have the
 field and records that do not is worse than either. It is an argument for the
@@ -315,24 +324,39 @@ record saying which kind it holds, which is what
 `review_fingerprint_source: "reconstructed"` does. Rows written from now on
 carry `"measured"`.
 
-The result is known in advance, from running the algorithm across the five shas:
+The result was predicted before implementation, by running the algorithm across
+the five shas, and the prediction was structural: **two distinct digests, split
+on the gemini/mistral line, three identities.** The one digest change falls at
+`4d1fe6a8`, where `providers/mistral.py`, `providers/ollama.py` and `runner.py`
+moved — #380, sampling reaching the provider instead of the chat template
+deciding. That is a real behavioural change and it *should* move the
+fingerprint.
+
+### 6.2 Measured
+
+The backfill ran. Across all 89 rows:
 
 ```
-1ecd9629  fp=600405522794
-d0d807ef  fp=600405522794   changed: none
-f9c36f5c  fp=600405522794   changed: none
-4d1fe6a8  fp=9dd97d78c6bd   changed: providers/mistral.py, providers/ollama.py, runner.py
-112e4373  fp=9dd97d78c6bd   changed: none
+45  e1df55f9e2eb  gemini-2.5-flash / gemini-3.5-flash    / had_graph=False
+25  e1df55f9e2eb  gemini-2.5-flash / gemini-3.5-flash    / had_graph=True
+19  8deeeec52996  mistral-medium-latest / mistral-medium-latest / had_graph=True
 ```
 
-Two digests over 89 rows, and the boundary falls on the gemini/mistral line,
-which is already a configuration boundary. Identities become: gemini·graph = 1,
-gemini·diff-only = 1, mistral·graph = 1. Seven identities become three, and the
-fingerprint contributes no split of its own.
+Two digests, splitting on the gemini/mistral line, **three identities**. Seven
+identities become three, and the fingerprint contributes no split of its own.
+Every row carries `review_fingerprint_source: "reconstructed"`.
 
-The one digest change is #380 — sampling reaching the provider instead of the
-chat template deciding. That is a real behavioural change and it *should* move
-the fingerprint.
+The digest *strings* are not the ones an earlier draft of this section
+predicted (`600405522794`, `9dd97d78c6bd`), and that is expected rather than a
+failed prediction. Those came from a throwaway probe written before §4 existed,
+which hashed the path followed by the raw file bytes. The shipped preimage is
+the scheme string, then the path, then a *nested* SHA-256 of the content — so
+the two cannot agree by construction. What was predicted and what was measured
+is the structure: how many distinct values, and where the boundary falls.
+
+A reader who re-runs the algorithm gets the measured values above. The earlier
+strings are recorded here only so that anyone holding the first draft of this
+document knows why they differ.
 
 ## 7. Test contract
 
@@ -377,7 +401,18 @@ The tests are asymmetric, because the failure modes are.
   code that can be wrong, and every way it can be wrong over-normalises, which
   merges. Raw bytes cannot fail that way.
 - A module reached only through a dynamic import escapes the walk. Mitigated by
-  the test in §7, which is a lint rather than a proof.
+  the test in §7, which is a lint rather than a proof. Implementation narrowed
+  the residue: the detector keys on the bound name, so
+  `from importlib import import_module` followed by a bare call is caught. It
+  still misses `import importlib as il; il.import_module(...)`, because the
+  attribute check names `importlib` literally.
+- **Relative imports are resolved, not skipped.** The first implementation
+  followed only `ImportFrom` nodes whose module began with `cgis`, so
+  `from .base import X` would have been dropped along with everything reachable
+  only through it — silently, in the merge direction. The walk now resolves
+  `node.level` against the importing module's package, with the module-versus-
+  `__init__` asymmetry handled. No relative imports exist in `src/cgis/` today,
+  so this closed a latent hole rather than a live one.
 - The closure is computed by static analysis, so a plugin-style provider loaded
   by name at runtime would need this design revisited.
 - **Dependency versions are not in the digest.** `uv.lock` is committed and
