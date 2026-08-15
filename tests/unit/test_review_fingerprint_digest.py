@@ -189,3 +189,20 @@ def test_disk_reader_refuses_an_absolute_path() -> None:
 def test_disk_reader_still_answers_none_for_a_missing_relative_path() -> None:
     """The refusal above must not swallow the reader's real "absent" answer."""
     assert disk_reader(REPO_ROOT)("src/cgis/guardian/does_not_exist.py") is None
+
+
+@pytest.mark.parametrize(
+    "absolute",
+    ["/etc/hostname", "\\etc\\hostname", "C:/etc/hostname", "C:\\etc\\hostname"],
+)
+def test_disk_reader_refuses_every_absolute_spelling(absolute: str) -> None:
+    """The guard must not depend on which OS is running it.
+
+    `Path(path).is_absolute()` is host-dependent: on Linux it reads `C:/x` as
+    relative, so a drive-letter path would slip past on the very host this runs
+    on, while `root / path` on Windows would discard the root. Judging the
+    string as both a POSIX and a Windows path catches every spelling anywhere
+    (#386 review).
+    """
+    with pytest.raises(ValueError, match="absolute"):
+        disk_reader(REPO_ROOT)(absolute)

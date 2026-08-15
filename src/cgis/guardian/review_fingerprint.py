@@ -15,7 +15,7 @@ a single review. `tests/unit/test_review_fingerprint_contract.py` enforces that.
 import ast
 import hashlib
 from collections.abc import Callable
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PureWindowsPath
 
 #: Repo-relative path in, file contents out, None when the path does not exist.
 #: Injected rather than assumed so the live run (disk) and the backfill
@@ -237,10 +237,17 @@ def disk_reader(root: Path) -> ReadFile:
     cannot carry that meaning. Every path here is built internally from a
     module name and is therefore relative by construction, so a caller passing
     an absolute one has made a mistake this must not absorb (#385).
+
+    The check judges the string as both a POSIX and a Windows path rather than
+    asking the host. `Path(path).is_absolute()` is host-dependent: on Linux it
+    reads `C:/x` as relative, so a drive-letter path would slip past on the very
+    machine this runs on, while the same string on Windows would discard `root`.
+    A guard whose coverage depends on where it executes is the shape this
+    codebase keeps finding and removing (#386).
     """
 
     def read(path: str) -> bytes | None:
-        if PurePosixPath(path).is_absolute():
+        if path.startswith(("/", "\\")) or PureWindowsPath(path).is_absolute():
             _msg = f"Reader paths are repo-relative; {path!r} is absolute."
             raise ValueError(_msg)
         target = root / path

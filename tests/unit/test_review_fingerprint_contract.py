@@ -89,13 +89,23 @@ def _importlib_aliases(tree: ast.AST) -> set[str]:
     the bare-call form `_bound_dynamic_names` covers, one spelling over. Empty
     when the module is never imported, so an unrelated `os.import_module` call
     matches nothing (#385).
+
+    A submodule import binds the top-level package, not the submodule:
+    `import importlib.util` leaves `importlib` in scope and
+    `importlib.import_module(...)` working, while `alias.name` reads
+    `"importlib.util"`. Checked by running it rather than reasoned about. With
+    an alias — `import importlib.util as iu` — only `iu` is bound, and `iu` has
+    no `import_module`, so that spelling must NOT contribute a name (#386).
     """
     names: set[str] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            names.update(
-                alias.asname or alias.name for alias in node.names if alias.name == "importlib"
-            )
+        if not isinstance(node, ast.Import):
+            continue
+        for alias in node.names:
+            if alias.name == "importlib":
+                names.add(alias.asname or "importlib")
+            elif alias.name.startswith("importlib.") and not alias.asname:
+                names.add("importlib")
     return names
 
 
@@ -137,6 +147,28 @@ def test_detector_still_catches_the_unaliased_forms() -> None:
         tree = ast.parse(source)
         hits = _dynamic_import_calls(tree, _bound_dynamic_names(tree), _importlib_aliases(tree))
         assert hits, source
+
+
+def test_detector_catches_a_submodule_import_of_importlib() -> None:
+    """`import importlib.util` binds the name `importlib` too.
+
+    Verified by running it: the statement binds `importlib` (not `util`), so
+    `importlib.import_module(...)` works afterwards — while `alias.name` is
+    `"importlib.util"`, which an equality check on `"importlib"` skips. Missing
+    it is the silent-narrowing direction (#386 review).
+    """
+    tree = ast.parse("import importlib.util\nimportlib.import_module('x')\n")
+    assert _dynamic_import_calls(tree, _bound_dynamic_names(tree), _importlib_aliases(tree))
+
+
+def test_detector_ignores_an_aliased_submodule_that_binds_nothing() -> None:
+    """`import importlib.util as iu` binds only `iu`, and `iu` has no import_module.
+
+    The boundary of the rule above: with an alias the top-level name is never
+    bound, so treating it as one would flag a call that cannot exist.
+    """
+    tree = ast.parse("import importlib.util as iu\niu.import_module('x')\n")
+    assert not _dynamic_import_calls(tree, _bound_dynamic_names(tree), _importlib_aliases(tree))
 
 
 def test_detector_ignores_an_unrelated_import_module_attribute() -> None:
