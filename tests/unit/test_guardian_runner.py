@@ -601,3 +601,59 @@ class TestTemperatureFromEnv:
         provider, _ = built
         assert isinstance(provider, MistralProvider)
         assert provider._temperature == 0.7  # noqa: SLF001  # white-box: sampling wiring
+
+
+@pytest.mark.parametrize("raw", ["gemini-2.5-flash ", " gemini-2.5-flash", "\tgemini-2.5-flash"])
+def test_build_provider_refuses_an_unstripped_model(raw: str) -> None:
+    """A padded model name is a different reviewer, and an invisible one.
+
+    `"gemini-2.5-flash "` renders identically to the correct value in every log,
+    diff and terminal, and is recorded verbatim into the field a downstream
+    consumer hashes into a permanent identity. Refused rather than trimmed:
+    silently repairing it lets the bad variable survive to do something else
+    later (#382).
+    """
+    with pytest.raises(RuntimeError, match="whitespace"):
+        build_provider(
+            {"GUARDIAN_PROVIDER": "gemini", "GEMINI_API_KEY": "g", "GUARDIAN_MODEL": raw}
+        )
+
+
+def test_build_skeptic_provider_refuses_an_unstripped_model() -> None:
+    """The skeptic degrades on a *missing* model; a malformed one is different.
+
+    `build_skeptic_provider` returns None when a key or model is absent, so a
+    review never fails for want of a skeptic. Absence is a legitimate
+    configuration; surrounding whitespace is a typo that would mint a duplicate
+    identity, so it refuses instead of degrading (#382, deliberate narrowing).
+    """
+    env = {
+        "GUARDIAN_SKEPTIC": "mistral",
+        "MISTRAL_API_KEY": "m",
+        "GUARDIAN_SKEPTIC_MODEL": "mistral-medium-latest ",
+    }
+    with pytest.raises(RuntimeError, match="whitespace"):
+        build_skeptic_provider(env, primary="gemini")
+
+
+def test_build_skeptic_provider_refuses_an_unstripped_fallback_model() -> None:
+    """An ollama skeptic falls back to GUARDIAN_MODEL — the same string, same rule."""
+    env = {"GUARDIAN_SKEPTIC": "ollama", "GUARDIAN_MODEL": "codellama:13b "}
+    with pytest.raises(RuntimeError, match="whitespace"):
+        build_skeptic_provider(env, primary="gemini")
+
+
+def test_build_provider_accepts_a_mixed_case_model() -> None:
+    """Casing is deliberately NOT normalised, and this pins that.
+
+    A model name is an identifier, not a label: Ollama tags are case-sensitive
+    in principle, so lowercasing for storage is lossy and refusing mixed case
+    would break a legitimate name. Whitespace is different in kind — never part
+    of an identifier — which is why one is refused and the other left alone
+    (#382). Without this test a future tidy-up adds `.lower()` in good faith and
+    re-mints every downstream identity.
+    """
+    _provider, model = build_provider(
+        {"GUARDIAN_PROVIDER": "gemini", "GEMINI_API_KEY": "g", "GUARDIAN_MODEL": "Gemini-2.5-Flash"}
+    )
+    assert model == "Gemini-2.5-Flash"
