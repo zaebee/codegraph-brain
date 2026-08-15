@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.12.0...codegraph-brain-v0.13.0) (2026-08-15)
+
+
+### Features
+
+* **guardian:** an identity for a reviewer, that a commit does not fragment ([#375](https://github.com/zaebee/codegraph-brain/issues/375)) ([#383](https://github.com/zaebee/codegraph-brain/issues/383)) ([e339a38](https://github.com/zaebee/codegraph-brain/commit/e339a38743ddfdaac1e7c8f0724281844d5a8b38))
+
 ## [0.12.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.11.0...codegraph-brain-v0.12.0) (2026-08-13)
 
 
