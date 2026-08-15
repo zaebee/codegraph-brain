@@ -360,7 +360,7 @@ async def review_one(row: PrPlan, args: argparse.Namespace) -> ReviewRecord:
     # name (#375 Task 1).
     primary = provider.name
     skeptic = build_skeptic_provider(os.environ, primary=primary)
-    active = resolve_active_providers(provider.name, skeptic[0].name if skeptic else None)
+    active = resolve_active_providers(primary, skeptic[0].name if skeptic else None)
     fingerprint = compute_fingerprint(disk_reader(REPO_ROOT), active)
     collector = ContextCollector(
         project_root=checkout,

@@ -17,6 +17,16 @@ from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.guardian.martian import ReviewRecord
 from cgis.storage.sqlite_store import SQLiteStore
 
+#: The three reviewer-identity fields every `ReviewRecord` fixture needs (#375).
+#: Spread with `**` into either shape — a constructor call or a raw-dict row —
+#: so the same literal cannot drift between the two. It was copied verbatim at
+#: six sites before #385; the value is arbitrary, its *sameness* is the point.
+IDENTITY_FIELDS = {
+    "review_fingerprint": "abc123abc123",
+    "review_fingerprint_source": "measured",
+    "finder_provider": "gemini",
+}
+
 
 @pytest.fixture
 def sample_record() -> ReviewRecord:
@@ -41,9 +51,7 @@ def sample_record() -> ReviewRecord:
         parse_failed=False,
         guardian_sha="sha",
         reviewed_at="2026-08-12T00:00:00+00:00",
-        review_fingerprint="abc123abc123",
-        review_fingerprint_source="measured",
-        finder_provider="gemini",
+        **IDENTITY_FIELDS,
     )
 
 

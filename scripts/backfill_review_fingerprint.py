@@ -17,7 +17,11 @@ import re
 import subprocess
 from pathlib import Path
 
-from cgis.guardian.review_fingerprint import ReadFile, compute_fingerprint
+from cgis.guardian.review_fingerprint import (
+    ReadFile,
+    compute_fingerprint,
+    resolve_active_providers,
+)
 
 #: Historical models only. Stated as a table rather than a prefix rule because a
 #: prefix rule breaks on the first model whose name does not carry its vendor —
@@ -263,7 +267,7 @@ def backfill(path: Path, repo_root: Path) -> int:
         finder = provider_for(row["finder_model"])
         skeptic_model = row.get("skeptic_model")
         skeptic = provider_for(skeptic_model) if skeptic_model else None
-        active = frozenset({finder} | ({skeptic} if skeptic else set()))
+        active = resolve_active_providers(finder, skeptic)
         key = (row["guardian_sha"], active)
         if key not in cache:
             cache[key] = compute_fingerprint(git_reader(row["guardian_sha"], repo_root), active)

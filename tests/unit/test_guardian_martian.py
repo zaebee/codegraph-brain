@@ -11,6 +11,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from conftest import IDENTITY_FIELDS
 
 from cgis.guardian.findings import Finding
 from cgis.guardian.martian import (
@@ -347,9 +348,7 @@ class TestReviewRecord:
             "duration_s": 3.0,
             "parse_failed": False,
             "guardian_sha": "deadbeef",
-            "review_fingerprint": "abc123abc123",
-            "review_fingerprint_source": "measured",
-            "finder_provider": "gemini",
+            **IDENTITY_FIELDS,
             "reviewed_at": "2026-08-12T00:00:00+00:00",
         }
         return ReviewRecord.model_validate(base | overrides)
