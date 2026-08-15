@@ -27,6 +27,7 @@ from cgis.storage.sqlite_store import SQLiteStore
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scripts"))
 
 import guardian_martian as gm
+from conftest import IDENTITY_FIELDS
 
 from cgis.guardian import calibrate as gm_cal
 from cgis.guardian.findings import Finding
@@ -752,9 +753,7 @@ class TestReview:
             duration_s=1.0,
             parse_failed=False,
             guardian_sha="sha",
-            review_fingerprint="abc123abc123",
-            review_fingerprint_source="measured",
-            finder_provider="gemini",
+            **IDENTITY_FIELDS,
             reviewed_at="2026-08-12T00:00:00+00:00",
         )
 
@@ -1051,9 +1050,7 @@ class TestJudge:
             "duration_s": 1.0,
             "parse_failed": False,
             "guardian_sha": "sha",
-            "review_fingerprint": "abc123abc123",
-            "review_fingerprint_source": "measured",
-            "finder_provider": "gemini",
+            **IDENTITY_FIELDS,
             "reviewed_at": "2026-08-12T00:00:00+00:00",
         }
         return gm.ReviewRecord.model_validate(base | overrides)
@@ -1928,9 +1925,7 @@ class TestParseFailedExclusion:
             "duration_s": 1.0,
             "parse_failed": parse_failed,
             "guardian_sha": "sha",
-            "review_fingerprint": "abc123abc123",
-            "review_fingerprint_source": "measured",
-            "finder_provider": "gemini",
+            **IDENTITY_FIELDS,
             "reviewed_at": "2026-08-12T00:00:00+00:00",
         }
 
@@ -2107,9 +2102,7 @@ class TestJudgeTokenAccounting:
             duration_s=1.0,
             parse_failed=False,
             guardian_sha="s",
-            review_fingerprint="abc123abc123",
-            review_fingerprint_source="measured",
-            finder_provider="gemini",
+            **IDENTITY_FIELDS,
             reviewed_at="2026-08-13T00:00:00+00:00",
         )
 

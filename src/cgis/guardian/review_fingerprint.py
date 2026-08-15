@@ -15,7 +15,7 @@ a single review. `tests/unit/test_review_fingerprint_contract.py` enforces that.
 import ast
 import hashlib
 from collections.abc import Callable
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 #: Repo-relative path in, file contents out, None when the path does not exist.
 #: Injected rather than assumed so the live run (disk) and the backfill
@@ -230,9 +230,35 @@ def disk_reader(root: Path) -> ReadFile:
     `root` is explicit and never the CWD: a review spends most of its time
     standing in a checkout of somebody else's repository, where a relative read
     would return a wrong value that looks entirely right.
+
+    An absolute `path` is refused rather than answered. `root / path` in
+    pathlib silently discards `root` for one, so the reader would read a real
+    file from somewhere else entirely — and `None`, its word for "absent",
+    cannot carry that meaning. Every path here is built internally from a
+    module name and is therefore relative by construction, so a caller passing
+    an absolute one has made a mistake this must not absorb (#385).
+
+    The check judges the string as both a POSIX and a Windows path rather than
+    asking the host. `Path(path).is_absolute()` is host-dependent: on Linux it
+    reads `C:/x` as relative, so a drive-letter path would slip past on the very
+    machine this runs on, while the same string on Windows would discard `root`.
+    A guard whose coverage depends on where it executes is the shape this
+    codebase keeps finding and removing (#386).
+
+    It tests for a *drive* rather than for absoluteness, because a Windows path
+    can carry one without being absolute and still swallow the root:
+    `PureWindowsPath("D:/repo") / "C:foo"` is `PureWindowsPath("C:foo")`, root
+    discarded entirely, while `PureWindowsPath("C:foo").is_absolute()` is False.
+    Checked by running it. Across every spelling tried — POSIX-rooted,
+    backslash-rooted, `C:/x`, `C:\\x`, `C:foo`, and UNC — a non-empty drive or a
+    leading separator catches each one, and no case was absolute without also
+    having one of those, so an `is_absolute()` clause would add nothing.
     """
 
     def read(path: str) -> bytes | None:
+        if path.startswith(("/", "\\")) or PureWindowsPath(path).drive:
+            _msg = f"Reader paths are repo-relative; {path!r} is absolute."
+            raise ValueError(_msg)
         target = root / path
         return target.read_bytes() if target.is_file() else None
 

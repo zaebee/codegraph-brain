@@ -171,3 +171,56 @@ def test_scheme_string_is_in_the_preimage() -> None:
     expected.update(hashlib.sha256(body).digest())
 
     assert compute_fingerprint(reader, frozenset()) == expected.hexdigest()[:DIGEST_CHARS]
+
+
+def test_disk_reader_refuses_an_absolute_path() -> None:
+    """`root / path` silently discards `root` when `path` is absolute.
+
+    An absolute path here is a caller error, not a missing file, and the two
+    must not share an answer: `None` is this reader's word for "absent", so
+    returning it would let a wrong root read a real file somewhere else and
+    report the closure as merely incomplete (#385).
+    """
+    read = disk_reader(REPO_ROOT)
+    with pytest.raises(ValueError, match="absolute"):
+        read("/etc/hostname")
+
+
+def test_disk_reader_still_answers_none_for_a_missing_relative_path() -> None:
+    """The refusal above must not swallow the reader's real "absent" answer."""
+    assert disk_reader(REPO_ROOT)("src/cgis/guardian/does_not_exist.py") is None
+
+
+@pytest.mark.parametrize(
+    "rooted",
+    [
+        "/etc/hostname",
+        "\\etc\\hostname",
+        "C:/etc/hostname",
+        "C:\\etc\\hostname",
+        "C:etc/hostname",
+        "c:etc/hostname",
+        "\\\\server\\share\\x",
+    ],
+)
+def test_disk_reader_refuses_anything_that_could_escape_the_root(rooted: str) -> None:
+    """Not "absolute" — *rooted or drive-bearing*, which is a wider class.
+
+    `C:etc/hostname` is drive-*relative*: `PureWindowsPath("C:etc/hostname")`
+    reports `is_absolute()` as False, yet
+    `PureWindowsPath("D:/repo") / "C:etc/hostname"` is `C:etc/hostname` with the
+    root discarded entirely. Checked by running it. So the guard tests for a
+    drive or a leading separator rather than for absoluteness, and this test is
+    named for what it actually covers.
+
+    It must also not depend on which OS is running it.
+
+    `Path(path).is_absolute()` is host-dependent: on Linux it reads `C:/x` as
+    relative, so a drive-letter path would slip past on the very host this runs
+    on, while `root / path` on Windows would discard the root. Judging the
+    string as both a POSIX and a Windows path catches every spelling anywhere
+    (#386 review).
+    """
+    read = disk_reader(REPO_ROOT)
+    with pytest.raises(ValueError, match="absolute"):
+        read(rooted)
