@@ -244,10 +244,19 @@ def disk_reader(root: Path) -> ReadFile:
     machine this runs on, while the same string on Windows would discard `root`.
     A guard whose coverage depends on where it executes is the shape this
     codebase keeps finding and removing (#386).
+
+    It tests for a *drive* rather than for absoluteness, because a Windows path
+    can carry one without being absolute and still swallow the root:
+    `PureWindowsPath("D:/repo") / "C:foo"` is `PureWindowsPath("C:foo")`, root
+    discarded entirely, while `PureWindowsPath("C:foo").is_absolute()` is False.
+    Checked by running it. Across every spelling tried — POSIX-rooted,
+    backslash-rooted, `C:/x`, `C:\\x`, `C:foo`, and UNC — a non-empty drive or a
+    leading separator catches each one, and no case was absolute without also
+    having one of those, so an `is_absolute()` clause would add nothing.
     """
 
     def read(path: str) -> bytes | None:
-        if path.startswith(("/", "\\")) or PureWindowsPath(path).is_absolute():
+        if path.startswith(("/", "\\")) or PureWindowsPath(path).drive:
             _msg = f"Reader paths are repo-relative; {path!r} is absolute."
             raise ValueError(_msg)
         target = root / path

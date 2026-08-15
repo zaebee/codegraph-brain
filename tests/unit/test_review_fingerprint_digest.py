@@ -192,11 +192,28 @@ def test_disk_reader_still_answers_none_for_a_missing_relative_path() -> None:
 
 
 @pytest.mark.parametrize(
-    "absolute",
-    ["/etc/hostname", "\\etc\\hostname", "C:/etc/hostname", "C:\\etc\\hostname"],
+    "rooted",
+    [
+        "/etc/hostname",
+        "\\etc\\hostname",
+        "C:/etc/hostname",
+        "C:\\etc\\hostname",
+        "C:etc/hostname",
+        "c:etc/hostname",
+        "\\\\server\\share\\x",
+    ],
 )
-def test_disk_reader_refuses_every_absolute_spelling(absolute: str) -> None:
-    """The guard must not depend on which OS is running it.
+def test_disk_reader_refuses_anything_that_could_escape_the_root(rooted: str) -> None:
+    """Not "absolute" — *rooted or drive-bearing*, which is a wider class.
+
+    `C:etc/hostname` is drive-*relative*: `PureWindowsPath("C:etc/hostname")`
+    reports `is_absolute()` as False, yet
+    `PureWindowsPath("D:/repo") / "C:etc/hostname"` is `C:etc/hostname` with the
+    root discarded entirely. Checked by running it. So the guard tests for a
+    drive or a leading separator rather than for absoluteness, and this test is
+    named for what it actually covers.
+
+    It must also not depend on which OS is running it.
 
     `Path(path).is_absolute()` is host-dependent: on Linux it reads `C:/x` as
     relative, so a drive-letter path would slip past on the very host this runs
@@ -206,4 +223,4 @@ def test_disk_reader_refuses_every_absolute_spelling(absolute: str) -> None:
     """
     read = disk_reader(REPO_ROOT)
     with pytest.raises(ValueError, match="absolute"):
-        read(absolute)
+        read(rooted)
