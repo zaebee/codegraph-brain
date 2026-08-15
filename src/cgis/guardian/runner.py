@@ -158,13 +158,45 @@ def _build_ollama(env: Mapping[str, str], model_override: str | None) -> tuple[B
     return provider, model_override
 
 
+def _model_from_env(env: Mapping[str, str], key: str) -> str | None:
+    """The model named by `key`, refused when it carries surrounding whitespace.
+
+    Refused rather than trimmed. A model name is recorded verbatim on every
+    review record and, downstream, is hashed into a permanent reviewer
+    identity — so `"gemini-2.5-flash "` and `"gemini-2.5-flash"` are two
+    reviewers, and the first renders identically to the second in every log,
+    diff and terminal anyone will look at. Trimming here would repair the
+    symptom and leave the misconfigured variable alive to do something else
+    later; refusing kills the run at the mistake (#382). Same reasoning as
+    `reject_metrics_path` (#350) and `mcp_server._reject_db_path` (#315).
+
+    Casing is deliberately left alone. A model name is an identifier, not a
+    label: Ollama tags are case-sensitive in principle, so lowercasing for
+    storage would be lossy and refusing mixed case would break a legitimate
+    name. Whitespace is different in kind — never part of an identifier — so
+    removing it loses nothing and keeping it costs an entity.
+
+    An empty value stays falsy and is treated as absent by the callers, exactly
+    as before.
+    """
+    value = env.get(key)
+    if value is not None and value != value.strip():
+        _msg = (
+            f"{key}={value!r} has surrounding whitespace. The model name is recorded "
+            f"verbatim and identifies the reviewer, so this and {value.strip()!r} would "
+            f"be two different reviewers. Fix the variable rather than have it trimmed here."
+        )
+        raise RuntimeError(_msg)
+    return value
+
+
 def build_provider(env: Mapping[str, str]) -> tuple[BaseProvider, str]:
     """Return (provider, model_name) from GUARDIAN_PROVIDER / available API keys.
 
     With no explicit GUARDIAN_PROVIDER, auto-select: mistral if its key is set,
     else gemini if its key is set, else an error.
     """
-    model_override = env.get("GUARDIAN_MODEL")
+    model_override = _model_from_env(env, "GUARDIAN_MODEL")
     provider_name = env.get("GUARDIAN_PROVIDER", "").lower() or _autodetect_provider(env)
 
     builders = {"mistral": _build_mistral, "gemini": _build_gemini, "ollama": _build_ollama}
@@ -203,9 +235,9 @@ def build_skeptic_provider(
         log.warning("Unknown GUARDIAN_SKEPTIC; skeptic disabled.", value=choice)
         return None
     name = choice or ("mistral" if primary == "gemini" else "gemini")
-    model_override = env.get("GUARDIAN_SKEPTIC_MODEL")
+    model_override = _model_from_env(env, "GUARDIAN_SKEPTIC_MODEL")
     if name == "ollama":
-        model = model_override or env.get("GUARDIAN_MODEL")
+        model = model_override or _model_from_env(env, "GUARDIAN_MODEL")
         if not model:
             log.warning(
                 "Skeptic disabled: set GUARDIAN_SKEPTIC_MODEL (or GUARDIAN_MODEL) "
