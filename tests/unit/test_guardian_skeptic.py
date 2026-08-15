@@ -1,6 +1,7 @@
 """Unit tests for per-finding judgement, the pure merge, and the impact threshold (#246)."""
 
 import asyncio
+from typing import ClassVar
 
 import pytest
 from guardian_stubs import BoomProvider, StubProvider
@@ -201,6 +202,8 @@ async def test_judge_all_never_exceeds_the_concurrency_limit() -> None:
 
     class _ConcurrencyProbe(BaseProvider):
         """Counts how many judgement calls are in flight at once."""
+
+        name: ClassVar[str] = "gemini"
 
         def __init__(self) -> None:
             """Start with no calls in flight."""

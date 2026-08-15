@@ -13,6 +13,7 @@ salvaging is a rescue, not a measurement, so a salvaged review is still flagged
 """
 
 import json
+from typing import ClassVar
 
 import pytest
 from pydantic import BaseModel
@@ -144,6 +145,8 @@ class TestFinderPassSalvage:
 
 class _AlwaysReturns(BaseProvider):
     """A provider that answers every call with the same canned text."""
+
+    name: ClassVar[str] = "gemini"
 
     def __init__(self, text: str) -> None:
         """Store the text this provider will return for any prompt."""

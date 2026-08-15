@@ -1,5 +1,7 @@
 """Mistral AI LLM provider for Guardian."""
 
+from typing import ClassVar
+
 from pydantic import BaseModel
 
 from cgis.guardian.providers.base import DEFAULT_REQUEST_TIMEOUT, BaseProvider, ProviderUsage
@@ -7,6 +9,8 @@ from cgis.guardian.providers.base import DEFAULT_REQUEST_TIMEOUT, BaseProvider, 
 
 class MistralProvider(BaseProvider):
     """Mistral AI provider. Requires: uv sync --group guardian"""
+
+    name: ClassVar[str] = "mistral"
 
     def __init__(
         self,

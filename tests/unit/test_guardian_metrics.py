@@ -385,6 +385,43 @@ def test_a_huge_file_with_no_newlines_is_refused_without_reading_it_all(tmp_path
         _record(path)
 
 
+def test_record_review_writes_the_fingerprint(tmp_path: Path) -> None:
+    """A live CI review is attributable to a reviewer version.
+
+    The production row carried no guardian_sha at all, so until now nothing tied
+    a posted review to the code that produced it.
+    """
+    metrics = tmp_path / "m.jsonl"
+    record_review(
+        model="gemini-2.5-flash",
+        pr=1,
+        prompt_tokens=10,
+        completion_tokens=2,
+        findings_total=0,
+        lgtm=True,
+        review_fingerprint="600405522794",
+        metrics_path=metrics,
+    )
+    entry = json.loads(metrics.read_text().splitlines()[0])
+    assert entry["review_fingerprint"] == "600405522794"
+
+
+def test_record_review_fingerprint_defaults_to_none(tmp_path: Path) -> None:
+    """Rows written before this landed read as unknown, not as some value."""
+    metrics = tmp_path / "m.jsonl"
+    record_review(
+        model="m",
+        pr=None,
+        prompt_tokens=0,
+        completion_tokens=0,
+        findings_total=0,
+        lgtm=True,
+        metrics_path=metrics,
+    )
+    entry = json.loads(metrics.read_text().splitlines()[0])
+    assert entry["review_fingerprint"] is None
+
+
 def test_whitespace_padded_beyond_the_budget_is_refused(tmp_path: Path) -> None:
     """Blank-within-the-budget is ambiguous, and size resolves it.
 

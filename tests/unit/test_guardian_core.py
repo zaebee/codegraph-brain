@@ -3,6 +3,7 @@
 import json
 import subprocess
 from pathlib import Path
+from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -83,6 +84,8 @@ def test_build_user_prompt_omits_graph_section_when_absent() -> None:
 class _FakeProvider(BaseProvider):
     """Minimal in-memory provider for testing."""
 
+    name: ClassVar[str] = "gemini"
+
     def __init__(self, response: str = "LGTM") -> None:
         """Store canned response."""
         super().__init__()
@@ -104,6 +107,8 @@ class _FakeProvider(BaseProvider):
 
 class _SequenceProvider(BaseProvider):
     """Returns queued responses; records structured-call prompts."""
+
+    name: ClassVar[str] = "gemini"
 
     def __init__(self, responses: list[str]) -> None:
         """Queue the canned responses."""
@@ -176,6 +181,8 @@ async def test_run_review_passes_context_to_prompt(collector: ContextCollector) 
     captured: dict[str, str] = {}
 
     class _CapturingProvider(BaseProvider):
+        name: ClassVar[str] = "gemini"
+
         async def generate_content(self, system_prompt: str, user_prompt: str) -> str:  # noqa: ARG002
             """Capture the user prompt and return valid JSON so parsing succeeds."""
             captured["user"] = user_prompt
@@ -244,6 +251,8 @@ async def test_provider_last_usage_after_call(collector: ContextCollector) -> No
     """last_usage reflects values set by the provider after generate_content."""
 
     class _UsageProvider(BaseProvider):
+        name: ClassVar[str] = "gemini"
+
         async def generate_content(self, system_prompt: str, user_prompt: str) -> str:  # noqa: ARG002
             """Return valid JSON and set fake usage (single-call semantics)."""
             self.last_usage = ProviderUsage(prompt_tokens=100, completion_tokens=50)

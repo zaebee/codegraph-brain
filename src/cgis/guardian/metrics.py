@@ -141,6 +141,7 @@ def record_review(
     skeptic: SkepticRecord | None = None,
     chunk_count: int | None = None,
     duration_s: float | None = None,
+    review_fingerprint: str | None = None,
     metrics_path: Path = _DEFAULT_METRICS_FILE,
 ) -> Path:
     """Append one review entry to the metrics JSONL file and return the path.
@@ -170,6 +171,9 @@ def record_review(
         # written before #275. Completed runs only — a failing review writes no
         # record at all, so this data is survivorship-biased by construction.
         "duration_s": duration_s,
+        # Which reviewer produced this, as opposed to which commit (#375). None
+        # on rows written before it landed — unknown, not "no fingerprint".
+        "review_fingerprint": review_fingerprint,
     }
     _require_writable(metrics_path)
     with metrics_path.open("a", encoding="utf-8") as fh:

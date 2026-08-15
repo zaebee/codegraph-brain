@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from cgis.extractors.registry import build_extractors
 from cgis.guardian.martian import SliceCounts
 from cgis.guardian.providers.base import BaseProvider, ProviderUsage
+from cgis.guardian.providers.mistral import MistralProvider
 from cgis.pipeline import IngestionPipeline
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -609,6 +610,7 @@ class TestGraphProvenance:
 
 
 class _StubProvider:
+    name = "gemini"
     cumulative_usage = SimpleNamespace(prompt_tokens=0, completion_tokens=0)
 
 
@@ -750,6 +752,9 @@ class TestReview:
             duration_s=1.0,
             parse_failed=False,
             guardian_sha="sha",
+            review_fingerprint="abc123abc123",
+            review_fingerprint_source="measured",
+            finder_provider="gemini",
             reviewed_at="2026-08-12T00:00:00+00:00",
         )
 
@@ -865,6 +870,7 @@ class TestReviewOne:
             completion_tokens = 22
 
         class _Provider:
+            name = "gemini"
             cumulative_usage = _Usage()
 
         class _Result:
@@ -954,7 +960,7 @@ class TestResumeRobustness:
         (tmp_path / "ws" / "o__r" / ".git").mkdir(parents=True)
         seen: dict[str, str] = {}
 
-        class _Mistral(gm.MistralProvider):
+        class _Mistral(MistralProvider):
             cumulative_usage = SimpleNamespace(prompt_tokens=0, completion_tokens=0)
 
             def __init__(self) -> None:
@@ -1045,6 +1051,9 @@ class TestJudge:
             "duration_s": 1.0,
             "parse_failed": False,
             "guardian_sha": "sha",
+            "review_fingerprint": "abc123abc123",
+            "review_fingerprint_source": "measured",
+            "finder_provider": "gemini",
             "reviewed_at": "2026-08-12T00:00:00+00:00",
         }
         return gm.ReviewRecord.model_validate(base | overrides)
@@ -1919,6 +1928,9 @@ class TestParseFailedExclusion:
             "duration_s": 1.0,
             "parse_failed": parse_failed,
             "guardian_sha": "sha",
+            "review_fingerprint": "abc123abc123",
+            "review_fingerprint_source": "measured",
+            "finder_provider": "gemini",
             "reviewed_at": "2026-08-12T00:00:00+00:00",
         }
 
@@ -2095,6 +2107,9 @@ class TestJudgeTokenAccounting:
             duration_s=1.0,
             parse_failed=False,
             guardian_sha="s",
+            review_fingerprint="abc123abc123",
+            review_fingerprint_source="measured",
+            finder_provider="gemini",
             reviewed_at="2026-08-13T00:00:00+00:00",
         )
 
@@ -2151,6 +2166,8 @@ class TestJudgeTokenAccounting:
 
 class _CountingJudge(BaseProvider):
     """A judge that always matches and reports a fixed cost per call."""
+
+    name: ClassVar[str] = "gemini"
 
     def __init__(self, *, prompt: int, completion: int) -> None:
         """Store the per-call usage this provider will report."""

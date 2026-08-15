@@ -272,12 +272,25 @@ async def run_guardian(
     inline_repo: str | None = None,
     threshold: int = 0,
     record_finder: Path | None = None,
+    review_fingerprint: str,
 ) -> tuple[str, bool]:
     """Run the review; try the inline path when configured.
 
     Returns (rendered report + footer, posted_inline). posted_inline=False
     covers both "not configured" and "API rejected" — the caller posts the
     big comment in either case (spec §6.5).
+
+    ``review_fingerprint`` is opaque here — computed by the caller (never inside
+    this module; see review_fingerprint.py's closure contract, #375) — and
+    passed straight to ``record_review`` so a live review is attributable to a
+    reviewer version, not just a commit. Keyword-required with no default (final
+    review, #375): the forwarding line at the bottom of this function is easy to
+    delete without breaking a single test, since every existing caller passed
+    the value explicitly to `record_review`, not to this parameter — an omitted
+    caller now fails mypy strict rather than silently shipping an
+    unattributable live review. ``record_review`` itself keeps `str | None`,
+    because it also reads old rows and must stay tolerant of rows that predate
+    this field.
 
     ``record_finder`` writes the finder pass (findings + diff) to that path so
     the review can be re-scored offline against a benchmark entry (#279).
@@ -361,6 +374,7 @@ async def run_guardian(
         ),
         chunk_count=routed.chunk_count,
         duration_s=duration_s,
+        review_fingerprint=review_fingerprint,
         metrics_path=metrics_path,
     )
     return report + footer, posted
