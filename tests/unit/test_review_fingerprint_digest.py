@@ -204,5 +204,6 @@ def test_disk_reader_refuses_every_absolute_spelling(absolute: str) -> None:
     string as both a POSIX and a Windows path catches every spelling anywhere
     (#386 review).
     """
+    read = disk_reader(REPO_ROOT)
     with pytest.raises(ValueError, match="absolute"):
-        disk_reader(REPO_ROOT)(absolute)
+        read(absolute)
