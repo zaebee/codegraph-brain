@@ -115,6 +115,34 @@ jobs:
           # Deliberately scoped to scripts/. src/ keeps the rule — metrics.py:70
           # is library code and its instance deserves a real answer (#342).
           #
+          # pythonsecurity:S2083 ("do not construct the path from user-controlled
+          # data") is exempted for scripts/ too, but for a DIFFERENT reason than
+          # S8707 above, and the difference matters. S8707's argument is that
+          # confining these tools to a root would break legitimate ad-hoc runs.
+          # S2083 was raised against backfill_review_fingerprint.py, which does
+          # the opposite: `safe_corpus_path` resolves the argument, requires a
+          # .jsonl regular file, confines it under the repository root, raises
+          # otherwise, and returns the resolved path that `backfill()` then uses
+          # for every read and write — the original argument never reaches the
+          # filesystem again (#375).
+          #
+          # The finding survived that. It was reported first at the read, then at
+          # the write, unchanged by binding the check to the value used, because
+          # SonarCloud's Python taint engine does not model `Path.resolve()` plus
+          # `is_relative_to()` as a sanitiser. The remaining report is an engine
+          # limitation, not an unvalidated path. Verified rather than assumed:
+          # main carries no open S2083, and the one S8707 left in src/ is marked
+          # FALSE-POSITIVE by a human, so neither rule has a working precedent
+          # here to copy blindly.
+          #
+          # The alternative considered and rejected was taking a bare filename
+          # and building the path from a fixed base, which the engine would
+          # accept. It makes traversal inexpressible, but it changes a documented
+          # CLI to satisfy an analyser rather than to close a hole that is
+          # already closed. If a script ever takes a path it does NOT validate,
+          # this exemption hides it — that is the cost, and it is the reason the
+          # rule stays on for src/.
+          #
           # `sonar.newCode.referenceBranch` overrides the server-side new-code
           # definition for this analysis. The instance default is
           # `previous_version` (confirmed: sonar.leak.period=previous_version,
@@ -173,9 +201,11 @@ jobs:
             -Dsonar.tests=tests
             -Dsonar.python.version=3.12
             -Dsonar.python.coverage.reportPaths=coverage.xml
-            -Dsonar.issue.ignore.multicriteria=e1,e2,e3
+            -Dsonar.issue.ignore.multicriteria=e1,e2,e3,e4
             -Dsonar.issue.ignore.multicriteria.e1.ruleKey=pythonsecurity:S8707
             -Dsonar.issue.ignore.multicriteria.e1.resourceKey=scripts/**/*.py
+            -Dsonar.issue.ignore.multicriteria.e4.ruleKey=pythonsecurity:S2083
+            -Dsonar.issue.ignore.multicriteria.e4.resourceKey=scripts/**/*.py
             -Dsonar.issue.ignore.multicriteria.e2.ruleKey=githubactions:S8541
             -Dsonar.issue.ignore.multicriteria.e2.resourceKey=.github/workflows/*.yml
             -Dsonar.issue.ignore.multicriteria.e3.ruleKey=githubactions:S8544
