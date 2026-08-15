@@ -53,8 +53,18 @@ def test_the_hasher_is_not_in_its_own_closure() -> None:
     assert "src/cgis/guardian/review_fingerprint.py" not in current_closure()
 
 
-def _dynamic_import_calls(tree: ast.AST, dynamic_names: set[str]) -> list[str]:
-    """Calls that import by name rather than by statement."""
+def _dynamic_import_calls(
+    tree: ast.AST, dynamic_names: set[str], module_names: set[str]
+) -> list[str]:
+    """Calls that import by name rather than by statement.
+
+    Both name sets are derived from the same tree rather than assumed: a
+    dynamic importer can be reached through the callable it was bound to
+    (`dynamic_names`) or through whatever the `importlib` module itself was
+    bound to (`module_names`). Hardcoding either spelling leaves a hole, and
+    the hole is in the silent-narrowing direction — a module reached by a call
+    this misses is invisible to the closure walk.
+    """
     hits: list[str] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -66,10 +76,27 @@ def _dynamic_import_calls(tree: ast.AST, dynamic_names: set[str]) -> list[str]:
             isinstance(func, ast.Attribute)
             and func.attr == "import_module"
             and isinstance(func.value, ast.Name)
-            and func.value.id == "importlib"
+            and func.value.id in module_names
         ):
-            hits.append("importlib.import_module")
+            hits.append(f"{func.value.id}.import_module")
     return hits
+
+
+def _importlib_aliases(tree: ast.AST) -> set[str]:
+    """Local names bound to the `importlib` module itself.
+
+    `import importlib as il` then `il.import_module(...)` is the same hole as
+    the bare-call form `_bound_dynamic_names` covers, one spelling over. Empty
+    when the module is never imported, so an unrelated `os.import_module` call
+    matches nothing (#385).
+    """
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names.update(
+                alias.asname or alias.name for alias in node.names if alias.name == "importlib"
+            )
+    return names
 
 
 def _bound_dynamic_names(tree: ast.AST) -> set[str]:
@@ -88,6 +115,36 @@ def _bound_dynamic_names(tree: ast.AST) -> set[str]:
     return names
 
 
+def test_detector_catches_an_aliased_importlib() -> None:
+    """`import importlib as il; il.import_module(...)` is the same hole.
+
+    The attribute branch hardcoded the name `importlib`, so aliasing the module
+    walked straight past it. A module reached that way is invisible to the
+    closure walk — the silent-narrowing direction (#385).
+    """
+    tree = ast.parse("import importlib as il\nil.import_module('cgis.guardian.core')\n")
+    assert _dynamic_import_calls(tree, _bound_dynamic_names(tree), _importlib_aliases(tree))
+
+
+def test_detector_still_catches_the_unaliased_forms() -> None:
+    """Widening the detector must not lose what it already caught."""
+    for source in (
+        "import importlib\nimportlib.import_module('x')\n",
+        "from importlib import import_module\nimport_module('x')\n",
+        "from importlib import import_module as im\nim('x')\n",
+        "__import__('x')\n",
+    ):
+        tree = ast.parse(source)
+        hits = _dynamic_import_calls(tree, _bound_dynamic_names(tree), _importlib_aliases(tree))
+        assert hits, source
+
+
+def test_detector_ignores_an_unrelated_import_module_attribute() -> None:
+    """Matching on any `.import_module` would flag code that imports nothing."""
+    tree = ast.parse("import os\nos.import_module('x')\n")
+    assert not _dynamic_import_calls(tree, _bound_dynamic_names(tree), _importlib_aliases(tree))
+
+
 @pytest.mark.parametrize("path", current_closure())
 def test_no_dynamic_imports_in_the_review_path(path: str) -> None:
     """A module reached by a runtime name is invisible to a static walk.
@@ -96,7 +153,7 @@ def test_no_dynamic_imports_in_the_review_path(path: str) -> None:
     genuinely shapes the review.
     """
     tree = ast.parse((REPO_ROOT / path).read_bytes())
-    hits = _dynamic_import_calls(tree, _bound_dynamic_names(tree))
+    hits = _dynamic_import_calls(tree, _bound_dynamic_names(tree), _importlib_aliases(tree))
     assert not hits, f"{path} imports dynamically ({hits}); the walk cannot see it"
 
 

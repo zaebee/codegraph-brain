@@ -15,7 +15,7 @@ a single review. `tests/unit/test_review_fingerprint_contract.py` enforces that.
 import ast
 import hashlib
 from collections.abc import Callable
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 #: Repo-relative path in, file contents out, None when the path does not exist.
 #: Injected rather than assumed so the live run (disk) and the backfill
@@ -230,9 +230,19 @@ def disk_reader(root: Path) -> ReadFile:
     `root` is explicit and never the CWD: a review spends most of its time
     standing in a checkout of somebody else's repository, where a relative read
     would return a wrong value that looks entirely right.
+
+    An absolute `path` is refused rather than answered. `root / path` in
+    pathlib silently discards `root` for one, so the reader would read a real
+    file from somewhere else entirely — and `None`, its word for "absent",
+    cannot carry that meaning. Every path here is built internally from a
+    module name and is therefore relative by construction, so a caller passing
+    an absolute one has made a mistake this must not absorb (#385).
     """
 
     def read(path: str) -> bytes | None:
+        if PurePosixPath(path).is_absolute():
+            _msg = f"Reader paths are repo-relative; {path!r} is absolute."
+            raise ValueError(_msg)
         target = root / path
         return target.read_bytes() if target.is_file() else None
 

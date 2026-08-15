@@ -171,3 +171,21 @@ def test_scheme_string_is_in_the_preimage() -> None:
     expected.update(hashlib.sha256(body).digest())
 
     assert compute_fingerprint(reader, frozenset()) == expected.hexdigest()[:DIGEST_CHARS]
+
+
+def test_disk_reader_refuses_an_absolute_path() -> None:
+    """`root / path` silently discards `root` when `path` is absolute.
+
+    An absolute path here is a caller error, not a missing file, and the two
+    must not share an answer: `None` is this reader's word for "absent", so
+    returning it would let a wrong root read a real file somewhere else and
+    report the closure as merely incomplete (#385).
+    """
+    read = disk_reader(REPO_ROOT)
+    with pytest.raises(ValueError, match="absolute"):
+        read("/etc/hostname")
+
+
+def test_disk_reader_still_answers_none_for_a_missing_relative_path() -> None:
+    """The refusal above must not swallow the reader's real "absent" answer."""
+    assert disk_reader(REPO_ROOT)("src/cgis/guardian/does_not_exist.py") is None
