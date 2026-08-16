@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 from guardian_stubs import FlakyProvider
 
 # This repository sets no pytest `pythonpath`, so every test that imports a
@@ -774,3 +775,45 @@ class TestProtectionIsDecidedByBothHalves:
         monkeypatch.setattr(sys.modules[__name__], "_durable_refs_present", list)
         with pytest.raises(AssertionError, match="Fetch the default branch"):
             _trunk()
+
+
+def test_every_fixture_sha_survives_deleting_every_feature_branch() -> None:
+    """The bench's *inputs* need pinning too, not only the corpora's provenance.
+
+    A second population, and one the neighbouring test does not reach: it walks
+    `guardian_sha` in the `.jsonl` corpora, while `benchmarks/guardian/pr-*.yaml`
+    names a `base` and a `head` per fixture — the commits the benchmark actually
+    replays. Nothing asked whether those survive.
+
+    Nine of the sixteen did not. Every PR *head* is unreachable from the trunk by
+    construction, because this repository squash-merges: the head commit is never
+    an ancestor of anything on main. They resolved only in one developer's clone,
+    and #399's first CI run failed on `pr-122` head — after a day spent closing
+    exactly this hazard in the corpora, in a population I had not enumerated.
+
+    They are now pinned under `bench/fixture/`. `guardian_bench` can also fetch
+    `refs/pull/N/head` on demand, which is why the bench itself never noticed;
+    a tag is what makes an offline checkout enough.
+    """
+    shas: dict[str, list[str]] = collections.defaultdict(list)
+    for fixture in sorted((REPO_ROOT / "benchmarks" / "guardian").glob("pr-*.yaml")):
+        spec = yaml.safe_load(fixture.read_text(encoding="utf-8"))
+        for which in ("base", "head"):
+            sha = spec.get(which)
+            if sha:
+                shas[sha].append(f"{fixture.stem}.{which}")
+
+    assert len(shas) >= 15, (
+        f"found only {len(shas)} distinct fixture shas, expected at least 15 — an empty "
+        "result must not read as 'every fixture input is pinned'."
+    )
+    durable = _durable_refs_present()
+    assert durable, f"none of {_DURABLE_REFS} resolves; the trunk half cannot be evaluated."
+    unprotected = {
+        sha: where for sha, where in shas.items() if _protection_for(sha, durable) is None
+    }
+    assert not unprotected, (
+        "these fixture commits are reachable only from deletable branches, so the benchmark "
+        f"stops being replayable the day they go: {unprotected}. Pin each one: "
+        "git push origin <sha>:refs/tags/bench/fixture/pr-<n>-<base|head>"
+    )

@@ -230,3 +230,4 @@ guardian_metrics.jsonl
 *.db-wal
 *.db-shm
 .martian-workspace/
+.guardian-recordings/
