@@ -130,13 +130,22 @@ them and dropping the parse failure is the one combination that is right about
 both. The `arm` field exists for the mirror of this hazard: a failure and a
 controlled removal must not look alike in the record.
 
-There is exactly **one** such row in the review corpora, and it is
+There is exactly **one** parse-failed row in the review corpora:
 `martian-p3-run1.jsonl` for PR 11059 — the same row #374 was written about. One
-row out of 115 sounds ignorable and is not: it is one of three draws for its
-subject, so averaging it in pulls that subject's weight down and moves
-mistral/graph's confirmed rate on `critical` from 86.6% to 86.9%. That is how the
-gap was found — a downstream consumer computed 86.6%, this repository computed
-86.9%, and the disagreement had exactly one cause.
+row out of 115 sounds ignorable and is not, because of how the averaging works:
+
+- PR 11059 has three rows. Dropping the parse-failed one leaves draws of `9/13`
+  and `8/8`, so the subject contributes mean `c = 8.5` over mean `n = 10.5` —
+  a rate of **81.0%**, which is *below* mistral/graph's pooled 86.6%.
+- Averaging the parse failure in as a third draw keeps that 81.0% but shrinks the
+  subject to `c = 5.667` over `n = 7.0`. Its **weight** falls, not its rate.
+- A below-average subject carrying less weight pulls the pooled figure **up**:
+  86.6% → **86.9%**.
+
+So including the harness failure makes the reviewer look better, which is the
+direction that makes this easy to leave in. That is how the gap was found — a
+downstream consumer computed 86.6%, this repository computed 86.9%, and the
+disagreement had exactly one cause.
 
 The same applies to the `error` rows in `results.jsonl`, for the same reason and
 by the same rule: they are already excluded there because `is_scored` requires
