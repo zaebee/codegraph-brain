@@ -632,16 +632,24 @@ def _trunk() -> tuple[str, str]:
 def _protection_for(sha: str, durable: list[str]) -> str | None:
     """What keeps `sha` alive, or None when only a deletable branch does.
 
-    A tag pins the commit and everything behind it, so a sha that is an
-    ancestor of *any* tag — release tags included — is safe. Failing that, being
-    an ancestor of a durable branch is equally safe.
+    Both arms mean "safe"; the order decides only which reason is reported, and
+    the trunk is checked first on purpose. `git tag --contains` matches any tag
+    whose commit has `sha` as an **ancestor**, so the moment a release tag lands
+    on the trunk tip it contains the entire trunk history. Ask about tags first
+    and every trunk commit answers "tag codegraph-brain-vX.Y.Z" — true, but it
+    attributes a commit's safety to a release that merely happened to come after
+    it, and it leaves the trunk arm unreachable for any real trunk commit.
+
+    That is not hypothetical: the first version asked tags first, and cutting
+    0.14.0 turned two tests red within the minute, because after a release there
+    is no untagged commit on the trunk at all.
     """
-    tags = [line for line in _git("tag", "--contains", sha).stdout.splitlines() if line]
-    if tags:
-        return f"tag {tags[0]}"
     for ref in durable:
         if _git("merge-base", "--is-ancestor", sha, ref).returncode == 0:
             return f"ancestor of {ref}"
+    tags = [line for line in _git("tag", "--contains", sha).stdout.splitlines() if line]
+    if tags:
+        return f"tag {tags[0]}"
     return None
 
 
@@ -716,30 +724,53 @@ class TestProtectionIsDecidedByBothHalves:
         assert protection is not None
         assert protection.startswith("tag ")
 
-    def test_a_durable_branch_protects_an_untagged_commit(self) -> None:
-        """The tip of the trunk carries no tag until the next release, and is safe.
+    def test_the_trunk_protects_its_own_tip(self) -> None:
+        """A commit on the trunk is reported as protected by the trunk.
 
         `origin/main`, not `HEAD`. HEAD is whatever branch the run happens to be
         on — a feature branch in CI and during development — and a feature
-        branch tip is *not* an ancestor of the trunk, so keying on it would make
-        this test fail for the one reason it is not about.
+        branch tip is *not* an ancestor of the trunk, so keying on it would fail
+        for the one reason this test is not about.
 
-        The tag assertion comes first and is load-bearing: if this commit
-        happened to sit under a tag, `_protection_for` would return via the tag
-        branch and the durable-branch half would never run, leaving the test
-        green while proving nothing about it.
+        No "and it carries no tag" precondition any more, and its removal is the
+        fix rather than a relaxation. After a release the trunk tip *is* tagged,
+        and `git tag --contains` matches ancestors, so every trunk commit is
+        under the newest release tag. The precondition was unsatisfiable for the
+        whole life of a release; ordering the trunk first makes the question
+        answerable instead of making the test tolerate the answer.
         """
         ref, trunk = _trunk()
-        assert _git("tag", "--contains", trunk).stdout.strip() == ""
         assert _protection_for(trunk, [ref]) == f"ancestor of {ref}"
 
-    def test_without_a_durable_ref_that_same_commit_looks_unprotected(self) -> None:
-        """Why the test asserts a durable ref exists before trusting the result.
+    def test_a_tag_still_answers_for_a_commit_off_the_trunk(self) -> None:
+        """With the trunk offered and irrelevant, the tag arm is what replies.
 
-        Drop the branch half and a perfectly safe commit is reported as an
-        offender. The failure is in the loud direction, but it would read as a
-        corpus defect rather than as a checkout missing its default branch, and
-        the two have very different remedies.
+        The calibration shas are on no branch at all, so passing a durable ref
+        here proves the reordering did not make the tag arm unreachable — the
+        mirror of the defect the reordering fixes.
         """
-        _, trunk = _trunk()
-        assert _protection_for(trunk, []) is None
+        ref, _ = _trunk()
+        protection = _protection_for("09679bde340e9c7ed7e560a42cfcb8f4f9d033b4", [ref])
+        assert protection is not None
+        assert protection.startswith("tag ")
+
+    def test_trunk_refuses_rather_than_guessing_when_the_checkout_has_no_trunk(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A checkout that cannot answer must say so, not report a clean corpus.
+
+        Driven by monkeypatching the ref lookup rather than by finding a real
+        commit in the right state. The previous version asserted that a trunk
+        commit with the branch half removed looks unprotected — true only while
+        no release tag covers it, and `git tag --contains` matches ancestors, so
+        a release makes every trunk commit tag-covered and the premise
+        evaporates. A test whose setup the release cycle can delete is a test
+        that reports on the calendar.
+        """
+        # Patched on this module object, not by dotted path: the tests package is
+        # not importable as `tests.unit....` here, and a string target that does
+        # not resolve raises ModuleNotFoundError from monkeypatch itself — which
+        # looks like a failing test rather than a mistargeted patch.
+        monkeypatch.setattr(sys.modules[__name__], "_durable_refs_present", list)
+        with pytest.raises(AssertionError, match="Fetch the default branch"):
+            _trunk()
