@@ -90,6 +90,12 @@ jobs:
           GUARDIAN_FEATURES: ${{ vars.GUARDIAN_FEATURES }}
           GUARDIAN_SKEPTIC: ${{ vars.GUARDIAN_SKEPTIC }}
           GUARDIAN_SKEPTIC_MODEL: ${{ vars.GUARDIAN_SKEPTIC_MODEL }}
+          # Static-evidence pass for the skeptic (#401). Wired but not set:
+          # the repository variable is deliberately absent, so enabling it is a
+          # decision made in repo settings rather than a code change nobody
+          # reviews. An unset variable expands to "", which the flag reads as
+          # off — only the literal "1" enables it.
+          GUARDIAN_EVIDENCE: ${{ vars.GUARDIAN_EVIDENCE }}
         run: |
           uv run --frozen python scripts/guardian_review.py \
             --output guardian_report.md \
