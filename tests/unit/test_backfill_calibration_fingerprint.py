@@ -585,3 +585,136 @@ def test_every_guardian_sha_in_the_corpora_is_a_commit_this_repository_has() -> 
         f"their digests cannot be recomputed by anyone: {missing}. Publish each as "
         "a tag: git push origin <sha>:refs/tags/bench/guardian-sha/<short-sha>"
     )
+
+
+#: Refs that are never deleted, so a commit they reach cannot be lost. Checked in
+#: order; a PR build has `origin/main` but usually no local `main`.
+_DURABLE_REFS = ("origin/main", "main")
+
+
+def _git(*args: str) -> subprocess.CompletedProcess[str]:
+    """Run git in the repository, capturing output and never raising."""
+    return subprocess.run(
+        ["git", *args], capture_output=True, text=True, cwd=REPO_ROOT, check=False
+    )
+
+
+def _durable_refs_present() -> list[str]:
+    """Which of `_DURABLE_REFS` this checkout actually has."""
+    return [
+        ref
+        for ref in _DURABLE_REFS
+        if _git("rev-parse", "--verify", "--quiet", ref).returncode == 0
+    ]
+
+
+def _protection_for(sha: str, durable: list[str]) -> str | None:
+    """What keeps `sha` alive, or None when only a deletable branch does.
+
+    A tag pins the commit and everything behind it, so a sha that is an
+    ancestor of *any* tag — release tags included — is safe. Failing that, being
+    an ancestor of a durable branch is equally safe.
+    """
+    tags = [line for line in _git("tag", "--contains", sha).stdout.splitlines() if line]
+    if tags:
+        return f"tag {tags[0]}"
+    for ref in durable:
+        if _git("merge-base", "--is-ancestor", sha, ref).returncode == 0:
+            return f"ancestor of {ref}"
+    return None
+
+
+def test_every_guardian_sha_survives_deleting_every_feature_branch() -> None:
+    """A corpus sha must be reachable from something nobody deletes.
+
+    The neighbouring `..._is_a_commit_this_repository_has` asks a weaker
+    question — does this resolve *today* — and by construction it can only go
+    red after the loss. A sha reachable solely from a feature branch resolves
+    perfectly until the branch is deleted, and then the digest computed from it
+    can never be recomputed by anyone. That is not hypothetical twice over:
+    ten calibration shas were in exactly that state and CI could not resolve
+    one of them (#392), and two review-corpus shas hung on
+    `origin/feat/skip-parse-failed` until a downstream consumer noticed and
+    asked for them to be tagged.
+
+    So this asks the question that can be answered *before* the loss: is it
+    pinned by a tag, or an ancestor of a durable branch? `origin/feat/ui`'s tip
+    is a live example of a sha that passes the weaker test and fails this one.
+
+    Two floors, because both halves can go vacuous in different ways. Without
+    the sha floor an emptied `benchmarks/` inspects nothing and passes. Without
+    the durable-ref assertion a checkout with no `main` would push every
+    main-protected sha into the offender list — a false alarm rather than a
+    false pass, but one that would read as sixteen defects instead of one
+    missing ref.
+    """
+    shas: dict[str, set[str]] = collections.defaultdict(set)
+    for path in sorted((REPO_ROOT / "benchmarks").rglob("*.jsonl")):
+        for line in path.read_text().splitlines():
+            if not line.strip():
+                continue
+            sha = json.loads(line).get("guardian_sha")
+            if sha:
+                shas[sha].add(str(path.relative_to(REPO_ROOT)))
+
+    assert len(shas) >= 16, (
+        f"found only {len(shas)} distinct guardian_sha values under benchmarks/, expected "
+        "at least 16 — an empty result must not read as 'everything is protected'."
+    )
+    durable = _durable_refs_present()
+    assert durable, (
+        f"none of {_DURABLE_REFS} resolves in this checkout, so 'ancestor of a durable "
+        "branch' could never be true and every main-protected sha would be reported as "
+        "unprotected. Fetch the default branch before trusting this test."
+    )
+
+    unprotected = {
+        sha: sorted(paths) for sha, paths in shas.items() if _protection_for(sha, durable) is None
+    }
+    assert not unprotected, (
+        "these guardian_sha values are reachable only from deletable branches, so the "
+        f"digests computed from them stop being reproducible the day those branches go: "
+        f"{unprotected}. Pin each one: "
+        "git push origin <sha>:refs/tags/bench/guardian-sha/<short-sha>"
+    )
+
+
+class TestProtectionIsDecidedByBothHalves:
+    """`_protection_for` has two independent ways to say "safe"; pin each.
+
+    Exercised against real commits in this repository rather than fixtures,
+    because the thing under test *is* the repository's ref graph — a fake would
+    be testing the mock.
+    """
+
+    def test_a_tag_protects_a_commit_on_no_branch(self) -> None:
+        """The calibration shas' whole situation: pinned by a tag, on no branch."""
+        assert _protection_for("09679bde340e9c7ed7e560a42cfcb8f4f9d033b4", []).startswith("tag ")
+
+    def test_a_durable_branch_protects_an_untagged_commit(self) -> None:
+        """The tip of the trunk carries no tag until the next release, and is safe.
+
+        `origin/main`, not `HEAD`. HEAD is whatever branch the run happens to be
+        on — a feature branch in CI and during development — and a feature
+        branch tip is *not* an ancestor of the trunk, so keying on it would make
+        this test fail for the one reason it is not about.
+
+        The tag assertion comes first and is load-bearing: if this commit
+        happened to sit under a tag, `_protection_for` would return via the tag
+        branch and the durable-branch half would never run, leaving the test
+        green while proving nothing about it.
+        """
+        trunk = _git("rev-parse", "origin/main").stdout.strip()
+        assert _git("tag", "--contains", trunk).stdout.strip() == ""
+        assert _protection_for(trunk, ["origin/main"]) == "ancestor of origin/main"
+
+    def test_without_a_durable_ref_that_same_commit_looks_unprotected(self) -> None:
+        """Why the test asserts a durable ref exists before trusting the result.
+
+        Drop the branch half and a perfectly safe commit is reported as an
+        offender. The failure is in the loud direction, but it would read as a
+        corpus defect rather than as a checkout missing its default branch, and
+        the two have very different remedies.
+        """
+        trunk = _git("rev-parse", "origin/main").stdout.strip()
+        assert _protection_for(trunk, []) is None
