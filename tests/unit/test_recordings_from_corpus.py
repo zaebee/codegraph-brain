@@ -28,6 +28,7 @@ from recordings_from_corpus import (
     build,
     diff_for,
     is_frozen_pass,
+    main,
     recording_for,
     row_key,
 )
@@ -162,3 +163,66 @@ class TestReplayReproducesTheRunItCameFrom:
 
 def _same(a: float, b: float) -> bool:
     return abs(a - b) < 1e-9
+
+
+class TestRefusals:
+    """The three ways `diff_for` declines, each of which produced a wrong recording.
+
+    Untested until SonarCloud reported 76.7% coverage on this branch — and the
+    uncovered lines were exactly these refusals, which are the branches the
+    module exists for. A refusal nobody executes is a comment with a `raise` in
+    it.
+    """
+
+    def _fixture(self, tmp_path: Path, body: str) -> Path:
+        (tmp_path / "pr-1.yaml").write_text(body, encoding="utf-8")
+        return tmp_path
+
+    def test_a_fixture_that_is_not_a_mapping_is_refused(self, tmp_path: Path) -> None:
+        """`yaml.safe_load` returns None on an empty file; `.get` would AttributeError."""
+        bench = self._fixture(tmp_path, "")
+        with pytest.raises(MissingFixtureError, match="is not a mapping"):
+            diff_for(1, bench, REPO_ROOT)
+
+    def test_a_fixture_that_is_a_list_is_refused_too(self, tmp_path: Path) -> None:
+        """Not only the empty case: any non-mapping names no base and no head."""
+        bench = self._fixture(tmp_path, "- base: a\n- head: b\n")
+        with pytest.raises(MissingFixtureError, match="is not a mapping"):
+            diff_for(1, bench, REPO_ROOT)
+
+    def test_an_unresolvable_sha_is_refused_and_the_message_names_the_remedy(
+        self, tmp_path: Path
+    ) -> None:
+        """The failure #399's first CI run hit, in miniature.
+
+        The message must carry the fix: a PR head is never an ancestor of the
+        trunk in a squash-merged repository, so "does not resolve" is not a
+        typo report — it is a missing tag, and the reader needs the command.
+        """
+        bench = self._fixture(
+            tmp_path, "base: HEAD\nhead: 0000000000000000000000000000000000000000\n"
+        )
+        with pytest.raises(MissingFixtureError, match="refs/tags/bench/fixture/pr-1-head"):
+            diff_for(1, bench, REPO_ROOT)
+
+    def test_an_empty_diff_is_refused(self, tmp_path: Path) -> None:
+        """base == head replays as "the finder was shown nothing" and scores as LGTM."""
+        bench = self._fixture(tmp_path, "base: HEAD\nhead: HEAD\n")
+        with pytest.raises(MissingFixtureError, match="empty diff"):
+            diff_for(1, bench, REPO_ROOT)
+
+
+def test_main_writes_the_recordings_and_reports(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The CLI wiring, end to end, against the real corpus."""
+    out = tmp_path / "recordings"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["recordings_from_corpus.py", "--out", str(out), "--repo-root", str(REPO_ROOT)],
+    )
+    assert main() == 0
+    written = sorted(out.glob("*.json"))
+    assert len(written) >= 72
+    assert f"{len(written)} recordings written" in capsys.readouterr().out
