@@ -206,6 +206,30 @@ async def calibrate_row(
         "pr": row["pr"],
         "run": row.get("run"),
         "finder_model": row.get("model"),
+        # Carried from the results row this record judges, never recomputed here
+        # (#390). Recomputing would hash *this* checkout, but the record grades a
+        # review that ran under whatever guardian produced `row` — often months
+        # and hundreds of commits earlier. A fresh digest would therefore
+        # attribute someone else's recall to today's reviewer, which is the merge
+        # direction #375 exists to prevent.
+        #
+        # `.get` rather than `[...]`: a results row written before #390 has no
+        # fingerprint, and a null here is inert — a consumer simply cannot
+        # attribute the row, exactly as it could not before. A *wrong*
+        # fingerprint is permanent downstream. `run` counts these and says so.
+        #
+        # Absence degrades; nothing here validates the *shape* of a value that is
+        # present, so a malformed digest is carried verbatim. That asymmetry is
+        # deliberate but is not the absence-degrades/malformed-raises pair from
+        # #382, and an earlier version of this comment claimed it was. A junk
+        # digest lands on the safe side of the asymmetry — it splits an identity
+        # into an inert one rather than merging two — so validating it would buy
+        # a refusal against nothing unrecoverable.
+        "review_fingerprint": row.get("review_fingerprint"),
+        "review_fingerprint_source": row.get("review_fingerprint_source"),
+        "finder_provider": row.get("finder_provider"),
+        "skeptic_provider": row.get("skeptic_provider"),
+        "skeptic_model": row.get("skeptic_model"),
         "guardian_sha": row.get("guardian_sha"),
         "features": row.get("features", ""),
         "bench_arm": row.get("bench_arm"),
@@ -264,6 +288,19 @@ async def run(args: argparse.Namespace) -> int:
     already = done_keys(args.out, judge_model)
     pending = [r for r in pending if row_key(r) not in already]
     print(f"Judge {judge_model}: {len(already)} already done, {len(pending)} to go.")
+
+    # Said once, up front, rather than per row: a run of hundreds would bury the
+    # notice in its own progress output. Not fatal — see `calibrate_row` — but
+    # not silent either, because a fingerprint-less record is a recall figure
+    # that cannot be attributed to anyone, which is the defect #390 reports.
+    unattributed = [r for r in pending if not r.get("review_fingerprint")]
+    if unattributed:
+        print(
+            f"{len(unattributed)}/{len(pending)} results rows carry no review_fingerprint; "
+            f"their calibration records will not be attributable to a reviewer. "
+            f"Run scripts/backfill_calibration_fingerprint.py over {args.results} first.",
+            file=sys.stderr,
+        )
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("a", encoding="utf-8") as fh:
