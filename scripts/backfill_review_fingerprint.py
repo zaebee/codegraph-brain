@@ -31,6 +31,17 @@ MODEL_PROVIDERS: dict[str, str] = {
     "gemini-2.5-flash": "gemini",
     "gemini-3.5-flash": "gemini",
     "mistral-medium-latest": "mistral",
+    # Skeptic-only, one bench row (pr-143, `bench_arm: per-finding-skeptic`).
+    # Mapped from what the code can do rather than from the vendor's name: in
+    # `build_skeptic_provider` an arbitrary `GUARDIAN_SKEPTIC_MODEL` reaches an
+    # API provider only through the `mistral` branch — `gemini` never takes a
+    # model override, and `ollama` is local. The skeptic-scoring design (#246)
+    # calls the same pairing "mistral finder + mistral/codestral skeptic", i.e.
+    # same-family, which is the reading that matters here: it makes
+    # `resolve_active_providers` return {mistral} alone. Calling it `gemini`
+    # would add the gemini provider module to the closure and produce a
+    # different, confidently wrong digest.
+    "codestral-latest": "mistral",
 }
 
 #: A git abbreviated-or-full object id: hex only, 7-40 characters. `git`

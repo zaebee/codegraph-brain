@@ -404,6 +404,54 @@ class TestCalibrateRow:
         assert record["n_candidates"] == 1
         assert record["tp"] == 0
 
+    @pytest.mark.asyncio
+    async def test_identity_is_copied_from_the_judged_row_not_recomputed(
+        self, tmp_path: Path
+    ) -> None:
+        """The record must carry the reviewer that ran, not the one running now (#390).
+
+        The sentinel is deliberately not a real digest. A fingerprint recomputed
+        here would be a perfectly valid 12-hex string over *this* checkout, and
+        would pass any assertion that only checked shape or non-emptiness — while
+        being the wrong reviewer, since the row being judged ran under an older
+        guardian. Only an impossible value distinguishes "copied" from
+        "recomputed and plausible".
+        """
+        bench = _bench_dir(tmp_path)
+        truth = gc.load_truths(bench)[900]
+        row = _row(
+            review_fingerprint="not-a-real-digest",
+            review_fingerprint_source="reconstructed",
+            finder_provider="gemini",
+            skeptic_provider="mistral",
+            skeptic_model="mistral-medium-latest",
+        )
+        record = await gc.calibrate_row(FlakyProvider([], VERDICT_MATCH), row, truth, concurrency=2)
+        assert record["review_fingerprint"] == "not-a-real-digest"
+        assert record["review_fingerprint_source"] == "reconstructed"
+        assert record["finder_provider"] == "gemini"
+        assert record["skeptic_provider"] == "mistral"
+        assert record["skeptic_model"] == "mistral-medium-latest"
+
+    @pytest.mark.asyncio
+    async def test_a_row_without_an_identity_yields_a_null_not_an_invention(
+        self, tmp_path: Path
+    ) -> None:
+        """A pre-#390 results row degrades to null rather than acquiring a digest.
+
+        Null is inert: downstream simply cannot attribute the record, exactly as
+        it could not before this change. A digest invented here would be
+        permanent and wrong. `run` reports the count separately so the
+        degradation is announced rather than silent.
+        """
+        bench = _bench_dir(tmp_path)
+        truth = gc.load_truths(bench)[900]
+        record = await gc.calibrate_row(
+            FlakyProvider([], VERDICT_MATCH), _row(), truth, concurrency=2
+        )
+        assert record["review_fingerprint"] is None
+        assert record["review_fingerprint_source"] is None
+
 
 class TestRun:
     """The runner's selection, resume and reporting behaviour."""

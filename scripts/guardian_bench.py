@@ -35,6 +35,11 @@ from cgis.guardian.chunked import run_review_routed
 from cgis.guardian.collector import ContextCollector, parse_features
 from cgis.guardian.findings import ReviewResult
 from cgis.guardian.providers.base import BaseProvider
+from cgis.guardian.review_fingerprint import (
+    compute_fingerprint,
+    disk_reader,
+    resolve_active_providers,
+)
 from cgis.guardian.runner import build_provider, build_skeptic_provider
 from cgis.guardian.skeptic import (
     apply_judgements,
@@ -187,11 +192,27 @@ async def _score_and_record(
     visible = visible_findings(result.findings)
     matches = match_findings(visible, truth)
     bench_score = score(matches, truth)
+    # Over _REPO_ROOT, not the PR worktree: `_run_one` reviews the PR's code, but
+    # the guardian doing the reviewing is this checkout's, which is also what
+    # `guardian_sha` below names. Hashing the worktree would fingerprint the
+    # subject instead of the reviewer.
+    skeptic_provider = skeptic[0].name if skeptic else None
+    active = resolve_active_providers(provider.name, skeptic_provider)
     entry = {
         "timestamp": datetime.now(UTC).isoformat(),
         "pr": truth.pr,
         "run": run_idx,
         "model": model,
+        # Measured, never reconstructed: the bench runs from a working tree, so
+        # it hashes the bytes that actually ran — including uncommitted edits a
+        # `git show` rebuild at `guardian_sha` could not see (#375 spec §6.1).
+        # This is the field `scripts/guardian_calibrate.py` carries onto the
+        # calibration record, which is the whole point of #390: a measured recall
+        # figure that names the reviewer that earned it.
+        "review_fingerprint": compute_fingerprint(disk_reader(_REPO_ROOT), active),
+        "review_fingerprint_source": "measured",
+        "finder_provider": provider.name,
+        "skeptic_provider": skeptic_provider,
         "guardian_sha": _git("rev-parse", "HEAD"),
         "features": os.environ.get("GUARDIAN_FEATURES", ""),
         "parse_failed": result.parse_failed,
