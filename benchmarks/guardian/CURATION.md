@@ -107,11 +107,28 @@ Aggregate over the draws (mean, or union where the arm defines one); do not
 select among them. Selecting by recency is the one choice guaranteed to be
 uncorrelated with quality, and it deletes 28% of this corpus.
 
-**But first drop `parse_failed` rows: a failed parse is not a draw.** The
-review's structured output could not be read, so the row carries zero findings —
-and averaging it in charges the model for a harness failure. This is the
-distinction #374 established ("a truncated review is not a review that found
-nothing"); before it, `parse_failed` was recorded and read by nothing.
+**Aggregate over the subject's *draws*, which is not the same set as its rows.**
+Say what a draw is rather than which rows to exclude: an exclusion list is
+open-ended and the next entry arrives after it has already been believed, while
+a positive definition is closed.
+
+**A draw is a review that completed and whose output was parsed** — a row with
+`parse_failed: false`. That is the whole test; `error` is `None` on all 115 rows,
+because a run that failed outright never reached a record.
+
+**A `parse_failed` row is not a draw.** Its structured output could not be read,
+so it carries zero findings, and averaging it in charges the model for a harness
+failure. This is exactly the distinction #374 established ("a truncated review is
+not a review that found nothing"); before it, `parse_failed` was recorded and
+read by nothing.
+
+**A row with zero findings and `parse_failed: false` *is* a draw.** Three exist
+(PRs 6, 77754 and 107534, all gemini), and each spent real tokens — 106, 117 and
+124 completion tokens. The reviewer ran and said nothing, which is evidence about
+the reviewer. Same output shape as the parse failure, opposite meaning; keeping
+them and dropping the parse failure is the one combination that is right about
+both. The `arm` field exists for the mirror of this hazard: a failure and a
+controlled removal must not look alike in the record.
 
 There is exactly **one** such row in the review corpora, and it is
 `martian-p3-run1.jsonl` for PR 11059 — the same row #374 was written about. One
