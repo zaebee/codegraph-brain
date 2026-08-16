@@ -705,3 +705,55 @@ class TestTemperatureSetting:
         for raw in ("0.7", "0", "", "   ", "warm"):
             env = {"GUARDIAN_TEMPERATURE": raw}
             assert runner.temperature(env) == runner.temperature_setting(env)[0]
+
+
+class TestTemperatureRejectsWhatIsNotATemperature:
+    """`float()` accepts more than a sampling temperature can be (#395 review)."""
+
+    def test_a_negative_value_falls_back(self) -> None:
+        """Invalid sampling everywhere; it would fail at the API and lose the run."""
+        assert runner.temperature_setting({"GUARDIAN_TEMPERATURE": "-1"}) == (
+            None,
+            "provider_default",
+        )
+
+    @pytest.mark.parametrize("raw", ["nan", "inf", "-inf", "1e400", "NaN", "Infinity"])
+    def test_non_finite_values_fall_back(self, raw: str) -> None:
+        """The cases a sign test misses: NaN and inf are not less than zero.
+
+        `1e400` is included because it is a plain-looking decimal literal that
+        overflows to `inf` — nothing about it reads as non-finite at the call
+        site.
+        """
+        assert runner.temperature_setting({"GUARDIAN_TEMPERATURE": raw}) == (
+            None,
+            "provider_default",
+        )
+
+    def test_a_nan_would_have_written_an_unparseable_corpus_row(self) -> None:
+        """Why this is `isfinite` and not `>= 0`: NaN is not merely a bad run.
+
+        `json.dumps` renders it as the bare token `NaN`, which is not valid
+        JSON. Python reads it back as an extension, so the damage is invisible
+        here; a strict reader downstream cannot read the line at all. Asserted
+        rather than described, because the whole argument for widening the guard
+        rests on it.
+        """
+        rendered = json.dumps({"temperature": float("nan")})
+        assert rendered == '{"temperature": NaN}'
+
+        def reject(token: str) -> float:
+            """Stand in for a strict reader, which has no NaN token to give back."""
+            _msg = f"rejected {token}"
+            raise ValueError(_msg)
+
+        # `reject` is hoisted out of the block so the only call inside it is the
+        # one under test (python:S5778) — caught by this repository's own
+        # checker, which is the point of having it.
+        with pytest.raises(ValueError, match="rejected"):
+            json.loads(rendered, parse_constant=reject)
+
+    def test_zero_and_a_normal_value_still_pass(self) -> None:
+        """The guard must not cost the settings it exists to protect."""
+        assert runner.temperature_setting({"GUARDIAN_TEMPERATURE": "0"}) == (0.0, "explicit")
+        assert runner.temperature_setting({"GUARDIAN_TEMPERATURE": "0.7"}) == (0.7, "explicit")

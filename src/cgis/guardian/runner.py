@@ -1,6 +1,7 @@
 """Testable orchestration for the guardian review script."""
 
 import asyncio
+import math
 import time
 from collections.abc import Mapping
 from pathlib import Path
@@ -105,10 +106,31 @@ def temperature_setting(env: Mapping[str, str]) -> tuple[float | None, Temperatu
     if not raw:
         return None, "provider_default"
     try:
-        return float(raw), "explicit"
+        parsed = float(raw)
     except ValueError:
         log.warning("Invalid GUARDIAN_TEMPERATURE; using the provider default.", value=raw)
         return None, "provider_default"
+    # `float()` accepts more than a temperature can be. Negative is invalid
+    # sampling everywhere and would fail at the API, losing the run. The
+    # non-finite cases are worse and are the reason this is `isfinite` rather
+    # than `>= 0`: `float("nan")`, `float("inf")` and an overflowing literal
+    # like "1e400" all parse, and none of them is caught by a sign test — NaN
+    # and inf are not less than zero. A NaN would then be *recorded*, and
+    # `json.dumps` writes it as the bare token `NaN`, which is not valid JSON:
+    # Python reads it back as an extension, a strict reader downstream cannot
+    # read the line at all. A bad environment variable must not be able to
+    # produce a corpus row nobody else can parse.
+    #
+    # No upper bound. Providers disagree on their maxima and change them, so a
+    # number here would be invented rather than known — and being wrong in that
+    # direction refuses a setting that would have worked.
+    if not math.isfinite(parsed) or parsed < 0:
+        log.warning(
+            "GUARDIAN_TEMPERATURE is not a usable temperature; using the provider default.",
+            value=raw,
+        )
+        return None, "provider_default"
+    return parsed, "explicit"
 
 
 def temperature(env: Mapping[str, str]) -> float | None:
