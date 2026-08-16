@@ -54,6 +54,59 @@ carries `matched`, `noise` and `ambiguous_hits`, so either definition can be
 re-derived from it. (Contrast `calibration.jsonl`, which *was* rewritten — that
 was a scorer bug, wrong under its own stated algorithm, not a policy change.)
 
+## Repeated rows are samples, not corrections (2026-08-16, #390)
+
+**Do not deduplicate any corpus in this repository by "one row per subject,
+latest wins."** Every repeat here was paid for on purpose, and collapsing to the
+newest draw silently discards the experiment it belongs to.
+
+Written down because a downstream consumer adopted exactly that rule — reasoning
+that a re-run is a correction, so counting both would let a reviewer improve its
+record by re-running — and nothing in this repository contradicted it. The
+reasoning is sound for a corpus of corrections. It is wrong for these.
+
+### `benchmarks/martian-*.jsonl` — 115 review rows, 83 distinct subjects
+
+Keyed by subject and genome (`url`, `head_sha`, `review_fingerprint`,
+`finder_model`, `had_graph`), 32 of 115 rows are repeats. Every one of them
+comes from a registered sampling arm:
+
+| repeat group | count | source |
+|---|---|---|
+| `p3-run1` + `p3-run2` | 12 | Phase 3 union arm |
+| `p3-run1` + `p3-run2` + `p3-run3` | 7 | Phase 3 union arm |
+| `reviews` + `repeat-reviews` | 6 | R5 repeat probe |
+
+Phase 3 registered three runs at `temperature = 0.7` **because the runs must
+differ** — see the spec, "Configuration under test": at temperature 0 "the three
+runs collapse toward one and the union arm becomes identically equal to a single
+run." Gate G8 is defined as `F₂(union) > F₂(mean of the 3 runs)`; a mean over
+three draws is not computable from one of them.
+
+The variance is not theoretical. **21 of the 25 repeat groups disagree on how
+many findings the review produced**, with spreads including 8→14, 15→24, 26→38
+and one 0→25 — the same reviewer, the same commit, the same configuration. Keep
+one draw and the number you publish is a coin flip over that range.
+
+### `benchmarks/guardian/results.jsonl` — 118 scored rows, 53 distinct
+
+Repeats here carry an explicit `run` index (0/1/2) for the same reason. A row is
+identified by `pr` + `model` + `guardian_sha` + `run`, and dropping `run` averages
+away the per-PR sampling noise that R5 was written to measure.
+
+### `benchmarks/guardian/calibration.jsonl` — 236 rows, 118 subjects
+
+Exactly two rows per recorded review, one per judge (`gemini-2.5-flash` and
+`mistral-medium-latest`). The pair *is* the measurement — inter-judge agreement
+is the G3 statistic — so `row_key` alone is not a unique key here; `row_key` +
+`judge_model` is.
+
+### If you do need one row per reviewer
+
+Aggregate over the draws (mean, or union where the arm defines one); do not
+select among them. Selecting by recency is the one choice guaranteed to be
+uncorrelated with quality, and it deletes 28% of this corpus.
+
 ## Curation policy
 
 - Style/idiom-only findings → `ambiguous` (guardian's PRECISION RULES forbid
