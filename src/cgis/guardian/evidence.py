@@ -26,6 +26,7 @@ failure refute a real finding, which is worse than the noise this exists to cut.
 import asyncio
 import shlex
 import subprocess
+import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -106,11 +107,33 @@ def _python_files_inside(project_root: Path, changed_files: tuple[str, ...]) -> 
     return inside
 
 
-def _run(command: list[str], project_root: Path) -> str | None:
+#: Exit codes at or above this mean the checker could not do its job, as opposed
+#: to doing it and finding something. Measured on the two tools rather than
+#: assumed, because the whole point is to tell a verdict from a non-verdict:
+#:
+#:     0  clean                      mypy ok / ruff "All checks passed!"
+#:     1  ran, and reported findings  mypy type error / ruff F401
+#:     2  could not run              mypy fatal / ruff bad argument /
+#:                                   `uv run` failing to spawn the tool at all
+#:
+#: Classified by code rather than by matching "error:" in stderr. A substring
+#: rule cannot tell `mypy: error: Cannot read file` from a checker legitimately
+#: printing the word — the same defect #375 found in a `git show` reader, where a
+#: missing commit and an absent path were indistinguishable by message.
+_COULD_NOT_RUN = 2
+
+
+def _run(command: list[str], project_root: Path, timeout: float) -> str | None:
     """Run one checker and return its combined output, or None if it could not run.
 
     None is not "clean" — it is "no answer". The caller drops the whole evidence
     on it, because a checker that failed to start has not said the code is fine.
+
+    `uv run` does not raise when the tool is missing or the lockfile is stale: it
+    exits non-zero and prints `error: Failed to spawn: ...` to stderr. Returning
+    that string would hand the skeptic an infrastructure failure labelled as the
+    type checker's verdict — which is the exact thing this module's docstring
+    forbids, and which it did until this was measured.
     """
     try:
         result = subprocess.run(
@@ -119,9 +142,11 @@ def _run(command: list[str], project_root: Path) -> str | None:
             text=True,
             cwd=project_root,
             check=False,
-            timeout=EVIDENCE_TIMEOUT_S,
+            timeout=max(1.0, timeout),
         )
     except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode >= _COULD_NOT_RUN:
         return None
     return f"{result.stdout}{result.stderr}"
 
@@ -151,9 +176,14 @@ def collect_evidence(project_root: Path, changed_files: tuple[str, ...]) -> Evid
         ["uv", "run", "--frozen", "mypy", "--strict", "--", *files],
         ["uv", "run", "--frozen", "ruff", "check", "--", *files],
     ]
+    # One budget shared across the checkers, because that is what the constant
+    # says. Passing the full timeout to each made the real ceiling
+    # len(commands) * EVIDENCE_TIMEOUT_S — the documentation describing a design
+    # the code did not implement.
+    deadline = time.monotonic() + EVIDENCE_TIMEOUT_S
     sections: list[str] = []
     for command in commands:
-        output = _run(command, project_root)
+        output = _run(command, project_root, deadline - time.monotonic())
         if output is None:
             log.warning(
                 "No evidence: a checker could not run; a failed checker has not said "

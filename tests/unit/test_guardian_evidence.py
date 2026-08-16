@@ -19,16 +19,38 @@ from structlog.testing import capture_logs
 
 from cgis.guardian.evidence import (
     EVIDENCE_FLAG,
+    EVIDENCE_TIMEOUT_S,
     MAX_EVIDENCE_CHARS,
     Evidence,
     collect_evidence,
     evidence_for,
 )
 
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
 
 def _python_repo(tmp_path: Path) -> Path:
     (tmp_path / "pyproject.toml").write_text("[project]\nname = 'x'\n", encoding="utf-8")
     return tmp_path
+
+
+def _fake_checker(monkeypatch: pytest.MonkeyPatch, stdout: str = "Success: no issues") -> None:
+    """Make the checkers succeed without a real toolchain.
+
+    A `tmp_path` repository has a `pyproject.toml` and no lockfile, so
+    `uv run --frozen` exits 2 and this module now correctly reports no evidence.
+    Before exit codes were classified, that failure was returned *as* the
+    checker's output — which is why four tests below were green while asserting
+    on a `uv` error message. The end-to-end path is covered separately against
+    the real repository, where the toolchain exists.
+    """
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *_a, **_k: subprocess.CompletedProcess(
+            args=["x"], returncode=0, stdout=stdout, stderr=""
+        ),
+    )
 
 
 class TestToolchainDetection:
@@ -58,7 +80,9 @@ class TestToolchainDetection:
 class TestWhatIsCollected:
     """The evidence is the command and its output, together."""
 
-    def test_the_commands_are_named_beside_their_output(self, tmp_path: Path) -> None:
+    def test_the_commands_are_named_beside_their_output(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """A reader — human or model — must be able to re-run what produced this.
 
         Output alone is an assertion; output plus the command that made it is
@@ -67,6 +91,7 @@ class TestWhatIsCollected:
         """
         repo = _python_repo(tmp_path)
         (repo / "a.py").write_text("x: int = 1\n", encoding="utf-8")
+        _fake_checker(monkeypatch)
         evidence = collect_evidence(repo, ("a.py",))
         assert evidence is not None
         assert any("mypy" in c for c in evidence.commands)
@@ -173,10 +198,13 @@ class TestTheFeatureShipsInert:
         assert await evidence_for(_collector(tmp_path), {EVIDENCE_FLAG: value}) is None
 
     @pytest.mark.asyncio
-    async def test_the_flag_on_reaches_the_collector(self, tmp_path: Path) -> None:
+    async def test_the_flag_on_reaches_the_collector(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """And with it on, the repo is actually inspected rather than assumed."""
         repo = _python_repo(tmp_path)
         (repo / "a.py").write_text("x: int = 1\n", encoding="utf-8")
+        _fake_checker(monkeypatch)
         evidence = await evidence_for(_collector(repo, ("a.py",)), {EVIDENCE_FLAG: "1"})
         assert evidence is not None
         assert any("mypy" in c for c in evidence.commands)
@@ -222,10 +250,13 @@ class TestEveryOutcomeIsAnnounced:
             collect_evidence(_python_repo(tmp_path), ("app.ts",))
         assert "no changed python file" in _text(logs)
 
-    def test_success_reports_what_was_gathered(self, tmp_path: Path) -> None:
+    def test_success_reports_what_was_gathered(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Counts, not just a boolean: "collected" with zero files is a lie of omission."""
         repo = _python_repo(tmp_path)
         (repo / "a.py").write_text("x: int = 1\n", encoding="utf-8")
+        _fake_checker(monkeypatch)
         with capture_logs() as logs:
             assert collect_evidence(repo, ("a.py",)) is not None
         assert "evidence collected" in _text(logs)
@@ -282,7 +313,9 @@ class TestArgvFlagSmuggling:
         target.write_text("x = 1\n", encoding="utf-8")
         assert collect_evidence(repo, (name,)) is None
 
-    def test_the_terminator_is_present_on_every_command(self, tmp_path: Path) -> None:
+    def test_the_terminator_is_present_on_every_command(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Belt and braces: the drop above is the belt, `--` is the braces.
 
         Kept even though the drop makes it redundant today, because the two fail
@@ -292,6 +325,99 @@ class TestArgvFlagSmuggling:
         """
         repo = _python_repo(tmp_path)
         (repo / "a.py").write_text("x: int = 1\n", encoding="utf-8")
+        _fake_checker(monkeypatch)
         evidence = collect_evidence(repo, ("a.py",))
         assert evidence is not None
         assert all(" -- " in c for c in evidence.commands), evidence.commands
+
+
+class TestALauncherFailureIsNotAVerdict:
+    """`uv run` does not raise when the tool is missing — it exits 2 and prints.
+
+    Found by gemini on #402, and it was the module's own stated rule being
+    broken: returning that stderr hands the skeptic an infrastructure failure
+    labelled as the type checker's opinion.
+    """
+
+    def _result(self, code: int, err: str = "") -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args=["x"], returncode=code, stdout="", stderr=err)
+
+    def test_a_failure_to_spawn_yields_no_evidence(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        repo = _python_repo(tmp_path)
+        (repo / "a.py").write_text("x = 1\n", encoding="utf-8")
+        monkeypatch.setattr(
+            subprocess,
+            "run",
+            lambda *_a, **_k: self._result(2, "error: Failed to spawn: `mypy`"),
+        )
+        assert collect_evidence(repo, ("a.py",)) is None
+
+    def test_findings_are_kept_because_exit_1_is_a_verdict(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The half that must NOT be dropped, and the reason code beats substring.
+
+        A checker that ran and found something exits 1 and prints text
+        containing the word "error". Classifying on that word would discard the
+        only outputs worth having — every real type error the skeptic is meant
+        to see.
+        """
+        repo = _python_repo(tmp_path)
+        (repo / "a.py").write_text("x = 1\n", encoding="utf-8")
+        monkeypatch.setattr(
+            subprocess,
+            "run",
+            lambda *_a, **_k: self._result(1, "a.py:1: error: Incompatible types"),
+        )
+        evidence = collect_evidence(repo, ("a.py",))
+        assert evidence is not None
+        assert "Incompatible types" in evidence.output
+
+
+def test_the_timeout_is_one_budget_for_all_checkers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The constant says "for all checkers together", so the code must mean it.
+
+    It did not: the full timeout was handed to each command, making the real
+    ceiling `len(commands) * EVIDENCE_TIMEOUT_S`. Documentation describing a
+    design the code does not implement is the defect shape this branch keeps
+    finding; here gemini found it in mine.
+    """
+    repo = _python_repo(tmp_path)
+    (repo / "a.py").write_text("x = 1\n", encoding="utf-8")
+    seen: list[float] = []
+
+    def record(*_a: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        seen.append(float(kwargs["timeout"]))  # type: ignore[arg-type]
+        return subprocess.CompletedProcess(args=["x"], returncode=0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", record)
+    assert collect_evidence(repo, ("a.py",)) is not None
+    assert len(seen) == 2
+    assert seen[1] <= seen[0], f"the second checker got no less budget than the first: {seen}"
+    assert seen[0] <= EVIDENCE_TIMEOUT_S
+
+
+def test_the_real_command_line_works_against_this_repository() -> None:
+    """One end-to-end run with no mocking, because the rest of this file mocks.
+
+    Every other success case fakes `subprocess.run`, which proves the plumbing
+    and nothing about whether `uv run --frozen mypy --strict -- <path>` is a
+    command these tools accept. A wrong flag would pass all of them and fail
+    only in production — and it would fail *quietly*, since a checker that
+    cannot run now yields None rather than an error.
+
+    Run against the repository itself, the one place the toolchain is installed
+    and a lockfile exists. It is also the environment `guardian.yml` reviews in.
+    """
+    evidence = collect_evidence(REPO_ROOT, ("src/cgis/guardian/evidence.py",))
+    assert evidence is not None, (
+        "the real checkers produced no evidence — either the command line is "
+        "wrong or the toolchain is missing, and both are silent in production"
+    )
+    assert any("mypy" in c for c in evidence.commands)
+    assert any("ruff" in c for c in evidence.commands)
+    assert " -- " in evidence.commands[0]
