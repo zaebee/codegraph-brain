@@ -237,8 +237,13 @@ class TestCarryToCalibration:
     def test_a_missing_row_key_is_refused(self, corpus_dir: Path) -> None:
         """A record that names no subject must not be handed one by default."""
         corpus = _write(corpus_dir / "calibration.jsonl", [{"tp": 1}])
+        # Built outside the block so the only call that can raise inside it is the
+        # one under test (python:S5778) — otherwise a fixture helper that started
+        # throwing would satisfy this test while `carry_to_calibration` had
+        # stopped refusing anything.
+        index = {"900@2026-08-01T00:00:00+00:00": _scored_row()}
         with pytest.raises(UnjudgeableRowError):
-            carry_to_calibration(corpus, {"900@2026-08-01T00:00:00+00:00": _scored_row()})
+            carry_to_calibration(corpus, index)
 
     def test_a_key_naming_an_api_failure_is_refused(self, corpus_dir: Path) -> None:
         """An unscored subject cannot lend an identity it never had."""
@@ -246,8 +251,9 @@ class TestCarryToCalibration:
             corpus_dir / "calibration.jsonl",
             [{"row_key": "901@2026-08-01T00:00:01+00:00", "tp": 1}],
         )
+        index = {"901@2026-08-01T00:00:01+00:00": _error_row()}
         with pytest.raises(UnjudgeableRowError, match="901@"):
-            carry_to_calibration(corpus, {"901@2026-08-01T00:00:01+00:00": _error_row()})
+            carry_to_calibration(corpus, index)
 
     def test_a_refusal_leaves_the_corpus_unwritten(self, corpus_dir: Path) -> None:
         """The write happens after every row resolves, not row by row.
@@ -261,11 +267,9 @@ class TestCarryToCalibration:
             [{"row_key": "900@2026-08-01T00:00:00+00:00", "tp": 1}, {"row_key": "900@never"}],
         )
         before = corpus.read_text()
+        index = {"900@2026-08-01T00:00:00+00:00": _scored_row(review_fingerprint="abc")}
         with pytest.raises(UnjudgeableRowError):
-            carry_to_calibration(
-                corpus,
-                {"900@2026-08-01T00:00:00+00:00": _scored_row(review_fingerprint="abc")},
-            )
+            carry_to_calibration(corpus, index)
         assert corpus.read_text() == before
 
 
