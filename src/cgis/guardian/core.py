@@ -1,9 +1,12 @@
 """Main orchestrator that wires together collector, prompts, and LLM provider."""
 
+import os
+
 import structlog
 from pydantic import ValidationError
 
 from cgis.guardian.collector import ContextCollector
+from cgis.guardian.evidence import evidence_for
 from cgis.guardian.findings import ReviewResult, extract_json, salvage_findings
 from cgis.guardian.prompts import PromptBuilder
 from cgis.guardian.providers.base import BaseProvider
@@ -131,7 +134,11 @@ class GuardianReviewer:
         if self.skeptic_provider is None or not result.findings:
             return result
         judgements = await judge_all(
-            self.skeptic_provider, result.findings, context.get("diff", ""), self.concurrency
+            self.skeptic_provider,
+            result.findings,
+            context.get("diff", ""),
+            self.concurrency,
+            evidence=evidence_for(self.context_collector, os.environ),
         )
         judged = sum(1 for j in judgements if j is not None)
         if judged == 0:

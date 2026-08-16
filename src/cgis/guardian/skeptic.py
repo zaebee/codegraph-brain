@@ -15,6 +15,7 @@ import structlog
 from pydantic import BaseModel, Field
 
 from cgis.guardian.diff_index import split_diff_by_file
+from cgis.guardian.evidence import Evidence
 from cgis.guardian.findings import Finding, extract_json
 from cgis.guardian.providers.base import BaseProvider
 
@@ -76,7 +77,7 @@ A true finding can score 0. Scoring is NOT a second chance to refute: judge
 truth and importance independently."""
 
 
-def build_judgement_prompt(finding: Finding, hunks: str) -> str:
+def build_judgement_prompt(finding: Finding, hunks: str, evidence: Evidence | None) -> str:
     """Assemble the user prompt judging ONE finding against its own file's hunks.
 
     The finder's ``confidence`` and ``severity`` are deliberately omitted: both
@@ -100,11 +101,38 @@ Proposed fix: {finding.fix}
 Verify the quoted code against the hunks above. If the claim depends on code
 that is NOT in these hunks, you cannot check it: that is grounds for
 'uncertain', never for 'refuted'.
-{IMPACT_RUBRIC}
+{_evidence_section(evidence)}{IMPACT_RUBRIC}
 
 ### OUTPUT FORMAT
 Return ONLY a JSON object:
 {{"verdict": "confirmed|refuted|uncertain", "impact_score": 0, "rationale": "one sentence"}}"""
+
+
+def _evidence_section(evidence: Evidence | None) -> str:
+    """The checker output, and the narrow licence it grants — or nothing at all.
+
+    Empty when there is no evidence, so an unsupported repository gets exactly
+    the prompt it got before this existed.
+
+    The licence is deliberately narrow, and the narrowing is the whole safety
+    property of #401. A clean type check disproves "mypy would reject this" and
+    disproves nothing else. Read as general absolution it would refute real
+    findings the checkers were never asked about, turning a precision fix into a
+    recall regression — the failure mode #246 already records for a skeptic
+    tuned too aggressively. The sentence, not a code path, is the mechanism.
+    """
+    if evidence is None:
+        return ""
+    return f"""
+### WHAT THIS REPOSITORY'S OWN CHECKERS REPORT
+{evidence.render()}
+
+Use this ONLY to judge claims about what these checkers report — for example a
+claim that a type checker or linter rejects this code. If the output contradicts
+such a claim, that is concrete evidence the claim is wrong: refute it. Silence
+from a checker does not disprove anything it was not asked about: a logic bug, a
+race, a missing test. For those, judge from the hunks as usual.
+"""
 
 
 DEFAULT_SKEPTIC_CONCURRENCY = 3
@@ -114,7 +142,7 @@ DEFAULT_SKEPTIC_CONCURRENCY = 3
 
 
 async def judge_finding(
-    provider: BaseProvider, finding: Finding, hunks: str
+    provider: BaseProvider, finding: Finding, hunks: str, evidence: Evidence | None = None
 ) -> FindingJudgement | None:
     """Judge one finding; None means this call failed (#246 §3.2).
 
@@ -124,7 +152,9 @@ async def judge_finding(
     """
     try:
         raw = await provider.generate_structured(
-            SKEPTIC_SYSTEM_PROMPT, build_judgement_prompt(finding, hunks), FindingJudgement
+            SKEPTIC_SYSTEM_PROMPT,
+            build_judgement_prompt(finding, hunks, evidence),
+            FindingJudgement,
         )
         return FindingJudgement.model_validate_json(extract_json(raw))
     except Exception:
@@ -148,19 +178,28 @@ async def judge_all(
     findings: list[Finding],
     diff: str,
     concurrency: int = DEFAULT_SKEPTIC_CONCURRENCY,
+    *,
+    evidence: Evidence | None,
 ) -> list[FindingJudgement | None]:
     """Judge every finding concurrently, each against its own file's hunks.
 
     Returns one entry per finding, positionally aligned, with None where that
     finding's call failed — so a single failure costs one verdict instead of the
     whole pass, which is what the batch call it replaces did.
+
+    `evidence` is keyword-only and has no default, so each of the four call
+    sites states whether its path can supply checker output (#401). A default
+    would let a caller omit it silently, and the omission is invisible: the
+    review still runs, the skeptic still answers, and the only symptom is noise
+    nobody attributes to a missing argument. Same reasoning as #375's
+    keyword-required `review_fingerprint`.
     """
     blocks = split_diff_by_file(diff)
     semaphore = asyncio.Semaphore(max(1, concurrency))
 
     async def _one(finding: Finding) -> FindingJudgement | None:
         async with semaphore:
-            return await judge_finding(provider, finding, blocks.get(finding.file, ""))
+            return await judge_finding(provider, finding, blocks.get(finding.file, ""), evidence)
 
     return list(await asyncio.gather(*(_one(f) for f in findings)))
 

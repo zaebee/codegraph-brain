@@ -166,7 +166,10 @@ async def _judge_recording(
     result = recording.result
     if skeptic is None or not result.findings:
         return result
-    judgements = await judge_all(skeptic[0], result.findings, recording.diff)
+    # The replay path holds a recording, not a checkout: there is no project
+    # root, so no checkers to run. Stated as None rather than defaulted — which
+    # is the point of the argument being required (#401).
+    judgements = await judge_all(skeptic[0], result.findings, recording.diff, evidence=None)
     judged = sum(1 for j in judgements if j is not None)
     return result.model_copy(
         update={

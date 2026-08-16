@@ -21,11 +21,13 @@ opportunity to invent a false positive, and there noise grew superlinearly
 """
 
 import asyncio
+import os
 
 import structlog
 
 from cgis.guardian.collector import ContextCollector
 from cgis.guardian.core import finder_pass
+from cgis.guardian.evidence import evidence_for
 from cgis.guardian.findings import Finding, ReviewResult, dedup_findings
 from cgis.guardian.prompts import AXIS_GROUPS, PER_AXIS_GROUPS
 from cgis.guardian.providers.base import BaseProvider
@@ -115,7 +117,11 @@ async def run_axis_review(
         return merged
 
     judgements = await judge_all(
-        skeptic_provider, merged.findings, context.get("diff", ""), concurrency
+        skeptic_provider,
+        merged.findings,
+        context.get("diff", ""),
+        concurrency,
+        evidence=evidence_for(collector, os.environ),
     )
     judged = sum(1 for j in judgements if j is not None)
     if judged == 0:

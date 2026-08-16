@@ -5,6 +5,8 @@ finder LGTMs large PRs (attention dilution); each chunk gets a small,
 complete world instead — its own diff, full files, and impact graph.
 """
 
+import os
+
 import structlog
 from pydantic import BaseModel
 
@@ -12,6 +14,7 @@ from cgis.guardian.axes import run_axis_review
 from cgis.guardian.chunker import Chunk, build_chunks, split_diff_by_file
 from cgis.guardian.collector import ContextCollector
 from cgis.guardian.core import GuardianReviewer, finder_pass
+from cgis.guardian.evidence import evidence_for
 from cgis.guardian.findings import Finding, ReviewResult, dedup_findings
 from cgis.guardian.providers.base import BaseProvider
 from cgis.guardian.skeptic import (
@@ -182,7 +185,12 @@ async def run_chunked_review(
         "diff": "\n".join(c["diff"] for c in finding_contexts),
         "full_files": "\n\n".join(c["full_files"] for c in finding_contexts if "full_files" in c),
     }
-    judgements = await judge_all(skeptic_provider, merged.findings, skeptic_context["diff"])
+    judgements = await judge_all(
+        skeptic_provider,
+        merged.findings,
+        skeptic_context["diff"],
+        evidence=evidence_for(collector, os.environ),
+    )
     judged = sum(1 for j in judgements if j is not None)
     if judged == 0:
         log.warning("Every skeptic judgement failed; returning unverified findings.")
