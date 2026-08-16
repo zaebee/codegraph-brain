@@ -107,6 +107,50 @@ Aggregate over the draws (mean, or union where the arm defines one); do not
 select among them. Selecting by recency is the one choice guaranteed to be
 uncorrelated with quality, and it deletes 28% of this corpus.
 
+**Aggregate over the subject's *draws*, which is not the same set as its rows.**
+Say what a draw is rather than which rows to exclude: an exclusion list is
+open-ended and the next entry arrives after it has already been believed, while
+a positive definition is closed.
+
+**A draw is a review that completed and whose output was parsed** — a row with
+`parse_failed: false`. That is the whole test; `error` is `None` on all 115 rows,
+because a run that failed outright never reached a record.
+
+**A `parse_failed` row is not a draw.** Its structured output could not be read,
+so it carries zero findings, and averaging it in charges the model for a harness
+failure. This is exactly the distinction #374 established ("a truncated review is
+not a review that found nothing"); before it, `parse_failed` was recorded and
+read by nothing.
+
+**A row with zero findings and `parse_failed: false` *is* a draw.** Three exist
+(PRs 6, 77754 and 107534, all gemini), and each spent real tokens — 106, 117 and
+124 completion tokens. The reviewer ran and said nothing, which is evidence about
+the reviewer. Same output shape as the parse failure, opposite meaning; keeping
+them and dropping the parse failure is the one combination that is right about
+both. The `arm` field exists for the mirror of this hazard: a failure and a
+controlled removal must not look alike in the record.
+
+There is exactly **one** parse-failed row in the review corpora:
+`martian-p3-run1.jsonl` for PR 11059 — the same row #374 was written about. One
+row out of 115 sounds ignorable and is not, because of how the averaging works:
+
+- PR 11059 has three rows. Dropping the parse-failed one leaves draws of `9/13`
+  and `8/8`, so the subject contributes mean `c = 8.5` over mean `n = 10.5` —
+  a rate of **81.0%**, which is *below* mistral/graph's pooled 86.6%.
+- Averaging the parse failure in as a third draw keeps that 81.0% but shrinks the
+  subject to `c = 5.667` over `n = 7.0`. Its **weight** falls, not its rate.
+- A below-average subject carrying less weight pulls the pooled figure **up**:
+  86.6% → **86.9%**.
+
+So including the harness failure makes the reviewer look better, which is the
+direction that makes this easy to leave in. That is how the gap was found — a
+downstream consumer computed 86.6%, this repository computed 86.9%, and the
+disagreement had exactly one cause.
+
+The same applies to the `error` rows in `results.jsonl`, for the same reason and
+by the same rule: they are already excluded there because `is_scored` requires
+`matched` and `precision`, which a failed run never gets.
+
 ## Curation policy
 
 - Style/idiom-only findings → `ambiguous` (guardian's PRECISION RULES forbid
