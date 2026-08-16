@@ -20,7 +20,7 @@ import pytest
 from cgis.guardian.bench import load_ground_truth, match_findings, score
 from cgis.guardian.recording import load_finder_recording
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"))
 
 from recordings_from_corpus import (
     MissingFixtureError,
@@ -38,7 +38,11 @@ RESULTS = BENCH_DIR / "results.jsonl"
 
 
 def _rows() -> list[dict[str, Any]]:
-    return [json.loads(line) for line in RESULTS.read_text().splitlines() if line.strip()]
+    return [
+        json.loads(line)
+        for line in RESULTS.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
 
 
 @pytest.fixture(scope="module")
@@ -59,14 +63,18 @@ class TestSelection:
         judgements — it is that the confidences are no longer the finder's, on
         exactly the subset a skeptic experiment compares.
         """
-        judged = next(r for r in _rows() if r.get("skeptic_model") and "matched" in r)
+        judged = next((r for r in _rows() if r.get("skeptic_model") and "matched" in r), None)
+        assert judged is not None, "no judged row in the corpus — this test would inspect nothing"
         assert not is_frozen_pass(judged)
         with pytest.raises(NotAFrozenPassError, match="not an unjudged finder pass"):
             recording_for(judged, "diff")
 
     def test_an_unscored_row_is_not_a_pass(self) -> None:
         """The API-failure rows carry no findings and no score to reproduce."""
-        failed = next(r for r in _rows() if "error" in r and "matched" not in r)
+        failed = next((r for r in _rows() if "error" in r and "matched" not in r), None)
+        assert failed is not None, (
+            "no API-failure row in the corpus — this test would inspect nothing"
+        )
         assert not is_frozen_pass(failed)
 
     def test_a_pr_without_a_fixture_is_refused_not_skipped(self, tmp_path: Path) -> None:

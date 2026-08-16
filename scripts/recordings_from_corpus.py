@@ -93,6 +93,12 @@ def diff_for(pr: int, bench_dir: Path, repo_root: Path) -> str:
         _msg = f"No ground-truth fixture for pr-{pr} at {fixture}."
         raise MissingFixtureError(_msg)
     spec = yaml.safe_load(fixture.read_text(encoding="utf-8"))
+    if not isinstance(spec, dict):
+        _msg = (
+            f"pr-{pr}: {fixture} is not a mapping ({type(spec).__name__}); "
+            f"it names no base or head."
+        )
+        raise MissingFixtureError(_msg)
     base, head = spec.get("base"), spec.get("head")
     for name, sha in (("base", base), ("head", head)):
         if (
@@ -104,7 +110,13 @@ def diff_for(pr: int, bench_dir: Path, repo_root: Path) -> str:
                 check=False,
             ).returncode
         ):
-            _msg = f"pr-{pr}: {name} {sha!r} does not resolve in {repo_root}."
+            _msg = (
+                f"pr-{pr}: {name} {sha!r} does not resolve in {repo_root}. Fixture shas are a "
+                f"second population beside the corpora's `guardian_sha`, and PR heads are never "
+                f"ancestors of the trunk because everything here is squash-merged — so they "
+                f"survive only if pinned. Publish it: "
+                f"git push origin {sha}:refs/tags/bench/fixture/pr-{pr}-{name}"
+            )
             raise MissingFixtureError(_msg)
     result = subprocess.run(
         ["git", "diff", f"{base}...{head}"],
