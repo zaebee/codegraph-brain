@@ -31,16 +31,25 @@ MODEL_PROVIDERS: dict[str, str] = {
     "gemini-2.5-flash": "gemini",
     "gemini-3.5-flash": "gemini",
     "mistral-medium-latest": "mistral",
-    # Skeptic-only, one bench row (pr-143, `bench_arm: per-finding-skeptic`).
-    # Mapped from what the code can do rather than from the vendor's name: in
-    # `build_skeptic_provider` an arbitrary `GUARDIAN_SKEPTIC_MODEL` reaches an
-    # API provider only through the `mistral` branch — `gemini` never takes a
-    # model override, and `ollama` is local. The skeptic-scoring design (#246)
-    # calls the same pairing "mistral finder + mistral/codestral skeptic", i.e.
-    # same-family, which is the reading that matters here: it makes
-    # `resolve_active_providers` return {mistral} alone. Calling it `gemini`
-    # would add the gemini provider module to the closure and produce a
-    # different, confidently wrong digest.
+    # Skeptic-only, one bench row: pr-143, finder `mistral-medium-latest`,
+    # `bench_arm: per-finding-skeptic`. Mapped from the record of the experiment
+    # that produced that row. The skeptic-scoring design (#246) specifies this
+    # arm as a *same-family* pair — "mistral-medium finder + codestral skeptic",
+    # and "Same-family skeptic is binary: mistral finder + mistral/codestral
+    # skeptic" — so the run it describes had codestral served by mistral, which
+    # makes `resolve_active_providers` return {mistral} alone.
+    #
+    # The argument is deliberately about that record and not about what the code
+    # permits. An earlier version of this comment claimed `build_skeptic_provider`
+    # could only route an arbitrary `GUARDIAN_SKEPTIC_MODEL` through the mistral
+    # branch because "gemini never takes a model override". That is false —
+    # `runner.py:270` reads `model_override or DEFAULT_GEMINI_MODEL`, exactly as
+    # the mistral branch does — and it was the load-bearing half, so a permanent
+    # identity rested on a sentence the cited code contradicts. Calling this row
+    # `gemini` would add the gemini provider module to the closure and mint a
+    # different, confidently wrong digest; calling it `mistral` merges it with
+    # the mistral-only identity. Both are unrecoverable downstream, which is why
+    # the mapping is stated from evidence rather than inferred from a vendor name.
     "codestral-latest": "mistral",
 }
 

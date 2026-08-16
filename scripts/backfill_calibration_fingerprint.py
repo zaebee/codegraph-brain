@@ -46,9 +46,15 @@ from backfill_review_fingerprint import (
 
 from cgis.guardian.review_fingerprint import compute_fingerprint, resolve_active_providers
 
-#: Fields a calibration record copies from the results row it judges. Named once
-#: so the passthrough here and the one in `scripts/guardian_calibrate.py` cannot
-#: drift into carrying different halves of an identity.
+#: Fields a calibration record copies from the results row it judges.
+#:
+#: `scripts/guardian_calibrate.py` spells the same five out as dict entries
+#: rather than importing this tuple — a one-shot backfill script is the wrong
+#: thing for the live path to depend on. So this is *not* a single definition,
+#: and saying it was would be the kind of claim that reads as a guarantee and
+#: is not one. What actually keeps the two in step is
+#: `test_the_forward_path_carries_every_field_this_one_does`, which fails if a
+#: field is added here and not there.
 CARRIED_FIELDS = (
     "review_fingerprint",
     "review_fingerprint_source",
@@ -93,15 +99,41 @@ def row_key(row: dict[str, Any]) -> str:
     return f"{row['pr']}@{row['timestamp']}"
 
 
-def fingerprint_results(corpus: Path, repo_root: Path) -> tuple[int, int]:
-    """Add reconstructed fingerprints to every scored row; return (scored, skipped)."""
+def is_measured(row: dict[str, Any]) -> bool:
+    """True for a row whose digest was taken from the tree that actually ran.
+
+    A `measured` digest is strictly better evidence than anything this script
+    can produce, and on a bench run with uncommitted edits the two genuinely
+    disagree — a `git show` rebuild at `guardian_sha` cannot see a working-tree
+    change, which is precisely the case `guardian_bench` records `measured` to
+    capture, and which this repository has already lost experimental rows to
+    (`backfill_review_fingerprint`, spec §6.1).
+    """
+    return row.get("review_fingerprint_source") == "measured"
+
+
+def fingerprint_results(corpus: Path, repo_root: Path) -> tuple[int, int, int]:
+    """Reconstruct digests for scored rows; return (reconstructed, measured, unscored).
+
+    Rows that already carry a `measured` digest are left exactly as they are.
+    Without that guard this script downgraded them: it is billed as one-shot but
+    is safely idempotent, which invites a re-run, and a re-run after any bench
+    pass would silently replace every measured digest with a reconstructed one —
+    naming a different reviewer wherever the working tree had been dirty. That
+    is the unrecoverable direction, arrived at by a routine repeat of a command
+    that had always been harmless.
+    """
     rows = [
         json.loads(line) for line in corpus.read_text(encoding="utf-8").splitlines() if line.strip()
     ]
     cache: dict[tuple[str, frozenset[str]], str] = {}
     scored = 0
+    measured = 0
     for row in rows:
         if not is_scored(row):
+            continue
+        if is_measured(row):
+            measured += 1
             continue
         finder = provider_for(row["model"])
         skeptic_model = row.get("skeptic_model")
@@ -116,7 +148,7 @@ def fingerprint_results(corpus: Path, repo_root: Path) -> tuple[int, int]:
         row["skeptic_provider"] = skeptic
         scored += 1
     corpus.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
-    return scored, len(rows) - scored
+    return scored, measured, len(rows) - scored - measured
 
 
 def _results_by_row_key(corpus: Path) -> dict[str, dict[str, Any]]:
@@ -136,11 +168,25 @@ def _results_by_row_key(corpus: Path) -> dict[str, dict[str, Any]]:
     return index
 
 
-def carry_to_calibration(corpus: Path, results: dict[str, dict[str, Any]]) -> int:
-    """Copy the identity fields onto every calibration record; return rows touched."""
+def resolve_subjects(
+    corpus: Path, results: dict[str, dict[str, Any]]
+) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """Pair every calibration record with the results row it graded, or raise.
+
+    Separated from the copying so it can run *before* anything is written.
+    `main` calls it once against the pre-backfill results index purely for the
+    refusal: an unresolvable `row_key` used to surface only after
+    `fingerprint_results` had already rewritten `results.jsonl`, leaving one
+    corpus migrated and the other untouched with no record in either file of
+    which pass had run.
+
+    The pairing is by `row_key` (`pr@timestamp`), which is exact rather than
+    inferred, so a record either names its subject or has none.
+    """
     rows = [
         json.loads(line) for line in corpus.read_text(encoding="utf-8").splitlines() if line.strip()
     ]
+    pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
     for row in rows:
         key = row.get("row_key")
         subject = results.get(key) if key else None
@@ -150,10 +196,22 @@ def carry_to_calibration(corpus: Path, results: dict[str, dict[str, Any]]) -> in
                 f"Refusing to invent an identity for a record whose subject is unknown."
             )
             raise UnjudgeableRowError(_msg)
+        pairs.append((row, subject))
+    return pairs
+
+
+def carry_to_calibration(corpus: Path, results: dict[str, dict[str, Any]]) -> int:
+    """Copy the identity fields onto every calibration record; return rows touched.
+
+    Every record is resolved before any is written, so a refusal leaves the file
+    exactly as it was rather than partly carrying an identity and partly not.
+    """
+    pairs = resolve_subjects(corpus, results)
+    for row, subject in pairs:
         for field in CARRIED_FIELDS:
             row[field] = subject.get(field)
-    corpus.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
-    return len(rows)
+    corpus.write_text("\n".join(json.dumps(row) for row, _ in pairs) + "\n", encoding="utf-8")
+    return len(pairs)
 
 
 def main() -> None:
@@ -166,14 +224,20 @@ def main() -> None:
     parser.add_argument("--repo-root", type=Path, default=repo_root)
     args = parser.parse_args()
 
-    # Both paths are validated before either is written: the second pass reads
-    # the file the first pass rewrote, so discovering a bad calibration path
-    # afterwards would leave the corpora half-migrated.
+    # Everything that can refuse, refuses before anything is written. The second
+    # pass reads the file the first pass rewrites, so a bad calibration path — or
+    # a calibration record naming no scored subject, or a duplicate row_key —
+    # discovered afterwards would leave the two corpora half-migrated, with
+    # nothing in either file recording which pass had run.
     results_path = safe_corpus_path(args.results, args.repo_root)
     calibration_path = safe_corpus_path(args.calibration, args.repo_root)
+    resolve_subjects(calibration_path, _results_by_row_key(results_path))
 
-    scored, skipped = fingerprint_results(results_path, args.repo_root)
-    print(f"{results_path}: {scored} scored rows fingerprinted, {skipped} unscored left alone")
+    scored, measured, unscored = fingerprint_results(results_path, args.repo_root)
+    print(
+        f"{results_path}: {scored} scored rows fingerprinted, "
+        f"{measured} already measured left alone, {unscored} unscored left alone"
+    )
     carried = carry_to_calibration(calibration_path, _results_by_row_key(results_path))
     print(f"{calibration_path}: {carried} rows carried")
 

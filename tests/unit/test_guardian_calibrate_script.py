@@ -410,28 +410,34 @@ class TestCalibrateRow:
     ) -> None:
         """The record must carry the reviewer that ran, not the one running now (#390).
 
-        The sentinel is deliberately not a real digest. A fingerprint recomputed
+        Every carried value is deliberately impossible. A fingerprint recomputed
         here would be a perfectly valid 12-hex string over *this* checkout, and
         would pass any assertion that only checked shape or non-emptiness — while
         being the wrong reviewer, since the row being judged ran under an older
-        guardian. Only an impossible value distinguishes "copied" from
-        "recomputed and plausible".
+        guardian.
+
+        The same discipline applies to the other four fields, and the first
+        version of this test failed to apply it: the fixture named plausible
+        values (`"gemini"`, `"mistral"`, `"mistral-medium-latest"`), so an
+        implementation that hardcoded `"finder_provider": "gemini"` instead of
+        carrying it passed this test and its companion below. A sentinel only
+        discriminates if no implementation could produce it by accident.
         """
         bench = _bench_dir(tmp_path)
         truth = gc.load_truths(bench)[900]
         row = _row(
             review_fingerprint="not-a-real-digest",
-            review_fingerprint_source="reconstructed",
-            finder_provider="gemini",
-            skeptic_provider="mistral",
-            skeptic_model="mistral-medium-latest",
+            review_fingerprint_source="not-a-real-source",
+            finder_provider="not-a-real-provider",
+            skeptic_provider="not-a-real-skeptic",
+            skeptic_model="not-a-real-model",
         )
         record = await gc.calibrate_row(FlakyProvider([], VERDICT_MATCH), row, truth, concurrency=2)
         assert record["review_fingerprint"] == "not-a-real-digest"
-        assert record["review_fingerprint_source"] == "reconstructed"
-        assert record["finder_provider"] == "gemini"
-        assert record["skeptic_provider"] == "mistral"
-        assert record["skeptic_model"] == "mistral-medium-latest"
+        assert record["review_fingerprint_source"] == "not-a-real-source"
+        assert record["finder_provider"] == "not-a-real-provider"
+        assert record["skeptic_provider"] == "not-a-real-skeptic"
+        assert record["skeptic_model"] == "not-a-real-model"
 
     @pytest.mark.asyncio
     async def test_a_row_without_an_identity_yields_a_null_not_an_invention(
@@ -443,6 +449,11 @@ class TestCalibrateRow:
         it could not before this change. A digest invented here would be
         permanent and wrong. `run` reports the count separately so the
         degradation is announced rather than silent.
+
+        All five carried fields are asserted, not just the two digest ones. The
+        earlier version checked only `review_fingerprint` and its source, and
+        that omission is what let a hardcoded `finder_provider` survive both
+        this test and the one above.
         """
         bench = _bench_dir(tmp_path)
         truth = gc.load_truths(bench)[900]
@@ -451,6 +462,9 @@ class TestCalibrateRow:
         )
         assert record["review_fingerprint"] is None
         assert record["review_fingerprint_source"] is None
+        assert record["finder_provider"] is None
+        assert record["skeptic_provider"] is None
+        assert record["skeptic_model"] is None
 
 
 class TestRun:
@@ -498,6 +512,36 @@ class TestRun:
         assert await gc.run(_run_args(bench)) == 0
         assert "1 already done, 0 to go" in capsys.readouterr().out
         assert len(gc.load_records(args.out)) == 1
+
+    @pytest.mark.asyncio
+    async def test_rows_with_no_reviewer_identity_are_announced(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A record that cannot be attributed is degraded, but never quietly.
+
+        Carrying a null is the safe direction (#390) — inventing a digest would
+        be permanent and wrong — but "safe" is not "silent": a corpus that grows
+        unattributed rows should say so at the moment it happens rather than
+        leave the gap for a downstream consumer to discover.
+        """
+        bench = _bench_dir(tmp_path)
+        monkeypatch.setattr(gc, "build_provider", _fixed_provider)
+        assert await gc.run(_run_args(bench)) == 0
+        assert "1/1 results rows carry no review_fingerprint" in capsys.readouterr().err
+
+    @pytest.mark.asyncio
+    async def test_no_notice_when_every_row_names_its_reviewer(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The mirror: a fully attributed corpus must not print the warning.
+
+        Without this half, a notice printed unconditionally would satisfy the
+        test above while telling the operator nothing.
+        """
+        bench = _bench_dir(tmp_path, [_row(review_fingerprint="1a2884400bd7")])
+        monkeypatch.setattr(gc, "build_provider", _fixed_provider)
+        assert await gc.run(_run_args(bench)) == 0
+        assert "carry no review_fingerprint" not in capsys.readouterr().err
 
     @pytest.mark.asyncio
     async def test_cli_overrides_reach_the_provider_without_mutating_the_environment(

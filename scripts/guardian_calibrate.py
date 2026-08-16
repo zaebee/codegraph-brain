@@ -214,11 +214,17 @@ async def calibrate_row(
         # direction #375 exists to prevent.
         #
         # `.get` rather than `[...]`: a results row written before #390 has no
-        # fingerprint, and a null here is inert — hivemark simply cannot attribute
-        # the row, exactly as it could not before. A *wrong* fingerprint is
-        # permanent downstream. `run` counts these and says so; the same
-        # absence-degrades / malformed-raises split as `build_skeptic_provider`
-        # after #382.
+        # fingerprint, and a null here is inert — a consumer simply cannot
+        # attribute the row, exactly as it could not before. A *wrong*
+        # fingerprint is permanent downstream. `run` counts these and says so.
+        #
+        # Absence degrades; nothing here validates the *shape* of a value that is
+        # present, so a malformed digest is carried verbatim. That asymmetry is
+        # deliberate but is not the absence-degrades/malformed-raises pair from
+        # #382, and an earlier version of this comment claimed it was. A junk
+        # digest lands on the safe side of the asymmetry — it splits an identity
+        # into an inert one rather than merging two — so validating it would buy
+        # a refusal against nothing unrecoverable.
         "review_fingerprint": row.get("review_fingerprint"),
         "review_fingerprint_source": row.get("review_fingerprint_source"),
         "finder_provider": row.get("finder_provider"),

@@ -1,5 +1,6 @@
 """Calibration backfill: a recall figure that names the reviewer that earned it (#390)."""
 
+import asyncio
 import collections
 import json
 import shutil
@@ -10,12 +11,14 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from guardian_stubs import FlakyProvider
 
 # This repository sets no pytest `pythonpath`, so every test that imports a
 # script does this explicitly (test_backfill_review_fingerprint.py:16 and five
 # others). Required, not optional.
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scripts"))
 
+import guardian_calibrate as gc
 from backfill_calibration_fingerprint import (
     CARRIED_FIELDS,
     DuplicateRowKeyError,
@@ -24,6 +27,7 @@ from backfill_calibration_fingerprint import (
     carry_to_calibration,
     fingerprint_results,
     is_scored,
+    main,
 )
 from backfill_review_fingerprint import git_reader, provider_for
 
@@ -109,7 +113,7 @@ class TestFingerprintResults:
 
     def test_a_scored_row_gains_a_reconstructed_digest(self, corpus_dir: Path) -> None:
         corpus = _write(corpus_dir / "results.jsonl", [_scored_row()])
-        assert fingerprint_results(corpus, REPO_ROOT) == (1, 0)
+        assert fingerprint_results(corpus, REPO_ROOT) == (1, 0, 0)
         row = json.loads(corpus.read_text().splitlines()[0])
         assert len(row["review_fingerprint"]) == 12
         assert row["review_fingerprint_source"] == "reconstructed"
@@ -125,7 +129,7 @@ class TestFingerprintResults:
         fingerprint them could only invent one.
         """
         corpus = _write(corpus_dir / "results.jsonl", [_scored_row(), _error_row()])
-        assert fingerprint_results(corpus, REPO_ROOT) == (1, 1)
+        assert fingerprint_results(corpus, REPO_ROOT) == (1, 0, 1)
         scored, failed = (json.loads(line) for line in corpus.read_text().splitlines())
         assert "review_fingerprint" in scored
         assert "review_fingerprint" not in failed
@@ -150,6 +154,36 @@ class TestFingerprintResults:
         second = json.loads(paired.read_text().splitlines()[0])
         assert second["skeptic_provider"] == "mistral"
         assert first["review_fingerprint"] != second["review_fingerprint"]
+
+    def test_a_measured_row_is_never_downgraded(self, corpus_dir: Path) -> None:
+        """A digest taken from the tree that ran outranks anything rebuilt from git.
+
+        The sentinel is impossible on purpose: a reconstructed digest over
+        `REAL_SHA` is a valid 12-hex string, so a length or non-emptiness check
+        would pass on exactly the clobbering this guards against.
+
+        Scenario without the guard: someone runs `guardian_bench` (writing
+        `measured` digests over a possibly dirty tree), then re-runs this script
+        — which is billed one-shot but is safely idempotent, so re-running looks
+        harmless. Every measured digest becomes a reconstructed one, naming a
+        different reviewer wherever the tree had uncommitted edits.
+        """
+        corpus = _write(
+            corpus_dir / "results.jsonl",
+            [
+                _scored_row(
+                    review_fingerprint="measured-not-a-digest",
+                    review_fingerprint_source="measured",
+                ),
+                _scored_row(timestamp="2026-08-01T00:00:02+00:00"),
+            ],
+        )
+        assert fingerprint_results(corpus, REPO_ROOT) == (1, 1, 0)
+        kept, rebuilt = (json.loads(line) for line in corpus.read_text().splitlines())
+        assert kept["review_fingerprint"] == "measured-not-a-digest"
+        assert kept["review_fingerprint_source"] == "measured"
+        assert len(rebuilt["review_fingerprint"]) == 12
+        assert rebuilt["review_fingerprint_source"] == "reconstructed"
 
 
 class TestResultsIndex:
@@ -234,6 +268,85 @@ class TestCarryToCalibration:
         assert corpus.read_text() == before
 
 
+class TestMainRefusesBeforeWriting:
+    """A refusal must leave *both* corpora as they were, not one of the two."""
+
+    def test_an_unjudgeable_record_stops_the_run_before_results_is_touched(
+        self, corpus_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`main` resolves the join first, then writes.
+
+        Without that ordering `fingerprint_results` rewrote `results.jsonl` and
+        only then did `carry_to_calibration` refuse, leaving one corpus migrated
+        and the other untouched with nothing in either file saying which pass had
+        run. That compounds with the measured-digest guard: a half-migration is
+        also where a `measured` row would have been silently rebuilt.
+        """
+        results = _write(corpus_dir / "results.jsonl", [_scored_row()])
+        calibration = _write(corpus_dir / "calibration.jsonl", [{"row_key": "900@never"}])
+        before = results.read_text()
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "backfill_calibration_fingerprint.py",
+                "--results",
+                str(results),
+                "--calibration",
+                str(calibration),
+                "--repo-root",
+                str(REPO_ROOT),
+            ],
+        )
+        with pytest.raises(UnjudgeableRowError, match="900@never"):
+            main()
+        assert results.read_text() == before
+        assert "review_fingerprint" not in json.loads(results.read_text().splitlines()[0])
+
+
+def test_the_forward_path_carries_every_field_this_one_does() -> None:
+    """`guardian_calibrate` must carry each field the backfill carries.
+
+    The two lists are written out separately — a live script should not import
+    from a one-shot backfill — so nothing but this test keeps them in step. Add
+    a sixth entry to `CARRIED_FIELDS` without touching `calibrate_row` and the
+    committed corpus would satisfy
+    `test_every_calibration_row_carries_its_subject_identity` by comparing
+    `None` against `None` on every row.
+
+    Asserted against the record `calibrate_row` actually produces, not against
+    the source text: a regex over the file would pass on a field that is
+    mentioned in a comment and never written.
+    """
+    truth = gc.load_truths(BENCH_DIR)[122]
+    row = {
+        "timestamp": "2026-08-01T00:00:00+00:00",
+        "pr": 122,
+        "run": 0,
+        "model": "gemini-2.5-flash",
+        "guardian_sha": REAL_SHA,
+        "precision": 1.0,
+        "recall": 1.0,
+        "noise": 0,
+        "matched": {},
+        "ambiguous_hits": [],
+        "findings": [],
+    } | {field: f"sentinel-{field}" for field in CARRIED_FIELDS}
+    record = asyncio.run(
+        gc.calibrate_row(
+            FlakyProvider([], '{"reasoning": "r", "match": false, "confidence": 0.5}'),
+            row,
+            truth,
+            concurrency=2,
+        )
+    )
+    missing = [field for field in CARRIED_FIELDS if record.get(field) != f"sentinel-{field}"]
+    assert not missing, (
+        f"CARRIED_FIELDS names {missing}, which scripts/guardian_calibrate.py does not "
+        "carry onto the calibration record — the two passthroughs have drifted."
+    )
+
+
 def _committed_rows(name: str) -> list[dict[str, Any]]:
     """Every row of a committed bench corpus."""
     path = BENCH_DIR / name
@@ -244,10 +357,13 @@ def test_every_scored_results_row_is_fingerprinted() -> None:
     """The committed results corpus must name a reviewer on every recorded review.
 
     The floor is a ratchet (`>=`), not a fixed count: a future bench run only
-    raises it. Without it, a missing or emptied `benchmarks/` makes the row list
-    empty, `offenders` stays empty, and the test passes having inspected
-    nothing — the reassuring answer produced by looking at no data, which this
-    branch has produced repeatedly (#375 review).
+    raises it. Without it, an emptied `benchmarks/guardian/results.jsonl` makes
+    the row list empty, `offenders` stays empty, and the test passes having
+    inspected nothing — the reassuring answer produced by looking at no data,
+    which this branch has produced repeatedly (#375 review). A *missing* file
+    raises `FileNotFoundError` in `_committed_rows` and never reaches the floor;
+    an earlier version of this docstring claimed the floor covered that case
+    too, which it does not.
     """
     rows = _committed_rows("results.jsonl")
     scored = [r for r in rows if is_scored(r)]

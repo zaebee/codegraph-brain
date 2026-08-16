@@ -178,6 +178,44 @@ async def _judge_recording(
     )
 
 
+def _measured_fingerprint(finder_provider: str, skeptic_provider: str | None) -> str | None:
+    """The digest of the guardian that just reviewed, or None if it cannot be taken.
+
+    Over `_REPO_ROOT`, not the PR worktree: `_run_one` reviews the PR's code, but
+    the guardian doing the reviewing is this checkout's — which is also what
+    `guardian_sha` names. Hashing the worktree would fingerprint the subject
+    instead of the reviewer.
+
+    Failure degrades to None instead of propagating, and that is the whole
+    reason this is a function rather than an expression inside the row literal.
+    By the time it runs, the row has already cost a worktree checkout, a
+    `cgis ingest`, a paid finder pass and a paid skeptic pass. An exception here
+    — `UnknownProviderError` the first time a provider is added, or any reader
+    failure — reached `main`'s per-PR `except`, which discarded the whole review
+    and wrote an `{"error": ...}` row in its place. That row is
+    indistinguishable from a rate-limit failure and drops out of the recall
+    corpus permanently, so a reviewer that could not be *named* silently
+    destroyed the measurement it had just paid for.
+
+    None is the safe direction and the one the rest of this change already
+    takes: an unattributed row is inert, and `guardian_calibrate` carries the
+    null through rather than inventing a digest for it. The corpus ratchet in
+    `tests/unit/test_backfill_calibration_fingerprint.py` fails on a committed
+    row that stayed null, so a degraded run is loud where it matters without
+    costing the run itself.
+    """
+    try:
+        active = resolve_active_providers(finder_provider, skeptic_provider)
+        return compute_fingerprint(disk_reader(_REPO_ROOT), active)
+    except Exception:
+        log.exception(
+            "Review fingerprint could not be computed; the row is recorded unattributed.",
+            finder_provider=finder_provider,
+            skeptic_provider=skeptic_provider,
+        )
+        return None
+
+
 async def _score_and_record(
     truth: GroundTruth,
     run_idx: int,
@@ -192,12 +230,8 @@ async def _score_and_record(
     visible = visible_findings(result.findings)
     matches = match_findings(visible, truth)
     bench_score = score(matches, truth)
-    # Over _REPO_ROOT, not the PR worktree: `_run_one` reviews the PR's code, but
-    # the guardian doing the reviewing is this checkout's, which is also what
-    # `guardian_sha` below names. Hashing the worktree would fingerprint the
-    # subject instead of the reviewer.
     skeptic_provider = skeptic[0].name if skeptic else None
-    active = resolve_active_providers(provider.name, skeptic_provider)
+    fingerprint = _measured_fingerprint(provider.name, skeptic_provider)
     entry = {
         "timestamp": datetime.now(UTC).isoformat(),
         "pr": truth.pr,
@@ -209,8 +243,8 @@ async def _score_and_record(
         # This is the field `scripts/guardian_calibrate.py` carries onto the
         # calibration record, which is the whole point of #390: a measured recall
         # figure that names the reviewer that earned it.
-        "review_fingerprint": compute_fingerprint(disk_reader(_REPO_ROOT), active),
-        "review_fingerprint_source": "measured",
+        "review_fingerprint": fingerprint,
+        "review_fingerprint_source": "measured" if fingerprint else None,
         "finder_provider": provider.name,
         "skeptic_provider": skeptic_provider,
         "guardian_sha": _git("rev-parse", "HEAD"),
