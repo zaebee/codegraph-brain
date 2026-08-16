@@ -542,10 +542,13 @@ def test_every_guardian_sha_in_the_corpora_is_a_commit_this_repository_has() -> 
     does fetch. Deleting those tags makes 236 rows of measured recall
     unverifiable again, and this test is what says so.
 
-    The review corpora under `benchmarks/martian-*.jsonl` are covered too, and
-    two of their shas (`112e4373`, `aeebde91`) currently survive only because
-    `origin/feat/skip-parse-failed` still exists. If that branch is ever deleted
-    this test goes red; the remedy is the same as the one already applied here:
+    The review corpora under `benchmarks/martian-*.jsonl` are covered too. Two
+    of their shas (`112e4373`, `aeebde91`) were reachable only from
+    `origin/feat/skip-parse-failed`, so deleting that branch would have made
+    them vanish; they are now tagged as well, which is why this docstring no
+    longer describes them as at risk. Twelve tags in total.
+
+    The remedy for any future case is the one already applied here:
 
         git push origin <sha>:refs/tags/bench/guardian-sha/<short-sha>
 

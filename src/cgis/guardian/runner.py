@@ -1,9 +1,11 @@
 """Testable orchestration for the guardian review script."""
 
 import asyncio
+import math
 import time
 from collections.abc import Mapping
 from pathlib import Path
+from typing import Literal
 
 import structlog
 
@@ -68,6 +70,69 @@ def _ollama_num_ctx(env: Mapping[str, str]) -> int:
         return DEFAULT_OLLAMA_NUM_CTX
 
 
+#: How a run's sampling temperature came to be what it was (#393).
+#:
+#: Declared here rather than beside the field it types in `martian.py`, which is
+#: where a reader would look first. `runner` is a seed of the review-fingerprint
+#: closure and `martian` is outside it, so importing the type the natural
+#: direction — runner from martian — would pull `martian` and everything it
+#: reaches into the digest and stale every fingerprint in the corpora. The
+#: import therefore goes the other way, and this comment is the signpost.
+TemperatureSource = Literal["explicit", "provider_default"]
+
+
+def temperature_setting(env: Mapping[str, str]) -> tuple[float | None, TemperatureSource]:
+    """The sampling temperature and *how it came to be that*, together (#393).
+
+    Returned as one value because the two answers must agree and reading the
+    same environment variable twice is how they stop agreeing. `temperature`
+    below delegates here, so there is one parse and one decision.
+
+    `("provider_default")` covers both the unset case and an unparseable value,
+    and that is not a shortcut: on a typo the warning fires and the run really
+    does proceed on the provider's default, so the record would be wrong to
+    claim anything else. An unparseable value warns and falls back rather than
+    raising — the same policy as GUARDIAN_OLLAMA_NUM_CTX, and a typo should not
+    abort a run that costs money partway through.
+
+    Why the source cannot be inferred from the float alone: `None` in a
+    `float | None` field is written by an absent key *and* by an explicit null,
+    and `ReviewRecord` renders both identically — verified, the round-tripped
+    JSON is byte-identical. So "ran on the provider's default" and "nothing was
+    recorded" are indistinguishable in every row written before #393, and no
+    convention about the float's value can separate them after the fact.
+    """
+    raw = (env.get("GUARDIAN_TEMPERATURE") or "").strip()
+    if not raw:
+        return None, "provider_default"
+    try:
+        parsed = float(raw)
+    except ValueError:
+        log.warning("Invalid GUARDIAN_TEMPERATURE; using the provider default.", value=raw)
+        return None, "provider_default"
+    # `float()` accepts more than a temperature can be. Negative is invalid
+    # sampling everywhere and would fail at the API, losing the run. The
+    # non-finite cases are worse and are the reason this is `isfinite` rather
+    # than `>= 0`: `float("nan")`, `float("inf")` and an overflowing literal
+    # like "1e400" all parse, and none of them is caught by a sign test — NaN
+    # and inf are not less than zero. A NaN would then be *recorded*, and
+    # `json.dumps` writes it as the bare token `NaN`, which is not valid JSON:
+    # Python reads it back as an extension, a strict reader downstream cannot
+    # read the line at all. A bad environment variable must not be able to
+    # produce a corpus row nobody else can parse.
+    #
+    # No upper bound. Providers disagree on their maxima and change them, so a
+    # number here would be invented rather than known — and being wrong in that
+    # direction refuses a setting that would have worked.
+    if not math.isfinite(parsed) or parsed < 0:
+        log.warning(
+            "GUARDIAN_TEMPERATURE is not a usable temperature; using the provider default.",
+            value=raw,
+        )
+        return None, "provider_default"
+    return parsed, "explicit"
+
+
 def temperature(env: Mapping[str, str]) -> float | None:
     """GUARDIAN_TEMPERATURE as a float, or None to leave the API's own default.
 
@@ -75,18 +140,11 @@ def temperature(env: Mapping[str, str]) -> float | None:
     provider defaults and the spec keeps that frozen; only a phase that
     registered a value before spending sets one.
 
-    An unparseable value warns and falls back rather than raising: the same
-    policy as GUARDIAN_OLLAMA_NUM_CTX, and a typo should not abort a run that
-    costs money partway through.
+    This is what the providers need — the value to send, or nothing to send.
+    A caller writing a *record* wants `temperature_setting`, which also says
+    whether the None was chosen or inherited.
     """
-    raw = (env.get("GUARDIAN_TEMPERATURE") or "").strip()
-    if not raw:
-        return None
-    try:
-        return float(raw)
-    except ValueError:
-        log.warning("Invalid GUARDIAN_TEMPERATURE; using the provider default.", value=raw)
-        return None
+    return temperature_setting(env)[0]
 
 
 def _ollama_num_predict(env: Mapping[str, str]) -> int:

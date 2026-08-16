@@ -76,7 +76,11 @@ from cgis.guardian.review_fingerprint import (
     disk_reader,
     resolve_active_providers,
 )
-from cgis.guardian.runner import build_provider, build_skeptic_provider, temperature
+from cgis.guardian.runner import (
+    build_provider,
+    build_skeptic_provider,
+    temperature_setting,
+)
 from cgis.storage.sqlite_store import SQLiteStore
 
 CORPUS_DIR = Path("benchmarks/martian")
@@ -373,6 +377,7 @@ async def review_one(row: PrPlan, args: argparse.Namespace) -> ReviewRecord:
     routed = await run_review_routed(
         provider=provider, collector=collector, skeptic_provider=skeptic[0] if skeptic else None
     )
+    sampling, sampling_source = temperature_setting(os.environ)
     return ReviewRecord(
         url=row.url,
         project=row.project,
@@ -383,7 +388,10 @@ async def review_one(row: PrPlan, args: argparse.Namespace) -> ReviewRecord:
         had_graph=had_graph,
         finder_model=model,
         skeptic_model=skeptic[1] if skeptic else None,
-        temperature=temperature(os.environ),
+        # Both halves from one call: read the variable twice and they can
+        # disagree, which is the failure the pair exists to prevent (#393).
+        temperature=sampling,
+        temperature_source=sampling_source,
         findings=routed.result.findings,
         prompt_tokens=provider.cumulative_usage.prompt_tokens,
         completion_tokens=provider.cumulative_usage.completion_tokens,
