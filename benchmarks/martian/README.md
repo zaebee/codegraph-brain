@@ -81,6 +81,17 @@ TypeScript PRs against 6 Python**. G5 mostly measures the TypeScript path.
 The comment counts above are raw (`all`). Under `core`, which is what the gates
 use, the evaluated corpus is **140** comments: 61 graph-enabled, 79 diff-only.
 
+## Counting the review records
+
+This file documents the vendored *golden comments*. The reviews scored against
+them live in `benchmarks/martian-*.jsonl`, and those carry repeated rows for the
+same PR on purpose — the Phase 3 union arm and the R5 repeat probe are sampling
+arms, not corrections. Before computing any per-reviewer rate over them, read
+"Repeated rows are samples, not corrections" in
+[`../guardian/CURATION.md`](../guardian/CURATION.md): 32 of the 115 rows are
+repeats, and 21 of the 25 repeat groups disagree on how many findings the same
+reviewer produced on the same commit.
+
 `plan.json` beside this file is the resolved plan — one row per PR with its
 slice, changed files and exclusion status. Regenerate with
 `uv run python scripts/guardian_martian.py plan`; it is cached, so that costs
