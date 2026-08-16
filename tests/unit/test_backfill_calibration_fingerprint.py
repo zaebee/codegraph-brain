@@ -4,6 +4,7 @@ import asyncio
 import collections
 import json
 import shutil
+import subprocess
 import sys
 import tempfile
 from collections.abc import Iterator
@@ -505,3 +506,61 @@ def test_committed_bench_fingerprints_are_reproducible() -> None:
                 f"{sha[:8]} {sorted(active)}: stored {sorted(stored)} != {recomputed}"
             )
     assert not mismatches, f"stale digests in results.jsonl: {mismatches}"
+
+
+def test_every_guardian_sha_in_the_corpora_is_a_commit_this_repository_has() -> None:
+    """A stored digest is only worth having if a stranger can recompute it.
+
+    Recomputation needs the tree at that row's `guardian_sha`, so a corpus that
+    names a commit the repository does not publish carries an identity nobody
+    but its author can verify — and #375 rests the whole downstream
+    genome/address construction on exactly that verifiability.
+
+    This is not hypothetical. All ten `guardian_sha` values in
+    `calibration.jsonl` were reachable only in one developer's clone: their
+    branches had been squash-merged and deleted, so `fetch-depth: 0` never
+    fetched them and CI could not resolve a single one. They are now published
+    as lightweight tags under `bench/guardian-sha/`, which `actions/checkout`
+    does fetch. Deleting those tags makes 236 rows of measured recall
+    unverifiable again, and this test is what says so.
+
+    The review corpora under `benchmarks/martian-*.jsonl` are covered too, and
+    two of their shas (`112e4373`, `aeebde91`) currently survive only because
+    `origin/feat/skip-parse-failed` still exists. If that branch is ever deleted
+    this test goes red; the remedy is the same as the one already applied here:
+
+        git push origin <sha>:refs/tags/bench/guardian-sha/<short-sha>
+
+    Runs `rev-parse` per distinct sha rather than per row — 16 distinct values
+    over 351 rows at the time of writing.
+    """
+    shas: dict[str, set[str]] = collections.defaultdict(set)
+    for path in sorted((REPO_ROOT / "benchmarks").rglob("*.jsonl")):
+        for line in path.read_text().splitlines():
+            if not line.strip():
+                continue
+            sha = json.loads(line).get("guardian_sha")
+            if sha:
+                shas[sha].add(str(path.relative_to(REPO_ROOT)))
+
+    assert len(shas) >= 16, (
+        f"found only {len(shas)} distinct guardian_sha values under benchmarks/, "
+        "expected at least 16 — an empty result must not read as 'every commit is "
+        "present' when it means 'no corpus was found'."
+    )
+    missing = {
+        sha: sorted(paths)
+        for sha, paths in shas.items()
+        if subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}"],
+            capture_output=True,
+            cwd=REPO_ROOT,
+            check=False,
+        ).returncode
+        != 0
+    }
+    assert not missing, (
+        "these guardian_sha values name commits this repository does not have, so "
+        f"their digests cannot be recomputed by anyone: {missing}. Publish each as "
+        "a tag: git push origin <sha>:refs/tags/bench/guardian-sha/<short-sha>"
+    )
