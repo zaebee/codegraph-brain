@@ -557,7 +557,7 @@ def test_every_guardian_sha_in_the_corpora_is_a_commit_this_repository_has() -> 
     """
     shas: dict[str, set[str]] = collections.defaultdict(set)
     for path in sorted((REPO_ROOT / "benchmarks").rglob("*.jsonl")):
-        for line in path.read_text().splitlines():
+        for line in path.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
             sha = json.loads(line).get("guardian_sha")
@@ -606,6 +606,27 @@ def _durable_refs_present() -> list[str]:
         for ref in _DURABLE_REFS
         if _git("rev-parse", "--verify", "--quiet", ref).returncode == 0
     ]
+
+
+def _trunk() -> tuple[str, str]:
+    """The durable ref this checkout has, and the commit it points at.
+
+    The ref name is looked up rather than hardcoded: a checkout with `main` and
+    no remote, or a remote under another name, is a legitimate place to run the
+    suite and `origin/main` is not universal.
+
+    It asserts rather than skipping when there is none. gemini's review of #396
+    suggested a skip here, and that is the one thing this file must not do: the
+    test it supports exists because a check that quietly declines to run reads
+    as a passing check. Failing names the cause; skipping hides it behind a
+    green suite. Callers that genuinely cannot answer get the message below.
+    """
+    durable = _durable_refs_present()
+    assert durable, (
+        f"none of {_DURABLE_REFS} resolves in this checkout, so nothing here can stand "
+        "for 'a commit on the trunk'. Fetch the default branch before trusting this file."
+    )
+    return durable[0], _git("rev-parse", durable[0]).stdout.strip()
 
 
 def _protection_for(sha: str, durable: list[str]) -> str | None:
@@ -689,7 +710,11 @@ class TestProtectionIsDecidedByBothHalves:
 
     def test_a_tag_protects_a_commit_on_no_branch(self) -> None:
         """The calibration shas' whole situation: pinned by a tag, on no branch."""
-        assert _protection_for("09679bde340e9c7ed7e560a42cfcb8f4f9d033b4", []).startswith("tag ")
+        protection = _protection_for("09679bde340e9c7ed7e560a42cfcb8f4f9d033b4", [])
+        # Bound and asserted before use: `.startswith` on a None gives an
+        # AttributeError naming neither the sha nor what was expected of it.
+        assert protection is not None
+        assert protection.startswith("tag ")
 
     def test_a_durable_branch_protects_an_untagged_commit(self) -> None:
         """The tip of the trunk carries no tag until the next release, and is safe.
@@ -704,9 +729,9 @@ class TestProtectionIsDecidedByBothHalves:
         branch and the durable-branch half would never run, leaving the test
         green while proving nothing about it.
         """
-        trunk = _git("rev-parse", "origin/main").stdout.strip()
+        ref, trunk = _trunk()
         assert _git("tag", "--contains", trunk).stdout.strip() == ""
-        assert _protection_for(trunk, ["origin/main"]) == "ancestor of origin/main"
+        assert _protection_for(trunk, [ref]) == f"ancestor of {ref}"
 
     def test_without_a_durable_ref_that_same_commit_looks_unprotected(self) -> None:
         """Why the test asserts a durable ref exists before trusting the result.
@@ -716,5 +741,5 @@ class TestProtectionIsDecidedByBothHalves:
         corpus defect rather than as a checkout missing its default branch, and
         the two have very different remedies.
         """
-        trunk = _git("rev-parse", "origin/main").stdout.strip()
+        _, trunk = _trunk()
         assert _protection_for(trunk, []) is None
