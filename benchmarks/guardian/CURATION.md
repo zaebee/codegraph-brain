@@ -107,6 +107,24 @@ Aggregate over the draws (mean, or union where the arm defines one); do not
 select among them. Selecting by recency is the one choice guaranteed to be
 uncorrelated with quality, and it deletes 28% of this corpus.
 
+**But first drop `parse_failed` rows: a failed parse is not a draw.** The
+review's structured output could not be read, so the row carries zero findings —
+and averaging it in charges the model for a harness failure. This is the
+distinction #374 established ("a truncated review is not a review that found
+nothing"); before it, `parse_failed` was recorded and read by nothing.
+
+There is exactly **one** such row in the review corpora, and it is
+`martian-p3-run1.jsonl` for PR 11059 — the same row #374 was written about. One
+row out of 115 sounds ignorable and is not: it is one of three draws for its
+subject, so averaging it in pulls that subject's weight down and moves
+mistral/graph's confirmed rate on `critical` from 86.6% to 86.9%. That is how the
+gap was found — a downstream consumer computed 86.6%, this repository computed
+86.9%, and the disagreement had exactly one cause.
+
+The same applies to the `error` rows in `results.jsonl`, for the same reason and
+by the same rule: they are already excluded there because `is_scored` requires
+`matched` and `precision`, which a failed run never gets.
+
 ## Curation policy
 
 - Style/idiom-only findings → `ambiguous` (guardian's PRECISION RULES forbid
