@@ -23,6 +23,8 @@ a checker's stderr as "what the type checker said" would let an infrastructure
 failure refute a real finding, which is worse than the noise this exists to cut.
 """
 
+import asyncio
+import shlex
 import subprocess
 from collections.abc import Mapping
 from pathlib import Path
@@ -87,8 +89,20 @@ def _python_files_inside(project_root: Path, changed_files: tuple[str, ...]) -> 
             resolved = (root / name).resolve()
         except (OSError, RuntimeError):
             continue
-        if resolved.is_relative_to(root) and resolved.is_file():
-            inside.append(str(resolved.relative_to(root)))
+        if not (resolved.is_relative_to(root) and resolved.is_file()):
+            continue
+        relative = resolved.relative_to(root)
+        # A component starting with "-" reaches the checker as a *flag*, not a
+        # path: `--config=evil.ini` is a legal filename and an argv option. The
+        # `--` terminator below is the general guard; this is the belt, because
+        # a tool that does not honour `--` would still be steered. Same
+        # reasoning as `InvalidShaError` in the fingerprint backfill — a value
+        # that never looked like a path has no business reaching a subprocess,
+        # exploitable or not (pythonsecurity:S6350).
+        if any(part.startswith("-") for part in relative.parts):
+            log.warning("Dropping a changed file whose path could be read as a flag.", path=name)
+            continue
+        inside.append(str(relative))
     return inside
 
 
@@ -131,9 +145,11 @@ def collect_evidence(project_root: Path, changed_files: tuple[str, ...]) -> Evid
         )
         return None
 
+    # `--` so nothing after it is parsed as an option. Verified rather than
+    # assumed: `mypy --strict -- <path>` treats the next argument as a file.
     commands = [
-        ["uv", "run", "--frozen", "mypy", "--strict", *files],
-        ["uv", "run", "--frozen", "ruff", "check", *files],
+        ["uv", "run", "--frozen", "mypy", "--strict", "--", *files],
+        ["uv", "run", "--frozen", "ruff", "check", "--", *files],
     ]
     sections: list[str] = []
     for command in commands:
@@ -145,8 +161,10 @@ def collect_evidence(project_root: Path, changed_files: tuple[str, ...]) -> Evid
                 command=" ".join(command),
             )
             return None
-        sections.append(f"$ {' '.join(command)}\n{output.strip() or '(no output)'}")
-    evidence = Evidence(commands=tuple(" ".join(c) for c in commands), output="\n\n".join(sections))
+        sections.append(f"$ {shlex.join(command)}\n{output.strip() or '(no output)'}")
+    evidence = Evidence(
+        commands=tuple(shlex.join(c) for c in commands), output="\n\n".join(sections)
+    )
     log.info(
         "Evidence collected for the skeptic.",
         files=len(files),
@@ -162,13 +180,21 @@ def collect_evidence(project_root: Path, changed_files: tuple[str, ...]) -> Evid
 EVIDENCE_FLAG = "GUARDIAN_EVIDENCE"
 
 
-def evidence_for(collector: "ContextCollector", env: Mapping[str, str]) -> Evidence | None:
+async def evidence_for(collector: "ContextCollector", env: Mapping[str, str]) -> Evidence | None:
     """Evidence for a review, or None when it is switched off or unavailable.
 
     The single seam every caller uses, so "is the flag on" is decided in one
     place rather than at four call sites that could drift.
+
+    Async, with the checkers on a worker thread. Every caller is inside the
+    event loop, and `collect_evidence` blocks for up to `EVIDENCE_TIMEOUT_S` —
+    two minutes of a frozen loop, during which the concurrent skeptic calls this
+    feature exists to improve would simply stop. `guardian_bench` already routes
+    its blocking work through `asyncio.to_thread` for exactly this reason.
     """
     if (env.get(EVIDENCE_FLAG) or "").strip() != "1":
         log.info("Evidence disabled.", flag=EVIDENCE_FLAG)
         return None
-    return collect_evidence(collector.project_root, tuple(collector.get_changed_source_files()))
+    return await asyncio.to_thread(
+        collect_evidence, collector.project_root, tuple(collector.get_changed_source_files())
+    )

@@ -121,7 +121,7 @@ async def run_axis_review(
         merged.findings,
         context.get("diff", ""),
         concurrency,
-        evidence=evidence_for(collector, os.environ),
+        evidence=await evidence_for(collector, os.environ),
     )
     judged = sum(1 for j in judgements if j is not None)
     if judged == 0:

@@ -150,7 +150,8 @@ class TestPathsAreConfinedToTheRepository:
 class TestTheFeatureShipsInert:
     """Off unless asked for, like `impact_threshold` before its threshold was chosen."""
 
-    def test_absent_flag_yields_no_evidence(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_absent_flag_yields_no_evidence(self, tmp_path: Path) -> None:
         """Default behaviour must be byte-identical to before this module existed.
 
         The effect on noise and recall is unmeasured — measuring it costs skeptic
@@ -158,23 +159,25 @@ class TestTheFeatureShipsInert:
         result. #246 records what an unmeasured skeptic change did last time:
         few-shot examples swung recall from 0.7 to 0.0 and were reverted.
         """
-        assert evidence_for(_collector(tmp_path), {}) is None
+        assert await evidence_for(_collector(tmp_path), {}) is None
 
     @pytest.mark.parametrize("value", ["", "0", "true", "yes", " ", "on"])
-    def test_only_the_literal_1_enables_it(self, tmp_path: Path, value: str) -> None:
+    @pytest.mark.asyncio
+    async def test_only_the_literal_1_enables_it(self, tmp_path: Path, value: str) -> None:
         """A near-miss must not half-enable it.
 
         `"true"` reading as on would turn the feature on in an environment whose
         author believed they had written something inert, and the symptom —
         different verdicts — looks like model drift rather than a config typo.
         """
-        assert evidence_for(_collector(tmp_path), {EVIDENCE_FLAG: value}) is None
+        assert await evidence_for(_collector(tmp_path), {EVIDENCE_FLAG: value}) is None
 
-    def test_the_flag_on_reaches_the_collector(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_the_flag_on_reaches_the_collector(self, tmp_path: Path) -> None:
         """And with it on, the repo is actually inspected rather than assumed."""
         repo = _python_repo(tmp_path)
         (repo / "a.py").write_text("x: int = 1\n", encoding="utf-8")
-        evidence = evidence_for(_collector(repo, ("a.py",)), {EVIDENCE_FLAG: "1"})
+        evidence = await evidence_for(_collector(repo, ("a.py",)), {EVIDENCE_FLAG: "1"})
         assert evidence is not None
         assert any("mypy" in c for c in evidence.commands)
 
@@ -203,9 +206,10 @@ class TestEveryOutcomeIsAnnounced:
     the day cataloguing, built fresh, hours after writing it down.
     """
 
-    def test_the_off_state_is_logged(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_the_off_state_is_logged(self, tmp_path: Path) -> None:
         with capture_logs() as logs:
-            evidence_for(_collector(tmp_path), {})
+            await evidence_for(_collector(tmp_path), {})
         assert "disabled" in _text(logs)
 
     def test_a_missing_toolchain_is_logged(self, tmp_path: Path) -> None:
@@ -256,3 +260,38 @@ def _text(logs: list[dict[str, Any]]) -> str:
     vacuously on an empty string — the shape these very tests exist to catch.
     """
     return " ".join(str(v) for entry in logs for v in entry.values()).lower()
+
+
+class TestArgvFlagSmuggling:
+    """A changed-file path must never reach a checker as an option (#402 review)."""
+
+    @pytest.mark.parametrize("name", ["-dash.py", "--config=evil.py", "sub/-x.py"])
+    def test_a_path_component_starting_with_a_dash_is_dropped(
+        self, tmp_path: Path, name: str
+    ) -> None:
+        """These are legal filenames and legal argv options at the same time.
+
+        `git diff --name-only` reports whatever the PR author committed, and the
+        result becomes argv for `mypy` and `ruff`. `--config=evil.py` would make
+        a checker read configuration from the branch under review rather than
+        report on it.
+        """
+        repo = _python_repo(tmp_path)
+        target = repo / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("x = 1\n", encoding="utf-8")
+        assert collect_evidence(repo, (name,)) is None
+
+    def test_the_terminator_is_present_on_every_command(self, tmp_path: Path) -> None:
+        """Belt and braces: the drop above is the belt, `--` is the braces.
+
+        Kept even though the drop makes it redundant today, because the two fail
+        differently — the drop depends on my parsing of a path, the terminator on
+        the tool's own argument handling — and a future verb added without the
+        drop still gets the terminator.
+        """
+        repo = _python_repo(tmp_path)
+        (repo / "a.py").write_text("x: int = 1\n", encoding="utf-8")
+        evidence = collect_evidence(repo, ("a.py",))
+        assert evidence is not None
+        assert all(" -- " in c for c in evidence.commands), evidence.commands
