@@ -131,7 +131,7 @@ async def test_judge_finding_parses_a_judgement() -> None:
     provider = StubProvider(
         ['{"verdict": "confirmed", "impact_score": 7, "rationale": "real off-by-one"}']
     )
-    judgement = await judge_finding(provider, _FINDING, "@@ -1 +1 @@\n+x")
+    judgement = await judge_finding(provider, _FINDING, "@@ -1 +1 @@\n+x", evidence=None)
     assert judgement is not None
     assert judgement.verdict == "confirmed"
     assert judgement.impact_score == 7
@@ -140,13 +140,13 @@ async def test_judge_finding_parses_a_judgement() -> None:
 @pytest.mark.asyncio
 async def test_judge_finding_returns_none_on_unparseable_response() -> None:
     """A failed call yields None — the caller keeps the finding unruled, never drops it."""
-    assert await judge_finding(StubProvider(["not json"]), _FINDING, "") is None
+    assert await judge_finding(StubProvider(["not json"]), _FINDING, "", evidence=None) is None
 
 
 @pytest.mark.asyncio
 async def test_judge_finding_returns_none_when_the_provider_raises() -> None:
     """Provider errors are contained per finding (#246 §3.4)."""
-    assert await judge_finding(BoomProvider(), _FINDING, "") is None
+    assert await judge_finding(BoomProvider(), _FINDING, "", evidence=None) is None
 
 
 @pytest.mark.asyncio

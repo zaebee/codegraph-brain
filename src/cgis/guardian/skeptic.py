@@ -142,9 +142,16 @@ DEFAULT_SKEPTIC_CONCURRENCY = 3
 
 
 async def judge_finding(
-    provider: BaseProvider, finding: Finding, hunks: str, evidence: Evidence | None = None
+    provider: BaseProvider, finding: Finding, hunks: str, *, evidence: Evidence | None
 ) -> FindingJudgement | None:
     """Judge one finding; None means this call failed (#246 §3.2).
+
+    `evidence` is keyword-only with no default, matching `judge_all`. It had a
+    default until our own guardian pointed at the inconsistency and quoted
+    `judge_all`'s docstring back — the paragraph explaining why a default here
+    would let a caller omit evidence invisibly. A rule stated in one place and
+    contradicted in the next is worse than no rule: the next reader follows
+    whichever they happen to open.
 
     Every failure mode — transport error, rate limit, unparseable output —
     collapses to None so the caller keeps the finding unruled and visible. A
@@ -199,7 +206,9 @@ async def judge_all(
 
     async def _one(finding: Finding) -> FindingJudgement | None:
         async with semaphore:
-            return await judge_finding(provider, finding, blocks.get(finding.file, ""), evidence)
+            return await judge_finding(
+                provider, finding, blocks.get(finding.file, ""), evidence=evidence
+            )
 
     return list(await asyncio.gather(*(_one(f) for f in findings)))
 
