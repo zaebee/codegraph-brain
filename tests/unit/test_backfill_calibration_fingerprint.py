@@ -464,8 +464,15 @@ def test_a_same_provider_skeptic_shares_the_finders_identity() -> None:
     # the thing it names is worse than no check.
     for identity, pairs in sorted(pairs_per_identity.items()):
         active_sets = {resolve_active_providers(finder, skeptic) for finder, skeptic in pairs}
+        # `p[1] or ""` because a pair's skeptic is None when there was no skeptic,
+        # and `sorted` on raw tuples raises TypeError comparing None to a str. The
+        # corpus contains exactly that mix — ("gemini", None) and ("gemini",
+        # "gemini") share one identity — so the message this assertion exists to
+        # print would have crashed instead of printing, and only on the run where
+        # it finally mattered. Verified: sorted([("g", None), ("g", "m")]) raises.
+        readable = sorted(pairs, key=lambda p: (p[0], p[1] or ""))
         assert len(active_sets) == 1, (
-            f"identity {identity} spans provider pairs {sorted(pairs)} resolving to "
+            f"identity {identity} spans provider pairs {readable} resolving to "
             f"{[sorted(s) for s in active_sets]} — distinct active-provider sets sharing "
             "one digest is a genuine merge, not the same-provider equivalence."
         )
@@ -499,7 +506,14 @@ def test_committed_bench_fingerprints_are_reproducible() -> None:
         "fingerprint is reproducible' when it means 'nothing was compared'."
     )
     mismatches: list[str] = []
-    for (sha, active), stored in sorted(rows_by_key.items()):
+    # Sorted on the sha and the *sorted* provider set. Ten shas carry fourteen
+    # (sha, active) keys, so shas tie, and a tie falls through to comparing two
+    # frozensets — where `<` means proper-subset, a partial order. Incomparable
+    # sets neither raise nor order, so `sorted` silently degraded to input order
+    # and the "deterministic iteration" this sort implies was not there.
+    for (sha, active), stored in sorted(
+        rows_by_key.items(), key=lambda kv: (kv[0][0], sorted(kv[0][1]))
+    ):
         recomputed = compute_fingerprint(git_reader(sha, REPO_ROOT), active)
         if stored != {recomputed}:
             mismatches.append(
