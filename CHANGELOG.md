@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.14.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.13.0...codegraph-brain-v0.14.0) (2026-08-16)
+
+
+### Features
+
+* **guardian:** give measured recall a reviewer it can name ([#390](https://github.com/zaebee/codegraph-brain/issues/390)) ([#391](https://github.com/zaebee/codegraph-brain/issues/391)) ([acc1887](https://github.com/zaebee/codegraph-brain/commit/acc18874b7ce67fa38b7dab41552838f9578516d))
+* **guardian:** say whether a temperature was chosen or inherited ([#393](https://github.com/zaebee/codegraph-brain/issues/393)) ([#395](https://github.com/zaebee/codegraph-brain/issues/395)) ([1b2c3c3](https://github.com/zaebee/codegraph-brain/commit/1b2c3c3f1619f00d20c36fb315eaca3dce5661d9))
+
+
+### Bug Fixes
+
+* **guardian:** close the deferred cleanups that could only narrow silently ([#385](https://github.com/zaebee/codegraph-brain/issues/385)) ([#386](https://github.com/zaebee/codegraph-brain/issues/386)) ([e7020ff](https://github.com/zaebee/codegraph-brain/commit/e7020ff237964a66728f0b437f13b70dc8bfe2f9))
+* **guardian:** refuse a model name carrying whitespace ([#382](https://github.com/zaebee/codegraph-brain/issues/382)) ([#389](https://github.com/zaebee/codegraph-brain/issues/389)) ([45fb110](https://github.com/zaebee/codegraph-brain/commit/45fb110d3e440e858f57c28cd3e343e61218697c))
+
+
+### Documentation
+
+* **bench:** a failed parse is not a draw ([#394](https://github.com/zaebee/codegraph-brain/issues/394)) ([a70b09b](https://github.com/zaebee/codegraph-brain/commit/a70b09bf1faf67ddefff2d7fdcf555aba51ced9f))
+* **bench:** repeated rows are samples, not corrections ([#392](https://github.com/zaebee/codegraph-brain/issues/392)) ([e1fcc3f](https://github.com/zaebee/codegraph-brain/commit/e1fcc3f4728e61363d06b022b14bc66f45f3a031))
+
 ## [0.13.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.12.0...codegraph-brain-v0.13.0) (2026-08-15)
 
 
