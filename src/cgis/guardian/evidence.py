@@ -28,10 +28,13 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import structlog
 from pydantic import BaseModel
 
 if TYPE_CHECKING:  # pragma: no cover
     from cgis.guardian.collector import ContextCollector
+
+log = structlog.getLogger(__name__)
 
 #: Cap on the rendered evidence. A checker over a large diff can outrun the
 #: context window, and a silently truncated verdict whose visible prefix happens
@@ -118,9 +121,14 @@ def collect_evidence(project_root: Path, changed_files: tuple[str, ...]) -> Evid
     existed, so an unsupported repository loses nothing.
     """
     if not (project_root / "pyproject.toml").is_file():
+        log.info("No evidence: no pyproject.toml.", project_root=str(project_root))
         return None
     files = _python_files_inside(project_root, changed_files)
     if not files:
+        log.info(
+            "No evidence: no changed Python file inside the repository.",
+            changed=len(changed_files),
+        )
         return None
 
     commands = [
@@ -131,9 +139,21 @@ def collect_evidence(project_root: Path, changed_files: tuple[str, ...]) -> Evid
     for command in commands:
         output = _run(command, project_root)
         if output is None:
+            log.warning(
+                "No evidence: a checker could not run; a failed checker has not said "
+                "the code is fine.",
+                command=" ".join(command),
+            )
             return None
         sections.append(f"$ {' '.join(command)}\n{output.strip() or '(no output)'}")
-    return Evidence(commands=tuple(" ".join(c) for c in commands), output="\n\n".join(sections))
+    evidence = Evidence(commands=tuple(" ".join(c) for c in commands), output="\n\n".join(sections))
+    log.info(
+        "Evidence collected for the skeptic.",
+        files=len(files),
+        commands=len(commands),
+        chars=len(evidence.output),
+    )
+    return evidence
 
 
 #: Ships inert, like `impact_threshold` (#246 §3.5): the effect on noise and
@@ -149,5 +169,6 @@ def evidence_for(collector: "ContextCollector", env: Mapping[str, str]) -> Evide
     place rather than at four call sites that could drift.
     """
     if (env.get(EVIDENCE_FLAG) or "").strip() != "1":
+        log.info("Evidence disabled.", flag=EVIDENCE_FLAG)
         return None
     return collect_evidence(collector.project_root, tuple(collector.get_changed_source_files()))

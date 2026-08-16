@@ -12,8 +12,10 @@ evidence the existing bar already demands.
 
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
+from structlog.testing import capture_logs
 
 from cgis.guardian.evidence import (
     EVIDENCE_FLAG,
@@ -190,3 +192,67 @@ class _FakeCollector:
 
 def _collector(root: Path, changed: tuple[str, ...] = ()) -> _FakeCollector:
     return _FakeCollector(root, changed)
+
+
+class TestEveryOutcomeIsAnnounced:
+    """A feature whose activation is unobservable cannot be verified after the fact.
+
+    The first CI run of #402 had `GUARDIAN_EVIDENCE: 1` in the step's environment
+    and the code on disk, and it was still impossible to say whether evidence was
+    collected — because nothing said so. That is the defect this repository spent
+    the day cataloguing, built fresh, hours after writing it down.
+    """
+
+    def test_the_off_state_is_logged(self, tmp_path: Path) -> None:
+        with capture_logs() as logs:
+            evidence_for(_collector(tmp_path), {})
+        assert "disabled" in _text(logs)
+
+    def test_a_missing_toolchain_is_logged(self, tmp_path: Path) -> None:
+        with capture_logs() as logs:
+            collect_evidence(tmp_path, ("a.py",))
+        assert "pyproject" in _text(logs)
+
+    def test_no_eligible_file_is_logged(self, tmp_path: Path) -> None:
+        with capture_logs() as logs:
+            collect_evidence(_python_repo(tmp_path), ("app.ts",))
+        assert "no changed python file" in _text(logs)
+
+    def test_success_reports_what_was_gathered(self, tmp_path: Path) -> None:
+        """Counts, not just a boolean: "collected" with zero files is a lie of omission."""
+        repo = _python_repo(tmp_path)
+        (repo / "a.py").write_text("x: int = 1\n", encoding="utf-8")
+        with capture_logs() as logs:
+            assert collect_evidence(repo, ("a.py",)) is not None
+        assert "evidence collected" in _text(logs)
+
+    def test_a_failed_checker_is_a_warning_not_a_silence(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The one branch that must not look like the ordinary absent case.
+
+        No toolchain is normal. A checker that crashed is a broken environment,
+        and reporting it at the same level as "this repo is TypeScript" would
+        bury it.
+        """
+        repo = _python_repo(tmp_path)
+        (repo / "a.py").write_text("x = 1\n", encoding="utf-8")
+
+        def boom(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+            _msg = "no such executable"
+            raise OSError(_msg)
+
+        monkeypatch.setattr(subprocess, "run", boom)
+        with capture_logs() as logs:
+            assert collect_evidence(repo, ("a.py",)) is None
+        assert "could not run" in _text(logs)
+
+
+def _text(logs: list[dict[str, Any]]) -> str:
+    """Everything the captured structlog events said, lowercased.
+
+    `caplog` sees nothing here: structlog is configured with its own pipeline
+    and does not route through stdlib logging, so a caplog assertion would pass
+    vacuously on an empty string — the shape these very tests exist to catch.
+    """
+    return " ".join(str(v) for entry in logs for v in entry.values()).lower()
