@@ -11,6 +11,7 @@ import pytest
 from guardian_stubs import FINDING_JSON, StubProvider
 from pydantic import BaseModel
 
+from cgis.guardian import runner
 from cgis.guardian.collector import ContextCollector
 from cgis.guardian.providers.base import BaseProvider, ProviderUsage
 from cgis.guardian.providers.mistral import MistralProvider
@@ -657,3 +658,50 @@ def test_build_provider_accepts_a_mixed_case_model() -> None:
         {"GUARDIAN_PROVIDER": "gemini", "GEMINI_API_KEY": "g", "GUARDIAN_MODEL": "Gemini-2.5-Flash"}
     )
     assert model == "Gemini-2.5-Flash"
+
+
+class TestTemperatureSetting:
+    """The value and its provenance, from one read of the environment (#393)."""
+
+    def test_an_explicit_value_is_labelled_explicit(self) -> None:
+        assert runner.temperature_setting({"GUARDIAN_TEMPERATURE": "0.7"}) == (0.7, "explicit")
+
+    def test_zero_is_explicit_not_absent(self) -> None:
+        """0.0 is the one temperature that is falsy and real.
+
+        A truthiness test here would label a deliberately registered
+        `temperature = 0` run as running on the provider's default — which is
+        the precise claim the run was configured to refute.
+        """
+        assert runner.temperature_setting({"GUARDIAN_TEMPERATURE": "0"}) == (0.0, "explicit")
+
+    def test_an_unset_variable_is_provider_default(self) -> None:
+        assert runner.temperature_setting({}) == (None, "provider_default")
+
+    def test_whitespace_is_not_a_setting(self) -> None:
+        assert runner.temperature_setting({"GUARDIAN_TEMPERATURE": "   "}) == (
+            None,
+            "provider_default",
+        )
+
+    def test_an_unparseable_value_is_provider_default_because_that_is_what_ran(self) -> None:
+        """A typo warns and falls back, so the provider really did choose.
+
+        Labelling it `explicit` would record a temperature nobody supplied; the
+        label has to describe what happened, not what was intended.
+        """
+        assert runner.temperature_setting({"GUARDIAN_TEMPERATURE": "warm"}) == (
+            None,
+            "provider_default",
+        )
+
+    def test_temperature_delegates_so_the_two_cannot_disagree(self) -> None:
+        """`temperature` is the first half of `temperature_setting`, not a second read.
+
+        Two functions parsing the same variable is how a record ends up claiming
+        a source that contradicts its value. Asserted across every shape rather
+        than one, since the failure would be per-branch.
+        """
+        for raw in ("0.7", "0", "", "   ", "warm"):
+            env = {"GUARDIAN_TEMPERATURE": raw}
+            assert runner.temperature(env) == runner.temperature_setting(env)[0]

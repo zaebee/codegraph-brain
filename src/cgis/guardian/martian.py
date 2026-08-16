@@ -18,11 +18,12 @@ from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from cgis.extractors.registry import is_supported
 from cgis.guardian.calibrate import JudgePair, assign_from_grid
 from cgis.guardian.findings import Finding
+from cgis.guardian.runner import TemperatureSource
 
 #: Severity vocabulary of the upstream corpus. Four values, not three — the
 #: spec's §"Ground truth format" omits `Critical` (12 of the 173 comments).
@@ -354,6 +355,27 @@ class ReviewRecord(BaseModel, frozen=True):
     #: and so cannot state what produced their numbers — the gap retraction R5
     #: found. None is therefore "inherited, unknown", not "zero".
     temperature: float | None = None
+    #: Whether that None was *chosen* or merely *inherited* (#393).
+    #:
+    #: The float alone cannot say. An absent key and an explicit null both load
+    #: as None and re-serialise identically, so "ran on the provider's default"
+    #: and "nothing was recorded" are the same row — which is why a downstream
+    #: consumer could not use temperature as a covariate at all: two runs under
+    #: different vendor defaults, including a default the vendor changed between
+    #: them, are byte-identical here.
+    #:
+    #: "explicit" — GUARDIAN_TEMPERATURE was set and `temperature` holds it.
+    #: "provider_default" — it was not (or did not parse); the provider chose,
+    #: and the value it chose is **not observable**: both providers omit the
+    #: parameter entirely when unset and neither API echoes back what it used.
+    #: None — legacy, written before #393. New records never leave it unset;
+    #: `test_a_new_record_always_states_its_temperature_source` is what makes
+    #: that true rather than intended.
+    #:
+    #: Defaulted, unlike `review_fingerprint_source` which has no default,
+    #: because 70 of the 115 committed rows predate the field and must stay
+    #: loadable. The consistency of the pair is enforced below instead.
+    temperature_source: TemperatureSource | None = None
     findings: list[Finding]
     prompt_tokens: int
     completion_tokens: int
@@ -386,6 +408,36 @@ class ReviewRecord(BaseModel, frozen=True):
     #: and excluded, never scored as "found nothing" — a crashed run and a
     #: clean LGTM are opposite evidence.
     error: str | None = None
+
+    @model_validator(mode="after")
+    def _temperature_agrees_with_its_source(self) -> "ReviewRecord":
+        """Refuse a record whose two temperature fields contradict each other.
+
+        Refused rather than repaired, the same choice as `reject_metrics_path`
+        (#350) and the whitespace model name (#382): there is no way to tell
+        which half is right. A row claiming `explicit` with no value states a
+        temperature nobody chose; a row claiming `provider_default` while
+        carrying one states that the provider picked a number we in fact
+        supplied. Both are worse than a loud failure, because a covariate is
+        only worth having if it is true.
+
+        A `None` source is exempt — that is the legacy shape, and 70 committed
+        rows have it.
+        """
+        if self.temperature_source == "explicit" and self.temperature is None:
+            _msg = (
+                "temperature_source='explicit' requires a temperature; got None. "
+                "An explicit setting that recorded no value is not explicit."
+            )
+            raise ValueError(_msg)
+        if self.temperature_source == "provider_default" and self.temperature is not None:
+            _msg = (
+                f"temperature_source='provider_default' requires temperature=None; got "
+                f"{self.temperature!r}. The provider's own choice is not observable, so a "
+                f"value here can only have come from us — which makes it 'explicit'."
+            )
+            raise ValueError(_msg)
+        return self
 
 
 def candidate_findings(record: ReviewRecord) -> list[Finding]:
