@@ -118,13 +118,25 @@ def diff_for(pr: int, bench_dir: Path, repo_root: Path) -> str:
                 f"git push origin {sha}:refs/tags/bench/fixture/pr-{pr}-{name}"
             )
             raise MissingFixtureError(_msg)
+    # `check=True` would surface a git failure as CalledProcessError, which is
+    # not what this function promises: every other way it cannot produce a diff
+    # raises MissingFixtureError, and a caller catching that would miss this one.
+    # Both shas are verified above, so a failure here is a broken repository
+    # rather than bad input — but "unlikely" is not the same as "cannot", and a
+    # refusal contract with one escape hatch is not a contract.
     result = subprocess.run(
         ["git", "diff", f"{base}...{head}"],
         capture_output=True,
         text=True,
         cwd=repo_root,
-        check=True,
+        check=False,
     )
+    if result.returncode != 0:
+        _msg = (
+            f"pr-{pr}: git diff {base}...{head} exited {result.returncode}: "
+            f"{result.stderr.strip() or '(no stderr)'}"
+        )
+        raise MissingFixtureError(_msg)
     if not result.stdout.strip():
         _msg = f"pr-{pr}: {base}...{head} is an empty diff; a review of nothing is not a pass."
         raise MissingFixtureError(_msg)

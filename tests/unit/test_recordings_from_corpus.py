@@ -226,3 +226,20 @@ def test_main_writes_the_recordings_and_reports(
     written = sorted(out.glob("*.json"))
     assert len(written) >= 72
     assert f"{len(written)} recordings written" in capsys.readouterr().out
+
+
+def test_a_git_failure_is_reported_as_a_missing_fixture(tmp_path: Path) -> None:
+    """The one finding of nineteen from our own guardian that had substance.
+
+    `check=True` would have raised `CalledProcessError` here, while every other
+    way `diff_for` fails raises `MissingFixtureError` — so a caller handling the
+    documented refusal would have missed exactly one path. Both shas are
+    verified before the diff runs, so this needs a repository that is broken
+    rather than input that is wrong: an empty directory that is not a git
+    repository at all.
+    """
+    (tmp_path / "pr-1.yaml").write_text("base: HEAD\nhead: HEAD\n", encoding="utf-8")
+    not_a_repo = tmp_path / "elsewhere"
+    not_a_repo.mkdir()
+    with pytest.raises(MissingFixtureError, match="does not resolve"):
+        diff_for(1, tmp_path, not_a_repo)
