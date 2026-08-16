@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.1](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.14.0...codegraph-brain-v0.14.1) (2026-08-16)
+
+
+### Bug Fixes
+
+* **bench:** cutting a release turned the new reachability tests red ([#397](https://github.com/zaebee/codegraph-brain/issues/397)) ([efbca37](https://github.com/zaebee/codegraph-brain/commit/efbca37c13e452fdf7266619b36d86b0e11bb795))
+
 ## [0.14.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.13.0...codegraph-brain-v0.14.0) (2026-08-16)
 
 
