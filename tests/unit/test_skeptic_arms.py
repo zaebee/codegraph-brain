@@ -87,8 +87,14 @@ class TestTheVendorSplit:
             ("gemini-2.5-flash", "gemini"),
             ("gemini-3.5-flash", "gemini"),
             ("mistral-medium-latest", "mistral"),
-            ("codestral-latest", "other"),
-            ("unknown", "other"),
+            # Mistral families whose names do not contain "mistral". codestral
+            # was the arm proposed in #246's first draft, so this is not
+            # hypothetical. Raised in review of #411.
+            ("codestral-latest", "mistral"),
+            ("ministral-8b-latest", "mistral"),
+            ("Gemini-2.5-Flash", "gemini"),
+            ("gpt-5", "unknown"),
+            ("", "unknown"),
         ],
     )
     def test_a_model_name_maps_to_its_vendor(self, model: str, vendor: str) -> None:
@@ -302,3 +308,29 @@ def test_report_labels_same_and_cross_from_the_finder(capsys: pytest.CaptureFixt
     out = capsys.readouterr().out
     assert "cross" in out
     assert "same" in out
+
+
+def test_an_unattributed_finder_is_never_reported_as_cross(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The silent failure behind the codestral case, and the general answer to it.
+
+    An unrecognised model used to become "other"; "other" equals no arm name, so
+    every one of its rows read `cross` — in the exact variable this experiment
+    measures. A new vendor would not have raised anything; it would have
+    produced a wrong answer shaped like the expected one. So `unknown` is its
+    own kind and the model is named, because the fix is a one-line marker and
+    nobody can apply it to a number they never saw.
+    """
+    rows: list[dict[str, Any]] = [
+        {"finder_model": "gpt-5", "arm": "gemini", "refuted": 1, "findings": 4, "killed_gt": []}
+    ]
+    report(rows)
+    out = capsys.readouterr().out
+    # The table row, not the whole blob: the sentence naming the omission says
+    # "same/cross split", so a substring check over the output would pass on the
+    # explanation while the row said `cross`.
+    row_line = next(line for line in out.splitlines() if line.startswith("unknown"))
+    assert row_line.split()[:3] == ["unknown", "gemini", "unknown"]
+    assert "gpt-5" in out
+    assert "_VENDOR_MARKERS" in out

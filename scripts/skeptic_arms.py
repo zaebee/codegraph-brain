@@ -220,8 +220,39 @@ async def collect_rows(repo_root: Path, limit: int | None) -> list[dict[str, Any
     return rows
 
 
+#: Substrings that identify a model's vendor, lower-cased.
+#:
+#: Explicit rather than "does the name contain the vendor's name", because
+#: Mistral ships families that do not: `codestral-latest` is a Mistral model and
+#: was the arm proposed for #246's first draft. Raised in review of #411.
+_VENDOR_MARKERS: dict[str, tuple[str, ...]] = {
+    "gemini": ("gemini",),
+    "mistral": ("mistral", "codestral", "ministral", "magistral"),
+}
+
+#: A model this table does not recognise. **Not** a third vendor — a refusal to
+#: guess, and it has to travel as far as the report.
+#:
+#: The failure it replaces was silent and pointed one way. An unrecognised model
+#: used to become "other", "other" never equals an arm name, so every one of its
+#: rows read `cross` — in the exact variable this experiment measures. A new
+#: vendor tomorrow would not have produced an error; it would have produced a
+#: wrong answer that looked like the expected one.
+UNKNOWN_VENDOR = "unknown"
+
+
 def _vendor(model: str) -> str:
-    return "gemini" if "gemini" in model else "mistral" if "mistral" in model else "other"
+    """The vendor behind a model name, or `UNKNOWN_VENDOR`.
+
+    Lower-cased first: the corpus holds names as the provider reported them, and
+    a capitalised variant would fall through to unknown for no reason anyone
+    chose.
+    """
+    lowered = model.lower()
+    for vendor, markers in _VENDOR_MARKERS.items():
+        if any(marker in lowered for marker in markers):
+            return vendor
+    return UNKNOWN_VENDOR
 
 
 def report(rows: list[dict[str, Any]]) -> None:
@@ -235,11 +266,23 @@ def report(rows: list[dict[str, Any]]) -> None:
     for row in rows:
         groups[(_vendor(str(row["finder_model"])), str(row["arm"]))].append(row)
     for (finder, arm), group in sorted(groups.items()):
-        kind = "same" if finder == arm else "cross"
+        # `unknown` is its own kind, never folded into `cross`. same-vs-cross is
+        # the variable under test, and for a model no one has attributed it is
+        # not merely unmeasured — it is unknowable, so saying "cross" would be
+        # inventing the answer.
+        kind = "unknown" if finder == UNKNOWN_VENDOR else "same" if finder == arm else "cross"
         refuted = sum(int(r["refuted"]) for r in group)
         total = sum(int(r["findings"]) for r in group)
         killed = sum(len(r["killed_gt"]) for r in group)
         print(f"{finder:9} {arm:9} {kind:7} {len(group):6} {refuted:8} {total:5} {killed:10}")
+    unattributed = sorted(
+        {str(r["finder_model"]) for r in rows if _vendor(str(r["finder_model"])) == UNKNOWN_VENDOR}
+    )
+    if unattributed:
+        print(
+            f"\n{len(unattributed)} model name(s) match no vendor and are excluded from the "
+            f"same/cross split: {', '.join(unattributed)}. Add a marker to _VENDOR_MARKERS."
+        )
     print(
         "\n'killed GT' is ground truth the finder matched and the skeptic then hid — the "
         "recall cost, which `missed` cannot show."
