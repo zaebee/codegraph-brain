@@ -67,6 +67,25 @@ jobs:
           uv run --frozen pytest --cov=cgis --cov=scripts
           --cov-report=term-missing --cov-report=xml
 
+      - name: Test-count floor
+        # Deliberately a workflow step and not a test (#405). On 2026-08-17 a
+        # stale-tree push deleted 24 test files and 5 modules under src/cgis,
+        # and the step above passed: the tests that would have failed went with
+        # them. Every floor the repository had lived inside a test file, so the
+        # push that tripped them also removed them.
+        #
+        # The floor is read from the *base branch*, not from this checkout — a
+        # stale tree carries a stale baseline, and comparing the branch against
+        # its own copy passes the exact incident above. `fetch-depth: 0` on the
+        # checkout is what makes origin/<base> readable here.
+        #
+        # `github.base_ref` is set on pull_request only; on a push to the trunk
+        # it is empty and ref_name is the branch being pushed, which is the
+        # right comparison there too.
+        run: >
+          uv run --frozen python scripts/check_test_count.py
+          --base-ref "origin/${{ github.base_ref || github.ref_name }}"
+
       - name: Project version for Sonar
         id: version
         # Without this every analysis records the version as the literal string
