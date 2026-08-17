@@ -32,6 +32,7 @@ from guardian_replay_skeptic import (
     changed_files,
     cites_a_checker,
     flips,
+    main,
     replay,
     worktree_at,
     write_rows,
@@ -410,6 +411,31 @@ class TestThePerFindingDump:
         short = [_judgement("refuted")]
         with pytest.raises(ValueError, match=r"argument 2 is shorter|argument 3 is shorter"):
             write_rows(out, findings, ["confirmed"], short)
+
+
+class TestExactlyOneArmPerRun:
+    """Neither flag and both flags are one failure: a run reporting an arm it did not perform.
+
+    `--control --at <sha>` is the dangerous half, and it is the half that
+    survived the first draft: it ran the control while naming a commit, so the
+    output reads back as a treatment result. Raised in review of #406 — in the
+    pull request about mislabelled arms.
+    """
+
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            pytest.param(["--recording", "r.json"], id="neither-arm"),
+            pytest.param(["--recording", "r.json", "--control", "--at", "HEAD"], id="both-arms"),
+        ],
+    )
+    def test_the_cli_refuses_rather_than_picking_one(
+        self, argv: list[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(sys, "argv", ["guardian_replay_skeptic.py", *argv])
+        with pytest.raises(SystemExit) as exit_info:
+            main()
+        assert exit_info.value.code == 2
 
 
 class TestSkepticSelection:

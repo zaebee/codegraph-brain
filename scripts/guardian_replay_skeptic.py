@@ -317,8 +317,16 @@ def main() -> int:
     """Replay one recording and print the paired comparison."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--recording", type=Path, required=True)
-    parser.add_argument("--at", help="ref or sha the recording was taken at; the evidence arm")
-    parser.add_argument(
+    # Exactly one arm per invocation, enforced by argparse rather than by two
+    # hand-written checks. Both ways of getting it wrong are the same failure —
+    # the run reports an arm it did not perform. Neither flag silently ran the
+    # treatment without a commit; `--control --at <sha>` silently ran the
+    # control while naming a commit, which reads back as a treatment result and
+    # is exactly the mislabelling this module exists to refuse. Caught in review
+    # of #406, in the pull request about mislabelled arms.
+    arm = parser.add_mutually_exclusive_group(required=True)
+    arm.add_argument("--at", help="ref or sha the recording was taken at; the evidence arm")
+    arm.add_argument(
         "--control",
         action="store_true",
         help="judge without evidence, to measure how much the sampled skeptic moves on its own",
@@ -328,13 +336,6 @@ def main() -> int:
         "--out", type=Path, help="write one JSON line per finding: was, now, and the rationale"
     )
     args = parser.parse_args()
-    # Refused here rather than defaulted: silently running the control because
-    # no ref was given is precisely the mislabelling `NoEvidenceError` exists to
-    # prevent, and an argparse error costs the operator one line.
-    if not args.control and not args.at:
-        parser.error(
-            "--at is required for the evidence arm; pass --control for the no-evidence arm"
-        )
 
     matrix, cited = asyncio.run(
         replay(
