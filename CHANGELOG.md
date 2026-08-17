@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.15.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.14.1...codegraph-brain-v0.15.0) (2026-08-17)
+
+
+### Features
+
+* **bench:** rebuild frozen finder passes from the corpus, free ([#246](https://github.com/zaebee/codegraph-brain/issues/246)) ([#399](https://github.com/zaebee/codegraph-brain/issues/399)) ([b73f6e0](https://github.com/zaebee/codegraph-brain/commit/b73f6e0d40c5bdc4dadca4acd468d7835670be28))
+* **guardian:** a replay arm that pairs each finding against its own baseline ([#401](https://github.com/zaebee/codegraph-brain/issues/401)) ([#404](https://github.com/zaebee/codegraph-brain/issues/404)) ([b2ab59a](https://github.com/zaebee/codegraph-brain/commit/b2ab59a8d7b5f62a307874b8a0eb9573273fa0ea))
+* **guardian:** let the skeptic see what the checkers say ([#401](https://github.com/zaebee/codegraph-brain/issues/401)) ([#402](https://github.com/zaebee/codegraph-brain/issues/402)) ([af82147](https://github.com/zaebee/codegraph-brain/commit/af821473080bd3a717679e36c90164a43ca07f7b))
+
 ## [0.14.1](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.14.0...codegraph-brain-v0.14.1) (2026-08-16)
 
 
