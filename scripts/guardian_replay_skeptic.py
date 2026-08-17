@@ -279,7 +279,17 @@ def write_rows(
                         "now": now.verdict if now is not None else None,
                         "cites_a_checker": cites_a_checker(now),
                         "rationale": now.rationale if now is not None else None,
-                    }
+                    },
+                    # The only `ensure_ascii=False` in the repository, and
+                    # deliberately so: every other `json.dumps` here serialises
+                    # structural data for a machine, while this file holds
+                    # free-form model prose and exists to be read — an em dash
+                    # or a curly quote inside a rationale would arrive as
+                    # `—` and make the sentence harder to read than the
+                    # verdict it explains. Raised in review of #406; today's
+                    # rows contain no non-ASCII at all, so this changes nothing
+                    # yet and everything the first time a model uses one.
+                    ensure_ascii=False,
                 )
                 + "\n"
             )

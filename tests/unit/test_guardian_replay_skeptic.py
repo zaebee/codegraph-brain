@@ -404,6 +404,21 @@ class TestThePerFindingDump:
         assert rows[1]["now"] is None
         assert rows[1]["rationale"] is None
 
+    def test_non_ascii_in_a_rationale_stays_readable(self, tmp_path: Path) -> None:
+        r"""These rows exist to be read, and `—` in place of an em dash defeats that.
+
+        Raised in review of #406. Today's corpus has no non-ASCII in any
+        rationale, so this asserts on input the current data does not contain —
+        which is the point: the first model that writes a dash would otherwise
+        degrade the file silently, and nothing would fail.
+        """
+        findings = self._findings(tmp_path, 1)
+        out = tmp_path / "dump.jsonl"
+        write_rows(out, findings, ["confirmed"], [_judgement("refuted", "ruff — no issue")])
+        raw = out.read_text(encoding="utf-8")
+        assert "—" in raw
+        assert "\\u2014" not in raw
+
     def test_a_length_mismatch_refuses_rather_than_truncating(self, tmp_path: Path) -> None:
         """`strict=True` on the zip: a short column would silently drop the tail."""
         findings = self._findings(tmp_path, 2)
