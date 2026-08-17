@@ -255,6 +255,23 @@ def _vendor(model: str) -> str:
     return UNKNOWN_VENDOR
 
 
+def pairing_kind(finder: str, arm: str) -> str:
+    """How a (finder, skeptic) pair relates: `same`, `cross`, or `unknown`.
+
+    Its own function rather than a conditional inside the report loop, because
+    it is the experiment's independent variable and deserves to be read and
+    tested on its own (raised by SonarCloud on #411 as a nested conditional).
+
+    `unknown` is never folded into `cross`. For a model nobody has attributed,
+    same-vs-cross is not merely unmeasured but unknowable, and answering `cross`
+    would be inventing the very thing under test — which is exactly what the
+    previous version did, silently, to every unrecognised model.
+    """
+    if finder == UNKNOWN_VENDOR:
+        return "unknown"
+    return "same" if finder == arm else "cross"
+
+
 def report(rows: list[dict[str, Any]]) -> None:
     """The comparison the issue asks for, split by which vendor found the findings."""
     print(f"\n{len(rows)} (pass, arm) results\n")
@@ -266,11 +283,7 @@ def report(rows: list[dict[str, Any]]) -> None:
     for row in rows:
         groups[(_vendor(str(row["finder_model"])), str(row["arm"]))].append(row)
     for (finder, arm), group in sorted(groups.items()):
-        # `unknown` is its own kind, never folded into `cross`. same-vs-cross is
-        # the variable under test, and for a model no one has attributed it is
-        # not merely unmeasured — it is unknowable, so saying "cross" would be
-        # inventing the answer.
-        kind = "unknown" if finder == UNKNOWN_VENDOR else "same" if finder == arm else "cross"
+        kind = pairing_kind(finder, arm)
         refuted = sum(int(r["refuted"]) for r in group)
         total = sum(int(r["findings"]) for r in group)
         killed = sum(len(r["killed_gt"]) for r in group)

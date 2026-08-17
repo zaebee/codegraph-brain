@@ -310,6 +310,25 @@ def test_report_labels_same_and_cross_from_the_finder(capsys: pytest.CaptureFixt
     assert "same" in out
 
 
+@pytest.mark.parametrize(
+    ("finder", "arm", "kind"),
+    [
+        ("gemini", "gemini", "same"),
+        ("mistral", "mistral", "same"),
+        ("gemini", "mistral", "cross"),
+        ("mistral", "gemini", "cross"),
+        # Both orderings, because `unknown` must not depend on which arm it met.
+        ("unknown", "gemini", "unknown"),
+        ("unknown", "mistral", "unknown"),
+    ],
+)
+def test_the_independent_variable_is_classified_on_its_own(
+    finder: str, arm: str, kind: str
+) -> None:
+    """same / cross / unknown, read and checked apart from the report that prints it."""
+    assert skeptic_arms.pairing_kind(finder, arm) == kind
+
+
 def test_an_unattributed_finder_is_never_reported_as_cross(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
