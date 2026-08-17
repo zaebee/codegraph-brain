@@ -1,4 +1,22 @@
 repos:
+  - repo: local
+    hooks:
+      # SonarCloud's python:S5778, enforced before the push rather than after it.
+      # Sonar only decorates a pull request, so the loop was write -> push ->
+      # get told -> fix -> forget, five times over. `pass_filenames: false`
+      # because the check is a repo-wide ratchet (a stale baseline entry is a
+      # failure too), which a staged-files-only view cannot see.
+      #
+      # This hook is the fast half, not the gate: CI does not run pre-commit,
+      # so `tests/unit/test_check_pytest_raises.py` is what actually blocks a
+      # merge. Both call the same `check()`.
+      - id: pytest-raises-single-call
+        name: one throwing call per pytest.raises block (S5778)
+        entry: python scripts/check_pytest_raises.py
+        language: system
+        pass_filenames: false
+        files: ^tests/.*\.py$
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.16
     hooks:

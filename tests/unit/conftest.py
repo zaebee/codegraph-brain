@@ -1,14 +1,58 @@
 """Shared test helpers for the tests/unit suite.
 
-Plain importable functions (no pytest fixtures) so any test module can do::
+Mostly plain importable functions (no pytest fixtures) so any test module can
+do::
 
     from conftest import make_chain_db, make_chain_nodes_edges, module_with_funcs
+
+`sample_record` is the one actual pytest fixture here, auto-discovered by
+pytest under its conftest name rather than imported explicitly.
 """
 
 from pathlib import Path
 
+import pytest
+
 from cgis.core.models import Edge, EdgeType, Node, NodeType
+from cgis.guardian.martian import ReviewRecord
 from cgis.storage.sqlite_store import SQLiteStore
+
+#: The three reviewer-identity fields every `ReviewRecord` fixture needs (#375).
+#: Spread with `**` into either shape — a constructor call or a raw-dict row —
+#: so the same literal cannot drift between the two. It was copied verbatim at
+#: six sites before #385; the value is arbitrary, its *sameness* is the point.
+IDENTITY_FIELDS = {
+    "review_fingerprint": "abc123abc123",
+    "review_fingerprint_source": "measured",
+    "finder_provider": "gemini",
+}
+
+
+@pytest.fixture
+def sample_record() -> ReviewRecord:
+    """One minimal, valid `ReviewRecord` — the shape every test fixture copies.
+
+    Mirrors `tests/unit/test_guardian_martian_script.py`'s `_record(...)`
+    helper with the four reviewer-identity fields added (#375 Task 5).
+    """
+    return ReviewRecord(
+        url="https://github.com/o/r/pull/1",
+        project="p",
+        pr_slice="graph",
+        base_sha="b",
+        head_sha="h",
+        had_graph=True,
+        finder_model="m",
+        skeptic_model=None,
+        findings=[],
+        prompt_tokens=1,
+        completion_tokens=1,
+        duration_s=1.0,
+        parse_failed=False,
+        guardian_sha="sha",
+        reviewed_at="2026-08-12T00:00:00+00:00",
+        **IDENTITY_FIELDS,
+    )
 
 
 def make_file_node(fqn: str, path: str | None = None) -> Node:

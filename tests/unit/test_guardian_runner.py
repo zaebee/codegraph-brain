@@ -1,16 +1,20 @@
 """Tests for the guardian script runner (provider selection + orchestration)."""
 
+import json
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
+from typing import ClassVar
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from guardian_stubs import FINDING_JSON, StubProvider
 from pydantic import BaseModel
 
+from cgis.guardian import runner
 from cgis.guardian.collector import ContextCollector
 from cgis.guardian.providers.base import BaseProvider, ProviderUsage
+from cgis.guardian.providers.mistral import MistralProvider
 from cgis.guardian.providers.ollama import OllamaProvider
 from cgis.guardian.recording import load_finder_recording
 from cgis.guardian.runner import (
@@ -25,9 +29,13 @@ from cgis.guardian.runner import (
 
 _VALID_JSON = '{"findings": [], "summary": "all good"}'
 
+_FP = "test-fp-0000"  # a stand-in review_fingerprint; run_guardian requires one (#375)
+
 
 class _FakeProvider(BaseProvider):
     """Returns canned structured JSON."""
+
+    name: ClassVar[str] = "gemini"
 
     def __init__(self, response: str = _VALID_JSON) -> None:
         """Store the canned response."""
@@ -291,10 +299,34 @@ async def test_run_guardian_smoke(tmp_path: Path) -> None:
         collector=collector,
         pr=152,
         metrics_path=metrics,
+        review_fingerprint=_FP,
     )
     assert report.startswith("LGTM — no defects found in this diff.")
     assert metrics.exists()
     assert posted_inline is False
+
+
+async def test_run_guardian_forwards_the_fingerprint_to_the_metrics_row(tmp_path: Path) -> None:
+    """A live review is attributable to a reviewer version, not just a commit (#375).
+
+    `review_fingerprint` is keyword-required precisely so this forwarding
+    cannot be silently deleted from `run_guardian` without every caller (and
+    mypy strict) noticing. This test guards the other half: that the value
+    which does arrive actually reaches the metrics row `record_review` writes,
+    rather than merely being accepted and dropped.
+    """
+    metrics = tmp_path / "m.jsonl"
+    collector = ContextCollector(project_root=tmp_path)
+    await run_guardian(
+        provider=_FakeProvider(),
+        model="fake-model",
+        collector=collector,
+        pr=152,
+        metrics_path=metrics,
+        review_fingerprint=_FP,
+    )
+    entry = json.loads(metrics.read_text().splitlines()[0])
+    assert entry["review_fingerprint"] == _FP
 
 
 # ---------------------------------------------------------------------------
@@ -323,6 +355,7 @@ async def test_run_guardian_posts_inline_and_reports_success(tmp_path: Path) -> 
             pr=153,
             metrics_path=tmp_path / "m.jsonl",
             inline_repo="zaebee/codegraph-brain",
+            review_fingerprint=_FP,
         )
     assert posted is True
     mock_post.assert_called_once()
@@ -349,6 +382,7 @@ async def test_run_guardian_inline_failure_falls_back(tmp_path: Path) -> None:
             pr=153,
             metrics_path=tmp_path / "m.jsonl",
             inline_repo="zaebee/codegraph-brain",
+            review_fingerprint=_FP,
         )
     assert posted is False
     assert "**[Logic Bug]" in report
@@ -369,6 +403,7 @@ async def test_run_guardian_no_inline_repo_skips_posting(tmp_path: Path) -> None
             collector=collector,
             pr=None,
             metrics_path=tmp_path / "m.jsonl",
+            review_fingerprint=_FP,
         )
     assert posted is False
     mock_post.assert_not_called()
@@ -399,6 +434,7 @@ async def test_run_guardian_records_the_finder_pass(tmp_path: Path) -> None:
             pr=1,
             metrics_path=tmp_path / "m.jsonl",
             record_finder=recording_path,
+            review_fingerprint=_FP,
         )
 
     loaded = load_finder_recording(recording_path)
@@ -420,6 +456,7 @@ async def test_run_guardian_records_nothing_without_the_flag(tmp_path: Path) -> 
             collector=collector,
             pr=1,
             metrics_path=tmp_path / "m.jsonl",
+            review_fingerprint=_FP,
         )
 
     assert not recording_path.exists()
@@ -448,6 +485,7 @@ async def test_refuted_findings_survive_into_the_recording(tmp_path: Path) -> No
             metrics_path=tmp_path / "m.jsonl",
             skeptic=(skeptic, "stub-skeptic"),
             record_finder=recording_path,
+            review_fingerprint=_FP,
         )
 
     loaded = load_finder_recording(recording_path)
@@ -480,6 +518,7 @@ async def test_a_failed_recording_does_not_lose_the_review(tmp_path: Path) -> No
             pr=1,
             metrics_path=metrics,
             record_finder=tmp_path / "finder.json",
+            review_fingerprint=_FP,
         )
 
     assert "**[Logic Bug]" in report
@@ -508,4 +547,213 @@ async def test_a_bad_recording_path_fails_loudly(tmp_path: Path) -> None:
             pr=1,
             metrics_path=tmp_path / "m.jsonl",
             record_finder=tmp_path / "finder.txt",
+            review_fingerprint=_FP,
         )
+
+
+class TestTemperatureFromEnv:
+    """GUARDIAN_TEMPERATURE, so a registered sampling value is a run-time input.
+
+    Phase 3 (#342) registers a temperature before spending. It has to arrive
+    from configuration rather than a literal, or the spec and the run drift
+    apart with nothing to notice.
+    """
+
+    def test_the_value_reaches_the_provider(self) -> None:
+        env = {"MISTRAL_API_KEY": "k", "GUARDIAN_TEMPERATURE": "0.7"}
+
+        provider, _ = build_provider(env)
+
+        assert isinstance(provider, MistralProvider)
+        assert provider._temperature == 0.7  # noqa: SLF001  # white-box: sampling wiring
+
+    def test_absent_means_the_api_default_rather_than_an_invented_one(self) -> None:
+        """Phases 1 and 2 ran on provider defaults, and that is left untouched."""
+        provider, _ = build_provider({"MISTRAL_API_KEY": "k"})
+
+        assert isinstance(provider, MistralProvider)
+        assert provider._temperature is None  # noqa: SLF001  # white-box: sampling wiring
+
+    def test_zero_survives_the_parse(self) -> None:
+        """0.0 is falsy and would be lost by a truthiness check on the raw string."""
+        provider, _ = build_provider({"MISTRAL_API_KEY": "k", "GUARDIAN_TEMPERATURE": "0"})
+
+        assert isinstance(provider, MistralProvider)
+        assert provider._temperature == 0.0  # noqa: SLF001  # white-box: sampling wiring
+
+    def test_an_unparseable_value_warns_and_falls_back(self) -> None:
+        """Mirrors GUARDIAN_OLLAMA_NUM_CTX: a typo must not abort a paid run."""
+        provider, _ = build_provider({"MISTRAL_API_KEY": "k", "GUARDIAN_TEMPERATURE": "warm"})
+
+        assert isinstance(provider, MistralProvider)
+        assert provider._temperature is None  # noqa: SLF001  # white-box: sampling wiring
+
+    def test_the_skeptic_gets_the_same_temperature(self) -> None:
+        """One registered sampling setting, not one per pass."""
+        env = {
+            "MISTRAL_API_KEY": "k",
+            "GUARDIAN_SKEPTIC": "mistral",
+            "GUARDIAN_TEMPERATURE": "0.7",
+        }
+
+        built = build_skeptic_provider(env, primary="mistral")
+
+        assert built is not None
+        provider, _ = built
+        assert isinstance(provider, MistralProvider)
+        assert provider._temperature == 0.7  # noqa: SLF001  # white-box: sampling wiring
+
+
+@pytest.mark.parametrize("raw", ["gemini-2.5-flash ", " gemini-2.5-flash", "\tgemini-2.5-flash"])
+def test_build_provider_refuses_an_unstripped_model(raw: str) -> None:
+    """A padded model name is a different reviewer, and an invisible one.
+
+    `"gemini-2.5-flash "` renders identically to the correct value in every log,
+    diff and terminal, and is recorded verbatim into the field a downstream
+    consumer hashes into a permanent identity. Refused rather than trimmed:
+    silently repairing it lets the bad variable survive to do something else
+    later (#382).
+    """
+    with pytest.raises(RuntimeError, match="whitespace"):
+        build_provider(
+            {"GUARDIAN_PROVIDER": "gemini", "GEMINI_API_KEY": "g", "GUARDIAN_MODEL": raw}
+        )
+
+
+def test_build_skeptic_provider_refuses_an_unstripped_model() -> None:
+    """The skeptic degrades on a *missing* model; a malformed one is different.
+
+    `build_skeptic_provider` returns None when a key or model is absent, so a
+    review never fails for want of a skeptic. Absence is a legitimate
+    configuration; surrounding whitespace is a typo that would mint a duplicate
+    identity, so it refuses instead of degrading (#382, deliberate narrowing).
+    """
+    env = {
+        "GUARDIAN_SKEPTIC": "mistral",
+        "MISTRAL_API_KEY": "m",
+        "GUARDIAN_SKEPTIC_MODEL": "mistral-medium-latest ",
+    }
+    with pytest.raises(RuntimeError, match="whitespace"):
+        build_skeptic_provider(env, primary="gemini")
+
+
+def test_build_skeptic_provider_refuses_an_unstripped_fallback_model() -> None:
+    """An ollama skeptic falls back to GUARDIAN_MODEL — the same string, same rule."""
+    env = {"GUARDIAN_SKEPTIC": "ollama", "GUARDIAN_MODEL": "codellama:13b "}
+    with pytest.raises(RuntimeError, match="whitespace"):
+        build_skeptic_provider(env, primary="gemini")
+
+
+def test_build_provider_accepts_a_mixed_case_model() -> None:
+    """Casing is deliberately NOT normalised, and this pins that.
+
+    A model name is an identifier, not a label: Ollama tags are case-sensitive
+    in principle, so lowercasing for storage is lossy and refusing mixed case
+    would break a legitimate name. Whitespace is different in kind — never part
+    of an identifier — which is why one is refused and the other left alone
+    (#382). Without this test a future tidy-up adds `.lower()` in good faith and
+    re-mints every downstream identity.
+    """
+    _provider, model = build_provider(
+        {"GUARDIAN_PROVIDER": "gemini", "GEMINI_API_KEY": "g", "GUARDIAN_MODEL": "Gemini-2.5-Flash"}
+    )
+    assert model == "Gemini-2.5-Flash"
+
+
+class TestTemperatureSetting:
+    """The value and its provenance, from one read of the environment (#393)."""
+
+    def test_an_explicit_value_is_labelled_explicit(self) -> None:
+        assert runner.temperature_setting({"GUARDIAN_TEMPERATURE": "0.7"}) == (0.7, "explicit")
+
+    def test_zero_is_explicit_not_absent(self) -> None:
+        """0.0 is the one temperature that is falsy and real.
+
+        A truthiness test here would label a deliberately registered
+        `temperature = 0` run as running on the provider's default — which is
+        the precise claim the run was configured to refute.
+        """
+        assert runner.temperature_setting({"GUARDIAN_TEMPERATURE": "0"}) == (0.0, "explicit")
+
+    def test_an_unset_variable_is_provider_default(self) -> None:
+        assert runner.temperature_setting({}) == (None, "provider_default")
+
+    def test_whitespace_is_not_a_setting(self) -> None:
+        assert runner.temperature_setting({"GUARDIAN_TEMPERATURE": "   "}) == (
+            None,
+            "provider_default",
+        )
+
+    def test_an_unparseable_value_is_provider_default_because_that_is_what_ran(self) -> None:
+        """A typo warns and falls back, so the provider really did choose.
+
+        Labelling it `explicit` would record a temperature nobody supplied; the
+        label has to describe what happened, not what was intended.
+        """
+        assert runner.temperature_setting({"GUARDIAN_TEMPERATURE": "warm"}) == (
+            None,
+            "provider_default",
+        )
+
+    def test_temperature_delegates_so_the_two_cannot_disagree(self) -> None:
+        """`temperature` is the first half of `temperature_setting`, not a second read.
+
+        Two functions parsing the same variable is how a record ends up claiming
+        a source that contradicts its value. Asserted across every shape rather
+        than one, since the failure would be per-branch.
+        """
+        for raw in ("0.7", "0", "", "   ", "warm"):
+            env = {"GUARDIAN_TEMPERATURE": raw}
+            assert runner.temperature(env) == runner.temperature_setting(env)[0]
+
+
+class TestTemperatureRejectsWhatIsNotATemperature:
+    """`float()` accepts more than a sampling temperature can be (#395 review)."""
+
+    def test_a_negative_value_falls_back(self) -> None:
+        """Invalid sampling everywhere; it would fail at the API and lose the run."""
+        assert runner.temperature_setting({"GUARDIAN_TEMPERATURE": "-1"}) == (
+            None,
+            "provider_default",
+        )
+
+    @pytest.mark.parametrize("raw", ["nan", "inf", "-inf", "1e400", "NaN", "Infinity"])
+    def test_non_finite_values_fall_back(self, raw: str) -> None:
+        """The cases a sign test misses: NaN and inf are not less than zero.
+
+        `1e400` is included because it is a plain-looking decimal literal that
+        overflows to `inf` — nothing about it reads as non-finite at the call
+        site.
+        """
+        assert runner.temperature_setting({"GUARDIAN_TEMPERATURE": raw}) == (
+            None,
+            "provider_default",
+        )
+
+    def test_a_nan_would_have_written_an_unparseable_corpus_row(self) -> None:
+        """Why this is `isfinite` and not `>= 0`: NaN is not merely a bad run.
+
+        `json.dumps` renders it as the bare token `NaN`, which is not valid
+        JSON. Python reads it back as an extension, so the damage is invisible
+        here; a strict reader downstream cannot read the line at all. Asserted
+        rather than described, because the whole argument for widening the guard
+        rests on it.
+        """
+        rendered = json.dumps({"temperature": float("nan")})
+        assert rendered == '{"temperature": NaN}'
+
+        def reject(token: str) -> float:
+            """Stand in for a strict reader, which has no NaN token to give back."""
+            _msg = f"rejected {token}"
+            raise ValueError(_msg)
+
+        # `reject` is hoisted out of the block so the only call inside it is the
+        # one under test (python:S5778) — caught by this repository's own
+        # checker, which is the point of having it.
+        with pytest.raises(ValueError, match="rejected"):
+            json.loads(rendered, parse_constant=reject)
+
+    def test_zero_and_a_normal_value_still_pass(self) -> None:
+        """The guard must not cost the settings it exists to protect."""
+        assert runner.temperature_setting({"GUARDIAN_TEMPERATURE": "0"}) == (0.0, "explicit")
+        assert runner.temperature_setting({"GUARDIAN_TEMPERATURE": "0.7"}) == (0.7, "explicit")

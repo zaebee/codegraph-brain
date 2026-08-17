@@ -1,5 +1,7 @@
 """Unit tests for provider retry semantics and timeout wiring (#275)."""
 
+from typing import ClassVar
+
 import httpx
 import pytest
 from pydantic import BaseModel
@@ -15,6 +17,8 @@ class _Recorder(BaseProvider):
     Distinct from guardian_stubs.StubProvider, which returns canned JSON: this
     one scripts per-call outcomes and spies on the backoff.
     """
+
+    name: ClassVar[str] = "gemini"
 
     def __init__(self, outcomes: list[object]) -> None:
         """Store the scripted per-call outcomes: an exception to raise or a value."""

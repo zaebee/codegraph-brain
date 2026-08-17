@@ -56,7 +56,38 @@ jobs:
       - name: Pytest
         # xml alongside term-missing: the console form is for a human reading the
         # log, the XML is the only form SonarCloud can import.
-        run: uv run --frozen pytest --cov=cgis --cov-report=term-missing --cov-report=xml
+        #
+        # `--cov=scripts` because `sonar.sources` below is `src,scripts`: Sonar
+        # counts every executable line in scripts/ as a line to cover whether or
+        # not the report mentions it, so omitting the directory does not exclude
+        # it from the coverage metric — it just reports all of it as uncovered.
+        # That alone put new-code coverage at 37.8% on a PR whose script was
+        # covered at 99% locally.
+        run: >
+          uv run --frozen pytest --cov=cgis --cov=scripts
+          --cov-report=term-missing --cov-report=xml
+
+      - name: Project version for Sonar
+        id: version
+        # Without this every analysis records the version as the literal string
+        # "not provided", which is both a lie in the history and, if the
+        # new-code period is "previous version", a baseline that can never move
+        # again — no VERSION event fires when the string never changes, so the
+        # window grows without bound and the gate quietly becomes a
+        # whole-project gate (#309).
+        #
+        # Validated before use: the value reaches the scanner's args, and a
+        # version string is not somewhere to discover that pyproject can carry
+        # arbitrary text.
+        if: env.SONAR_TOKEN != ''
+        run: |
+          version="$(uv version --short)"
+          case "$version" in
+            "" | *[!0-9A-Za-z.+-]* )
+              echo "Refusing unexpected project version: '$version'" >&2
+              exit 1 ;;
+          esac
+          echo "value=$version" >> "$GITHUB_OUTPUT"
 
       - name: SonarQube Cloud scan
         # Inert until SONAR_TOKEN exists, so this can land before the migration.
@@ -70,10 +101,112 @@ jobs:
           # SonarCloud treats that file as a signal to disable Automatic
           # Analysis, which would break the working setup the moment this
           # merges rather than when the migration is actually performed.
+          # pythonsecurity:S8707 ("an LLM running this with faulty CLI arguments
+          # can escape file system restrictions") fires on any script that takes
+          # a path from argparse and reads or writes it. Every script here does,
+          # by definition — they are developer and CI tools whose arguments come
+          # from this repository's own workflows, not from untrusted input, and
+          # confining them to a root would break ad-hoc runs like
+          # `--out /tmp/scratch.jsonl`. main already carries four unresolved
+          # instances (guardian_bench.py, gen_ideal_graph.py x2, metrics.py) and
+          # has never acted on them; the gate only blocked once a PR made such
+          # lines *new*. This states that de-facto position explicitly.
+          #
+          # Deliberately scoped to scripts/. src/ keeps the rule — metrics.py:70
+          # is library code and its instance deserves a real answer (#342).
+          #
+          # pythonsecurity:S2083 ("do not construct the path from user-controlled
+          # data") is exempted for scripts/ too, but for a DIFFERENT reason than
+          # S8707 above, and the difference matters. S8707's argument is that
+          # confining these tools to a root would break legitimate ad-hoc runs.
+          # S2083 was raised against backfill_review_fingerprint.py, which does
+          # the opposite: `safe_corpus_path` resolves the argument, requires a
+          # .jsonl regular file, confines it under the repository root, raises
+          # otherwise, and returns the resolved path that `backfill()` then uses
+          # for every read and write — the original argument never reaches the
+          # filesystem again (#375).
+          #
+          # The finding survived that. It was reported first at the read, then at
+          # the write, unchanged by binding the check to the value used, because
+          # SonarCloud's Python taint engine does not model `Path.resolve()` plus
+          # `is_relative_to()` as a sanitiser. The remaining report is an engine
+          # limitation, not an unvalidated path. Verified rather than assumed:
+          # main carries no open S2083, and the one S8707 left in src/ is marked
+          # FALSE-POSITIVE by a human, so neither rule has a working precedent
+          # here to copy blindly.
+          #
+          # The alternative considered and rejected was taking a bare filename
+          # and building the path from a fixed base, which the engine would
+          # accept. It makes traversal inexpressible, but it changes a documented
+          # CLI to satisfy an analyser rather than to close a hole that is
+          # already closed. If a script ever takes a path it does NOT validate,
+          # this exemption hides it — that is the cost, and it is the reason the
+          # rule stays on for src/.
+          #
+          # `sonar.newCode.referenceBranch` overrides the server-side new-code
+          # definition for this analysis. The instance default is
+          # `previous_version` (confirmed: sonar.leak.period=previous_version,
+          # parentOrigin=INSTANCE), and with the project version unset until
+          # #352 it had nothing to anchor to and collapsed to *everything* —
+          # `new_lines` on main read 39257, i.e. the whole codebase was "new".
+          # A gate measuring the whole project is not the gate anyone intended,
+          # and it fails the day one legacy file dips.
+          #
+          # Reference branch says what the gate actually means: do not make this
+          # worse than main. The known consequence, accepted rather than
+          # discovered: on main's own analysis the reference is main, so its new
+          # code is empty and its gate goes quiet. PR analyses are unaffected
+          # either way — SonarCloud always scopes a PR to its diff against the
+          # target branch (#309).
+          #
+          # `.github` is in sources because leaving it out did not mean "no
+          # findings there", it meant "nobody is looking". Automatic Analysis
+          # used to scan it and reported 34 workflow vulnerabilities; the moment
+          # this scanner took over with `src,scripts`, SonarCloud closed all 34
+          # as FIXED. Nothing had been fixed. Silent closure in the one
+          # directory where supply-chain surface actually matters is worse than
+          # a red count (#309).
+          #
+          # The two workflow rules are then exempted — on evidence, not
+          # preference, which is the difference between this and the silent
+          # closure above:
+          #
+          #   S8541 "omitting --no-build can execute setup scripts": the
+          #   remediation is impossible here, verified by running it. This
+          #   project installs itself as an editable distribution, so both
+          #   `uv sync --frozen --no-build` and `uv run --frozen --no-build`
+          #   exit with "Distribution `codegraph-brain==0.10.0 @ editable+.`
+          #   can't be installed because it is marked as `--no-build` but has no
+          #   binary distribution". Every third-party dependency ships a wheel,
+          #   so the only source distribution `uv sync` builds is ours — which
+          #   is not the untrusted code the rule is about. #309 called this
+          #   "mechanical, pattern already established"; the established pattern
+          #   (release-please.yml's `uvx --no-build --from twine==7.0.0`) works
+          #   only because uvx runs a *foreign* tool, and does not transplant.
+          #
+          #   S8544 "dependencies without locked resolved versions": untrue
+          #   here. Every invocation passes --frozen against a committed
+          #   uv.lock, and the "Lockfile in step with pyproject" step above
+          #   fails the build if that lock is stale.
+          #
+          # Residual risk, stated because the glob cannot be narrower: a future
+          # `uvx` invocation would go unchecked by S8541, where it WOULD be both
+          # applicable and fixable. Keep passing --no-build to uvx by hand.
           args: >
             -Dsonar.projectKey=zaebee_codegraph-brain
             -Dsonar.organization=zaebee
-            -Dsonar.sources=src,scripts
+            -Dsonar.projectVersion=${{ steps.version.outputs.value }}
+            -Dsonar.newCode.referenceBranch=main
+            -Dsonar.sources=src,scripts,.github
             -Dsonar.tests=tests
             -Dsonar.python.version=3.12
             -Dsonar.python.coverage.reportPaths=coverage.xml
+            -Dsonar.issue.ignore.multicriteria=e1,e2,e3,e4
+            -Dsonar.issue.ignore.multicriteria.e1.ruleKey=pythonsecurity:S8707
+            -Dsonar.issue.ignore.multicriteria.e1.resourceKey=scripts/**/*.py
+            -Dsonar.issue.ignore.multicriteria.e4.ruleKey=pythonsecurity:S2083
+            -Dsonar.issue.ignore.multicriteria.e4.resourceKey=scripts/**/*.py
+            -Dsonar.issue.ignore.multicriteria.e2.ruleKey=githubactions:S8541
+            -Dsonar.issue.ignore.multicriteria.e2.resourceKey=.github/workflows/*.yml
+            -Dsonar.issue.ignore.multicriteria.e3.ruleKey=githubactions:S8544
+            -Dsonar.issue.ignore.multicriteria.e3.resourceKey=.github/workflows/*.yml

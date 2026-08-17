@@ -35,8 +35,11 @@ from cgis.guardian.chunked import run_review_routed
 from cgis.guardian.collector import ContextCollector, parse_features
 from cgis.guardian.findings import ReviewResult
 from cgis.guardian.providers.base import BaseProvider
-from cgis.guardian.providers.mistral import MistralProvider
-from cgis.guardian.providers.ollama import OllamaProvider
+from cgis.guardian.review_fingerprint import (
+    compute_fingerprint,
+    disk_reader,
+    resolve_active_providers,
+)
 from cgis.guardian.runner import build_provider, build_skeptic_provider
 from cgis.guardian.skeptic import (
     apply_judgements,
@@ -105,12 +108,9 @@ async def _run_one(
     skipped, producing exactly that frozen set.
     """
     provider, model = build_provider(os.environ)
-    if isinstance(provider, MistralProvider):
-        primary = "mistral"
-    elif isinstance(provider, OllamaProvider):
-        primary = "ollama"
-    else:
-        primary = "gemini"
+    # Was an isinstance chain (Mistral, then Ollama, else gemini). The provider
+    # knows its own name (#375 Task 1).
+    primary = provider.name
     # Bench requires explicit opt-in: an implicit skeptic default would silently
     # change scoring vs the committed baseline (review runs keep the implicit default).
     skeptic = (
@@ -166,7 +166,10 @@ async def _judge_recording(
     result = recording.result
     if skeptic is None or not result.findings:
         return result
-    judgements = await judge_all(skeptic[0], result.findings, recording.diff)
+    # The replay path holds a recording, not a checkout: there is no project
+    # root, so no checkers to run. Stated as None rather than defaulted — which
+    # is the point of the argument being required (#401).
+    judgements = await judge_all(skeptic[0], result.findings, recording.diff, evidence=None)
     judged = sum(1 for j in judgements if j is not None)
     return result.model_copy(
         update={
@@ -176,6 +179,44 @@ async def _judge_recording(
             "skeptic_total": len(judgements),
         }
     )
+
+
+def _measured_fingerprint(finder_provider: str, skeptic_provider: str | None) -> str | None:
+    """The digest of the guardian that just reviewed, or None if it cannot be taken.
+
+    Over `_REPO_ROOT`, not the PR worktree: `_run_one` reviews the PR's code, but
+    the guardian doing the reviewing is this checkout's — which is also what
+    `guardian_sha` names. Hashing the worktree would fingerprint the subject
+    instead of the reviewer.
+
+    Failure degrades to None instead of propagating, and that is the whole
+    reason this is a function rather than an expression inside the row literal.
+    By the time it runs, the row has already cost a worktree checkout, a
+    `cgis ingest`, a paid finder pass and a paid skeptic pass. An exception here
+    — `UnknownProviderError` the first time a provider is added, or any reader
+    failure — reached `main`'s per-PR `except`, which discarded the whole review
+    and wrote an `{"error": ...}` row in its place. That row is
+    indistinguishable from a rate-limit failure and drops out of the recall
+    corpus permanently, so a reviewer that could not be *named* silently
+    destroyed the measurement it had just paid for.
+
+    None is the safe direction and the one the rest of this change already
+    takes: an unattributed row is inert, and `guardian_calibrate` carries the
+    null through rather than inventing a digest for it. The corpus ratchet in
+    `tests/unit/test_backfill_calibration_fingerprint.py` fails on a committed
+    row that stayed null, so a degraded run is loud where it matters without
+    costing the run itself.
+    """
+    try:
+        active = resolve_active_providers(finder_provider, skeptic_provider)
+        return compute_fingerprint(disk_reader(_REPO_ROOT), active)
+    except Exception:
+        log.exception(
+            "Review fingerprint could not be computed; the row is recorded unattributed.",
+            finder_provider=finder_provider,
+            skeptic_provider=skeptic_provider,
+        )
+        return None
 
 
 async def _score_and_record(
@@ -192,11 +233,23 @@ async def _score_and_record(
     visible = visible_findings(result.findings)
     matches = match_findings(visible, truth)
     bench_score = score(matches, truth)
+    skeptic_provider = skeptic[0].name if skeptic else None
+    fingerprint = _measured_fingerprint(provider.name, skeptic_provider)
     entry = {
         "timestamp": datetime.now(UTC).isoformat(),
         "pr": truth.pr,
         "run": run_idx,
         "model": model,
+        # Measured, never reconstructed: the bench runs from a working tree, so
+        # it hashes the bytes that actually ran — including uncommitted edits a
+        # `git show` rebuild at `guardian_sha` could not see (#375 spec §6.1).
+        # This is the field `scripts/guardian_calibrate.py` carries onto the
+        # calibration record, which is the whole point of #390: a measured recall
+        # figure that names the reviewer that earned it.
+        "review_fingerprint": fingerprint,
+        "review_fingerprint_source": "measured" if fingerprint else None,
+        "finder_provider": provider.name,
+        "skeptic_provider": skeptic_provider,
         "guardian_sha": _git("rev-parse", "HEAD"),
         "features": os.environ.get("GUARDIAN_FEATURES", ""),
         "parse_failed": result.parse_failed,
@@ -209,6 +262,16 @@ async def _score_and_record(
         # invisible in "missed", which cannot distinguish "never found" from
         # "found then killed" (#270).
         "killed_gt": killed_ground_truth(result.findings, truth),
+        # From `matches`, not `bench_score`: both carry `ambiguous_hits`, but
+        # MatchResult's is the list of prediction indices and BenchScore's is
+        # their count. The list is what belongs in the record — indices let a
+        # reader find which findings were exempted, and a count would not.
+        # `noise` above is the mirror image, and the asymmetry is deliberate:
+        # nothing needs the noise indices, `MatchResult.noise` already has them,
+        # and `calibrate.strict_precision` reads the row as
+        # `noise + len(ambiguous_hits)`. Swapping either side silently changes
+        # the row schema; `test_strict_precision_agrees_with_bench_score` fails
+        # if they drift apart.
         "ambiguous_hits": matches.ambiguous_hits,
         # Both providers: in replay mode the finder never runs, so recording
         # only its usage reported a free run for a pass that cost real tokens.

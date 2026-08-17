@@ -1,0 +1,6 @@
+# The review fingerprint (#375) hashes file bytes, so a checkout that stores
+# CRLF would produce a different digest for identical code — and the measured
+# digest would disagree with the reconstructed one on the same commit. Pinned
+# rather than normalised at hash time, because a normaliser can only fail by
+# merging two reviewers that differ.
+*.py text eol=lf

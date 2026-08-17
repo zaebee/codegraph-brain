@@ -3,6 +3,7 @@
 import json
 import subprocess
 from pathlib import Path
+from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -83,6 +84,8 @@ def test_build_user_prompt_omits_graph_section_when_absent() -> None:
 class _FakeProvider(BaseProvider):
     """Minimal in-memory provider for testing."""
 
+    name: ClassVar[str] = "gemini"
+
     def __init__(self, response: str = "LGTM") -> None:
         """Store canned response."""
         super().__init__()
@@ -104,6 +107,8 @@ class _FakeProvider(BaseProvider):
 
 class _SequenceProvider(BaseProvider):
     """Returns queued responses; records structured-call prompts."""
+
+    name: ClassVar[str] = "gemini"
 
     def __init__(self, responses: list[str]) -> None:
         """Queue the canned responses."""
@@ -176,6 +181,8 @@ async def test_run_review_passes_context_to_prompt(collector: ContextCollector) 
     captured: dict[str, str] = {}
 
     class _CapturingProvider(BaseProvider):
+        name: ClassVar[str] = "gemini"
+
         async def generate_content(self, system_prompt: str, user_prompt: str) -> str:  # noqa: ARG002
             """Capture the user prompt and return valid JSON so parsing succeeds."""
             captured["user"] = user_prompt
@@ -244,6 +251,8 @@ async def test_provider_last_usage_after_call(collector: ContextCollector) -> No
     """last_usage reflects values set by the provider after generate_content."""
 
     class _UsageProvider(BaseProvider):
+        name: ClassVar[str] = "gemini"
+
         async def generate_content(self, system_prompt: str, user_prompt: str) -> str:  # noqa: ARG002
             """Return valid JSON and set fake usage (single-call semantics)."""
             self.last_usage = ProviderUsage(prompt_tokens=100, completion_tokens=50)
@@ -287,7 +296,8 @@ def test_graph_stats_empty_changed_files(tmp_path: Path) -> None:
     db = tmp_path / "graph.db"
     db.write_bytes(b"")  # db exists but changed files list is empty
     c = ContextCollector(project_root=tmp_path, db_path=db)
-    with patch("cgis.guardian.collector.ContextCollector.get_changed_py_files", return_value=[]):
+    target = "cgis.guardian.collector.ContextCollector.get_changed_source_files"
+    with patch(target, return_value=[]):
         c.collect_graph_context()
     assert c.graph_stats == {"total": 0, "with_graph": 0, "flow_fallback": 0}
 
@@ -315,23 +325,36 @@ def test_get_git_diff_error(tmp_path: Path) -> None:
         assert "Error getting git diff" in c.get_git_diff()
 
 
-def test_get_changed_py_files_filters_non_py(tmp_path: Path) -> None:
-    """Only .py files are returned."""
+def test_get_changed_source_files_keeps_every_language_cgis_can_parse(tmp_path: Path) -> None:
+    """.py, .ts and .tsx are kept; anything with no extractor is dropped (#344).
+
+    This test used to assert the opposite — that only `.py` survived — which is
+    what left TypeScript PRs reviewed on a bare diff while `graph.db` held the
+    TS nodes all along. `.js` stays out on purpose: the TS FQN helper strips it,
+    but no extractor is registered for it, so a JS path would yield a
+    plausible-looking FQN matching nothing.
+    """
     c = ContextCollector(project_root=tmp_path)
     mock_result = MagicMock()
-    mock_result.stdout = "src/cgis/foo.py\nsrc/cgis/bar.ts\nREADME.md\n"
+    mock_result.stdout = (
+        "src/cgis/foo.py\nsrc/app/bar.ts\nsrc/app/Baz.tsx\nsrc/app/old.js\nREADME.md\n"
+    )
     with patch("cgis.guardian.collector.subprocess.run", return_value=mock_result):
-        assert c.get_changed_py_files() == ["src/cgis/foo.py"]
+        assert c.get_changed_source_files() == [
+            "src/cgis/foo.py",
+            "src/app/bar.ts",
+            "src/app/Baz.tsx",
+        ]
 
 
-def test_get_changed_py_files_on_error(tmp_path: Path) -> None:
+def test_get_changed_source_files_on_error(tmp_path: Path) -> None:
     """Returns empty list when git command fails."""
     c = ContextCollector(project_root=tmp_path)
     with patch(
         "cgis.guardian.collector.subprocess.run",
         side_effect=subprocess.CalledProcessError(1, "git"),
     ):
-        assert c.get_changed_py_files() == []
+        assert c.get_changed_source_files() == []
 
 
 def test_read_file_missing(tmp_path: Path) -> None:
@@ -452,7 +475,17 @@ def _mistral_modules(mock_instance: MagicMock) -> dict[str, MagicMock]:
     mock_client_mod.Mistral = MagicMock(return_value=mock_instance)
     mock_top = MagicMock()
     mock_top.client = mock_client_mod
-    return {"mistralai": mock_top, "mistralai.client": mock_client_mod}
+    # The provider also imports its rate-limit retry types from the SDK, and a
+    # plain module object is not a package — `mistralai.client.utils.retries`
+    # has to be its own sys.modules entry or the import fails with a message
+    # about the wrong thing.
+    mock_retries = MagicMock()
+    return {
+        "mistralai": mock_top,
+        "mistralai.client": mock_client_mod,
+        "mistralai.client.utils": MagicMock(),
+        "mistralai.client.utils.retries": mock_retries,
+    }
 
 
 def _make_mistral_client(response: MagicMock) -> MagicMock:

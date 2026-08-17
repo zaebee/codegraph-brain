@@ -1,14 +1,17 @@
 """Unit tests for per-finding judgement, the pure merge, and the impact threshold (#246)."""
 
 import asyncio
+from typing import ClassVar
 
 import pytest
 from guardian_stubs import BoomProvider, StubProvider
 from pydantic import BaseModel
 
+from cgis.guardian.evidence import Evidence
 from cgis.guardian.findings import Finding
 from cgis.guardian.providers.base import BaseProvider
 from cgis.guardian.skeptic import (
+    SKEPTIC_SYSTEM_PROMPT,
     FindingJudgement,
     apply_judgements,
     build_judgement_prompt,
@@ -101,7 +104,7 @@ def test_unjudged_finding_survives_a_threshold() -> None:
 
 def test_judgement_prompt_hides_the_finders_self_assessment() -> None:
     """confidence and severity are the finder's guess at what this pass re-derives."""
-    prompt = build_judgement_prompt(_FINDING, "@@ -1 +1 @@\n+x")
+    prompt = build_judgement_prompt(_FINDING, "@@ -1 +1 @@\n+x", evidence=None)
     assert "off-by-one" in prompt  # the claim itself is shown
     assert "range(n + 1)" in prompt  # and its evidence
     assert "85" not in prompt  # but not the finder's confidence
@@ -110,14 +113,14 @@ def test_judgement_prompt_hides_the_finders_self_assessment() -> None:
 
 def test_judgement_prompt_states_out_of_hunk_claims_are_uncertain() -> None:
     """Narrow context must not become a false-refutation generator (#246 §3.3)."""
-    prompt = build_judgement_prompt(_FINDING, "@@ -1 +1 @@\n+x")
+    prompt = build_judgement_prompt(_FINDING, "@@ -1 +1 @@\n+x", evidence=None)
     assert "cannot check it" in prompt
     assert "never for 'refuted'" in prompt
 
 
 def test_judgement_prompt_carries_the_impact_rubric() -> None:
     """The importance axis needs its anchors, including the tooling rule."""
-    prompt = build_judgement_prompt(_FINDING, "")
+    prompt = build_judgement_prompt(_FINDING, "", evidence=None)
     assert "impact_score 0-10" in prompt
     assert "mypy --strict" in prompt
 
@@ -128,7 +131,7 @@ async def test_judge_finding_parses_a_judgement() -> None:
     provider = StubProvider(
         ['{"verdict": "confirmed", "impact_score": 7, "rationale": "real off-by-one"}']
     )
-    judgement = await judge_finding(provider, _FINDING, "@@ -1 +1 @@\n+x")
+    judgement = await judge_finding(provider, _FINDING, "@@ -1 +1 @@\n+x", evidence=None)
     assert judgement is not None
     assert judgement.verdict == "confirmed"
     assert judgement.impact_score == 7
@@ -137,13 +140,13 @@ async def test_judge_finding_parses_a_judgement() -> None:
 @pytest.mark.asyncio
 async def test_judge_finding_returns_none_on_unparseable_response() -> None:
     """A failed call yields None — the caller keeps the finding unruled, never drops it."""
-    assert await judge_finding(StubProvider(["not json"]), _FINDING, "") is None
+    assert await judge_finding(StubProvider(["not json"]), _FINDING, "", evidence=None) is None
 
 
 @pytest.mark.asyncio
 async def test_judge_finding_returns_none_when_the_provider_raises() -> None:
     """Provider errors are contained per finding (#246 §3.4)."""
-    assert await judge_finding(BoomProvider(), _FINDING, "") is None
+    assert await judge_finding(BoomProvider(), _FINDING, "", evidence=None) is None
 
 
 @pytest.mark.asyncio
@@ -157,7 +160,7 @@ async def test_judge_all_returns_one_result_per_finding_in_order() -> None:
     )
     findings = [_FINDING, _FINDING.model_copy(update={"title": "second"})]
 
-    judgements = await judge_all(provider, findings, "", concurrency=1)
+    judgements = await judge_all(provider, findings, "", concurrency=1, evidence=None)
 
     assert [j.verdict for j in judgements if j] == ["confirmed", "refuted"]
 
@@ -170,7 +173,7 @@ async def test_judge_all_isolates_a_failing_call() -> None:
     )
     findings = [_FINDING, _FINDING.model_copy(update={"title": "second"})]
 
-    judgements = await judge_all(provider, findings, "", concurrency=1)
+    judgements = await judge_all(provider, findings, "", concurrency=1, evidence=None)
 
     assert judgements[0] is None
     assert judgements[1] is not None
@@ -189,7 +192,7 @@ async def test_judge_all_feeds_each_finding_only_its_own_file_hunks() -> None:
         "@@ -1,1 +1,1 @@\n-x\n+other_line\n"
     )
 
-    await judge_all(provider, [_FINDING], diff, concurrency=1)
+    await judge_all(provider, [_FINDING], diff, concurrency=1, evidence=None)
 
     assert "cli_line" in provider.prompts[0]
     assert "other_line" not in provider.prompts[0]
@@ -201,6 +204,8 @@ async def test_judge_all_never_exceeds_the_concurrency_limit() -> None:
 
     class _ConcurrencyProbe(BaseProvider):
         """Counts how many judgement calls are in flight at once."""
+
+        name: ClassVar[str] = "gemini"
 
         def __init__(self) -> None:
             """Start with no calls in flight."""
@@ -227,7 +232,50 @@ async def test_judge_all_never_exceeds_the_concurrency_limit() -> None:
 
     probe = _ConcurrencyProbe()
 
-    await judge_all(probe, [_FINDING] * 10, "", concurrency=3)
+    await judge_all(probe, [_FINDING] * 10, "", concurrency=3, evidence=None)
 
     assert probe.peak <= 3
     assert probe.peak > 1  # and it really is concurrent, not accidentally serial
+
+
+class TestEvidenceInTheJudgementPrompt:
+    """Static checker output, and the narrow licence it grants (#401)."""
+
+    def test_no_evidence_leaves_the_prompt_as_it_was(self) -> None:
+        """An unsupported repository must lose nothing.
+
+        `collect_evidence` returns None for a TypeScript change, a foreign repo,
+        a crashed checker. In every one of those the skeptic has to behave
+        exactly as it did before this section existed.
+        """
+        prompt = build_judgement_prompt(_FINDING, "@@ -1 +1 @@\n+x", evidence=None)
+        assert "CHECKER" not in prompt.upper()
+
+    def test_evidence_appears_with_the_commands_that_produced_it(self) -> None:
+        """The model is asked to treat this as disproof, so it must be re-runnable."""
+        evidence = Evidence(commands=("uv run mypy --strict a.py",), output="Success: no issues")
+        prompt = build_judgement_prompt(_FINDING, "@@ -1 +1 @@\n+x", evidence=evidence)
+        assert "uv run mypy --strict a.py" in prompt
+        assert "Success: no issues" in prompt
+
+    def test_the_licence_to_refute_is_narrow(self) -> None:
+        """Silence from mypy does not disprove a logic bug.
+
+        This is the whole hazard of the feature. A clean type check refutes
+        "mypy would reject this" and nothing else; read as general absolution it
+        would refute real findings that the checkers were never asked about —
+        turning a precision fix into a recall regression.
+
+        Asserted on the prompt text because the instruction *is* the mechanism.
+        There is no code path to test: the narrowing lives in the sentence.
+        """
+        evidence = Evidence(commands=("uv run ruff check a.py",), output="All checks passed!")
+        prompt = build_judgement_prompt(_FINDING, "", evidence=evidence)
+        assert "only" in prompt.lower()
+        assert "does not" in prompt.lower()
+        # The claim-about-the-checker framing, not "the checkers found nothing".
+        assert "about what these checkers report" in prompt
+
+    def test_the_existing_refutation_bar_is_not_restated_lower(self) -> None:
+        """The system prompt still governs; evidence adds a means, not a lower bar."""
+        assert "ONLY when you can point to concrete evidence" in SKEPTIC_SYSTEM_PROMPT

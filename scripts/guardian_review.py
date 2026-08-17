@@ -8,7 +8,12 @@ from pathlib import Path
 import structlog
 
 from cgis.guardian.collector import ContextCollector, parse_features
-from cgis.guardian.providers.mistral import MistralProvider
+from cgis.guardian.metrics import reject_metrics_path
+from cgis.guardian.review_fingerprint import (
+    compute_fingerprint,
+    disk_reader,
+    resolve_active_providers,
+)
 from cgis.guardian.runner import (
     build_provider,
     build_skeptic_provider,
@@ -70,12 +75,29 @@ async def main() -> None:
     )
     args = parser.parse_args()
 
+    # Checked here as well as inside record_review, because record_review runs
+    # last: an unusable --metrics would otherwise surface only after every LLM
+    # call is paid for. `--output` below has had the same shape of guard all
+    # along; --metrics was simply missed (#347).
+    refusal = reject_metrics_path(args.metrics)
+    if refusal is not None:
+        _msg = f"Refusing metrics path '{args.metrics}': {refusal}."
+        raise ValueError(_msg)
+
     provider, model = build_provider(os.environ)
-    primary = "mistral" if isinstance(provider, MistralProvider) else "gemini"
+    # Was an isinstance sniff that returned "gemini" for an Ollama provider,
+    # which then picked the wrong default skeptic. The provider knows its own
+    # name (#375 Task 1).
+    primary = provider.name
     skeptic = build_skeptic_provider(os.environ, primary=primary)
     features = parse_features(os.environ.get("GUARDIAN_FEATURES", ""))
     inline_repo = os.environ.get("GITHUB_REPOSITORY") if args.inline else None
     project_root = Path(__file__).parent.parent.absolute()
+    # Computed here rather than inside runner.py: nothing in the review closure
+    # may import the fingerprint module, or the hasher enters its own hashed set
+    # (#375 §4.2). project_root is this repository, not the reviewed checkout.
+    active = resolve_active_providers(provider.name, skeptic[0].name if skeptic else None)
+    review_fingerprint = compute_fingerprint(disk_reader(project_root), active)
     collector = ContextCollector(
         project_root=project_root, db_path=args.db, base_branch=args.base_branch, features=features
     )
@@ -90,6 +112,7 @@ async def main() -> None:
         inline_repo=inline_repo,
         threshold=impact_threshold(os.environ),
         record_finder=args.record_finder,
+        review_fingerprint=review_fingerprint,
     )
 
     if args.output:

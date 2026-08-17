@@ -1,5 +1,108 @@
 # Changelog
 
+## [0.15.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.14.1...codegraph-brain-v0.15.0) (2026-08-17)
+
+
+### Features
+
+* **bench:** rebuild frozen finder passes from the corpus, free ([#246](https://github.com/zaebee/codegraph-brain/issues/246)) ([#399](https://github.com/zaebee/codegraph-brain/issues/399)) ([b73f6e0](https://github.com/zaebee/codegraph-brain/commit/b73f6e0d40c5bdc4dadca4acd468d7835670be28))
+* **guardian:** a replay arm that pairs each finding against its own baseline ([#401](https://github.com/zaebee/codegraph-brain/issues/401)) ([#404](https://github.com/zaebee/codegraph-brain/issues/404)) ([b2ab59a](https://github.com/zaebee/codegraph-brain/commit/b2ab59a8d7b5f62a307874b8a0eb9573273fa0ea))
+* **guardian:** let the skeptic see what the checkers say ([#401](https://github.com/zaebee/codegraph-brain/issues/401)) ([#402](https://github.com/zaebee/codegraph-brain/issues/402)) ([af82147](https://github.com/zaebee/codegraph-brain/commit/af821473080bd3a717679e36c90164a43ca07f7b))
+
+## [0.14.1](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.14.0...codegraph-brain-v0.14.1) (2026-08-16)
+
+
+### Bug Fixes
+
+* **bench:** cutting a release turned the new reachability tests red ([#397](https://github.com/zaebee/codegraph-brain/issues/397)) ([efbca37](https://github.com/zaebee/codegraph-brain/commit/efbca37c13e452fdf7266619b36d86b0e11bb795))
+
+## [0.14.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.13.0...codegraph-brain-v0.14.0) (2026-08-16)
+
+
+### Features
+
+* **guardian:** give measured recall a reviewer it can name ([#390](https://github.com/zaebee/codegraph-brain/issues/390)) ([#391](https://github.com/zaebee/codegraph-brain/issues/391)) ([acc1887](https://github.com/zaebee/codegraph-brain/commit/acc18874b7ce67fa38b7dab41552838f9578516d))
+* **guardian:** say whether a temperature was chosen or inherited ([#393](https://github.com/zaebee/codegraph-brain/issues/393)) ([#395](https://github.com/zaebee/codegraph-brain/issues/395)) ([1b2c3c3](https://github.com/zaebee/codegraph-brain/commit/1b2c3c3f1619f00d20c36fb315eaca3dce5661d9))
+
+
+### Bug Fixes
+
+* **guardian:** close the deferred cleanups that could only narrow silently ([#385](https://github.com/zaebee/codegraph-brain/issues/385)) ([#386](https://github.com/zaebee/codegraph-brain/issues/386)) ([e7020ff](https://github.com/zaebee/codegraph-brain/commit/e7020ff237964a66728f0b437f13b70dc8bfe2f9))
+* **guardian:** refuse a model name carrying whitespace ([#382](https://github.com/zaebee/codegraph-brain/issues/382)) ([#389](https://github.com/zaebee/codegraph-brain/issues/389)) ([45fb110](https://github.com/zaebee/codegraph-brain/commit/45fb110d3e440e858f57c28cd3e343e61218697c))
+
+
+### Documentation
+
+* **bench:** a failed parse is not a draw ([#394](https://github.com/zaebee/codegraph-brain/issues/394)) ([a70b09b](https://github.com/zaebee/codegraph-brain/commit/a70b09bf1faf67ddefff2d7fdcf555aba51ced9f))
+* **bench:** repeated rows are samples, not corrections ([#392](https://github.com/zaebee/codegraph-brain/issues/392)) ([e1fcc3f](https://github.com/zaebee/codegraph-brain/commit/e1fcc3f4728e61363d06b022b14bc66f45f3a031))
+
+## [0.13.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.12.0...codegraph-brain-v0.13.0) (2026-08-15)
+
+
+### Features
+
+* **guardian:** an identity for a reviewer, that a commit does not fragment ([#375](https://github.com/zaebee/codegraph-brain/issues/375)) ([#383](https://github.com/zaebee/codegraph-brain/issues/383)) ([e339a38](https://github.com/zaebee/codegraph-brain/commit/e339a38743ddfdaac1e7c8f0724281844d5a8b38))
+
+## [0.12.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.11.0...codegraph-brain-v0.12.0) (2026-08-13)
+
+
+### Features
+
+* **guardian:** an ablation arm, because G5 cannot separate graph from language ([#342](https://github.com/zaebee/codegraph-brain/issues/342)) ([#366](https://github.com/zaebee/codegraph-brain/issues/366)) ([e2374a7](https://github.com/zaebee/codegraph-brain/commit/e2374a72016413414241e71d3cc37a7ce251c590))
+* **guardian:** bound the local finder's output, because it does not stop ([#246](https://github.com/zaebee/codegraph-brain/issues/246)) ([#381](https://github.com/zaebee/codegraph-brain/issues/381)) ([1e0b5e1](https://github.com/zaebee/codegraph-brain/commit/1e0b5e13332c697102a22838f90fed265c0fec67))
+* **guardian:** expose judge concurrency, because Mistral needs it at 1 ([#342](https://github.com/zaebee/codegraph-brain/issues/342)) ([#364](https://github.com/zaebee/codegraph-brain/issues/364)) ([47392e8](https://github.com/zaebee/codegraph-brain/commit/47392e829e8653e6d145533a637342e8a46b4982))
+* **guardian:** keep the valid prefix of a truncated finder response ([#248](https://github.com/zaebee/codegraph-brain/issues/248)) ([#377](https://github.com/zaebee/codegraph-brain/issues/377)) ([d34f01f](https://github.com/zaebee/codegraph-brain/commit/d34f01fa11208c0f8202579edc7e07dccb163ad4))
+* **guardian:** record what the judge spent, per row ([#342](https://github.com/zaebee/codegraph-brain/issues/342)) ([#378](https://github.com/zaebee/codegraph-brain/issues/378)) ([c4eea31](https://github.com/zaebee/codegraph-brain/commit/c4eea31b12492d90dafb92b3afacfbe9a942bab5))
+* **guardian:** refuse a review of a truncated prompt, and supply the missing visitor ([#248](https://github.com/zaebee/codegraph-brain/issues/248)) ([#371](https://github.com/zaebee/codegraph-brain/issues/371)) ([5f3e9b7](https://github.com/zaebee/codegraph-brain/commit/5f3e9b73bcc36aabe64d634e4aa95ea0f5bd7fb7))
+* **guardian:** review --slice, so the registered population is a command ([#342](https://github.com/zaebee/codegraph-brain/issues/342)) ([#373](https://github.com/zaebee/codegraph-brain/issues/373)) ([4d1fe6a](https://github.com/zaebee/codegraph-brain/commit/4d1fe6a8073641cdd46a9d9af24a3c31abd70764))
+* **guardian:** sampling reaches Ollama, instead of the chat template deciding ([#246](https://github.com/zaebee/codegraph-brain/issues/246)) ([#380](https://github.com/zaebee/codegraph-brain/issues/380)) ([14cb966](https://github.com/zaebee/codegraph-brain/commit/14cb9664f200aa9507f1f364f72dfb0de0981259))
+* **guardian:** send the registered temperature, and survive a 429 ([#342](https://github.com/zaebee/codegraph-brain/issues/342)) ([#372](https://github.com/zaebee/codegraph-brain/issues/372)) ([3d7efd8](https://github.com/zaebee/codegraph-brain/commit/3d7efd82efe750283a43eb0d5cb7941f7f67ddd1))
+* **guardian:** the union arm scores offline, and a unit bug made G8 unfailable ([#342](https://github.com/zaebee/codegraph-brain/issues/342)) ([#370](https://github.com/zaebee/codegraph-brain/issues/370)) ([dd290fe](https://github.com/zaebee/codegraph-brain/commit/dd290fef986ad0dcf0b62da9fa2824e0ace1b90d))
+
+
+### Bug Fixes
+
+* **guardian:** a dead judge is not a reviewer that found nothing ([#342](https://github.com/zaebee/codegraph-brain/issues/342)) ([#376](https://github.com/zaebee/codegraph-brain/issues/376)) ([2772c30](https://github.com/zaebee/codegraph-brain/commit/2772c305e9d7ca70c31bdfc2b12297392768330c))
+* **guardian:** a truncated review is not a review that found nothing ([#342](https://github.com/zaebee/codegraph-brain/issues/342)) ([#374](https://github.com/zaebee/codegraph-brain/issues/374)) ([9f86bb6](https://github.com/zaebee/codegraph-brain/commit/9f86bb63e297e2b8bdda6bf6214e5d1e1bbd9339))
+* **guardian:** the ablation must skip PRs with no graph to remove ([#342](https://github.com/zaebee/codegraph-brain/issues/342)) ([#367](https://github.com/zaebee/codegraph-brain/issues/367)) ([f9c36f5](https://github.com/zaebee/codegraph-brain/commit/f9c36f5cae503d83002ad03957eb7bf0cf31d263))
+
+
+### Documentation
+
+* **guardian:** bench a local model in a notebook, and retire a wrong lever ([#246](https://github.com/zaebee/codegraph-brain/issues/246)) ([#379](https://github.com/zaebee/codegraph-brain/issues/379)) ([419fcc1](https://github.com/zaebee/codegraph-brain/commit/419fcc1eb28fddd9a2c0cef814480d861e6d8c88))
+* **spec:** Phase 2 results — G5 fails at +9.5 pp against a 10 pp gate ([#342](https://github.com/zaebee/codegraph-brain/issues/342)) ([#362](https://github.com/zaebee/codegraph-brain/issues/362)) ([9481a54](https://github.com/zaebee/codegraph-brain/commit/9481a54c02b60786e14e6317d3a71c8a4cee12a0))
+* **spec:** Phase 3 registers the union arm, and the pilot says it is marginal ([#342](https://github.com/zaebee/codegraph-brain/issues/342)) ([#369](https://github.com/zaebee/codegraph-brain/issues/369)) ([bc9caf4](https://github.com/zaebee/codegraph-brain/commit/bc9caf43c16a2ce27a0075b14eb0766569ae8c2d))
+* **spec:** R5 — the noise floor equals the effect, so Phase 2 cannot answer its question ([#342](https://github.com/zaebee/codegraph-brain/issues/342)) ([#368](https://github.com/zaebee/codegraph-brain/issues/368)) ([8540bf1](https://github.com/zaebee/codegraph-brain/commit/8540bf1178a8535849bdd2fadfa5473f42040eb8))
+* **spec:** second judge — G5 fails under both, and the row becomes publishable ([#342](https://github.com/zaebee/codegraph-brain/issues/342)) ([#365](https://github.com/zaebee/codegraph-brain/issues/365)) ([62c49e4](https://github.com/zaebee/codegraph-brain/commit/62c49e4b36c0950df0c10cce26c09418674130eb))
+
+## [0.11.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.10.0...codegraph-brain-v0.11.0) (2026-08-12)
+
+
+### Features
+
+* **collector:** collect TypeScript context via a language registry ([#344](https://github.com/zaebee/codegraph-brain/issues/344)) ([#349](https://github.com/zaebee/codegraph-brain/issues/349)) ([f40f22f](https://github.com/zaebee/codegraph-brain/commit/f40f22fcfae57602fff24ae183bfc8977f246473)), closes [#342](https://github.com/zaebee/codegraph-brain/issues/342)
+* **guardian:** Martian corpus layer, and the profiles are not what the spec said ([#342](https://github.com/zaebee/codegraph-brain/issues/342)) ([#355](https://github.com/zaebee/codegraph-brain/issues/355)) ([16f9640](https://github.com/zaebee/codegraph-brain/commit/16f96408e46bfe9d5544fa10dd4ea9d68b2e8f34))
+* **guardian:** Phase 1 calibration harness — score recorded reviews with Martian's judge ([#342](https://github.com/zaebee/codegraph-brain/issues/342)) ([#346](https://github.com/zaebee/codegraph-brain/issues/346)) ([6d7771a](https://github.com/zaebee/codegraph-brain/commit/6d7771aad9b7bb1bfc7b26a0ed2c9d56b2715466))
+* **guardian:** Phase 2 judge pass, and the first scored PR ([#342](https://github.com/zaebee/codegraph-brain/issues/342)) ([#359](https://github.com/zaebee/codegraph-brain/issues/359)) ([eaf6626](https://github.com/zaebee/codegraph-brain/commit/eaf6626ea473e0c0bd8f2468f4fc989d29a3decf))
+* **guardian:** Phase 2 planner — resolve slices before spending anything ([#342](https://github.com/zaebee/codegraph-brain/issues/342)) ([#356](https://github.com/zaebee/codegraph-brain/issues/356)) ([75a278d](https://github.com/zaebee/codegraph-brain/commit/75a278d5caad07e3865c1fa95ed79c5f63e64640))
+* **guardian:** Phase 2 report — G4/G5/G6, and G5 refuses a vacuous comparison ([#342](https://github.com/zaebee/codegraph-brain/issues/342)) ([#360](https://github.com/zaebee/codegraph-brain/issues/360)) ([14d0fc4](https://github.com/zaebee/codegraph-brain/commit/14d0fc4fb989c1ae0224e3367de30f1b202a701d))
+* **guardian:** Phase 2 review step, and the first paid run ([#342](https://github.com/zaebee/codegraph-brain/issues/342)) ([#358](https://github.com/zaebee/codegraph-brain/issues/358)) ([933c229](https://github.com/zaebee/codegraph-brain/commit/933c2298b1051962c6860a99ea584b8ca6f204e5))
+* **guardian:** Phase 2 workspace — prepare finds the bug that would have sunk G5 ([#342](https://github.com/zaebee/codegraph-brain/issues/342)) ([#357](https://github.com/zaebee/codegraph-brain/issues/357)) ([1ecd962](https://github.com/zaebee/codegraph-brain/commit/1ecd9629f46cab10b907dae285d0f58b0eef5e21))
+
+
+### Bug Fixes
+
+* **guardian:** an ambiguous hit is a false positive ([#345](https://github.com/zaebee/codegraph-brain/issues/345)) ([#348](https://github.com/zaebee/codegraph-brain/issues/348)) ([fa37624](https://github.com/zaebee/codegraph-brain/commit/fa37624721a3a58a8b33cb01af71b7a7cb0bd34c)), closes [#342](https://github.com/zaebee/codegraph-brain/issues/342)
+* **guardian:** give record_review a contract for the path it writes to ([#347](https://github.com/zaebee/codegraph-brain/issues/347)) ([#350](https://github.com/zaebee/codegraph-brain/issues/350)) ([af968b9](https://github.com/zaebee/codegraph-brain/commit/af968b90d931c8152b5c9372d343cec44c8281fe))
+
+
+### Documentation
+
+* **spec:** auto-evolution PoC — unit of selection, fitness, first mutation gate ([#335](https://github.com/zaebee/codegraph-brain/issues/335)) ([#336](https://github.com/zaebee/codegraph-brain/issues/336)) ([b7359a7](https://github.com/zaebee/codegraph-brain/commit/b7359a78b3734ff5f23131b28b6923de6bc37707))
+* **spec:** first live data falsifies two parts of the PoC gate ([#335](https://github.com/zaebee/codegraph-brain/issues/335)) ([#338](https://github.com/zaebee/codegraph-brain/issues/338)) ([a417e89](https://github.com/zaebee/codegraph-brain/commit/a417e8977505abd49ddf7c2642a7eeb5614d578a))
+* **spec:** Guardian vs Martian Code Review Bench — Phase 1 calibration results ([#342](https://github.com/zaebee/codegraph-brain/issues/342)) ([7ca8434](https://github.com/zaebee/codegraph-brain/commit/7ca8434ff1363ef6c8c8d0cf97541e7e2039e098))
+* **spec:** Phase 2 corpus reconnaissance and the amended G5 ([#342](https://github.com/zaebee/codegraph-brain/issues/342)) ([#354](https://github.com/zaebee/codegraph-brain/issues/354)) ([e63ec24](https://github.com/zaebee/codegraph-brain/commit/e63ec244f61988048a915e9c7564e897ab68d6cf))
+
 ## [0.10.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.9.0...codegraph-brain-v0.10.0) (2026-08-01)
 
 

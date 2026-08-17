@@ -7,17 +7,166 @@ first review actually ran on; the final `refs/pull/N/head` contains the
 FIXES, so replaying it would make every fixed finding unfindable).
 Spec §3.1 erratum: `head` = review head, not final pull head.
 
+## What `ambiguous` does to the score (decided 2026-08-11, #345)
+
+**An `ambiguous` hit counts as a false positive.** It is recorded apart from
+`noise` — `MatchResult.ambiguous_hits`, `BenchScore.ambiguous_hits` — but that
+separation is curation diagnostics, not a scoring adjustment. Reported
+precision is `TP / (TP + noise + ambiguous_hits)`.
+
+It used to be exempt from the precision denominator. Two findings retired that.
+
+**It stopped the number describing the review.** The exemption was per *file*:
+one entry on `drift.py` exempted every prediction in `drift.py`. On pr-142
+every candidate landed on a file carrying one entry, the denominator emptied,
+and `score()` returned the vacuous `1.0` reserved for "nothing wrong was said".
+Two independent LLM judges scored those same reviews at 0.14 and 0.19. Ten of
+118 recorded reviews reported that vacuous 1.0, across three of the six PRs
+with runs — normal, not exceptional. pr-144 shows the reach: its entries cover
+`drift.py` and `triads.py`, the files carrying 3 of its 5 ground-truth
+findings.
+
+**And the exemption was never argued for.** The rule below routes style nits
+here to keep them from depressing **recall** — but omitting them from
+`findings` already does that, since recall divides by `len(findings)`. Removing
+them from the precision denominator as well came along with the mechanism, and
+it points the wrong way: guardian's precision rules forbid style nits, so
+emitting one *is* a precision failure, and the exemption hid exactly the
+failure those rules exist to catch.
+
+Measured over the same 118 reviews against two judges (#342 Phase 1), the new
+definition is also the one that tracks an independent scorer:
+
+| | old (exempt) | new (strict) |
+|---|---|---|
+| Spearman ρ vs judge, all reviews | +0.72 / +0.71 | **+0.92 / +0.92** |
+| ρ vs judge, non-empty reviews | +0.42 / +0.35 | **+0.76 / +0.72** |
+| mean \|difference from judge\| | 0.25 / 0.26 | **0.10 / 0.10** |
+
+What this costs, stated plainly: a genuinely debatable suggestion — pr-144's
+three declined clip proposals, which gemini raised and then agreed to drop —
+now counts against precision. That is the price of a number an external scorer
+can be compared to, and `ambiguous_hits` keeps the fact visible.
+
+`benchmarks/guardian/results.jsonl` is **not** rescored. Its `precision` was
+correct under the policy in force when each row was written, and every row
+carries `matched`, `noise` and `ambiguous_hits`, so either definition can be
+re-derived from it. (Contrast `calibration.jsonl`, which *was* rewritten — that
+was a scorer bug, wrong under its own stated algorithm, not a policy change.)
+
+## Repeated rows are samples, not corrections (2026-08-16, #390)
+
+**Do not deduplicate any corpus in this repository by "one row per subject,
+latest wins."** Every repeat here was paid for on purpose, and collapsing to the
+newest draw silently discards the experiment it belongs to.
+
+Written down because a downstream consumer adopted exactly that rule — reasoning
+that a re-run is a correction, so counting both would let a reviewer improve its
+record by re-running — and nothing in this repository contradicted it. The
+reasoning is sound for a corpus of corrections. It is wrong for these.
+
+### `benchmarks/martian-*.jsonl` — 115 review rows, 83 distinct subjects
+
+Keyed by subject and genome (`url`, `head_sha`, `review_fingerprint`,
+`finder_model`, `had_graph`), 32 of 115 rows are repeats. Every one of them
+comes from a registered sampling arm:
+
+| repeat group | count | source |
+|---|---|---|
+| `p3-run1` + `p3-run2` | 12 | Phase 3 union arm |
+| `p3-run1` + `p3-run2` + `p3-run3` | 7 | Phase 3 union arm |
+| `reviews` + `repeat-reviews` | 6 | R5 repeat probe |
+
+Phase 3 registered three runs at `temperature = 0.7` **because the runs must
+differ** — see the spec, "Configuration under test": at temperature 0 "the three
+runs collapse toward one and the union arm becomes identically equal to a single
+run." Gate G8 is defined as `F₂(union) > F₂(mean of the 3 runs)`; a mean over
+three draws is not computable from one of them.
+
+The variance is not theoretical. **21 of the 25 repeat groups disagree on how
+many findings the review produced**, with spreads including 8→14, 15→24, 26→38
+and one 0→25 — the same reviewer, the same commit, the same configuration. Keep
+one draw and the number you publish is a coin flip over that range.
+
+### `benchmarks/guardian/results.jsonl` — 118 scored rows, 53 distinct
+
+Repeats here carry an explicit `run` index (0/1/2) for the same reason. A row is
+identified by `pr` + `model` + `guardian_sha` + `run`, and dropping `run` averages
+away the per-PR sampling noise that R5 was written to measure.
+
+### `benchmarks/guardian/calibration.jsonl` — 236 rows, 118 subjects
+
+Exactly two rows per recorded review, one per judge (`gemini-2.5-flash` and
+`mistral-medium-latest`). The pair *is* the measurement — inter-judge agreement
+is the G3 statistic — so `row_key` alone is not a unique key here; `row_key` +
+`judge_model` is.
+
+### If you do need one row per reviewer
+
+Aggregate over the draws (mean, or union where the arm defines one); do not
+select among them. Selecting by recency is the one choice guaranteed to be
+uncorrelated with quality, and it deletes 28% of this corpus.
+
+**Aggregate over the subject's *draws*, which is not the same set as its rows.**
+Say what a draw is rather than which rows to exclude: an exclusion list is
+open-ended and the next entry arrives after it has already been believed, while
+a positive definition is closed.
+
+**A draw is a review that completed and whose output was parsed** — a row with
+`parse_failed: false`. That is the whole test; `error` is `None` on all 115 rows,
+because a run that failed outright never reached a record.
+
+**A `parse_failed` row is not a draw.** Its structured output could not be read,
+so it carries zero findings, and averaging it in charges the model for a harness
+failure. This is exactly the distinction #374 established ("a truncated review is
+not a review that found nothing"); before it, `parse_failed` was recorded and
+read by nothing.
+
+**A row with zero findings and `parse_failed: false` *is* a draw.** Three exist
+(PRs 6, 77754 and 107534, all gemini), and each spent real tokens — 106, 117 and
+124 completion tokens. The reviewer ran and said nothing, which is evidence about
+the reviewer. Same output shape as the parse failure, opposite meaning; keeping
+them and dropping the parse failure is the one combination that is right about
+both. The `arm` field exists for the mirror of this hazard: a failure and a
+controlled removal must not look alike in the record.
+
+There is exactly **one** parse-failed row in the review corpora:
+`martian-p3-run1.jsonl` for PR 11059 — the same row #374 was written about. One
+row out of 115 sounds ignorable and is not, because of how the averaging works:
+
+- PR 11059 has three rows. Dropping the parse-failed one leaves draws of `9/13`
+  and `8/8`, so the subject contributes mean `c = 8.5` over mean `n = 10.5` —
+  a rate of **81.0%**, which is *below* mistral/graph's pooled 86.6%.
+- Averaging the parse failure in as a third draw keeps that 81.0% but shrinks the
+  subject to `c = 5.667` over `n = 7.0`. Its **weight** falls, not its rate.
+- A below-average subject carrying less weight pulls the pooled figure **up**:
+  86.6% → **86.9%**.
+
+So including the harness failure makes the reviewer look better, which is the
+direction that makes this easy to leave in. That is how the gap was found — a
+downstream consumer computed 86.6%, this repository computed 86.9%, and the
+disagreement had exactly one cause.
+
+The same applies to the `error` rows in `results.jsonl`, for the same reason and
+by the same rule: they are already excluded there because `is_scored` requires
+`matched` and `precision`, which a failed run never gets.
+
 ## Curation policy
 
 - Style/idiom-only findings → `ambiguous` (guardian's PRECISION RULES forbid
-  style nits; penalizing recall for them would measure the wrong thing).
+  style nits; penalizing recall for them would measure the wrong thing —
+  keeping them out of GT `findings` is what achieves that, see above).
 - Review-dialogue resolutions (open questions answered during review) →
   `ambiguous` (not defects present in the diff).
 - Declined-with-reason suggestions → `ambiguous` (per spec §3.1).
 - Refuted claims → omitted from GT entirely, NOT `ambiguous`. A finding
-  disproved by execution (the code cannot behave as claimed) is noise, and
-  `ambiguous` exempts hits per FILE — filing errors there would make the suite
-  structurally unable to observe a precision failure (#279).
+  disproved by execution (the code cannot behave as claimed) is an error, not a
+  judgement call. The original reason was that `ambiguous` exempted hits per
+  file, so filing errors there made the suite structurally unable to observe a
+  precision failure (#279); since #345 removed the exemption the rule no longer
+  protects the score, but it still keeps `ambiguous_hits` meaning what it says —
+  "landed on ground we already marked debatable" — rather than becoming a
+  second name for noise.
 - `lines` required wherever the source provides line provenance (quality
   review I3: rangeless entries are gameable by file-level predictions).
 - Sonar quality-gate findings (cognitive complexity, float equality) stay in

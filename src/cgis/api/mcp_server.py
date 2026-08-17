@@ -116,12 +116,18 @@ def _reject_db_path(db_path: str) -> str | None:
 
     The filesystem probes are wrapped: this runs *before* ``cgis_ingest``'s own
     try/except, and ``Path.resolve()``, ``Path.is_dir()`` and friends propagate
-    ``OSError`` (a ``PermissionError`` on the parent, or a symlink loop), which
-    would escape the tool as a crash instead of a message the agent can act on.
+    ``OSError`` (a ``PermissionError`` on the parent), which would escape the
+    tool as a crash instead of a message the agent can act on.
+
+    ``RuntimeError`` too, and this docstring used to claim ``OSError`` covered
+    it: on a symlink loop CPython's ``resolve()`` catches the ELOOP ``OSError``
+    and re-raises it as ``RuntimeError("Symlink loop from ...")``
+    (pathlib.py:1237). Corrected in #347, where the same guard was being
+    modelled for the metrics log and the case was actually tested.
     """
     try:
         path = Path(db_path).resolve()
-    except OSError as exc:
+    except (OSError, RuntimeError) as exc:
         return f"❌ Refusing db_path '{db_path}': path is inaccessible ({exc})."
     # Case-insensitive: `.DB` carries the same intent, and on a case-insensitive
     # filesystem it is literally the same file.

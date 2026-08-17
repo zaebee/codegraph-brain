@@ -1,9 +1,11 @@
 """Testable orchestration for the guardian review script."""
 
 import asyncio
+import math
 import time
 from collections.abc import Mapping
 from pathlib import Path
+from typing import Literal
 
 import structlog
 
@@ -16,7 +18,11 @@ from cgis.guardian.metrics import SkepticRecord, record_review
 from cgis.guardian.providers.base import BaseProvider, ProviderUsage
 from cgis.guardian.providers.gemini import GeminiProvider
 from cgis.guardian.providers.mistral import MistralProvider
-from cgis.guardian.providers.ollama import DEFAULT_OLLAMA_NUM_CTX, OllamaProvider
+from cgis.guardian.providers.ollama import (
+    DEFAULT_OLLAMA_NUM_CTX,
+    DEFAULT_OLLAMA_NUM_PREDICT,
+    OllamaProvider,
+)
 from cgis.guardian.recording import save_finder_recording
 from cgis.guardian.render import render_report
 
@@ -64,6 +70,115 @@ def _ollama_num_ctx(env: Mapping[str, str]) -> int:
         return DEFAULT_OLLAMA_NUM_CTX
 
 
+#: How a run's sampling temperature came to be what it was (#393).
+#:
+#: Declared here rather than beside the field it types in `martian.py`, which is
+#: where a reader would look first. `runner` is a seed of the review-fingerprint
+#: closure and `martian` is outside it, so importing the type the natural
+#: direction — runner from martian — would pull `martian` and everything it
+#: reaches into the digest and stale every fingerprint in the corpora. The
+#: import therefore goes the other way, and this comment is the signpost.
+TemperatureSource = Literal["explicit", "provider_default"]
+
+
+def temperature_setting(env: Mapping[str, str]) -> tuple[float | None, TemperatureSource]:
+    """The sampling temperature and *how it came to be that*, together (#393).
+
+    Returned as one value because the two answers must agree and reading the
+    same environment variable twice is how they stop agreeing. `temperature`
+    below delegates here, so there is one parse and one decision.
+
+    `("provider_default")` covers both the unset case and an unparseable value,
+    and that is not a shortcut: on a typo the warning fires and the run really
+    does proceed on the provider's default, so the record would be wrong to
+    claim anything else. An unparseable value warns and falls back rather than
+    raising — the same policy as GUARDIAN_OLLAMA_NUM_CTX, and a typo should not
+    abort a run that costs money partway through.
+
+    Why the source cannot be inferred from the float alone: `None` in a
+    `float | None` field is written by an absent key *and* by an explicit null,
+    and `ReviewRecord` renders both identically — verified, the round-tripped
+    JSON is byte-identical. So "ran on the provider's default" and "nothing was
+    recorded" are indistinguishable in every row written before #393, and no
+    convention about the float's value can separate them after the fact.
+    """
+    raw = (env.get("GUARDIAN_TEMPERATURE") or "").strip()
+    if not raw:
+        return None, "provider_default"
+    try:
+        parsed = float(raw)
+    except ValueError:
+        log.warning("Invalid GUARDIAN_TEMPERATURE; using the provider default.", value=raw)
+        return None, "provider_default"
+    # `float()` accepts more than a temperature can be. Negative is invalid
+    # sampling everywhere and would fail at the API, losing the run. The
+    # non-finite cases are worse and are the reason this is `isfinite` rather
+    # than `>= 0`: `float("nan")`, `float("inf")` and an overflowing literal
+    # like "1e400" all parse, and none of them is caught by a sign test — NaN
+    # and inf are not less than zero. A NaN would then be *recorded*, and
+    # `json.dumps` writes it as the bare token `NaN`, which is not valid JSON:
+    # Python reads it back as an extension, a strict reader downstream cannot
+    # read the line at all. A bad environment variable must not be able to
+    # produce a corpus row nobody else can parse.
+    #
+    # No upper bound. Providers disagree on their maxima and change them, so a
+    # number here would be invented rather than known — and being wrong in that
+    # direction refuses a setting that would have worked.
+    if not math.isfinite(parsed) or parsed < 0:
+        log.warning(
+            "GUARDIAN_TEMPERATURE is not a usable temperature; using the provider default.",
+            value=raw,
+        )
+        return None, "provider_default"
+    return parsed, "explicit"
+
+
+def temperature(env: Mapping[str, str]) -> float | None:
+    """GUARDIAN_TEMPERATURE as a float, or None to leave the API's own default.
+
+    None rather than an invented default, because Phases 1 and 2 of #342 ran on
+    provider defaults and the spec keeps that frozen; only a phase that
+    registered a value before spending sets one.
+
+    This is what the providers need — the value to send, or nothing to send.
+    A caller writing a *record* wants `temperature_setting`, which also says
+    whether the None was chosen or inherited.
+    """
+    return temperature_setting(env)[0]
+
+
+def _ollama_num_predict(env: Mapping[str, str]) -> int:
+    """GUARDIAN_OLLAMA_NUM_PREDICT as an int, or the provider default.
+
+    Warns and falls back on a typo rather than raising: the same policy as
+    GUARDIAN_OLLAMA_NUM_CTX, and a bad value should not abort a run that has
+    already spent an hour.
+    """
+    raw = (env.get("GUARDIAN_OLLAMA_NUM_PREDICT") or "").strip()
+    if not raw:
+        return DEFAULT_OLLAMA_NUM_PREDICT
+    try:
+        return int(raw)
+    except ValueError:
+        log.warning("Invalid GUARDIAN_OLLAMA_NUM_PREDICT; using default.", value=raw)
+        return DEFAULT_OLLAMA_NUM_PREDICT
+
+
+def _ollama_penalties(env: Mapping[str, str]) -> Mapping[str, float] | None:
+    """None for this project's extraction defaults, {} for the model's own.
+
+    A switch rather than a decision, because the decision is unmeasured.
+    Neutralising the repetition penalties was argued from the shape of the task
+    — the finder's JSON repeats its keys by construction — and the run after it
+    did not terminate. The fixtures differed, so that neither confirms nor
+    refutes it, which is precisely why it belongs behind a flag that an
+    experiment can flip and report.
+    """
+    if (env.get("GUARDIAN_OLLAMA_PENALTIES") or "").strip().lower() == "model":
+        return {}
+    return None
+
+
 def _build_mistral(env: Mapping[str, str], model_override: str | None) -> tuple[BaseProvider, str]:
     """Construct a MistralProvider; MISTRAL_API_KEY is required."""
     key = env.get("MISTRAL_API_KEY")
@@ -71,7 +186,8 @@ def _build_mistral(env: Mapping[str, str], model_override: str | None) -> tuple[
         _msg = "MISTRAL_API_KEY must be set when GUARDIAN_PROVIDER=mistral"
         raise RuntimeError(_msg)
     model = model_override or DEFAULT_MISTRAL_MODEL
-    return MistralProvider(api_key=key, model_name=model), model
+    provider = MistralProvider(api_key=key, model_name=model, temperature=temperature(env))
+    return provider, model
 
 
 def _build_gemini(env: Mapping[str, str], model_override: str | None) -> tuple[BaseProvider, str]:
@@ -90,9 +206,46 @@ def _build_ollama(env: Mapping[str, str], model_override: str | None) -> tuple[B
         _msg = "GUARDIAN_MODEL must name an Ollama model when GUARDIAN_PROVIDER=ollama"
         raise RuntimeError(_msg)
     provider = OllamaProvider(
-        model_name=model_override, host=_ollama_host(env), num_ctx=_ollama_num_ctx(env)
+        model_name=model_override,
+        host=_ollama_host(env),
+        num_ctx=_ollama_num_ctx(env),
+        temperature=temperature(env),
+        penalties=_ollama_penalties(env),
+        num_predict=_ollama_num_predict(env),
     )
     return provider, model_override
+
+
+def _model_from_env(env: Mapping[str, str], key: str) -> str | None:
+    """The model named by `key`, refused when it carries surrounding whitespace.
+
+    Refused rather than trimmed. A model name is recorded verbatim on every
+    review record and, downstream, is hashed into a permanent reviewer
+    identity — so `"gemini-2.5-flash "` and `"gemini-2.5-flash"` are two
+    reviewers, and the first renders identically to the second in every log,
+    diff and terminal anyone will look at. Trimming here would repair the
+    symptom and leave the misconfigured variable alive to do something else
+    later; refusing kills the run at the mistake (#382). Same reasoning as
+    `reject_metrics_path` (#350) and `mcp_server._reject_db_path` (#315).
+
+    Casing is deliberately left alone. A model name is an identifier, not a
+    label: Ollama tags are case-sensitive in principle, so lowercasing for
+    storage would be lossy and refusing mixed case would break a legitimate
+    name. Whitespace is different in kind — never part of an identifier — so
+    removing it loses nothing and keeping it costs an entity.
+
+    An empty value stays falsy and is treated as absent by the callers, exactly
+    as before.
+    """
+    value = env.get(key)
+    if value is not None and value != value.strip():
+        _msg = (
+            f"{key}={value!r} has surrounding whitespace. The model name is recorded "
+            f"verbatim and identifies the reviewer, so this and {value.strip()!r} would "
+            f"be two different reviewers. Fix the variable rather than have it trimmed here."
+        )
+        raise RuntimeError(_msg)
+    return value
 
 
 def build_provider(env: Mapping[str, str]) -> tuple[BaseProvider, str]:
@@ -101,7 +254,7 @@ def build_provider(env: Mapping[str, str]) -> tuple[BaseProvider, str]:
     With no explicit GUARDIAN_PROVIDER, auto-select: mistral if its key is set,
     else gemini if its key is set, else an error.
     """
-    model_override = env.get("GUARDIAN_MODEL")
+    model_override = _model_from_env(env, "GUARDIAN_MODEL")
     provider_name = env.get("GUARDIAN_PROVIDER", "").lower() or _autodetect_provider(env)
 
     builders = {"mistral": _build_mistral, "gemini": _build_gemini, "ollama": _build_ollama}
@@ -140,9 +293,9 @@ def build_skeptic_provider(
         log.warning("Unknown GUARDIAN_SKEPTIC; skeptic disabled.", value=choice)
         return None
     name = choice or ("mistral" if primary == "gemini" else "gemini")
-    model_override = env.get("GUARDIAN_SKEPTIC_MODEL")
+    model_override = _model_from_env(env, "GUARDIAN_SKEPTIC_MODEL")
     if name == "ollama":
-        model = model_override or env.get("GUARDIAN_MODEL")
+        model = model_override or _model_from_env(env, "GUARDIAN_MODEL")
         if not model:
             log.warning(
                 "Skeptic disabled: set GUARDIAN_SKEPTIC_MODEL (or GUARDIAN_MODEL) "
@@ -150,7 +303,12 @@ def build_skeptic_provider(
             )
             return None
         provider = OllamaProvider(
-            model_name=model, host=_ollama_host(env), num_ctx=_ollama_num_ctx(env)
+            model_name=model,
+            host=_ollama_host(env),
+            num_ctx=_ollama_num_ctx(env),
+            temperature=temperature(env),
+            penalties=_ollama_penalties(env),
+            num_predict=_ollama_num_predict(env),
         )
         return provider, model
     if name == "mistral":
@@ -159,7 +317,10 @@ def build_skeptic_provider(
             log.warning("Skeptic disabled: MISTRAL_API_KEY not set.")
             return None
         model = model_override or DEFAULT_MISTRAL_MODEL
-        return MistralProvider(api_key=key, model_name=model), model
+        # Same temperature as the finder: the run registers one sampling
+        # setting, not one per pass.
+        skeptic = MistralProvider(api_key=key, model_name=model, temperature=temperature(env))
+        return skeptic, model
     key = env.get("GEMINI_API_KEY")
     if not key:
         log.warning("Skeptic disabled: GEMINI_API_KEY not set.")
@@ -201,12 +362,25 @@ async def run_guardian(
     inline_repo: str | None = None,
     threshold: int = 0,
     record_finder: Path | None = None,
+    review_fingerprint: str,
 ) -> tuple[str, bool]:
     """Run the review; try the inline path when configured.
 
     Returns (rendered report + footer, posted_inline). posted_inline=False
     covers both "not configured" and "API rejected" — the caller posts the
     big comment in either case (spec §6.5).
+
+    ``review_fingerprint`` is opaque here — computed by the caller (never inside
+    this module; see review_fingerprint.py's closure contract, #375) — and
+    passed straight to ``record_review`` so a live review is attributable to a
+    reviewer version, not just a commit. Keyword-required with no default (final
+    review, #375): the forwarding line at the bottom of this function is easy to
+    delete without breaking a single test, since every existing caller passed
+    the value explicitly to `record_review`, not to this parameter — an omitted
+    caller now fails mypy strict rather than silently shipping an
+    unattributable live review. ``record_review`` itself keeps `str | None`,
+    because it also reads old rows and must stay tolerant of rows that predate
+    this field.
 
     ``record_finder`` writes the finder pass (findings + diff) to that path so
     the review can be re-scored offline against a benchmark entry (#279).
@@ -290,6 +464,7 @@ async def run_guardian(
         ),
         chunk_count=routed.chunk_count,
         duration_s=duration_s,
+        review_fingerprint=review_fingerprint,
         metrics_path=metrics_path,
     )
     return report + footer, posted

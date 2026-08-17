@@ -1,8 +1,9 @@
 """Structured findings contract for the Guardian reviewer (spec §2.1)."""
 
+import json
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 Severity = Literal["critical", "major", "minor"]
 # "security" exists so curated ground truth can name an exploitable defect (#315).
@@ -92,3 +93,65 @@ def dedup_findings(findings: list[Finding]) -> list[Finding]:
         elif finding.confidence > best[key].confidence:
             best[key] = finding
     return [best[k] for k in order]
+
+
+#: Characters that may sit between two elements of a JSON array.
+_ARRAY_GAP = ", \t\r\n"
+
+
+def salvage_findings(text: str) -> list[Finding]:
+    """Findings recoverable from a finder response that failed strict validation.
+
+    The recall-lean finder emits many findings per review, and a longer JSON body
+    is likelier to be severed mid-object by a provider. Discarding the whole
+    response then throws away every finding that did parse — in the Phase 3 run
+    that was fifteen of eighteen, lost because the sixteenth lacked a field and
+    the seventeenth was a bare string fragment.
+
+    Decodes the `findings` array one element at a time rather than parsing the
+    document, because a truncated document has no valid parse at all. Each
+    element is validated on its own: one that decodes as JSON but is not a
+    `Finding` is skipped and the scan continues, and the first element that
+    cannot be decoded ends it — that is the truncation point.
+
+    Does not raise on any input the decoder can reject: both the ordinary
+    truncation error and the recursion error from deeply nested openers end the
+    scan and return what was already recovered. This runs on the failure path,
+    where an exception would replace a recoverable problem with an unrecoverable
+    one — and the default review path has no guard above it.
+
+    Salvaging is a rescue, not a measurement. Callers keep `parse_failed` set, so
+    the benchmark still excludes such a review; production shows the findings
+    rather than nothing.
+    """
+    payload = extract_json(text)
+    opening = payload.find("[", payload.find('"findings"')) if '"findings"' in payload else -1
+    if opening == -1:
+        return []
+
+    decoder = json.JSONDecoder()
+    position = opening + 1
+    recovered: list[Finding] = []
+    while position < len(payload):
+        while position < len(payload) and payload[position] in _ARRAY_GAP:
+            position += 1
+        if position >= len(payload) or payload[position] == "]":
+            break
+        try:
+            element, position = decoder.raw_decode(payload, position)
+        except (ValueError, RecursionError):
+            # ValueError (JSONDecodeError) is the ordinary truncation point.
+            # RecursionError is not one: `raw_decode` recurses per nested
+            # opener, and it is a RuntimeError, so `except ValueError` let a
+            # degenerate run of unmatched brackets escape this function. The
+            # default review path is unguarded — `chunked._single_pass` and
+            # `scripts/guardian_review.py` both call downwards with no `try` —
+            # so that escape crashed the run instead of degrading to
+            # `parse_failed`, which is worse than the discard-all behaviour this
+            # function replaced.
+            break
+        try:
+            recovered.append(Finding.model_validate(element))
+        except ValidationError:
+            continue  # decoded but not a finding; the scan has already advanced
+    return recovered
