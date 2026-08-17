@@ -14,6 +14,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"))
 
+import check_test_count
 from check_test_count import (
     BASELINE_PATH,
     MAX_DRIFT,
@@ -21,6 +22,9 @@ from check_test_count import (
     _as_count,
     baseline_here,
     baseline_on,
+    check,
+    collect_count,
+    main,
     parse_collected,
     problems,
 )
@@ -189,6 +193,122 @@ class TestTheFourRules:
         """
         found = problems(actual=100, floor=50, here=400)
         assert len(found) == 1
+
+
+class _Ran:
+    """A stand-in for `subprocess.run`'s result, carrying only what is read."""
+
+    def __init__(self, stdout: str = "", stderr: str = "", returncode: int = 0) -> None:
+        self.stdout = stdout
+        self.stderr = stderr
+        self.returncode = returncode
+
+
+class TestCollectingTheCount:
+    """The one place that shells out to pytest."""
+
+    def test_the_summary_is_taken_from_either_stream(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """stdout and stderr are joined before parsing.
+
+        pytest writes the summary to stdout, but `uv run` prepends its own
+        chatter on stderr and a plugin can move things about. Reading only one
+        stream would turn a working checkout into "could not count".
+        """
+        monkeypatch.setattr(
+            check_test_count.subprocess, "run", lambda *_a, **_k: _Ran(stderr="7 tests collected")
+        )
+        assert collect_count(Path()) == 7
+
+    def test_a_broken_collection_refuses_and_shows_the_output(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Exit code is not the question; whether a number came back is.
+
+        A non-zero exit with a usable summary is possible, and a zero exit with
+        none is too — so the parse decides, and the refusal carries the text so
+        the failure is actionable from the CI log alone.
+        """
+        monkeypatch.setattr(
+            check_test_count.subprocess,
+            "run",
+            lambda *_a, **_k: _Ran(stdout="no tests collected in 0.00s", returncode=4),
+        )
+        root = Path()
+        with pytest.raises(CannotCountError, match="not a count of zero"):
+            collect_count(root)
+
+
+class TestTheCliContract:
+    """Exit codes, and the line that says whether the floor was in force."""
+
+    def _wire(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        *,
+        actual: int,
+        floor: int | None,
+        here: int,
+    ) -> None:
+        monkeypatch.setattr(check_test_count, "collect_count", lambda _r: actual)
+        monkeypatch.setattr(check_test_count, "baseline_on", lambda _ref, _r: floor)
+        monkeypatch.setattr(check_test_count, "baseline_here", lambda _r: here)
+        monkeypatch.setattr(sys, "argv", ["check_test_count.py"])
+
+    def test_check_reports_whether_the_floor_applied(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The flag travels with the result instead of being re-derived.
+
+        A clean run with no floor and a clean run with a floor are different
+        outcomes, and both produce an empty problem list.
+        """
+        self._wire(monkeypatch, actual=1957, floor=1932, here=1932)
+        assert check("origin/main", Path()) == ([], True)
+        self._wire(monkeypatch, actual=1957, floor=None, here=1932)
+        assert check("origin/main", Path()) == ([], False)
+
+    def test_a_healthy_suite_exits_zero_and_says_nothing(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        self._wire(monkeypatch, actual=1957, floor=1932, here=1932)
+        assert main() == 0
+        assert capsys.readouterr().err == ""
+
+    def test_a_shrunken_suite_exits_one_and_prints_the_delta(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        self._wire(monkeypatch, actual=1264, floor=1932, here=1932)
+        assert main() == 1
+        assert "668 have gone missing" in capsys.readouterr().err
+
+    def test_a_missing_prior_is_announced_on_an_otherwise_green_run(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Green because nothing is wrong, and loud because nothing was checked.
+
+        Without the notice this run is indistinguishable in the log from one
+        where the anti-deletion rule ran and passed — which is the confusion the
+        whole file exists to remove.
+        """
+        self._wire(monkeypatch, actual=1957, floor=None, here=1957)
+        assert main() == 0
+        assert "the anti-deletion floor did not apply" in capsys.readouterr().err
+
+    def test_being_unable_to_count_exits_two_rather_than_zero(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """ "We could not tell" is not "the suite is intact".
+
+        Its own exit code so a caller cannot read the failure as a pass, and so
+        it is distinguishable from a genuine shrink at exit 1.
+        """
+
+        def _boom(_r: Path) -> int:
+            _msg = "pytest exploded"
+            raise CannotCountError(_msg)
+
+        self._wire(monkeypatch, actual=0, floor=1932, here=1932)
+        monkeypatch.setattr(check_test_count, "collect_count", _boom)
+        assert main() == 2
+        assert "could not run" in capsys.readouterr().err
 
 
 def test_the_repository_currently_satisfies_its_own_floor() -> None:
