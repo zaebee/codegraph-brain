@@ -108,11 +108,55 @@ Return ONLY a JSON object:
 {{"verdict": "confirmed|refuted|uncertain", "impact_score": 0, "rationale": "one sentence"}}"""
 
 
-def _evidence_section(evidence: Evidence | None) -> str:
-    """The checker output, and the narrow licence it grants — or nothing at all.
+#: What the skeptic is told when nothing was run (#407).
+#:
+#: This used to be the empty string, and the emptiness was the defect. Measuring
+#: #401 needed a control arm judging the same findings with no checker output,
+#: and in it **6 of 24 rationales cited mypy or ruff anyway** — every one of them
+#: to *confirm* a false claim, on a conditional it could not check: "and **if**
+#: `mypy --strict` is configured to disallow `Any` explicitly, it would be
+#: flagged." Told nothing about checkers, the model supplied its own.
+#:
+#: Symmetric on purpose. Naming only the confirming direction would leave "the
+#: linter would have caught it" available as a refutation, buying precision with
+#: recall — the trade #246 records for a skeptic tuned too aggressively, and the
+#: one #401's narrow licence exists to avoid.
+#:
+#: **A directive, not a prohibition, and that is the second attempt.** The first
+#: version said "do not rest a verdict on what a checker would report" and was
+#: measured on the same 24 findings: 5 of the 6 checker-appeals survived, and the
+#: language got *more* assertive rather than less — a conditional ("if
+#: `mypy --strict` is configured to disallow `Any`, it would be flagged") became
+#: a flat claim about "the project's mandatory `mypy --strict` gate", a gate that
+#: does not exist as described, since `make type-check` runs `mypy src` and
+#: `pyproject.toml` excludes `scripts`. Told what not to do, the model complied
+#: in form and confirmed anyway. So this says what verdict such a claim *takes*.
+#:
+#: 'uncertain' rather than 'refuted' because it is the semantically true state:
+#: the checker neither agreed nor disagreed, because it never ran. Refuting an
+#: unadjudicable claim is the recall regression this component is built to avoid.
+#:
+#: It matters most where it is always in force: `guardian_martian` reviews five
+#: foreign repositories whose toolchains are not ours, so evidence is never
+#: available there and this paragraph is on every finding.
+_NO_EVIDENCE_SECTION = """
+### NO CHECKER OUTPUT IS AVAILABLE FOR THIS REVIEW
 
-    Empty when there is no evidence, so an unsupported repository gets exactly
-    the prompt it got before this existed.
+No type checker or linter was run for this review, so nothing here reports what
+one would say.
+
+If a finding rests entirely on what a checker reports — that a type checker
+rejects this code, that a linter forbids this construct, that a rule enforced by
+the project's tooling is broken — then it cannot be settled here. Mark it
+'uncertain'. Not 'confirmed': you have not seen a checker agree. Not 'refuted':
+you have not seen one disagree either.
+
+Judge every other finding from the hunks as usual.
+"""
+
+
+def _evidence_section(evidence: Evidence | None) -> str:
+    """The checker output and the narrow licence it grants — or the notice that none ran.
 
     The licence is deliberately narrow, and the narrowing is the whole safety
     property of #401. A clean type check disproves "mypy would reject this" and
@@ -120,9 +164,13 @@ def _evidence_section(evidence: Evidence | None) -> str:
     findings the checkers were never asked about, turning a precision fix into a
     recall regression — the failure mode #246 already records for a skeptic
     tuned too aggressively. The sentence, not a code path, is the mechanism.
+
+    The same reasoning decides the other branch. Saying nothing is not neutral:
+    it leaves the model free to assert what a checker would report, which is the
+    move this whole component exists to catch the finder making.
     """
     if evidence is None:
-        return ""
+        return _NO_EVIDENCE_SECTION
     return f"""
 ### WHAT THIS REPOSITORY'S OWN CHECKERS REPORT
 {evidence.render()}
