@@ -7,7 +7,7 @@ packages = ["src/cgis"]
 
 [project]
 name = "codegraph-brain"
-version = "0.14.1"
+version = "0.15.0"
 description = "Semantic code graph for AI agents — deterministic FQN resolution, impact analysis and architectural drift gates, exposed over MCP."
 readme = "README.md"
 requires-python = ">=3.12"
