@@ -20,6 +20,7 @@ from check_test_count import (
     MAX_DRIFT,
     CannotCountError,
     _as_count,
+    _validated_ref,
     baseline_here,
     baseline_on,
     check,
@@ -126,6 +127,32 @@ class TestReadingTheBaselines:
     def test_a_ref_that_carries_the_baseline_returns_it(self, tmp_path: Path) -> None:
         _commit_repo(tmp_path, baseline="1932\n")
         assert baseline_on("HEAD", tmp_path) == 1932
+
+    @pytest.mark.parametrize(
+        "ref",
+        [
+            pytest.param("--upload-pack=touch /tmp/x", id="reads-as-an-option"),
+            pytest.param("-main", id="leading-dash"),
+            pytest.param("main; rm -rf /", id="shell-metacharacters"),
+            pytest.param("main$(id)", id="substitution"),
+            pytest.param("", id="empty"),
+        ],
+    )
+    def test_a_ref_that_is_not_a_ref_never_reaches_git(self, ref: str) -> None:
+        """Refused before the subprocess, and refused rather than sanitised.
+
+        Nothing here goes through a shell, so the metacharacter cases are not
+        exploitable — but the leading-dash case is real: git reads it as an
+        option. Stripping it instead would compare against a revision nobody
+        asked for, which is this file's own failure mode.
+        """
+        with pytest.raises(CannotCountError, match="not a usable git revision"):
+            baseline_on(ref, REPO_ROOT)
+
+    @pytest.mark.parametrize("ref", ["main", "origin/main", "HEAD", "release/1.2", "98380bc"])
+    def test_the_refs_actually_used_are_accepted(self, ref: str) -> None:
+        """The guard must not be so tight that it rejects the real inputs."""
+        assert _validated_ref(ref) == ref
 
 
 class TestTheFourRules:

@@ -103,6 +103,36 @@ def collect_count(repo_root: Path) -> int:
     return parse_collected(result.stdout + result.stderr)
 
 
+#: What may be handed to git as a revision. Deliberately narrower than git's own
+#: rules — it has to admit `main`, `origin/main`, `HEAD`, a sha and
+#: `release/1.2`, and nothing else needs to work.
+#:
+#: The first character is the point. A value beginning with `-` reaches git as a
+#: *flag* rather than a revision, which is the same argument-injection shape
+#: `evidence.py` guards against on changed-file paths. Nothing here is passed
+#: through a shell, so this is not about quoting; it is that a string which
+#: never looked like a ref has no business reaching a subprocess, exploitable or
+#: not (pythonsecurity:S8705).
+_REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
+
+
+def _validated_ref(ref: str) -> str:
+    """`ref` unchanged, or a refusal — never a sanitised version of it.
+
+    Rejected rather than stripped: silently rewriting `--upload-pack=x` into
+    something git accepts would compare against a ref nobody asked for, and this
+    whole file exists to stop a check reporting on the wrong subject.
+    """
+    if not _REF.match(ref):
+        _msg = (
+            f"{ref!r} is not a usable git revision. It must start with a letter or digit and "
+            f"hold only letters, digits, and `._/-` — a value beginning with `-` reaches git "
+            f"as an option rather than a revision."
+        )
+        raise CannotCountError(_msg)
+    return ref
+
+
 def baseline_on(ref: str, repo_root: Path) -> int | None:
     """The baseline as recorded on `ref`, or None when `ref` predates the file.
 
@@ -118,6 +148,7 @@ def baseline_on(ref: str, repo_root: Path) -> int | None:
     resolving the ref first rather than by matching git's error text, which
     would not distinguish "unknown ref" from "path not in this tree".
     """
+    ref = _validated_ref(ref)
     resolved = subprocess.run(
         ["git", "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"],
         cwd=repo_root,
