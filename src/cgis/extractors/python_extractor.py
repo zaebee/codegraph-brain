@@ -155,6 +155,43 @@ class PythonExtractor(BaseExtractor):
 
         return nodes, edges
 
+    def _handle_assignment(
+        self,
+        node: BaseNode,
+        code_bytes: bytes,
+        file_path: str,
+        nodes: list[Node],
+        edges: list[Edge],
+        module_fqn: str,
+        import_map: dict[str, str] | None,
+        current_func_node: Node | None,
+        local_types_acc: dict[str, dict[str, str]] | None,
+    ) -> None:
+        """Route one assignment: a local type hint, a module-level DI alias, or neither.
+
+        Extracted so `_walk` stays under the complexity limit while the node-type
+        dispatch above remains in one place. The original optimisation split out
+        the *definition* branch instead, which cost a second `node.type` test on
+        every definition; the branching that actually grew is here.
+
+        `current_func_node` is tested before `is_module_level_assignment` rather
+        than after: inside a function the assignment can only be a local hint,
+        and the predicate would return False on that same condition — so the
+        check skips the call instead of paying for it to say no.
+        """
+        if current_func_node:
+            if local_types_acc is not None:
+                self._functions.collect_assignment_type(
+                    node, code_bytes, import_map, current_func_node, local_types_acc
+                )
+        elif is_module_level_assignment(node, code_bytes, current_func_node):
+            # True module level: not in a function (current_func_node) and not
+            # in a class body (get_fqn_prefix). Class-body DI aliases are out
+            # of scope (spec §6).
+            self._functions.process_module_assignment(
+                node, code_bytes, file_path, nodes, edges, module_fqn
+            )
+
     def _walk(
         self,
         node: BaseNode,
@@ -201,16 +238,17 @@ class PythonExtractor(BaseExtractor):
             self._functions.process_call_node(
                 node, code_bytes, file_path, current_func_node.id, edges
             )
-        elif node.type == "assignment" and current_func_node and local_types_acc is not None:
-            self._functions.collect_assignment_type(
-                node, code_bytes, import_map, current_func_node, local_types_acc
-            )
-        elif is_module_level_assignment(node, code_bytes, current_func_node):
-            # True module level: not in a function (current_func_node) and not
-            # in a class body (get_fqn_prefix). Class-body DI aliases are out
-            # of scope (spec §6).
-            self._functions.process_module_assignment(
-                node, code_bytes, file_path, nodes, edges, module_fqn or ""
+        elif node.type == "assignment":
+            self._handle_assignment(
+                node,
+                code_bytes,
+                file_path,
+                nodes,
+                edges,
+                module_fqn or "",
+                import_map,
+                current_func_node,
+                local_types_acc,
             )
         elif (
             node.type in ("typed_parameter", "typed_default_parameter")

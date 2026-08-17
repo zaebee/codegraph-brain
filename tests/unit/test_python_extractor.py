@@ -807,3 +807,39 @@ def test_object_side_of_an_attribute_is_a_use(extractor: PythonExtractor) -> Non
     code = "from pkg.other import thing as thing\n\ndef go():\n    return thing.attr\n"
 
     assert _reexports(extractor, code) == {}
+
+
+def test_only_true_module_level_assignments_become_di_aliases(
+    extractor: PythonExtractor,
+) -> None:
+    """The two exclusions, pinned together with the case that must survive.
+
+    `is_module_level_assignment` requires three things at once: an assignment
+    node, no enclosing function, and no FQN prefix (which is what excludes a
+    class body). Only the positive case was covered, so a refactor of the walker
+    could have widened the branch — emitting a class attribute or a local as a
+    module-level DI alias — with every existing test still green.
+
+    Written while restructuring that walker: the change was safe because the
+    predicate short-circuits on `node.type`, and nothing said so.
+    """
+    code = """
+from fastapi import Depends
+
+def get_db():
+    pass
+
+class Container:
+    ClassDep = Depends(get_db)
+
+def factory():
+    LocalDep = Depends(get_db)
+
+ModuleDep = Depends(get_db)
+"""
+    nodes, _ = extractor.parse(code, "deps.py")
+    aliases = {n.name for n in nodes if n.type == NodeType.VARIABLE}
+    assert aliases == {"ModuleDep"}, (
+        f"expected only the module-level alias, got {sorted(aliases)} — a class attribute "
+        "or a function local has leaked into module scope"
+    )
