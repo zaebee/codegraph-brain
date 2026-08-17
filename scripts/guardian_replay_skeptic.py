@@ -19,8 +19,19 @@ tree is a different subject, and a verdict flip caused by that would be
 attributed to the evidence.
 
 Every step refuses rather than guesses. A recording without verdicts has no
-baseline. Evidence that cannot be collected makes this a plain re-run of the
-control arm, which is not the experiment and must not be reported as one.
+baseline. Evidence that cannot be collected turns the treatment into a plain
+re-run without evidence, which is not the experiment and must not be reported
+as one.
+
+`--control` re-judges the same findings *without* evidence, and it is not
+optional rigour. The recorded verdicts are one draw, not a fixed point:
+`gemini.py` sends no temperature and `guardian.yml` sets none, so the skeptic
+runs at the provider default and answers a second asking differently. Baseline
+against the evidence arm therefore measures the effect *plus* the resampling
+noise, and only a no-evidence replay of the same findings separates them. That
+is the confound this module removes at the finder, reappearing one level down at
+the skeptic — an earlier draft of this file argued the control arm was "already
+recorded", which holds only if the skeptic is deterministic, and it is not.
 """
 
 import argparse
@@ -38,6 +49,7 @@ from pathlib import Path
 
 from cgis.guardian.diff_index import split_diff_by_file
 from cgis.guardian.evidence import Evidence, collect_evidence
+from cgis.guardian.findings import Finding
 from cgis.guardian.providers.base import BaseProvider
 from cgis.guardian.recording import load_finder_recording
 from cgis.guardian.runner import build_provider, build_skeptic_provider
@@ -78,9 +90,10 @@ class NoEvidenceError(RuntimeError):
     """Raised when evidence cannot be collected at the reviewed commit.
 
     Refused rather than degraded: judging without evidence is the control arm,
-    already recorded. Running it again and labelling it the treatment would make
-    the experiment report that evidence changes nothing, which is exactly the
-    conclusion it must not be able to reach by accident.
+    which `--control` runs deliberately and labels as such. Arriving there by
+    accident and reporting it as the treatment would make the experiment
+    conclude that evidence changes nothing — the one conclusion it must not be
+    able to reach by mistake.
     """
 
 
@@ -184,9 +197,28 @@ def cites_a_checker(judgement: FindingJudgement | None) -> bool:
 
 
 async def replay(
-    recording_path: Path, ref: str, repo_root: Path, env: Mapping[str, str]
+    recording_path: Path,
+    ref: str | None,
+    repo_root: Path,
+    env: Mapping[str, str],
+    *,
+    with_evidence: bool = True,
+    out: Path | None = None,
 ) -> tuple[Counter[str], int]:
-    """Judge the recorded findings again, with evidence; return the flips and citations."""
+    """Judge the recorded findings again; return the flips and the citation count.
+
+    `with_evidence=False` is the control arm: the same findings, the same diff,
+    the same skeptic, judged without checker output. Its flips are the floor a
+    treatment result has to clear, because the skeptic is sampled and the
+    recorded baseline is one draw of it.
+
+    `out` writes the per-finding rows. The matrix says how many verdicts moved
+    and never which, so it cannot answer the question that decides whether this
+    feature is safe to enable: an arm that refutes eight findings is an
+    improvement if all eight were false and a regression if one was the real
+    one. Recall is a property of *which*, so the aggregate is not evidence about
+    it in either direction.
+    """
     baseline = baseline_verdicts(recording_path)
     recording = load_finder_recording(recording_path)
     findings = recording.result.findings
@@ -194,21 +226,63 @@ async def replay(
         _msg = f"{len(findings)} findings loaded against {len(baseline)} baseline verdicts."
         raise NoBaselineError(_msg)
 
-    # The worktree and the checkers are blocking, and `replay` is a coroutine.
-    # Nothing else runs on this script's loop today, so the harm is latent rather
-    # than active — but the function is importable and its signature promises a
-    # coroutine, and two minutes of a frozen loop is not something a caller
-    # should have to read the body to discover.
-    evidence = await asyncio.to_thread(_evidence_at, ref, repo_root, recording.diff)
-    if evidence is None:
-        _msg = (
-            f"No evidence could be collected at {ref}. Judging without it repeats the "
-            f"control arm, which is already recorded; reporting that as the treatment "
-            f"would make this experiment conclude that evidence changes nothing."
-        )
-        raise NoEvidenceError(_msg)
+    evidence = None
+    if with_evidence:
+        if ref is None:
+            _msg = "The evidence arm needs the commit the recording was taken at; none was given."
+            raise NoEvidenceError(_msg)
+        # The worktree and the checkers are blocking, and `replay` is a coroutine.
+        # Nothing else runs on this script's loop today, so the harm is latent
+        # rather than active — but the function is importable and its signature
+        # promises a coroutine, and two minutes of a frozen loop is not something
+        # a caller should have to read the body to discover.
+        evidence = await asyncio.to_thread(_evidence_at, ref, repo_root, recording.diff)
+        if evidence is None:
+            _msg = (
+                f"No evidence could be collected at {ref}. Judging without it is the control "
+                f"arm, which --control runs on purpose; reaching it by accident and reporting "
+                f"it as the treatment would make this experiment conclude that evidence "
+                f"changes nothing."
+            )
+            raise NoEvidenceError(_msg)
     judgements = await judge_all(skeptic_from(env), findings, recording.diff, evidence=evidence)
+    if out is not None:
+        write_rows(out, findings, baseline, judgements)
     return flips(baseline, judgements), sum(1 for j in judgements if cites_a_checker(j))
+
+
+def write_rows(
+    out: Path,
+    findings: Sequence[Finding],
+    baseline: Sequence[str],
+    judgements: Sequence[FindingJudgement | None],
+) -> None:
+    """One JSON line per finding: what was claimed, what was ruled, and why.
+
+    The rationale is kept whole rather than summarised. Reading why a claim was
+    withdrawn is how "the checker says otherwise" is told apart from "the model
+    changed its mind", and a truncated reason answers neither.
+    """
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("w", encoding="utf-8") as handle:
+        for index, (finding, was, now) in enumerate(
+            zip(findings, baseline, judgements, strict=True)
+        ):
+            handle.write(
+                json.dumps(
+                    {
+                        "index": index,
+                        "file": finding.file,
+                        "line": finding.line,
+                        "title": finding.title,
+                        "was": was,
+                        "now": now.verdict if now is not None else None,
+                        "cites_a_checker": cites_a_checker(now),
+                        "rationale": now.rationale if now is not None else None,
+                    }
+                )
+                + "\n"
+            )
 
 
 def _evidence_at(ref: str, repo_root: Path, diff: str) -> Evidence | None:
@@ -243,20 +317,53 @@ def main() -> int:
     """Replay one recording and print the paired comparison."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--recording", type=Path, required=True)
-    parser.add_argument("--at", required=True, help="ref or sha the recording was taken at")
+    parser.add_argument("--at", help="ref or sha the recording was taken at; the evidence arm")
+    parser.add_argument(
+        "--control",
+        action="store_true",
+        help="judge without evidence, to measure how much the sampled skeptic moves on its own",
+    )
     parser.add_argument("--repo-root", type=Path, default=REPO_ROOT)
+    parser.add_argument(
+        "--out", type=Path, help="write one JSON line per finding: was, now, and the rationale"
+    )
     args = parser.parse_args()
+    # Refused here rather than defaulted: silently running the control because
+    # no ref was given is precisely the mislabelling `NoEvidenceError` exists to
+    # prevent, and an argparse error costs the operator one line.
+    if not args.control and not args.at:
+        parser.error(
+            "--at is required for the evidence arm; pass --control for the no-evidence arm"
+        )
 
-    matrix, cited = asyncio.run(replay(args.recording, args.at, args.repo_root, os.environ))
+    matrix, cited = asyncio.run(
+        replay(
+            args.recording,
+            args.at,
+            args.repo_root,
+            os.environ,
+            with_evidence=not args.control,
+            out=args.out,
+        )
+    )
+    arm = "without evidence (control)" if args.control else "with evidence"
     total = sum(matrix.values())
-    print(f"{total} findings re-judged with evidence, paired against their recorded verdicts\n")
+    print(f"{total} findings re-judged {arm}, paired against their recorded verdicts\n")
     for transition, count in sorted(matrix.items()):
         moved = (
             "" if transition.split(" -> ")[0] == transition.split(" -> ")[1] else "   <- changed"
         )
         print(f"  {transition:34} {count:3}{moved}")
     print(f"\n  rationales citing a checker: {cited}/{total}")
-    print("  (only these are attributable to the evidence; the rest are the skeptic reading code)")
+    if args.control:
+        # No checker output was supplied, so a citation here is the skeptic
+        # asserting what a checker would say. That is the same unverified move
+        # the finder made, and it is worth counting rather than assuming zero.
+        print("  (no evidence was supplied, so these are claims about checkers, not readings)")
+    else:
+        print(
+            "  (only these are attributable to the evidence; the rest are the skeptic reading code)"
+        )
     return 0
 
 

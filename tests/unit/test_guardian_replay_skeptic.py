@@ -34,6 +34,7 @@ from guardian_replay_skeptic import (
     flips,
     replay,
     worktree_at,
+    write_rows,
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -273,6 +274,142 @@ class TestReplayOrchestration:
         self._wire(monkeypatch, evidence=Evidence(commands=("x",), output="y"))
         with pytest.raises(NoBaselineError, match="baseline verdicts"):
             await replay(path, "HEAD", REPO_ROOT, {})
+
+
+class TestTheControlArm:
+    """The no-evidence replay, which is what makes a treatment number readable.
+
+    The skeptic is sampled — `gemini.py` sends no temperature and `guardian.yml`
+    sets none — so the recorded verdicts are one draw rather than a fixed point.
+    Without this arm every flip in the evidence arm is the effect and the
+    resampling noise added together, with nothing to subtract.
+    """
+
+    def _skeptic(self, monkeypatch: pytest.MonkeyPatch, responses: list[str]) -> None:
+        module = sys.modules["guardian_replay_skeptic"]
+        monkeypatch.setattr(module, "skeptic_from", lambda _env: StubProvider(responses))
+
+    @pytest.mark.asyncio
+    async def test_no_worktree_is_built_and_no_checker_is_run(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The control must not touch the evidence path at all.
+
+        Asserted by making that path fatal rather than by reading a flag back: a
+        `with_evidence` that were quietly ignored would still return a full
+        matrix, and the two arms would then differ by nothing while the report
+        said they differed by the feature.
+        """
+        module = sys.modules["guardian_replay_skeptic"]
+
+        def _never(*_args: object) -> Evidence:
+            _msg = "the control arm collected evidence"
+            raise AssertionError(_msg)
+
+        monkeypatch.setattr(module, "_evidence_at", _never)
+        self._skeptic(monkeypatch, [_VERDICT_JSON] * 2)
+        path = _recording(tmp_path, ["confirmed", "confirmed"])
+        matrix, _ = await replay(path, None, REPO_ROOT, {}, with_evidence=False)
+        assert matrix["confirmed -> refuted"] == 2
+
+    @pytest.mark.asyncio
+    async def test_the_skeptic_is_asked_without_evidence(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`evidence=None` reaches the judge, not merely the call site.
+
+        `_evidence_section` renders nothing for None, so this keyword *is* the
+        whole difference between the arms. A refactor that gave it a default
+        would leave the control running the treatment's prompt, and the
+        experiment would report a difference of zero for the wrong reason.
+        """
+        module = sys.modules["guardian_replay_skeptic"]
+        seen: list[object] = []
+
+        async def _capture(
+            _provider: object, findings: list[Any], _diff: str, *, evidence: object
+        ) -> list[FindingJudgement]:
+            seen.append(evidence)
+            return [_judgement("refuted") for _ in findings]
+
+        monkeypatch.setattr(module, "judge_all", _capture)
+        self._skeptic(monkeypatch, [])
+        path = _recording(tmp_path, ["confirmed"])
+        await replay(path, None, REPO_ROOT, {}, with_evidence=False)
+        assert seen == [None]
+
+    @pytest.mark.asyncio
+    async def test_the_evidence_arm_without_a_commit_is_refused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A missing commit must not fall through into a mislabelled control.
+
+        The reviewed commit is not optional decoration: checkers run against
+        today's tree describe a different subject, and a flip caused by that
+        would be credited to the evidence.
+        """
+        self._skeptic(monkeypatch, [])
+        path = _recording(tmp_path, ["confirmed"])
+        with pytest.raises(NoEvidenceError, match="needs the commit"):
+            await replay(path, None, REPO_ROOT, {})
+
+
+class TestThePerFindingDump:
+    """What the matrix cannot say, and the reason the rows exist.
+
+    "Eight findings were refuted" is an improvement if all eight were false and a
+    regression if one of them was the only real one. Recall is a property of
+    *which* finding moved, so no aggregate can bear on it — that is a limit of
+    the shape of the number, not of its precision.
+    """
+
+    def _findings(self, tmp_path: Path, count: int) -> list[Any]:
+        path = _recording(tmp_path, ["confirmed"] * count)
+        return list(load_finder_recording(path).result.findings)
+
+    def test_each_row_carries_both_verdicts_and_the_reason(self, tmp_path: Path) -> None:
+        findings = self._findings(tmp_path, 2)
+        out = tmp_path / "rows" / "dump.jsonl"
+        write_rows(
+            out,
+            findings,
+            ["confirmed", "refuted"],
+            [_judgement("refuted", "mypy reports no error"), _judgement("refuted", "the diff")],
+        )
+        rows = [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines()]
+        assert [(r["was"], r["now"]) for r in rows] == [
+            ("confirmed", "refuted"),
+            ("refuted", "refuted"),
+        ]
+        assert [r["cites_a_checker"] for r in rows] == [True, False]
+        assert rows[0]["rationale"] == "mypy reports no error"
+
+    def test_a_failed_call_keeps_its_row(self, tmp_path: Path) -> None:
+        """Dropped instead of nulled, it would renumber every finding after it.
+
+        The rows are read back beside the recording to answer "did the real
+        finding survive", and that question is asked by position.
+        """
+        findings = self._findings(tmp_path, 3)
+        out = tmp_path / "dump.jsonl"
+        write_rows(
+            out,
+            findings,
+            ["confirmed"] * 3,
+            [_judgement("refuted"), None, _judgement("confirmed")],
+        )
+        rows = [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines()]
+        assert [r["index"] for r in rows] == [0, 1, 2]
+        assert rows[1]["now"] is None
+        assert rows[1]["rationale"] is None
+
+    def test_a_length_mismatch_refuses_rather_than_truncating(self, tmp_path: Path) -> None:
+        """`strict=True` on the zip: a short column would silently drop the tail."""
+        findings = self._findings(tmp_path, 2)
+        out = tmp_path / "dump.jsonl"
+        short = [_judgement("refuted")]
+        with pytest.raises(ValueError, match=r"argument 2 is shorter|argument 3 is shorter"):
+            write_rows(out, findings, ["confirmed"], short)
 
 
 class TestSkepticSelection:
