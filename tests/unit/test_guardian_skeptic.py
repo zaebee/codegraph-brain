@@ -241,15 +241,61 @@ async def test_judge_all_never_exceeds_the_concurrency_limit() -> None:
 class TestEvidenceInTheJudgementPrompt:
     """Static checker output, and the narrow licence it grants (#401)."""
 
-    def test_no_evidence_leaves_the_prompt_as_it_was(self) -> None:
-        """An unsupported repository must lose nothing.
+    def test_no_evidence_says_so_instead_of_saying_nothing(self) -> None:
+        """The gap the model was filling itself (#407).
 
-        `collect_evidence` returns None for a TypeScript change, a foreign repo,
-        a crashed checker. In every one of those the skeptic has to behave
-        exactly as it did before this section existed.
+        This test used to assert the opposite — that an absent checker left the
+        prompt untouched, on the reasoning that an unsupported repository must
+        lose nothing. Measuring #401 showed what it gained instead: judging the
+        same 24 findings with no checker output, **6 rationales cited mypy or
+        ruff anyway**, every one to confirm a false claim on a conditional it
+        could not check. Silence is not neutral.
         """
         prompt = build_judgement_prompt(_FINDING, "@@ -1 +1 @@\n+x", evidence=None)
-        assert "CHECKER" not in prompt.upper()
+        assert "NO CHECKER OUTPUT IS AVAILABLE" in prompt
+
+    def test_the_no_evidence_notice_names_the_verdict_rather_than_forbidding_one(
+        self,
+    ) -> None:
+        """A directive, because the prohibition was measured and did not work.
+
+        The first version said "do not rest a verdict on what a checker would
+        report". On the same 24 findings, 5 of 6 checker-appeals survived and
+        the language grew *more* assertive: a conditional became a flat claim
+        about a "mandatory `mypy --strict` gate" that does not exist as
+        described. Told what not to do, the model complied in form and confirmed
+        anyway — so the prompt now says which verdict such a claim takes.
+        """
+        prompt = build_judgement_prompt(_FINDING, "@@ -1 +1 @@\n+x", evidence=None)
+        # Whitespace-normalised rather than matched as written. The first draft
+        # accepted two spellings with an `or`, hedging against wherever the line
+        # wrap happened to fall — which is a test that passes because it was
+        # given two chances, not because it knows the answer. Raised in review
+        # of #410.
+        assert "Mark it 'uncertain'." in " ".join(prompt.split())
+
+    def test_the_no_evidence_notice_rules_out_both_other_verdicts(self) -> None:
+        """Symmetry is the recall guard, and it is a sentence rather than a code path.
+
+        Naming only the confirming direction would leave "the linter would have
+        caught it" available as a refutation — buying precision with recall, the
+        trade #246 records for a skeptic tuned too aggressively.
+        """
+        prompt = " ".join(
+            build_judgement_prompt(_FINDING, "@@ -1 +1 @@\n+x", evidence=None).split()
+        )
+        assert "Not 'confirmed': you have not seen a checker agree." in prompt
+        assert "Not 'refuted': you have not seen one disagree either." in prompt
+
+    def test_no_evidence_presents_no_checker_verdict(self) -> None:
+        """The notice names checkers; it must not appear to report one.
+
+        A section that mentioned mypy and looked like output would be worse than
+        the silence it replaces — the model would have something to quote.
+        """
+        prompt = build_judgement_prompt(_FINDING, "@@ -1 +1 @@\n+x", evidence=None)
+        assert "WHAT THIS REPOSITORY'S OWN CHECKERS REPORT" not in prompt
+        assert "Success: no issues" not in prompt
 
     def test_evidence_appears_with_the_commands_that_produced_it(self) -> None:
         """The model is asked to treat this as disproof, so it must be re-runnable."""
