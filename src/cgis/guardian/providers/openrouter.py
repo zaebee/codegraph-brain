@@ -22,6 +22,7 @@ test. So a 429 raises, loudly, rather than being smoothed into an empty answer.
 """
 
 import json
+import re
 from typing import Any, ClassVar
 
 import httpx
@@ -130,7 +131,12 @@ class OpenRouterProvider(BaseProvider):
         # An error object with HTTP 200: OpenRouter reports upstream refusals
         # this way, and `.json()["choices"]` would raise KeyError with nothing
         # in the message about which provider declined or why.
-        if "choices" not in body:
+        # `not body.get("choices")` covers both shapes: the key absent, and the
+        # key present holding an empty list. An upstream content filter returns
+        # the second, and `body["choices"][0]` would then raise IndexError with
+        # nothing in the message about which provider declined. Raised in review
+        # of #412.
+        if not body.get("choices"):
             _msg = f"OpenRouter returned no choices for {self._model_name}: {body}"
             raise RuntimeError(_msg)
         choice = body["choices"][0]
@@ -192,6 +198,18 @@ class OpenRouterProvider(BaseProvider):
         return await self._retry(lambda: self._post(payload))
 
 
+#: An opening code fence with an optional language tag, and a closing one.
+#:
+#: Regexes rather than splitting on a newline: a single-line fence
+#: (```json {"verdict": "confirmed"}```) has none, so the split returned the
+#: whole string and left the backticks in place. Raised in review of #412.
+#: Character-class stripping was the suggested fix and is a trap —
+#: `lstrip("json")` removes any of `j`, `o`, `s`, `n` and would eat into the
+#: payload; these match the fence and nothing else.
+_FENCE_OPEN = re.compile(r"^```[A-Za-z0-9_+-]*\s*")
+_FENCE_CLOSE = re.compile(r"\s*```$")
+
+
 def parse_or_raise(text: str, schema: type[BaseModel]) -> BaseModel:
     """Validate `text` against `schema`, tolerating a fenced code block.
 
@@ -200,8 +218,5 @@ def parse_or_raise(text: str, schema: type[BaseModel]) -> BaseModel:
     here keeps that from being counted as an unparseable answer, which would
     inflate exactly the "unruled" rate an experiment reads as leniency.
     """
-    stripped = text.strip()
-    if stripped.startswith("```"):
-        stripped = stripped.split("\n", 1)[-1]
-        stripped = stripped.rsplit("```", 1)[0]
-    return schema.model_validate(json.loads(stripped))
+    stripped = _FENCE_OPEN.sub("", text.strip(), count=1)
+    return schema.model_validate(json.loads(_FENCE_CLOSE.sub("", stripped, count=1).strip()))

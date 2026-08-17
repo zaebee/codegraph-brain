@@ -3,7 +3,7 @@
 import asyncio
 import math
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Literal
 
@@ -310,72 +310,106 @@ def _autodetect_provider(env: Mapping[str, str]) -> str:
     raise RuntimeError(_msg)
 
 
-def build_skeptic_provider(
-    env: Mapping[str, str], *, primary: str
+def _skeptic_ollama(
+    env: Mapping[str, str], model_override: str | None
 ) -> tuple[BaseProvider, str] | None:
-    """Return (skeptic_provider, model) or None for single-pass (spec §5.5).
+    """A local ollama skeptic; the model must be named, there is no default."""
+    model = model_override or _model_from_env(env, "GUARDIAN_MODEL")
+    if not model:
+        log.warning(
+            "Skeptic disabled: set GUARDIAN_SKEPTIC_MODEL (or GUARDIAN_MODEL) "
+            "for an ollama skeptic."
+        )
+        return None
+    provider = OllamaProvider(
+        model_name=model,
+        host=_ollama_host(env),
+        num_ctx=_ollama_num_ctx(env),
+        temperature=temperature(env),
+        penalties=_ollama_penalties(env),
+        num_predict=_ollama_num_predict(env),
+    )
+    return provider, model
 
-    Default skeptic = the provider opposite to the primary; GUARDIAN_SKEPTIC
-    overrides ('gemini'|'mistral'|'ollama'|'off'); GUARDIAN_SKEPTIC_MODEL overrides
-    the model, enabling same-provider/different-model pairs (incl. two distinct
-    local Ollama models — a cross-model skeptic with no API cost). A missing API
-    key / model degrades to None — a review never fails because of the skeptic.
-    """
-    choice = env.get("GUARDIAN_SKEPTIC", "").lower()
-    if choice == "off":
-        return None
-    if choice not in ("", "gemini", "mistral", "ollama", "openrouter"):
-        log.warning("Unknown GUARDIAN_SKEPTIC; skeptic disabled.", value=choice)
-        return None
-    name = choice or ("mistral" if primary == "gemini" else "gemini")
-    model_override = _model_from_env(env, "GUARDIAN_SKEPTIC_MODEL")
-    if name == "ollama":
-        model = model_override or _model_from_env(env, "GUARDIAN_MODEL")
-        if not model:
-            log.warning(
-                "Skeptic disabled: set GUARDIAN_SKEPTIC_MODEL (or GUARDIAN_MODEL) "
-                "for an ollama skeptic."
-            )
-            return None
-        provider = OllamaProvider(
-            model_name=model,
-            host=_ollama_host(env),
-            num_ctx=_ollama_num_ctx(env),
-            temperature=temperature(env),
-            penalties=_ollama_penalties(env),
-            num_predict=_ollama_num_predict(env),
+
+def _skeptic_openrouter(
+    env: Mapping[str, str], model_override: str | None
+) -> tuple[BaseProvider, str] | None:
+    """An OpenRouter skeptic; both the key and an explicit model are required."""
+    key = env.get("OPENROUTER_API_KEY")
+    if not key or not model_override:
+        log.warning(
+            "Skeptic disabled: an openrouter skeptic needs OPENROUTER_API_KEY and "
+            "GUARDIAN_SKEPTIC_MODEL; there is no default model."
         )
-        return provider, model
-    if name == "openrouter":
-        key = env.get("OPENROUTER_API_KEY")
-        if not key or not model_override:
-            log.warning(
-                "Skeptic disabled: an openrouter skeptic needs OPENROUTER_API_KEY and "
-                "GUARDIAN_SKEPTIC_MODEL; there is no default model."
-            )
-            return None
-        return (
-            OpenRouterProvider(
-                api_key=key, model_name=model_override, temperature=temperature(env)
-            ),
-            model_override,
-        )
-    if name == "mistral":
-        key = env.get("MISTRAL_API_KEY")
-        if not key:
-            log.warning("Skeptic disabled: MISTRAL_API_KEY not set.")
-            return None
-        model = model_override or DEFAULT_MISTRAL_MODEL
-        # Same temperature as the finder: the run registers one sampling
-        # setting, not one per pass.
-        skeptic = MistralProvider(api_key=key, model_name=model, temperature=temperature(env))
-        return skeptic, model
+        return None
+    provider = OpenRouterProvider(
+        api_key=key, model_name=model_override, temperature=temperature(env)
+    )
+    return provider, model_override
+
+
+def _skeptic_mistral(
+    env: Mapping[str, str], model_override: str | None
+) -> tuple[BaseProvider, str] | None:
+    """A mistral skeptic, on the finder's temperature."""
+    key = env.get("MISTRAL_API_KEY")
+    if not key:
+        log.warning("Skeptic disabled: MISTRAL_API_KEY not set.")
+        return None
+    model = model_override or DEFAULT_MISTRAL_MODEL
+    # Same temperature as the finder: the run registers one sampling setting,
+    # not one per pass.
+    return MistralProvider(api_key=key, model_name=model, temperature=temperature(env)), model
+
+
+def _skeptic_gemini(
+    env: Mapping[str, str], model_override: str | None
+) -> tuple[BaseProvider, str] | None:
+    """A gemini skeptic."""
     key = env.get("GEMINI_API_KEY")
     if not key:
         log.warning("Skeptic disabled: GEMINI_API_KEY not set.")
         return None
     model = model_override or DEFAULT_GEMINI_MODEL
     return GeminiProvider(api_key=key, model_name=model), model
+
+
+#: One builder per skeptic provider. A table rather than a chain of `if name ==`
+#: blocks: the chain reached cognitive complexity 18 against a limit of 15 when
+#: openrouter joined it (SonarCloud on #412), and each arm's requirements — which
+#: key, which default model, whether one exists at all — are per-provider facts
+#: that belong beside that provider rather than interleaved with the others.
+_SKEPTIC_BUILDERS: dict[
+    str, Callable[[Mapping[str, str], str | None], tuple[BaseProvider, str] | None]
+] = {
+    "ollama": _skeptic_ollama,
+    "openrouter": _skeptic_openrouter,
+    "mistral": _skeptic_mistral,
+    "gemini": _skeptic_gemini,
+}
+
+
+def build_skeptic_provider(
+    env: Mapping[str, str], *, primary: str
+) -> tuple[BaseProvider, str] | None:
+    """Return (skeptic_provider, model) or None for single-pass (spec §5.5).
+
+    Default skeptic = the provider opposite to the primary; GUARDIAN_SKEPTIC
+    overrides ('gemini'|'mistral'|'ollama'|'openrouter'|'off');
+    GUARDIAN_SKEPTIC_MODEL overrides the model, enabling
+    same-provider/different-model pairs (incl. two distinct local Ollama models —
+    a cross-model skeptic with no API cost). A missing API key / model degrades
+    to None — a review never fails because of the skeptic.
+    """
+    choice = env.get("GUARDIAN_SKEPTIC", "").lower()
+    if choice == "off":
+        return None
+    if choice and choice not in _SKEPTIC_BUILDERS:
+        log.warning("Unknown GUARDIAN_SKEPTIC; skeptic disabled.", value=choice)
+        return None
+    name = choice or ("mistral" if primary == "gemini" else "gemini")
+    return _SKEPTIC_BUILDERS[name](env, _model_from_env(env, "GUARDIAN_SKEPTIC_MODEL"))
 
 
 def build_footer(

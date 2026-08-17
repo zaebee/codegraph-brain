@@ -127,6 +127,21 @@ class TestTheFailuresThatWouldLookLikeLeniency:
         with pytest.raises(RuntimeError, match="No allowed providers"):
             await provider.generate_content("s", "u")
 
+    @pytest.mark.asyncio
+    async def test_an_empty_choices_list_is_reported_not_an_indexerror(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The key present and the list empty — an upstream content filter.
+
+        Raised in review of #412. `"choices" not in body` passed this and
+        `body["choices"][0]` then raised IndexError, whose message says nothing
+        about which provider declined or why.
+        """
+        _serve(monkeypatch, _reply(body={"choices": [], "usage": {}}))
+        provider = _provider()
+        with pytest.raises(RuntimeError, match="no choices"):
+            await provider.generate_content("s", "u")
+
 
 class TestTheRequest:
     """What goes on the wire, and what deliberately does not."""
@@ -208,6 +223,22 @@ class TestFencedJson:
         text = '```json\n{"verdict": "confirmed", "rationale": "r"}\n```'
         parsed = parse_or_raise(text, _Judgement)
         assert parsed.verdict == "confirmed"  # type: ignore[attr-defined]
+
+    def test_a_single_line_fence_parses(self) -> None:
+        """No newline to split on — the shape the first version left broken.
+
+        Raised in review of #412. Splitting on `\\n` returned the whole string
+        when there was none, so the backticks survived and `json.loads` failed,
+        counting a perfectly good answer as unruled.
+        """
+        text = '```json {"verdict": "refuted", "rationale": "r"}```'
+        parsed = parse_or_raise(text, _Judgement)
+        assert parsed.verdict == "refuted"  # type: ignore[attr-defined]
+
+    def test_a_fence_with_no_language_tag_parses(self) -> None:
+        text = '```\n{"verdict": "uncertain", "rationale": "r"}```'
+        parsed = parse_or_raise(text, _Judgement)
+        assert parsed.verdict == "uncertain"  # type: ignore[attr-defined]
 
     def test_prose_still_raises(self) -> None:
         """Tolerating fences must not become tolerating anything."""

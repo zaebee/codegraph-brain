@@ -766,3 +766,61 @@ class TestTemperatureRejectsWhatIsNotATemperature:
         """The guard must not cost the settings it exists to protect."""
         assert runner.temperature_setting({"GUARDIAN_TEMPERATURE": "0"}) == (0.0, "explicit")
         assert runner.temperature_setting({"GUARDIAN_TEMPERATURE": "0.7"}) == (0.7, "explicit")
+
+
+def test_build_provider_openrouter_requires_an_explicit_model() -> None:
+    """No default model, on purpose: OpenRouter fronts hundreds of them.
+
+    A default would silently pick one nobody chose, which is the opposite of
+    what this provider is for — naming a third vendor explicitly (#246).
+    """
+    with pytest.raises(RuntimeError, match="GUARDIAN_MODEL must name an OpenRouter model"):
+        build_provider({"GUARDIAN_PROVIDER": "openrouter", "OPENROUTER_API_KEY": "k"})
+
+
+def test_build_provider_openrouter_requires_a_key() -> None:
+    env = {"GUARDIAN_PROVIDER": "openrouter", "GUARDIAN_MODEL": "vendor/m:free"}
+    with pytest.raises(RuntimeError, match="OPENROUTER_API_KEY must be set"):
+        build_provider(env)
+
+
+def test_build_provider_openrouter_builds() -> None:
+    provider, model = build_provider(
+        {
+            "GUARDIAN_PROVIDER": "openrouter",
+            "OPENROUTER_API_KEY": "k",
+            "GUARDIAN_MODEL": "vendor/m:free",
+        }
+    )
+    assert provider.name == "openrouter"
+    assert model == "vendor/m:free"
+
+
+def test_build_skeptic_openrouter_needs_both_key_and_model() -> None:
+    """Degrades to None rather than raising: a review never fails on the skeptic."""
+    assert (
+        build_skeptic_provider(
+            {"GUARDIAN_SKEPTIC": "openrouter", "OPENROUTER_API_KEY": "k"}, primary="mistral"
+        )
+        is None
+    )
+    assert (
+        build_skeptic_provider(
+            {"GUARDIAN_SKEPTIC": "openrouter", "GUARDIAN_SKEPTIC_MODEL": "v/m"}, primary="mistral"
+        )
+        is None
+    )
+
+
+def test_build_skeptic_openrouter_builds() -> None:
+    built = build_skeptic_provider(
+        {
+            "GUARDIAN_SKEPTIC": "openrouter",
+            "OPENROUTER_API_KEY": "k",
+            "GUARDIAN_SKEPTIC_MODEL": "vendor/m:free",
+        },
+        primary="mistral",
+    )
+    assert built is not None
+    assert built[0].name == "openrouter"
+    assert built[1] == "vendor/m:free"
