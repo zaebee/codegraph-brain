@@ -43,6 +43,22 @@ DEFAULT_REQUEST_TIMEOUT = 300.0
 #: low silently returns reasoning where a verdict was expected.
 DEFAULT_MAX_TOKENS = 8000
 
+#: Whether the model is asked to think before answering.
+#:
+#: Off, and stated rather than left to the model. `qwen3.7-plus` puts its chain
+#: of thought in a separate `reasoning` field and fills `content` only at the
+#: end, so on the larger prompts it spent the whole budget thinking and returned
+#: `content: null` — 118 of 135 findings unruled in the first paid run, which the
+#: validity gate caught and refused to score.
+#:
+#: Raising the budget would have fixed the symptom and broken the experiment.
+#: The arm this one is compared against, `gemini-2.5-flash`, is not doing
+#: extended thinking, so leaving the model's default on would make the two arms
+#: differ in a dimension nobody chose — the same reason `temperature` is not
+#: invented here, arriving from the other side: the honest move is to set it and
+#: say so, not to inherit it and be unable to describe the run afterwards.
+DEFAULT_REASONING = False
+
 _TOO_MANY_REQUESTS = 429
 
 
@@ -69,6 +85,7 @@ class OpenRouterProvider(BaseProvider):
         timeout: float = DEFAULT_REQUEST_TIMEOUT,
         max_tokens: int = DEFAULT_MAX_TOKENS,
         temperature: float | None = None,
+        reasoning: bool = DEFAULT_REASONING,
     ) -> None:
         """Store the key, model, timeout and generation budget.
 
@@ -83,6 +100,7 @@ class OpenRouterProvider(BaseProvider):
         self._timeout = timeout
         self._max_tokens = max_tokens
         self._temperature = temperature
+        self._reasoning = reasoning
 
     async def _post(self, payload: dict[str, Any]) -> str:
         """One completion call; return the message content.
@@ -145,6 +163,8 @@ class OpenRouterProvider(BaseProvider):
                 {"role": "user", "content": user_prompt},
             ],
             "max_tokens": self._max_tokens,
+            # Always sent, in both directions, so a run can state what it did.
+            "reasoning": {"enabled": self._reasoning},
         }
         # `is not None`, not truthiness: 0.0 is the one temperature that states
         # something, and a falsy test would drop exactly that value.

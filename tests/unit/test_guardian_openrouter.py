@@ -65,13 +65,16 @@ def _serve(monkeypatch: pytest.MonkeyPatch, response: httpx.Response) -> list[di
 
 
 def _provider(
-    max_tokens: int = mod.DEFAULT_MAX_TOKENS, temperature: float | None = None
+    max_tokens: int = mod.DEFAULT_MAX_TOKENS,
+    temperature: float | None = None,
+    reasoning: bool = mod.DEFAULT_REASONING,
 ) -> OpenRouterProvider:
     return OpenRouterProvider(
         api_key="k",
         model_name="vendor/model:free",
         max_tokens=max_tokens,
         temperature=temperature,
+        reasoning=reasoning,
     )
 
 
@@ -141,6 +144,25 @@ class TestTheRequest:
         sent = _serve(monkeypatch, _reply())
         await _provider(temperature=0.0).generate_content("s", "u")
         assert sent[0]["temperature"] == 0.0
+
+    @pytest.mark.asyncio
+    async def test_reasoning_is_stated_in_both_directions(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Sent whether on or off, so a run can describe what it did.
+
+        Left unsent, `qwen3.7-plus` thinks by default, puts the thought in a
+        separate field and fills `content` only at the end — it spent the whole
+        budget reasoning and returned nothing on 118 of 135 findings. The arm it
+        is compared against is not thinking, so inheriting the default would
+        make the two arms differ in a dimension nobody chose.
+        """
+        sent = _serve(monkeypatch, _reply())
+        await _provider().generate_content("s", "u")
+        assert sent[0]["reasoning"] == {"enabled": False}
+        sent_on = _serve(monkeypatch, _reply())
+        await _provider(reasoning=True).generate_content("s", "u")
+        assert sent_on[0]["reasoning"] == {"enabled": True}
 
     @pytest.mark.asyncio
     async def test_structured_generation_carries_the_schema(

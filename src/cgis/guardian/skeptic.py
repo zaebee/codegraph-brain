@@ -212,8 +212,20 @@ async def judge_finding(
             FindingJudgement,
         )
         return FindingJudgement.model_validate_json(extract_json(raw))
-    except Exception:
-        log.warning("Skeptic judgement failed; finding stays unruled.", file=finding.file)
+    except Exception as exc:
+        # The reason is logged, not just the fact. Containing the error per
+        # finding is deliberate (#246 §3.4) — one bad response must not cost the
+        # pass — but a warning that says only "failed" leaves an operator with
+        # 118 identical lines and no way to tell a spent quota from a truncated
+        # reasoning model from unparseable JSON. Each of those has a different
+        # fix, and all three arrive here. Diagnosing one cost half an hour of
+        # guessing before this line carried the type and the message.
+        log.warning(
+            "Skeptic judgement failed; finding stays unruled.",
+            file=finding.file,
+            error_type=type(exc).__name__,
+            error=str(exc)[:300],
+        )
         return None
 
 
