@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"
 from guardian_replay_skeptic import (
     NoBaselineError,
     NoEvidenceError,
+    NoSkepticError,
     baseline_verdicts,
     changed_files,
     cites_a_checker,
@@ -281,7 +282,7 @@ class TestSkepticSelection:
         module = sys.modules["guardian_replay_skeptic"]
         monkeypatch.setattr(module, "build_provider", lambda _e: (StubProvider([]), "m"))
         monkeypatch.setattr(module, "build_skeptic_provider", lambda _e, **_kw: None)
-        with pytest.raises(NoBaselineError, match="No skeptic is configured"):
+        with pytest.raises(NoSkepticError, match="No skeptic is configured"):
             module.skeptic_from({})
 
     def test_the_configured_skeptic_is_returned(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -315,3 +316,43 @@ def test_main_prints_the_matrix_and_the_attribution(
     assert "2 findings re-judged" in out
     assert "confirmed -> refuted" in out
     assert "rationales citing a checker: 2/2" in out
+
+
+class TestBadInputFailsAsPromised:
+    """A module that promises a named refusal must not crash with a type error."""
+
+    def test_an_explicitly_null_result_is_refused_not_crashed(self, tmp_path: Path) -> None:
+        """`{"result": null}` — a key present and holding null.
+
+        `.get("result", {})` returns the null, not the default, because the key
+        exists. The old code then called `.get("findings")` on None and raised
+        AttributeError, so one shape of unusable recording escaped the promise
+        this module makes about how it refuses.
+        """
+        path = tmp_path / "guardian_finder.json"
+        path.write_text(json.dumps({"result": None, "diff": _DIFF}), encoding="utf-8")
+        with pytest.raises(NoBaselineError, match="no usable baseline"):
+            baseline_verdicts(path)
+
+    def test_a_missing_result_key_is_refused_too(self, tmp_path: Path) -> None:
+        path = tmp_path / "guardian_finder.json"
+        path.write_text(json.dumps({"diff": _DIFF}), encoding="utf-8")
+        with pytest.raises(NoBaselineError, match="no usable baseline"):
+            baseline_verdicts(path)
+
+    def test_an_unknown_ref_says_what_git_said(self) -> None:
+        """The message is the whole value here.
+
+        `CalledProcessError` stringifies without stderr, so the failure would
+        report an exit status and not whether the ref is unknown, the tree is
+        locked, or the path already exists — three problems with three different
+        fixes, indistinguishable from the traceback.
+        """
+        with pytest.raises(RuntimeError, match="Cannot create a worktree"):
+            _enter_worktree("refs/heads/definitely-not-a-branch-9d3f")
+
+
+def _enter_worktree(ref: str) -> None:
+    """Open and immediately close a worktree — one call for the raises block."""
+    with worktree_at(ref, REPO_ROOT):
+        pass

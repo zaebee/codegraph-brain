@@ -64,6 +64,16 @@ class NoBaselineError(RuntimeError):
     """
 
 
+class NoSkepticError(RuntimeError):
+    """Raised when no skeptic is configured, so there is nothing to replay.
+
+    Its own type rather than `NoBaselineError`, whose docstring says "a recording
+    carries no verdicts". Reusing it here would make that sentence false and put
+    a configuration problem and a data problem behind one name — and the two have
+    nothing in common but the moment they are noticed.
+    """
+
+
 class NoEvidenceError(RuntimeError):
     """Raised when evidence cannot be collected at the reviewed commit.
 
@@ -82,7 +92,12 @@ def baseline_verdicts(path: Path) -> list[str]:
     the skeptic is shown its own previous answers.
     """
     raw = json.loads(path.read_text(encoding="utf-8"))
-    findings = raw.get("result", {}).get("findings") or []
+    # `or {}` rather than a `.get` default: a key present and explicitly null
+    # returns the null, not the default, so `{"result": null}` would reach
+    # `.get("findings")` as None and raise AttributeError. This module promises
+    # `NoBaselineError` for a recording it cannot use; crashing with a type error
+    # instead makes that promise false for one shape of bad input.
+    findings = (raw.get("result") or {}).get("findings") or []
     verdicts = [f.get("verdict") for f in findings]
     unruled = [i for i, v in enumerate(verdicts) if v not in _VERDICTS]
     if not verdicts or unruled:
@@ -109,12 +124,23 @@ def worktree_at(ref: str, repo_root: Path) -> Iterator[Path]:
     """A detached worktree at `ref`, removed on the way out."""
     with tempfile.TemporaryDirectory(prefix="replay-") as tmp:
         path = Path(tmp) / "wt"
-        subprocess.run(
-            ["git", "worktree", "add", "--detach", str(path), ref],
-            cwd=repo_root,
-            capture_output=True,
-            check=True,
-        )
+        try:
+            subprocess.run(
+                ["git", "worktree", "add", "--detach", str(path), ref],
+                cwd=repo_root,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            # `CalledProcessError` stringifies to "Command '[...]' returned
+            # non-zero exit status 1" and drops the captured stderr entirely —
+            # the same reasoning `fetch_changed_files` records in
+            # guardian_martian.py:138. Here the lost message is the one that
+            # says whether the ref is unknown, the tree is locked, or the path
+            # exists, and those have three different fixes.
+            _msg = f"Cannot create a worktree at {ref!r}: {exc.stderr.strip() or '(no stderr)'}"
+            raise RuntimeError(_msg) from exc
         try:
             yield path
         finally:
@@ -209,7 +235,7 @@ def skeptic_from(env: Mapping[str, str]) -> BaseProvider:
             "No skeptic is configured, so there is nothing to replay. Set GUARDIAN_SKEPTIC "
             "and the matching API key."
         )
-        raise NoBaselineError(_msg)
+        raise NoSkepticError(_msg)
     return skeptic[0]
 
 
