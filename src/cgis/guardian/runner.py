@@ -23,6 +23,7 @@ from cgis.guardian.providers.ollama import (
     DEFAULT_OLLAMA_NUM_PREDICT,
     OllamaProvider,
 )
+from cgis.guardian.providers.openrouter import OpenRouterProvider
 from cgis.guardian.recording import save_finder_recording
 from cgis.guardian.render import render_report
 
@@ -200,6 +201,32 @@ def _build_gemini(env: Mapping[str, str], model_override: str | None) -> tuple[B
     return GeminiProvider(api_key=key, model_name=model), model
 
 
+def _build_openrouter(
+    env: Mapping[str, str], model_override: str | None
+) -> tuple[BaseProvider, str]:
+    """Construct an OpenRouterProvider; OPENROUTER_API_KEY and a model are required.
+
+    No default model on purpose. OpenRouter fronts hundreds of models whose
+    availability and cost differ by orders of magnitude, and a default would
+    silently pick one nobody chose — the opposite of what this provider exists
+    for, which is naming a third vendor explicitly (#246).
+    """
+    key = env.get("OPENROUTER_API_KEY")
+    if not key:
+        _msg = "OPENROUTER_API_KEY must be set when GUARDIAN_PROVIDER=openrouter"
+        raise RuntimeError(_msg)
+    if not model_override:
+        _msg = (
+            "GUARDIAN_MODEL must name an OpenRouter model (e.g. "
+            "'nvidia/nemotron-3-super-120b-a12b:free'); there is no default."
+        )
+        raise RuntimeError(_msg)
+    return (
+        OpenRouterProvider(api_key=key, model_name=model_override, temperature=temperature(env)),
+        model_override,
+    )
+
+
 def _build_ollama(env: Mapping[str, str], model_override: str | None) -> tuple[BaseProvider, str]:
     """Construct an OllamaProvider; GUARDIAN_MODEL names the model (no API key)."""
     if not model_override:
@@ -257,10 +284,18 @@ def build_provider(env: Mapping[str, str]) -> tuple[BaseProvider, str]:
     model_override = _model_from_env(env, "GUARDIAN_MODEL")
     provider_name = env.get("GUARDIAN_PROVIDER", "").lower() or _autodetect_provider(env)
 
-    builders = {"mistral": _build_mistral, "gemini": _build_gemini, "ollama": _build_ollama}
+    builders = {
+        "mistral": _build_mistral,
+        "gemini": _build_gemini,
+        "ollama": _build_ollama,
+        "openrouter": _build_openrouter,
+    }
     builder = builders.get(provider_name)
     if builder is None:
-        _msg = f"Unknown GUARDIAN_PROVIDER={provider_name!r}. Use 'mistral', 'gemini', or 'ollama'."
+        _msg = (
+            f"Unknown GUARDIAN_PROVIDER={provider_name!r}. "
+            f"Use one of: {', '.join(sorted(builders))}."
+        )
         raise RuntimeError(_msg)
     return builder(env, model_override)
 
@@ -289,7 +324,7 @@ def build_skeptic_provider(
     choice = env.get("GUARDIAN_SKEPTIC", "").lower()
     if choice == "off":
         return None
-    if choice not in ("", "gemini", "mistral", "ollama"):
+    if choice not in ("", "gemini", "mistral", "ollama", "openrouter"):
         log.warning("Unknown GUARDIAN_SKEPTIC; skeptic disabled.", value=choice)
         return None
     name = choice or ("mistral" if primary == "gemini" else "gemini")
@@ -311,6 +346,20 @@ def build_skeptic_provider(
             num_predict=_ollama_num_predict(env),
         )
         return provider, model
+    if name == "openrouter":
+        key = env.get("OPENROUTER_API_KEY")
+        if not key or not model_override:
+            log.warning(
+                "Skeptic disabled: an openrouter skeptic needs OPENROUTER_API_KEY and "
+                "GUARDIAN_SKEPTIC_MODEL; there is no default model."
+            )
+            return None
+        return (
+            OpenRouterProvider(
+                api_key=key, model_name=model_override, temperature=temperature(env)
+            ),
+            model_override,
+        )
     if name == "mistral":
         key = env.get("MISTRAL_API_KEY")
         if not key:

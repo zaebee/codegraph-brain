@@ -195,10 +195,19 @@ def test_build_provider_ollama_num_ctx_from_env() -> None:
     assert provider._num_ctx == 8192  # noqa: SLF001  # white-box: ctx wiring
 
 
-def test_build_provider_unknown_lists_ollama() -> None:
-    """A typo in GUARDIAN_PROVIDER names all three valid providers."""
-    with pytest.raises(RuntimeError, match="'mistral', 'gemini', or 'ollama'"):
+def test_build_provider_unknown_lists_every_provider_there_is() -> None:
+    """A typo in GUARDIAN_PROVIDER names the valid ones — all of them.
+
+    The message is built from the builder table rather than written out, so it
+    cannot list three providers while four exist. This test used to assert the
+    literal `'mistral', 'gemini', or 'ollama'` and went stale the moment
+    openrouter arrived (#246), which is the failure mode the derivation closes.
+    """
+    with pytest.raises(RuntimeError) as raised:
         build_provider({"GUARDIAN_PROVIDER": "anthropic", "GEMINI_API_KEY": "g"})
+    message = str(raised.value)
+    for name in ("mistral", "gemini", "ollama", "openrouter"):
+        assert name in message
 
 
 def test_build_skeptic_provider_ollama_cross_model() -> None:

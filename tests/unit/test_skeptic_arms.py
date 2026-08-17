@@ -19,7 +19,15 @@ from cgis.guardian.bench import load_ground_truth
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"))
 
 import skeptic_arms
-from skeptic_arms import ARMS, NoArmError, _vendor, arm_provider, finder_models, judge_one, report
+from skeptic_arms import (
+    DEFAULT_ARMS,
+    NoArmError,
+    _vendor,
+    arm_provider,
+    finder_models,
+    judge_one,
+    report,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 BENCH_DIR = REPO_ROOT / "benchmarks" / "guardian"
@@ -50,9 +58,9 @@ class TestBuildingAnArm:
             return StubProvider([]), "m"
 
         monkeypatch.setattr(skeptic_arms, "build_skeptic_provider", _capture)
-        for name in ARMS:
+        for name in DEFAULT_ARMS.split(","):
             arm_provider(name, {})
-        assert seen == list(ARMS)
+        assert seen == DEFAULT_ARMS.split(",")
 
     def test_a_skeptic_model_in_the_environment_reaches_neither_arm(
         self, monkeypatch: pytest.MonkeyPatch
@@ -76,6 +84,38 @@ class TestBuildingAnArm:
         arm_provider("mistral", {"GUARDIAN_SKEPTIC_MODEL": "gemini-2.5-flash", "X": "keep"})
         assert "GUARDIAN_SKEPTIC_MODEL" not in envs[0]
         assert envs[0]["X"] == "keep"
+
+    def test_an_arms_own_model_replaces_the_environments(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Per arm, because one arm may need a model the other cannot use.
+
+        `openrouter` has no default model by design — it fronts hundreds — so it
+        must be told one, and telling it through the environment would tell the
+        other arm too.
+        """
+        envs: list[dict[str, str]] = []
+
+        def _capture(env: dict[str, str], **_kw: object) -> tuple[StubProvider, str]:
+            envs.append(dict(env))
+            return StubProvider([]), "m"
+
+        monkeypatch.setattr(skeptic_arms, "build_skeptic_provider", _capture)
+        arm_provider("openrouter", {"GUARDIAN_SKEPTIC_MODEL": "gemini-2.5-flash"}, "vendor/m:free")
+        assert envs[0]["GUARDIAN_SKEPTIC_MODEL"] == "vendor/m:free"
+
+    @pytest.mark.parametrize(
+        ("spec", "expected"),
+        [
+            ("gemini,mistral", {"gemini": None, "mistral": None}),
+            ("gemini,openrouter=vendor/m:free", {"gemini": None, "openrouter": "vendor/m:free"}),
+            (" gemini , mistral ", {"gemini": None, "mistral": None}),
+            ("gemini,", {"gemini": None}),
+        ],
+    )
+    def test_the_arm_spec_parses(self, spec: str, expected: dict[str, str | None]) -> None:
+        """A model may carry `/` and `:` — the split is on the first `=` only."""
+        assert skeptic_arms.parse_arms(spec) == expected
 
 
 class TestTheVendorSplit:
@@ -186,7 +226,9 @@ class TestTheRunItself:
             path.write_text("{}", encoding="utf-8")
         collected: list[str] = []
         monkeypatch.setattr(
-            skeptic_arms, "arm_provider", lambda name, _env: (StubProvider([]), f"{name}-model")
+            skeptic_arms,
+            "arm_provider",
+            lambda name, _env, _model=None: (StubProvider([]), f"{name}-model"),
         )
         monkeypatch.setattr(skeptic_arms, "finder_models", lambda _p: {})
         monkeypatch.setattr(skeptic_arms, "build", lambda *_a: paths)
@@ -216,9 +258,11 @@ class TestTheRunItself:
         and differs only in how long it takes — invisible in the output.
         """
         collected = self._wire(monkeypatch, tmp_path, ["143@a", "143@b", "143@c"])
-        rows = await skeptic_arms.collect_rows(REPO_ROOT, None)
+        rows = await skeptic_arms.collect_rows(
+            REPO_ROOT, None, skeptic_arms.parse_arms(DEFAULT_ARMS)
+        )
         assert len(collected) == 1
-        assert len(rows) == 3 * len(ARMS)
+        assert len(rows) == 3 * 2
 
     @pytest.mark.asyncio
     async def test_each_pass_is_judged_by_every_arm(
@@ -226,11 +270,13 @@ class TestTheRunItself:
     ) -> None:
         """Pairing is the whole design: the same findings, both skeptics."""
         self._wire(monkeypatch, tmp_path, ["143@a", "144@b"])
-        rows = await skeptic_arms.collect_rows(REPO_ROOT, None)
+        rows = await skeptic_arms.collect_rows(
+            REPO_ROOT, None, skeptic_arms.parse_arms(DEFAULT_ARMS)
+        )
         by_pass: dict[str, set[str]] = {}
         for row in rows:
             by_pass.setdefault(str(row["pass"]), set()).add(str(row["arm"]))
-        assert by_pass == {"143@a": set(ARMS), "144@b": set(ARMS)}
+        assert by_pass == {"143@a": {"gemini", "mistral"}, "144@b": {"gemini", "mistral"}}
 
     @pytest.mark.asyncio
     async def test_limit_trims_the_work_before_a_worktree_is_built(
@@ -238,9 +284,9 @@ class TestTheRunItself:
     ) -> None:
         """`--limit` is the smoke run; it must cost one PR, not all of them."""
         collected = self._wire(monkeypatch, tmp_path, ["143@a", "144@b"])
-        rows = await skeptic_arms.collect_rows(REPO_ROOT, 1)
+        rows = await skeptic_arms.collect_rows(REPO_ROOT, 1, skeptic_arms.parse_arms(DEFAULT_ARMS))
         assert len(collected) == 1
-        assert len(rows) == len(ARMS)
+        assert len(rows) == 2
 
     @pytest.mark.asyncio
     async def test_a_pass_with_no_findings_is_dropped_before_any_worktree(
@@ -253,9 +299,64 @@ class TestTheRunItself:
         monkeypatch.setattr(
             skeptic_arms, "evidence_for_pr", lambda *_a: collected.append("x") or object()
         )
-        rows = await skeptic_arms.collect_rows(REPO_ROOT, None)
+        rows = await skeptic_arms.collect_rows(
+            REPO_ROOT, None, skeptic_arms.parse_arms(DEFAULT_ARMS)
+        )
         assert rows == []
         assert collected == []
+
+
+class TestTheValidityGate:
+    """The only thing between a broken arm and a confirmed hypothesis."""
+
+    def test_a_quiet_arm_is_reported_as_a_problem(self) -> None:
+        """`judge_finding` turns every provider error into `unruled`.
+
+        A spent quota, an upstream 429 and a model that cannot emit JSON all
+        arrive as the same row shape as a skeptic that declined to refute — and
+        "refutes nothing" is what #246 predicts for a same-vendor skeptic. So a
+        broken arm would *confirm* the hypothesis if this did not fire.
+        """
+        rows: list[dict[str, Any]] = [
+            {"arm": "openrouter", "findings": 10, "unruled": 4},
+            {"arm": "gemini", "findings": 10, "unruled": 0},
+        ]
+        problems = skeptic_arms.validity_problems(rows)
+        assert len(problems) == 1
+        assert "openrouter" in problems[0]
+        assert "4 of 10" in problems[0]
+
+    def test_a_healthy_pair_of_arms_raises_nothing(self) -> None:
+        rows: list[dict[str, Any]] = [
+            {"arm": "openrouter", "findings": 100, "unruled": 2},
+            {"arm": "gemini", "findings": 100, "unruled": 0},
+        ]
+        assert skeptic_arms.validity_problems(rows) == []
+
+    def test_main_refuses_to_print_a_comparison_it_cannot_read(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Exit 2 and no table — and the rows are still written.
+
+        Refused rather than footnoted: a caveat under a table does not stop the
+        table being read, and this table's whole content is how much each arm
+        refuted. The rows are kept because a refused run nobody can diagnose is
+        a second failure.
+        """
+
+        async def _rows(
+            _root: Path, _limit: int | None, _arms: dict[str, str | None]
+        ) -> list[dict[str, Any]]:
+            return [{"arm": "openrouter", "findings": 10, "unruled": 9, "finder_model": "x"}]
+
+        out = tmp_path / "arms.jsonl"
+        monkeypatch.setattr(skeptic_arms, "collect_rows", _rows)
+        monkeypatch.setattr(sys, "argv", ["skeptic_arms.py", "--out", str(out)])
+        assert skeptic_arms.main() == 2
+        captured = capsys.readouterr()
+        assert "may be silence" in captured.err
+        assert "(pass, arm) results" not in captured.out
+        assert out.read_text(encoding="utf-8").strip()
 
 
 def test_main_writes_the_rows_it_collected(
@@ -275,7 +376,9 @@ def test_main_writes_the_rows_it_collected(
         "killed_gt": [],
     }
 
-    async def _rows(_root: Path, _limit: int | None) -> list[dict[str, Any]]:
+    async def _rows(
+        _root: Path, _limit: int | None, _arms: dict[str, str | None]
+    ) -> list[dict[str, Any]]:
         return [row]
 
     out = tmp_path / "nested" / "arms.jsonl"
