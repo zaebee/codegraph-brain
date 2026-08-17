@@ -73,9 +73,14 @@ def parse_collected(output: str) -> int:
     `137/1932`, and 137 is how many matched a filter rather than how many exist.
     A floor fed the filtered number would fail on every filtered run and, worse,
     would pass a real deletion whenever the filter happened to be narrow.
+
+    The **last** match wins. pytest's summary is the final line, so anything
+    else matching came earlier and is not the answer — a plugin or a warning
+    printing something count-shaped would otherwise be read as the count.
+    Raised in review of #409.
     """
-    match = _COLLECTED.search(output)
-    if match is None:
+    matches = list(_COLLECTED.finditer(output))
+    if not matches:
         _msg = (
             "Could not find a collected-test count in pytest's output. The last line is "
             "normally '<N> tests collected'; 'no tests collected' means collection failed "
@@ -83,37 +88,62 @@ def parse_collected(output: str) -> int:
             f"--- output ---\n{output.strip()[-2000:]}"
         )
         raise CannotCountError(_msg)
-    return int(match.group(2))
+    return int(matches[-1].group(2))
+
+
+def _run(command: list[str], repo_root: Path) -> subprocess.CompletedProcess[str]:
+    """Run a command, turning a missing executable into this module's refusal.
+
+    Without this, an absent `uv` or `git` raises `FileNotFoundError`, Python
+    exits 1, and **1 is the code for "the suite shrank"** — so a machine without
+    the toolchain would report as a deletion. Telling "we could not find out"
+    apart from "tests are missing" is the entire job of this file, and it cannot
+    make that distinction everywhere except in its own plumbing. Raised in
+    review of #409.
+    """
+    try:
+        return subprocess.run(command, cwd=repo_root, capture_output=True, text=True, check=False)
+    except FileNotFoundError as exc:
+        _msg = f"Could not run {command[0]!r}: {exc.strerror}. It must be on PATH."
+        raise CannotCountError(_msg) from exc
 
 
 def collect_count(repo_root: Path) -> int:
     """How many tests pytest can collect right now."""
-    result = subprocess.run(
-        ["uv", "run", "--frozen", "pytest", "--collect-only", "-q"],
-        cwd=repo_root,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
     # Not `check=True`: a non-zero exit with a usable summary line is possible,
     # and the exit code is not the question being asked. The parse decides, and
-    # it refuses loudly when there is nothing to parse — so the output is passed
-    # through either way rather than being thrown away with an exception whose
-    # message would not contain it.
-    return parse_collected(result.stdout + result.stderr)
+    # it refuses loudly when there is nothing to parse.
+    result = _run(["uv", "run", "--frozen", "pytest", "--collect-only", "-q"], repo_root)
+    # stdout first, and only then the two joined. pytest writes its summary to
+    # stdout while `uv` writes its own chatter to stderr, and stderr is appended
+    # *after* — so "take the last match" is right within a stream and wrong
+    # across them. The joined form is still what a failure reports, so the
+    # refusal carries both.
+    try:
+        return parse_collected(result.stdout)
+    except CannotCountError:
+        return parse_collected(result.stdout + result.stderr)
 
 
-#: What may be handed to git as a revision. Deliberately narrower than git's own
-#: rules — it has to admit `main`, `origin/main`, `HEAD`, a sha and
-#: `release/1.2`, and nothing else needs to work.
+#: What may be handed to git as a revision. Narrower than git's own rules, but
+#: wide enough for the forms people actually type: `main`, `origin/main`, `HEAD`,
+#: a sha, `release/1.2`, and the relative ones — `HEAD~1`, `HEAD^`, `main@{u}`
+#: minus the braces. The relative characters were added in review of #409;
+#: `origin/<base>` is what CI passes, but `HEAD~1` is what a person debugging
+#: this locally reaches for, and `~ ^ @` introduce no option and no shell.
 #:
-#: The first character is the point. A value beginning with `-` reaches git as a
-#: *flag* rather than a revision, which is the same argument-injection shape
-#: `evidence.py` guards against on changed-file paths. Nothing here is passed
-#: through a shell, so this is not about quoting; it is that a string which
-#: never looked like a ref has no business reaching a subprocess, exploitable or
-#: not (pythonsecurity:S8705).
-_REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
+#: The leading dash is the point, and the pattern now says so directly. An
+#: earlier version required the first character to be alphanumeric, which is a
+#: stricter rule wearing the same clothes — it also rejected `@`, a legal
+#: revision meaning HEAD, as its own test discovered. Git validates the rest;
+#: what git cannot do is tell that an argument was meant as a revision, because
+#: a value beginning with `-` reaches it as a *flag*. Same argument-injection
+#: shape `evidence.py` guards against on changed-file paths.
+#:
+#: Nothing here is passed through a shell, so this is not about quoting; it is
+#: that a string which never looked like a ref has no business reaching a
+#: subprocess, exploitable or not (pythonsecurity:S8705).
+_REF = re.compile(r"^(?!-)[A-Za-z0-9._/~^@-]+$")
 
 
 def _validated_ref(ref: str) -> str:
@@ -125,9 +155,9 @@ def _validated_ref(ref: str) -> str:
     """
     if not _REF.match(ref):
         _msg = (
-            f"{ref!r} is not a usable git revision. It must start with a letter or digit and "
-            f"hold only letters, digits, and `._/-` — a value beginning with `-` reaches git "
-            f"as an option rather than a revision."
+            f"{ref!r} is not a usable git revision. It must not begin with `-`, and may hold "
+            f"only letters, digits, and `._/~^@-` — a value beginning with `-` reaches git as "
+            f"an option rather than a revision."
         )
         raise CannotCountError(_msg)
     return ref
@@ -149,12 +179,7 @@ def baseline_on(ref: str, repo_root: Path) -> int | None:
     would not distinguish "unknown ref" from "path not in this tree".
     """
     ref = _validated_ref(ref)
-    resolved = subprocess.run(
-        ["git", "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"],
-        cwd=repo_root,
-        capture_output=True,
-        check=False,
-    )
+    resolved = _run(["git", "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"], repo_root)
     if resolved.returncode:
         _msg = (
             f"{ref} does not resolve. The floor has to come from the base branch, so a "
@@ -162,13 +187,7 @@ def baseline_on(ref: str, repo_root: Path) -> int | None:
             f"falling back to this branch's own copy is the evasion this check closes."
         )
         raise CannotCountError(_msg)
-    result = subprocess.run(
-        ["git", "show", f"{ref}:{BASELINE_PATH.as_posix()}"],
-        cwd=repo_root,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    result = _run(["git", "show", f"{ref}:{BASELINE_PATH.as_posix()}"], repo_root)
     if result.returncode:
         return None
     return _as_count(result.stdout, f"{ref}:{BASELINE_PATH}")

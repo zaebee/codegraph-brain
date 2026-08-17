@@ -76,6 +76,17 @@ class TestParsingPytestsSummary:
         with pytest.raises(CannotCountError, match="not a count of zero"):
             parse_collected("no tests collected in 0.00s")
 
+    def test_the_last_match_wins(self) -> None:
+        """pytest's summary is the final line; anything earlier is not the answer.
+
+        Raised in review of #409. A plugin or a warning printing something
+        count-shaped would otherwise be read as the count, and the floor would
+        then bound the wrong number in whichever direction that number happened
+        to fall.
+        """
+        output = "10 tests collected\nsome plugin chatter\n1932 tests collected in 1.83s"
+        assert parse_collected(output) == 1932
+
     def test_the_refusal_carries_the_output_it_could_not_parse(self) -> None:
         """A "could not run" with no output is a bug report nobody can action."""
         with pytest.raises(CannotCountError, match="ImportError: cannot import name"):
@@ -149,7 +160,23 @@ class TestReadingTheBaselines:
         with pytest.raises(CannotCountError, match="not a usable git revision"):
             baseline_on(ref, REPO_ROOT)
 
-    @pytest.mark.parametrize("ref", ["main", "origin/main", "HEAD", "release/1.2", "98380bc"])
+    @pytest.mark.parametrize(
+        "ref",
+        [
+            "main",
+            "origin/main",
+            "HEAD",
+            "release/1.2",
+            "98380bc",
+            # Relative forms, admitted in review of #409. CI passes
+            # `origin/<base>`, but these are what a person debugging locally
+            # types, and none of them introduces an option or a shell.
+            "HEAD~1",
+            "HEAD^",
+            "origin/main~2",
+            "@",
+        ],
+    )
     def test_the_refs_actually_used_are_accepted(self, ref: str) -> None:
         """The guard must not be so tight that it rejects the real inputs."""
         assert _validated_ref(ref) == ref
@@ -231,6 +258,16 @@ class _Ran:
         self.returncode = returncode
 
 
+class _stub_subprocess:  # noqa: N801 — stands in for a module, so it is named like one
+    """A `subprocess` module whose `run` always returns the same result."""
+
+    def __init__(self, result: _Ran) -> None:
+        self._result = result
+
+    def run(self, *_args: object, **_kwargs: object) -> _Ran:
+        return self._result
+
+
 class TestCollectingTheCount:
     """The one place that shells out to pytest."""
 
@@ -245,6 +282,42 @@ class TestCollectingTheCount:
             check_test_count.subprocess, "run", lambda *_a, **_k: _Ran(stderr="7 tests collected")
         )
         assert collect_count(Path()) == 7
+
+    def test_stdout_outranks_stderr_when_both_carry_a_count(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Why "take the last match" is right within a stream and wrong across two.
+
+        pytest writes its summary to stdout and `uv` writes its chatter to
+        stderr, and the two are joined with stderr last — so a naive last-match
+        over the joined text would let stderr outrank the real summary. Reading
+        stdout first removes the question.
+        """
+        monkeypatch.setattr(
+            check_test_count,
+            "subprocess",
+            _stub_subprocess(_Ran(stdout="1932 tests collected", stderr="7 tests collected")),
+        )
+        assert collect_count(Path()) == 1932
+
+    def test_a_missing_executable_is_a_could_not_tell_not_a_shrink(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Absent `uv` or `git` must not exit 1, which is the code for a deletion.
+
+        Raised in review of #409, and the sharpest of the six: an uncaught
+        FileNotFoundError exits 1, and 1 means "tests have gone missing". A
+        machine without the toolchain would have reported as a deletion — the
+        one confusion this module exists to prevent, in its own plumbing.
+        """
+
+        def _absent(*_a: object, **_k: object) -> None:
+            raise FileNotFoundError(2, "No such file or directory")
+
+        monkeypatch.setattr(check_test_count.subprocess, "run", _absent)
+        root = Path()
+        with pytest.raises(CannotCountError, match="must be on PATH"):
+            collect_count(root)
 
     def test_a_broken_collection_refuses_and_shows_the_output(
         self, monkeypatch: pytest.MonkeyPatch
