@@ -200,14 +200,23 @@ class OpenRouterProvider(BaseProvider):
 
 #: An opening code fence with an optional language tag, and a closing one.
 #:
-#: Regexes rather than splitting on a newline: a single-line fence
+#: The opening code fence and its optional language tag.
+#:
+#: A regex rather than splitting on a newline: a single-line fence
 #: (```json {"verdict": "confirmed"}```) has none, so the split returned the
 #: whole string and left the backticks in place. Raised in review of #412.
 #: Character-class stripping was the suggested fix and is a trap —
 #: `lstrip("json")` removes any of `j`, `o`, `s`, `n` and would eat into the
-#: payload; these match the fence and nothing else.
+#: payload; this matches the fence and nothing else.
+#:
+#: Anchored at `^`, so it is tried from one position and its `\s*` cannot
+#: backtrack across the input. The closing fence gets no regex at all: an
+#: unanchored `\s*```$` is quadratic on a long run of whitespace that never
+#: reaches a fence (SonarCloud python:S8786 on #412), and model output is not
+#: input this module chooses. `str.endswith` answers the same question in one
+#: comparison.
+FENCE = "```"
 _FENCE_OPEN = re.compile(r"^```[A-Za-z0-9_+-]*\s*")
-_FENCE_CLOSE = re.compile(r"\s*```$")
 
 
 def parse_or_raise(text: str, schema: type[BaseModel]) -> BaseModel:
@@ -218,5 +227,7 @@ def parse_or_raise(text: str, schema: type[BaseModel]) -> BaseModel:
     here keeps that from being counted as an unparseable answer, which would
     inflate exactly the "unruled" rate an experiment reads as leniency.
     """
-    stripped = _FENCE_OPEN.sub("", text.strip(), count=1)
-    return schema.model_validate(json.loads(_FENCE_CLOSE.sub("", stripped, count=1).strip()))
+    stripped = _FENCE_OPEN.sub("", text.strip(), count=1).strip()
+    if stripped.endswith(FENCE):
+        stripped = stripped[: -len(FENCE)].strip()
+    return schema.model_validate(json.loads(stripped))
