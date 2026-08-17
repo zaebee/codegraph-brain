@@ -267,7 +267,12 @@ class TestEvidenceInTheJudgementPrompt:
         anyway — so the prompt now says which verdict such a claim takes.
         """
         prompt = build_judgement_prompt(_FINDING, "@@ -1 +1 @@\n+x", evidence=None)
-        assert "Mark it\n'uncertain'." in prompt or "Mark it 'uncertain'." in prompt
+        # Whitespace-normalised rather than matched as written. The first draft
+        # accepted two spellings with an `or`, hedging against wherever the line
+        # wrap happened to fall — which is a test that passes because it was
+        # given two chances, not because it knows the answer. Raised in review
+        # of #410.
+        assert "Mark it 'uncertain'." in " ".join(prompt.split())
 
     def test_the_no_evidence_notice_rules_out_both_other_verdicts(self) -> None:
         """Symmetry is the recall guard, and it is a sentence rather than a code path.
@@ -276,9 +281,11 @@ class TestEvidenceInTheJudgementPrompt:
         caught it" available as a refutation — buying precision with recall, the
         trade #246 records for a skeptic tuned too aggressively.
         """
-        prompt = build_judgement_prompt(_FINDING, "@@ -1 +1 @@\n+x", evidence=None)
-        assert "Not 'confirmed'" in prompt
-        assert "Not 'refuted'" in prompt
+        prompt = " ".join(
+            build_judgement_prompt(_FINDING, "@@ -1 +1 @@\n+x", evidence=None).split()
+        )
+        assert "Not 'confirmed': you have not seen a checker agree." in prompt
+        assert "Not 'refuted': you have not seen one disagree either." in prompt
 
     def test_no_evidence_presents_no_checker_verdict(self) -> None:
         """The notice names checkers; it must not appear to report one.

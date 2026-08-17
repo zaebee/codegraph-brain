@@ -94,9 +94,12 @@ reviewer identity — by design (#375).
 
 ## Reproducing
 
+From the repository root — the paths are root-relative, because the command above them is:
+
 ```bash
 scripts/guardian_replay_skeptic.py \
-    --recording ../401-evidence/pr-399-recording.json --control --out rows.jsonl
+    --recording benchmarks/guardian/experiments/401-evidence/pr-399-recording.json \
+    --control --out rows.jsonl
 ```
 
 With `GUARDIAN_SKEPTIC=gemini`, `GUARDIAN_SKEPTIC_MODEL=gemini-2.5-flash`. 24 skeptic calls,
