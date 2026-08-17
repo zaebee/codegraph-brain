@@ -37,7 +37,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
 
 from cgis.guardian.diff_index import split_diff_by_file
-from cgis.guardian.evidence import collect_evidence
+from cgis.guardian.evidence import Evidence, collect_evidence
 from cgis.guardian.providers.base import BaseProvider
 from cgis.guardian.recording import load_finder_recording
 from cgis.guardian.runner import build_provider, build_skeptic_provider
@@ -168,23 +168,34 @@ async def replay(
         _msg = f"{len(findings)} findings loaded against {len(baseline)} baseline verdicts."
         raise NoBaselineError(_msg)
 
-    with worktree_at(ref, repo_root) as tree:
-        evidence = collect_evidence(tree, changed_files(recording.diff))
-        if evidence is None:
-            _msg = (
-                f"No evidence could be collected at {ref}. Judging without it repeats the "
-                f"control arm, which is already recorded; reporting that as the treatment "
-                f"would make this experiment conclude that evidence changes nothing."
-            )
-            raise NoEvidenceError(_msg)
-        judgements = await judge_all(
-            _skeptic_from(env), findings, recording.diff, evidence=evidence
+    # The worktree and the checkers are blocking, and `replay` is a coroutine.
+    # Nothing else runs on this script's loop today, so the harm is latent rather
+    # than active — but the function is importable and its signature promises a
+    # coroutine, and two minutes of a frozen loop is not something a caller
+    # should have to read the body to discover.
+    evidence = await asyncio.to_thread(_evidence_at, ref, repo_root, recording.diff)
+    if evidence is None:
+        _msg = (
+            f"No evidence could be collected at {ref}. Judging without it repeats the "
+            f"control arm, which is already recorded; reporting that as the treatment "
+            f"would make this experiment conclude that evidence changes nothing."
         )
-
+        raise NoEvidenceError(_msg)
+    judgements = await judge_all(skeptic_from(env), findings, recording.diff, evidence=evidence)
     return flips(baseline, judgements), sum(1 for j in judgements if cites_a_checker(j))
 
 
-def _skeptic_from(env: Mapping[str, str]) -> BaseProvider:
+def _evidence_at(ref: str, repo_root: Path, diff: str) -> Evidence | None:
+    """Checker output for the recorded files, taken at the reviewed commit.
+
+    The worktree lives only as long as the collection: the checkers read the
+    tree, and nothing afterwards needs it.
+    """
+    with worktree_at(ref, repo_root) as tree:
+        return collect_evidence(tree, changed_files(diff))
+
+
+def skeptic_from(env: Mapping[str, str]) -> BaseProvider:
     """The configured skeptic, or a refusal naming what is missing.
 
     The finder is built only to learn its provider name, which decides the

@@ -16,7 +16,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from guardian_stubs import StubProvider
 
+from cgis.guardian.evidence import Evidence
 from cgis.guardian.recording import load_finder_recording
 from cgis.guardian.skeptic import FindingJudgement
 
@@ -24,10 +26,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"
 
 from guardian_replay_skeptic import (
     NoBaselineError,
+    NoEvidenceError,
     baseline_verdicts,
     changed_files,
     cites_a_checker,
     flips,
+    replay,
     worktree_at,
 )
 
@@ -59,6 +63,7 @@ def _finding(verdict: str | None) -> dict[str, Any]:
 
 
 def _recording(tmp_path: Path, verdicts: list[str | None]) -> Path:
+    tmp_path.mkdir(parents=True, exist_ok=True)
     path = tmp_path / "guardian_finder.json"
     path.write_text(
         json.dumps(
@@ -202,3 +207,111 @@ def test_the_worktree_is_removed_even_when_the_body_raises() -> None:
         ["git", "worktree", "list"], cwd=REPO_ROOT, capture_output=True, text=True, check=True
     ).stdout
     assert str(seen[0]) not in listed
+
+
+_VERDICT_JSON = '{"verdict": "refuted", "impact_score": 0, "rationale": "ruff reports no issue"}'
+
+
+class TestReplayOrchestration:
+    """The whole arm, with the model and the worktree stubbed out."""
+
+    def _wire(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        *,
+        evidence: Evidence | None,
+        responses: list[str] | None = None,
+    ) -> None:
+        module = sys.modules["guardian_replay_skeptic"]
+        monkeypatch.setattr(module, "_evidence_at", lambda *_a: evidence)
+        monkeypatch.setattr(
+            module, "skeptic_from", lambda _env: StubProvider(responses or [_VERDICT_JSON] * 8)
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_paired_matrix_and_an_attribution_count(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The output the experiment rests on: what moved, and what can be credited."""
+        path = _recording(tmp_path, ["confirmed", "confirmed"])
+        self._wire(monkeypatch, evidence=Evidence(commands=("ruff check",), output="clean"))
+        matrix, cited = await replay(path, "HEAD", REPO_ROOT, {})
+        assert matrix["confirmed -> refuted"] == 2
+        assert cited == 2
+
+    @pytest.mark.asyncio
+    async def test_missing_evidence_refuses_instead_of_repeating_the_control(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The refusal that keeps the experiment from concluding by accident.
+
+        Without it the arm judges with no evidence, which is exactly the run
+        already recorded — and it would report "evidence changed nothing" while
+        never having applied any.
+        """
+        path = _recording(tmp_path, ["confirmed"])
+        self._wire(monkeypatch, evidence=None)
+        with pytest.raises(NoEvidenceError, match="conclude that evidence changes nothing"):
+            await replay(path, "HEAD", REPO_ROOT, {})
+
+    @pytest.mark.asyncio
+    async def test_a_recording_whose_findings_and_verdicts_disagree_is_refused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Length equality is checked before anything is paired, not during.
+
+        The two lists come from the same file by different routes — raw JSON for
+        the verdicts, the model loader for the findings — so a loader that ever
+        filters would desynchronise them silently, and positional pairing would
+        then compare each finding against somebody else's verdict.
+        """
+        path = _recording(tmp_path, ["confirmed", "confirmed"])
+        shorter = load_finder_recording(_recording(tmp_path / "one", ["confirmed"]))
+        module = sys.modules["guardian_replay_skeptic"]
+        monkeypatch.setattr(module, "load_finder_recording", lambda _p: shorter)
+        self._wire(monkeypatch, evidence=Evidence(commands=("x",), output="y"))
+        with pytest.raises(NoBaselineError, match="baseline verdicts"):
+            await replay(path, "HEAD", REPO_ROOT, {})
+
+
+class TestSkepticSelection:
+    """No skeptic means nothing to replay, and that is a refusal."""
+
+    def test_an_unconfigured_skeptic_is_refused(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        module = sys.modules["guardian_replay_skeptic"]
+        monkeypatch.setattr(module, "build_provider", lambda _e: (StubProvider([]), "m"))
+        monkeypatch.setattr(module, "build_skeptic_provider", lambda _e, **_kw: None)
+        with pytest.raises(NoBaselineError, match="No skeptic is configured"):
+            module.skeptic_from({})
+
+    def test_the_configured_skeptic_is_returned(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        module = sys.modules["guardian_replay_skeptic"]
+        stub = StubProvider([])
+        monkeypatch.setattr(module, "build_provider", lambda _e: (StubProvider([]), "m"))
+        monkeypatch.setattr(module, "build_skeptic_provider", lambda _e, **_kw: (stub, "s"))
+        assert module.skeptic_from({}) is stub
+
+
+def test_main_prints_the_matrix_and_the_attribution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The CLI, end to end, with the model stubbed.
+
+    Asserts the attribution line is present: a run that printed only the matrix
+    would invite reading every flip as the feature's doing, which is the reading
+    this arm exists to prevent.
+    """
+    module = sys.modules["guardian_replay_skeptic"]
+    path = _recording(tmp_path, ["confirmed", "refuted"])
+    monkeypatch.setattr(
+        module, "_evidence_at", lambda *_a: Evidence(commands=("ruff check",), output="clean")
+    )
+    monkeypatch.setattr(module, "skeptic_from", lambda _env: StubProvider([_VERDICT_JSON] * 8))
+    monkeypatch.setattr(
+        sys, "argv", ["x", "--recording", str(path), "--at", "HEAD", "--repo-root", str(REPO_ROOT)]
+    )
+    assert module.main() == 0
+    out = capsys.readouterr().out
+    assert "2 findings re-judged" in out
+    assert "confirmed -> refuted" in out
+    assert "rationales citing a checker: 2/2" in out
