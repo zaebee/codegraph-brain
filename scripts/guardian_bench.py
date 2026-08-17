@@ -33,6 +33,7 @@ from cgis.guardian.bench import (
 )
 from cgis.guardian.chunked import run_review_routed
 from cgis.guardian.collector import ContextCollector, parse_features
+from cgis.guardian.evidence import Evidence, collect_evidence
 from cgis.guardian.findings import ReviewResult
 from cgis.guardian.providers.base import BaseProvider
 from cgis.guardian.review_fingerprint import (
@@ -51,6 +52,11 @@ from cgis.guardian.skeptic import (
 log = structlog.getLogger(__name__)
 
 _REPO_ROOT = Path(__file__).parent.parent.absolute()
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from guardian_replay_skeptic import changed_files, worktree_at  # noqa: E402
+
 _BENCH_DIR = _REPO_ROOT / "benchmarks" / "guardian"
 
 
@@ -103,7 +109,10 @@ async def _run_one(
 
     With ``replay_finder`` the finder is skipped entirely and its recorded
     findings are judged instead, so a skeptic variant is measured against a
-    frozen set (spec §4.1) — no worktree, no ingest, no finder tokens.
+    frozen set (spec §4.1) — no ingest and no finder tokens. There *is* a
+    worktree: the checkers have to report on the code the recording was taken
+    from, and this line claimed there was none for as long as the evidence was
+    silently skipped.
     With ``record_finder`` the finder pass is written to disk and the skeptic is
     skipped, producing exactly that frozen set.
     """
@@ -122,7 +131,17 @@ async def _run_one(
 
     if replay_finder is not None:
         recording = load_finder_recording(replay_finder)
-        result = await _judge_recording(recording, skeptic)
+        # Evidence at the reviewed commit, not None. The replay path used to
+        # hardcode None on the reasoning that a recording is not a checkout —
+        # true, and beside the point: the commit is named by the fixture, so a
+        # worktree gets one, which is exactly what `guardian_replay_skeptic`
+        # does. Production runs with GUARDIAN_EVIDENCE=1, so judging without it
+        # measured a configuration nobody runs and quietly attributed the
+        # difference to whatever else the arm changed (#246).
+        evidence = await asyncio.to_thread(
+            _evidence_at_head, truth.head, recording.diff, _REPO_ROOT
+        )
+        result = await _judge_recording(recording, skeptic, evidence=evidence)
         await _score_and_record(
             truth, run_idx, results_path, result, model, provider, skeptic, chunks=None
         )
@@ -159,17 +178,33 @@ async def _run_one(
     )
 
 
+def _evidence_at_head(head: str, diff: str, repo_root: Path) -> Evidence | None:
+    """The checkers' output at the commit the recording was taken from.
+
+    A worktree, because the recording is not a checkout — which is the fact the
+    old `evidence=None` was justified by, and it argues for building one rather
+    than for going without.
+    """
+    with worktree_at(head, repo_root) as tree:
+        return collect_evidence(tree, changed_files(diff))
+
+
 async def _judge_recording(
-    recording: FinderRecording, skeptic: tuple[BaseProvider, str] | None
+    recording: FinderRecording,
+    skeptic: tuple[BaseProvider, str] | None,
+    *,
+    evidence: Evidence | None,
 ) -> ReviewResult:
-    """Run ONLY the skeptic over a frozen finder pass (spec §4.1)."""
+    """Run ONLY the skeptic over a frozen finder pass (spec §4.1).
+
+    `evidence` is keyword-only with no default, matching `judge_all` and for the
+    same reason: this function spent a year passing None, and a default would
+    let the next caller do it again without saying so.
+    """
     result = recording.result
     if skeptic is None or not result.findings:
         return result
-    # The replay path holds a recording, not a checkout: there is no project
-    # root, so no checkers to run. Stated as None rather than defaulted — which
-    # is the point of the argument being required (#401).
-    judgements = await judge_all(skeptic[0], result.findings, recording.diff, evidence=None)
+    judgements = await judge_all(skeptic[0], result.findings, recording.diff, evidence=evidence)
     judged = sum(1 for j in judgements if j is not None)
     return result.model_copy(
         update={
