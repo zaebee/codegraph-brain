@@ -195,10 +195,19 @@ def test_build_provider_ollama_num_ctx_from_env() -> None:
     assert provider._num_ctx == 8192  # noqa: SLF001  # white-box: ctx wiring
 
 
-def test_build_provider_unknown_lists_ollama() -> None:
-    """A typo in GUARDIAN_PROVIDER names all three valid providers."""
-    with pytest.raises(RuntimeError, match="'mistral', 'gemini', or 'ollama'"):
+def test_build_provider_unknown_lists_every_provider_there_is() -> None:
+    """A typo in GUARDIAN_PROVIDER names the valid ones — all of them.
+
+    The message is built from the builder table rather than written out, so it
+    cannot list three providers while four exist. This test used to assert the
+    literal `'mistral', 'gemini', or 'ollama'` and went stale the moment
+    openrouter arrived (#246), which is the failure mode the derivation closes.
+    """
+    with pytest.raises(RuntimeError) as raised:
         build_provider({"GUARDIAN_PROVIDER": "anthropic", "GEMINI_API_KEY": "g"})
+    message = str(raised.value)
+    for name in ("mistral", "gemini", "ollama", "openrouter"):
+        assert name in message
 
 
 def test_build_skeptic_provider_ollama_cross_model() -> None:
@@ -757,3 +766,61 @@ class TestTemperatureRejectsWhatIsNotATemperature:
         """The guard must not cost the settings it exists to protect."""
         assert runner.temperature_setting({"GUARDIAN_TEMPERATURE": "0"}) == (0.0, "explicit")
         assert runner.temperature_setting({"GUARDIAN_TEMPERATURE": "0.7"}) == (0.7, "explicit")
+
+
+def test_build_provider_openrouter_requires_an_explicit_model() -> None:
+    """No default model, on purpose: OpenRouter fronts hundreds of them.
+
+    A default would silently pick one nobody chose, which is the opposite of
+    what this provider is for — naming a third vendor explicitly (#246).
+    """
+    with pytest.raises(RuntimeError, match="GUARDIAN_MODEL must name an OpenRouter model"):
+        build_provider({"GUARDIAN_PROVIDER": "openrouter", "OPENROUTER_API_KEY": "k"})
+
+
+def test_build_provider_openrouter_requires_a_key() -> None:
+    env = {"GUARDIAN_PROVIDER": "openrouter", "GUARDIAN_MODEL": "vendor/m:free"}
+    with pytest.raises(RuntimeError, match="OPENROUTER_API_KEY must be set"):
+        build_provider(env)
+
+
+def test_build_provider_openrouter_builds() -> None:
+    provider, model = build_provider(
+        {
+            "GUARDIAN_PROVIDER": "openrouter",
+            "OPENROUTER_API_KEY": "k",
+            "GUARDIAN_MODEL": "vendor/m:free",
+        }
+    )
+    assert provider.name == "openrouter"
+    assert model == "vendor/m:free"
+
+
+def test_build_skeptic_openrouter_needs_both_key_and_model() -> None:
+    """Degrades to None rather than raising: a review never fails on the skeptic."""
+    assert (
+        build_skeptic_provider(
+            {"GUARDIAN_SKEPTIC": "openrouter", "OPENROUTER_API_KEY": "k"}, primary="mistral"
+        )
+        is None
+    )
+    assert (
+        build_skeptic_provider(
+            {"GUARDIAN_SKEPTIC": "openrouter", "GUARDIAN_SKEPTIC_MODEL": "v/m"}, primary="mistral"
+        )
+        is None
+    )
+
+
+def test_build_skeptic_openrouter_builds() -> None:
+    built = build_skeptic_provider(
+        {
+            "GUARDIAN_SKEPTIC": "openrouter",
+            "OPENROUTER_API_KEY": "k",
+            "GUARDIAN_SKEPTIC_MODEL": "vendor/m:free",
+        },
+        primary="mistral",
+    )
+    assert built is not None
+    assert built[0].name == "openrouter"
+    assert built[1] == "vendor/m:free"

@@ -66,10 +66,17 @@ from recordings_from_corpus import build, is_frozen_pass, row_key
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BENCH_DIR = REPO_ROOT / "benchmarks" / "guardian"
 
-#: The two arms. Named rather than derived, because "the opposite of the primary"
-#: is exactly the rule under test — deriving the arm from the finder would build
-#: the hypothesis into the instrument.
-ARMS = ("gemini", "mistral")
+#: The default pair. Named rather than derived, because "the opposite of the
+#: primary" is exactly the rule under test — deriving an arm from the finder
+#: would build the hypothesis into the instrument.
+#:
+#: `--arms` overrides it, and each arm may name its own model
+#: (`openrouter=nvidia/nemotron-3-super-120b-a12b:free`). Per arm rather than
+#: from the environment: `GUARDIAN_SKEPTIC_MODEL` applies to whichever provider
+#: is built, so a single value would hand one arm the other's model — one arm
+#: running something that does not exist, reported as a difference between
+#: vendors.
+DEFAULT_ARMS = "gemini,mistral"
 
 
 class NoArmError(RuntimeError):
@@ -80,17 +87,36 @@ class NoArmError(RuntimeError):
     """
 
 
-def arm_provider(name: str, env: Mapping[str, str]) -> tuple[BaseProvider, str]:
+def parse_arms(spec: str) -> dict[str, str | None]:
+    """`gemini,openrouter=vendor/model:free` → {arm: model or None}.
+
+    A model per arm, never one shared. The environment's
+    `GUARDIAN_SKEPTIC_MODEL` is dropped in `arm_provider` for the same reason.
+    """
+    arms: dict[str, str | None] = {}
+    for item in spec.split(","):
+        name, _, model = item.strip().partition("=")
+        if name:
+            arms[name] = model or None
+    return arms
+
+
+def arm_provider(
+    name: str, env: Mapping[str, str], model: str | None = None
+) -> tuple[BaseProvider, str]:
     """The skeptic for one arm, or a refusal naming the missing key.
 
-    `GUARDIAN_SKEPTIC_MODEL` is dropped rather than passed through.
-    `build_skeptic_provider` applies it to whichever provider it builds, so an
-    environment holding the production value (`gemini-2.5-flash`) would hand
-    that model name to the mistral arm — one arm running a model that does not
-    exist, while the other ran the intended one. Each arm takes its provider's
-    own default, and the models used are recorded on every row.
+    The environment's `GUARDIAN_SKEPTIC_MODEL` is dropped and `model` used
+    instead. `build_skeptic_provider` applies that variable to whichever
+    provider it builds, so an environment holding the production value
+    (`gemini-2.5-flash`) would hand that name to a mistral or openrouter arm —
+    one arm running a model that does not exist while the other ran the intended
+    one, and the difference reported as a comparison between vendors. The models
+    actually used are recorded on every row.
     """
     per_arm = {k: v for k, v in env.items() if k != "GUARDIAN_SKEPTIC_MODEL"}
+    if model:
+        per_arm["GUARDIAN_SKEPTIC_MODEL"] = model
     built = build_skeptic_provider({**per_arm, "GUARDIAN_SKEPTIC": name}, primary="none")
     if built is None:
         _msg = (
@@ -162,7 +188,9 @@ async def judge_one(
     }
 
 
-async def collect_rows(repo_root: Path, limit: int | None) -> list[dict[str, Any]]:
+async def collect_rows(
+    repo_root: Path, limit: int | None, arm_spec: dict[str, str | None]
+) -> list[dict[str, Any]]:
     """Both arms over every frozen pass; one row per (pass, arm).
 
     Returns the rows rather than writing them. The write is the caller's, and
@@ -170,7 +198,7 @@ async def collect_rows(repo_root: Path, limit: int | None) -> list[dict[str, Any
     the worktree collection above avoids with `to_thread`, and here there is
     nothing to gain by being in the loop at all.
     """
-    arms = {name: arm_provider(name, os.environ) for name in ARMS}
+    arms = {name: arm_provider(name, os.environ, model) for name, model in arm_spec.items()}
     models = finder_models(BENCH_DIR / "results.jsonl")
 
     with tempfile.TemporaryDirectory(prefix="arms-") as tmp:
@@ -241,6 +269,43 @@ _VENDOR_MARKERS: dict[str, tuple[str, ...]] = {
 UNKNOWN_VENDOR = "unknown"
 
 
+#: The share of findings an arm may leave unruled before its numbers are refused.
+#:
+#: Not a tolerance — a validity gate, and it is the only thing standing between
+#: this experiment and a wrong conclusion. `judge_finding` contains provider
+#: errors per finding and returns None, so a spent quota, an upstream 429 and a
+#: model that cannot produce JSON all arrive as "unruled". An arm that answered
+#: nothing and an arm that refuted nothing are the same row shape, and "refutes
+#: nothing" is precisely what #246 predicts for a same-vendor skeptic. Reported
+#: without this check, a broken arm would confirm the hypothesis.
+MAX_UNRULED_RATE = 0.05
+
+
+class ArmTooQuietError(RuntimeError):
+    """Raised when an arm left too many findings unruled to be scored.
+
+    Refused rather than footnoted. A caveat under a table does not stop the
+    table being read, and this table's whole content is how much each skeptic
+    refuted.
+    """
+
+
+def validity_problems(rows: list[dict[str, Any]]) -> list[str]:
+    """Arms whose unruled share is too high to interpret, with the numbers."""
+    totals: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+    for row in rows:
+        seen = totals[str(row["arm"])]
+        seen[0] += int(row.get("unruled") or 0)
+        seen[1] += int(row["findings"])
+    return [
+        f"arm {arm!r} left {unruled} of {findings} findings unruled "
+        f"({unruled / findings:.0%} > {MAX_UNRULED_RATE:.0%}); its numbers cannot be read as "
+        f"leniency because they may be silence."
+        for arm, (unruled, findings) in sorted(totals.items())
+        if findings and unruled / findings > MAX_UNRULED_RATE
+    ]
+
+
 def _vendor(model: str) -> str:
     """The vendor behind a model name, or `UNKNOWN_VENDOR`.
 
@@ -276,7 +341,7 @@ def report(rows: list[dict[str, Any]]) -> None:
     """The comparison the issue asks for, split by which vendor found the findings."""
     print(f"\n{len(rows)} (pass, arm) results\n")
     print(
-        f"{'finder':9} {'skeptic':9} {'kind':7} {'passes':>6} {'refuted':>8} "
+        f"{'finder':10} {'skeptic':11} {'kind':8} {'passes':>6} {'refuted':>8} "
         f"{'of':>5} {'killed GT':>10}"
     )
     groups: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
@@ -287,7 +352,7 @@ def report(rows: list[dict[str, Any]]) -> None:
         refuted = sum(int(r["refuted"]) for r in group)
         total = sum(int(r["findings"]) for r in group)
         killed = sum(len(r["killed_gt"]) for r in group)
-        print(f"{finder:9} {arm:9} {kind:7} {len(group):6} {refuted:8} {total:5} {killed:10}")
+        print(f"{finder:10} {arm:11} {kind:8} {len(group):6} {refuted:8} {total:5} {killed:10}")
     unattributed = sorted(
         {str(r["finder_model"]) for r in rows if _vendor(str(r["finder_model"])) == UNKNOWN_VENDOR}
     )
@@ -308,12 +373,25 @@ def main() -> int:
     parser.add_argument("--out", type=Path, default=REPO_ROOT / ".guardian-arms.jsonl")
     parser.add_argument("--repo-root", type=Path, default=REPO_ROOT)
     parser.add_argument(
+        "--arms",
+        default=DEFAULT_ARMS,
+        help="comma-separated arms, each optionally name=model (see DEFAULT_ARMS)",
+    )
+    parser.add_argument(
         "--limit", type=int, default=None, help="judge only the first N passes (a smoke run)"
     )
     args = parser.parse_args()
-    rows = asyncio.run(collect_rows(args.repo_root, args.limit))
+    rows = asyncio.run(collect_rows(args.repo_root, args.limit, parse_arms(args.arms)))
     args.out.parent.mkdir(parents=True, exist_ok=True)
+    # Written before the gate: the rows are evidence either way, and a refused
+    # run whose data was discarded cannot be diagnosed.
     args.out.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    problems = validity_problems(rows)
+    if problems:
+        for problem in problems:
+            print(problem, file=sys.stderr)
+        print(f"Rows kept at {args.out}; no comparison printed.", file=sys.stderr)
+        return 2
     report(rows)
     return 0
 

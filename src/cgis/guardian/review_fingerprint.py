@@ -149,13 +149,13 @@ def walk_closure(read: ReadFile, active_providers: frozenset[str]) -> list[str]:
 
     `active_providers` is the union of the finder's and the skeptic's provider
     names. Unselected providers are pruned **during** the walk, not filtered
-    afterwards: `runner.py` imports all three at module level, so a full
+    afterwards: `runner.py` imports every one of them at module level, so a full
     traversal minus a set would still have reached what an unselected provider
     imports.
     """
     known = frozenset(
         name
-        for name in ("gemini", "mistral", "ollama")
+        for name in ("gemini", "mistral", "ollama", "openrouter")
         if _module_path(f"{_PROVIDER_PACKAGE}.{name}", read) is not None
     )
     unknown = active_providers - known
