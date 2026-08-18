@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.16.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.15.0...codegraph-brain-v0.16.0) (2026-08-17)
+
+
+### Features
+
+* **bench:** a control arm, so an evidence result can be attributed ([#401](https://github.com/zaebee/codegraph-brain/issues/401)) ([#406](https://github.com/zaebee/codegraph-brain/issues/406)) ([241dbae](https://github.com/zaebee/codegraph-brain/commit/241dbae334be897cb6bf3d151d097b64ab5a56e7))
+* **bench:** both skeptics over the same frozen passes, and the evidence bench replay dropped ([#246](https://github.com/zaebee/codegraph-brain/issues/246)) ([#411](https://github.com/zaebee/codegraph-brain/issues/411)) ([2c1d50b](https://github.com/zaebee/codegraph-brain/commit/2c1d50b2abb18b0c0bad1a9b46f71531eebba16c))
+* **ci:** a floor under the size of the test suite itself ([#405](https://github.com/zaebee/codegraph-brain/issues/405)) ([#409](https://github.com/zaebee/codegraph-brain/issues/409)) ([0fbcbac](https://github.com/zaebee/codegraph-brain/commit/0fbcbac573651591750f017e3793b692c05377ce))
+* **guardian:** tell the skeptic when no checker ran, and which verdict that takes ([#407](https://github.com/zaebee/codegraph-brain/issues/407)) ([#410](https://github.com/zaebee/codegraph-brain/issues/410)) ([2470ddb](https://github.com/zaebee/codegraph-brain/commit/2470ddb45a29f19e2abf90d2f6ce5b5fadad09f3))
+
 ## [0.15.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.14.1...codegraph-brain-v0.15.0) (2026-08-17)
 
 
