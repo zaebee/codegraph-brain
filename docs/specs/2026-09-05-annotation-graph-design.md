@@ -1,6 +1,6 @@
 # Annotation-aware graph: receiver resolution (#414) and orphan classes (#415)
 
-Status: approved design, not yet implemented
+Status: approved design, revised after independent fact-check
 Issues: [#414](https://github.com/zaebee/codegraph-brain/issues/414), [#415](https://github.com/zaebee/codegraph-brain/issues/415)
 
 ## Problem
@@ -16,31 +16,47 @@ so a dependency-injected layer reads as calling nothing.
 cannot be precise without an annotation edge: an abstract port that three modules
 type against but nobody constructs looks identical to dead code.
 
-## Measurements
+## Measurement basis
 
-All figures from `src/cgis/` and its own `graph.db` (3 973 edges), reproduced
-during design.
+All figures below are from `src/cgis/` at HEAD and a graph ingested from it:
+
+```
+uv run cgis ingest src --source-root src --output <scratch>.db
+  → 1 563 nodes / 5 011 edges
+```
+
+**Do not use the repo-root `graph.db` for these numbers.** It is untracked,
+gitignored, and dated 2026-07-29 — the v0.4.0 ingest, 113 commits behind. An
+earlier draft of this spec mixed counts from that stale graph with counts from
+HEAD source, and every graph-derived figure in it was wrong. Any future
+re-measurement must re-ingest first.
 
 | Measurement | Value |
 |---|---|
-| `self.<attr>.<method>` placeholder edges | 134 |
-| …classified `INTERNAL` (i.e. counted as **resolved**) | 134 / 134 |
-| `self.<attr>.<method>` call sites in source | 117 |
+| Total edges | 5 011 |
+| `self.*` placeholder edges | 139 |
+| …classified `INTERNAL` (i.e. counted as **resolved**) | 139 / 139 |
+| …with exactly two segments after `self` (in scope for D8) | 118 |
+| …deeper or shallower (out of scope for D8) | 21 |
+| `self.<attr>.<method>()` call sites in source | 117 |
 | …receiver resolvable from an annotation | 105 (90%) |
 | Annotation positions (param / return / AnnAssign) | 2 328 |
-| …whose type resolves to an internal CLASS | 233 (+5.9% edges) |
-| Current whole-graph `unresolved_ratio` | 0.2157 |
-| Projected after #414 | ~0.2187 (gate: 0.30) |
+| …naming at least one internal CLASS | 577 |
+| `REFERENCES` edges emitted (D9 rule) | 596 (+11.9%) |
+| Current `unresolved_ratio` | 0.2030 |
+| Projected after PR2 | 0.2095 (gate: 0.30) |
+| Projected after PR1's edges also land | 0.1873 |
+
+Positions exclude 106 bare `-> None` returns, which name no type.
 
 ### Two findings that change the issues as filed
 
 **The placeholder is INTERNAL, so it improves the health verdict.**
-`SymbolIndex.classify_fqn` (`resolver/indices.py:96`) returns `INTERNAL` for any
+`SymbolIndex.classify_fqn` (`resolver/indices.py:91`) returns `INTERNAL` for any
 FQN starting with `self.`, and `get_edge_stats` (`storage/sqlite_store.py:511`)
-counts `INTERNAL` as resolved. The 134 edges are not merely uncounted by
-`unresolved_ratio` — they are counted on the good side of it. The metric moves
-the *wrong way* as a codebase adopts more DI. #414 filed this as
-"resolved-to-EXTERNAL"; it is worse than that.
+counts `INTERNAL` as resolved. All 139 placeholder edges are counted on the good
+side of `unresolved_ratio`. The metric moves the *wrong way* as a codebase adopts
+more DI. #414 filed this as "resolved-to-EXTERNAL"; it is worse than that.
 
 **The rule as filed reaches 19%, not 66%.** Attributing each of the 117 call
 sites to the construct that would let its receiver resolve:
@@ -53,9 +69,10 @@ sites to the construct that would let its receiver resolve:
 | `self.x = SomeClass(...)` (constructor assignment) | 15 | **no** |
 | **total** | **105 / 117 (90%)** | 22 / 117 (19%) |
 
-The 66% reported on `owner-api` reflects that repo's DI style. On code that
-annotates attributes directly, the dominant construct is the annotated
-assignment, which the proposed rule does not mention.
+One site carries both an `__init__` parameter and a class-body annotation; it is
+counted once, under class-body. The 66% reported on `owner-api` reflects that
+repo's DI style. On code that annotates attributes directly, the dominant
+construct is the annotated assignment, which the proposed rule does not mention.
 
 ## Decisions
 
@@ -63,36 +80,42 @@ assignment, which the proposed rule does not mention.
 
 Exact mirror of `local_types`, which already lives in FUNCTION/METHOD node
 metadata and is already read by `_resolve_local_type_call`
-(`resolver/symbols.py:145`). No new index, no new storage shape.
+(`resolver/symbols.py:147`). No new index, no new storage shape.
 
 ### D2 — annotation edges reuse `REFERENCES`; no new EdgeType
 
-`REFERENCES` already exists and already carries two properties this work needs:
+`REFERENCES` already exists and already carries a property this work needs: it is
+deliberately excluded from `_ENFORCEMENT_EDGE_TYPES` (`query/context/audit.py:31`),
+documented as protection against a false "covered" verdict in an authz audit.
 
-* it is deliberately excluded from `_ENFORCEMENT_EDGE_TYPES` in
-  `query/context/audit.py`, documented as protection against a false "covered"
-  verdict in an authz audit;
-* the drift fingerprint counts only `IMPORTS` and `CALLS`
-  (`query/drift/fingerprint.py:331-332`), so adding these edges cannot move a
-  drift baseline.
+A new EdgeType inherits nothing. `BEHAVIORAL_EDGE_TYPES` (`query/engine.py:8-11`)
+is defined as *everything that is not structural*, so any new type silently joins
+every default traversal, and each consumer would have to be re-audited to restore
+the safety `REFERENCES` already has.
 
-A new EdgeType inherits neither. `BEHAVIORAL_EDGE_TYPES` (`query/engine.py:9`)
-is defined as *everything that is not structural*, so any new type silently
-joins every default traversal, and each consumer would have to be re-audited to
-restore the safety `REFERENCES` already has.
+**Drift exposure, stated precisely.** The fingerprint's *censuses* read only
+`IMPORTS` and `CALLS` (`query/drift/fingerprint.py:331-332`), and `quotient.py`
+and `fractal.py` likewise — so `t_imports`/`t_calls` cannot move. But
+`edge_count = len(internal_edges)` (`fingerprint.py:346`) counts **every** edge
+type, and `drift.py:365` returns `status="no_signal"` when it is zero. A
+`REFERENCES` edge can therefore flip a domain from `no_signal` to scored. No
+realistic domain is exposed (anything with a file and a child already has
+`CONTAINS` edges), but "cannot move a drift baseline" is stronger than the code
+guarantees, and PR1 must check the self-drift status column rather than assume.
 
 ### D3 — emit an annotation edge only when the type resolves to an INTERNAL node
 
-Stdlib, external, and unresolved annotations are dropped. This is the difference
-between +233 edges (+5.9%) and +2 328 (+58.6%); an `x: str` annotation says
-nothing about orphan classes, and edging everything would swamp every metric.
+Stdlib, external, and unresolved annotations are dropped. Edging every position
+regardless of namespace would add 2 328 edges (+46%) of `str`/`dict`/library
+noise and swamp every metric; an `x: str` annotation says nothing about orphan
+classes. Scoped to internal classes it is 596 edges (+11.9%).
 
 ### D4 — annotation positions: parameter, return, `AnnAssign`
 
-Parameters already traverse the whole path: `collect_param_type`
-(`extractors/_python_functions.py:266`) emits `raw_dep:<Type>`, and
-`_resolved_dep_edge` (`resolver/engine.py:110`) drops it unless it resolves to a
-VARIABLE. The change is a second branch, not a new mechanism:
+Parameters already traverse most of the path: `collect_param_type`
+(`extractors/_python_functions.py:267`) emits `raw_dep:<Type>`, and
+`_resolved_dep_edge` (`resolver/engine.py:103`) drops it unless it resolves to a
+VARIABLE. The resolution branch is an extension, not a new mechanism:
 
 ```
 raw_dep:<T>  →  VARIABLE (DI alias)   →  DEPENDS_ON   (unchanged)
@@ -100,8 +123,8 @@ raw_dep:<T>  →  VARIABLE (DI alias)   →  DEPENDS_ON   (unchanged)
              →  anything else         →  dropped      (unchanged)
 ```
 
-Return and `AnnAssign` positions then reuse that same road with new `raw_dep:`
-emissions.
+Return and `AnnAssign` positions reuse that road with new emissions. **What they
+cannot reuse is the type-name extraction — see D9.**
 
 **Deliberately excluded: `response_model=SomeSchema`.** That is a value in a call
 keyword, not an annotation — a different extraction path. Request schemas are
@@ -116,8 +139,8 @@ cgis has no notion of a test source today. `_TEST_FILE_PATTERN`
 (`pipeline.py:243`) matches only `foo.test.py` — a JS convention — while
 `tests/`, `test_*.py` and `conftest.py` are ingested as ordinary code. Verified
 on a fixture: a test's construction of a class becomes an ordinary `CALLS` edge,
-indistinguishable from production. #415's own table shows that without this
-filter all six rows read as live, including both real orphans.
+identical in every column but source and location. #415's own table shows that
+without this filter all six of its rows read as live, including both real orphans.
 
 A column follows the `namespace` precedent exactly, including the `ALTER TABLE`
 path in `_migrate()` (`storage/sqlite_store.py:113`). The decision itself lives in
@@ -140,24 +163,62 @@ follow-up issue — it is not left silent.
 
 ### D6 — resolution confidence 0.9, not 0.8
 
-In `_resolved_call_edge` (`resolver/engine.py:99`), `0.8` is the value assigned on
-resolution *failure*. Reusing it for an annotation-based success would make the
-two indistinguishable on the column that `min_confidence` traversal filters read.
+In `_resolved_call_edge` (`resolver/engine.py:84`), the `0.8` at line 100 is the
+value assigned on resolution *failure*. Reusing it for an annotation-based
+success would make the two indistinguishable on the column that `min_confidence`
+traversal filters read.
 
 ### D7 — reuse the existing hierarchy walk and phantom-method policy
 
-`_resolve_method_on_class_hierarchy` (`resolver/symbols.py:113`) already walks
-EXTENDS with cycle protection. `_resolve_local_type_call` already implements the
-policy #414 needs for its motivating bug: a method that does not exist on an
-*internal* receiver is dropped rather than fabricated, while a real library call
-is kept. Routing `self.<attr>.<method>` through that path is what makes a
+`_resolve_method_on_class_hierarchy` (`resolver/symbols.py:115`) already walks
+EXTENDS with cycle protection. `_resolve_local_type_call` (`symbols.py:147`)
+already implements the policy #414 needs for its motivating bug: a method that
+does not exist is kept only when the receiver's type is EXTERNAL or STDLIB, and
+dropped for internal *and unknown* types rather than fabricated. Routing
+`self.<attr>.<method>` through that path is what makes a
 deleted-`# type: ignore[attr-defined]`-shaped call visible, and it needs no new
 policy.
 
-### D8 — scope: exactly two segments after `self`
+### D8 — receiver resolution covers exactly two segments after `self`
 
-`self.<attr>.<method>` only. Deeper chains (`self._conn.execute.fetchall`, 7 of
-the 134) behave exactly as they do today.
+`self.<attr>.<method>` only — 118 of the 139 placeholder edges. The remaining 21
+are deeper chains (`self._conn.execute(...).fetchall()`, which the extractor
+flattens to target `self._conn.execute.fetchall`) or bare `self._pick_source_root`
+attribute calls.
+
+**Those 21 do not keep their current behavior.** PR2's `classify_fqn` split (see
+PR2 below) reclassifies *every* `self.`-prefixed FQN, so all 21 flip from
+counting as resolved to counting as unresolved, even though no resolution is
+attempted for them. That is the honest accounting — they were never resolved —
+but it is a change, and the projected ratio above includes it: 12 unresolvable
+two-segment sites plus 21 out-of-scope placeholders, `(1017+33)/5011 = 0.2095`.
+
+### D9 — an annotation names every internal class inside it, not its cleaned head
+
+`clean_python_type_string` (`extractors/_python_types.py:44`) reduces `list[Node]`
+to `list`: it answers "what type is this variable" — correct for `local_types`,
+where the receiver of `x.append()` really is a `list`. It is the wrong question
+for a reference edge.
+
+Measured on HEAD: of 577 annotation positions naming an internal class, that
+function surfaces the class in only 247. **330 (57%) are swallowed by a generic
+wrapper** — `list[...]` (211), `tuple[...]` (33), `dict[...]` (30), `frozenset`
+(16), `Sequence` (15) and others. Eleven internal classes are referenced *only*
+from inside generics and would receive zero annotation edges:
+
+```
+AmbiguousEntry, ArchitecturalAnomaly, Bridge, Community, DuckDBAnalyzer,
+GoldenComment, NodeMetric, PrPlan, SliceCounts, UnionRun, _IdAllocator
+```
+
+Any of those that is also constructed only from tests would be reported as a
+false orphan by #415 — the exact failure the annotation edge exists to prevent.
+
+So annotation extraction collects **all** type names appearing in the annotation
+(walking `Name`/`Attribute` nodes, and parsing string annotations), emitting one
+`REFERENCES` edge per distinct internal class. `clean_python_type_string` is left
+untouched and keeps serving `local_types`. This is what raises the edge count
+from 247 to 596.
 
 ## Work breakdown
 
@@ -166,8 +227,10 @@ Three sequential PRs. Each merges before the next starts.
 ### PR1 — extractor foundation
 
 * `self_types` on CLASS node metadata, from all four sources in the table above.
+* Type-name collection per D9, separate from `clean_python_type_string`.
 * `raw_dep:` emission extended to return and `AnnAssign` positions.
 * `_resolved_dep_edge` gains the internal-CLASS → `REFERENCES` branch (D4).
+* Check the self-drift `status` column for any domain moving off `no_signal` (D2).
 
 Serves both issues; neither can be precise without it.
 
@@ -177,8 +240,8 @@ Serves both issues; neither can be precise without it.
   receiver and method, look up `self_types`, then delegate to the existing
   hierarchy walk (D7).
 * `classify_fqn` stops reporting `self.`-prefixed FQNs as `INTERNAL`. The
-  leading-`.` (relative import) branch is unchanged; the two are currently
-  merged in one condition and must be split.
+  leading-`.` (relative import) branch is unchanged; the two currently share one
+  condition (`indices.py:91`) and must be split.
 * Fixes the placeholder collision as a consequence: two unrelated classes with a
   same-named attribute no longer share one vertex.
 
@@ -195,32 +258,38 @@ Serves both issues; neither can be precise without it.
 
 Every assertion below must be able to fail. The paired "would fail if" is part of
 the test, not commentary — a self-parsing assertion that merely counts nodes
-passes whether or not the feature works.
+passes whether or not the feature works. Counts are calibrated against HEAD and
+must be re-derived from a fresh ingest, never from the stale root `graph.db`.
 
 | Test | Would fail if |
 |---|---|
 | Fixture: `VehicleAdapter.search` resolves to `SearchClient.search` | receiver resolution regresses to a placeholder |
 | Fixture: `self.client.search_available_vehicles` resolves to nothing and is dropped | the phantom-method policy (D7) stops applying to `self.` receivers |
 | Fixture: two classes with a same-named attribute produce two distinct targets | the placeholder collision returns |
-| Self-parse: count of `self.*` placeholder edges drops 134 → ≤ 12 | any of the four `self_types` sources stops being collected |
+| Self-parse: `self.*` placeholder edges drop 139 → ≤ 33 | any of the four `self_types` sources stops being collected |
 | Self-parse: `unresolved_ratio` stays under the 0.30 gate | the `classify_fqn` split miscounts |
-| Self-parse: `REFERENCES` edge count is 233 ± tolerance | D3's internal-only filter breaks in either direction |
+| Self-parse: `REFERENCES` edge count is 596 ± tolerance | D3's internal-only filter or D9's collection breaks in either direction |
+| Fixture: a class referenced only as `list[OnlyInGeneric]` is **not** an orphan | D9 regresses to `clean_python_type_string` |
 | Fixture: a class constructed only from `tests/` is reported as an orphan | the `is_test` filter stops being applied |
 | Fixture: a class referenced only by a parameter annotation is **not** an orphan | the annotation edge stops being emitted |
 
 The last two are the pair #415 identifies as load-bearing: without the first all
 six of its rows read as live, and without the second every abstract port reads as
-dead.
+dead. The `list[...]` case is the one this spec's fact-check added — it fails
+against the design as originally written.
 
 ## Risks
 
 * **`classify_fqn` split (PR2).** Changing what counts as INTERNAL touches
-  virtual-node creation and every namespace-filtered query. The `.`-prefixed
-  relative-import case shares the condition and must keep its current behavior.
-  Verify each `NodeNamespace.INTERNAL` consumer before the split.
-* **Traversal density (PR1).** `impact` and `trace_flow` default to no edge-type
-  filter, so +233 `REFERENCES` edges will widen their results. Arguably correct —
-  an annotation is a real dependency — but it changes existing output and should
-  be stated in the PR, not discovered.
+  virtual-node creation and every namespace-filtered query, and moves 21 edges
+  that D8 does not otherwise address. The `.`-prefixed relative-import case
+  shares the condition and must keep its current behavior. Verify each
+  `NodeNamespace.INTERNAL` consumer before the split.
+* **Traversal density (PR1).** `impact` and `trace_flow` apply no edge-type
+  filter by default, so +596 `REFERENCES` edges will widen their results.
+  Arguably correct — an annotation is a real dependency — but it changes existing
+  output and should be stated in the PR, not discovered.
 * **Response-schema precision (PR3).** Known and deliberate (D4). PR3 must report
   the measured false-positive rate rather than ship silently.
+* **Measurement basis.** Every number here has a five-week-stale twin in the root
+  `graph.db`. Re-ingest before re-measuring.
