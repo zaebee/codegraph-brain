@@ -35,8 +35,9 @@ make format && make lint && make type-check && make pytest && make doc-coverage
 # Single test
 uv run pytest tests/unit/test_python_extractor.py::test_extract_simple_function -v
 
-# Tests with coverage
-uv run pytest --cov=cgis --cov-report=html
+# Line coverage (same scope as CI — see the Makefile comment on why scripts/ counts)
+make coverage        # runs: uv run pytest --cov=cgis --cov=scripts --cov-report=term-missing
+make coverage-html   # same, writes htmlcov/
 ```
 
 ## Architecture
