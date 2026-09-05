@@ -13,6 +13,7 @@ from tree_sitter import Node as BaseNode
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.extractors._python_ast import (
     PYTHON_LANG,
+    assigned_attr_name,
     extract_node_name,
     get_id,
     get_identifier,
@@ -310,3 +311,93 @@ class FunctionHandler:
                 line_number=node.start_point.row + 1,
             )
         )
+
+    def collect_self_type(
+        self,
+        node: BaseNode,
+        code_bytes: bytes,
+        import_map: dict[str, str] | None,
+        class_fqn: str,
+        file_path: str,
+        init_param_types: dict[str, str],
+        acc: dict[str, dict[str, str]],
+        in_class_body: bool,
+    ) -> None:
+        """Populate acc with attr→FQN for one assignment inside a class (spec D1).
+
+        Handles the four annotated shapes: a class-body annotation, an annotated
+        attribute assignment, an attribute assigned from a typed `__init__`
+        parameter, and an attribute assigned a constructor call. An attribute
+        with no annotation anywhere is left out rather than guessed at. The two
+        shape-specific lookups are module-level helpers rather than methods —
+        they take the type resolver as a parameter, so the dispatcher here stays
+        simple and the class doesn't grow a method for each RHS shape.
+
+        `in_class_body` (true only when this assignment has no enclosing
+        function) distinguishes the class-body-annotation shape (`x: T` in the
+        class body) from a same-shaped but unrelated case: a locally annotated
+        variable inside a method (`y: T = ...`), which `assigned_attr_name`
+        cannot tell apart from a class attribute on its own since both have a
+        bare-identifier LHS. Without this check a method-local annotated
+        variable would be misfiled as an attribute of the enclosing class.
+        """
+        left = node.child_by_field_name("left")
+        if left is None:
+            return
+        attr_name = assigned_attr_name(left, code_bytes)
+        if attr_name is None:
+            return
+        if left.type == "identifier" and not in_class_body:
+            return
+
+        type_node = node.child_by_field_name("type")
+        if type_node is not None:
+            resolved = _resolve_self_type_annotation(
+                type_node, code_bytes, import_map, file_path, self._types
+            )
+        else:
+            right = node.child_by_field_name("right")
+            resolved = (
+                _resolve_self_type_from_rhs(
+                    right, code_bytes, import_map, file_path, self._types, init_param_types
+                )
+                if right is not None
+                else None
+            )
+        if resolved:
+            acc.setdefault(class_fqn, {})[attr_name] = resolved
+
+
+def _resolve_self_type_annotation(
+    type_node: BaseNode,
+    code_bytes: bytes,
+    import_map: dict[str, str] | None,
+    file_path: str,
+    type_resolver: TypeResolver,
+) -> str | None:
+    """Resolve an explicit `: T` annotation (class-body `x: T` or `self.x: T = ...`)."""
+    raw = code_bytes[type_node.start_byte : type_node.end_byte].decode("utf-8")
+    clean = type_resolver.clean_python_type_string(raw.strip("\"'"))
+    return type_resolver.resolve_type_fqn(clean, import_map, file_path) if clean else None
+
+
+def _resolve_self_type_from_rhs(
+    right: BaseNode,
+    code_bytes: bytes,
+    import_map: dict[str, str] | None,
+    file_path: str,
+    type_resolver: TypeResolver,
+    init_param_types: dict[str, str],
+) -> str | None:
+    """Resolve an unannotated `self.x = <rhs>` via a typed `__init__` param or constructor call."""
+    if right.type == "identifier":
+        return init_param_types.get(get_identifier(right, code_bytes))
+    if right.type == "call":
+        func_node = right.child_by_field_name("function")
+        if func_node is None:
+            return None
+        class_name = get_identifier(func_node, code_bytes)
+        if class_name == "unknown" or not class_name[:1].isupper():
+            return None
+        return type_resolver.resolve_type_fqn(class_name, import_map, file_path)
+    return None

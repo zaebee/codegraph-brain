@@ -86,3 +86,37 @@ def test_enclosing_class_fqn_is_none_at_module_level() -> None:
 def test_enclosing_class_fqn_picks_the_nearest_class() -> None:
     node, code = _first_assignment_in("class Outer:\n    class Inner:\n        x: int\n")
     assert enclosing_class_fqn(node, code, "pkg/mod.py", None) == "pkg.mod.Outer.Inner"
+
+
+def test_enclosing_class_fqn_distinguishes_a_class_local_to_a_method() -> None:
+    """A class defined inside a method must not collide with a same-named sibling.
+
+    `class Outer.Local` (CLASS node id pkg.mod.Outer.Local) and the `Local`
+    class nested inside `Outer.m` (CLASS node id pkg.mod.Outer.m.Local) must
+    resolve to two different FQNs — Controller Ruling 4.
+    """
+    code = (
+        "class Outer:\n"
+        "    class Local:\n"
+        "        a: int\n"
+        "    def m(self):\n"
+        "        class Local:\n"
+        "            b: int\n"
+    )
+    code_bytes = code.encode()
+    stack = [_PARSER.parse(code_bytes).root_node]
+    assignments = []
+    while stack:
+        node = stack.pop(0)
+        if node.type == "assignment":
+            assignments.append(node)
+        stack.extend(node.named_children)
+    assert len(assignments) == 2
+    outer_local_a, inner_local_b = assignments
+    assert (
+        enclosing_class_fqn(outer_local_a, code_bytes, "pkg/mod.py", None) == "pkg.mod.Outer.Local"
+    )
+    assert (
+        enclosing_class_fqn(inner_local_b, code_bytes, "pkg/mod.py", None)
+        == "pkg.mod.Outer.m.Local"
+    )
