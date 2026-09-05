@@ -94,9 +94,24 @@ def _collect_subscript(
         _collect(arg, code_bytes, acc)
 
 
+def _string_body(node: BaseNode, code_bytes: bytes) -> str:
+    """Return a string literal's contents, without its quotes or any prefix.
+
+    tree-sitter gives the literal a `string_content` child, so the body is read
+    directly rather than by stripping quote characters. Stripping cannot see a
+    prefix — `r"Node"` strips to `r"Node`, which then only resolves because the
+    parser recovers from the malformed re-parse. Reading the child makes the
+    prefixed, triple-quoted and plain forms one case instead of three.
+    """
+    for child in node.named_children:
+        if child.type == "string_content":
+            return code_bytes[child.start_byte : child.end_byte].decode("utf-8")
+    return ""
+
+
 def _collect_from_string(node: BaseNode, code_bytes: bytes, acc: list[str]) -> None:
     """Re-parse a string annotation (PEP 563 style) and collect the names inside it."""
-    raw = code_bytes[node.start_byte : node.end_byte].decode("utf-8").strip("\"'")
+    raw = _string_body(node, code_bytes)
     if not raw:
         return
     inner_bytes = f"x: {raw}".encode()

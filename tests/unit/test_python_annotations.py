@@ -175,3 +175,51 @@ def test_enclosing_class_fqn_distinguishes_a_class_local_to_a_method() -> None:
         enclosing_class_fqn(inner_local_b, code_bytes, "pkg/mod.py", None)
         == "pkg.mod.Outer.m.Local"
     )
+
+
+def test_prefixed_string_annotation_is_read_from_its_content() -> None:
+    """A string prefix must not reach the re-parse: r"Node" is Node, not r"Node.
+
+    Quote-stripping cannot see a prefix, so the body is taken from the literal's
+    `string_content` child instead. Before that, the prefixed forms only resolved
+    because the parser recovered from a malformed re-parse — right answer, wrong
+    reason, and one grammar change away from silently returning nothing.
+    """
+    for prefix in ("", "r", "u", "f", "R", "U"):
+        node, code = _annotation(f'{prefix}"Node"')
+        assert collect_type_names(node, code) == ["Node"], prefix
+
+
+def test_triple_quoted_string_annotation() -> None:
+    """A triple-quoted forward reference resolves like any other."""
+    node, code = _annotation('"""Node"""')
+    assert collect_type_names(node, code) == ["Node"]
+
+
+def test_qualified_annotated_drops_non_call_metadata() -> None:
+    """`typing.Annotated[X, thing]` names X only, whatever shape the metadata takes.
+
+    A `call` is skipped by the node-type rule, but a bare identifier or a string
+    is not — only the Annotated argument slice keeps them out. Pinned because the
+    slice depends on tree-sitter listing subscript arguments as siblings; were a
+    grammar change to wrap them in one node, the slice would quietly become a
+    no-op and metadata would start being collected as types.
+    """
+    for meta in ("Depends(get_db)", "some_validator", '"a doc"', "Gt"):
+        node, code = _annotation(f"typing.Annotated[Session, {meta}]")
+        assert collect_type_names(node, code) == ["Session"], meta
+
+
+def test_bare_annotated_drops_non_call_metadata() -> None:
+    """The unqualified `Annotated[X, thing]` spelling parses differently — same result."""
+    for meta in ("Depends(get_db)", "some_validator", '"a doc"', "Gt"):
+        node, code = _annotation(f"Annotated[Session, {meta}]")
+        assert collect_type_names(node, code) == ["Session"], meta
+
+
+def test_non_wrapper_generic_keeps_every_argument() -> None:
+    """The Annotated slice must not leak into ordinary generics."""
+    node, code = _annotation("dict[str, Edge]")
+    assert collect_type_names(node, code) == ["dict", "str", "Edge"]
+    node, code = _annotation("typing.Dict[str, Edge]")
+    assert collect_type_names(node, code) == ["typing.Dict", "str", "Edge"]
