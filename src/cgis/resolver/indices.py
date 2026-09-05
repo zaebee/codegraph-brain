@@ -127,9 +127,17 @@ def _strips_to_a_node(imported_fqn: str, node_ids: set[str]) -> bool:
     `app.domains.models.Thing` against a graph rooted at `domains` strips to
     `domains.models.Thing`, which exists — so `app` is this project's own name,
     not a package it depends on.
+
+    The remainder must keep at least two segments. Stripping to a single one
+    matches any library whose submodule shares a name with a top-level module of
+    ours — `from pydantic import config` against a project that has `config.py`
+    strips to `config`, and the whole of pydantic would then classify INTERNAL,
+    breaking resolution for every symbol in it. Two segments cannot collide by
+    accident, and a genuine first-party prefix always has deeper imports than
+    that: on owner-api 3346 values resolve, none of them needing this.
     """
     parts = imported_fqn.split(".")
-    return any(".".join(parts[i:]) in node_ids for i in range(1, len(parts)))
+    return any(".".join(parts[i:]) in node_ids for i in range(1, len(parts) - 1))
 
 
 class IndexBuilder:

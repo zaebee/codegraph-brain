@@ -324,3 +324,30 @@ def test_a_package_sharing_a_name_with_a_project_subpackage_stays_external() -> 
     )
     index = IndexBuilder().build([file_node, _node("api.deps.grpc.client.Stub", NodeType.CLASS)])
     assert index.classify_fqn("grpc.Channel") is NodeNamespace.EXTERNAL
+
+
+def test_a_library_submodule_sharing_a_top_level_name_stays_external() -> None:
+    """`from pydantic import config` must not make pydantic first-party.
+
+    Stripping the root of `pydantic.config` leaves `config`, and a project with a
+    top-level config.py has a node by that name — so the whole of pydantic would
+    classify INTERNAL and resolution for every symbol in it would break. `config`
+    and `utils` are among the most common module names in Python, so this is a
+    likely collision rather than a contrived one.
+
+    Requiring two segments after the strip removes it: two cannot collide by
+    accident, and a genuine first-party prefix always has deeper imports —
+    measured on owner-api, 3346 values resolve and none needs a single-segment
+    match.
+    """
+    consumer = _node(
+        "svc",
+        node_type=NodeType.FILE,
+        file_path="svc.py",
+        metadata={"import_map": {"config": "pydantic.config", "BaseModel": "pydantic.BaseModel"}},
+    )
+    index = IndexBuilder().build(
+        [consumer, _node("config", NodeType.FILE, file_path="config.py"), _node("svc.go")]
+    )
+    assert index.classify_fqn("pydantic.BaseModel") is NodeNamespace.EXTERNAL
+    assert "pydantic" not in index.internal_roots
