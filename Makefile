@@ -1,4 +1,4 @@
-.PHONY: format lint type-check pytest doc-coverage check \
+.PHONY: format lint type-check pytest doc-coverage coverage coverage-html check \
         ui-dev ui-build ui-test ui-lint ui-format ui-preview ui-analyze ui-check \
         all-checks
 
@@ -18,6 +18,20 @@ pytest:
 
 doc-coverage:
 	uv run interrogate src
+
+# Line coverage. `--cov=scripts` is not optional and not cosmetic: sonar.sources
+# is `src,scripts`, so SonarCloud counts every executable line under scripts/ as
+# a line to cover whether or not the report mentions it. Omitting the directory
+# does not exclude it — it reports all of it as uncovered, which once put
+# new-code coverage at 37.8% on a PR whose script was covered at 99% locally.
+# Keep this scope identical to the Pytest step in .github/workflows/ci.yml, or
+# the number you read here is not the number the gate reads.
+coverage:
+	uv run pytest --cov=cgis --cov=scripts --cov-report=term-missing
+
+# Same scope, browsable. Writes htmlcov/ (git-ignored); open htmlcov/index.html.
+coverage-html:
+	uv run pytest --cov=cgis --cov=scripts --cov-report=html
 
 # Full Python verification (run before every commit/PR)
 check: format lint type-check pytest doc-coverage
