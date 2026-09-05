@@ -455,7 +455,18 @@ def _resolve_self_type_from_rhs(
         if func_node is None:
             return None
         class_name = get_identifier(func_node, code_bytes)
-        if class_name == "unknown" or not class_name[:1].isupper():
+        if class_name == "unknown":
+            return None
+        if "." in class_name:
+            # Module-qualified constructor (e.g. client.SearchClient()): keep only
+            # if the prefix is a known import alias, mirroring collect_assignment_type
+            # above. Otherwise it is a method call on a local object — `factory.Build()`
+            # is a result, not a construction, and guessing here would put the wrong
+            # type in self_types for every builder-style attribute.
+            module_part, _, _ = class_name.partition(".")
+            if not import_map or module_part not in import_map:
+                return None
+        if not class_name.rpartition(".")[-1][:1].isupper():
             return None
         return type_resolver.resolve_type_fqn(class_name, import_map, file_path)
     return None

@@ -88,3 +88,35 @@ def test_two_classes_keep_separate_maps() -> None:
     )
     assert _class_self_types(code, "pkg.mod.A") == {"client": "pkg.client.SearchClient"}
     assert _class_self_types(code, "pkg.mod.B") == {"client": "pkg.other.Other"}
+
+
+def test_module_qualified_constructor_is_recorded() -> None:
+    """`self.c = client.SearchClient()` records the type when `client` is imported."""
+    code = (
+        "from pkg import client\n"
+        "class A:\n"
+        "    def __init__(self) -> None:\n"
+        "        self.c = client.SearchClient()\n"
+    )
+    assert _class_self_types(code, "pkg.mod.A") == {"c": "pkg.client.SearchClient"}
+
+
+def test_capitalised_method_on_a_local_object_is_not_a_constructor() -> None:
+    """`self.c = factory.Build()` is a result, not a construction — no type recorded.
+
+    The prefix must be a known import alias. Without that test a builder-style
+    attribute would be typed as whatever its factory method happens to be called.
+    """
+    code = "class A:\n    def __init__(self, factory) -> None:\n        self.c = factory.Build()\n"
+    assert _class_self_types(code, "pkg.mod.A") == {}
+
+
+def test_lowercase_call_on_an_imported_module_is_not_a_constructor() -> None:
+    """`self.c = client.make_it()` names no class — no type recorded."""
+    code = (
+        "from pkg import client\n"
+        "class A:\n"
+        "    def __init__(self) -> None:\n"
+        "        self.c = client.make_it()\n"
+    )
+    assert _class_self_types(code, "pkg.mod.A") == {}

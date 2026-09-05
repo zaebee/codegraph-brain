@@ -101,7 +101,10 @@ def _collect_from_string(node: BaseNode, code_bytes: bytes, acc: list[str]) -> N
         return
     inner_bytes = f"x: {raw}".encode()
     root = _STRING_PARSER.parse(inner_bytes).root_node
-    if not root.named_children:
+    # tree-sitter's error recovery has always synthesised these children for every
+    # malformed input tried, so this guard is not known to be reachable — it states
+    # the invariant rather than relying on that recovery behaviour holding.
+    if not root.named_children or not root.named_children[0].named_children:
         return
     assignment = root.named_children[0].named_children[0]
     type_node = assignment.child_by_field_name("type")
