@@ -263,18 +263,15 @@ class IndexBuilder:
         latter would match the library `grpc` against a project's own
         `api/dependencies/grpc/` package.
         """
-        external: set[str] = set()
-        first_party: set[str] = set()
+        imports_by_root: dict[str, set[str]] = {}
         for import_map in file_imports.values():
             for val in import_map.values():
-                if not val or val.startswith("."):
-                    continue
-                root = val.split(".", maxsplit=1)[0]
-                if root in first_party:
-                    continue
-                if _strips_to_a_node(val, node_ids):
-                    first_party.add(root)
-                    external.discard(root)
-                else:
-                    external.add(root)
-        return external - first_party, first_party
+                if val and not val.startswith("."):
+                    imports_by_root.setdefault(val.split(".", maxsplit=1)[0], set()).add(val)
+
+        external: set[str] = set()
+        first_party: set[str] = set()
+        for root, values in imports_by_root.items():
+            resolves = any(_strips_to_a_node(v, node_ids) for v in values)
+            (first_party if resolves else external).add(root)
+        return external, first_party
