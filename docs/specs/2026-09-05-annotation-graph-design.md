@@ -59,8 +59,17 @@ The implemented feature was run against `Ownima/owner-api` (`ownima-backend/app`
 | `REFERENCES` edges | 2 004 (0 pointing at a non-CLASS node) |
 | classes carrying `self_types` | 677 (2 847 attributes) |
 | `self.<attr>.<method>` sites, **production only** | 554 |
-| …receiver resolvable | **476 (86%)** |
+| …receiver resolvable *(forecast, before PR2 existed)* | 476 (86%) |
+| …**actually resolved once PR2 landed** | **470 (85%)** |
 | …same, tests only | 445 / 1 732 (26%) |
+
+The forecast counted a receiver as resolvable when its name appeared in
+`self_types`, without asking whether the declared type is a class that has that
+method. On `owner-api` the two nearly coincide, because its receivers are real
+injected classes. On this repository they do not: the same method forecast 89%
+and the truth is 80%, the gap being attributes declared as builtin containers
+(`self._profiles: dict[...]` records `dict`), which name no class. Quote the
+measured number, not the forecast.
 
 86% against the 66% #414 predicted from its two-source rule: the two sources this
 design adds (`self.x: T = ...` and `self.x = SomeClass()`) are worth ~20 points on
