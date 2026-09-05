@@ -10,18 +10,23 @@ from cgis.storage.sqlite_store import SQLiteStore
 
 _GraphData = tuple[SQLiteStore, list[Node], list[Edge]]
 
-# Measured on HEAD (852fa3d), 2026-09-05, via:
-#   uv run cgis ingest src --source-root src --output /tmp/pr1-check.db
-#   sqlite3 /tmp/pr1-check.db "select count(*) from edges where type='REFERENCES';"
-# Controller Ruling 9 predicted 584 from a snapshot taken at 53d3811, one commit
-# before HEAD. 852fa3d then deleted resolve_internal_class(resolver:
-# SymbolResolver, ...) from symbols.py — that function's own first-parameter
-# annotation named an internal class, so it was itself producing one of the
-# counted REFERENCES edges. Deleting the function removed that annotation from
-# the measured source; no resolver behaviour changed. 584 was correct at
-# 53d3811, 583 is correct at HEAD — one internal-class annotation fewer, one
-# fewer edge.
-_EXPECTED_REFERENCES = 583
+# Measured on the final review fix wave (post 8ef9631), 2026-09-05, via:
+#   uv run cgis ingest src --source-root src --output /tmp/final-check.db
+#   sqlite3 /tmp/final-check.db "select count(*) from edges where type='REFERENCES';"
+# 583 was correct at 8ef9631. Two fixes moved it to 585:
+#   +decorated functions (@classmethod/@staticmethod/@property/@overload) now
+#    get their return-annotation edge, same as plain functions (was silently
+#    dropped by _handle_decorated_definition never calling
+#    collect_return_annotation) — this adds edges, including a few that are
+#    themselves self-references;
+#   -a source-is-target self-reference (a method or nested class naming its
+#    own enclosing class) is now dropped in _resolved_dep_edge, which the
+#    spec's D9 paragraph always claimed but the code never implemented —
+#    this includes both the newly-added decorated self-references and the
+#    pre-existing ones (DuckDBAnalyzer.__enter__ -> DuckDBAnalyzer,
+#    SQLiteStore.__enter__ -> SQLiteStore).
+# Net across both fixes plus ordinary churn since 8ef9631: 583 -> 585.
+_EXPECTED_REFERENCES = 585
 _TOLERANCE = 60  # ~10%: absorbs ordinary code churn, not a lost source
 
 
@@ -49,9 +54,14 @@ def test_every_reference_target_is_an_internal_class(root_graph_data: _GraphData
 def test_classes_referenced_only_inside_generics_have_edges(root_graph_data: _GraphData) -> None:
     """D9's reason for existing: these 8 get zero edges under the cleaned-head rule.
 
-    UnionRun is deliberately excluded: its only external-looking mention is
-    ``-> "UnionRun"`` on its own classmethod, a self-reference the resolver
-    correctly does not turn into an edge (Controller Ruling 9).
+    Two classes are deliberately excluded, both for the same reason and
+    neither needing D9's generic-unwrapping to explain their absence: their
+    only external-looking mention is a self-reference, which the resolver's
+    dedicated filter (spec D9, `_resolved_dep_edge` in `resolver/engine.py`)
+    drops. `UnionRun.build` (a classmethod) returns ``-> "UnionRun"``, and
+    `DuckDBAnalyzer.__enter__` returns ``-> "DuckDBAnalyzer"`` — neither name
+    appears anywhere else in the source, generic-wrapped or otherwise, so
+    both are genuine orphan candidates rather than D9 rescues.
     """
     only_in_generics = {
         "AmbiguousEntry",

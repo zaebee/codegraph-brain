@@ -146,7 +146,9 @@ def enclosing_class_fqn(
     equals the CLASS node's `id` — including when a class is itself defined
     inside a method (e.g. `Outer.m.Local`), which a scheme that only ever
     collected class names would collapse onto an unrelated same-named class
-    defined directly in `Outer` (Controller Ruling 4).
+    defined directly in `Outer`. The key in `self_types` must equal the CLASS
+    node's own `id`, or the map would never be found by anything looking it
+    up from the node.
     """
     curr = node.parent
     chain: list[tuple[str, bool]] = []

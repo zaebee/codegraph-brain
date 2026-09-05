@@ -106,6 +106,11 @@ Exact mirror of `local_types`, which already lives in FUNCTION/METHOD node
 metadata and is already read by `_resolve_local_type_call`
 (`resolver/symbols.py:147`). No new index, no new storage shape.
 
+For a generic attribute (`items: list[Node]`), `self_types` records the
+*container*, not the argument — `{"items": "pkg.mod.list"}` — because
+`local_types` semantics (what type is this attribute for method-resolution
+purposes) are correct for it, unlike D9's annotation-edge collection below.
+
 ### D2 — annotation edges reuse `REFERENCES`; no new EdgeType
 
 `REFERENCES` already exists and already carries a property this work needs: it is
@@ -269,9 +274,13 @@ Ordinary containers are NOT wrappers and keep both parts: `list[Node]` yields
 preserved whole — `collections.abc.Sequence[Node]` yields both.
 
 **A self-reference is not a reference.** `-> "UnionRun"` on `UnionRun`'s own
-classmethod produces no incoming edge for `UnionRun`. This is deliberate: a class
-naming itself is not evidence anyone uses it, and counting it would manufacture a
-false negative in the orphan query.
+classmethod produces no incoming edge for `UnionRun`. This is implemented, not
+emergent: `_resolved_dep_edge` (`resolver/engine.py`) drops the candidate when
+`edge.source` equals the resolved class target or lives inside it (a method,
+or a nested class — checked as `edge.source.startswith(f"{class_target}.")`,
+a dot-boundary test so `Foo` is not treated as inside `FooBar`). A class
+naming itself is not evidence anyone uses it, and counting it would
+manufacture a false negative in the orphan query.
 
 ## Work breakdown
 

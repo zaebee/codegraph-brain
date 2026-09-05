@@ -356,6 +356,7 @@ class PythonExtractor(BaseExtractor):
                     module_fqn or "",
                     decorators=raw_decorators,
                 )
+                collect_return_annotation(child, code_bytes, inner, file_path, edges)
                 for grandchild in child.children:
                     self._walk(
                         grandchild,

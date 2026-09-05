@@ -107,3 +107,91 @@ def test_import_map_hit_with_no_node_produces_no_reference_edge() -> None:
     """
     code = "from numpy import NDArray\ndef use(x: NDArray) -> None:\n    pass\n"
     assert _references(code) == set()
+
+
+def test_decorated_classmethod_return_annotation_becomes_references() -> None:
+    """A decorated function must not lose its return-annotation edge.
+
+    `_handle_decorated_definition` has its own call to `process_function_node`
+    and must call `collect_return_annotation` too, exactly like the
+    plain-function path in `_walk` does.
+    """
+    code = (
+        "class Port:\n"
+        "    pass\n"
+        "class Factory:\n"
+        "    @classmethod\n"
+        "    def build(cls) -> Port:\n"
+        "        pass\n"
+    )
+    assert ("pkg.mod.Factory.build", "pkg.mod.Port") in _references(code)
+
+
+def test_splat_parameter_annotation_becomes_references() -> None:
+    """Annotation-edge emission must not depend on `local_types` succeeding.
+
+    `*args`/`**kw` have no plain identifier for `local_types` to key on
+    (`get_identifier` returns "unknown" for a splat pattern), but the
+    annotation still names a real type and must still produce an edge.
+    """
+    code = "class Port:\n    pass\ndef use(*args: Port) -> None:\n    pass\n"
+    assert ("pkg.mod.use", "pkg.mod.Port") in _references(code)
+
+    code_kw = "class Port:\n    pass\ndef use(**kw: Port) -> None:\n    pass\n"
+    assert ("pkg.mod.use", "pkg.mod.Port") in _references(code_kw)
+
+
+def test_method_self_reference_produces_no_edge() -> None:
+    """A method annotating its own class is not a reference (spec D9)."""
+    code = 'class Ring:\n    @classmethod\n    def make(cls) -> "Ring":\n        pass\n'
+    assert _references(code) == set()
+
+
+def test_nested_class_self_reference_produces_no_edge() -> None:
+    """A nested class annotating its enclosing class is inside it, not a user of it."""
+    code = (
+        "class Outer:\n"
+        "    class Inner:\n"
+        '        def go(self, o: "Outer") -> None:\n'
+        "            pass\n"
+    )
+    assert _references(code) == set()
+
+
+def test_prefix_sharing_different_class_still_produces_an_edge() -> None:
+    """The self-reference filter must be a dot-boundary check, not a string prefix.
+
+    `Foo` and `FooBar` share a textual prefix but are unrelated classes; an
+    annotation on `Foo` naming `FooBar` must still produce an edge.
+    """
+    code = "class FooBar:\n    pass\nclass Foo:\n    def go(self) -> FooBar:\n        pass\n"
+    assert ("pkg.mod.Foo.go", "pkg.mod.FooBar") in _references(code)
+
+
+def test_dunder_all_annotation_does_not_leak_its_value() -> None:
+    """`collect_type_names` must only ever see a `type`/`return_type` node.
+
+    `__all__: list[str] = ["ReExportedOnly"]` has a genuine annotation node
+    (`list[str]`) sitting right beside a list literal full of class names. A
+    rule that walked the whole assignment rather than only its `type` field
+    would pick `ReExportedOnly` out of the *value* and emit a candidate for
+    it. The control class, `ReExportedOnly`, is otherwise unreferenced except
+    by a real annotation below, which proves the assertion isn't passing
+    because annotation edges stopped firing altogether.
+    """
+    annotated = 'class ReExportedOnly:\n    pass\n__all__: list[str] = ["ReExportedOnly"]\n'
+    targets = {t for _, t in _references(annotated)}
+    assert "pkg.mod.ReExportedOnly" not in targets
+
+    # Weaker control: no annotation node exists at all here, so this form
+    # passes under any implementation, including a broken one that walks
+    # values. Kept for completeness, not as the load-bearing assertion.
+    bare = 'class ReExportedOnly:\n    pass\n__all__ = ["ReExportedOnly"]\n'
+    targets_bare = {t for _, t in _references(bare)}
+    assert "pkg.mod.ReExportedOnly" not in targets_bare
+
+    # Control: the same class referenced from a real annotation position
+    # must still produce an edge, or the assertions above would pass
+    # vacuously if annotation edges were lost entirely.
+    control = "class ReExportedOnly:\n    pass\ndef go(x: ReExportedOnly) -> None:\n    pass\n"
+    assert ("pkg.mod.go", "pkg.mod.ReExportedOnly") in _references(control)

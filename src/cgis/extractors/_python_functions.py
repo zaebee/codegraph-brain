@@ -2,7 +2,10 @@
 
 Emits FUNCTION/METHOD nodes plus their CALLS, DECLARES/CONTAINS, DEPENDS_ON
 edges, and collects local type information (assignments and typed parameters)
-used downstream for call resolution.
+used downstream for call resolution. It also builds the `self_types` map for
+the enclosing class (spec D1) and emits `raw_dep:` annotation candidates from
+parameter, return, and `AnnAssign` positions, which the resolver turns into
+REFERENCES edges for internal classes (spec D4/D9).
 """
 
 from collections.abc import Callable
@@ -24,7 +27,13 @@ from cgis.extractors._python_types import TypeResolver
 
 
 class FunctionHandler:
-    """Extracts function/method nodes, call edges and local type metadata."""
+    """Extracts function/method nodes, call edges and local type metadata.
+
+    Sits at 9 methods. `_GOD_OBJECT_MIN_METHODS` (query/analysis/analyzer.py)
+    is 10, so the next method added here trips the self-parsing God-Object
+    gate — put new standalone logic in a module-level function instead (see
+    `emit_annotation_edges` below for the pattern).
+    """
 
     _DI_CALL_NAMES: frozenset[str] = frozenset({"Depends", "Security"})
 
@@ -280,7 +289,11 @@ class FunctionHandler:
         Also emits one speculative `raw_dep:` DEPENDS_ON candidate per type name
         found in the parameter annotation (spec D9); the resolver keeps a name
         only when it resolves to a DI alias (VARIABLE node) or an internal class
-        and drops the rest (spec §3.2c).
+        and drops the rest (spec §3.2c). Annotation-edge emission is independent
+        of the `local_types` population below it: a splat parameter
+        (`*args: T`, `**kw: T`) has no plain identifier for `local_types` to key
+        on, but its annotation still names a real type, so the two questions
+        must not share one early return.
         """
         if not node.named_children:
             return
@@ -288,6 +301,7 @@ class FunctionHandler:
         type_node = node.child_by_field_name("type")
         if not type_node:
             return
+        emit_annotation_edges(type_node, code_bytes, func_node.id, func_node.file_path, edges)
         var_name = get_identifier(name_node, code_bytes)
         if var_name == "unknown":
             return
@@ -301,7 +315,6 @@ class FunctionHandler:
         acc.setdefault(func_node.id, {})[var_name] = self._types.resolve_type_fqn(
             clean_type, import_map, func_node.file_path
         )
-        emit_annotation_edges(type_node, code_bytes, func_node.id, func_node.file_path, edges)
 
     def collect_self_type(
         self,
@@ -372,10 +385,11 @@ def emit_annotation_edges(
     to an internal class (as REFERENCES) and drops the rest, so emitting
     stdlib and third-party names here costs nothing downstream (spec D3/D4).
 
-    Module-level (not a `FunctionHandler` method) per Controller Ruling 5: it
-    needs only `collect_type_names` and `Edge`, no instance state, and adding
-    it as a method would push `FunctionHandler` past the self-parsing god-object
-    gate (`test_god_object_baseline_not_exceeded`).
+    Module-level, not a `FunctionHandler` method: it needs only
+    `collect_type_names` and `Edge`, no instance state, and the repo's
+    God-Object gate fires at 10 methods (`_GOD_OBJECT_MIN_METHODS`) —
+    `FunctionHandler` is already at 9, so adding this as a method would trip
+    the self-parsing gate (`test_god_object_baseline_not_exceeded`).
     """
     for name in collect_type_names(type_node, code_bytes):
         if name == "None":
@@ -403,7 +417,8 @@ def collect_return_annotation(
 ) -> None:
     """Emit annotation edges for a function's return type, if it has one.
 
-    Module-level per Controller Ruling 5 — see `emit_annotation_edges`.
+    Module-level for the same reason as `emit_annotation_edges`: it would
+    push `FunctionHandler` past the 10-method God-Object gate.
     """
     type_node = node.child_by_field_name("return_type")
     if type_node is None:

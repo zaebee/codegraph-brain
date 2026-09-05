@@ -117,6 +117,11 @@ class ResolverEngine:
         return an import-map FQN for a symbol with no node (a third-party
         type via its `... or target_fqn` fallback); the membership check
         below is what keeps that out (spec D3).
+
+        A candidate whose source is the target class itself, or lives inside
+        it (a method, or a nested class), is also dropped: a class naming
+        itself is not evidence anyone uses it, and counting it would
+        manufacture a false negative in the orphan query (spec D9).
         """
         dep_name = edge.target.removeprefix(RAW_DEP_PREFIX)
         dep_target = self._resolver.resolve_dep_candidate(dep_name, edge.source, edge.file_path)
@@ -126,6 +131,8 @@ class ResolverEngine:
         if resolved is not None:
             class_node = self._index.nodes.get(resolved)
             if class_node is not None and class_node.type == NodeType.CLASS:
+                if edge.source == resolved or edge.source.startswith(f"{resolved}."):
+                    return None
                 return edge.model_copy(
                     update={"target": resolved, "type": EdgeType.REFERENCES, "confidence": 1.0}
                 )

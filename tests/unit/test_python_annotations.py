@@ -147,7 +147,8 @@ def test_enclosing_class_fqn_distinguishes_a_class_local_to_a_method() -> None:
 
     `class Outer.Local` (CLASS node id pkg.mod.Outer.Local) and the `Local`
     class nested inside `Outer.m` (CLASS node id pkg.mod.Outer.m.Local) must
-    resolve to two different FQNs — Controller Ruling 4.
+    resolve to two different FQNs: the key `self_types` records must equal
+    the CLASS node's own id, or lookups by node id would never find it.
     """
     code = (
         "class Outer:\n"
