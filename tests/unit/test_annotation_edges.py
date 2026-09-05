@@ -1,7 +1,8 @@
 """Annotation positions produce one raw_dep edge per named type (spec D4, D9)."""
 
-from cgis.core.models import EdgeType
+from cgis.core.models import Edge, EdgeType
 from cgis.extractors.python_extractor import PythonExtractor
+from cgis.resolver.engine import ResolverEngine
 
 _RAW_DEP = "raw_dep:"
 
@@ -51,3 +52,45 @@ def test_edge_ids_are_unique_across_names_of_one_annotation() -> None:
     _, edges = PythonExtractor().parse("def f(x: dict[str, Edge]) -> None: pass\n", "pkg/mod.py")
     dep_ids = [e.id for e in edges if e.target.startswith(_RAW_DEP)]
     assert len(dep_ids) == len(set(dep_ids))
+
+
+def _resolve(code: str, file_path: str = "pkg/mod.py") -> list[Edge]:
+    """Parse and resolve one source string, returning the final edges."""
+    nodes, edges = PythonExtractor().parse(code, file_path)
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+    return resolved
+
+
+def _references(code: str) -> set[tuple[str, str]]:
+    """Return (source, target) for every REFERENCES edge after resolution."""
+    return {(e.source, e.target) for e in _resolve(code) if e.type == EdgeType.REFERENCES}
+
+
+def test_parameter_annotation_of_a_local_class_becomes_references() -> None:
+    code = "class Port:\n    pass\ndef use(p: Port) -> None:\n    pass\n"
+    assert ("pkg.mod.use", "pkg.mod.Port") in _references(code)
+
+
+def test_class_referenced_only_inside_a_generic_still_gets_an_edge() -> None:
+    code = "class Item:\n    pass\ndef use(items: list[Item]) -> None:\n    pass\n"
+    assert ("pkg.mod.use", "pkg.mod.Item") in _references(code)
+
+
+def test_return_annotation_of_a_local_class_becomes_references() -> None:
+    code = "class Report:\n    pass\ndef build() -> Report:\n    pass\n"
+    assert ("pkg.mod.build", "pkg.mod.Report") in _references(code)
+
+
+def test_stdlib_annotation_produces_no_reference_edge() -> None:
+    targets = {t for _, t in _references("def f(x: str) -> None:\n    pass\n")}
+    assert targets == set()
+
+
+def test_unresolvable_annotation_produces_no_reference_edge() -> None:
+    targets = {t for _, t in _references("def f(x: Nowhere) -> None:\n    pass\n")}
+    assert targets == set()
+
+
+def test_no_raw_dep_target_survives_resolution() -> None:
+    code = "class Port:\n    pass\ndef use(p: Port, items: list[int]) -> None:\n    pass\n"
+    assert not [e for e in _resolve(code) if e.target.startswith(_RAW_DEP)]

@@ -5,11 +5,12 @@ from cgis.core.models import (
     SELF_PREFIX,
     VIRTUAL_FILE_PATH,
     Edge,
+    EdgeType,
     Node,
     NodeNamespace,
     NodeType,
 )
-from cgis.resolver.symbols import SymbolResolver
+from cgis.resolver.symbols import SymbolResolver, resolve_internal_class
 
 RAW_DEP_PREFIX = "raw_dep:"
 RAW_IMPORT_PREFIX = "raw_import:"
@@ -101,14 +102,27 @@ class ResolverEngine:
         return edge.model_copy(update={"target": final_target, "confidence": confidence})
 
     def _resolved_dep_edge(self, edge: Edge) -> Edge | None:
-        """Resolve a raw_dep: candidate edge, or None when it must be dropped (spec §3.3)."""
+        """Resolve a raw_dep: candidate edge, or None when it must be dropped (spec §3.3).
+
+        A candidate resolves in one of two ways: to a DI alias (a VARIABLE node),
+        which keeps it a DEPENDS_ON wiring edge, or to an internal class, which
+        makes it a REFERENCES annotation edge (spec D4). Anything else is a
+        speculative candidate that must not leak into the output.
+        """
         dep_name = edge.target.removeprefix(RAW_DEP_PREFIX)
         dep_target = self._resolver.resolve_dep_candidate(dep_name, edge.source, edge.file_path)
-        if dep_target is None:
-            # Speculative candidate that is not a DI alias: drop the edge
-            # entirely — raw_dep: must never leak into output (spec §3.3).
-            return None
-        return edge.model_copy(update={"target": dep_target, "confidence": 1.0})
+        if dep_target is not None:
+            return edge.model_copy(update={"target": dep_target, "confidence": 1.0})
+        class_target = resolve_internal_class(self._resolver, dep_name, edge.source, edge.file_path)
+        if class_target is not None:
+            return edge.model_copy(
+                update={
+                    "target": class_target,
+                    "type": EdgeType.REFERENCES,
+                    "confidence": 1.0,
+                }
+            )
+        return None
 
     def _resolved_import_edge(self, edge: Edge) -> Edge | None:
         """Resolve a raw_import: symbol edge, or None when it must be dropped.

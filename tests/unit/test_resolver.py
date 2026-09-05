@@ -1073,8 +1073,15 @@ def test_raw_dep_resolves_cross_file_via_import_map() -> None:
     assert resolved[0].target == "deps.PublishedOwnerDep"
 
 
-def test_raw_dep_to_class_is_dropped() -> None:
-    """A raw_dep: candidate resolving to a non-VARIABLE node is dropped."""
+def test_raw_dep_to_class_becomes_a_references_edge() -> None:
+    """A raw_dep: candidate resolving to an internal CLASS node becomes REFERENCES (D4).
+
+    Was "is dropped" before Task 5: a non-VARIABLE resolution used to be
+    discarded outright. It is now the annotation-edge path — an internal
+    class candidate survives as a REFERENCES edge instead of a DEPENDS_ON
+    wiring edge, so a type that is only ever referenced (never a DI alias
+    and never called) still has an incoming edge in the graph.
+    """
     nodes = [
         _func_node("routes.get_vehicle", "routes.py"),
         Node(
@@ -1090,7 +1097,11 @@ def test_raw_dep_to_class_is_dropped() -> None:
 
     resolved, _ = ResolverEngine(nodes, edges).resolve()
 
-    assert resolved == []
+    assert len(resolved) == 1
+    assert resolved[0].type == EdgeType.REFERENCES
+    assert resolved[0].source == "routes.get_vehicle"
+    assert resolved[0].target == "models.User"
+    assert resolved[0].confidence == pytest.approx(1.0)
 
 
 def test_raw_dep_unresolved_is_dropped_and_never_leaks() -> None:
@@ -1129,7 +1140,15 @@ def test_raw_dep_ambiguous_across_files_is_dropped() -> None:
 
 
 def test_raw_dep_explicit_import_shadows_global_alias() -> None:
-    """An explicitly imported non-VARIABLE name never falls back to a same-named alias elsewhere."""
+    """An explicitly imported non-VARIABLE name never falls back to a same-named alias elsewhere.
+
+    Was "is dropped" before Task 5. `resolve_dep_candidate` still refuses to
+    fall back to `other.User` (the same-named alias in another file) — that
+    shadowing guard is unchanged. What changed is what happens to the
+    candidate once dep-resolution gives up: it now resolves as an internal
+    class via the same import map and survives as a REFERENCES edge to
+    `models.User`, not `other.User` and not a DEPENDS_ON edge.
+    """
     nodes = [
         _file_node("routes.py", {"User": "models.User"}),
         _func_node("routes.get_vehicle", "routes.py"),
@@ -1147,7 +1166,9 @@ def test_raw_dep_explicit_import_shadows_global_alias() -> None:
 
     resolved, _ = ResolverEngine(nodes, edges).resolve()
 
-    assert resolved == []
+    assert len(resolved) == 1
+    assert resolved[0].type == EdgeType.REFERENCES
+    assert resolved[0].target == "models.User"
 
 
 def test_variable_nodes_do_not_pollute_call_resolution() -> None:

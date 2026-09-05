@@ -1,6 +1,6 @@
 """Symbol resolution strategies over a SymbolIndex."""
 
-from cgis.core.models import RAW_CLASS_PREFIX, Edge, EdgeType, Node, NodeNamespace
+from cgis.core.models import RAW_CLASS_PREFIX, Edge, EdgeType, Node, NodeNamespace, NodeType
 from cgis.resolver.indices import IndexBuilder, SymbolIndex
 
 
@@ -177,3 +177,29 @@ class SymbolResolver:
             if len(same_file) == 1:
                 return same_file[0]
         return None
+
+
+def resolve_internal_class(
+    resolver: SymbolResolver, name: str, source_fqn: str, edge_file_path: str | None
+) -> str | None:
+    """Resolve a type name to an existing internal CLASS node, or None.
+
+    Module-level rather than a `SymbolResolver` method: adding it there would
+    push the class past the god-object threshold (10 methods AND 5 efferent
+    couplings, `analyzer.py::detect_god_objects`) — the metric counts every
+    distinct call target, including private helpers, so one more method with
+    its own resolution calls was enough to cross it.
+
+    Reuses `resolve_class_ref` (import map first, then the global symbol
+    index) and then verifies the result is a class that actually exists in
+    the graph. `resolve_class_ref` can return an import-map FQN for a symbol
+    with no node — a third-party type — so the membership check is what
+    keeps external names out (spec D3).
+    """
+    resolved = resolver.resolve_class_ref(name, source_fqn, edge_file_path)
+    if resolved is None:
+        return None
+    node = resolver.index.nodes.get(resolved)
+    if node is None or node.type != NodeType.CLASS:
+        return None
+    return resolved
