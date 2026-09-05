@@ -1477,3 +1477,68 @@ def test_builtin_container_receiver_does_not_resolve() -> None:
     resolved, _ = ResolverEngine(nodes, edges).resolve()
     targets = {e.target for e in resolved if e.source == "pkg.mod.Holder.go"}
     assert "self._map.get" in targets
+
+
+def test_inherited_attribute_resolves_from_the_base_class() -> None:
+    """The collaborator is injected on a base and used from a subclass (F3).
+
+    ReservationCore.__init__ takes the client; ReservationCreation calls
+    self.reservation_client.create(). Looking only at the subclass's own
+    self_types missed every such call — five real sites on owner-api.
+    """
+    client = "class Client:\n    def read(self, i):\n        return i\n"
+    svc = (
+        "from pkg.client import Client\n"
+        "class Core:\n"
+        "    def __init__(self, client: Client) -> None:\n"
+        "        self.client = client\n"
+        "class Creation(Core):\n"
+        "    def go(self):\n"
+        "        return self.client.read(1)\n"
+    )
+    resolved = _resolve_two("pkg/client.py", client, "pkg/svc.py", svc)
+    calls = {(e.source, e.target) for e in resolved if e.type == EdgeType.CALLS}
+    assert ("pkg.svc.Creation.go", "pkg.client.Client.read") in calls
+
+
+def test_phantom_method_on_a_first_party_receiver_is_not_fabricated() -> None:
+    """A project class whose module is in the graph is ours, whatever classify_fqn says.
+
+    classify_fqn judges by root string and external_roots is built from
+    import-map values, so a first-party root can classify EXTERNAL — on
+    owner-api that minted 131 confident edges onto app.* nodes that do not
+    exist. A phantom method on our own class must stay unresolved (D7).
+    """
+    client = "class Client:\n    def read(self, i):\n        return i\n"
+    svc = (
+        "from pkg.client import Client\n"
+        "class Svc:\n"
+        "    def __init__(self, client: Client) -> None:\n"
+        "        self.client = client\n"
+        "    def go(self):\n"
+        "        return self.client.no_such_method()\n"
+    )
+    resolved = _resolve_two("pkg/client.py", client, "pkg/svc.py", svc)
+    targets = {e.target for e in resolved if e.source == "pkg.svc.Svc.go"}
+    assert "pkg.client.Client.no_such_method" not in targets
+    assert "self.client.no_such_method" in targets
+
+
+def test_a_genuine_library_receiver_still_resolves() -> None:
+    """The first-party guard must not close the external branch it protects.
+
+    tree_sitter is not project code, so a method on it is a real dependency
+    call and keeps its target.
+    """
+    code = (
+        "from tree_sitter import Parser\n"
+        "class Extractor:\n"
+        "    def __init__(self, parser: Parser) -> None:\n"
+        "        self._parser = parser\n"
+        "    def go(self, code):\n"
+        "        return self._parser.parse(code)\n"
+    )
+    nodes, edges = PythonExtractor().parse(code, "pkg/mod.py")
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+    targets = {e.target for e in resolved if e.source == "pkg.mod.Extractor.go"}
+    assert "tree_sitter.Parser.parse" in targets

@@ -5,7 +5,7 @@ not a constant: a change that legitimately moves them updates the numbers in the
 same commit, with the new measurement in the message.
 """
 
-from cgis.core.models import Edge, EdgeType, Node, NodeType
+from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeType
 from cgis.storage.sqlite_store import SQLiteStore
 
 # Measured via:
@@ -17,6 +17,21 @@ from cgis.storage.sqlite_store import SQLiteStore
 # receiver and 11 are declared as a builtin container (`self._profiles:
 # dict[...]` records "dict", spec D1), which names no class. None is a
 # resolution failure.
+# Fabricated targets that predate this work: a first-party FQN that classify_fqn
+# reads as EXTERNAL, minted as a boundary node. They arrive through the ordinary
+# call path, not through receiver resolution — this branch's own contribution to
+# this set is zero, measured on owner-api as 136 before the guard and 0 after.
+# Ratcheted rather than asserted away, so a *new* one fails while these stay
+# visible instead of being silently tolerated.
+_KNOWN_FABRICATED = frozenset(
+    {
+        "cgis.cli.app",
+        "cgis.guardian.chunker.split_diff_by_file",
+        "cgis.guardian.diff_index.split_diff_by_file.items",
+        "cgis.guardian.findings.ReviewResult.model_validate_json",
+    }
+)
+
 _EXPECTED_PLACEHOLDERS = 46
 _TOLERANCE = 10
 
@@ -160,16 +175,68 @@ def test_no_two_segment_placeholder_is_shared_by_several_classes(
     assert not shared, f"two-segment placeholders still shared by several classes: {shared}"
 
 
-def test_a_resolved_receiver_call_lands_on_a_node_that_exists(
+def test_named_receiver_calls_resolve_to_their_exact_targets(
     root_graph_data: tuple[SQLiteStore, list[Node], list[Edge]],
 ) -> None:
-    """A resolved call must reach a real node, internal or virtual — never a fabricated FQN.
+    """Identity, not quantity — the three gates above all pin counts.
 
-    The external half of D7 keeps a method that has no node of its own when the
-    receiver is a library type, relying on the engine to mint a boundary node
-    for it. This asserts that minting actually happened for every such target.
+    A resolver that sent every receiver call to a *different* class's same-named
+    method would keep the totals identical and pass all of them. These pairs are
+    real edges in this repository's own graph, one per resolution path:
+
+    - an internal receiver, resolved through self_types to a project method;
+    - the same method name reached from two different classes, which is the
+      collision that made `self._parser.parse` one vertex before this work;
+    - an external receiver, kept by D7's library half rather than dropped.
+    """
+    _store, _nodes, edges = root_graph_data
+    calls = {(e.source, e.target) for e in edges if e.type is EdgeType.CALLS}
+    expected = {
+        (
+            "cgis.resolver.engine.ResolverEngine._resolved_call_edge",
+            "cgis.resolver.symbols.SymbolResolver.resolve_self_call",
+        ),
+        ("cgis.extractors.python_extractor.PythonExtractor.parse", "tree_sitter.Parser.parse"),
+        (
+            "cgis.extractors.typescript_extractor.TypeScriptExtractor.parse",
+            "tree_sitter.Parser.parse",
+        ),
+    }
+    missing = sorted(expected - calls)
+    assert not missing, (
+        "these receiver-resolved edges are gone, so resolution regressed for a "
+        f"path the counts above cannot see: {missing}"
+    )
+
+
+def test_no_receiver_call_lands_on_a_fabricated_project_node(
+    root_graph_data: tuple[SQLiteStore, list[Node], list[Edge]],
+) -> None:
+    """A target under a project root must be a real node, never a minted one.
+
+    classify_fqn judges by root string, so a first-party FQN can classify
+    EXTERNAL and D7's library branch would then mint a boundary node for a class
+    of ours that does not exist — a confident edge to nothing. On owner-api that
+    was 136 edges before the guard.
+
+    A weaker version of this test — "every target has *a* node" — cannot fail at
+    all: ResolverEngine._ensure_virtual_node mints one for every call target by
+    construction. The question is not whether a node exists but whether it was
+    invented.
     """
     _store, nodes, edges = root_graph_data
-    known = {n.id for n in nodes}
-    dangling = sorted({e.target for e in edges if e.target not in known})
-    assert not dangling, f"edges pointing at non-existent nodes: {dangling[:10]}"
+    real = {n.id for n in nodes if n.file_path != VIRTUAL_FILE_PATH}
+    roots = {n.id.split(".", maxsplit=1)[0] for n in nodes if n.file_path != VIRTUAL_FILE_PATH}
+    fabricated = {
+        e.target
+        for e in edges
+        if e.type is EdgeType.CALLS
+        and e.target not in real
+        and any(part in roots for part in e.target.split(".")[:-1])
+    }
+    unexpected = sorted(fabricated - _KNOWN_FABRICATED)
+    assert not unexpected, (
+        f"new minted nodes under a project root: {unexpected[:10]}. A receiver "
+        "whose path reaches a project root is ours, so a method missing from it "
+        "is a phantom and must stay unresolved."
+    )
