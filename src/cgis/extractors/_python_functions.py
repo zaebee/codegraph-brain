@@ -466,7 +466,10 @@ def _resolve_self_type_from_rhs(
             module_part, _, _ = class_name.partition(".")
             if not import_map or module_part not in import_map:
                 return None
-        if not class_name.rpartition(".")[-1][:1].isupper():
+        # Leading underscores are stripped before the capitalisation test: `_IdAllocator()`
+        # is a construction by every Python convention, and this repo has such classes.
+        # A name that is only underscores yields "" here, which is correctly not upper.
+        if not class_name.rpartition(".")[-1].lstrip("_")[:1].isupper():
             return None
         return type_resolver.resolve_type_fqn(class_name, import_map, file_path)
     return None

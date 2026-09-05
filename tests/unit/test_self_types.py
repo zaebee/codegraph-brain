@@ -120,3 +120,29 @@ def test_lowercase_call_on_an_imported_module_is_not_a_constructor() -> None:
         "        self.c = client.make_it()\n"
     )
     assert _class_self_types(code, "pkg.mod.A") == {}
+
+
+def test_private_class_constructor_is_recorded() -> None:
+    """`self.a = _IdAllocator()` is a construction — a leading underscore is a convention.
+
+    This repo has such classes, so a capitalisation test that does not strip the
+    underscore silently drops every private collaborator from self_types.
+    """
+    code = (
+        "from pkg.x import _IdAllocator\n"
+        "class A:\n"
+        "    def __init__(self) -> None:\n"
+        "        self.a = _IdAllocator()\n"
+    )
+    assert _class_self_types(code, "pkg.mod.A") == {"a": "pkg.x._IdAllocator"}
+
+
+def test_lowercase_factory_call_is_still_not_a_constructor() -> None:
+    """Stripping underscores must not weaken the test: `make()` names no class."""
+    code = (
+        "from pkg.x import make\n"
+        "class A:\n"
+        "    def __init__(self) -> None:\n"
+        "        self.a = make()\n"
+    )
+    assert _class_self_types(code, "pkg.mod.A") == {}
