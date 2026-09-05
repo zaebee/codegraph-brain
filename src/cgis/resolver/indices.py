@@ -36,6 +36,9 @@ class SymbolIndex:
     file_global_symbols: Mapping[tuple[str, str], list[str]]
     # class_fqn -> {method_name -> method_fqn}
     class_methods: Mapping[str, dict[str, str]]
+    # class_fqn -> {attribute_name -> declared type FQN}, from CLASS node metadata.
+    # Written by the extractor (spec D1), read by resolve_self_call (spec D7).
+    self_types: Mapping[str, dict[str, str]]
     # DI-alias (VARIABLE) indices for raw_dep: resolution; kept separate
     # from global_symbols so call resolution behavior does not change.
     variable_symbols: Mapping[str, list[str]]
@@ -126,6 +129,7 @@ class IndexBuilder:
         global_symbols: dict[str, list[str]] = {}
         file_global_symbols: dict[tuple[str, str], list[str]] = {}
         class_methods: dict[str, dict[str, str]] = {}
+        self_types: dict[str, dict[str, str]] = {}
         variable_symbols: dict[str, list[str]] = {}
         file_variable_symbols: dict[tuple[str, str], list[str]] = {}
         file_imports: dict[str, dict[str, str]] = {}
@@ -137,6 +141,12 @@ class IndexBuilder:
             if node.type == NodeType.FILE:
                 normalized = os.path.normpath(node.file_path)
                 file_imports[normalized] = node.metadata.get("import_map") or {}
+
+            # Attribute types the extractor recorded on the class (spec D1).
+            if node.type == NodeType.CLASS:
+                declared = node.metadata.get("self_types")
+                if declared:
+                    self_types[node.id] = declared
 
             # Index global functions/symbols
             if node.type in (NodeType.FUNCTION, NodeType.CLASS):
@@ -169,6 +179,7 @@ class IndexBuilder:
             global_symbols=MappingProxyType(global_symbols),
             file_global_symbols=MappingProxyType(file_global_symbols),
             class_methods=MappingProxyType(class_methods),
+            self_types=MappingProxyType(self_types),
             variable_symbols=MappingProxyType(variable_symbols),
             file_variable_symbols=MappingProxyType(file_variable_symbols),
             file_imports=MappingProxyType(file_imports),

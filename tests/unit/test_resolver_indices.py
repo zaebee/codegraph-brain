@@ -188,3 +188,53 @@ def test_has_node_reports_membership() -> None:
 
     assert index.has_node("mod.fn") is True
     assert index.has_node("mod.missing") is False
+
+
+# ---------------------------------------------------------------------------
+# self_types (spec D1) — written by the extractor, read by resolve_self_call
+# ---------------------------------------------------------------------------
+
+
+def test_self_types_is_indexed_by_class_fqn() -> None:
+    """A CLASS node's self_types map reaches the index under the class's own FQN."""
+    index = IndexBuilder().build(
+        [
+            _node(
+                "pkg.mod.Adapter",
+                NodeType.CLASS,
+                metadata={"self_types": {"client": "pkg.client.SearchClient"}},
+            )
+        ]
+    )
+    assert index.self_types == {"pkg.mod.Adapter": {"client": "pkg.client.SearchClient"}}
+
+
+def test_class_without_self_types_is_absent_rather_than_empty() -> None:
+    """A class with no annotated attributes contributes no entry at all."""
+    index = IndexBuilder().build([_node("pkg.mod.Plain", NodeType.CLASS)])
+    assert "pkg.mod.Plain" not in index.self_types
+
+
+def test_two_classes_keep_separate_self_types_maps() -> None:
+    """Same attribute name, different classes, different types — no merging.
+
+    This is the collision #414 reports from the other end: without per-class
+    keying, PythonExtractor and TypeScriptExtractor would agree on what
+    `self._parser` is.
+    """
+    index = IndexBuilder().build(
+        [
+            _node("pkg.mod.A", NodeType.CLASS, metadata={"self_types": {"parser": "pkg.a.Py"}}),
+            _node("pkg.mod.B", NodeType.CLASS, metadata={"self_types": {"parser": "pkg.b.Ts"}}),
+        ]
+    )
+    assert index.self_types["pkg.mod.A"]["parser"] == "pkg.a.Py"
+    assert index.self_types["pkg.mod.B"]["parser"] == "pkg.b.Ts"
+
+
+def test_self_types_ignores_the_metadata_of_a_non_class_node() -> None:
+    """Only CLASS nodes contribute; a stray key elsewhere must not reach the map."""
+    index = IndexBuilder().build(
+        [_node("pkg.mod.fn", NodeType.FUNCTION, metadata={"self_types": {"x": "pkg.X"}})]
+    )
+    assert index.self_types == {}
