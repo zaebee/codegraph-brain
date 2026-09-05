@@ -36,6 +36,9 @@ class SymbolIndex:
     file_global_symbols: Mapping[tuple[str, str], list[str]]
     # class_fqn -> {method_name -> method_fqn}
     class_methods: Mapping[str, dict[str, str]]
+    # class_fqn -> {attribute_name -> declared type FQN}, from CLASS node metadata.
+    # Written by the extractor (spec D1), read by resolve_self_call (spec D7).
+    self_types: Mapping[str, dict[str, str]]
     # DI-alias (VARIABLE) indices for raw_dep: resolution; kept separate
     # from global_symbols so call resolution behavior does not change.
     variable_symbols: Mapping[str, list[str]]
@@ -88,8 +91,14 @@ class SymbolIndex:
         UNKNOWN means the root segment was not found in internal roots,
         stdlib/builtins, or any known import-map external root.
         """
-        if fqn.startswith((".", SELF_PREFIX)):
+        if fqn.startswith("."):
             return NodeNamespace.INTERNAL
+        if fqn.startswith(SELF_PREFIX):
+            # An unresolved receiver, not a symbol. UNKNOWN rather than INTERNAL
+            # so get_edge_stats counts it as unresolved: classifying it INTERNAL
+            # let unresolved_ratio *improve* as a codebase adopted more dependency
+            # injection, so a green `validate` said nothing about the gap (#414).
+            return NodeNamespace.UNKNOWN
         root = fqn.split(".", maxsplit=1)[0]
         if root in self.internal_roots:
             return NodeNamespace.INTERNAL
@@ -126,6 +135,7 @@ class IndexBuilder:
         global_symbols: dict[str, list[str]] = {}
         file_global_symbols: dict[tuple[str, str], list[str]] = {}
         class_methods: dict[str, dict[str, str]] = {}
+        self_types: dict[str, dict[str, str]] = {}
         variable_symbols: dict[str, list[str]] = {}
         file_variable_symbols: dict[tuple[str, str], list[str]] = {}
         file_imports: dict[str, dict[str, str]] = {}
@@ -133,17 +143,12 @@ class IndexBuilder:
         internal_roots: set[str] = set()
 
         for node in nodes_by_id.values():
-            # Index FILE-level import maps
-            if node.type == NodeType.FILE:
-                normalized = os.path.normpath(node.file_path)
-                file_imports[normalized] = node.metadata.get("import_map") or {}
+            # Maps the extractor attached to FILE and CLASS nodes.
+            self._index_metadata(node, file_imports, self_types)
 
             # Index global functions/symbols
             if node.type in (NodeType.FUNCTION, NodeType.CLASS):
-                global_symbols.setdefault(node.name, []).append(node.id)
-                file_global_symbols.setdefault(
-                    (os.path.normpath(node.file_path), node.name), []
-                ).append(node.id)
+                self._index_by_name(node, global_symbols, file_global_symbols)
 
             # Index methods within classes
             if node.type == NodeType.METHOD:
@@ -153,10 +158,7 @@ class IndexBuilder:
 
             # Index DI aliases for raw_dep: candidate resolution
             if node.type == NodeType.VARIABLE:
-                variable_symbols.setdefault(node.name, []).append(node.id)
-                file_variable_symbols.setdefault(
-                    (os.path.normpath(node.file_path), node.name), []
-                ).append(node.id)
+                self._index_by_name(node, variable_symbols, file_variable_symbols)
 
             # Build suffix map for src/-layout prefix normalization:
             # "src.cgis.pipeline.X" → suffix "cgis.pipeline.X" also points to the node
@@ -169,12 +171,48 @@ class IndexBuilder:
             global_symbols=MappingProxyType(global_symbols),
             file_global_symbols=MappingProxyType(file_global_symbols),
             class_methods=MappingProxyType(class_methods),
+            self_types=MappingProxyType(self_types),
             variable_symbols=MappingProxyType(variable_symbols),
             file_variable_symbols=MappingProxyType(file_variable_symbols),
             file_imports=MappingProxyType(file_imports),
             suffix_map=MappingProxyType(suffix_map),
             internal_roots=frozenset(internal_roots),
             external_roots=frozenset(self._build_external_roots(file_imports)),
+        )
+
+    @staticmethod
+    def _index_metadata(
+        node: Node,
+        file_imports: dict[str, dict[str, str]],
+        self_types: dict[str, dict[str, str]],
+    ) -> None:
+        """Read the maps the extractor attached to a FILE or CLASS node.
+
+        A FILE carries its import map; a CLASS carries the attribute types
+        recorded from annotations (spec D1). Both are extractor output the
+        resolver consumes rather than anything derived here.
+        """
+        if node.type == NodeType.FILE:
+            file_imports[os.path.normpath(node.file_path)] = node.metadata.get("import_map") or {}
+        elif node.type == NodeType.CLASS:
+            declared = node.metadata.get("self_types")
+            if declared:
+                self_types[node.id] = declared
+
+    @staticmethod
+    def _index_by_name(
+        node: Node,
+        by_name: dict[str, list[str]],
+        by_file_and_name: dict[tuple[str, str], list[str]],
+    ) -> None:
+        """Record a node under its bare name, and under (file, name).
+
+        The global-symbol and DI-alias indices are the same shape over
+        different node types, and were the same four lines written twice.
+        """
+        by_name.setdefault(node.name, []).append(node.id)
+        by_file_and_name.setdefault((os.path.normpath(node.file_path), node.name), []).append(
+            node.id
         )
 
     def _add_node_to_suffix_map(

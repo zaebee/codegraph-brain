@@ -4,6 +4,95 @@ from cgis.core.models import RAW_CLASS_PREFIX, Edge, EdgeType, Node, NodeNamespa
 from cgis.resolver.indices import IndexBuilder, SymbolIndex
 
 
+def _is_first_party(index: SymbolIndex, receiver: str) -> bool:
+    """True when `receiver` names project code, whatever classify_fqn says.
+
+    classify_fqn judges by root string, and `external_roots` is built from every
+    import-map value — so a first-party root reaches it whenever the import root
+    differs from the ingest-relative node root (`app.services.X` imported as
+    such, ingested at `app/`, giving nodes rooted at `services`). The receiver
+    then classifies EXTERNAL and any method name on it would be minted at
+    confidence 1.0, including the phantom D7 exists to drop.
+
+    The signal is that some segment of the receiver's path is a root the graph
+    actually contains. `app.api.dependencies.session.AsyncSessionDep` reaches
+    `api`, which is an internal root, so it is ours and a missing method on it
+    is a phantom. `grpc.Channel` reaches none, so it is a library and the call
+    is real.
+
+    Deliberately not `map_to_node_fqn`: that helper matches by suffix on
+    purpose, to reconcile layout prefixes, and asking it "is this ours" inherits
+    the permissiveness. On owner-api it matched the *library* `grpc` against the
+    project's own `api/dependencies/grpc/` package and silently stopped
+    resolving 56 genuine gRPC calls. Root membership does not confuse the two.
+
+    The final segment is excluded: it names the class, and a class called `api`
+    must not make itself first-party.
+    """
+    parts = receiver.split(".")
+    return any(part in index.internal_roots for part in parts[:-1])
+
+
+def _owning_class(index: SymbolIndex, source_fqn: str) -> str | None:
+    """The nearest enclosing class of source_fqn that the index knows methods for.
+
+    Walks up the FQN segments so a nested function (`mod.Cls.method.inner`)
+    still finds `mod.Cls`.
+    """
+    parts = source_fqn.split(".")
+    for i in range(len(parts) - 1, 0, -1):
+        candidate = ".".join(parts[:i])
+        if candidate in index.class_methods:
+            return candidate
+    return None
+
+
+def receiver_type_fqn(index: SymbolIndex, owner_fqn: str, attr: str) -> str | None:
+    """Resolve `self.<attr>` on class `owner_fqn` to the type it was declared as.
+
+    The declared type is a FQN the extractor built from the annotation and the
+    file's import map, so it may carry a layout prefix the graph does not use
+    (`cgis.x.Y` against a node id of `src.cgis.x.Y`); `map_to_node_fqn`
+    reconciles those. The returned FQN is not guaranteed to have a node —
+    a third-party type has none until the engine mints a virtual one — so the
+    caller decides what an absent method means (see `resolve_self_call`).
+    """
+    declared = index.self_types.get(owner_fqn, {}).get(attr)
+    if declared is None:
+        return None
+    return index.map_to_node_fqn(declared) or declared
+
+
+def _declaring_class(
+    index: SymbolIndex, owner_fqn: str, attr: str, inheritance: dict[str, list[str]]
+) -> str | None:
+    """The class in owner_fqn's hierarchy that declares `self.<attr>`, if any.
+
+    A base class commonly holds the injected collaborator and the subclasses use
+    it — `ReservationCore.__init__` taking the client, `ReservationCreation`
+    calling `self.reservation_client.create()`. Looking only at the subclass's
+    own self_types misses every such call. D7 already walks EXTENDS to find a
+    *method* on the receiver; this walks the same tree to find the *attribute*
+    on the owner.
+    """
+    seen: set[str] = set()
+    stack = [owner_fqn]
+    while stack:
+        current = stack.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        if attr in index.self_types.get(current, {}):
+            return current
+        # Reversed because the stack is LIFO: extending in source order would pop
+        # the *rightmost* base first, so `class C(Left, Right)` would answer with
+        # Right's declaration where Python's MRO uses Left's. The sibling
+        # _resolve_method_on_class_hierarchy recurses in source order and is
+        # already correct; this keeps the two consistent.
+        stack.extend(reversed(inheritance.get(current, [])))
+    return None
+
+
 class SymbolResolver:
     """Maps raw symbol names to graph FQNs.
 
@@ -51,15 +140,44 @@ class SymbolResolver:
         return None
 
     def resolve_self_call(self, source_fqn: str, method_name: str) -> str | None:
-        """Attempts to find a method on the class that owns source, traversing inheritance.
+        """Find the method a `self.…` call reaches, traversing inheritance.
 
-        Walks up the FQN segments to handle nested functions (e.g. mod.Cls.method.inner).
+        Two shapes. `self.helper()` arrives as "helper" and is looked up on the
+        class that owns the source. `self.client.search()` arrives as
+        "client.search": the receiver's declared type comes from `self_types`
+        (spec D1), and the method is then searched on that class exactly as it
+        would be on the owner — same walk, same inheritance rules (spec D7).
+
+        Only one dot is handled. `self.a.b.c()` is left alone: resolving it
+        would need the return type of `self.a.b`, which nothing records (D8).
         """
-        parts = source_fqn.split(".")
-        for i in range(len(parts) - 1, 0, -1):
-            candidate = ".".join(parts[:i])
-            if candidate in self.index.class_methods:
-                return self._resolve_method_on_class_hierarchy(candidate, method_name, set())
+        owner = _owning_class(self.index, source_fqn)
+        if owner is None:
+            return None
+        attr, sep, method = method_name.partition(".")
+        if not sep:
+            return self._resolve_method_on_class_hierarchy(owner, method_name, set())
+        if "." in method:
+            return None
+        declaring = _declaring_class(self.index, owner, attr, self._inheritance_tree)
+        if declaring is None:
+            return None
+        receiver = receiver_type_fqn(self.index, declaring, attr)
+        if receiver is None:
+            return None
+        found = self._resolve_method_on_class_hierarchy(receiver, method, set())
+        if found:
+            return found
+        # No such method on the declared receiver. Keep it only when the receiver
+        # is genuinely a library type — a real call into a dependency, for which
+        # the engine mints an EXTERNAL/STDLIB node. On an internal type it is a
+        # phantom method and must not be fabricated: that is the call #414 was
+        # filed to expose. Same policy as _resolve_local_type_call (spec D7).
+        if _is_first_party(self.index, receiver):
+            return None
+        candidate = f"{receiver}.{method}"
+        if self.index.classify_fqn(candidate) in (NodeNamespace.EXTERNAL, NodeNamespace.STDLIB):
+            return candidate
         return None
 
     def resolve_global_call(

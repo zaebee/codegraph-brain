@@ -1264,3 +1264,312 @@ def test_raw_import_never_leaks_into_output() -> None:
     resolved, virtual = ResolverEngine(nodes, edges).resolve()
     assert all(not e.target.startswith("raw_import:") for e in resolved)
     assert all(not v.id.startswith("raw_import:") for v in virtual)
+
+
+# ---------------------------------------------------------------------------
+# Receiver resolution: self.<attr>.<method>() (#414, spec D7/D8)
+# ---------------------------------------------------------------------------
+
+
+def _resolve_two(path_a: str, code_a: str, path_b: str, code_b: str) -> list[Edge]:
+    """Parse two modules together and return the resolved edges."""
+    extractor = PythonExtractor()
+    nodes_a, edges_a = extractor.parse(code_a, path_a)
+    nodes_b, edges_b = extractor.parse(code_b, path_b)
+    resolved, _ = ResolverEngine(nodes_a + nodes_b, edges_a + edges_b).resolve()
+    return resolved
+
+
+_CLIENT = "class SearchClient:\n    def search(self, index):\n        return {}\n"
+
+
+def test_self_attribute_call_resolves_through_the_declared_type() -> None:
+    """`self.client.search()` resolves to SearchClient.search via self_types."""
+    adapter = (
+        "from pkg.client import SearchClient\n"
+        "class Adapter:\n"
+        "    def __init__(self, client: SearchClient) -> None:\n"
+        "        self.client = client\n"
+        "    def search(self, index):\n"
+        "        return self.client.search(index)\n"
+    )
+    resolved = _resolve_two("pkg/client.py", _CLIENT, "pkg/adapter.py", adapter)
+    calls = {(e.source, e.target) for e in resolved if e.type == EdgeType.CALLS}
+    assert ("pkg.adapter.Adapter.search", "pkg.client.SearchClient.search") in calls
+
+
+def test_self_attribute_call_to_a_method_that_does_not_exist_is_not_invented() -> None:
+    """A phantom method on an internal receiver must not resolve (spec D7).
+
+    This is the bug class #414 was filed from: a call that mypy silenced with a
+    type: ignore and that would have raised AttributeError on first use.
+    """
+    adapter = (
+        "from pkg.client import SearchClient\n"
+        "class Adapter:\n"
+        "    def __init__(self, client: SearchClient) -> None:\n"
+        "        self.client = client\n"
+        "    def broken(self):\n"
+        "        return self.client.no_such_method()\n"
+    )
+    resolved = _resolve_two("pkg/client.py", _CLIENT, "pkg/adapter.py", adapter)
+    targets = {e.target for e in resolved if e.source == "pkg.adapter.Adapter.broken"}
+    assert "pkg.client.SearchClient.no_such_method" not in targets
+
+
+def test_self_attribute_call_finds_an_inherited_method() -> None:
+    """Resolution walks EXTENDS, reusing the existing hierarchy search (spec D7)."""
+    base = "class Base:\n    def ping(self):\n        return 1\nclass Child(Base):\n    pass\n"
+    user = (
+        "from pkg.base import Child\n"
+        "class User:\n"
+        "    def __init__(self, dep: Child) -> None:\n"
+        "        self.dep = dep\n"
+        "    def go(self):\n"
+        "        return self.dep.ping()\n"
+    )
+    resolved = _resolve_two("pkg/base.py", base, "pkg/user.py", user)
+    calls = {(e.source, e.target) for e in resolved if e.type == EdgeType.CALLS}
+    assert ("pkg.user.User.go", "pkg.base.Base.ping") in calls
+
+
+def test_two_classes_with_a_same_named_attribute_do_not_share_a_target() -> None:
+    """The placeholder collision: one attribute name, two types, two targets.
+
+    Real instance on this repo: self._parser.parse was one graph vertex for
+    PythonExtractor and TypeScriptExtractor, whose parsers are for different
+    languages.
+    """
+    parsers = (
+        "class PyParser:\n    def parse(self, s):\n        return s\n"
+        "class TsParser:\n    def parse(self, s):\n        return s\n"
+    )
+    users = (
+        "from pkg.parsers import PyParser, TsParser\n"
+        "class PyHandler:\n"
+        "    def __init__(self, parser: PyParser) -> None:\n"
+        "        self.parser = parser\n"
+        "    def go(self):\n"
+        "        return self.parser.parse('x')\n"
+        "class TsHandler:\n"
+        "    def __init__(self, parser: TsParser) -> None:\n"
+        "        self.parser = parser\n"
+        "    def go(self):\n"
+        "        return self.parser.parse('x')\n"
+    )
+    resolved = _resolve_two("pkg/parsers.py", parsers, "pkg/users.py", users)
+    calls = {(e.source, e.target) for e in resolved if e.type == EdgeType.CALLS}
+    assert ("pkg.users.PyHandler.go", "pkg.parsers.PyParser.parse") in calls
+    assert ("pkg.users.TsHandler.go", "pkg.parsers.TsParser.parse") in calls
+
+
+def test_unannotated_receiver_is_left_alone() -> None:
+    """No annotation, no guess — the edge keeps its placeholder (spec D1).
+
+    Guard, not a regression test: this passes before and after the change.
+    """
+    code = (
+        "class Adapter:\n"
+        "    def __init__(self, client) -> None:\n"
+        "        self.client = client\n"
+        "    def go(self):\n"
+        "        return self.client.search()\n"
+    )
+    nodes, edges = PythonExtractor().parse(code, "pkg/adapter.py")
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+    targets = {e.target for e in resolved if e.source == "pkg.adapter.Adapter.go"}
+    assert "self.client.search" in targets
+
+
+def test_deeper_chain_is_out_of_scope() -> None:
+    """`self.a.b.c()` keeps its placeholder — two segments only (spec D8).
+
+    Guard, not a regression test: resolving it would need the return type of
+    self.client.search(), which nothing records.
+    """
+    adapter = (
+        "from pkg.client import SearchClient\n"
+        "class Adapter:\n"
+        "    def __init__(self, client: SearchClient) -> None:\n"
+        "        self.client = client\n"
+        "    def go(self):\n"
+        "        return self.client.search('i').first()\n"
+    )
+    resolved = _resolve_two("pkg/client.py", _CLIENT, "pkg/adapter.py", adapter)
+    targets = {e.target for e in resolved if e.source == "pkg.adapter.Adapter.go"}
+    assert any(t.startswith("self.client.search") for t in targets), targets
+
+
+def test_plain_self_method_call_still_resolves() -> None:
+    """The pre-existing `self.helper()` path must not regress.
+
+    Guard: the dotted form is an added branch, not a replacement.
+    """
+    code = (
+        "class Thing:\n"
+        "    def helper(self):\n        return 1\n"
+        "    def go(self):\n        return self.helper()\n"
+    )
+    nodes, edges = PythonExtractor().parse(code, "pkg/mod.py")
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+    calls = {(e.source, e.target) for e in resolved if e.type == EdgeType.CALLS}
+    assert ("pkg.mod.Thing.go", "pkg.mod.Thing.helper") in calls
+
+
+def test_call_on_a_third_party_receiver_resolves_to_the_library() -> None:
+    """`self._parser.parse()` on a tree_sitter.Parser is a real call into a dependency.
+
+    The method has no node in our graph, but the receiver's type is EXTERNAL, so
+    the target is kept and the engine mints a boundary node. Dropping it would
+    make every library call through an injected collaborator invisible; that is
+    the other half of the policy _resolve_local_type_call already applies to
+    local variables (spec D7).
+    """
+    code = (
+        "from tree_sitter import Parser\n"
+        "class Extractor:\n"
+        "    def __init__(self, parser: Parser) -> None:\n"
+        "        self._parser = parser\n"
+        "    def go(self, code):\n"
+        "        return self._parser.parse(code)\n"
+    )
+    nodes, edges = PythonExtractor().parse(code, "pkg/mod.py")
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+    targets = {e.target for e in resolved if e.source == "pkg.mod.Extractor.go"}
+    assert "tree_sitter.Parser.parse" in targets
+
+
+def test_phantom_method_on_an_internal_receiver_is_still_dropped() -> None:
+    """The external branch must not weaken the internal one.
+
+    A method that does not exist on an internal class stays unresolved — that is
+    the AttributeError-shaped bug #414 exists to surface.
+    """
+    client = "class SearchClient:\n    def search(self, i):\n        return {}\n"
+    adapter = (
+        "from pkg.client import SearchClient\n"
+        "class Adapter:\n"
+        "    def __init__(self, client: SearchClient) -> None:\n"
+        "        self.client = client\n"
+        "    def broken(self):\n"
+        "        return self.client.search_available_vehicles()\n"
+    )
+    resolved = _resolve_two("pkg/client.py", client, "pkg/adapter.py", adapter)
+    targets = {e.target for e in resolved if e.source == "pkg.adapter.Adapter.broken"}
+    assert "pkg.client.SearchClient.search_available_vehicles" not in targets
+
+
+def test_builtin_container_receiver_does_not_resolve() -> None:
+    """`self._map: dict[str, int]` records the container, which names no class.
+
+    self_types stores `dict` module-qualified (spec D1), so it has no node and
+    classifies INTERNAL — correctly leaving `self._map.get()` alone rather than
+    inventing a method on a fabricated FQN.
+    """
+    code = (
+        "class Holder:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._map: dict[str, int] = {}\n"
+        "    def go(self):\n"
+        "        return self._map.get('k')\n"
+    )
+    nodes, edges = PythonExtractor().parse(code, "pkg/mod.py")
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+    targets = {e.target for e in resolved if e.source == "pkg.mod.Holder.go"}
+    assert "self._map.get" in targets
+
+
+def test_inherited_attribute_resolves_from_the_base_class() -> None:
+    """The collaborator is injected on a base and used from a subclass (F3).
+
+    ReservationCore.__init__ takes the client; ReservationCreation calls
+    self.reservation_client.create(). Looking only at the subclass's own
+    self_types missed every such call — five real sites on owner-api.
+    """
+    client = "class Client:\n    def read(self, i):\n        return i\n"
+    svc = (
+        "from pkg.client import Client\n"
+        "class Core:\n"
+        "    def __init__(self, client: Client) -> None:\n"
+        "        self.client = client\n"
+        "class Creation(Core):\n"
+        "    def go(self):\n"
+        "        return self.client.read(1)\n"
+    )
+    resolved = _resolve_two("pkg/client.py", client, "pkg/svc.py", svc)
+    calls = {(e.source, e.target) for e in resolved if e.type == EdgeType.CALLS}
+    assert ("pkg.svc.Creation.go", "pkg.client.Client.read") in calls
+
+
+def test_phantom_method_on_a_first_party_receiver_is_not_fabricated() -> None:
+    """A project class whose module is in the graph is ours, whatever classify_fqn says.
+
+    classify_fqn judges by root string and external_roots is built from
+    import-map values, so a first-party root can classify EXTERNAL — on
+    owner-api that minted 131 confident edges onto app.* nodes that do not
+    exist. A phantom method on our own class must stay unresolved (D7).
+    """
+    client = "class Client:\n    def read(self, i):\n        return i\n"
+    svc = (
+        "from pkg.client import Client\n"
+        "class Svc:\n"
+        "    def __init__(self, client: Client) -> None:\n"
+        "        self.client = client\n"
+        "    def go(self):\n"
+        "        return self.client.no_such_method()\n"
+    )
+    resolved = _resolve_two("pkg/client.py", client, "pkg/svc.py", svc)
+    targets = {e.target for e in resolved if e.source == "pkg.svc.Svc.go"}
+    assert "pkg.client.Client.no_such_method" not in targets
+    assert "self.client.no_such_method" in targets
+
+
+def test_a_genuine_library_receiver_still_resolves() -> None:
+    """The first-party guard must not close the external branch it protects.
+
+    tree_sitter is not project code, so a method on it is a real dependency
+    call and keeps its target.
+    """
+    code = (
+        "from tree_sitter import Parser\n"
+        "class Extractor:\n"
+        "    def __init__(self, parser: Parser) -> None:\n"
+        "        self._parser = parser\n"
+        "    def go(self, code):\n"
+        "        return self._parser.parse(code)\n"
+    )
+    nodes, edges = PythonExtractor().parse(code, "pkg/mod.py")
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+    targets = {e.target for e in resolved if e.source == "pkg.mod.Extractor.go"}
+    assert "tree_sitter.Parser.parse" in targets
+
+
+def test_multiple_inheritance_takes_the_leftmost_declaration() -> None:
+    """`class C(Left, Right)` with the attribute on both resolves to Left's type.
+
+    Python's MRO searches bases left to right. The ancestor walk is iterative
+    over a LIFO stack, so extending it in source order pops the rightmost base
+    first and silently answers with the wrong class — a wrong type in
+    self_types, which is worse than a missing one because the call then resolves
+    confidently to the wrong method.
+    """
+    clients = (
+        "class LeftClient:\n    def ping(self):\n        return 'left'\n"
+        "class RightClient:\n    def ping(self):\n        return 'right'\n"
+    )
+    rest = (
+        "from pkg.clients import LeftClient, RightClient\n"
+        "class LeftBase:\n"
+        "    def __init__(self, c: LeftClient) -> None:\n"
+        "        self.client = c\n"
+        "class RightBase:\n"
+        "    def __init__(self, c: RightClient) -> None:\n"
+        "        self.client = c\n"
+        "class Child(LeftBase, RightBase):\n"
+        "    def go(self):\n"
+        "        return self.client.ping()\n"
+    )
+    resolved = _resolve_two("pkg/clients.py", clients, "pkg/rest.py", rest)
+    calls = {(e.source, e.target) for e in resolved if e.type == EdgeType.CALLS}
+    assert ("pkg.rest.Child.go", "pkg.clients.LeftClient.ping") in calls
+    assert ("pkg.rest.Child.go", "pkg.clients.RightClient.ping") not in calls

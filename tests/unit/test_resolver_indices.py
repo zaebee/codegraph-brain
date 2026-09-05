@@ -110,7 +110,11 @@ def test_classify_fqn_namespaces() -> None:
     assert index.classify_fqn("os.path.join") is NodeNamespace.STDLIB
     assert index.classify_fqn("fastapi.Depends") is NodeNamespace.EXTERNAL
     assert index.classify_fqn("zzz.unknown") is NodeNamespace.UNKNOWN
-    assert index.classify_fqn("self.method") is NodeNamespace.INTERNAL
+    # Changed by #414: a self.-prefixed FQN is an unresolved receiver, not a
+    # symbol. Calling it INTERNAL made get_edge_stats score it as *resolved*,
+    # so unresolved_ratio improved as a codebase adopted more dependency
+    # injection. The old assertion encoded that bug.
+    assert index.classify_fqn("self.method") is NodeNamespace.UNKNOWN
     assert index.classify_fqn(".relative") is NodeNamespace.INTERNAL
 
 
@@ -188,3 +192,76 @@ def test_has_node_reports_membership() -> None:
 
     assert index.has_node("mod.fn") is True
     assert index.has_node("mod.missing") is False
+
+
+# ---------------------------------------------------------------------------
+# self_types (spec D1) — written by the extractor, read by resolve_self_call
+# ---------------------------------------------------------------------------
+
+
+def test_self_types_is_indexed_by_class_fqn() -> None:
+    """A CLASS node's self_types map reaches the index under the class's own FQN."""
+    index = IndexBuilder().build(
+        [
+            _node(
+                "pkg.mod.Adapter",
+                NodeType.CLASS,
+                metadata={"self_types": {"client": "pkg.client.SearchClient"}},
+            )
+        ]
+    )
+    assert index.self_types == {"pkg.mod.Adapter": {"client": "pkg.client.SearchClient"}}
+
+
+def test_class_without_self_types_is_absent_rather_than_empty() -> None:
+    """A class with no annotated attributes contributes no entry at all."""
+    index = IndexBuilder().build([_node("pkg.mod.Plain", NodeType.CLASS)])
+    assert "pkg.mod.Plain" not in index.self_types
+
+
+def test_two_classes_keep_separate_self_types_maps() -> None:
+    """Same attribute name, different classes, different types — no merging.
+
+    This is the collision #414 reports from the other end: without per-class
+    keying, PythonExtractor and TypeScriptExtractor would agree on what
+    `self._parser` is.
+    """
+    index = IndexBuilder().build(
+        [
+            _node("pkg.mod.A", NodeType.CLASS, metadata={"self_types": {"parser": "pkg.a.Py"}}),
+            _node("pkg.mod.B", NodeType.CLASS, metadata={"self_types": {"parser": "pkg.b.Ts"}}),
+        ]
+    )
+    assert index.self_types["pkg.mod.A"]["parser"] == "pkg.a.Py"
+    assert index.self_types["pkg.mod.B"]["parser"] == "pkg.b.Ts"
+
+
+def test_self_types_ignores_the_metadata_of_a_non_class_node() -> None:
+    """Only CLASS nodes contribute; a stray key elsewhere must not reach the map."""
+    index = IndexBuilder().build(
+        [_node("pkg.mod.fn", NodeType.FUNCTION, metadata={"self_types": {"x": "pkg.X"}})]
+    )
+    assert index.self_types == {}
+
+
+# ---------------------------------------------------------------------------
+# classify_fqn: a self. placeholder is not a resolved symbol (#414)
+# ---------------------------------------------------------------------------
+
+
+def test_relative_import_prefix_is_internal() -> None:
+    """A leading dot is a relative import — genuinely internal. Must not change."""
+    index = IndexBuilder().build([_node("pkg.mod.A", NodeType.CLASS)])
+    assert index.classify_fqn(".sibling.thing") == NodeNamespace.INTERNAL
+
+
+def test_self_placeholder_is_not_internal() -> None:
+    """An unresolved self.<attr>.<method> placeholder must not count as resolved.
+
+    get_edge_stats scores an INTERNAL target on the resolved side, so classifying
+    these INTERNAL let unresolved_ratio *improve* as a codebase adopted more
+    dependency injection — the metric moving the wrong way for exactly the reason
+    #414 was filed. A green `validate` therefore said nothing about the gap.
+    """
+    index = IndexBuilder().build([_node("pkg.mod.A", NodeType.CLASS)])
+    assert index.classify_fqn("self.client.search") == NodeNamespace.UNKNOWN
