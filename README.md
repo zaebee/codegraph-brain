@@ -147,6 +147,10 @@ classDef defaultNode fill:#fafafa,stroke:#9e9e9e,stroke-width:1.5px,color:#21212
 classDef stdlibNode fill:#eceff1,stroke:#607d8b,stroke-width:1px,color:#455a64;
 classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dasharray: 3 3,color:#bf360c;
 
+    subgraph sg_models["models.py"]
+        models_Edge["Edge (models.py:117)"]:::classNode
+        models_Node["Node (models.py:83)"]:::classNode
+    end
     subgraph sg_pipeline["pipeline.py"]
         pipeline_IngestionPipeline_get_extractor["_get_extractor (pipeline.py:245)"]:::methodNode
         pipeline_IngestionPipeline_is_noop_incremental["_is_noop_incremental (pipeline.py:185)"]:::methodNode
@@ -155,13 +159,19 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
         pipeline_IngestionPipeline_run["run (pipeline.py:51)"]:::methodNode
     end
     subgraph sg_engine["engine.py"]
-        engine_ResolverEngine["ResolverEngine (engine.py:18)"]:::classNode
-        engine_ResolverEngine_resolve["resolve (engine.py:35)"]:::methodNode
+        engine_ResolverEngine["ResolverEngine (engine.py:19)"]:::classNode
+        engine_ResolverEngine_resolve["resolve (engine.py:36)"]:::methodNode
     end
     subgraph sg_uplift["uplift.py"]
         uplift_SemanticUpliftEngine["SemanticUpliftEngine (uplift.py:66)"]:::classNode
         uplift_SemanticUpliftEngine_execute_uplift["execute_uplift (uplift.py:91)"]:::methodNode
     end
+    subgraph sg_sqlite_store["sqlite_store.py"]
+        sqlite_store_SQLiteStore["SQLiteStore (sqlite_store.py:28)"]:::classNode
+    end
+    pipeline_IngestionPipeline_run -->|REFERENCES| models_Node
+    pipeline_IngestionPipeline_run -->|REFERENCES| models_Edge
+    pipeline_IngestionPipeline_run -->|REFERENCES| sqlite_store_SQLiteStore
     pipeline_IngestionPipeline_run -->|CALLS| pipeline_IngestionPipeline_get_extractor
     pipeline_IngestionPipeline_run -->|CALLS| pipeline_IngestionPipeline_process_file
     pipeline_IngestionPipeline_run -->|CALLS| pipeline_IngestionPipeline_is_noop_incremental
@@ -174,15 +184,18 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
 
 | Symbol | Type | File |
 |--------|------|------|
+| `Node` | CLASS | [`models.py:83`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/core/models.py#L83) |
+| `Edge` | CLASS | [`models.py:117`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/core/models.py#L117) |
 | `run` | METHOD | [`pipeline.py:51`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L51) |
 | `_process_file` | METHOD | [`pipeline.py:155`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L155) |
 | `_is_noop_incremental` | METHOD | [`pipeline.py:185`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L185) |
 | `_persist_incremental` | METHOD | [`pipeline.py:204`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L204) |
 | `_get_extractor` | METHOD | [`pipeline.py:245`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L245) |
-| `ResolverEngine` | CLASS | [`engine.py:18`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L18) |
-| `resolve` | METHOD | [`engine.py:35`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L35) |
+| `ResolverEngine` | CLASS | [`engine.py:19`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L19) |
+| `resolve` | METHOD | [`engine.py:36`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L36) |
 | `SemanticUpliftEngine` | CLASS | [`uplift.py:66`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/uplift.py#L66) |
 | `execute_uplift` | METHOD | [`uplift.py:91`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/uplift.py#L91) |
+| `SQLiteStore` | CLASS | [`sqlite_store.py:28`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/storage/sqlite_store.py#L28) |
 <!-- END_CGIS_GRAPH -->
 
 ---
