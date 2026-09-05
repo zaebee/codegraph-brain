@@ -66,18 +66,10 @@ class SymbolIndex:
 
         Returns None when the target is ambiguous or not in the graph.
         """
-        if imported_fqn in self.nodes:
-            return imported_fqn
-        # Node has extra layout prefix (e.g. src/) — most precise match first
-        candidates = self.suffix_map.get(imported_fqn, [])
-        if len(candidates) == 1:
-            return candidates[0]
-        # Strip leading segments from the imported FQN (import has extra prefix)
+        direct = self.resolve_layout(imported_fqn)
+        if direct is not None:
+            return direct
         parts = imported_fqn.split(".")
-        for i in range(1, len(parts)):
-            candidate = ".".join(parts[i:])
-            if candidate in self.nodes:
-                return candidate
         # A package that forwards the name rather than defining it: `from app.models
         # import Rating` where app/models/__init__.py re-exports it from .rating.
         # Without this the consumer's FQN has no node and the edge dies (#417).
@@ -89,8 +81,33 @@ class SymbolIndex:
         # for.
         for i in range(len(parts) - 1):
             forwarded = self.follow_reexport(".".join(parts[i:]))
-            if forwarded is not None and forwarded in self.nodes:
-                return forwarded
+            if forwarded is not None:
+                resolved = self.resolve_layout(forwarded)
+                if resolved is not None:
+                    return resolved
+        return None
+
+    def resolve_layout(self, fqn: str) -> str | None:
+        """Match an FQN to a node id, reconciling layout prefixes. No re-exports.
+
+        Three shapes, most precise first: the id verbatim; a node whose id has an
+        extra layout prefix (`cgis.pipeline.X` against `src.cgis.pipeline.X`);
+        and an FQN carrying a prefix the ids do not (`app.crud.X` against
+        `crud.X`, when the project was ingested at app/).
+
+        Separate from `map_to_node_fqn` because the re-export walk needs exactly
+        this and must not recurse back into the re-export step.
+        """
+        if fqn in self.nodes:
+            return fqn
+        candidates = self.suffix_map.get(fqn, [])
+        if len(candidates) == 1:
+            return candidates[0]
+        parts = fqn.split(".")
+        for i in range(1, len(parts)):
+            candidate = ".".join(parts[i:])
+            if candidate in self.nodes:
+                return candidate
         return None
 
     def follow_reexport(self, fqn: str) -> str | None:
@@ -109,6 +126,11 @@ class SymbolIndex:
         seen = {fqn}
         while forwarded not in seen:
             seen.add(forwarded)
+            # A hop that is itself a node is the answer: a package that both stars
+            # a submodule and defines the name would otherwise be walked past, and
+            # the consumer would land on the submodule's copy.
+            if self.resolve_layout(forwarded) is not None:
+                break
             next_via, _, next_name = forwarded.rpartition(".")
             next_hop = self.reexports.get(next_via, {}).get(next_name)
             if next_hop is None:
@@ -251,16 +273,27 @@ class IndexBuilder:
         Only names defined immediately under the module: a dotted remainder is a
         symbol inside one of its children, and a leading underscore is private —
         `import *` takes neither.
+
+        The module is tried verbatim and then with leading segments stripped. A
+        star import written absolutely (`from app.tests.fixtures import *`)
+        records the path as the author typed it, while node ids are
+        `tests.fixtures` when the project was ingested at app/ — the same prefix
+        mismatch that made the first version of this feature resolve nothing, and
+        it reaches the star sources as well as the map keys.
         """
-        prefix = f"{module_fqn}."
-        names: dict[str, str] = {}
-        for node_id in node_ids:
-            if not node_id.startswith(prefix):
-                continue
-            name = node_id[len(prefix) :]
-            if "." not in name and not name.startswith("_"):
-                names.setdefault(name, node_id)
-        return names
+        parts = module_fqn.split(".")
+        for i in range(len(parts)):
+            prefix = ".".join(parts[i:]) + "."
+            names: dict[str, str] = {}
+            for node_id in node_ids:
+                if not node_id.startswith(prefix):
+                    continue
+                name = node_id[len(prefix) :]
+                if "." not in name and not name.startswith("_"):
+                    names.setdefault(name, node_id)
+            if names:
+                return names
+        return {}
 
     @staticmethod
     def _close_over_sources(
