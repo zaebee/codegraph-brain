@@ -146,3 +146,32 @@ def test_lowercase_factory_call_is_still_not_a_constructor() -> None:
         "        self.a = make()\n"
     )
     assert _class_self_types(code, "pkg.mod.A") == {}
+
+
+def test_string_forward_reference_annotation_is_not_quoted_into_the_fqn() -> None:
+    """`wallet: Optional["Wallet"]` records Wallet, not `mod."Wallet"`.
+
+    This is the SQLModel relationship idiom — it is how every model-to-model
+    attribute in a typical service is written. Cleaning the annotation's source
+    text only saw the outside of the slice, so the inner quotes survived into the
+    FQN and the entry could never match a node.
+    """
+    code = 'from typing import Optional\nclass A:\n    wallet: Optional["Wallet"] = None\n'
+    assert _class_self_types(code, "pkg.mod.A") == {"wallet": "pkg.mod.Wallet"}
+
+
+def test_annotation_wrapped_across_lines_with_a_comment() -> None:
+    """A parenthesised annotation must not put its comment in the FQN.
+
+    Fires in this repository today: a long annotation wrapped by the formatter
+    with a trailing comment (see storage/sqlite_store.py's EdgeStats) wrote the
+    comment text into node metadata and out to graph.json.
+    """
+    code = "class A:\n    n: (\n        int  # why this is an int\n    ) = 0\n"
+    assert _class_self_types(code, "pkg.mod.A") == {"n": "pkg.mod.int"}
+
+
+def test_prefixed_string_annotation_in_self_types() -> None:
+    """`raw: r"Wallet"` records Wallet — the prefix is not part of the name."""
+    code = 'class A:\n    raw: r"Wallet" = None\n'
+    assert _class_self_types(code, "pkg.mod.A") == {"raw": "pkg.mod.Wallet"}

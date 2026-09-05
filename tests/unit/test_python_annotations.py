@@ -223,3 +223,28 @@ def test_non_wrapper_generic_keeps_every_argument() -> None:
     assert collect_type_names(node, code) == ["dict", "str", "Edge"]
     node, code = _annotation("typing.Dict[str, Edge]")
     assert collect_type_names(node, code) == ["typing.Dict", "str", "Edge"]
+
+
+def test_literal_values_are_not_type_names() -> None:
+    """`Literal["Owner"]` carries a value, not a forward reference to class Owner.
+
+    Its arguments are strings, and the string branch re-parses those as forward
+    references, so without an explicit guard a literal whose value happens to
+    match a class name emits a reference to that class.
+    """
+    node, code = _annotation('Literal["Owner", "Rider"]')
+    assert collect_type_names(node, code) == []
+    node, code = _annotation('typing.Literal["Owner"]')
+    assert collect_type_names(node, code) == []
+
+
+def test_leading_comment_inside_annotated_does_not_hide_the_type() -> None:
+    """A comment is a named child, so it would otherwise occupy the Annotated slice.
+
+    `Annotated[  # note\n    Widget, Meta]` must still name Widget. Optional and
+    Union are immune because they walk every argument; only the slice is exposed.
+    """
+    node, code = _annotation("Annotated[  # note\n    Widget, Meta\n]")
+    assert collect_type_names(node, code) == ["Widget"]
+    node, code = _annotation("typing.Annotated[  # note\n    Widget, Meta\n]")
+    assert collect_type_names(node, code) == ["Widget"]

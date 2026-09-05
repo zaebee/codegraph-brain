@@ -23,6 +23,13 @@ _STRING_PARSER = Parser(Language(tspython.language()))
 # is a type name here (#194).
 _WRAPPER_NAMES: frozenset[str] = frozenset({"Optional", "Union", "Annotated"})
 
+# `Literal["a", "b"]` carries *values*, not types. Its arguments are strings, and
+# the string branch below re-parses those as forward references — so without this
+# `Literal["Owner"]` would emit a reference to a class named Owner. Nothing is
+# collected from it, not even the base: `Literal` is a typing construct like the
+# wrappers above.
+_VALUE_ONLY_NAMES: frozenset[str] = frozenset({"Literal"})
+
 
 def collect_type_names(annotation_node: BaseNode, code_bytes: bytes) -> list[str]:
     """Return every type name mentioned in an annotation, deduplicated, in source order.
@@ -84,6 +91,11 @@ def _collect_subscript(
     """
     base_name = code_bytes[base.start_byte : base.end_byte].decode("utf-8")
     wrapper = base_name.rsplit(".", maxsplit=1)[-1]
+    if wrapper in _VALUE_ONLY_NAMES:
+        return
+    # A comment is a *named* child, so a leading one would occupy args[0] and the
+    # Annotated slice would keep the comment and drop the real type.
+    args = [arg for arg in args if arg.type != "comment"]
     if wrapper not in _WRAPPER_NAMES:
         acc.append(base_name)
         for arg in args:

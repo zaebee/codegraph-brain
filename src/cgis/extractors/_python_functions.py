@@ -433,10 +433,22 @@ def _resolve_self_type_annotation(
     file_path: str,
     type_resolver: TypeResolver,
 ) -> str | None:
-    """Resolve an explicit `: T` annotation (class-body `x: T` or `self.x: T = ...`)."""
-    raw = code_bytes[type_node.start_byte : type_node.end_byte].decode("utf-8")
-    clean = type_resolver.clean_python_type_string(raw.strip("\"'"))
-    return type_resolver.resolve_type_fqn(clean, import_map, file_path) if clean else None
+    """Resolve an explicit `: T` annotation (class-body `x: T` or `self.x: T = ...`).
+
+    Takes the first name the AST walk yields, which is the same answer
+    `clean_python_type_string` was written to give — the container for a generic
+    (`list[Node]` -> `list`), the inner type for a wrapper (`Optional[X]` -> `X`) —
+    without cleaning source text. Text cleaning only ever saw the outside of the
+    slice, so anything quoted, prefixed or parenthesised *inside* the annotation
+    survived into the FQN: `Optional["Wallet"]` became `mod."Wallet"`, and an
+    annotation wrapped across lines with a trailing comment put that comment in
+    the map. Both shapes are common — the first is the SQLModel relationship
+    idiom — and both produced keys whose values can never match a node.
+    """
+    names = collect_type_names(type_node, code_bytes)
+    if not names:
+        return None
+    return type_resolver.resolve_type_fqn(names[0], import_map, file_path)
 
 
 def _resolve_self_type_from_rhs(
