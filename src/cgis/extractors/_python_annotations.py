@@ -52,34 +52,48 @@ def _collect(node: BaseNode, code_bytes: bytes, acc: list[str]) -> None:
         return
     if node.type in ("identifier", "none", "attribute"):
         acc.append(code_bytes[node.start_byte : node.end_byte].decode("utf-8"))
-        if node.type == "attribute":
-            return  # a dotted name is one reference, not two
-        return
+        return  # a bare or dotted name is one reference; nothing further to descend into
     if node.type == "generic_type" and len(node.named_children) == 2:
-        _collect_generic(node, code_bytes, acc)
+        # `Base[args]` with a bare identifier base (e.g. `Optional[X]`) — tree-sitter
+        # wraps each argument in its own `type` node inside `type_parameter`.
+        base, type_parameter = node.named_children
+        _collect_subscript(base, type_parameter.named_children, code_bytes, acc)
+        return
+    if node.type == "subscript" and len(node.named_children) >= 2:
+        # `Base[args]` with a module-qualified base (e.g. `typing.Optional[X]`) — a
+        # dotted base parses as a plain `subscript`, not `generic_type`, and its
+        # arguments are unwrapped children rather than `type`-wrapped ones.
+        base, *args = node.named_children
+        _collect_subscript(base, args, code_bytes, acc)
         return
     for child in node.named_children:
         _collect(child, code_bytes, acc)
 
 
-def _collect_generic(node: BaseNode, code_bytes: bytes, acc: list[str]) -> None:
+def _collect_subscript(
+    base: BaseNode, args: list[BaseNode], code_bytes: bytes, acc: list[str]
+) -> None:
     """Collect a `Base[args...]` subscript, unwrapping Optional/Union/Annotated (#194).
 
-    A wrapper's own name (`Optional`, `Union`, `Annotated`) is never a type
-    reference, so it is skipped rather than collected. `Annotated[T, ...]`
-    additionally only names `T` — the arguments after it are metadata, not
-    types. Any other generic (`list[Node]`, `dict[str, Edge]`) keeps its base
-    name (`list`, `dict` are real types) and every argument.
+    `base` may be a bare identifier (`Optional[X]`) or a module-qualified attribute
+    (`typing.Optional[X]`); the wrapper check strips the module prefix first —
+    `base_name.rsplit(".", 1)[-1]` — mirroring `TypeResolver.clean_python_type_string`'s
+    `split(".")[-1]`, which unwraps both forms identically for `local_types`.
+
+    A wrapper's own name (`Optional`, `Union`, `Annotated`, qualified or not) is never a
+    type reference, so it is skipped rather than collected. `Annotated[T, ...]`
+    additionally only names `T` — the arguments after it are metadata, not types. Any
+    other generic (`list[Node]`, `dict[str, Edge]`, `models.Registry[V]`) keeps its full
+    base name and every argument.
     """
-    base, type_parameter = node.named_children
-    args = type_parameter.named_children
     base_name = code_bytes[base.start_byte : base.end_byte].decode("utf-8")
-    if base_name not in _WRAPPER_NAMES:
+    wrapper = base_name.rsplit(".", maxsplit=1)[-1]
+    if wrapper not in _WRAPPER_NAMES:
         acc.append(base_name)
         for arg in args:
             _collect(arg, code_bytes, acc)
         return
-    relevant_args = args[:1] if base_name == "Annotated" else args
+    relevant_args = args[:1] if wrapper == "Annotated" else args
     for arg in relevant_args:
         _collect(arg, code_bytes, acc)
 

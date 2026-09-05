@@ -55,6 +55,60 @@ def test_duplicates_collapse_preserving_first_position() -> None:
     assert collect_type_names(node, code) == ["dict", "Node"]
 
 
+def test_optional_unwraps_to_inner_type() -> None:
+    node, code = _annotation("Optional[Node]")
+    assert collect_type_names(node, code) == ["Node"]
+
+
+def test_union_wrapper_keeps_every_member() -> None:
+    node, code = _annotation("Union[Node, Edge]")
+    assert collect_type_names(node, code) == ["Node", "Edge"]
+
+
+def test_annotated_keeps_only_first_argument() -> None:
+    node, code = _annotation("Annotated[Session, Depends(get_db)]")
+    assert collect_type_names(node, code) == ["Session"]
+
+
+def test_optional_of_generic_reaches_inner_arguments() -> None:
+    node, code = _annotation("Optional[list[Node]]")
+    assert collect_type_names(node, code) == ["list", "Node"]
+
+
+def test_union_of_generics_reaches_every_argument() -> None:
+    node, code = _annotation("Union[list[A], dict[str, B]]")
+    assert collect_type_names(node, code) == ["list", "A", "dict", "str", "B"]
+
+
+def test_annotated_generic_first_argument_reaches_its_arguments() -> None:
+    node, code = _annotation("Annotated[list[X], Depends(f)]")
+    assert collect_type_names(node, code) == ["list", "X"]
+
+
+def test_qualified_optional_unwraps_to_inner_type() -> None:
+    """`typing.Optional[X]` unwraps the same as bare `Optional[X]` (#194)."""
+    node, code = _annotation("typing.Optional[Session]")
+    assert collect_type_names(node, code) == ["Session"]
+
+
+def test_qualified_union_keeps_every_member() -> None:
+    """`typing.Union[A, B]` unwraps the same as bare `Union[A, B]` (#194)."""
+    node, code = _annotation("typing.Union[A, B]")
+    assert collect_type_names(node, code) == ["A", "B"]
+
+
+def test_qualified_annotated_keeps_only_first_argument() -> None:
+    """`typing.Annotated[T, ...]` unwraps the same as bare `Annotated[T, ...]` (#194)."""
+    node, code = _annotation("typing.Annotated[Session, Depends(get_db)]")
+    assert collect_type_names(node, code) == ["Session"]
+
+
+def test_bare_annotated_without_subscript_is_kept_as_a_name() -> None:
+    """`Annotated` with no subscript at all is just a plain name reference."""
+    node, code = _annotation("Annotated")
+    assert collect_type_names(node, code) == ["Annotated"]
+
+
 def _first_assignment_in(code: str) -> tuple[BaseNode, bytes]:
     """Parse a module and return its first `assignment` node, depth-first."""
     code_bytes = code.encode()
