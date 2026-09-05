@@ -13,9 +13,14 @@ _GraphData = tuple[SQLiteStore, list[Node], list[Edge]]
 # Measured on HEAD (852fa3d), 2026-09-05, via:
 #   uv run cgis ingest src --source-root src --output /tmp/pr1-check.db
 #   sqlite3 /tmp/pr1-check.db "select count(*) from edges where type='REFERENCES';"
-# Controller Ruling 9 predicted 584 from an isolated snapshot taken before the
-# nodeless-import-map fix in 852fa3d; re-measured here at 583, one edge lower,
-# which the fix plausibly explains. Re-derive before trusting either number.
+# Controller Ruling 9 predicted 584 from a snapshot taken at 53d3811, one commit
+# before HEAD. 852fa3d then deleted resolve_internal_class(resolver:
+# SymbolResolver, ...) from symbols.py — that function's own first-parameter
+# annotation named an internal class, so it was itself producing one of the
+# counted REFERENCES edges. Deleting the function removed that annotation from
+# the measured source; no resolver behaviour changed. 584 was correct at
+# 53d3811, 583 is correct at HEAD — one internal-class annotation fewer, one
+# fewer edge.
 _EXPECTED_REFERENCES = 583
 _TOLERANCE = 60  # ~10%: absorbs ordinary code churn, not a lost source
 
@@ -35,7 +40,9 @@ def test_every_reference_target_is_an_internal_class(root_graph_data: _GraphData
     """D3: stdlib, third-party and unresolved annotations must not produce edges."""
     _store, nodes, edges = root_graph_data
     classes = {n.id for n in nodes if n.type == NodeType.CLASS}
-    bad = sorted({e.target for e in edges if e.type == EdgeType.REFERENCES} - classes)
+    ref_targets = {e.target for e in edges if e.type == EdgeType.REFERENCES}
+    assert ref_targets, "no REFERENCES edges produced at all — nothing to check here"
+    bad = sorted(ref_targets - classes)
     assert not bad, f"REFERENCES edges pointing at non-class nodes: {bad[:10]}"
 
 
@@ -63,7 +70,14 @@ def test_classes_referenced_only_inside_generics_have_edges(root_graph_data: _Gr
 
 
 def test_classes_carry_self_types(root_graph_data: _GraphData) -> None:
-    """D1: at least the classes measured to have annotated attributes have the map."""
+    """D1: at least the classes measured to have annotated attributes have the map.
+
+    Measured 75 on HEAD; the threshold of 70 leaves deliberate headroom for
+    ordinary churn while still catching a regression that loses a large slice
+    of attribute-type collection.
+    """
     _store, nodes, _edges = root_graph_data
     with_map = [n for n in nodes if n.type == NodeType.CLASS and n.metadata.get("self_types")]
-    assert len(with_map) >= 30, f"only {len(with_map)} classes carry self_types"
+    assert len(with_map) >= 70, (
+        f"only {len(with_map)} classes carry self_types (measured 75 on HEAD)"
+    )
