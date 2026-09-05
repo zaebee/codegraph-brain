@@ -276,6 +276,10 @@ class PythonExtractor(BaseExtractor):
             return  # never recurse into import nodes
 
         if node.type == "decorated_definition":
+            # star_imports is deliberately not forwarded: `from X import *` is a
+            # SyntaxError anywhere but module level, so a decorated definition
+            # cannot contain one. Accepting the argument here would imply the
+            # path exists (#417 review).
             self._handle_decorated_definition(
                 node,
                 code_bytes,
@@ -352,7 +356,6 @@ class PythonExtractor(BaseExtractor):
         module_fqn: str | None,
         local_types_acc: dict[str, dict[str, str]] | None,
         self_types_acc: dict[str, dict[str, str]] | None = None,
-        star_imports: list[str] | None = None,
     ) -> None:
         """Process a decorated function or class definition, forwarding decorator names."""
         raw_decorators = extract_decorator_names(node, code_bytes)
@@ -380,7 +383,6 @@ class PythonExtractor(BaseExtractor):
                         module_fqn=module_fqn,
                         local_types_acc=local_types_acc,
                         self_types_acc=self_types_acc,
-                        star_imports=star_imports,
                     )
             elif child.type == "class_definition":
                 self._classes.process_class_node(
@@ -404,5 +406,4 @@ class PythonExtractor(BaseExtractor):
                         module_fqn=module_fqn,
                         local_types_acc=local_types_acc,
                         self_types_acc=self_types_acc,
-                        star_imports=star_imports,
                     )
