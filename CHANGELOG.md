@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.17.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.16.0...codegraph-brain-v0.17.0) (2026-09-05)
+
+
+### Features
+
+* **extractors:** record what annotations say — self_types and REFERENCES edges ([#414](https://github.com/zaebee/codegraph-brain/issues/414), [#415](https://github.com/zaebee/codegraph-brain/issues/415)) ([#418](https://github.com/zaebee/codegraph-brain/issues/418)) ([eeaa60b](https://github.com/zaebee/codegraph-brain/commit/eeaa60b831956bb85fff88c987789ea179c2dc71))
+
+
+### Bug Fixes
+
+* **render:** draw one arrow per distinct triple in a mermaid diagram ([#421](https://github.com/zaebee/codegraph-brain/issues/421)) ([19a6067](https://github.com/zaebee/codegraph-brain/commit/19a6067f7c98d84f9d0a3e02e132f85ba0791817))
+
+
+### Documentation
+
+* auto-sync architecture graph after the annotation-edge work ([#420](https://github.com/zaebee/codegraph-brain/issues/420)) ([061843d](https://github.com/zaebee/codegraph-brain/commit/061843dd0ba997d2fd7549acaa72e7290b10f9cf))
+
 ## [0.16.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.15.0...codegraph-brain-v0.16.0) (2026-08-17)
 
 
