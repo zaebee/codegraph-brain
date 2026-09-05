@@ -4,6 +4,36 @@ from cgis.core.models import RAW_CLASS_PREFIX, Edge, EdgeType, Node, NodeNamespa
 from cgis.resolver.indices import IndexBuilder, SymbolIndex
 
 
+def _owning_class(index: SymbolIndex, source_fqn: str) -> str | None:
+    """The nearest enclosing class of source_fqn that the index knows methods for.
+
+    Walks up the FQN segments so a nested function (`mod.Cls.method.inner`)
+    still finds `mod.Cls`.
+    """
+    parts = source_fqn.split(".")
+    for i in range(len(parts) - 1, 0, -1):
+        candidate = ".".join(parts[:i])
+        if candidate in index.class_methods:
+            return candidate
+    return None
+
+
+def receiver_type_fqn(index: SymbolIndex, owner_fqn: str, attr: str) -> str | None:
+    """Resolve `self.<attr>` on class `owner_fqn` to the type it was declared as.
+
+    The declared type is a FQN the extractor built from the annotation and the
+    file's import map, so it may carry a layout prefix the graph does not use
+    (`cgis.x.Y` against a node id of `src.cgis.x.Y`); `map_to_node_fqn`
+    reconciles those. The returned FQN is not guaranteed to have a node —
+    a third-party type has none until the engine mints a virtual one — so the
+    caller decides what an absent method means (see `resolve_self_call`).
+    """
+    declared = index.self_types.get(owner_fqn, {}).get(attr)
+    if declared is None:
+        return None
+    return index.map_to_node_fqn(declared) or declared
+
+
 class SymbolResolver:
     """Maps raw symbol names to graph FQNs.
 
@@ -51,15 +81,39 @@ class SymbolResolver:
         return None
 
     def resolve_self_call(self, source_fqn: str, method_name: str) -> str | None:
-        """Attempts to find a method on the class that owns source, traversing inheritance.
+        """Find the method a `self.…` call reaches, traversing inheritance.
 
-        Walks up the FQN segments to handle nested functions (e.g. mod.Cls.method.inner).
+        Two shapes. `self.helper()` arrives as "helper" and is looked up on the
+        class that owns the source. `self.client.search()` arrives as
+        "client.search": the receiver's declared type comes from `self_types`
+        (spec D1), and the method is then searched on that class exactly as it
+        would be on the owner — same walk, same inheritance rules (spec D7).
+
+        Only one dot is handled. `self.a.b.c()` is left alone: resolving it
+        would need the return type of `self.a.b`, which nothing records (D8).
         """
-        parts = source_fqn.split(".")
-        for i in range(len(parts) - 1, 0, -1):
-            candidate = ".".join(parts[:i])
-            if candidate in self.index.class_methods:
-                return self._resolve_method_on_class_hierarchy(candidate, method_name, set())
+        owner = _owning_class(self.index, source_fqn)
+        if owner is None:
+            return None
+        attr, sep, method = method_name.partition(".")
+        if not sep:
+            return self._resolve_method_on_class_hierarchy(owner, method_name, set())
+        if "." in method:
+            return None
+        receiver = receiver_type_fqn(self.index, owner, attr)
+        if receiver is None:
+            return None
+        found = self._resolve_method_on_class_hierarchy(receiver, method, set())
+        if found:
+            return found
+        # No such method on the declared receiver. Keep it only when the receiver
+        # is a library type — that is a real call into a dependency, and the
+        # engine mints an EXTERNAL/STDLIB node for it. On an internal type it is
+        # a phantom method and must not be fabricated: that is the call #414 was
+        # filed to expose. Same policy as _resolve_local_type_call (spec D7).
+        candidate = f"{receiver}.{method}"
+        if self.index.classify_fqn(candidate) in (NodeNamespace.EXTERNAL, NodeNamespace.STDLIB):
+            return candidate
         return None
 
     def resolve_global_call(
