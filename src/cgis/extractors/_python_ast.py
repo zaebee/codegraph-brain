@@ -135,6 +135,60 @@ def get_fqn_prefix(node: BaseNode, code_bytes: bytes) -> str | None:
     return ".".join(reversed(parts)) if parts else None
 
 
+def enclosing_class_fqn(
+    node: BaseNode, code_bytes: bytes, file_path: str, source_root: str | None
+) -> str | None:
+    """Return the FQN of the nearest enclosing class, or None outside any class.
+
+    Collects every enclosing class *and* function definition (mirroring
+    `get_fqn_prefix`), then truncates the chain at the last class in it. This
+    reproduces `get_id`'s prefix construction exactly, so the returned FQN
+    equals the CLASS node's `id` — including when a class is itself defined
+    inside a method (e.g. `Outer.m.Local`), which a scheme that only ever
+    collected class names would collapse onto an unrelated same-named class
+    defined directly in `Outer`. The key in `self_types` must equal the CLASS
+    node's own `id`, or the map would never be found by anything looking it
+    up from the node.
+    """
+    curr = node.parent
+    chain: list[tuple[str, bool]] = []
+    while curr:
+        if curr.type in ("class_definition", "function_definition", "async_function_definition"):
+            chain.append(
+                (
+                    extract_node_name(curr.child_by_field_name("name"), code_bytes),
+                    curr.type == "class_definition",
+                )
+            )
+        curr = curr.parent
+    chain.reverse()
+    last_class = max((i for i, (_, is_cls) in enumerate(chain) if is_cls), default=None)
+    if last_class is None:
+        return None
+    path = ".".join(name for name, _ in chain[: last_class + 1])
+    module = file_path_to_module_fqn(file_path, source_root)
+    return f"{module}.{path}" if module else path
+
+
+def assigned_attr_name(left: BaseNode, code_bytes: bytes) -> str | None:
+    """Return the attribute name being assigned: `self.x` -> "x", `x: T` -> "x".
+
+    Returns None for anything else — a subscript target, a tuple unpack, or an
+    attribute on a receiver other than `self`.
+    """
+    if left.type == "identifier":
+        return code_bytes[left.start_byte : left.end_byte].decode("utf-8")
+    if left.type != "attribute":
+        return None
+    obj = left.child_by_field_name("object")
+    attr = left.child_by_field_name("attribute")
+    if obj is None or attr is None:
+        return None
+    if code_bytes[obj.start_byte : obj.end_byte].decode("utf-8") != "self":
+        return None
+    return code_bytes[attr.start_byte : attr.end_byte].decode("utf-8")
+
+
 def get_id(node: BaseNode, code_bytes: bytes, file_path: str, source_root: str | None) -> str:
     """Generate a fully qualified function/method ID including class/function context."""
     name = node.child_by_field_name("name")

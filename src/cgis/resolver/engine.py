@@ -5,6 +5,7 @@ from cgis.core.models import (
     SELF_PREFIX,
     VIRTUAL_FILE_PATH,
     Edge,
+    EdgeType,
     Node,
     NodeNamespace,
     NodeType,
@@ -101,14 +102,41 @@ class ResolverEngine:
         return edge.model_copy(update={"target": final_target, "confidence": confidence})
 
     def _resolved_dep_edge(self, edge: Edge) -> Edge | None:
-        """Resolve a raw_dep: candidate edge, or None when it must be dropped (spec §3.3)."""
+        """Resolve a raw_dep: candidate edge, or None when it must be dropped (spec §3.3).
+
+        A candidate resolves in one of two ways: to a DI alias (a VARIABLE node),
+        which keeps it a DEPENDS_ON wiring edge, or to an internal class, which
+        makes it a REFERENCES annotation edge (spec D4). Anything else is a
+        speculative candidate that must not leak into the output.
+
+        The internal-class check is inlined here rather than delegated to
+        SymbolResolver: resolution (resolve_class_ref, already public and
+        already called from this class) belongs to the symbol layer, but "is
+        this FQN an existing CLASS node" is edge-finalization policy — this
+        class's stated job — not a resolution strategy. resolve_class_ref can
+        return an import-map FQN for a symbol with no node (a third-party
+        type via its `... or target_fqn` fallback); the membership check
+        below is what keeps that out (spec D3).
+
+        A candidate whose source is the target class itself, or lives inside
+        it (a method, or a nested class), is also dropped: a class naming
+        itself is not evidence anyone uses it, and counting it would
+        manufacture a false negative in the orphan query (spec D9).
+        """
         dep_name = edge.target.removeprefix(RAW_DEP_PREFIX)
         dep_target = self._resolver.resolve_dep_candidate(dep_name, edge.source, edge.file_path)
-        if dep_target is None:
-            # Speculative candidate that is not a DI alias: drop the edge
-            # entirely — raw_dep: must never leak into output (spec §3.3).
-            return None
-        return edge.model_copy(update={"target": dep_target, "confidence": 1.0})
+        if dep_target is not None:
+            return edge.model_copy(update={"target": dep_target, "confidence": 1.0})
+        resolved = self._resolver.resolve_class_ref(dep_name, edge.source, edge.file_path)
+        if resolved is not None:
+            class_node = self._index.nodes.get(resolved)
+            if class_node is not None and class_node.type == NodeType.CLASS:
+                if edge.source == resolved or edge.source.startswith(f"{resolved}."):
+                    return None
+                return edge.model_copy(
+                    update={"target": resolved, "type": EdgeType.REFERENCES, "confidence": 1.0}
+                )
+        return None
 
     def _resolved_import_edge(self, edge: Edge) -> Edge | None:
         """Resolve a raw_import: symbol edge, or None when it must be dropped.

@@ -2,7 +2,10 @@
 
 Emits FUNCTION/METHOD nodes plus their CALLS, DECLARES/CONTAINS, DEPENDS_ON
 edges, and collects local type information (assignments and typed parameters)
-used downstream for call resolution.
+used downstream for call resolution. It also builds the `self_types` map for
+the enclosing class (spec D1) and emits `raw_dep:` annotation candidates from
+parameter, return, and `AnnAssign` positions, which the resolver turns into
+REFERENCES edges for internal classes (spec D4/D9).
 """
 
 from collections.abc import Callable
@@ -11,8 +14,10 @@ from typing import Any
 from tree_sitter import Node as BaseNode
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
+from cgis.extractors._python_annotations import collect_type_names
 from cgis.extractors._python_ast import (
     PYTHON_LANG,
+    assigned_attr_name,
     extract_node_name,
     get_id,
     get_identifier,
@@ -22,7 +27,13 @@ from cgis.extractors._python_types import TypeResolver
 
 
 class FunctionHandler:
-    """Extracts function/method nodes, call edges and local type metadata."""
+    """Extracts function/method nodes, call edges and local type metadata.
+
+    Sits at 9 methods. `_GOD_OBJECT_MIN_METHODS` (query/analysis/analyzer.py)
+    is 10, so the next method added here trips the self-parsing God-Object
+    gate — put new standalone logic in a module-level function instead (see
+    `emit_annotation_edges` below for the pattern).
+    """
 
     _DI_CALL_NAMES: frozenset[str] = frozenset({"Depends", "Security"})
 
@@ -275,9 +286,14 @@ class FunctionHandler:
     ) -> None:
         """Populate acc with param→FQN for typed parameter annotations.
 
-        Also emits a speculative `raw_dep:` DEPENDS_ON candidate per typed
-        parameter; the resolver keeps it only when it resolves to a DI alias
-        (VARIABLE node) and drops it otherwise (spec §3.2c).
+        Also emits one speculative `raw_dep:` DEPENDS_ON candidate per type name
+        found in the parameter annotation (spec D9); the resolver keeps a name
+        only when it resolves to a DI alias (VARIABLE node) or an internal class
+        and drops the rest (spec §3.2c). Annotation-edge emission is independent
+        of the `local_types` population below it: a splat parameter
+        (`*args: T`, `**kw: T`) has no plain identifier for `local_types` to key
+        on, but its annotation still names a real type, so the two questions
+        must not share one early return.
         """
         if not node.named_children:
             return
@@ -285,6 +301,7 @@ class FunctionHandler:
         type_node = node.child_by_field_name("type")
         if not type_node:
             return
+        emit_annotation_edges(type_node, code_bytes, func_node.id, func_node.file_path, edges)
         var_name = get_identifier(name_node, code_bytes)
         if var_name == "unknown":
             return
@@ -298,15 +315,173 @@ class FunctionHandler:
         acc.setdefault(func_node.id, {})[var_name] = self._types.resolve_type_fqn(
             clean_type, import_map, func_node.file_path
         )
+
+    def collect_self_type(
+        self,
+        node: BaseNode,
+        code_bytes: bytes,
+        import_map: dict[str, str] | None,
+        class_fqn: str,
+        file_path: str,
+        init_param_types: dict[str, str],
+        acc: dict[str, dict[str, str]],
+        in_class_body: bool,
+    ) -> None:
+        """Populate acc with attr→FQN for one assignment inside a class (spec D1).
+
+        Handles the four annotated shapes: a class-body annotation, an annotated
+        attribute assignment, an attribute assigned from a typed `__init__`
+        parameter, and an attribute assigned a constructor call. An attribute
+        with no annotation anywhere is left out rather than guessed at. The two
+        shape-specific lookups are module-level helpers rather than methods —
+        they take the type resolver as a parameter, so the dispatcher here stays
+        simple and the class doesn't grow a method for each RHS shape.
+
+        `in_class_body` (true only when this assignment has no enclosing
+        function) distinguishes the class-body-annotation shape (`x: T` in the
+        class body) from a same-shaped but unrelated case: a locally annotated
+        variable inside a method (`y: T = ...`), which `assigned_attr_name`
+        cannot tell apart from a class attribute on its own since both have a
+        bare-identifier LHS. Without this check a method-local annotated
+        variable would be misfiled as an attribute of the enclosing class.
+        """
+        left = node.child_by_field_name("left")
+        if left is None:
+            return
+        attr_name = assigned_attr_name(left, code_bytes)
+        if attr_name is None:
+            return
+        if left.type == "identifier" and not in_class_body:
+            return
+
+        type_node = node.child_by_field_name("type")
+        if type_node is not None:
+            resolved = _resolve_self_type_annotation(
+                type_node, code_bytes, import_map, file_path, self._types
+            )
+        else:
+            right = node.child_by_field_name("right")
+            resolved = (
+                _resolve_self_type_from_rhs(
+                    right, code_bytes, import_map, file_path, self._types, init_param_types
+                )
+                if right is not None
+                else None
+            )
+        if resolved:
+            acc.setdefault(class_fqn, {})[attr_name] = resolved
+
+
+def emit_annotation_edges(
+    type_node: BaseNode,
+    code_bytes: bytes,
+    source_fqn: str,
+    file_path: str,
+    edges: list[Edge],
+) -> None:
+    """Emit one speculative `raw_dep:` edge per type named in an annotation.
+
+    The resolver keeps a name that resolves to a DI alias (as DEPENDS_ON) or
+    to an internal class (as REFERENCES) and drops the rest, so emitting
+    stdlib and third-party names here costs nothing downstream (spec D3/D4).
+
+    Module-level, not a `FunctionHandler` method: it needs only
+    `collect_type_names` and `Edge`, no instance state, and the repo's
+    God-Object gate fires at 10 methods (`_GOD_OBJECT_MIN_METHODS`) —
+    `FunctionHandler` is already at 9, so adding this as a method would trip
+    the self-parsing gate (`test_god_object_baseline_not_exceeded`).
+    """
+    for name in collect_type_names(type_node, code_bytes):
+        if name == "None":
+            continue
         edges.append(
             Edge(
-                id=f"{func_node.file_path}:rawdep_{node.start_byte}_{node.end_byte}",
+                id=f"{file_path}:rawdep_{type_node.start_byte}_{type_node.end_byte}_{name}",
                 type=EdgeType.DEPENDS_ON,
-                source=func_node.id,
-                target=f"raw_dep:{clean_type}",
+                source=source_fqn,
+                target=f"raw_dep:{name}",
                 confidence=0.1,
-                context=f"Annotation candidate {clean_type}",
-                file_path=func_node.file_path,
-                line_number=node.start_point.row + 1,
+                context=f"Annotation candidate {name}",
+                file_path=file_path,
+                line_number=type_node.start_point.row + 1,
             )
         )
+
+
+def collect_return_annotation(
+    node: BaseNode,
+    code_bytes: bytes,
+    func_node: Node,
+    file_path: str,
+    edges: list[Edge],
+) -> None:
+    """Emit annotation edges for a function's return type, if it has one.
+
+    Module-level for the same reason as `emit_annotation_edges`: it would
+    push `FunctionHandler` past the 10-method God-Object gate.
+    """
+    type_node = node.child_by_field_name("return_type")
+    if type_node is None:
+        return
+    emit_annotation_edges(type_node, code_bytes, func_node.id, file_path, edges)
+
+
+def _resolve_self_type_annotation(
+    type_node: BaseNode,
+    code_bytes: bytes,
+    import_map: dict[str, str] | None,
+    file_path: str,
+    type_resolver: TypeResolver,
+) -> str | None:
+    """Resolve an explicit `: T` annotation (class-body `x: T` or `self.x: T = ...`).
+
+    Takes the first name the AST walk yields, which is the same answer
+    `clean_python_type_string` was written to give — the container for a generic
+    (`list[Node]` -> `list`), the inner type for a wrapper (`Optional[X]` -> `X`) —
+    without cleaning source text. Text cleaning only ever saw the outside of the
+    slice, so anything quoted, prefixed or parenthesised *inside* the annotation
+    survived into the FQN: `Optional["Wallet"]` became `mod."Wallet"`, and an
+    annotation wrapped across lines with a trailing comment put that comment in
+    the map. Both shapes are common — the first is the SQLModel relationship
+    idiom — and both produced keys whose values can never match a node.
+    """
+    names = collect_type_names(type_node, code_bytes)
+    if not names:
+        return None
+    return type_resolver.resolve_type_fqn(names[0], import_map, file_path)
+
+
+def _resolve_self_type_from_rhs(
+    right: BaseNode,
+    code_bytes: bytes,
+    import_map: dict[str, str] | None,
+    file_path: str,
+    type_resolver: TypeResolver,
+    init_param_types: dict[str, str],
+) -> str | None:
+    """Resolve an unannotated `self.x = <rhs>` via a typed `__init__` param or constructor call."""
+    if right.type == "identifier":
+        return init_param_types.get(get_identifier(right, code_bytes))
+    if right.type == "call":
+        func_node = right.child_by_field_name("function")
+        if func_node is None:
+            return None
+        class_name = get_identifier(func_node, code_bytes)
+        if class_name == "unknown":
+            return None
+        if "." in class_name:
+            # Module-qualified constructor (e.g. client.SearchClient()): keep only
+            # if the prefix is a known import alias, mirroring collect_assignment_type
+            # above. Otherwise it is a method call on a local object — `factory.Build()`
+            # is a result, not a construction, and guessing here would put the wrong
+            # type in self_types for every builder-style attribute.
+            module_part, _, _ = class_name.partition(".")
+            if not import_map or module_part not in import_map:
+                return None
+        # Leading underscores are stripped before the capitalisation test: `_IdAllocator()`
+        # is a construction by every Python convention, and this repo has such classes.
+        # A name that is only underscores yields "" here, which is correctly not upper.
+        if not class_name.rpartition(".")[-1].lstrip("_")[:1].isupper():
+            return None
+        return type_resolver.resolve_type_fqn(class_name, import_map, file_path)
+    return None

@@ -7,10 +7,18 @@ from tree_sitter import Language, Parser
 from tree_sitter import Node as BaseNode
 
 from cgis.core.models import Edge, Node, NodeType
-from cgis.extractors._python_ast import extract_decorator_names, is_module_level_assignment
+from cgis.extractors._python_ast import (
+    enclosing_class_fqn,
+    extract_decorator_names,
+    is_module_level_assignment,
+)
 from cgis.extractors._python_ast import file_path_to_module_fqn as _file_path_to_module_fqn
 from cgis.extractors._python_classes import ClassHandler
-from cgis.extractors._python_functions import FunctionHandler
+from cgis.extractors._python_functions import (
+    FunctionHandler,
+    collect_return_annotation,
+    emit_annotation_edges,
+)
 from cgis.extractors._python_imports import ImportHandler
 from cgis.extractors._python_types import TypeResolver
 from cgis.extractors.base import BaseExtractor
@@ -119,6 +127,7 @@ class PythonExtractor(BaseExtractor):
         import_map: dict[str, str] = {}
         module_fqn = file_path_to_module_fqn(file_path, self._pick_source_root(file_path))
         local_types_acc: dict[str, dict[str, str]] = {}
+        self_types_acc: dict[str, dict[str, str]] = {}
 
         self._walk(
             root_node,
@@ -129,6 +138,7 @@ class PythonExtractor(BaseExtractor):
             import_map=import_map,
             module_fqn=module_fqn,
             local_types_acc=local_types_acc,
+            self_types_acc=self_types_acc,
         )
 
         # Apply accumulated local types from assignments and param annotations
@@ -138,6 +148,13 @@ class PythonExtractor(BaseExtractor):
                 i = nodes_by_id[func_id]
                 nodes[i] = nodes[i].model_copy(
                     update={"metadata": {**nodes[i].metadata, "local_types": lt}}
+                )
+        # Apply accumulated attribute types to their class nodes (spec D1)
+        for class_id, st in self_types_acc.items():
+            if class_id in nodes_by_id:
+                i = nodes_by_id[class_id]
+                nodes[i] = nodes[i].model_copy(
+                    update={"metadata": {**nodes[i].metadata, "self_types": st}}
                 )
 
         reexports = find_reexports(root_node, code_bytes, import_map)
@@ -166,6 +183,7 @@ class PythonExtractor(BaseExtractor):
         import_map: dict[str, str] | None,
         current_func_node: Node | None,
         local_types_acc: dict[str, dict[str, str]] | None,
+        self_types_acc: dict[str, dict[str, str]] | None = None,
     ) -> None:
         """Route one assignment: a local type hint, a module-level DI alias, or neither.
 
@@ -178,7 +196,43 @@ class PythonExtractor(BaseExtractor):
         than after: inside a function the assignment can only be a local hint,
         and the predicate would return False on that same condition — so the
         check skips the call instead of paying for it to say no.
+
+        Also records attribute types onto the enclosing class's `self_types`
+        accumulator (spec D1) — independent of, and in addition to, the
+        function-local routing below, since a class-body annotation has no
+        enclosing function at all.
+
+        Also emits `raw_dep:` annotation edges (spec D4/D9) for an `AnnAssign`
+        (`x: T` or `x: T = ...`), sourced from the enclosing function if there
+        is one, else the enclosing class. A bare module-level annotation (no
+        enclosing function or class) has no source FQN and emits nothing.
         """
+        class_fqn = enclosing_class_fqn(
+            node, code_bytes, file_path, self._pick_source_root(file_path)
+        )
+        if class_fqn is not None and self_types_acc is not None:
+            init_param_types = (
+                local_types_acc.get(f"{class_fqn}.__init__", {})
+                if local_types_acc is not None
+                else {}
+            )
+            self._functions.collect_self_type(
+                node,
+                code_bytes,
+                import_map,
+                class_fqn,
+                file_path,
+                init_param_types,
+                self_types_acc,
+                in_class_body=current_func_node is None,
+            )
+
+        type_node = node.child_by_field_name("type")
+        if type_node is not None:
+            source_fqn = current_func_node.id if current_func_node else class_fqn
+            if source_fqn:
+                emit_annotation_edges(type_node, code_bytes, source_fqn, file_path, edges)
+
         if current_func_node:
             if local_types_acc is not None:
                 self._functions.collect_assignment_type(
@@ -203,6 +257,7 @@ class PythonExtractor(BaseExtractor):
         import_map: dict[str, str] | None = None,
         module_fqn: str | None = None,
         local_types_acc: dict[str, dict[str, str]] | None = None,
+        self_types_acc: dict[str, dict[str, str]] | None = None,
     ) -> None:
         """
         Recursive AST walker that dispatches each node to its handler.
@@ -221,6 +276,7 @@ class PythonExtractor(BaseExtractor):
                 import_map,
                 module_fqn,
                 local_types_acc,
+                self_types_acc,
             )
             return  # prevent double-processing the inner definition
 
@@ -229,6 +285,7 @@ class PythonExtractor(BaseExtractor):
             next_func_node = self._functions.process_function_node(
                 node, code_bytes, file_path, nodes, edges, module_fqn or ""
             )
+            collect_return_annotation(node, code_bytes, next_func_node, file_path, edges)
         elif node.type == "class_definition":
             self._classes.process_class_node(
                 node, code_bytes, file_path, nodes, edges, module_fqn or ""
@@ -249,6 +306,7 @@ class PythonExtractor(BaseExtractor):
                 import_map,
                 current_func_node,
                 local_types_acc,
+                self_types_acc,
             )
         elif (
             node.type in ("typed_parameter", "typed_default_parameter")
@@ -270,6 +328,7 @@ class PythonExtractor(BaseExtractor):
                 import_map=import_map,
                 module_fqn=module_fqn,
                 local_types_acc=local_types_acc,
+                self_types_acc=self_types_acc,
             )
 
     def _handle_decorated_definition(
@@ -282,6 +341,7 @@ class PythonExtractor(BaseExtractor):
         import_map: dict[str, str] | None,
         module_fqn: str | None,
         local_types_acc: dict[str, dict[str, str]] | None,
+        self_types_acc: dict[str, dict[str, str]] | None = None,
     ) -> None:
         """Process a decorated function or class definition, forwarding decorator names."""
         raw_decorators = extract_decorator_names(node, code_bytes)
@@ -296,6 +356,7 @@ class PythonExtractor(BaseExtractor):
                     module_fqn or "",
                     decorators=raw_decorators,
                 )
+                collect_return_annotation(child, code_bytes, inner, file_path, edges)
                 for grandchild in child.children:
                     self._walk(
                         grandchild,
@@ -307,6 +368,7 @@ class PythonExtractor(BaseExtractor):
                         import_map=import_map,
                         module_fqn=module_fqn,
                         local_types_acc=local_types_acc,
+                        self_types_acc=self_types_acc,
                     )
             elif child.type == "class_definition":
                 self._classes.process_class_node(
@@ -329,4 +391,5 @@ class PythonExtractor(BaseExtractor):
                         import_map=import_map,
                         module_fqn=module_fqn,
                         local_types_acc=local_types_acc,
+                        self_types_acc=self_types_acc,
                     )
