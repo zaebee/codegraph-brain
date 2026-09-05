@@ -5,7 +5,7 @@ not a constant: a change that legitimately moves them updates the numbers in the
 same commit, with the new measurement in the message.
 """
 
-from cgis.core.models import Edge, Node
+from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.storage.sqlite_store import SQLiteStore
 
 # Measured via:
@@ -19,6 +19,80 @@ from cgis.storage.sqlite_store import SQLiteStore
 # resolution failure.
 _EXPECTED_PLACEHOLDERS = 46
 _TOLERANCE = 10
+
+
+def _parent_classes(edges: list[Edge]) -> dict[str, list[str]]:
+    """class FQN -> its resolved parents, from EXTENDS edges."""
+    parents: dict[str, list[str]] = {}
+    for edge in edges:
+        if edge.type is EdgeType.EXTENDS:
+            parents.setdefault(edge.source, []).append(edge.target)
+    return parents
+
+
+def _owning_class(source_fqn: str, by_id: dict[str, Node]) -> str | None:
+    """The nearest enclosing CLASS, mirroring the resolver's own walk.
+
+    `rsplit(".", 1)` is not enough: a call inside a nested function has a source
+    like `Cls.method.inner`, and taking one segment off yields `Cls.method`,
+    which is in no self_types map — so a check built on it would skip exactly
+    the sources whose owner the resolver has to work to find.
+    """
+    parts = source_fqn.split(".")
+    for i in range(len(parts) - 1, 0, -1):
+        candidate = ".".join(parts[:i])
+        node = by_id.get(candidate)
+        if node is not None and node.type is NodeType.CLASS:
+            return candidate
+    return None
+
+
+def _has_method(
+    class_fqn: str, method: str, by_id: dict[str, Node], parents: dict[str, list[str]]
+) -> bool:
+    """Direct or inherited, mirroring _resolve_method_on_class_hierarchy.
+
+    Checking only `f"{class_fqn}.{method}"` would treat every inherited method
+    as a phantom — blinding the gate to precisely the inheritance path D7 asks
+    the resolver to walk.
+    """
+    seen: set[str] = set()
+    stack = [class_fqn]
+    while stack:
+        current = stack.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        if f"{current}.{method}" in by_id:
+            return True
+        stack.extend(parents.get(current, []))
+    return False
+
+
+def _is_unexplained(
+    edge: Edge,
+    by_id: dict[str, Node],
+    self_types: dict[str, dict[str, str]],
+    parents: dict[str, list[str]],
+) -> bool:
+    """True when this placeholder names a receiver that should have resolved.
+
+    Every `continue` below is a documented reason the resolver declines, so a
+    True here means the resolver failed at something it claims to handle.
+    """
+    parts = edge.target.split(".")
+    if not edge.target.startswith("self.") or len(parts) != 3:
+        return False
+    attr, method = parts[1], parts[2]
+    owner = _owning_class(edge.source, by_id)
+    if owner is None:
+        return False  # not inside a class at all
+    declared = self_types.get(owner, {}).get(attr)
+    if declared is None:
+        return False  # genuinely unannotated — the rule declines to guess (D1)
+    if declared not in by_id:
+        return False  # a builtin container or third-party type, no node (D1)
+    return _has_method(declared, method, by_id, parents)
 
 
 def test_self_placeholder_count_is_within_the_calibrated_band(
@@ -47,22 +121,13 @@ def test_every_surviving_placeholder_has_a_reason(
     _store, nodes, edges = root_graph_data
     by_id = {n.id: n for n in nodes}
     self_types = {n.id: (n.metadata.get("self_types") or {}) for n in nodes}
+    parents = _parent_classes(edges)
 
-    unexplained = []
-    for edge in edges:
-        parts = edge.target.split(".")
-        if not edge.target.startswith("self.") or len(parts) != 3:
-            continue
-        attr, method = parts[1], parts[2]
-        owner = edge.source.rsplit(".", maxsplit=1)[0]
-        declared = self_types.get(owner, {}).get(attr)
-        if declared is None:
-            continue  # genuinely unannotated — the rule declines to guess (D1)
-        if declared not in by_id:
-            continue  # a builtin container or third-party type, no node (D1)
-        if f"{declared}.{method}" not in by_id:
-            continue  # the class exists but has no such method — a phantom (D7)
-        unexplained.append((edge.source, edge.target))
+    unexplained = [
+        (edge.source, edge.target)
+        for edge in edges
+        if _is_unexplained(edge, by_id, self_types, parents)
+    ]
 
     assert not unexplained, (
         "these placeholders name a receiver that resolves to a real class with "
