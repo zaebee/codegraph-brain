@@ -42,12 +42,36 @@ re-measurement must re-ingest first.
 | …receiver resolvable from an annotation | 105 (90%) |
 | Annotation positions (param / return / AnnAssign) | 2 328 |
 | …naming at least one internal CLASS | 577 |
-| `REFERENCES` edges emitted (D9 rule) | 596 (+11.9%) |
+| `REFERENCES` edges emitted (D9 rule) | **583 measured** (predicted 596) |
 | Current `unresolved_ratio` | 0.2030 |
 | Projected after PR2 | 0.2095 (gate: 0.30) |
 | Projected after PR1's edges also land | 0.1873 |
 
 Positions exclude 106 bare `-> None` returns, which name no type.
+
+### Validated on owner-api
+
+The implemented feature was run against `Ownima/owner-api` (`ownima-backend/app`,
+15 928 nodes / 65 792 edges, ~11s) — the DI-heavy codebase #414 was filed from:
+
+| | |
+|---|---|
+| `REFERENCES` edges | 2 004 (0 pointing at a non-CLASS node) |
+| classes carrying `self_types` | 677 (2 847 attributes) |
+| `self.<attr>.<method>` sites, **production only** | 554 |
+| …receiver resolvable | **476 (86%)** |
+| …same, tests only | 445 / 1 732 (26%) |
+
+86% against the 66% #414 predicted from its two-source rule: the two sources this
+design adds (`self.x: T = ...` and `self.x = SomeClass()`) are worth ~20 points on
+the very repository the issue was filed from. The 26% in tests is 876 unannotated
+`self.client` (httpx) fixtures, which the rule correctly declines to guess at —
+exactly as #414 anticipated. A figure blending the two reads as 40% and is
+meaningless; #414 measured production only, and so must any comparison to it.
+
+**The clearest evidence for D9:** of 367 production classes with no incoming
+production `CALLS`/`EXTENDS`, **180 are held alive solely by the new annotation
+edges**. Without D9 all 180 would read as dead code.
 
 ### Two findings that change the issues as filed
 
@@ -108,7 +132,8 @@ guarantees, and PR1 must check the self-drift status column rather than assume.
 Stdlib, external, and unresolved annotations are dropped. Edging every position
 regardless of namespace would add 2 328 edges (+46%) of `str`/`dict`/library
 noise and swamp every metric; an `x: str` annotation says nothing about orphan
-classes. Scoped to internal classes it is 596 edges (+11.9%).
+classes. Scoped to internal classes it is 583 edges (+11.6%), measured on the
+implemented feature; the 596 in an earlier draft was an AST prediction.
 
 ### D4 — annotation positions: parameter, return, `AnnAssign`
 
@@ -208,8 +233,12 @@ from inside generics and would receive zero annotation edges:
 
 ```
 AmbiguousEntry, ArchitecturalAnomaly, Bridge, Community, DuckDBAnalyzer,
-GoldenComment, NodeMetric, PrPlan, SliceCounts, UnionRun, _IdAllocator
+GoldenComment, NodeMetric, PrPlan, SliceCounts, _IdAllocator
 ```
+
+(An earlier draft listed `UnionRun` here too. That was wrong: its only
+external-looking mention is the self-referencing return annotation described
+above, so it is a genuine orphan candidate rather than a D9 rescue.)
 
 Any of those that is also constructed only from tests would be reported as a
 false orphan by #415 — the exact failure the annotation edge exists to prevent.
@@ -218,7 +247,31 @@ So annotation extraction collects **all** type names appearing in the annotation
 (walking `Name`/`Attribute` nodes, and parsing string annotations), emitting one
 `REFERENCES` edge per distinct internal class. `clean_python_type_string` is left
 untouched and keeps serving `local_types`. This is what raises the edge count
-from 247 to 596.
+from 247 to 583.
+
+**Two exclusions, discovered during implementation and not in the original
+design.** "Every name in the annotation" is too literal on its own:
+
+* **Typing wrappers unwrap rather than count.** `Optional`, `Union` and
+  `Annotated` are not classes anyone would reference, so they are dropped while
+  their arguments are kept — `Optional[Node]` yields `Node`, not both. Qualified
+  forms (`typing.Optional[X]`) unwrap identically; the module prefix is stripped
+  before the wrapper test, matching `clean_python_type_string`. Note that
+  tree-sitter parses `Optional[X]` as `generic_type` but `typing.Optional[X]` as
+  `subscript`, so both shapes must be handled — an early implementation handled
+  only the first and leaked `raw_dep:typing.Optional`.
+* **Call nodes are skipped.** In `Annotated[Session, Depends(get_db)]` the second
+  argument is metadata, not a type; collecting it would emit candidates for
+  `Depends` and `get_db`. The annotation yields `Session` alone.
+
+Ordinary containers are NOT wrappers and keep both parts: `list[Node]` yields
+`list` and `Node`, which is the entire point of D9. A dotted non-wrapper base is
+preserved whole — `collections.abc.Sequence[Node]` yields both.
+
+**A self-reference is not a reference.** `-> "UnionRun"` on `UnionRun`'s own
+classmethod produces no incoming edge for `UnionRun`. This is deliberate: a class
+naming itself is not evidence anyone uses it, and counting it would manufacture a
+false negative in the orphan query.
 
 ## Work breakdown
 
@@ -268,7 +321,7 @@ must be re-derived from a fresh ingest, never from the stale root `graph.db`.
 | Fixture: two classes with a same-named attribute produce two distinct targets | the placeholder collision returns |
 | Self-parse: `self.*` placeholder edges drop 139 → ≤ 33 | any of the four `self_types` sources stops being collected |
 | Self-parse: `unresolved_ratio` stays under the 0.30 gate | the `classify_fqn` split miscounts |
-| Self-parse: `REFERENCES` edge count is 596 ± tolerance | D3's internal-only filter or D9's collection breaks in either direction |
+| Self-parse: `REFERENCES` edge count is 583 ± 60 | D3's internal-only filter or D9's collection breaks in either direction |
 | Fixture: a class referenced only as `list[OnlyInGeneric]` is **not** an orphan | D9 regresses to `clean_python_type_string` |
 | Fixture: a class constructed only from `tests/` is reported as an orphan | the `is_test` filter stops being applied |
 | Fixture: a class referenced only by a parameter annotation is **not** an orphan | the annotation edge stops being emitted |
@@ -286,10 +339,19 @@ against the design as originally written.
   shares the condition and must keep its current behavior. Verify each
   `NodeNamespace.INTERNAL` consumer before the split.
 * **Traversal density (PR1).** `impact` and `trace_flow` apply no edge-type
-  filter by default, so +596 `REFERENCES` edges will widen their results.
+  filter by default, so +583 `REFERENCES` edges will widen their results.
   Arguably correct — an annotation is a real dependency — but it changes existing
   output and should be stated in the PR, not discovered.
 * **Response-schema precision (PR3).** Known and deliberate (D4). PR3 must report
   the measured false-positive rate rather than ship silently.
 * **Measurement basis.** Every number here has a five-week-stale twin in the root
   `graph.db`. Re-ingest before re-measuring.
+* **Module-level construction is invisible — [#416](https://github.com/zaebee/codegraph-brain/issues/416).**
+  A constructor called at module level emits no `CALLS` edge at all: `_walk`
+  dispatches a call node only when there is an enclosing function. A class built
+  only in a registry dict, a singleton, or DI wiring therefore has no incoming
+  `CALLS`, and PR3's orphan query would report it as dead. On this repository
+  `PythonExtractor` and `TypeScriptExtractor` are already in that state. This is
+  a **second** precision limit alongside the `response_model=` gap in D4, and
+  probably the larger one — it was found while validating PR1, not predicted
+  here. PR3 must measure it before the query is trusted.
