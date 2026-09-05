@@ -353,6 +353,22 @@ against the design as originally written.
   output and should be stated in the PR, not discovered.
 * **Response-schema precision (PR3).** Known and deliberate (D4). PR3 must report
   the measured false-positive rate rather than ship silently.
+* **`self_types` is wrong in two rare shapes — PR2 reads this map, so its author
+  must know.** Both were found by an adversarial pass over the extractor's
+  heuristics and both measure **zero occurrences** across this repository and
+  `owner-api`, which is why they are recorded rather than fixed:
+  - An unannotated `self.x = name` in a method other than `__init__` takes its
+    type from `__init__`'s parameter of the same name, even when the enclosing
+    method annotates it differently — the right answer is sitting in that
+    method's own `local_types`. The same lookup is order-dependent: a method
+    written above `__init__` sees an empty map. Wrongly *accepted* in the first
+    half, wrongly rejected in the second.
+  - The constructor heuristic accepts `self.x = HANDLERS[key]()` (the subscript's
+    container name is ALL-CAPS and passes the capitalisation test) and
+    `self.x = Registry.Instance()` (an uppercase-named classmethod on an imported
+    class). It rejects a caseless-script class name (`类`) and a parenthesised
+    construction `(Widget())`. The first two write a phantom type; `local_types`
+    and `self_types` disagree on the third.
 * **Measurement basis.** Every number here has a five-week-stale twin in the root
   `graph.db`. Re-ingest before re-measuring.
 * **Module-level construction is invisible — [#416](https://github.com/zaebee/codegraph-brain/issues/416).**
