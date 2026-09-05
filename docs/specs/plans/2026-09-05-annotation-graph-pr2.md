@@ -36,11 +36,16 @@ The 13 that stay are real: `self.conn` (×8) from a `sqlite3.connect()` result, 
 **The collision is not hypothetical.** Four placeholder nodes are shared today:
 
 ```
-self._parser.parse        <- PythonExtractor, TypeScriptExtractor
-self._store.get_all_nodes <- FingerprintExtractor, SemanticUpliftEngine
-self._store.get_all_edges <- FingerprintExtractor, SemanticUpliftEngine
-self._pick_source_root    <- ClassHandler, FunctionHandler, TypeResolver
+self._parser.parse        <- PythonExtractor, TypeScriptExtractor          (2 segments, in scope)
+self._store.get_all_nodes <- FingerprintExtractor, SemanticUpliftEngine    (2 segments, in scope)
+self._store.get_all_edges <- FingerprintExtractor, SemanticUpliftEngine    (2 segments, in scope)
+self._pick_source_root    <- ClassHandler, FunctionHandler, TypeResolver   (1 segment — OUT of scope)
 ```
+
+The fourth is `self.<attr>()` — a call to a callable attribute, not
+`self.<attr>.<method>()`. Resolving it would need to know which function was passed
+into the constructor, which is dataflow rather than annotation. **It stays shared
+after this PR, by design**, and the calibration gate in Task 4 is scoped accordingly.
 
 `self._parser` is a tree-sitter parser for a *different language* in each of those two classes, and the graph gives them one vertex.
 
@@ -610,19 +615,28 @@ def test_no_two_segment_placeholder_has_an_annotated_receiver(root_graph_data) -
     assert not missed, f"declared receivers that did not resolve: {missed[:10]}"
 
 
-def test_a_shared_attribute_name_no_longer_shares_one_node(root_graph_data) -> None:
+def test_a_shared_two_segment_placeholder_no_longer_exists(root_graph_data) -> None:
     """The collision this PR removes, pinned on real code.
 
     Before: self._parser.parse was one vertex for PythonExtractor and
-    TypeScriptExtractor, whose parsers are for different languages.
+    TypeScriptExtractor, whose parsers are for different languages;
+    self._store.get_all_nodes and .get_all_edges likewise merged
+    FingerprintExtractor with SemanticUpliftEngine.
+
+    Restricted to two-segment targets on purpose. A fourth collision at
+    baseline, self._pick_source_root, has ONE segment: it is `self.<attr>()`,
+    a call to a callable attribute, not `self.<attr>.<method>()`. Resolving it
+    would mean knowing which function was passed into the constructor, which is
+    dataflow, not annotation. D8 does not cover that shape and this PR must not
+    be judged on it.
     """
     _store, _nodes, edges = root_graph_data
     owners: dict[str, set[str]] = {}
     for edge in edges:
-        if edge.target.startswith("self."):
+        if edge.target.startswith("self.") and len(edge.target.split(".")) == 3:
             owners.setdefault(edge.target, set()).add(edge.source.rsplit(".", maxsplit=1)[0])
     shared = {t: sorted(o) for t, o in owners.items() if len(o) > 1}
-    assert not shared, f"placeholder nodes still shared by several classes: {shared}"
+    assert not shared, f"two-segment placeholders still shared by several classes: {shared}"
 
 
 def test_resolved_receiver_calls_reach_real_methods(root_graph_data) -> None:
@@ -642,7 +656,7 @@ def test_resolved_receiver_calls_reach_real_methods(root_graph_data) -> None:
 
 Run: `uv run pytest tests/self_parsing/test_receiver_resolution.py -v --no-header`
 
-If `test_a_shared_attribute_name_no_longer_shares_one_node` fails, read the failure: it names the targets still shared. Four were shared at baseline and all four have declared receivers, so all four should resolve. A survivor means its receiver's type is not in `self_types` — check whether the spec's Risks section already covers that shape before treating it as a bug in this PR.
+If `test_a_shared_two_segment_placeholder_no_longer_exists` fails, read the failure: it names the targets still shared. Three two-segment collisions existed at baseline and all three have declared receivers, so all three should resolve. A survivor means its receiver's type is not in `self_types` — check whether the spec's Risks section already covers that shape before treating it as a bug in this PR.
 
 - [ ] **Step 4: Full verification**
 
