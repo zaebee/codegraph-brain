@@ -5,6 +5,7 @@ from tree_sitter import Language, Parser
 from tree_sitter import Node as BaseNode
 
 from cgis.extractors._python_annotations import collect_type_names
+from cgis.extractors._python_ast import enclosing_class_fqn
 
 _PARSER = Parser(Language(tspython.language()))
 
@@ -52,3 +53,36 @@ def test_string_annotation_is_parsed() -> None:
 def test_duplicates_collapse_preserving_first_position() -> None:
     node, code = _annotation("dict[Node, Node]")
     assert collect_type_names(node, code) == ["dict", "Node"]
+
+
+def _first_assignment_in(code: str) -> tuple[BaseNode, bytes]:
+    """Parse a module and return its first `assignment` node, depth-first."""
+    code_bytes = code.encode()
+    stack = [_PARSER.parse(code_bytes).root_node]
+    while stack:
+        node = stack.pop(0)
+        if node.type == "assignment":
+            return node, code_bytes
+        stack.extend(node.named_children)
+    msg = "no assignment node in source"
+    raise AssertionError(msg)
+
+
+def test_enclosing_class_fqn_inside_a_method() -> None:
+    node, code = _first_assignment_in("class A:\n    def __init__(self):\n        self.x = 1\n")
+    assert enclosing_class_fqn(node, code, "pkg/mod.py", None) == "pkg.mod.A"
+
+
+def test_enclosing_class_fqn_in_a_class_body() -> None:
+    node, code = _first_assignment_in("class A:\n    x: int\n")
+    assert enclosing_class_fqn(node, code, "pkg/mod.py", None) == "pkg.mod.A"
+
+
+def test_enclosing_class_fqn_is_none_at_module_level() -> None:
+    node, code = _first_assignment_in("x = 1\n")
+    assert enclosing_class_fqn(node, code, "pkg/mod.py", None) is None
+
+
+def test_enclosing_class_fqn_picks_the_nearest_class() -> None:
+    node, code = _first_assignment_in("class Outer:\n    class Inner:\n        x: int\n")
+    assert enclosing_class_fqn(node, code, "pkg/mod.py", None) == "pkg.mod.Outer.Inner"

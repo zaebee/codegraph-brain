@@ -135,6 +135,31 @@ def get_fqn_prefix(node: BaseNode, code_bytes: bytes) -> str | None:
     return ".".join(reversed(parts)) if parts else None
 
 
+def enclosing_class_fqn(
+    node: BaseNode, code_bytes: bytes, file_path: str, source_root: str | None
+) -> str | None:
+    """Return the FQN of the nearest enclosing class, or None outside any class.
+
+    `get_fqn_prefix` collects class *and* function names, so inside `A.__init__`
+    it yields "A.__init__". Attribute types are keyed by class, so this walks up
+    to the nearest `class_definition` and builds the full nesting path from the
+    classes above it, skipping any function in between.
+    """
+    curr = node.parent
+    parts: list[str] = []
+    found = False
+    while curr:
+        if curr.type == "class_definition":
+            found = True
+            parts.append(extract_node_name(curr.child_by_field_name("name"), code_bytes))
+        curr = curr.parent
+    if not found:
+        return None
+    module = file_path_to_module_fqn(file_path, source_root)
+    path = ".".join(reversed(parts))
+    return f"{module}.{path}" if module else path
+
+
 def get_id(node: BaseNode, code_bytes: bytes, file_path: str, source_root: str | None) -> str:
     """Generate a fully qualified function/method ID including class/function context."""
     name = node.child_by_field_name("name")
