@@ -54,7 +54,7 @@ Positions exclude 106 bare `-> None` returns, which name no type.
 The implemented feature was run against `Ownima/owner-api` (`ownima-backend/app`,
 15 928 nodes / 65 792 edges, ~11s) — the DI-heavy codebase #414 was filed from:
 
-| | |
+| Measurement | Value |
 |---|---|
 | `REFERENCES` edges | 2 004 (0 pointing at a non-CLASS node) |
 | classes carrying `self_types` | 677 (2 847 attributes) |

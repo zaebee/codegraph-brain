@@ -34,13 +34,9 @@ def collect_type_names(annotation_node: BaseNode, code_bytes: bytes) -> list[str
     """
     names: list[str] = []
     _collect(annotation_node, code_bytes, names)
-    seen: set[str] = set()
-    result: list[str] = []
-    for n in names:
-        if n not in seen:
-            result.append(n)
-            seen.add(n)
-    return result
+    # dict.fromkeys de-duplicates while preserving first-seen order (guaranteed
+    # since 3.7), which a set would lose — source order is part of the contract.
+    return list(dict.fromkeys(names))
 
 
 def _collect(node: BaseNode, code_bytes: bytes, acc: list[str]) -> None:
