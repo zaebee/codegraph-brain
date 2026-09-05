@@ -4,35 +4,6 @@ from cgis.core.models import RAW_CLASS_PREFIX, Edge, EdgeType, Node, NodeNamespa
 from cgis.resolver.indices import IndexBuilder, SymbolIndex
 
 
-def _is_first_party(index: SymbolIndex, receiver: str) -> bool:
-    """True when `receiver` names project code, whatever classify_fqn says.
-
-    classify_fqn judges by root string, and `external_roots` is built from every
-    import-map value — so a first-party root reaches it whenever the import root
-    differs from the ingest-relative node root (`app.services.X` imported as
-    such, ingested at `app/`, giving nodes rooted at `services`). The receiver
-    then classifies EXTERNAL and any method name on it would be minted at
-    confidence 1.0, including the phantom D7 exists to drop.
-
-    The signal is that some segment of the receiver's path is a root the graph
-    actually contains. `app.api.dependencies.session.AsyncSessionDep` reaches
-    `api`, which is an internal root, so it is ours and a missing method on it
-    is a phantom. `grpc.Channel` reaches none, so it is a library and the call
-    is real.
-
-    Deliberately not `map_to_node_fqn`: that helper matches by suffix on
-    purpose, to reconcile layout prefixes, and asking it "is this ours" inherits
-    the permissiveness. On owner-api it matched the *library* `grpc` against the
-    project's own `api/dependencies/grpc/` package and silently stopped
-    resolving 56 genuine gRPC calls. Root membership does not confuse the two.
-
-    The final segment is excluded: it names the class, and a class called `api`
-    must not make itself first-party.
-    """
-    parts = receiver.split(".")
-    return any(part in index.internal_roots for part in parts[:-1])
-
-
 def _owning_class(index: SymbolIndex, source_fqn: str) -> str | None:
     """The nearest enclosing class of source_fqn that the index knows methods for.
 
@@ -173,8 +144,6 @@ class SymbolResolver:
         # the engine mints an EXTERNAL/STDLIB node. On an internal type it is a
         # phantom method and must not be fabricated: that is the call #414 was
         # filed to expose. Same policy as _resolve_local_type_call (spec D7).
-        if _is_first_party(self.index, receiver):
-            return None
         candidate = f"{receiver}.{method}"
         if self.index.classify_fqn(candidate) in (NodeNamespace.EXTERNAL, NodeNamespace.STDLIB):
             return candidate

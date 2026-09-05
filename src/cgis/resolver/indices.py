@@ -121,6 +121,17 @@ class SymbolIndex:
         return os.path.normpath(edge_file_path) if edge_file_path else None
 
 
+def _strips_to_a_node(imported_fqn: str, node_ids: set[str]) -> bool:
+    """True when dropping leading segments of `imported_fqn` reaches a real node.
+
+    `app.domains.models.Thing` against a graph rooted at `domains` strips to
+    `domains.models.Thing`, which exists — so `app` is this project's own name,
+    not a package it depends on.
+    """
+    parts = imported_fqn.split(".")
+    return any(".".join(parts[i:]) in node_ids for i in range(1, len(parts)))
+
+
 class IndexBuilder:
     """Builds a SymbolIndex from extracted nodes (Phase 1: indexing).
 
@@ -164,6 +175,8 @@ class IndexBuilder:
             # "src.cgis.pipeline.X" → suffix "cgis.pipeline.X" also points to the node
             self._add_node_to_suffix_map(node.id, suffix_map, internal_roots)
 
+        external_roots, first_party = self._build_external_roots(file_imports, set(nodes_by_id))
+
         # Read-only views, not copies: MappingProxyType wraps in O(1), so this
         # buys write protection without touching ingest cost (#183).
         return SymbolIndex(
@@ -176,8 +189,8 @@ class IndexBuilder:
             file_variable_symbols=MappingProxyType(file_variable_symbols),
             file_imports=MappingProxyType(file_imports),
             suffix_map=MappingProxyType(suffix_map),
-            internal_roots=frozenset(internal_roots),
-            external_roots=frozenset(self._build_external_roots(file_imports)),
+            internal_roots=frozenset(internal_roots | first_party),
+            external_roots=frozenset(external_roots),
         )
 
     @staticmethod
@@ -227,15 +240,41 @@ class IndexBuilder:
             suffix = ".".join(parts[i:])
             suffix_map.setdefault(suffix, []).append(node_id)
 
-    def _build_external_roots(self, file_imports: dict[str, dict[str, str]]) -> set[str]:
-        """Build set of known external root modules from file import maps.
+    def _build_external_roots(
+        self, file_imports: dict[str, dict[str, str]], node_ids: set[str]
+    ) -> tuple[set[str], set[str]]:
+        """Split import roots into genuinely external ones and first-party prefixes.
 
-        Any root not in internal_roots, stdlib, or external_roots
-        is classified as UNKNOWN by classify_fqn.
+        Returns (external_roots, first_party_prefixes).
+
+        A root is a *first-party prefix* when some import under it reaches a real
+        node once its head is stripped. That happens whenever a project is
+        ingested at a subdirectory: `cgis ingest ownima-backend/app` roots its
+        nodes at `domains`, `api`, … while the code imports `from app.models
+        import X`, so `app` looks like a third-party package. Every `app.*` FQN
+        without a node then classified EXTERNAL, and the resolver minted a
+        boundary node for a class of ours that does not exist — 2 461 confident
+        edges to nothing on that codebase (#424).
+
+        The discriminator is unambiguous in practice: measured there, `app` had
+        3 346 of 4 885 import values reach a node while pydantic, sqlalchemy,
+        grpc, fastapi and httpx had zero each. It asks whether the *import value*
+        resolves, not whether some node's id ends with the root's name — the
+        latter would match the library `grpc` against a project's own
+        `api/dependencies/grpc/` package.
         """
-        return {
-            val.split(".", maxsplit=1)[0]
-            for import_map in file_imports.values()
-            for val in import_map.values()
-            if val and not val.startswith(".")
-        }
+        external: set[str] = set()
+        first_party: set[str] = set()
+        for import_map in file_imports.values():
+            for val in import_map.values():
+                if not val or val.startswith("."):
+                    continue
+                root = val.split(".", maxsplit=1)[0]
+                if root in first_party:
+                    continue
+                if _strips_to_a_node(val, node_ids):
+                    first_party.add(root)
+                    external.discard(root)
+                else:
+                    external.add(root)
+        return external - first_party, first_party
