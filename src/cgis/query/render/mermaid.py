@@ -194,8 +194,17 @@ class MermaidCompiler:
     def _render_edges(
         self, edges: list[Edge], id_map: dict[str, str], alloc: "_IdAllocator"
     ) -> list[str]:
-        """Render edge declarations, injecting phantom node stubs for unknown endpoints."""
+        """Render edge declarations, injecting phantom node stubs for unknown endpoints.
+
+        One arrow per distinct (source, type, target). The graph legitimately holds
+        several edges for one such triple — two call sites to the same function, or a
+        class named by both a return annotation and a local one — but a diagram that
+        draws the same labelled arrow twice states the fact twice and answers no
+        question a reader can ask of it. Line numbers, which are what distinguish
+        those edges, are not rendered here.
+        """
         lines: list[str] = []
+        drawn: set[tuple[str, str, str]] = set()
         for edge in edges:
             source_safe = id_map.get(edge.source)
             if not source_safe:
@@ -212,6 +221,10 @@ class MermaidCompiler:
                 lines.append(f'    {target_safe}["{clean_target}"]{target_style}')
                 id_map[edge.target] = target_safe
 
+            arrow = (source_safe, edge.type.value, target_safe)
+            if arrow in drawn:
+                continue
+            drawn.add(arrow)
             lines.append(f"    {source_safe} -->|{edge.type.value}| {target_safe}")
         return lines
 
