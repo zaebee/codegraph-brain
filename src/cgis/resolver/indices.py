@@ -91,8 +91,14 @@ class SymbolIndex:
         UNKNOWN means the root segment was not found in internal roots,
         stdlib/builtins, or any known import-map external root.
         """
-        if fqn.startswith((".", SELF_PREFIX)):
+        if fqn.startswith("."):
             return NodeNamespace.INTERNAL
+        if fqn.startswith(SELF_PREFIX):
+            # An unresolved receiver, not a symbol. UNKNOWN rather than INTERNAL
+            # so get_edge_stats counts it as unresolved: classifying it INTERNAL
+            # let unresolved_ratio *improve* as a codebase adopted more dependency
+            # injection, so a green `validate` said nothing about the gap (#414).
+            return NodeNamespace.UNKNOWN
         root = fqn.split(".", maxsplit=1)[0]
         if root in self.internal_roots:
             return NodeNamespace.INTERNAL

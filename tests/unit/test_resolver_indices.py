@@ -110,7 +110,11 @@ def test_classify_fqn_namespaces() -> None:
     assert index.classify_fqn("os.path.join") is NodeNamespace.STDLIB
     assert index.classify_fqn("fastapi.Depends") is NodeNamespace.EXTERNAL
     assert index.classify_fqn("zzz.unknown") is NodeNamespace.UNKNOWN
-    assert index.classify_fqn("self.method") is NodeNamespace.INTERNAL
+    # Changed by #414: a self.-prefixed FQN is an unresolved receiver, not a
+    # symbol. Calling it INTERNAL made get_edge_stats score it as *resolved*,
+    # so unresolved_ratio improved as a codebase adopted more dependency
+    # injection. The old assertion encoded that bug.
+    assert index.classify_fqn("self.method") is NodeNamespace.UNKNOWN
     assert index.classify_fqn(".relative") is NodeNamespace.INTERNAL
 
 
@@ -238,3 +242,26 @@ def test_self_types_ignores_the_metadata_of_a_non_class_node() -> None:
         [_node("pkg.mod.fn", NodeType.FUNCTION, metadata={"self_types": {"x": "pkg.X"}})]
     )
     assert index.self_types == {}
+
+
+# ---------------------------------------------------------------------------
+# classify_fqn: a self. placeholder is not a resolved symbol (#414)
+# ---------------------------------------------------------------------------
+
+
+def test_relative_import_prefix_is_internal() -> None:
+    """A leading dot is a relative import — genuinely internal. Must not change."""
+    index = IndexBuilder().build([_node("pkg.mod.A", NodeType.CLASS)])
+    assert index.classify_fqn(".sibling.thing") == NodeNamespace.INTERNAL
+
+
+def test_self_placeholder_is_not_internal() -> None:
+    """An unresolved self.<attr>.<method> placeholder must not count as resolved.
+
+    get_edge_stats scores an INTERNAL target on the resolved side, so classifying
+    these INTERNAL let unresolved_ratio *improve* as a codebase adopted more
+    dependency injection — the metric moving the wrong way for exactly the reason
+    #414 was filed. A green `validate` therefore said nothing about the gap.
+    """
+    index = IndexBuilder().build([_node("pkg.mod.A", NodeType.CLASS)])
+    assert index.classify_fqn("self.client.search") == NodeNamespace.UNKNOWN
