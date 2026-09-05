@@ -359,3 +359,57 @@ def test_compile_phantom_raw_call_is_readable_and_unresolved() -> None:
     out = MermaidCompiler().compile([src], [edge])
     assert "|CALLS| mystery" in out
     assert "unresolvedNode" in out
+
+
+def test_compile_draws_one_arrow_per_distinct_triple() -> None:
+    """Two edges for the same (source, type, target) draw one arrow, not two.
+
+    The graph legitimately holds both — two call sites to one function, or a class
+    named by a return annotation and by a local one — and they differ only by a
+    line number the diagram does not render.
+    """
+    caller = _make_node("mod.caller")
+    callee = _make_node("mod.callee")
+    twice = [
+        Edge(id="e1", source="mod.caller", target="mod.callee", type=EdgeType.CALLS),
+        Edge(id="e2", source="mod.caller", target="mod.callee", type=EdgeType.CALLS),
+    ]
+    out = MermaidCompiler().compile([caller, callee], twice)
+    arrow = f"{_fqn_slug('mod.caller')} -->|CALLS| {_fqn_slug('mod.callee')}"
+    assert out.count(arrow) == 1, out
+
+
+def test_compile_keeps_arrows_that_differ_by_type() -> None:
+    """Dedup is per (source, type, target) — a second edge type is a second arrow."""
+    caller = _make_node("mod.caller")
+    callee = _make_node("mod.callee", NodeType.CLASS)
+    both = [
+        Edge(id="e1", source="mod.caller", target="mod.callee", type=EdgeType.CALLS),
+        Edge(id="e2", source="mod.caller", target="mod.callee", type=EdgeType.REFERENCES),
+    ]
+    out = MermaidCompiler().compile([caller, callee], both)
+    assert out.count(f"{_fqn_slug('mod.caller')} -->|CALLS| {_fqn_slug('mod.callee')}") == 1
+    assert out.count(f"{_fqn_slug('mod.caller')} -->|REFERENCES| {_fqn_slug('mod.callee')}") == 1
+
+
+def test_compile_keeps_arrows_that_differ_by_endpoint() -> None:
+    """Two targets from one source stay two arrows — dedup must not collapse them."""
+    caller = _make_node("mod.caller")
+    a = _make_node("mod.a")
+    b = _make_node("mod.b")
+    out = MermaidCompiler().compile(
+        [caller, a, b], [_make_edge("mod.caller", "mod.a"), _make_edge("mod.caller", "mod.b")]
+    )
+    assert out.count(f"{_fqn_slug('mod.caller')} -->|CALLS| {_fqn_slug('mod.a')}") == 1
+    assert out.count(f"{_fqn_slug('mod.caller')} -->|CALLS| {_fqn_slug('mod.b')}") == 1
+
+
+def test_compile_emits_a_phantom_stub_once_for_repeated_edges() -> None:
+    """A repeated edge to an unknown target must not restate its stub either."""
+    caller = _make_node("mod.caller")
+    twice = [
+        Edge(id="e1", source="mod.caller", target="mod.ghost", type=EdgeType.CALLS),
+        Edge(id="e2", source="mod.caller", target="mod.ghost", type=EdgeType.CALLS),
+    ]
+    out = MermaidCompiler().compile([caller], twice)
+    assert out.count('["mod.ghost"]') == 1, out
