@@ -10,6 +10,11 @@ from cgis.core.models import Edge, EdgeType
 from cgis.extractors._python_ast import resolve_relative_module
 
 
+def _has_wildcard(node: BaseNode) -> bool:
+    """True when this `from X import ...` is a star import."""
+    return any(child.type == "wildcard_import" for child in node.children)
+
+
 class ImportHandler:
     """Extracts import edges and populates the import map from import AST nodes."""
 
@@ -21,6 +26,7 @@ class ImportHandler:
         import_map: dict[str, str] | None,
         module_fqn: str | None,
         edges: list[Edge],
+        star_imports: list[str] | None = None,
     ) -> None:
         """Dispatch import or import-from AST nodes to the appropriate handler."""
         if import_map is None or module_fqn is None:
@@ -31,7 +37,7 @@ class ImportHandler:
             )
         else:
             self._process_import_from_statement(
-                node, code_bytes, module_fqn, file_path, import_map, edges
+                node, code_bytes, module_fqn, file_path, import_map, edges, star_imports
             )
 
     def _process_import_statement(
@@ -126,8 +132,9 @@ class ImportHandler:
         file_path: str,
         import_map: dict[str, str],
         edges: list[Edge],
+        star_imports: list[str] | None = None,
     ) -> None:
-        """Handle `from X import Y [as Z]` and relative imports."""
+        """Handle `from X import Y [as Z]`, `from X import *`, and relative imports."""
         leading_dots = 0
         raw_module_str = ""
         past_import_kw = False
@@ -156,6 +163,12 @@ class ImportHandler:
             if leading_dots > 0
             else raw_module_str
         )
+
+        # `from X import *` names nothing here — the exporting module's own symbols
+        # are the names, and only the index knows them. Record the module and let
+        # IndexBuilder expand it (#417).
+        if star_imports is not None and base_module and _has_wildcard(node):
+            star_imports.append(base_module)
 
         for local_name, sym in symbols:
             target_fqn = f"{base_module}.{sym}" if base_module else sym

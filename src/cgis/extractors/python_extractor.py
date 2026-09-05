@@ -128,6 +128,7 @@ class PythonExtractor(BaseExtractor):
         module_fqn = file_path_to_module_fqn(file_path, self._pick_source_root(file_path))
         local_types_acc: dict[str, dict[str, str]] = {}
         self_types_acc: dict[str, dict[str, str]] = {}
+        star_imports: list[str] = []
 
         self._walk(
             root_node,
@@ -139,6 +140,7 @@ class PythonExtractor(BaseExtractor):
             module_fqn=module_fqn,
             local_types_acc=local_types_acc,
             self_types_acc=self_types_acc,
+            star_imports=star_imports,
         )
 
         # Apply accumulated local types from assignments and param annotations
@@ -166,7 +168,11 @@ class PythonExtractor(BaseExtractor):
             file_path=file_path,
             start_line=1,
             end_line=root_node.end_point.row + 1,
-            metadata={"import_map": import_map, "reexports": reexports},
+            metadata={
+                "import_map": import_map,
+                "reexports": reexports,
+                "star_imports": star_imports,
+            },
         )
         nodes.insert(0, file_node)
 
@@ -258,12 +264,15 @@ class PythonExtractor(BaseExtractor):
         module_fqn: str | None = None,
         local_types_acc: dict[str, dict[str, str]] | None = None,
         self_types_acc: dict[str, dict[str, str]] | None = None,
+        star_imports: list[str] | None = None,
     ) -> None:
         """
         Recursive AST walker that dispatches each node to its handler.
         """
         if node.type in ("import_statement", "import_from_statement"):
-            self._imports.handle(node, code_bytes, file_path, import_map, module_fqn, edges)
+            self._imports.handle(
+                node, code_bytes, file_path, import_map, module_fqn, edges, star_imports
+            )
             return  # never recurse into import nodes
 
         if node.type == "decorated_definition":
@@ -329,6 +338,7 @@ class PythonExtractor(BaseExtractor):
                 module_fqn=module_fqn,
                 local_types_acc=local_types_acc,
                 self_types_acc=self_types_acc,
+                star_imports=star_imports,
             )
 
     def _handle_decorated_definition(
@@ -342,6 +352,7 @@ class PythonExtractor(BaseExtractor):
         module_fqn: str | None,
         local_types_acc: dict[str, dict[str, str]] | None,
         self_types_acc: dict[str, dict[str, str]] | None = None,
+        star_imports: list[str] | None = None,
     ) -> None:
         """Process a decorated function or class definition, forwarding decorator names."""
         raw_decorators = extract_decorator_names(node, code_bytes)
@@ -369,6 +380,7 @@ class PythonExtractor(BaseExtractor):
                         module_fqn=module_fqn,
                         local_types_acc=local_types_acc,
                         self_types_acc=self_types_acc,
+                        star_imports=star_imports,
                     )
             elif child.type == "class_definition":
                 self._classes.process_class_node(
@@ -392,4 +404,5 @@ class PythonExtractor(BaseExtractor):
                         module_fqn=module_fqn,
                         local_types_acc=local_types_acc,
                         self_types_acc=self_types_acc,
+                        star_imports=star_imports,
                     )
