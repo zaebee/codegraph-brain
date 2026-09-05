@@ -265,3 +265,89 @@ def test_self_placeholder_is_not_internal() -> None:
     """
     index = IndexBuilder().build([_node("pkg.mod.A", NodeType.CLASS)])
     assert index.classify_fqn("self.client.search") == NodeNamespace.UNKNOWN
+
+
+# ---------------------------------------------------------------------------
+# First-party roots hidden in external_roots (#424)
+# ---------------------------------------------------------------------------
+
+
+def test_an_import_prefix_that_reaches_a_node_is_internal_not_external() -> None:
+    """Ingesting at a subdirectory makes the package name look like a third party.
+
+    `cgis ingest ownima-backend/app` roots its nodes at `domains`, `api`, … while
+    the code imports `from app.models import X`. `app` then lands in
+    external_roots, every `app.*` FQN without a node classifies EXTERNAL, and
+    D7's library branch mints a boundary node for a class of ours that does not
+    exist — a confident edge to nothing (#424).
+
+    An import whose tail reaches a real node is project code, whatever its head.
+    """
+    file_node = _node(
+        "domains.svc",
+        node_type=NodeType.FILE,
+        metadata={"import_map": {"Thing": "app.domains.models.Thing"}},
+    )
+    index = IndexBuilder().build([file_node, _node("domains.models.Thing", NodeType.CLASS)])
+    assert index.classify_fqn("app.domains.models.Thing") is NodeNamespace.INTERNAL
+    assert index.classify_fqn("app.api.deps.Missing") is NodeNamespace.INTERNAL
+
+
+def test_a_real_third_party_root_stays_external() -> None:
+    """The discriminator must not swallow genuine packages.
+
+    Measured on owner-api: `app` had 3346 of 4885 import values reach a node,
+    while pydantic, sqlalchemy, grpc, fastapi and httpx had zero. There is no
+    grey zone between the two.
+    """
+    file_node = _node(
+        "domains.svc",
+        node_type=NodeType.FILE,
+        metadata={"import_map": {"BaseModel": "pydantic.BaseModel"}},
+    )
+    index = IndexBuilder().build([file_node, _node("domains.models.Thing", NodeType.CLASS)])
+    assert index.classify_fqn("pydantic.BaseModel") is NodeNamespace.EXTERNAL
+
+
+def test_a_package_sharing_a_name_with_a_project_subpackage_stays_external() -> None:
+    """`grpc` the library must not become internal because of `api/deps/grpc/`.
+
+    The earlier per-call-path guard used map_to_node_fqn, which matches by
+    suffix on purpose, and this exact collision made it stop resolving 56
+    genuine gRPC calls on owner-api. The discriminator here asks whether the
+    *import value* reaches a node, not whether some node ends with the name.
+    """
+    file_node = _node(
+        "api.deps.grpc.client",
+        node_type=NodeType.FILE,
+        metadata={"import_map": {"Channel": "grpc.Channel"}},
+    )
+    index = IndexBuilder().build([file_node, _node("api.deps.grpc.client.Stub", NodeType.CLASS)])
+    assert index.classify_fqn("grpc.Channel") is NodeNamespace.EXTERNAL
+
+
+def test_a_library_submodule_sharing_a_top_level_name_stays_external() -> None:
+    """`from pydantic import config` must not make pydantic first-party.
+
+    Stripping the root of `pydantic.config` leaves `config`, and a project with a
+    top-level config.py has a node by that name — so the whole of pydantic would
+    classify INTERNAL and resolution for every symbol in it would break. `config`
+    and `utils` are among the most common module names in Python, so this is a
+    likely collision rather than a contrived one.
+
+    Requiring two segments after the strip removes it: two cannot collide by
+    accident, and a genuine first-party prefix always has deeper imports —
+    measured on owner-api, 3346 values resolve and none needs a single-segment
+    match.
+    """
+    consumer = _node(
+        "svc",
+        node_type=NodeType.FILE,
+        file_path="svc.py",
+        metadata={"import_map": {"config": "pydantic.config", "BaseModel": "pydantic.BaseModel"}},
+    )
+    index = IndexBuilder().build(
+        [consumer, _node("config", NodeType.FILE, file_path="config.py"), _node("svc.go")]
+    )
+    assert index.classify_fqn("pydantic.BaseModel") is NodeNamespace.EXTERNAL
+    assert "pydantic" not in index.internal_roots
