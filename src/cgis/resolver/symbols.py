@@ -84,7 +84,12 @@ def _declaring_class(
         seen.add(current)
         if attr in index.self_types.get(current, {}):
             return current
-        stack.extend(inheritance.get(current, []))
+        # Reversed because the stack is LIFO: extending in source order would pop
+        # the *rightmost* base first, so `class C(Left, Right)` would answer with
+        # Right's declaration where Python's MRO uses Left's. The sibling
+        # _resolve_method_on_class_hierarchy recurses in source order and is
+        # already correct; this keeps the two consistent.
+        stack.extend(reversed(inheritance.get(current, [])))
     return None
 
 

@@ -1542,3 +1542,34 @@ def test_a_genuine_library_receiver_still_resolves() -> None:
     resolved, _ = ResolverEngine(nodes, edges).resolve()
     targets = {e.target for e in resolved if e.source == "pkg.mod.Extractor.go"}
     assert "tree_sitter.Parser.parse" in targets
+
+
+def test_multiple_inheritance_takes_the_leftmost_declaration() -> None:
+    """`class C(Left, Right)` with the attribute on both resolves to Left's type.
+
+    Python's MRO searches bases left to right. The ancestor walk is iterative
+    over a LIFO stack, so extending it in source order pops the rightmost base
+    first and silently answers with the wrong class — a wrong type in
+    self_types, which is worse than a missing one because the call then resolves
+    confidently to the wrong method.
+    """
+    clients = (
+        "class LeftClient:\n    def ping(self):\n        return 'left'\n"
+        "class RightClient:\n    def ping(self):\n        return 'right'\n"
+    )
+    rest = (
+        "from pkg.clients import LeftClient, RightClient\n"
+        "class LeftBase:\n"
+        "    def __init__(self, c: LeftClient) -> None:\n"
+        "        self.client = c\n"
+        "class RightBase:\n"
+        "    def __init__(self, c: RightClient) -> None:\n"
+        "        self.client = c\n"
+        "class Child(LeftBase, RightBase):\n"
+        "    def go(self):\n"
+        "        return self.client.ping()\n"
+    )
+    resolved = _resolve_two("pkg/clients.py", clients, "pkg/rest.py", rest)
+    calls = {(e.source, e.target) for e in resolved if e.type == EdgeType.CALLS}
+    assert ("pkg.rest.Child.go", "pkg.clients.LeftClient.ping") in calls
+    assert ("pkg.rest.Child.go", "pkg.clients.RightClient.ping") not in calls
