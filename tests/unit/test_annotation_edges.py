@@ -94,3 +94,16 @@ def test_unresolvable_annotation_produces_no_reference_edge() -> None:
 def test_no_raw_dep_target_survives_resolution() -> None:
     code = "class Port:\n    pass\ndef use(p: Port, items: list[int]) -> None:\n    pass\n"
     assert not [e for e in _resolve(code) if e.target.startswith(_RAW_DEP)]
+
+
+def test_import_map_hit_with_no_node_produces_no_reference_edge() -> None:
+    """A third-party import can make resolve_class_ref return an FQN with no node.
+
+    `from numpy import NDArray` puts "NDArray" -> "numpy.NDArray" in the file's
+    import map, so `resolve_class_ref`'s import-map branch returns that FQN via
+    its `... or target_fqn` fallback (there is no `numpy.NDArray` node in this
+    graph). The membership check in `_resolved_dep_edge` is what keeps this
+    resolved-but-nodeless FQN from becoming a REFERENCES edge.
+    """
+    code = "from numpy import NDArray\ndef use(x: NDArray) -> None:\n    pass\n"
+    assert _references(code) == set()
