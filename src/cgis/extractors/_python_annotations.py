@@ -13,6 +13,16 @@ from tree_sitter import Node as BaseNode
 
 _STRING_PARSER = Parser(Language(tspython.language()))
 
+# Mirrors `TypeResolver._GENERIC_WRAPPERS` in `_python_types.py` (kept as a
+# separate constant rather than importing a private class attribute across
+# modules): these typing constructs are never themselves a type reference.
+# `Annotated[T, ...]` additionally carries non-type metadata (typically a
+# FastAPI `Depends(...)` call) in its arguments after the first — that
+# metadata is walked separately as a CALLS/DEPENDS_ON edge via the call-node
+# path (see `FunctionHandler.process_call_node`), so only the first argument
+# is a type name here (#194).
+_WRAPPER_NAMES: frozenset[str] = frozenset({"Optional", "Union", "Annotated"})
+
 
 def collect_type_names(annotation_node: BaseNode, code_bytes: bytes) -> list[str]:
     """Return every type name mentioned in an annotation, deduplicated, in source order.
@@ -35,6 +45,8 @@ def collect_type_names(annotation_node: BaseNode, code_bytes: bytes) -> list[str
 
 def _collect(node: BaseNode, code_bytes: bytes, acc: list[str]) -> None:
     """Walk an annotation subtree, appending each type name found to acc."""
+    if node.type == "call":
+        return  # a call expression (e.g. Depends(...)) names no type
     if node.type == "string":
         _collect_from_string(node, code_bytes, acc)
         return
@@ -42,8 +54,34 @@ def _collect(node: BaseNode, code_bytes: bytes, acc: list[str]) -> None:
         acc.append(code_bytes[node.start_byte : node.end_byte].decode("utf-8"))
         if node.type == "attribute":
             return  # a dotted name is one reference, not two
+        return
+    if node.type == "generic_type" and len(node.named_children) == 2:
+        _collect_generic(node, code_bytes, acc)
+        return
     for child in node.named_children:
         _collect(child, code_bytes, acc)
+
+
+def _collect_generic(node: BaseNode, code_bytes: bytes, acc: list[str]) -> None:
+    """Collect a `Base[args...]` subscript, unwrapping Optional/Union/Annotated (#194).
+
+    A wrapper's own name (`Optional`, `Union`, `Annotated`) is never a type
+    reference, so it is skipped rather than collected. `Annotated[T, ...]`
+    additionally only names `T` — the arguments after it are metadata, not
+    types. Any other generic (`list[Node]`, `dict[str, Edge]`) keeps its base
+    name (`list`, `dict` are real types) and every argument.
+    """
+    base, type_parameter = node.named_children
+    args = type_parameter.named_children
+    base_name = code_bytes[base.start_byte : base.end_byte].decode("utf-8")
+    if base_name not in _WRAPPER_NAMES:
+        acc.append(base_name)
+        for arg in args:
+            _collect(arg, code_bytes, acc)
+        return
+    relevant_args = args[:1] if base_name == "Annotated" else args
+    for arg in relevant_args:
+        _collect(arg, code_bytes, acc)
 
 
 def _collect_from_string(node: BaseNode, code_bytes: bytes, acc: list[str]) -> None:

@@ -14,7 +14,11 @@ from cgis.extractors._python_ast import (
 )
 from cgis.extractors._python_ast import file_path_to_module_fqn as _file_path_to_module_fqn
 from cgis.extractors._python_classes import ClassHandler
-from cgis.extractors._python_functions import FunctionHandler
+from cgis.extractors._python_functions import (
+    FunctionHandler,
+    collect_return_annotation,
+    emit_annotation_edges,
+)
 from cgis.extractors._python_imports import ImportHandler
 from cgis.extractors._python_types import TypeResolver
 from cgis.extractors.base import BaseExtractor
@@ -197,6 +201,11 @@ class PythonExtractor(BaseExtractor):
         accumulator (spec D1) — independent of, and in addition to, the
         function-local routing below, since a class-body annotation has no
         enclosing function at all.
+
+        Also emits `raw_dep:` annotation edges (spec D4/D9) for an `AnnAssign`
+        (`x: T` or `x: T = ...`), sourced from the enclosing function if there
+        is one, else the enclosing class. A bare module-level annotation (no
+        enclosing function or class) has no source FQN and emits nothing.
         """
         class_fqn = enclosing_class_fqn(
             node, code_bytes, file_path, self._pick_source_root(file_path)
@@ -217,6 +226,12 @@ class PythonExtractor(BaseExtractor):
                 self_types_acc,
                 in_class_body=current_func_node is None,
             )
+
+        type_node = node.child_by_field_name("type")
+        if type_node is not None:
+            source_fqn = current_func_node.id if current_func_node else class_fqn
+            if source_fqn:
+                emit_annotation_edges(type_node, code_bytes, source_fqn, file_path, edges)
 
         if current_func_node:
             if local_types_acc is not None:
@@ -270,6 +285,7 @@ class PythonExtractor(BaseExtractor):
             next_func_node = self._functions.process_function_node(
                 node, code_bytes, file_path, nodes, edges, module_fqn or ""
             )
+            collect_return_annotation(node, code_bytes, next_func_node, file_path, edges)
         elif node.type == "class_definition":
             self._classes.process_class_node(
                 node, code_bytes, file_path, nodes, edges, module_fqn or ""

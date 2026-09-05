@@ -11,6 +11,7 @@ from typing import Any
 from tree_sitter import Node as BaseNode
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
+from cgis.extractors._python_annotations import collect_type_names
 from cgis.extractors._python_ast import (
     PYTHON_LANG,
     assigned_attr_name,
@@ -276,9 +277,10 @@ class FunctionHandler:
     ) -> None:
         """Populate acc with param→FQN for typed parameter annotations.
 
-        Also emits a speculative `raw_dep:` DEPENDS_ON candidate per typed
-        parameter; the resolver keeps it only when it resolves to a DI alias
-        (VARIABLE node) and drops it otherwise (spec §3.2c).
+        Also emits one speculative `raw_dep:` DEPENDS_ON candidate per type name
+        found in the parameter annotation (spec D9); the resolver keeps a name
+        only when it resolves to a DI alias (VARIABLE node) or an internal class
+        and drops the rest (spec §3.2c).
         """
         if not node.named_children:
             return
@@ -299,18 +301,7 @@ class FunctionHandler:
         acc.setdefault(func_node.id, {})[var_name] = self._types.resolve_type_fqn(
             clean_type, import_map, func_node.file_path
         )
-        edges.append(
-            Edge(
-                id=f"{func_node.file_path}:rawdep_{node.start_byte}_{node.end_byte}",
-                type=EdgeType.DEPENDS_ON,
-                source=func_node.id,
-                target=f"raw_dep:{clean_type}",
-                confidence=0.1,
-                context=f"Annotation candidate {clean_type}",
-                file_path=func_node.file_path,
-                line_number=node.start_point.row + 1,
-            )
-        )
+        emit_annotation_edges(type_node, code_bytes, func_node.id, func_node.file_path, edges)
 
     def collect_self_type(
         self,
@@ -366,6 +357,58 @@ class FunctionHandler:
             )
         if resolved:
             acc.setdefault(class_fqn, {})[attr_name] = resolved
+
+
+def emit_annotation_edges(
+    type_node: BaseNode,
+    code_bytes: bytes,
+    source_fqn: str,
+    file_path: str,
+    edges: list[Edge],
+) -> None:
+    """Emit one speculative `raw_dep:` edge per type named in an annotation.
+
+    The resolver keeps a name that resolves to a DI alias (as DEPENDS_ON) or
+    to an internal class (as REFERENCES) and drops the rest, so emitting
+    stdlib and third-party names here costs nothing downstream (spec D3/D4).
+
+    Module-level (not a `FunctionHandler` method) per Controller Ruling 5: it
+    needs only `collect_type_names` and `Edge`, no instance state, and adding
+    it as a method would push `FunctionHandler` past the self-parsing god-object
+    gate (`test_god_object_baseline_not_exceeded`).
+    """
+    for name in collect_type_names(type_node, code_bytes):
+        if name == "None":
+            continue
+        edges.append(
+            Edge(
+                id=f"{file_path}:rawdep_{type_node.start_byte}_{type_node.end_byte}_{name}",
+                type=EdgeType.DEPENDS_ON,
+                source=source_fqn,
+                target=f"raw_dep:{name}",
+                confidence=0.1,
+                context=f"Annotation candidate {name}",
+                file_path=file_path,
+                line_number=type_node.start_point.row + 1,
+            )
+        )
+
+
+def collect_return_annotation(
+    node: BaseNode,
+    code_bytes: bytes,
+    func_node: Node,
+    file_path: str,
+    edges: list[Edge],
+) -> None:
+    """Emit annotation edges for a function's return type, if it has one.
+
+    Module-level per Controller Ruling 5 — see `emit_annotation_edges`.
+    """
+    type_node = node.child_by_field_name("return_type")
+    if type_node is None:
+        return
+    emit_annotation_edges(type_node, code_bytes, func_node.id, file_path, edges)
 
 
 def _resolve_self_type_annotation(
