@@ -1678,3 +1678,56 @@ def test_a_private_name_is_not_star_reexported() -> None:
     resolved = _three(private, init, consumer)
     refs = {(e.source, e.target) for e in resolved if e.type == EdgeType.REFERENCES}
     assert ("app.svc.go", "app.models.rating._Internal") not in refs
+
+
+# ---------------------------------------------------------------------------
+# Calls outside a function body (#416)
+# ---------------------------------------------------------------------------
+
+
+def test_module_level_construction_is_recorded() -> None:
+    """A class built in a module-level registry is used, and must not read as dead.
+
+    `_EXTRACTORS = {".py": PythonExtractor()}` produced no CALLS edge at all,
+    because the walker dispatched a call node only when it had an enclosing
+    function. Registry dicts, singletons and DI wiring are exactly the shape
+    that assembles an application, and all of it was invisible.
+    """
+    ext = "class Extractor:\n    pass\n"
+    reg = "from pkg.ext import Extractor\n\n_REGISTRY = {'py': Extractor()}\n"
+    resolved = _resolve_two("pkg/ext.py", ext, "pkg/reg.py", reg)
+    calls = {(e.source, e.target) for e in resolved if e.type == EdgeType.CALLS}
+    assert ("pkg.reg", "pkg.ext.Extractor") in calls
+
+
+def test_class_body_call_is_attributed_to_the_class() -> None:
+    """`x = Factory()` in a class body belongs to the class, not to the module."""
+    fac = "class Factory:\n    pass\n"
+    holder = "from pkg.fac import Factory\nclass Holder:\n    made = Factory()\n"
+    resolved = _resolve_two("pkg/fac.py", fac, "pkg/holder.py", holder)
+    calls = {(e.source, e.target) for e in resolved if e.type == EdgeType.CALLS}
+    assert ("pkg.holder.Holder", "pkg.fac.Factory") in calls
+    assert ("pkg.holder", "pkg.fac.Factory") not in calls
+
+
+def test_call_inside_a_module_level_lambda_is_recorded() -> None:
+    """A lambda is not a def, so its body was invisible too.
+
+    `build: lambda roots: Extractor(roots)` in a registry tuple is how this
+    repository wires its own extractors, and the construction was lost.
+    """
+    ext = "class Extractor:\n    pass\n"
+    reg = "from pkg.ext import Extractor\n\nBUILD = lambda r: Extractor()\n"
+    resolved = _resolve_two("pkg/ext.py", ext, "pkg/reg.py", reg)
+    calls = {(e.source, e.target) for e in resolved if e.type == EdgeType.CALLS}
+    assert ("pkg.reg", "pkg.ext.Extractor") in calls
+
+
+def test_a_function_body_call_still_belongs_to_the_function() -> None:
+    """Guard: the ordinary case must keep its own source, not slide to the module."""
+    ext = "class Extractor:\n    pass\n"
+    user = "from pkg.ext import Extractor\ndef build():\n    return Extractor()\n"
+    resolved = _resolve_two("pkg/ext.py", ext, "pkg/user.py", user)
+    calls = {(e.source, e.target) for e in resolved if e.type == EdgeType.CALLS}
+    assert ("pkg.user.build", "pkg.ext.Extractor") in calls
+    assert ("pkg.user", "pkg.ext.Extractor") not in calls

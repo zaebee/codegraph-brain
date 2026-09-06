@@ -247,7 +247,7 @@ class PythonExtractor(BaseExtractor):
         elif is_module_level_assignment(node, code_bytes, current_func_node):
             # True module level: not in a function (current_func_node) and not
             # in a class body (get_fqn_prefix). Class-body DI aliases are out
-            # of scope (spec §6).
+            # of scope (2026-06-11-fastapi-di-edges-design.md §6).
             self._functions.process_module_assignment(
                 node, code_bytes, file_path, nodes, edges, module_fqn
             )
@@ -304,10 +304,8 @@ class PythonExtractor(BaseExtractor):
                 node, code_bytes, file_path, nodes, edges, module_fqn or ""
             )
             next_func_node = None
-        elif node.type == "call" and current_func_node:
-            self._functions.process_call_node(
-                node, code_bytes, file_path, current_func_node.id, edges
-            )
+        elif node.type == "call":
+            self._handle_call(node, code_bytes, file_path, edges, current_func_node, module_fqn)
         elif node.type == "assignment":
             self._handle_assignment(
                 node,
@@ -343,6 +341,51 @@ class PythonExtractor(BaseExtractor):
                 local_types_acc=local_types_acc,
                 self_types_acc=self_types_acc,
                 star_imports=star_imports,
+            )
+
+    def _handle_call(
+        self,
+        node: BaseNode,
+        code_bytes: bytes,
+        file_path: str,
+        edges: list[Edge],
+        current_func_node: Node | None,
+        module_fqn: str | None,
+    ) -> None:
+        """Emit a CALLS edge, attributed to whatever owns the call site.
+
+        A call outside any function used to be dropped entirely, so a class
+        built in a module-level registry, a singleton, or DI wiring had no
+        incoming edge and read as dead code (#416). The source is the nearest
+        thing that owns it: the enclosing function, else the enclosing class,
+        else the module.
+
+        `emit_di` is off outside a function because `process_call_node` also
+        turns `Depends(x)`/`Security(x)` into DEPENDS_ON edges, and class-body
+        DI aliases are out of scope (2026-06-11-fastapi-di-edges-design.md §6).
+
+        Two consequences worth knowing before reading a number off the graph.
+        Field defaults now count: `x: int = Field(...)` in a model body is a
+        real call from that class, so `_compute_class_coupling` gives every
+        such model efferent coupling to `pydantic.Field` and its kin. And a
+        call inside a *decorator expression* is still dropped — `_walk` hands
+        `decorated_definition` to `_handle_decorated_definition`, which
+        descends into the definition and never into the decorators (#429).
+        """
+        source = current_func_node.id if current_func_node else None
+        if source is None:
+            source = (
+                enclosing_class_fqn(node, code_bytes, file_path, self._pick_source_root(file_path))
+                or module_fqn
+            )
+        if source:
+            self._functions.process_call_node(
+                node,
+                code_bytes,
+                file_path,
+                source,
+                edges,
+                emit_di=current_func_node is not None,
             )
 
     def _handle_decorated_definition(
