@@ -97,6 +97,60 @@ def _attribute_path(node: BaseNode, code_bytes: bytes) -> str | None:
     return f"{head}.{code_bytes[member.start_byte : member.end_byte].decode('utf8')}"
 
 
+def _calls_directly(call: BaseNode, head: BaseNode | None) -> bool:
+    """Is this the call the decorator's own name already accounts for?"""
+    if head is None:
+        return False
+    function = call.child_by_field_name("function")
+    return function is not None and function.id == head.id
+
+
+def _decorator_head(decorator: BaseNode) -> BaseNode | None:
+    """The name expression a decorator is spelled with — `router.post` in `@router.post(...)`.
+
+    Descends the leftmost primary: through a call's `function`, a subscript's
+    `value`, and a parenthesised expression, until it reaches the identifier or
+    attribute chain. That node already has an edge from the decorator list, and
+    everything else in the decorator has none.
+    """
+    current: BaseNode | None = next(
+        (c for c in decorator.children if c.is_named and c.type != "comment"), None
+    )
+    while current is not None:
+        if current.type == "call":
+            current = current.child_by_field_name("function")
+        elif current.type == "subscript":
+            current = current.child_by_field_name("value")
+        elif current.type == "parenthesized_expression":
+            current = next((c for c in current.children if c.is_named), None)
+        else:
+            return current
+    return None
+
+
+def _append_name_candidates(
+    node: BaseNode, code_bytes: bytes, owner_fqn: str, acc: list[tuple[str, str, int]]
+) -> None:
+    """Record what one identifier might name: the bare name, and its dotted path.
+
+    Two candidates, not one. `from app.api import validators` then
+    `validators.Rule.confirm_by(...)` names a class through its module, and the
+    head alone resolves to a module, which D3 drops — so the two-segment form is
+    what makes such a class visible. When the head *is* the class
+    (`Widget.SIZE`) the extra candidate resolves to nothing and costs nothing.
+
+    Shared by the ordinary walk and the decorator walk. The decorator walk
+    originally reimplemented the bare-name half and omitted this one, so
+    `@router.get(..., response_model=schemas.Out)` — a common FastAPI idiom —
+    stayed invisible: the exact shape #429 exists to fix, half-fixed.
+    """
+    line = node.start_point.row + 1
+    acc.append((owner_fqn, code_bytes[node.start_byte : node.end_byte].decode("utf8"), line))
+    dotted = _attribute_path(node, code_bytes)
+    if dotted is not None:
+        acc.append((owner_fqn, dotted, line))
+
+
 def find_reexports(root: BaseNode, code_bytes: bytes, import_map: dict[str, str]) -> dict[str, str]:
     """Return the imports this module never uses — i.e. passes straight through (#182).
 
@@ -401,20 +455,8 @@ class PythonExtractor(BaseExtractor):
         if not is_name_load(node):
             return
         owner = self._owner_fqn(node, code_bytes, file_path, current_func_node, module_fqn)
-        if not owner:
-            return
-        name = code_bytes[node.start_byte : node.end_byte].decode("utf8")
-        line = node.start_point.row + 1
-        name_refs_acc.append((owner, name, line))
-        dotted = _attribute_path(node, code_bytes)
-        if dotted is not None:
-            # `from app.api import validators` then `validators.Rule.confirm_by(...)`
-            # names a class through its module, and the head alone resolves to a
-            # module, which D3 drops. Recording the two-segment path as well is
-            # what makes such a class visible; when the head is itself the class
-            # (`Widget.SIZE`) the extra candidate resolves to nothing and costs
-            # nothing.
-            name_refs_acc.append((owner, dotted, line))
+        if owner:
+            _append_name_candidates(node, code_bytes, owner, name_refs_acc)
 
     def _owner_fqn(
         self,
@@ -458,13 +500,14 @@ class PythonExtractor(BaseExtractor):
         turns `Depends(x)`/`Security(x)` into DEPENDS_ON edges, and class-body
         DI aliases are out of scope (2026-06-11-fastapi-di-edges-design.md §6).
 
-        Two consequences worth knowing before reading a number off the graph.
-        Field defaults now count: `x: int = Field(...)` in a model body is a
+        One consequence worth knowing before reading a number off the graph:
+        field defaults now count. `x: int = Field(...)` in a model body is a
         real call from that class, so `_compute_class_coupling` gives every
-        such model efferent coupling to `pydantic.Field` and its kin. And a
-        call inside a *decorator expression* is still dropped — `_walk` hands
-        `decorated_definition` to `_handle_decorated_definition`, which
-        descends into the definition and never into the decorators (#429).
+        such model efferent coupling to `pydantic.Field` and its kin.
+
+        Calls inside a decorator expression used to be dropped here; they are
+        handled by `_walk_decorators` now (#429), which owns them because their
+        source is the decorated definition rather than the enclosing scope.
         """
         source = self._owner_fqn(node, code_bytes, file_path, current_func_node, module_fqn)
         if source:
@@ -476,6 +519,73 @@ class PythonExtractor(BaseExtractor):
                 edges,
                 emit_di=current_func_node is not None,
             )
+
+    def _walk_decorators(
+        self,
+        node: BaseNode,
+        code_bytes: bytes,
+        file_path: str,
+        edges: list[Edge],
+        owner_fqn: str,
+        name_refs_acc: list[tuple[str, str, int]] | None,
+    ) -> None:
+        """Record what a decorated definition's decorators call and name (#429).
+
+        `_walk` hands a `decorated_definition` to `_handle_decorated_definition`,
+        which descends into the definition and never into the decorators, so
+        every name written in one was invisible. In a FastAPI codebase that is
+        where response schemas live — `@router.post(..., response_model=Schema)`
+        is often the *only* mention of a schema in the repository, so the orphan
+        query reported them all as dead.
+
+        The owner is the decorated definition: a decorator expression has no
+        other. That is already the convention for the decorator's own name, which
+        `process_function_node` records as `raw_call:<name>` sourced at the
+        function — so this walk covers the arguments only, and a bare `@deco`
+        adds nothing.
+
+        A dedicated walk rather than `_walk`, for one reason: `process_call_node`
+        also turns `Depends(x)` into a DEPENDS_ON edge, and whether a decorator's
+        `dependencies=[Depends(guard)]` should be attributed to the function it
+        guards is a spec decision not yet taken — it would be the first place an
+        edge's source differs from its lexical owner. Keeping this path separate
+        makes `emit_di=False` structural rather than a flag someone can flip by
+        accident. A decorator cannot contain a definition, so there is nothing
+        else `_walk` would have handled here.
+        """
+        for decorator in (c for c in node.children if c.type == "decorator"):
+            # Everything except the decorator's own head name, which
+            # `process_function_node` already records as `raw_call:<name>` from
+            # its decorator list — walking that too emitted `router.post` twice
+            # under two ids, and its name a third time as a REFERENCES.
+            #
+            # Skipping the *head* rather than "everything but the outermost
+            # call's arguments" is what keeps the rarer shapes: `@a.b(X)(Y)`,
+            # `@registry[X]` and `@(deco(X))` all name something the narrower
+            # rule walked straight past.
+            head = _decorator_head(decorator)
+            stack = [c for c in decorator.children if c.type not in ("comment", "@")]
+            while stack:
+                current = stack.pop()
+                if head is not None and current.id == head.id:
+                    continue
+                if current.type == "call" and _calls_directly(current, head):
+                    # `@router.post(...)` — the decorator list already recorded
+                    # this exact call as `raw_call:router.post`. Its arguments
+                    # still need walking, so recurse without processing it.
+                    stack.extend(current.children)
+                    continue
+                if current.type == "call":
+                    self._functions.process_call_node(
+                        current, code_bytes, file_path, owner_fqn, edges, emit_di=False
+                    )
+                elif (
+                    current.type == "identifier"
+                    and name_refs_acc is not None
+                    and is_name_load(current)
+                ):
+                    _append_name_candidates(current, code_bytes, owner_fqn, name_refs_acc)
+                stack.extend(current.children)
 
     def _handle_decorated_definition(
         self,
@@ -504,6 +614,7 @@ class PythonExtractor(BaseExtractor):
                     decorators=raw_decorators,
                 )
                 collect_return_annotation(child, code_bytes, inner, file_path, edges)
+                self._walk_decorators(node, code_bytes, file_path, edges, inner.id, name_refs_acc)
                 for grandchild in child.children:
                     self._walk(
                         grandchild,
@@ -519,7 +630,7 @@ class PythonExtractor(BaseExtractor):
                         name_refs_acc=name_refs_acc,
                     )
             elif child.type == "class_definition":
-                self._classes.process_class_node(
+                class_fqn = self._classes.process_class_node(
                     child,
                     code_bytes,
                     file_path,
@@ -528,6 +639,7 @@ class PythonExtractor(BaseExtractor):
                     module_fqn or "",
                     decorators=raw_decorators,
                 )
+                self._walk_decorators(node, code_bytes, file_path, edges, class_fqn, name_refs_acc)
                 for grandchild in child.children:
                     self._walk(
                         grandchild,

@@ -40,9 +40,11 @@ So on that repository the usable signal is roughly 25 of 43. Filtering these is 
 rather than guessed at here, because each needs a marker the
 graph does not yet carry.
 
-Two blind spots remain, both under-reporting rather than over-reporting — the
-cheap direction for a check whose value is that people trust it: a class named
-only inside a decorator (#429), and a class arriving through `from x import *`.
+One blind spot remains, and it under-reports rather than over-reports — the
+cheap direction for a check whose value is that people trust it: a class
+arriving through `from x import *` is not gated in, because the gate is the
+module's `import_map` keys and a star import contributes none. Classes named
+only inside a decorator used to be a second one; #429 closed it.
 """
 
 from dataclasses import dataclass

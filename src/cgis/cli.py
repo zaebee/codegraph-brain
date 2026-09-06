@@ -1488,10 +1488,9 @@ def orphans(
     reported. What counts is construction, inheritance, and being named — the
     last is what keeps an abstract port off the list.
 
-    A listing is a candidate for deletion, not a proof: a class named only
-    inside a decorator (#429) or arriving through a star import is invisible to
-    the sweep, so it errs towards reporting a live class rather than hiding a
-    dead one.
+    A listing is a candidate for deletion, not a proof: a class arriving through
+    a star import is invisible to the sweep, so it errs towards reporting a live
+    class rather than hiding a dead one.
     """
     if output_format == OutputFormat.MERMAID:
         console.print("[bold red]❌ orphans supports --format text or json only.[/bold red]")
