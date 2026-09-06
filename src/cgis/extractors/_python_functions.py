@@ -110,10 +110,22 @@ class FunctionHandler:
         return func_node
 
     def process_call_node(
-        self, node: BaseNode, code_bytes: bytes, file_path: str, source_id: str, edges: list[Edge]
+        self,
+        node: BaseNode,
+        code_bytes: bytes,
+        file_path: str,
+        source_id: str,
+        edges: list[Edge],
+        emit_di: bool = True,
     ) -> None:
-        """
-        Finds call expressions node.
+        """Emit a CALLS edge for a call expression, and a DI candidate when asked.
+
+        `emit_di` is False for a call outside any function body (#416). There the
+        DI machinery is either already handled by the module-level assignment
+        path — which would otherwise record the same provider twice — or
+        deliberately out of scope, as for a class-body alias
+        (2026-06-11-fastapi-di-edges-design.md §6). The CALLS
+        edge itself is wanted in both places.
         """
         child = node.child_by_field_name("function")
         edge_id = f"{file_path}:edge_{node.start_byte}_{node.end_byte}"
@@ -135,7 +147,7 @@ class FunctionHandler:
                     line_number=node.start_point.row + 1,
                 )
             )
-            if call_name in self._DI_CALL_NAMES:
+            if emit_di and call_name in self._DI_CALL_NAMES:
                 provider = self._di_provider_name(node, code_bytes)
                 if provider:
                     edges.append(
