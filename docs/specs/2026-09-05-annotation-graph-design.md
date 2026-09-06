@@ -512,12 +512,34 @@ a third of the time on every application codebase tested.
 
 ### PR3b — #415 orphan query
 
-* `is_test_path()` + `Node.is_test` + column migration (D5).
-* Orphans query: internal CLASS nodes with no incoming `CALLS`, `EXTENDS` or
-  `REFERENCES` from a non-test source. `IMPORTS_SYMBOL` excluded.
-* Surfaced as a CLI command and an MCP tool, following the existing
-  `audit_reachability` shape.
-* Report the residual false-positive rate measured in PR3a.
+* `is_test_path()` (`core/paths.py`) + `Node.is_test` + column migration (D5).
+  The flag is *derived* from `file_path` in a model validator rather than passed
+  in: the query's correctness rests on every node agreeing what a test is, and
+  an extractor that forgot to set it would make its own classes look
+  production-reachable. An explicit value is still honoured, because the
+  resolver mints virtual boundary nodes with no real file to classify.
+* `find_orphan_classes` (`query/context/orphans.py`): internal `CLASS` nodes,
+  not in test files, with no incoming `CALLS` / `EXTENDS` / `REFERENCES` from a
+  non-test source. `IMPORTS_SYMBOL` excluded; `CONTAINS` excluded (a module
+  holding a class is not a user of it). Measured on owner-api, no `DEPENDS_ON`
+  edge targets an internal class, so the three types above are exhaustive.
+* `cgis orphans` and the `cgis_find_orphans` MCP tool, in the
+  `audit_reachability` shape — including its non-zero exit on findings, so the
+  query gates CI like a linter.
+* The report carries `considered` and `test_sources` alongside the findings.
+  The denominator because "3 orphans" means something different out of 40
+  classes than out of 1 800; `test_sources` because a graph ingested before this
+  column has none, which silently counts every test as production — the CLI says
+  so rather than under-reporting quietly.
+
+**Measured end to end on owner-api** (`ownima-backend/app`, re-ingested):
+748 internal production classes, 8 418 test-source nodes, **43 orphans** — the
+same 43 the throwaway measurement script reported in PR3a, which is the
+agreement worth having between a product query and the script that justified it.
+`--prefix domains` narrows to 16 of 284, mostly request/response schemas, which
+is the shape #415 predicted for that subtree. `--include-tests` drops the count
+to 39: four classes are alive only because their own tests build them, which is
+the filter doing its work on real code.
 
 ## Testing
 

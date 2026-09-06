@@ -42,6 +42,7 @@ from cgis.query.analysis.health import HealthScorer
 from cgis.query.analysis.suggest_service import SuggestReport, report_to_dict, suggest_packages
 from cgis.query.context.audit import ReachabilityAudit, audit_reachability
 from cgis.query.context.context_service import build_context
+from cgis.query.context.orphans import OrphanReport, find_orphan_classes
 from cgis.query.drift.drift import DriftReport, FitQuality
 from cgis.query.drift.drift_service import analyze_drift
 from cgis.query.drift.fractal import FractalReport, analyze_fractal_db
@@ -1427,6 +1428,86 @@ def audit(
         _render_audit(result)
     # Exit non-zero when gaps exist so `cgis audit` can gate CI like a linter.
     if result.gaps:
+        raise typer.Exit(code=1)
+
+
+def _render_orphans(report: OrphanReport) -> None:
+    """Print the orphan report — the population, then each candidate with its location."""
+    console.print(
+        f"[bold blue]🪦 Orphan classes:[/bold blue] {len(report.orphans)} of "
+        f"{report.considered} internal production classes have no incoming "
+        "CALLS / EXTENDS / REFERENCES from production code"
+    )
+    if report.test_sources == 0:
+        console.print(
+            "  [yellow]⚠  no test sources in this graph.[/yellow] If the repository has "
+            "tests, re-ingest — a graph built before the is_test column counts them as "
+            "production and will under-report."
+        )
+    for orphan in report.orphans:
+        console.print(
+            f"  [bold red]✗ {escape(orphan.fqn)}[/bold red] "
+            f"[dim]({escape(orphan.file)}:{orphan.line})[/dim]"
+        )
+    if not report.orphans:
+        console.print("  [green]✅ nothing unreachable.[/green]")
+
+
+@app.command()
+def orphans(
+    prefix: str | None = typer.Option(
+        None,
+        "--prefix",
+        "-p",
+        help="Only consider classes whose FQN starts with this prefix (dot boundary).",
+    ),
+    db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
+    include_tests: bool = typer.Option(
+        False,
+        "--include-tests",
+        help="Count test code as a user. Turns the report into 'unreachable from anywhere'.",
+    ),
+    output_format: OutputFormat = typer.Option(
+        OutputFormat.TEXT, "--format", "-f", help=_TEXT_JSON_FORMAT_HELP
+    ),
+) -> None:
+    """Classes nothing in production builds, extends or names (#415).
+
+    Dead classes that no test, type checker or linter has anything to say about,
+    because each of them is imported somewhere — a package re-export keeps a
+    class importable long after its last real caller is gone:
+
+        cgis orphans --prefix app.domains
+
+    Two filters make the answer usable, and both are deliberate. **Tests are not
+    users:** a class built only by its own test is the shape being hunted. **A
+    re-export is not a use:** IMPORTS_SYMBOL does not count, or nothing is ever
+    reported. What counts is construction, inheritance, and being named — the
+    last is what keeps an abstract port off the list.
+
+    A listing is a candidate for deletion, not a proof: a class named only
+    inside a decorator (#429) or arriving through a star import is invisible to
+    the sweep, so it errs towards reporting a live class rather than hiding a
+    dead one.
+    """
+    if output_format == OutputFormat.MERMAID:
+        console.print("[bold red]❌ orphans supports --format text or json only.[/bold red]")
+        raise typer.Exit(code=2)
+    if not Path(db).is_file():
+        console.print(
+            f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
+        )
+        raise typer.Exit(code=1)
+
+    with SQLiteStore(db) as store:
+        report = find_orphan_classes(store, prefix=prefix, include_tests=include_tests)
+
+    if output_format == OutputFormat.JSON:
+        typer.echo(_json.dumps(dataclasses.asdict(report), indent=2))
+    else:
+        _render_orphans(report)
+    # Non-zero on findings, so `cgis orphans` can gate CI the way `audit` does.
+    if report.orphans:
         raise typer.Exit(code=1)
 
 

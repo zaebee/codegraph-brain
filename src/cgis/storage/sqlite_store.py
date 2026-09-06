@@ -79,7 +79,8 @@ class SQLiteStore:
             domains TEXT,
             confidence_score REAL NOT NULL,
             metadata TEXT,
-            namespace TEXT NOT NULL DEFAULT 'INTERNAL'
+            namespace TEXT NOT NULL DEFAULT 'INTERNAL',
+            is_test INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS edges (
@@ -120,12 +121,18 @@ class SQLiteStore:
                 "ALTER TABLE nodes ADD COLUMN namespace TEXT NOT NULL DEFAULT 'INTERNAL'"
             )
             self._conn.commit()
+        if "is_test" not in cols:
+            # An existing graph gets 0 for every row, which reads as "all
+            # production" — the behaviour before this column existed. Re-ingest
+            # to populate it; the orphan query says so when it finds none.
+            self._conn.execute("ALTER TABLE nodes ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0")
+            self._conn.commit()
 
     _NODE_INSERT = """
         INSERT OR REPLACE INTO nodes (
             id, type, name, file_path, start_line, end_line, language,
-            ontology_class, domains, confidence_score, metadata, namespace
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ontology_class, domains, confidence_score, metadata, namespace, is_test
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
     _EDGE_INSERT = """
         INSERT OR REPLACE INTO edges (
@@ -136,7 +143,7 @@ class SQLiteStore:
 
     def _node_to_row(
         self, n: Node
-    ) -> tuple[str, str, str, str, int, int, str, str | None, str, float, str, str]:
+    ) -> tuple[str, str, str, str, int, int, str, str | None, str, float, str, str, int]:
         """Serialise a Node into a tuple matching the nodes table column order."""
         return (
             n.id,
@@ -151,6 +158,7 @@ class SQLiteStore:
             n.confidence_score,
             json.dumps(n.metadata),
             n.namespace.value,
+            int(n.is_test),
         )
 
     def _edge_to_row(
@@ -569,6 +577,10 @@ class SQLiteStore:
             domains=json.loads(row["domains"]) or [] if row["domains"] else [],
             confidence_score=row["confidence_score"],
             metadata=json.loads(row["metadata"]) or {} if row["metadata"] else {},
+            # `in row.keys()`, not `in row`: sqlite3.Row iterates its *values*,
+            # so the shorter form ruff suggests (SIM118) is always False here
+            # and would silently mark every node as production code.
+            is_test=bool(row["is_test"]) if "is_test" in row.keys() else False,  # noqa: SIM118
             namespace=NodeNamespace(row["namespace"])
             if row["namespace"]
             else NodeNamespace.INTERNAL,

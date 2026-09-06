@@ -85,7 +85,8 @@ CREATE TABLE IF NOT EXISTS nodes (
             domains TEXT,
             confidence_score REAL NOT NULL,
             metadata TEXT,
-            namespace TEXT NOT NULL DEFAULT 'INTERNAL'
+            namespace TEXT NOT NULL DEFAULT 'INTERNAL',
+            is_test INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS edges (

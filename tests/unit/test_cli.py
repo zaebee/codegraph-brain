@@ -1547,3 +1547,80 @@ def test_drift_table_renders_markup_bearing_domain_literally(tmp_path: Path) -> 
     assert hostile in _unwrapped(result.output), (
         f"domain name mangled by Rich markup parsing: {result.output!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# `cgis orphans` (#415)
+# ---------------------------------------------------------------------------
+
+
+def _orphan_graph(tmp_path: Path) -> str:
+    """One live class, one built only by a test, one nothing touches."""
+
+    def node(node_id: str, node_type: NodeType, path: str) -> Node:
+        return Node(
+            id=node_id,
+            type=node_type,
+            name=node_id.rsplit(".", maxsplit=1)[-1],
+            file_path=path,
+            start_line=7,
+            end_line=9,
+        )
+
+    nodes = [
+        node("app.a.Live", NodeType.CLASS, "app/a.py"),
+        node("app.b.TestOnly", NodeType.CLASS, "app/b.py"),
+        node("app.c.Dead", NodeType.CLASS, "app/c.py"),
+        node("app.svc.run", NodeType.FUNCTION, "app/svc.py"),
+        node("tests.test_b", NodeType.FILE, "tests/test_b.py"),
+    ]
+    edges = [
+        Edge(id="e1", source="app.svc.run", target="app.a.Live", type=EdgeType.CALLS),
+        Edge(id="e2", source="tests.test_b", target="app.b.TestOnly", type=EdgeType.CALLS),
+    ]
+    db = str(tmp_path / "orphans.db")
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)
+    return db
+
+
+def test_orphans_reports_the_test_only_class_and_exits_non_zero(tmp_path: Path) -> None:
+    """The CLI gates CI like `audit` does: findings mean a non-zero exit."""
+    db = _orphan_graph(tmp_path)
+    result = runner.invoke(app, ["orphans", "--db", db])
+    assert result.exit_code == 1, result.output
+    assert "app.b.TestOnly" in result.output
+    assert "app.c.Dead" in result.output
+    assert "app.a.Live" not in result.output
+
+
+def test_orphans_json_carries_the_population(tmp_path: Path) -> None:
+    """`considered` travels with the findings — 2 of 3 reads unlike 2 of 1800."""
+    db = _orphan_graph(tmp_path)
+    result = runner.invoke(app, ["orphans", "--db", db, "--format", "json"])
+    payload = json.loads(result.output)
+    assert payload["considered"] == 3
+    assert payload["test_sources"] == 1
+    assert [o["fqn"] for o in payload["orphans"]] == ["app.b.TestOnly", "app.c.Dead"]
+    assert payload["orphans"][0]["line"] == 7
+
+
+def test_orphans_include_tests_drops_the_test_only_class(tmp_path: Path) -> None:
+    """The opt-out of the decisive filter, so its effect is visible from the CLI."""
+    db = _orphan_graph(tmp_path)
+    result = runner.invoke(app, ["orphans", "--db", db, "--include-tests", "--format", "json"])
+    assert [o["fqn"] for o in json.loads(result.output)["orphans"]] == ["app.c.Dead"]
+
+
+def test_orphans_rejects_mermaid(tmp_path: Path) -> None:
+    """A list of locations is not a diagram."""
+    db = _orphan_graph(tmp_path)
+    result = runner.invoke(app, ["orphans", "--db", db, "--format", "mermaid"])
+    assert result.exit_code == 2
+
+
+def test_orphans_without_a_database_says_so(tmp_path: Path) -> None:
+    """The same missing-db message shape as every other query command."""
+    result = runner.invoke(app, ["orphans", "--db", str(tmp_path / "nope.db")])
+    assert result.exit_code == 1
+    assert "Database not found" in result.output
