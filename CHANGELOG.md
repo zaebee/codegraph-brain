@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.18.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.17.0...codegraph-brain-v0.18.0) (2026-09-06)
+
+
+### Features
+
+* **extractors:** a class named as a value is a reference (D10, [#415](https://github.com/zaebee/codegraph-brain/issues/415)) ([#430](https://github.com/zaebee/codegraph-brain/issues/430)) ([aea4076](https://github.com/zaebee/codegraph-brain/commit/aea4076b45d0761f50bb989936e89c8054402372))
+* **extractors:** a decorator's arguments are edges, and a decorated class keeps its own ([#429](https://github.com/zaebee/codegraph-brain/issues/429)) ([#434](https://github.com/zaebee/codegraph-brain/issues/434)) ([fd0c63f](https://github.com/zaebee/codegraph-brain/commit/fd0c63f1f887a0b65a433d01571654ae79419ef3))
+* **query:** orphan classes — what production no longer builds ([#415](https://github.com/zaebee/codegraph-brain/issues/415)) ([#431](https://github.com/zaebee/codegraph-brain/issues/431)) ([3b4db3c](https://github.com/zaebee/codegraph-brain/commit/3b4db3cb231d43ae388b080d64d19b3244739017))
+* **resolver:** resolve self.&lt;attr&gt;.&lt;method&gt; through the declared receiver ([#414](https://github.com/zaebee/codegraph-brain/issues/414)) ([#423](https://github.com/zaebee/codegraph-brain/issues/423)) ([a1c94a2](https://github.com/zaebee/codegraph-brain/commit/a1c94a2e4629da955deef761467730a7d711c3fe))
+
+
+### Bug Fixes
+
+* **extractors:** attribute a module-level or class-body call to its owner ([#416](https://github.com/zaebee/codegraph-brain/issues/416)) ([#428](https://github.com/zaebee/codegraph-brain/issues/428)) ([c9f39b8](https://github.com/zaebee/codegraph-brain/commit/c9f39b81bf3a644441b7b5a3215df2d6b39b9489))
+* **resolver:** an import prefix that reaches a node is first-party, not external ([#424](https://github.com/zaebee/codegraph-brain/issues/424)) ([#426](https://github.com/zaebee/codegraph-brain/issues/426)) ([50f8b7c](https://github.com/zaebee/codegraph-brain/commit/50f8b7c03d716c25f9341a879c76a8707f3853fb))
+* **resolver:** resolve a name through the package that re-exports it ([#417](https://github.com/zaebee/codegraph-brain/issues/417)) ([#427](https://github.com/zaebee/codegraph-brain/issues/427)) ([ef76f95](https://github.com/zaebee/codegraph-brain/commit/ef76f9546b4477d4736406eabe417e6e49e68e23))
+
+
+### Documentation
+
+* auto-sync architecture graph and MCP reference ([#433](https://github.com/zaebee/codegraph-brain/issues/433)) ([40af3ee](https://github.com/zaebee/codegraph-brain/commit/40af3ee6839b53a953124e25f1f39b5379bff890))
+
 ## [0.17.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.16.0...codegraph-brain-v0.17.0) (2026-09-05)
 
 
