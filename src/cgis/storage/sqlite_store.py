@@ -2,10 +2,12 @@
 
 import json
 import sqlite3
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
+from cgis.core.paths import is_test_path
 
 RAW_CALL_PREFIX = "raw_call:"
 
@@ -79,7 +81,8 @@ class SQLiteStore:
             domains TEXT,
             confidence_score REAL NOT NULL,
             metadata TEXT,
-            namespace TEXT NOT NULL DEFAULT 'INTERNAL'
+            namespace TEXT NOT NULL DEFAULT 'INTERNAL',
+            is_test INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS edges (
@@ -120,12 +123,31 @@ class SQLiteStore:
                 "ALTER TABLE nodes ADD COLUMN namespace TEXT NOT NULL DEFAULT 'INTERNAL'"
             )
             self._conn.commit()
+        if "is_test" not in cols:
+            self._conn.execute("ALTER TABLE nodes ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0")
+            self._backfill_is_test()
+            self._conn.commit()
+
+    def _backfill_is_test(self) -> None:
+        """Populate the new column from the paths already stored (spec D5).
+
+        `is_test_path` is pure and `file_path` is in every row, so a migrated
+        graph does not have to be re-ingested to answer the orphan query
+        correctly — without this it would report every test as production code
+        and silently under-report. One pass, at migration time only.
+        """
+        if not self._conn:
+            return
+        rows = self._conn.execute("SELECT id, file_path FROM nodes").fetchall()
+        test_ids = [(row["id"],) for row in rows if is_test_path(row["file_path"] or "")]
+        if test_ids:
+            self._conn.executemany("UPDATE nodes SET is_test = 1 WHERE id = ?", test_ids)
 
     _NODE_INSERT = """
         INSERT OR REPLACE INTO nodes (
             id, type, name, file_path, start_line, end_line, language,
-            ontology_class, domains, confidence_score, metadata, namespace
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ontology_class, domains, confidence_score, metadata, namespace, is_test
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
     _EDGE_INSERT = """
         INSERT OR REPLACE INTO edges (
@@ -136,7 +158,7 @@ class SQLiteStore:
 
     def _node_to_row(
         self, n: Node
-    ) -> tuple[str, str, str, str, int, int, str, str | None, str, float, str, str]:
+    ) -> tuple[str, str, str, str, int, int, str, str | None, str, float, str, str, int]:
         """Serialise a Node into a tuple matching the nodes table column order."""
         return (
             n.id,
@@ -151,6 +173,7 @@ class SQLiteStore:
             n.confidence_score,
             json.dumps(n.metadata),
             n.namespace.value,
+            int(n.is_test),
         )
 
     def _edge_to_row(
@@ -199,6 +222,33 @@ class SQLiteStore:
             raise RuntimeError(self._error_message)
         cursor = self._conn.execute("SELECT * FROM nodes")
         return [self._row_to_node(row) for row in cursor.fetchall()]
+
+    def get_referenced_targets(
+        self, edge_types: Iterable[EdgeType], *, from_test_sources: bool = True
+    ) -> set[str]:
+        """Distinct targets of edges of these types, optionally from production sources only.
+
+        Answers "what does anything point at" without materialising the edges.
+        The orphan query needs a set of ids out of 75 000 edges on a mid-sized
+        backend; going through `get_all_edges` builds 75 000 Pydantic models to
+        throw all but the target away, which is where its 168 MB went — and 1.8 GB
+        on a 1M-edge graph. This does it in SQL, which is what the store is for.
+        """
+        types = sorted({t.value for t in edge_types})
+        if not types:
+            return set()
+        placeholders = ",".join("?" * len(types))
+        source_filter = "" if from_test_sources else " AND n.is_test = 0"
+        # A join rather than a subquery: an edge whose source is not a node at
+        # all (a virtual boundary target has no row until the resolver mints
+        # one) must not count as a production reference.
+        sql = (
+            "SELECT DISTINCT e.target FROM edges e "
+            "JOIN nodes n ON e.source = n.id "
+            f"WHERE e.type IN ({placeholders}){source_filter}"
+        )
+        rows = self._conn.execute(sql, types).fetchall() if self._conn else []
+        return {row[0] for row in rows}
 
     def get_all_edges(self) -> list[Edge]:
         """Return every edge currently in the store."""
@@ -569,6 +619,10 @@ class SQLiteStore:
             domains=json.loads(row["domains"]) or [] if row["domains"] else [],
             confidence_score=row["confidence_score"],
             metadata=json.loads(row["metadata"]) or {} if row["metadata"] else {},
+            # `in row.keys()`, not `in row`: sqlite3.Row iterates its *values*,
+            # so the shorter form ruff suggests (SIM118) is always False here
+            # and would silently mark every node as production code.
+            is_test=bool(row["is_test"]) if "is_test" in row.keys() else False,  # noqa: SIM118
             namespace=NodeNamespace(row["namespace"])
             if row["namespace"]
             else NodeNamespace.INTERNAL,

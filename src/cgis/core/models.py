@@ -3,7 +3,9 @@
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from cgis.core.paths import is_test_path
 
 
 class NodeNamespace(StrEnum):
@@ -108,10 +110,29 @@ class Node(BaseModel):
 
     # Classification
     namespace: NodeNamespace = Field(default=NodeNamespace.INTERNAL)
+    is_test: bool = Field(
+        default=False,
+        description="Test code rather than production code — derived from file_path (spec D5)",
+    )
 
     # Reliability
     confidence_score: float = Field(default=1.0, ge=0.0, le=1.0)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _derive_is_test(cls, data: object) -> object:
+        """Fill `is_test` from `file_path`, so no caller has to remember to (spec D5).
+
+        Derived rather than passed in: the orphan query's correctness rests on
+        every node agreeing about what a test is, and an extractor that forgot
+        the flag would make its own classes look production-reachable. An
+        explicit value is honoured — the resolver mints virtual boundary nodes
+        with no real file to classify.
+        """
+        if isinstance(data, dict) and "is_test" not in data and data.get("file_path"):
+            return {**data, "is_test": is_test_path(str(data["file_path"]))}
+        return data
 
 
 class Edge(BaseModel):

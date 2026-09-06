@@ -106,6 +106,41 @@ Report per-domain architectural drift against declared ideal patterns.
 
 ---
 
+## `cgis_find_orphans`
+
+Classes nothing in production builds, extends or names — dead-code candidates (#415).
+
+    Finds classes that no test, type checker or linter flags, because each is
+    still imported somewhere: a package re-export keeps a class importable long
+    after its last real caller is gone. On one mid-sized backend this reported
+    43 of 1 789 classes, and the hand-written equivalent's findings were all
+    real and all deleted.
+
+    Two filters decide the answer. **Tests are not users** — a class built only
+    by its own test is exactly the shape being hunted. **A re-export is not a
+    use** — ``IMPORTS_SYMBOL`` does not count, or nothing is ever reported. What
+    counts is construction (``CALLS``), inheritance (``EXTENDS``) and being named
+    (``REFERENCES`` — an annotation, or a class handed to a framework); the last
+    keeps abstract ports and Protocols off the list.
+
+    ``prefix`` narrows to one package on a dot boundary. ``include_tests`` counts
+    test code as a user, turning the report into "unreachable from anywhere".
+
+    Returns JSON ``{orphans, considered, test_sources}``; each orphan carries
+    ``fqn``/``file``/``line``. **A listing is a candidate for deletion, not a
+    proof** — a class named only inside a decorator (#429) or arriving through a
+    star import is invisible here, so the sweep errs towards reporting a live
+    class rather than hiding a dead one. ``test_sources: 0`` in a repository that
+    has tests means the graph predates the ``is_test`` column: re-ingest.
+
+| Argument | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `db_path` | `string` |  |  |
+| `prefix` | `any` |  |  |
+| `include_tests` | `boolean` |  |  |
+
+---
+
 ## `cgis_find_symbol`
 
 Resolve a partial symbol name to candidate FQNs (substring match, ranked).
