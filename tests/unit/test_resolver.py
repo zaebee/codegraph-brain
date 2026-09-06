@@ -1731,3 +1731,147 @@ def test_a_function_body_call_still_belongs_to_the_function() -> None:
     calls = {(e.source, e.target) for e in resolved if e.type == EdgeType.CALLS}
     assert ("pkg.user.build", "pkg.ext.Extractor") in calls
     assert ("pkg.user", "pkg.ext.Extractor") not in calls
+
+
+# ---------------------------------------------------------------------------
+# A class named in a load position is a reference (D10, #415)
+# ---------------------------------------------------------------------------
+
+
+def _refs(resolved: list[Edge]) -> set[tuple[str, str]]:
+    """The (source, target) pairs of every REFERENCES edge."""
+    return {(e.source, e.target) for e in resolved if e.type == EdgeType.REFERENCES}
+
+
+_WIDGET = "class Widget:\n    pass\n"
+
+
+def test_a_class_handed_to_a_call_is_referenced() -> None:
+    """`app.add_middleware(Widget)` names Widget and never calls it.
+
+    This is the single largest shape behind the orphan query's false positives
+    on application code: a framework is handed the class object and constructs
+    it itself, so no CALLS edge exists and the class reads as dead.
+    """
+    user = "from pkg.w import Widget\n\ndef setup(app):\n    app.add_middleware(Widget)\n"
+    resolved = _resolve_two("pkg/w.py", _WIDGET, "pkg/user.py", user)
+    assert ("pkg.user.setup", "pkg.w.Widget") in _refs(resolved)
+
+
+def test_a_caught_exception_class_is_referenced() -> None:
+    """`except Widget:` is a use — the only one an exception type usually gets."""
+    user = (
+        "from pkg.w import Widget\n\n"
+        "def run():\n"
+        "    try:\n"
+        "        pass\n"
+        "    except Widget:\n"
+        "        pass\n"
+    )
+    resolved = _resolve_two("pkg/w.py", _WIDGET, "pkg/user.py", user)
+    assert ("pkg.user.run", "pkg.w.Widget") in _refs(resolved)
+
+
+def test_an_enum_named_only_as_a_member_access_is_referenced() -> None:
+    """`Widget.SIZE` names Widget as the head of the attribute, not as a call."""
+    user = "from pkg.w import Widget\n\ndef pick():\n    return Widget.SIZE\n"
+    resolved = _resolve_two("pkg/w.py", _WIDGET, "pkg/user.py", user)
+    assert ("pkg.user.pick", "pkg.w.Widget") in _refs(resolved)
+
+
+def test_a_class_in_a_collection_literal_is_referenced() -> None:
+    """A registry tuple names the class; nothing constructs it at that point."""
+    user = "from pkg.w import Widget\n\nCHOICES = [('w', Widget)]\n"
+    resolved = _resolve_two("pkg/w.py", _WIDGET, "pkg/user.py", user)
+    assert ("pkg.user", "pkg.w.Widget") in _refs(resolved)
+
+
+def test_a_referenced_function_produces_no_reference_edge() -> None:
+    """D3 holds: only an internal CLASS survives, so a function handed to a call is dropped.
+
+    Without this the rule would emit an edge for every callback, decorator
+    argument and provider alias in the codebase.
+    """
+    lib = "def helper():\n    return 1\n"
+    user = "from pkg.lib import helper\n\ndef go(app):\n    app.on_event(helper)\n"
+    resolved = _resolve_two("pkg/lib.py", lib, "pkg/user.py", user)
+    assert not [e for e in resolved if e.type == EdgeType.REFERENCES]
+    assert not [e for e in resolved if e.target.startswith("raw_dep:")]
+
+
+def test_a_constructed_class_still_gets_its_calls_edge_and_no_duplicate_reference() -> None:
+    """The call's own function name is excluded — CALLS already says it."""
+    user = "from pkg.w import Widget\n\ndef build():\n    return Widget()\n"
+    resolved = _resolve_two("pkg/w.py", _WIDGET, "pkg/user.py", user)
+    calls = {(e.source, e.target) for e in resolved if e.type == EdgeType.CALLS}
+    assert ("pkg.user.build", "pkg.w.Widget") in calls
+    assert ("pkg.user.build", "pkg.w.Widget") not in _refs(resolved)
+
+
+def test_an_unimported_local_name_is_not_a_reference() -> None:
+    """The import_map gate: a local variable that happens to share a class name.
+
+    Without the gate every `widget = ...` in the codebase would be a candidate,
+    and a same-named class elsewhere would collect edges from code that has
+    never heard of it.
+    """
+    other = "class Widget:\n    pass\n"
+    user = "def run():\n    Widget = 1\n    return Widget\n"
+    resolved = _resolve_two("pkg/w.py", other, "pkg/user.py", user)
+    assert ("pkg.user.run", "pkg.w.Widget") not in _refs(resolved)
+
+
+def test_a_class_defined_in_the_same_file_is_referenced_by_a_sibling() -> None:
+    """The second gate: a same-file class needs no import to be named."""
+    code = "class Widget:\n    pass\n\ndef register(app):\n    app.add_middleware(Widget)\n"
+    resolved = _resolve_two("pkg/w.py", code, "pkg/other.py", "x = 1\n")
+    assert ("pkg.w.register", "pkg.w.Widget") in _refs(resolved)
+
+
+def test_the_member_half_of_an_attribute_is_not_a_candidate() -> None:
+    """`thing.Widget` names an attribute, not necessarily the imported class.
+
+    Only the head of an attribute chain is a bare name; the member half is a
+    field lookup and emitting for it would attach edges through any object that
+    happens to expose a same-named attribute.
+    """
+    user = "from pkg.w import Widget\n\ndef go(thing):\n    return thing.Widget\n"
+    resolved = _resolve_two("pkg/w.py", _WIDGET, "pkg/user.py", user)
+    assert ("pkg.user.go", "pkg.w.Widget") not in _refs(resolved)
+
+
+def test_two_owners_whose_names_run_together_get_distinct_edges() -> None:
+    """Edge ids are a PRIMARY KEY, so an ambiguous id silently drops an edge.
+
+    `nameref_{owner}_{name}` made `handle_User` + `Session` and `handle` +
+    `User_Session` produce one id, and INSERT OR REPLACE kept whichever came
+    last. The separator has to be a character neither an FQN nor a Python name
+    can contain.
+    """
+    lib = "class Session:\n    pass\n\n\nclass User_Session:\n    pass\n"
+    user = (
+        "from pkg.lib import Session, User_Session\n\n"
+        "def handle_User(app):\n"
+        "    app.add(Session)\n\n"
+        "def handle(app):\n"
+        "    app.add(User_Session)\n"
+    )
+    resolved = _resolve_two("pkg/lib.py", lib, "pkg/user.py", user)
+    refs = _refs(resolved)
+    assert ("pkg.user.handle_User", "pkg.lib.Session") in refs
+    assert ("pkg.user.handle", "pkg.lib.User_Session") in refs
+    ids = [e.id for e in resolved if e.type == EdgeType.REFERENCES]
+    assert len(ids) == len(set(ids)), "two references collapsed onto one edge id"
+
+
+def test_a_class_reached_through_its_module_alias_is_referenced() -> None:
+    """`from pkg import mod` then `mod.Widget.build()` — the head is a module, not a class.
+
+    Found by review: the candidate for the head alone resolves to a module and
+    D3 drops it, so a class only ever reached this way stayed invisible. Two
+    production classes in owner-api were reported dead for exactly this reason.
+    """
+    widget = "class Widget:\n    @classmethod\n    def build(cls):\n        return cls()\n"
+    user = "from pkg import w\n\ndef go():\n    return w.Widget.build()\n"
+    resolved = _resolve_two("pkg/w.py", widget, "pkg/user.py", user)
+    assert ("pkg.user.go", "pkg.w.Widget") in _refs(resolved)

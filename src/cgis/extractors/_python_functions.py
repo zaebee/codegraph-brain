@@ -14,7 +14,7 @@ from typing import Any
 from tree_sitter import Node as BaseNode
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
-from cgis.extractors._python_annotations import collect_type_names
+from cgis.extractors._python_annotations import _WRAPPER_NAMES, collect_type_names
 from cgis.extractors._python_ast import (
     PYTHON_LANG,
     assigned_attr_name,
@@ -416,6 +416,69 @@ def emit_annotation_edges(
                 context=f"Annotation candidate {name}",
                 file_path=file_path,
                 line_number=type_node.start_point.row + 1,
+            )
+        )
+
+
+# Names that spell a type constructor rather than a class anyone depends on.
+# The same set D9 unwraps in annotations, so the two rules cannot disagree.
+_NOT_A_REFERENCE: frozenset[str] = _WRAPPER_NAMES
+
+
+def emit_name_reference_edges(
+    candidates: list[tuple[str, str, int]],
+    known_names: set[str],
+    file_path: str,
+    edges: list[Edge],
+) -> None:
+    """Emit one `raw_dep:` candidate per (owner, name) pair naming a known symbol (spec D10).
+
+    `candidates` are the name loads the walk saw, already attributed to their
+    nearest owner. `known_names` is the module's `import_map` keys plus the
+    classes it defines — the gate that keeps a local variable from collecting
+    edges meant for an unrelated class of the same name. A candidate may be
+    dotted (`validators.Rule`, a class reached through its module); the gate
+    then applies to its head, which is the part the module actually imported.
+
+    Deduplicated by (owner, name), unlike the per-position annotation edges: an
+    enum named forty times in one function is one fact, and the orphan query
+    asks whether a reference exists, not how many. Without this the rule
+    roughly doubles the density it actually needs.
+
+    Typing wrappers are excluded for the reason D9 already gives: `Optional`,
+    `Union` and `Annotated` are not classes anyone references. Sharing that
+    frozenset keeps one definition of "wrapper" — without it the two rules
+    disagree and `Annotated[X, Depends(y)]` emits a candidate on one path and
+    not the other.
+
+    As with annotations, the resolver drops anything that does not resolve to an
+    internal class (spec D3), so a candidate for a function or a third-party
+    symbol costs nothing downstream.
+
+    Module-level for the same reason as `emit_annotation_edges`: `FunctionHandler`
+    sits one method under the God-Object gate.
+    """
+    seen: set[tuple[str, str]] = set()
+    for source_fqn, name, line in candidates:
+        head = name.partition(".")[0]
+        if head in _NOT_A_REFERENCE or head not in known_names or (source_fqn, name) in seen:
+            continue
+        seen.add((source_fqn, name))
+        edges.append(
+            Edge(
+                # `|` separates: it cannot occur in an FQN or a Python name,
+                # so two distinct (owner, name) pairs cannot share an id.
+                # `_` could — owner `m.handle_User` + `Session` and owner
+                # `m.handle` + `User_Session` collided, and edge ids are a
+                # PRIMARY KEY under INSERT OR REPLACE, so one edge vanished.
+                id=f"{file_path}:nameref_{source_fqn}|{name}",
+                type=EdgeType.DEPENDS_ON,
+                source=source_fqn,
+                target=f"raw_dep:{name}",
+                confidence=0.1,
+                context=f"Name reference candidate {name}",
+                file_path=file_path,
+                line_number=line,
             )
         )
 

@@ -18,6 +18,12 @@ type against but nobody constructs looks identical to dead code.
 
 ## Measurement basis
 
+All figures below are from `src/cgis/` at HEAD and a graph ingested from it —
+**except D10's**, which are from five repositories ingested at `c9f39b8`, because
+the effect D10 measures is invisible on cgis. That is not incidental: three of
+this spec's findings (#417, #424, D10) do not reproduce on cgis's own source, so
+a cgis-only measurement is evidence of nothing for resolver and reference work.
+
 All figures below are from `src/cgis/` at HEAD and a graph ingested from it:
 
 ```
@@ -301,6 +307,170 @@ a dot-boundary test so `Foo` is not treated as inside `FooBar`). A class
 naming itself is not evidence anyone uses it, and counting it would
 manufacture a false negative in the orphan query.
 
+### D10 — a class named in a load position is a reference, whatever the position
+
+PR3's mandate was to "measure the `response_model=` precision gap (D4) and decide
+it here". The measurement was taken on five codebases and found a *different*
+gap, several times larger. This decision is the answer to it.
+
+**The measurement.** A prototype of the orphan query — internal production CLASS
+nodes with no incoming `CALLS`/`EXTENDS`/`REFERENCES` from a non-test source —
+was run on five graphs ingested at `c9f39b8`. Each reported orphan was then
+checked against the ground truth #415's own reference implementation uses: a bare
+name load of that class, in a production file that imports it, outside its own
+module.
+
+| repo | internal classes | orphans reported | of those, alive | rate |
+|---|---|---|---|---|
+| cgis | 93 | 2 | 0 | 0% |
+| owner-api | 1 789 | 109 | 44 | **40%** |
+| memory-facets | 383 | 18 | 6 | **33%** |
+| aura-core | 124 | 18 | 6 | **33%** |
+| rich (library) | 181 | 31 | 1 | 3% |
+
+Three unrelated applications agree at a third to two-fifths wrong. A mature
+library and cgis itself sit near zero, and the reason is not that they are
+better written: **application code hands classes to a framework, library code
+constructs them.** `app.add_middleware(SecurityMiddleware)` names a class and
+never calls it. This is the third feature in this spec that cgis's own source
+cannot exercise, after star imports (#417) and root-prefix mismatch (#424); a
+measurement taken only on cgis would have reported the query ready.
+
+The `response_model=` gap D4 predicted turns out to be two occurrences. The
+positions that actually matter, pooled across all five repos (57 false positives):
+
+| shape | n | example |
+|---|---|---|
+| attribute head — enum member, classmethod | 25 | `TransactionType.TOP_UP`, `Rule.stats()` |
+| handed to a call as a value | 18 | `add_middleware(X)`, `route_class=X` |
+| `except` clause | 5 | `except ConversationNotFoundError:` |
+| collection literal | 3 | `("fuel_types", FuelType)` |
+| other — `BinOp`, return annotation, `arg` | 6 | |
+
+**The decision: one rule, not five.** Every row above is the same thing — a name
+that resolves to an internal class, appearing in a load position. Enumerating
+positions would take more code, draw arbitrary boundaries, and still miss the
+six-item tail. So the extractor emits a `raw_dep:<name>` candidate for an
+`identifier` in a load position when the name is either in the module's
+`import_map` or the name of a class defined in that file.
+
+Three kinds of position are excluded. Those that already carry an edge: the
+`function` field of a call (that is `CALLS`) and an annotation (that is the
+annotation path's own `rawdep_` edge — emitting both made ~80% of the
+name-reference edges duplicates, and the band meant to guard the rule was mostly
+measuring annotations). Those that name something other than a class: the member
+half of an attribute — `TOP_UP` in `TransactionType.TOP_UP` is a field lookup on
+whatever the object turns out to be. And every position that *binds* the name
+rather than using it.
+
+That last group is where both reviews of the first implementation converged, and
+they were right: the predicate was a denylist over a grammar, and it accepted 29
+binding positions of the 82 probed — loop and comprehension targets, walrus
+targets, `with`/`except`/`case` aliases, unpacking targets, `nonlocal`, `del`,
+`*args`/`**kwargs` names, type parameters. A binding that emits a reference says
+"this class is used" about a loop variable, which is the exact failure the rule
+exists to prevent.
+
+The fix is structural rather than a longer list. `is_name_load` first climbs out
+of grouping nodes — tuples, lists, unpacking targets — so the enclosing
+construct decides, and `for a, (b, Widget) in xs` is a binding while
+`f((a, Widget))` is a use without either shape being enumerated. Two node types
+hold a use and a binding side by side, told apart only by order (`except Widget
+as e` versus `case [1] as Widget`), and one bare identifier under a
+`case_pattern` is a capture while `case Widget():` and `case Widget.A:` are not.
+`tests/unit/test_name_load_positions.py` pins all 60 positions this paragraph
+claims, so a position the list has not met fails there instead of silently
+emitting.
+
+**A class reached through its module is also named.** `from app.api import
+validators` then `validators.Rule.confirm_by(...)` gives a head that resolves to
+a module, which D3 drops, so the class stayed invisible — two live owner-api
+classes were reported dead for this. An attribute head therefore records the
+two-segment path alongside the bare name; when the head is itself the class
+(`Widget.SIZE`) the extra candidate resolves to nothing and costs nothing.
+
+Everything else in the pipeline is reused unchanged. The source is the nearest
+owner — enclosing function, else class, else module — which is the rule #416
+settled. `_resolved_dep_edge` already drops any candidate that does not resolve
+to an internal CLASS node (D3), so a name that is a function, a variable or a
+third-party symbol never reaches the graph. The edge type is `REFERENCES` (D2)
+at confidence 0.9 (D6), and the self-reference drop in D9 applies unchanged.
+
+**Cost — stated here so it is not discovered in review.** Counting distinct
+`(owner, class)` pairs, which is what dedupes into edges:
+
+| repo | `REFERENCES` | total edges | growth |
+|---|---|---|---|
+| cgis | 592 → 767 | 5 911 → 6 125 | 4% |
+| owner-api | 2 793 → 7 235 | 70 334 → 74 777 | 6% |
+| memory-facets | 1 182 → 1 660 | 12 773 → 13 251 | 4% |
+| aura-core | 88 → 168 | 4 312 → 4 392 | 2% |
+| rich | 652 → 980 | 7 519 → 7 847 | 4% |
+
+The whole graph grows 2–6%. An earlier draft of this table predicted 5–13%; the
+difference is the annotation exclusion above, which removed the duplicate half.
+On cgis the 175 new edges split 172 name references and a handful of annotation
+positions the module-path rule newly reaches.
+`audit_reachability` is unaffected: it traverses enforcement edges only.
+`impact` and `trace_flow` apply no edge-type filter and will widen
+correspondingly, several times more than the PR1 risk already noted.
+
+**Measured outcome.** Implemented, reviewed, corrected, and re-run over the same
+five graphs:
+
+| repo | orphans before | false | orphans after | false |
+|---|---|---|---|---|
+| cgis | 2 | 0 (0%) | 2 | 0 (0%) |
+| owner-api | 109 | 44 (40%) | 43 | 5 (12%) |
+| memory-facets | 18 | 6 (33%) | 11 | 0 (0%) |
+| aura-core | 18 | 6 (33%) | 9 | 0 (0%) |
+| rich | 31 | 1 (3%) | 14 | 0 (0%) |
+
+**Owner-api's five residuals are the ground truth being wrong, not the rule** —
+checked one at a time, and independently confirmed by the review.  Each is a
+short-name collision the name-based sweep cannot resolve and an FQN graph can:
+`domains.rating.calculator.UserMetrics` is reported dead while
+`domains/admin/users.py` names `UserMetrics`, but that file imports
+`app.domains.admin.schemas.UserMetrics` and nothing imports the calculator's.
+Likewise `CancelReservationResponse` and `CreateReservationRequest` (both
+shadowed by `grpc.services`), a `Config`, and a `Message`. #415's reference
+implementation names this limitation in its own docstring — "a method sharing a
+name with a live one elsewhere hides in that one's shadow" — and resolving
+through the import map is precisely what a graph buys over a name sweep.
+
+An earlier draft of this section claimed the same for all seven residuals of the
+first implementation. **Two of those seven were real misses**, not collisions:
+`api.validators.confirmation.Rule` and `domains.pricing.season_validators.Rule`
+are both live, reached as `confirmation.Rule.confirm_by(...)` through a module
+alias. The module-path rule above closes them. The claim was made from
+hand-checking five of the seven and generalising, which is exactly the habit the
+measurement discipline in this spec exists to prevent.
+
+The orphan counts fall further than the false-positive count alone explains
+(owner-api 109 → 43). The extra rescues are same-module uses the ground truth
+excludes by construction: `register_message("entities", "Garage", Garage)`,
+`Dep = Annotated[TransactionWalletMonthlyFilter, Query()]`,
+`{"model": BaseValidationError}`. Spot-checked; all real. memory-facets moved the
+other way, 9 → 11, when the binding-position fix stopped two classes being
+rescued by a loop variable that happened to share their name.
+
+**What it cannot do.** Three limits, all measured rather than assumed:
+
+* A class mentioned only inside code that is itself dead reads as live. #415's
+  reference implementation carries the same limitation and states it plainly:
+  it under-reports and never over-reports.
+* A class named only inside a **decorator** is invisible, because `_walk` never
+  descends into decorators ([#429](https://github.com/zaebee/codegraph-brain/issues/429)).
+  117 known names appear in owner-api decorators, mostly `response_model=Foo`;
+  those classes survive only when a return annotation names them too. This
+  raises #429 from an audit-precision issue to an orphan-query one.
+* A class arriving through `from x import *` is not gated in, because the gate is
+  the module's `import_map` keys and a star import contributes none. One
+  production file in owner-api is affected, none in the other four repositories. #415's reference implementation carries
+the same limitation and states it plainly: it under-reports and never
+over-reports. For a check whose whole value is that people trust it, a false
+"live" is the cheap direction.
+
 ## Work breakdown
 
 Three sequential PRs. Each merges before the next starts.
@@ -326,14 +496,28 @@ Serves both issues; neither can be precise without it.
 * Fixes the placeholder collision as a consequence: two unrelated classes with a
   same-named attribute no longer share one vertex.
 
-### PR3 — #415 orphan query
+### PR3a — the name-as-value reference edge (D10)
+
+* `raw_dep:` emission for an `identifier` in a load position, gated on the
+  module's `import_map` or a class defined in the same file.
+* Exclusions: a call's own `function` field, the member half of an attribute.
+* Re-measure the orphan query's false-positive rate on all five repos of D10;
+  the acceptance number is that rate, not an edge count.
+* State the `impact` / `trace_flow` density change in the PR.
+
+The measurement that motivated this split is D10. The original PR3 owed a
+decision on the `response_model=` gap; taking that measurement found a larger
+one, and shipping the query on top of it would have meant a check that is wrong
+a third of the time on every application codebase tested.
+
+### PR3b — #415 orphan query
 
 * `is_test_path()` + `Node.is_test` + column migration (D5).
-* Orphans query: internal CLASS nodes with no incoming `CALLS` or `EXTENDS` from
-  a non-test source. `IMPORTS_SYMBOL` excluded.
+* Orphans query: internal CLASS nodes with no incoming `CALLS`, `EXTENDS` or
+  `REFERENCES` from a non-test source. `IMPORTS_SYMBOL` excluded.
 * Surfaced as a CLI command and an MCP tool, following the existing
   `audit_reachability` shape.
-* Measure the `response_model=` precision gap (D4) and decide it here.
+* Report the residual false-positive rate measured in PR3a.
 
 ## Testing
 
@@ -353,6 +537,11 @@ must be re-derived from a fresh ingest, never from the stale root `graph.db`.
 | Fixture: a class referenced only as `list[OnlyInGeneric]` is **not** an orphan | D9 regresses to `clean_python_type_string` |
 | Fixture: a class constructed only from `tests/` is reported as an orphan | the `is_test` filter stops being applied |
 | Fixture: a class referenced only by a parameter annotation is **not** an orphan | the annotation edge stops being emitted |
+| Fixture: a class only ever `except`-ed is **not** an orphan | D10's load-position rule stops covering `except` |
+| Fixture: a class only handed to a call (`add_middleware(X)`) is **not** an orphan | D10 regresses to counting constructions |
+| Fixture: an enum named only as `E.MEMBER` is **not** an orphan | the attribute head stops being collected |
+| Fixture: a *function* handed to a call emits no `REFERENCES` | D3's internal-CLASS filter stops applying to D10 candidates |
+| Five-repo sweep: orphan false-positive rate is 0 on the D10 set | any load position stops being covered |
 
 The last two are the pair #415 identifies as load-bearing: without the first all
 six of its rows read as live, and without the second every abstract port reads as
@@ -366,12 +555,18 @@ against the design as originally written.
   that D8 does not otherwise address. The `.`-prefixed relative-import case
   shares the condition and must keep its current behavior. Verify each
   `NodeNamespace.INTERNAL` consumer before the split.
-* **Traversal density (PR1).** `impact` and `trace_flow` apply no edge-type
-  filter by default, so +583 `REFERENCES` edges will widen their results.
-  Arguably correct — an annotation is a real dependency — but it changes existing
-  output and should be stated in the PR, not discovered.
-* **Response-schema precision (PR3).** Known and deliberate (D4). PR3 must report
-  the measured false-positive rate rather than ship silently.
+* **Traversal density (PR1, and several times more in PR3a).** `impact` and
+  `trace_flow` apply no edge-type filter by default, so PR1's +583 `REFERENCES`
+  edges widened their results, and D10 roughly doubles `REFERENCES` again on top
+  (5–13% of the whole graph, per repo — see D10's cost table). Arguably correct:
+  naming a class is a real dependency. But it changes existing output, and each
+  PR must state the movement rather than let a consumer discover it.
+* **Response-schema precision (PR3).** Predicted by D4 as the query's main
+  precision limit. Measured in D10: **two occurrences across five repositories.**
+  The real limit was a different one — a class named as a value — which D10
+  addresses. Recorded here because the prediction being wrong is the reason PR3
+  was split, and a reader of D4 should not still expect `response_model=` to be
+  the problem.
 * **`self_types` is wrong in two rare shapes — PR2 reads this map, so its author
   must know.** Both were found by an adversarial pass over the extractor's
   heuristics and both measure **zero occurrences** across this repository and
@@ -390,12 +585,16 @@ against the design as originally written.
     and `self_types` disagree on the third.
 * **Measurement basis.** Every number here has a five-week-stale twin in the root
   `graph.db`. Re-ingest before re-measuring.
-* **Module-level construction is invisible — [#416](https://github.com/zaebee/codegraph-brain/issues/416).**
-  A constructor called at module level emits no `CALLS` edge at all: `_walk`
-  dispatches a call node only when there is an enclosing function. A class built
-  only in a registry dict, a singleton, or DI wiring therefore has no incoming
-  `CALLS`, and PR3's orphan query would report it as dead. On this repository
-  `PythonExtractor` and `TypeScriptExtractor` are already in that state. This is
-  a **second** precision limit alongside the `response_model=` gap in D4, and
-  probably the larger one — it was found while validating PR1, not predicted
-  here. PR3 must measure it before the query is trusted.
+* **Module-level construction — [#416](https://github.com/zaebee/codegraph-brain/issues/416), CLOSED (`c9f39b8`).**
+  A constructor called at module level emitted no `CALLS` edge at all, so a class
+  built only in a registry dict, a singleton, or DI wiring read as dead. Fixed by
+  attributing such a call to its nearest owner. On owner-api it rescued 32 classes
+  the query would have reported dead.
+
+* **Calls inside a decorator expression are still dropped — [#429](https://github.com/zaebee/codegraph-brain/issues/429), OPEN.**
+  `_walk` hands a `decorated_definition` off and never descends into the
+  decorators, so `@router.post(..., dependencies=[Depends(guard)])` leaves the
+  endpoint with no `DEPENDS_ON` and `cgis audit` reads a superuser-only route as
+  unguarded. It does not affect the orphan query — D10's rule covers a class
+  *named* in a decorator through the same `import_map` gate — but it is the
+  remaining hole in "a call outside a function is still a call".

@@ -11,6 +11,7 @@ from cgis.extractors._python_ast import (
     enclosing_class_fqn,
     extract_decorator_names,
     is_module_level_assignment,
+    is_name_load,
 )
 from cgis.extractors._python_ast import file_path_to_module_fqn as _file_path_to_module_fqn
 from cgis.extractors._python_classes import ClassHandler
@@ -18,6 +19,7 @@ from cgis.extractors._python_functions import (
     FunctionHandler,
     collect_return_annotation,
     emit_annotation_edges,
+    emit_name_reference_edges,
 )
 from cgis.extractors._python_imports import ImportHandler
 from cgis.extractors._python_types import TypeResolver
@@ -78,6 +80,23 @@ def _identifiers_outside_imports(root: BaseNode, code_bytes: bytes) -> set[str]:
     return used
 
 
+def _attribute_path(node: BaseNode, code_bytes: bytes) -> str | None:
+    """`obj.member` when this identifier is the `obj` half, else None."""
+    parent = node.parent
+    if parent is None or parent.type != "attribute":
+        return None
+    obj = parent.child_by_field_name("object")
+    # `.id`, not `is`: every access to a tree-sitter child builds a fresh Python
+    # wrapper, so identity comparison is always False.
+    if obj is None or obj.id != node.id:
+        return None
+    member = parent.child_by_field_name("attribute")
+    if member is None:
+        return None
+    head = code_bytes[node.start_byte : node.end_byte].decode("utf8")
+    return f"{head}.{code_bytes[member.start_byte : member.end_byte].decode('utf8')}"
+
+
 def find_reexports(root: BaseNode, code_bytes: bytes, import_map: dict[str, str]) -> dict[str, str]:
     """Return the imports this module never uses — i.e. passes straight through (#182).
 
@@ -129,6 +148,7 @@ class PythonExtractor(BaseExtractor):
         local_types_acc: dict[str, dict[str, str]] = {}
         self_types_acc: dict[str, dict[str, str]] = {}
         star_imports: list[str] = []
+        name_refs_acc: list[tuple[str, str, int]] = []
 
         self._walk(
             root_node,
@@ -141,6 +161,18 @@ class PythonExtractor(BaseExtractor):
             local_types_acc=local_types_acc,
             self_types_acc=self_types_acc,
             star_imports=star_imports,
+            name_refs_acc=name_refs_acc,
+        )
+
+        # A name reference is gated on the finished import map and on the classes
+        # this file defines, neither of which is complete until the walk is over:
+        # an import at the bottom of the module, or a class defined below its own
+        # use, would otherwise be missed (spec D10).
+        emit_name_reference_edges(
+            name_refs_acc,
+            set(import_map) | {n.name for n in nodes if n.type == NodeType.CLASS},
+            file_path,
+            edges,
         )
 
         # Apply accumulated local types from assignments and param annotations
@@ -265,6 +297,7 @@ class PythonExtractor(BaseExtractor):
         local_types_acc: dict[str, dict[str, str]] | None = None,
         self_types_acc: dict[str, dict[str, str]] | None = None,
         star_imports: list[str] | None = None,
+        name_refs_acc: list[tuple[str, str, int]] | None = None,
     ) -> None:
         """
         Recursive AST walker that dispatches each node to its handler.
@@ -290,6 +323,7 @@ class PythonExtractor(BaseExtractor):
                 module_fqn,
                 local_types_acc,
                 self_types_acc,
+                name_refs_acc,
             )
             return  # prevent double-processing the inner definition
 
@@ -327,6 +361,10 @@ class PythonExtractor(BaseExtractor):
             self._functions.collect_param_type(
                 node, code_bytes, import_map, current_func_node, local_types_acc, edges
             )
+        elif node.type == "identifier" and name_refs_acc is not None:
+            self._record_name_load(
+                node, code_bytes, file_path, current_func_node, module_fqn, name_refs_acc
+            )
 
         for child in node.children:
             self._walk(
@@ -341,7 +379,63 @@ class PythonExtractor(BaseExtractor):
                 local_types_acc=local_types_acc,
                 self_types_acc=self_types_acc,
                 star_imports=star_imports,
+                name_refs_acc=name_refs_acc,
             )
+
+    def _record_name_load(
+        self,
+        node: BaseNode,
+        code_bytes: bytes,
+        file_path: str,
+        current_func_node: Node | None,
+        module_fqn: str | None,
+        name_refs_acc: list[tuple[str, str, int]],
+    ) -> None:
+        """Note a name used as a value, for the reference edges emitted after the walk.
+
+        A name that is merely *named* — handed to a framework, caught, put in a
+        registry, or used as an enum's head — has no edge of its own, so a class
+        used only that way reads as dead (spec D10). Which names count is decided
+        after the walk, once the import map and the file's own classes are known.
+        """
+        if not is_name_load(node):
+            return
+        owner = self._owner_fqn(node, code_bytes, file_path, current_func_node, module_fqn)
+        if not owner:
+            return
+        name = code_bytes[node.start_byte : node.end_byte].decode("utf8")
+        line = node.start_point.row + 1
+        name_refs_acc.append((owner, name, line))
+        dotted = _attribute_path(node, code_bytes)
+        if dotted is not None:
+            # `from app.api import validators` then `validators.Rule.confirm_by(...)`
+            # names a class through its module, and the head alone resolves to a
+            # module, which D3 drops. Recording the two-segment path as well is
+            # what makes such a class visible; when the head is itself the class
+            # (`Widget.SIZE`) the extra candidate resolves to nothing and costs
+            # nothing.
+            name_refs_acc.append((owner, dotted, line))
+
+    def _owner_fqn(
+        self,
+        node: BaseNode,
+        code_bytes: bytes,
+        file_path: str,
+        current_func_node: Node | None,
+        module_fqn: str | None,
+    ) -> str | None:
+        """The nearest thing that owns this node: function, else class, else module.
+
+        One rule for every edge whose source is "whatever this code belongs to"
+        — calls (#416) and name references (D10) both use it, so they cannot
+        drift apart.
+        """
+        if current_func_node:
+            return current_func_node.id
+        return (
+            enclosing_class_fqn(node, code_bytes, file_path, self._pick_source_root(file_path))
+            or module_fqn
+        )
 
     def _handle_call(
         self,
@@ -372,12 +466,7 @@ class PythonExtractor(BaseExtractor):
         `decorated_definition` to `_handle_decorated_definition`, which
         descends into the definition and never into the decorators (#429).
         """
-        source = current_func_node.id if current_func_node else None
-        if source is None:
-            source = (
-                enclosing_class_fqn(node, code_bytes, file_path, self._pick_source_root(file_path))
-                or module_fqn
-            )
+        source = self._owner_fqn(node, code_bytes, file_path, current_func_node, module_fqn)
         if source:
             self._functions.process_call_node(
                 node,
@@ -399,6 +488,7 @@ class PythonExtractor(BaseExtractor):
         module_fqn: str | None,
         local_types_acc: dict[str, dict[str, str]] | None,
         self_types_acc: dict[str, dict[str, str]] | None = None,
+        name_refs_acc: list[tuple[str, str, int]] | None = None,
     ) -> None:
         """Process a decorated function or class definition, forwarding decorator names."""
         raw_decorators = extract_decorator_names(node, code_bytes)
@@ -426,6 +516,7 @@ class PythonExtractor(BaseExtractor):
                         module_fqn=module_fqn,
                         local_types_acc=local_types_acc,
                         self_types_acc=self_types_acc,
+                        name_refs_acc=name_refs_acc,
                     )
             elif child.type == "class_definition":
                 self._classes.process_class_node(
@@ -449,4 +540,5 @@ class PythonExtractor(BaseExtractor):
                         module_fqn=module_fqn,
                         local_types_acc=local_types_acc,
                         self_types_acc=self_types_acc,
+                        name_refs_acc=name_refs_acc,
                     )
