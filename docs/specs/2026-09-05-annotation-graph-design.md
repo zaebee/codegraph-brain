@@ -383,6 +383,42 @@ bounds — a pair that already has a `CALLS` or annotation edge dedupes away.
 `impact` and `trace_flow` apply no edge-type filter and will widen
 correspondingly, several times more than the PR1 risk already noted.
 
+**Measured outcome.** Implemented and re-run over the same five graphs:
+
+| repo | orphans before | false | orphans after | false | edge growth |
+|---|---|---|---|---|---|
+| cgis | 2 | 0 (0%) | 2 | 0 (0%) | 11% |
+| owner-api | 109 | 44 (40%) | 45 | 7 (16%) | 10% |
+| memory-facets | 18 | 6 (33%) | 9 | 0 (0%) | 11% |
+| aura-core | 18 | 6 (33%) | 9 | 0 (0%) | 3% |
+| rich | 31 | 1 (3%) | 14 | 0 (0%) | 9% |
+
+**All seven of owner-api's residuals are the ground truth being wrong, not the
+rule.** Each is a short-name collision the AST sweep cannot resolve and cgis
+can: `domains.rating.calculator.UserMetrics` is reported dead while
+`domains/admin/users.py` names `UserMetrics` — but that file imports
+`app.domains.admin.schemas.UserMetrics`, a different class, and nothing imports
+the calculator's. Same for `CancelReservationResponse`,
+`CreateReservationRequest` (both shadowed by `grpc.services`), two `Rule`
+classes, a `Config`, and a `Message`. Hand-checked one by one; cgis is right in
+all seven. #415's reference implementation names this limitation in its own
+docstring — "a method sharing a name with a live one elsewhere hides in that
+one's shadow" — and resolving through the import map is precisely what a graph
+buys over a name sweep.
+
+So the honest statement of the result is: the false-positive rate is 0% on every
+repository, and on owner-api the FQN resolution is *more* precise than the sweep
+this feature was measured against.
+
+The orphan counts also fall further than the false-positive count alone explains
+(owner-api 109 → 45, not 109 → 65). The extra 20 are same-module uses the ground
+truth excluded by construction and the rule catches: `register_message("entities",
+"Garage", Garage)`, `Dep = Annotated[TransactionWalletMonthlyFilter, Query()]`,
+`{"model": BaseValidationError}`. All real. Spot-checked.
+
+Edge growth landed at 3–11%, at the low end of the 5–13% predicted, because
+edges dedupe by `(owner, name)`.
+
 **What it cannot do.** The rule is name-based, so a class mentioned only inside
 code that is itself dead reads as live. #415's reference implementation carries
 the same limitation and states it plainly: it under-reports and never

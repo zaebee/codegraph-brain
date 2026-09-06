@@ -246,3 +246,58 @@ def extract_decorator_names(node: BaseNode, code_bytes: bytes) -> list[str]:
             if name:
                 names.append(name)
     return names
+
+
+# The parent field an identifier sits in when it is NOT a use of that name.
+# Everything else — a tuple member, an argument, the object half of an
+# attribute, an `except` clause, the right of an assignment — is a load.
+_NOT_A_LOAD: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("call", "function"),  # a construction; CALLS already carries it
+        ("attribute", "attribute"),  # the member half of `Type.MEMBER`
+        ("keyword_argument", "name"),  # the label, not the value
+        ("assignment", "left"),  # a store, not a use
+        ("augmented_assignment", "left"),
+        ("default_parameter", "name"),  # a parameter, not a reference
+        ("typed_parameter", "name"),
+        ("typed_default_parameter", "name"),
+        ("function_definition", "name"),
+        ("class_definition", "name"),
+        ("keyword_pattern", "name"),
+    }
+)
+
+# Parents whose every identifier child is a binding or a module path, never a use.
+_BINDING_PARENTS: frozenset[str] = frozenset(
+    {"dotted_name", "aliased_import", "parameters", "lambda_parameters", "global_statement"}
+)
+
+
+def _field_name(parent: BaseNode, child: BaseNode) -> str | None:
+    """The field name the parent uses for this child, if it names it at all."""
+    for i in range(parent.child_count):
+        candidate = parent.child(i)
+        if candidate is not None and candidate.id == child.id:
+            return parent.field_name_for_child(i)
+    return None
+
+
+def is_name_load(node: BaseNode) -> bool:
+    """Does this identifier *use* the name it spells, rather than bind or qualify it?
+
+    The question D10 turns on: `add_middleware(Widget)`, `except Widget:`,
+    `Widget.SIZE` and `[("w", Widget)]` all name a class without constructing
+    it, and a class that is only ever named this way has no edge at all — which
+    is what made the #415 orphan query wrong on a third of what it reported for
+    every application codebase measured.
+
+    Excluded are the positions that either bind the name (an assignment target,
+    a parameter, a definition's own name) or already have an edge of their own
+    (a call's `function`, which is CALLS). The member half of an attribute is
+    excluded too: `TOP_UP` in `TransactionType.TOP_UP` is a field lookup on
+    whatever the object turns out to be, not a class anyone imported.
+    """
+    parent = node.parent
+    if parent is None or parent.type in _BINDING_PARENTS:
+        return False
+    return (parent.type, _field_name(parent, node) or "") not in _NOT_A_LOAD

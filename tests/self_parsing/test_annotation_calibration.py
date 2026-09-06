@@ -6,6 +6,8 @@ the numbers in the same commit, with the new measurement in the message.
 """
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
+from cgis.extractors.python_extractor import PythonExtractor
+from cgis.resolver.engine import ResolverEngine
 from cgis.storage.sqlite_store import SQLiteStore
 
 _GraphData = tuple[SQLiteStore, list[Node], list[Edge]]
@@ -26,19 +28,78 @@ _GraphData = tuple[SQLiteStore, list[Node], list[Edge]]
 #    pre-existing ones (DuckDBAnalyzer.__enter__ -> DuckDBAnalyzer,
 #    SQLiteStore.__enter__ -> SQLiteStore).
 # Net across both fixes plus ordinary churn since 8ef9631: 583 -> 585.
-_EXPECTED_REFERENCES = 585
+# Two mechanisms now produce REFERENCES edges, and they are pinned separately.
+# A single total would let one of them die while the other grows and still pass
+# — the failure mode this file exists to catch. The id prefix tells them apart:
+# `rawdep_` is an annotation position (D4/D9), `nameref_` is a name in a load
+# position (D10).
+_EXPECTED_ANNOTATION_REFERENCES = 594
+_EXPECTED_NAME_REFERENCES = 606
 _TOLERANCE = 60  # ~10%: absorbs ordinary code churn, not a lost source
 
 
-def test_reference_edge_count_is_within_the_calibrated_band(root_graph_data: _GraphData) -> None:
+def _by_mechanism(edges: list[Edge]) -> tuple[list[Edge], list[Edge]]:
+    """Split REFERENCES edges into (annotation, name-reference)."""
+    refs = [e for e in edges if e.type == EdgeType.REFERENCES]
+    name_refs = [e for e in refs if ":nameref_" in e.id]
+    return [e for e in refs if e not in name_refs], name_refs
+
+
+def test_annotation_reference_count_is_within_the_calibrated_band(
+    root_graph_data: _GraphData,
+) -> None:
     """A lost annotation position or a regression to the cleaned head fails here."""
     _store, _nodes, edges = root_graph_data
-    refs = [e for e in edges if e.type == EdgeType.REFERENCES]
-    assert abs(len(refs) - _EXPECTED_REFERENCES) <= _TOLERANCE, (
-        f"REFERENCES edges = {len(refs)}, expected {_EXPECTED_REFERENCES}±{_TOLERANCE}. "
-        "Re-measure with a fresh ingest before changing this number; the repo-root "
-        "graph.db is stale and must not be used."
+    annotations, _ = _by_mechanism(edges)
+    assert abs(len(annotations) - _EXPECTED_ANNOTATION_REFERENCES) <= _TOLERANCE, (
+        f"annotation REFERENCES edges = {len(annotations)}, expected "
+        f"{_EXPECTED_ANNOTATION_REFERENCES}±{_TOLERANCE}. Re-measure with a fresh ingest "
+        "before changing this number; the repo-root graph.db is stale and must not be used."
     )
+
+
+def test_name_reference_count_is_within_the_calibrated_band(root_graph_data: _GraphData) -> None:
+    """A load position that stops being collected fails here (spec D10).
+
+    Measured at the commit that introduced the rule. On cgis's own source this
+    band is worth less than it looks — the orphan false-positive rate D10 fixes
+    is 0% here and 33-40% on the application codebases it was measured against —
+    so it guards against the mechanism dying, not against its precision.
+    """
+    _store, _nodes, edges = root_graph_data
+    _, name_refs = _by_mechanism(edges)
+    assert abs(len(name_refs) - _EXPECTED_NAME_REFERENCES) <= _TOLERANCE, (
+        f"name-reference REFERENCES edges = {len(name_refs)}, expected "
+        f"{_EXPECTED_NAME_REFERENCES}±{_TOLERANCE}. Re-measure with a fresh ingest "
+        "before changing this number; the repo-root graph.db is stale and must not be used."
+    )
+
+
+def test_a_class_only_ever_named_as_a_value_is_still_referenced() -> None:
+    """The gate with teeth: the shape D10 exists for, end to end (spec D10).
+
+    The band above passes as long as *some* name references survive. This fails
+    if the specific positions stop being collected — which is how the rule would
+    actually regress, since each is a separate branch of `is_name_load`.
+    """
+    widget = "class Widget:\n    pass\n"
+    user = (
+        "from pkg.w import Widget\n\n"
+        "REGISTRY = {'w': Widget}\n\n"
+        "def go(app):\n"
+        "    app.add_middleware(Widget)\n"
+        "    try:\n"
+        "        return Widget.SIZE\n"
+        "    except Widget:\n"
+        "        return None\n"
+    )
+    extractor = PythonExtractor()
+    nodes_a, edges_a = extractor.parse(widget, "pkg/w.py")
+    nodes_b, edges_b = extractor.parse(user, "pkg/user.py")
+    resolved, _ = ResolverEngine(nodes_a + nodes_b, edges_a + edges_b).resolve()
+    refs = {(e.source, e.target) for e in resolved if e.type == EdgeType.REFERENCES}
+    assert ("pkg.user", "pkg.w.Widget") in refs, "collection literal at module level"
+    assert ("pkg.user.go", "pkg.w.Widget") in refs, "argument, attribute head, except clause"
 
 
 def test_every_reference_target_is_an_internal_class(root_graph_data: _GraphData) -> None:
