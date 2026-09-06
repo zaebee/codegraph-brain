@@ -8,8 +8,8 @@ classDef stdlibNode fill:#eceff1,stroke:#607d8b,stroke-width:1px,color:#455a64;
 classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dasharray: 3 3,color:#bf360c;
 
     subgraph sg_models["models.py"]
-        models_Edge["Edge (models.py:117)"]:::classNode
-        models_Node["Node (models.py:83)"]:::classNode
+        models_Edge["Edge (models.py:138)"]:::classNode
+        models_Node["Node (models.py:85)"]:::classNode
     end
     subgraph sg_pipeline["pipeline.py"]
         pipeline_IngestionPipeline_get_extractor["_get_extractor (pipeline.py:245)"]:::methodNode
@@ -27,7 +27,7 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
         uplift_SemanticUpliftEngine_execute_uplift["execute_uplift (uplift.py:91)"]:::methodNode
     end
     subgraph sg_sqlite_store["sqlite_store.py"]
-        sqlite_store_SQLiteStore["SQLiteStore (sqlite_store.py:28)"]:::classNode
+        sqlite_store_SQLiteStore["SQLiteStore (sqlite_store.py:30)"]:::classNode
     end
     pipeline_IngestionPipeline_run -->|REFERENCES| models_Node
     pipeline_IngestionPipeline_run -->|REFERENCES| models_Edge
