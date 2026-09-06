@@ -1887,9 +1887,11 @@ def test_a_class_named_in_a_decorator_argument_is_referenced() -> None:
 
     `_walk` hands a decorated definition to `_handle_decorated_definition`, which
     descends into the definition and never into the decorators, so every name in
-    a decorator was invisible. On owner-api that is 117 names, mostly response
-    schemas, each of which the orphan query would report as dead unless a return
-    annotation happened to name it too.
+    a decorator was invisible. The "117 names" this issue cited came from a
+    stale checkout; on owner-api at 70c679b6 the change adds 21 distinct
+    reference facts, most of them redundant with a return annotation. The
+    edge is worth having for the case where it is not redundant — which is
+    what this test pins.
     """
     schema = "class Schema:\n    pass\n"
     user = (
@@ -1968,3 +1970,40 @@ def test_a_decorator_call_is_not_recorded_twice() -> None:
     to_post = [e for e in edges if e.target == "raw_call:router.post"]
     assert len(to_post) == 1, [e.id for e in to_post]
     assert not [e for e in edges if e.target == "raw_dep:router"]
+
+
+def test_a_class_reached_through_a_module_alias_in_a_decorator_is_referenced() -> None:
+    """`response_model=schemas.Out` — a common FastAPI idiom, and #429's own shape.
+
+    The decorator walk originally reimplemented half of `_record_name_load`: it
+    recorded the bare head and not the two-segment path, so a class named through
+    its module stayed invisible in exactly the position this feature exists for.
+    Both walks share `_append_name_candidates` now.
+    """
+    schema = "class Schema:\n    pass\n"
+    user = "from pkg import s\n\n@router.get('/x', response_model=s.Schema)\ndef f():\n    pass\n"
+    resolved = _resolve_two("pkg/s.py", schema, "pkg/user.py", user)
+    assert ("pkg.user.f", "pkg.s.Schema") in _refs(resolved)
+
+
+@pytest.mark.parametrize(
+    ("label", "decorator"),
+    [
+        ("curried", "@a.b(Schema)(Other)"),
+        ("subscript", "@registry[Schema]"),
+        ("parenthesized", "@(deco(Schema))"),
+    ],
+)
+def test_a_class_named_in_an_unusual_decorator_shape_is_referenced(
+    label: str, decorator: str
+) -> None:
+    """PEP 614 allows an arbitrary expression, so "the outermost call" is not the rule.
+
+    Skipping only the decorator's *head* name — the leftmost primary, which the
+    decorator list already recorded — keeps these; the first implementation
+    walked only the outermost call's arguments and missed all three.
+    """
+    schema = "class Schema:\n    pass\n\n\nclass Other:\n    pass\n"
+    user = f"from pkg.s import Schema, Other\n\n{decorator}\ndef f():\n    pass\n"
+    resolved = _resolve_two("pkg/s.py", schema, "pkg/user.py", user)
+    assert ("pkg.user.f", "pkg.s.Schema") in _refs(resolved), label
