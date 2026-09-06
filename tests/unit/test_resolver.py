@@ -1573,3 +1573,108 @@ def test_multiple_inheritance_takes_the_leftmost_declaration() -> None:
     calls = {(e.source, e.target) for e in resolved if e.type == EdgeType.CALLS}
     assert ("pkg.rest.Child.go", "pkg.clients.LeftClient.ping") in calls
     assert ("pkg.rest.Child.go", "pkg.clients.RightClient.ping") not in calls
+
+
+# ---------------------------------------------------------------------------
+# Re-export resolution (#417)
+# ---------------------------------------------------------------------------
+
+
+def _three(defs: tuple[str, str], init: tuple[str, str], use: tuple[str, str]) -> list[Edge]:
+    """Parse a definer, an __init__ that re-exports it, and a consumer."""
+    extractor = PythonExtractor()
+    nodes: list[Node] = []
+    edges: list[Edge] = []
+    for path, code in (defs, init, use):
+        n, e = extractor.parse(code, path)
+        nodes += n
+        edges += e
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+    return resolved
+
+
+_RATING = ("app/models/rating.py", "class Rating:\n    pass\n")
+_CONSUMER = (
+    "app/svc.py",
+    "from app.models import Rating\n\n\ndef go(x: Rating) -> None:\n    pass\n",
+)
+
+
+def test_explicit_reexport_resolves_to_the_defining_module() -> None:
+    """`from .rating import Rating` in __init__ lets a consumer reach the real class.
+
+    The extractor already records this forwarding on the FILE node; the resolver
+    never read it, so `from app.models import Rating` mapped to app.models.Rating,
+    which has no node, and the edge died (#417 defect 1).
+    """
+    init = ("app/models/__init__.py", "from .rating import Rating\n")
+    resolved = _three(_RATING, init, _CONSUMER)
+    refs = {(e.source, e.target) for e in resolved if e.type == EdgeType.REFERENCES}
+    assert ("app.svc.go", "app.models.rating.Rating") in refs
+
+
+def test_star_reexport_resolves_to_the_defining_module() -> None:
+    """`from .rating import *` — owner-api's actual shape (#417 defect 2).
+
+    A star import contributes no names to the import map, so find_reexports had
+    nothing to work from and fixing defect 1 alone would not have helped the one
+    file that matters: app/models/__init__.py, with twelve of these.
+    """
+    init = ("app/models/__init__.py", "from .rating import *\n")
+    resolved = _three(_RATING, init, _CONSUMER)
+    refs = {(e.source, e.target) for e in resolved if e.type == EdgeType.REFERENCES}
+    assert ("app.svc.go", "app.models.rating.Rating") in refs
+
+
+def test_a_reexport_still_needs_someone_to_use_it() -> None:
+    """Identity is not usage: forwarding a name is a mention, not a reader.
+
+    An __init__ that imports a name, lists it in __all__ and reads it nowhere has
+    used nothing. Counting the re-export as a use resurrects genuinely dead code
+    — the owner-api author hit exactly this and it revived two adapters their
+    #1343 had deleted.
+    """
+    init = (
+        "app/models/__init__.py",
+        'from .rating import Rating\n\n__all__ = ["Rating"]\n',
+    )
+    unused = ("app/other.py", "def unrelated() -> None:\n    pass\n")
+    resolved = _three(_RATING, init, unused)
+    users = {
+        e.source
+        for e in resolved
+        if e.target == "app.models.rating.Rating"
+        and e.type in (EdgeType.CALLS, EdgeType.REFERENCES)
+    }
+    assert not users, f"a re-export alone must not count as a use, but: {users}"
+
+
+def test_multi_hop_reexport_reaches_the_definer() -> None:
+    """A -> B -> C forwarding must not stop at B."""
+    inner = ("app/models/rating.py", "class Rating:\n    pass\n")
+    mid = ("app/models/__init__.py", "from .rating import *\n")
+    outer = ("app/__init__.py", "from app.models import *\n")
+    consumer = ("app/svc.py", "from app import Rating\n\n\ndef go(x: Rating) -> None:\n    pass\n")
+    extractor = PythonExtractor()
+    nodes: list[Node] = []
+    edges: list[Edge] = []
+    for path, code in (inner, mid, outer, consumer):
+        n, e = extractor.parse(code, path)
+        nodes += n
+        edges += e
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+    refs = {(e.source, e.target) for e in resolved if e.type == EdgeType.REFERENCES}
+    assert ("app.svc.go", "app.models.rating.Rating") in refs
+
+
+def test_a_private_name_is_not_star_reexported() -> None:
+    """`import *` does not bring in a leading-underscore name."""
+    private = ("app/models/rating.py", "class _Internal:\n    pass\n")
+    init = ("app/models/__init__.py", "from .rating import *\n")
+    consumer = (
+        "app/svc.py",
+        "from app.models import _Internal\n\n\ndef go(x: _Internal) -> None:\n    pass\n",
+    )
+    resolved = _three(private, init, consumer)
+    refs = {(e.source, e.target) for e in resolved if e.type == EdgeType.REFERENCES}
+    assert ("app.svc.go", "app.models.rating._Internal") not in refs
