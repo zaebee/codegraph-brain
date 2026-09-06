@@ -36,8 +36,13 @@ class ClassHandler:
         edges: list[Edge],
         module_fqn: str,
         decorators: list[str] | None = None,
-    ) -> None:
-        """Process class definition node."""
+    ) -> str:
+        """Process class definition node, returning its FQN.
+
+        The FQN is returned so the caller can attribute a decorator's own
+        contents to the class it decorates (#429); a decorator expression has no
+        other owner.
+        """
         child = node.child_by_field_name("name")
         node_id = get_id(node, code_bytes, file_path, self._pick_source_root(file_path))
         node_name = extract_node_name(child, code_bytes)
@@ -63,6 +68,21 @@ class ClassHandler:
             )
         )
 
+        # A decorated function records one CALLS edge per decorator name; a
+        # decorated class was handed the same list and recorded none, so
+        # `@register` above a class was a use nothing wrote down (#429).
+        edges.extend(
+            Edge(
+                id=f"{node_id}:decorator:{i}:{deco_name}",
+                type=EdgeType.CALLS,
+                source=node_id,
+                target=f"raw_call:{deco_name}",
+                confidence=0.5,
+                file_path=file_path,
+            )
+            for i, deco_name in enumerate(decorators or [])
+        )
+
         parts = node_id.rsplit(".", maxsplit=1)
         parent_fqn = parts[0] if len(parts) > 1 else module_fqn
         edges.append(
@@ -75,6 +95,7 @@ class ClassHandler:
                 file_path=file_path,
             )
         )
+        return node_id
 
     def _collect_superclasses(
         self,

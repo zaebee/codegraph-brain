@@ -1875,3 +1875,96 @@ def test_a_class_reached_through_its_module_alias_is_referenced() -> None:
     user = "from pkg import w\n\ndef go():\n    return w.Widget.build()\n"
     resolved = _resolve_two("pkg/w.py", widget, "pkg/user.py", user)
     assert ("pkg.user.go", "pkg.w.Widget") in _refs(resolved)
+
+
+# ---------------------------------------------------------------------------
+# Decorator expressions (#429)
+# ---------------------------------------------------------------------------
+
+
+def test_a_class_named_in_a_decorator_argument_is_referenced() -> None:
+    """`@router.post(..., response_model=Schema)` names Schema and nothing else does.
+
+    `_walk` hands a decorated definition to `_handle_decorated_definition`, which
+    descends into the definition and never into the decorators, so every name in
+    a decorator was invisible. On owner-api that is 117 names, mostly response
+    schemas, each of which the orphan query would report as dead unless a return
+    annotation happened to name it too.
+    """
+    schema = "class Schema:\n    pass\n"
+    user = (
+        "from pkg.s import Schema\n\n"
+        "@router.post('/x', response_model=Schema)\n"
+        "def handler():\n"
+        "    pass\n"
+    )
+    resolved = _resolve_two("pkg/s.py", schema, "pkg/user.py", user)
+    refs = {(e.source, e.target) for e in resolved if e.type == EdgeType.REFERENCES}
+    assert ("pkg.user.handler", "pkg.s.Schema") in refs
+
+
+def test_a_call_inside_a_decorator_is_attributed_to_the_decorated_function() -> None:
+    """A decorator has no owner of its own, so the definition it decorates is it."""
+    factory = "def build():\n    return 1\n"
+    user = "from pkg.f import build\n\n@app.route(build())\ndef handler():\n    pass\n"
+    resolved = _resolve_two("pkg/f.py", factory, "pkg/user.py", user)
+    calls = {(e.source, e.target) for e in resolved if e.type == EdgeType.CALLS}
+    assert ("pkg.user.handler", "pkg.f.build") in calls
+
+
+def test_a_decorated_class_gets_its_decorator_call_edge() -> None:
+    """A decorated function records `raw_call:<decorator>`; a decorated class did not.
+
+    `process_function_node` emits one CALLS edge per decorator name and
+    `process_class_node`, given the same list, emitted none — so `@register`
+    above a class was a use nothing recorded.
+    """
+    registry = "def register(cls):\n    return cls\n"
+    user = "from pkg.r import register\n\n@register\nclass Held:\n    pass\n"
+    resolved = _resolve_two("pkg/r.py", registry, "pkg/user.py", user)
+    calls = {(e.source, e.target) for e in resolved if e.type == EdgeType.CALLS}
+    assert ("pkg.user.Held", "pkg.r.register") in calls
+
+
+def test_a_decorator_depends_still_emits_no_dependency_edge() -> None:
+    """The DI half of #429 is a spec decision, deliberately not taken here.
+
+    `dependencies=[Depends(guard)]` guards the decorated function, but attributing
+    a DEPENDS_ON edge to it would be the first place an edge's source differs
+    from its lexical owner. Until that is written down, the decorator path emits
+    CALLS and REFERENCES only — this test pins the boundary so the change is a
+    decision rather than a side effect.
+    """
+    guard = "def guard():\n    return 1\n"
+    user = (
+        "from pkg.g import guard\n"
+        "from fastapi import Depends\n\n"
+        "@router.post('/x', dependencies=[Depends(guard)])\n"
+        "def handler():\n"
+        "    pass\n"
+    )
+    resolved = _resolve_two("pkg/g.py", guard, "pkg/user.py", user)
+    assert not [e for e in resolved if e.type == EdgeType.DEPENDS_ON]
+
+
+def test_a_function_body_is_still_walked_under_a_decorator() -> None:
+    """Guard: adding the decorator pass must not disturb the definition pass."""
+    widget = "class Widget:\n    pass\n"
+    user = "from pkg.w import Widget\n\n@app.route('/x')\ndef handler():\n    return Widget()\n"
+    resolved = _resolve_two("pkg/w.py", widget, "pkg/user.py", user)
+    calls = {(e.source, e.target) for e in resolved if e.type == EdgeType.CALLS}
+    assert ("pkg.user.handler", "pkg.w.Widget") in calls
+
+
+def test_a_decorator_call_is_not_recorded_twice() -> None:
+    """`process_function_node` already records the decorator's own name.
+
+    Walking the decorator whole emitted `router.post` twice under two edge ids —
+    once from the decorator list, once from the call node — and its name a third
+    time as a REFERENCES. The walk covers the arguments only.
+    """
+    code = "@router.post('/x')\ndef handler():\n    pass\n"
+    _nodes, edges = PythonExtractor().parse(code, "pkg/user.py")
+    to_post = [e for e in edges if e.target == "raw_call:router.post"]
+    assert len(to_post) == 1, [e.id for e in to_post]
+    assert not [e for e in edges if e.target == "raw_dep:router"]
