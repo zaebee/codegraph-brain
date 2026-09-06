@@ -354,10 +354,40 @@ six-item tail. So the extractor emits a `raw_dep:<name>` candidate for an
 `identifier` in a load position when the name is either in the module's
 `import_map` or the name of a class defined in that file.
 
-Two positions are excluded because an edge already exists for them: the
-`function` field of a call (that is `CALLS`) and the member half of an attribute
-(`TOP_UP` in `TransactionType.TOP_UP` is not a class). Import statements are
-already unreachable — `_walk` returns on them before recursing.
+Three kinds of position are excluded. Those that already carry an edge: the
+`function` field of a call (that is `CALLS`) and an annotation (that is the
+annotation path's own `rawdep_` edge — emitting both made ~80% of the
+name-reference edges duplicates, and the band meant to guard the rule was mostly
+measuring annotations). Those that name something other than a class: the member
+half of an attribute — `TOP_UP` in `TransactionType.TOP_UP` is a field lookup on
+whatever the object turns out to be. And every position that *binds* the name
+rather than using it.
+
+That last group is where both reviews of the first implementation converged, and
+they were right: the predicate was a denylist over a grammar, and it accepted 29
+binding positions of the 82 probed — loop and comprehension targets, walrus
+targets, `with`/`except`/`case` aliases, unpacking targets, `nonlocal`, `del`,
+`*args`/`**kwargs` names, type parameters. A binding that emits a reference says
+"this class is used" about a loop variable, which is the exact failure the rule
+exists to prevent.
+
+The fix is structural rather than a longer list. `is_name_load` first climbs out
+of grouping nodes — tuples, lists, unpacking targets — so the enclosing
+construct decides, and `for a, (b, Widget) in xs` is a binding while
+`f((a, Widget))` is a use without either shape being enumerated. Two node types
+hold a use and a binding side by side, told apart only by order (`except Widget
+as e` versus `case [1] as Widget`), and one bare identifier under a
+`case_pattern` is a capture while `case Widget():` and `case Widget.A:` are not.
+`tests/unit/test_name_load_positions.py` pins all 60 positions this paragraph
+claims, so a position the list has not met fails there instead of silently
+emitting.
+
+**A class reached through its module is also named.** `from app.api import
+validators` then `validators.Rule.confirm_by(...)` gives a head that resolves to
+a module, which D3 drops, so the class stayed invisible — two live owner-api
+classes were reported dead for this. An attribute head therefore records the
+two-segment path alongside the bare name; when the head is itself the class
+(`Widget.SIZE`) the extra candidate resolves to nothing and costs nothing.
 
 Everything else in the pipeline is reused unchanged. The source is the nearest
 owner — enclosing function, else class, else module — which is the rule #416
@@ -369,58 +399,74 @@ at confidence 0.9 (D6), and the self-reference drop in D9 applies unchanged.
 **Cost — stated here so it is not discovered in review.** Counting distinct
 `(owner, class)` pairs, which is what dedupes into edges:
 
-| repo | new edges | existing `REFERENCES` | total edges | growth |
-|---|---|---|---|---|
-| cgis | 694 | 592 | 5 911 | 12% |
-| owner-api | 3 626 | 2 793 | 70 334 | 5% |
-| memory-facets | 1 651 | 1 182 | 12 773 | 13% |
-| aura-core | 221 | 88 | 4 312 | 5% |
-| rich | 954 | 652 | 7 519 | 13% |
+| repo | `REFERENCES` | total edges | growth |
+|---|---|---|---|
+| cgis | 592 → 767 | 5 911 → 6 125 | 4% |
+| owner-api | 2 793 → 7 235 | 70 334 → 74 777 | 6% |
+| memory-facets | 1 182 → 1 660 | 12 773 → 13 251 | 4% |
+| aura-core | 88 → 168 | 4 312 → 4 392 | 2% |
+| rich | 652 → 980 | 7 519 → 7 847 | 4% |
 
-`REFERENCES` roughly doubles; the whole graph grows 5–13%. These are upper
-bounds — a pair that already has a `CALLS` or annotation edge dedupes away.
+The whole graph grows 2–6%. An earlier draft of this table predicted 5–13%; the
+difference is the annotation exclusion above, which removed the duplicate half.
+On cgis the 175 new edges split 172 name references and a handful of annotation
+positions the module-path rule newly reaches.
 `audit_reachability` is unaffected: it traverses enforcement edges only.
 `impact` and `trace_flow` apply no edge-type filter and will widen
 correspondingly, several times more than the PR1 risk already noted.
 
-**Measured outcome.** Implemented and re-run over the same five graphs:
+**Measured outcome.** Implemented, reviewed, corrected, and re-run over the same
+five graphs:
 
-| repo | orphans before | false | orphans after | false | edge growth |
-|---|---|---|---|---|---|
-| cgis | 2 | 0 (0%) | 2 | 0 (0%) | 11% |
-| owner-api | 109 | 44 (40%) | 45 | 7 (16%) | 10% |
-| memory-facets | 18 | 6 (33%) | 9 | 0 (0%) | 11% |
-| aura-core | 18 | 6 (33%) | 9 | 0 (0%) | 3% |
-| rich | 31 | 1 (3%) | 14 | 0 (0%) | 9% |
+| repo | orphans before | false | orphans after | false |
+|---|---|---|---|---|
+| cgis | 2 | 0 (0%) | 2 | 0 (0%) |
+| owner-api | 109 | 44 (40%) | 43 | 5 (12%) |
+| memory-facets | 18 | 6 (33%) | 11 | 0 (0%) |
+| aura-core | 18 | 6 (33%) | 9 | 0 (0%) |
+| rich | 31 | 1 (3%) | 14 | 0 (0%) |
 
-**All seven of owner-api's residuals are the ground truth being wrong, not the
-rule.** Each is a short-name collision the AST sweep cannot resolve and cgis
-can: `domains.rating.calculator.UserMetrics` is reported dead while
-`domains/admin/users.py` names `UserMetrics` — but that file imports
-`app.domains.admin.schemas.UserMetrics`, a different class, and nothing imports
-the calculator's. Same for `CancelReservationResponse`,
-`CreateReservationRequest` (both shadowed by `grpc.services`), two `Rule`
-classes, a `Config`, and a `Message`. Hand-checked one by one; cgis is right in
-all seven. #415's reference implementation names this limitation in its own
-docstring — "a method sharing a name with a live one elsewhere hides in that
-one's shadow" — and resolving through the import map is precisely what a graph
-buys over a name sweep.
+**Owner-api's five residuals are the ground truth being wrong, not the rule** —
+checked one at a time, and independently confirmed by the review.  Each is a
+short-name collision the name-based sweep cannot resolve and an FQN graph can:
+`domains.rating.calculator.UserMetrics` is reported dead while
+`domains/admin/users.py` names `UserMetrics`, but that file imports
+`app.domains.admin.schemas.UserMetrics` and nothing imports the calculator's.
+Likewise `CancelReservationResponse` and `CreateReservationRequest` (both
+shadowed by `grpc.services`), a `Config`, and a `Message`. #415's reference
+implementation names this limitation in its own docstring — "a method sharing a
+name with a live one elsewhere hides in that one's shadow" — and resolving
+through the import map is precisely what a graph buys over a name sweep.
 
-So the honest statement of the result is: the false-positive rate is 0% on every
-repository, and on owner-api the FQN resolution is *more* precise than the sweep
-this feature was measured against.
+An earlier draft of this section claimed the same for all seven residuals of the
+first implementation. **Two of those seven were real misses**, not collisions:
+`api.validators.confirmation.Rule` and `domains.pricing.season_validators.Rule`
+are both live, reached as `confirmation.Rule.confirm_by(...)` through a module
+alias. The module-path rule above closes them. The claim was made from
+hand-checking five of the seven and generalising, which is exactly the habit the
+measurement discipline in this spec exists to prevent.
 
-The orphan counts also fall further than the false-positive count alone explains
-(owner-api 109 → 45, not 109 → 65). The extra 20 are same-module uses the ground
-truth excluded by construction and the rule catches: `register_message("entities",
-"Garage", Garage)`, `Dep = Annotated[TransactionWalletMonthlyFilter, Query()]`,
-`{"model": BaseValidationError}`. All real. Spot-checked.
+The orphan counts fall further than the false-positive count alone explains
+(owner-api 109 → 43). The extra rescues are same-module uses the ground truth
+excludes by construction: `register_message("entities", "Garage", Garage)`,
+`Dep = Annotated[TransactionWalletMonthlyFilter, Query()]`,
+`{"model": BaseValidationError}`. Spot-checked; all real. memory-facets moved the
+other way, 9 → 11, when the binding-position fix stopped two classes being
+rescued by a loop variable that happened to share their name.
 
-Edge growth landed at 3–11%, at the low end of the 5–13% predicted, because
-edges dedupe by `(owner, name)`.
+**What it cannot do.** Three limits, all measured rather than assumed:
 
-**What it cannot do.** The rule is name-based, so a class mentioned only inside
-code that is itself dead reads as live. #415's reference implementation carries
+* A class mentioned only inside code that is itself dead reads as live. #415's
+  reference implementation carries the same limitation and states it plainly:
+  it under-reports and never over-reports.
+* A class named only inside a **decorator** is invisible, because `_walk` never
+  descends into decorators ([#429](https://github.com/zaebee/codegraph-brain/issues/429)).
+  117 known names appear in owner-api decorators, mostly `response_model=Foo`;
+  those classes survive only when a return annotation names them too. This
+  raises #429 from an audit-precision issue to an orphan-query one.
+* A class arriving through `from x import *` is not gated in, because the gate is
+  the module's `import_map` keys and a star import contributes none. One
+  production file in owner-api is affected, none in the other four repositories. #415's reference implementation carries
 the same limitation and states it plainly: it under-reports and never
 over-reports. For a check whose whole value is that people trust it, a false
 "live" is the cheap direction.

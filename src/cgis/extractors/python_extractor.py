@@ -80,6 +80,23 @@ def _identifiers_outside_imports(root: BaseNode, code_bytes: bytes) -> set[str]:
     return used
 
 
+def _attribute_path(node: BaseNode, code_bytes: bytes) -> str | None:
+    """`obj.member` when this identifier is the `obj` half, else None."""
+    parent = node.parent
+    if parent is None or parent.type != "attribute":
+        return None
+    obj = parent.child_by_field_name("object")
+    # `.id`, not `is`: every access to a tree-sitter child builds a fresh Python
+    # wrapper, so identity comparison is always False.
+    if obj is None or obj.id != node.id:
+        return None
+    member = parent.child_by_field_name("attribute")
+    if member is None:
+        return None
+    head = code_bytes[node.start_byte : node.end_byte].decode("utf8")
+    return f"{head}.{code_bytes[member.start_byte : member.end_byte].decode('utf8')}"
+
+
 def find_reexports(root: BaseNode, code_bytes: bytes, import_map: dict[str, str]) -> dict[str, str]:
     """Return the imports this module never uses — i.e. passes straight through (#182).
 
@@ -384,14 +401,20 @@ class PythonExtractor(BaseExtractor):
         if not is_name_load(node):
             return
         owner = self._owner_fqn(node, code_bytes, file_path, current_func_node, module_fqn)
-        if owner:
-            name_refs_acc.append(
-                (
-                    owner,
-                    code_bytes[node.start_byte : node.end_byte].decode("utf8"),
-                    node.start_point.row + 1,
-                )
-            )
+        if not owner:
+            return
+        name = code_bytes[node.start_byte : node.end_byte].decode("utf8")
+        line = node.start_point.row + 1
+        name_refs_acc.append((owner, name, line))
+        dotted = _attribute_path(node, code_bytes)
+        if dotted is not None:
+            # `from app.api import validators` then `validators.Rule.confirm_by(...)`
+            # names a class through its module, and the head alone resolves to a
+            # module, which D3 drops. Recording the two-segment path as well is
+            # what makes such a class visible; when the head is itself the class
+            # (`Widget.SIZE`) the extra candidate resolves to nothing and costs
+            # nothing.
+            name_refs_acc.append((owner, dotted, line))
 
     def _owner_fqn(
         self,

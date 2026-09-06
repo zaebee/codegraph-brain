@@ -34,15 +34,23 @@ _GraphData = tuple[SQLiteStore, list[Node], list[Edge]]
 # `rawdep_` is an annotation position (D4/D9), `nameref_` is a name in a load
 # position (D10).
 _EXPECTED_ANNOTATION_REFERENCES = 594
-_EXPECTED_NAME_REFERENCES = 606
-_TOLERANCE = 60  # ~10%: absorbs ordinary code churn, not a lost source
+_EXPECTED_NAME_REFERENCES = 172
+_TOLERANCE = 60  # ~10% of the annotation band: ordinary code churn, not a lost source
+_NAME_REF_TOLERANCE = 25  # the name-reference band is smaller, so its band is too
 
 
 def _by_mechanism(edges: list[Edge]) -> tuple[list[Edge], list[Edge]]:
-    """Split REFERENCES edges into (annotation, name-reference)."""
+    """Split REFERENCES edges into (annotation, name-reference).
+
+    Both halves test the id, rather than one testing membership in the other:
+    `e not in name_refs` is a linear scan of Pydantic models per edge, which
+    measured 60 s on the owner-api graph.
+    """
     refs = [e for e in edges if e.type == EdgeType.REFERENCES]
-    name_refs = [e for e in refs if ":nameref_" in e.id]
-    return [e for e in refs if e not in name_refs], name_refs
+    return (
+        [e for e in refs if ":nameref_" not in e.id],
+        [e for e in refs if ":nameref_" in e.id],
+    )
 
 
 def test_annotation_reference_count_is_within_the_calibrated_band(
@@ -68,9 +76,9 @@ def test_name_reference_count_is_within_the_calibrated_band(root_graph_data: _Gr
     """
     _store, _nodes, edges = root_graph_data
     _, name_refs = _by_mechanism(edges)
-    assert abs(len(name_refs) - _EXPECTED_NAME_REFERENCES) <= _TOLERANCE, (
+    assert abs(len(name_refs) - _EXPECTED_NAME_REFERENCES) <= _NAME_REF_TOLERANCE, (
         f"name-reference REFERENCES edges = {len(name_refs)}, expected "
-        f"{_EXPECTED_NAME_REFERENCES}±{_TOLERANCE}. Re-measure with a fresh ingest "
+        f"{_EXPECTED_NAME_REFERENCES}±{_NAME_REF_TOLERANCE}. Re-measure with a fresh ingest "
         "before changing this number; the repo-root graph.db is stale and must not be used."
     )
 

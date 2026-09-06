@@ -436,7 +436,9 @@ def emit_name_reference_edges(
     `candidates` are the name loads the walk saw, already attributed to their
     nearest owner. `known_names` is the module's `import_map` keys plus the
     classes it defines — the gate that keeps a local variable from collecting
-    edges meant for an unrelated class of the same name.
+    edges meant for an unrelated class of the same name. A candidate may be
+    dotted (`validators.Rule`, a class reached through its module); the gate
+    then applies to its head, which is the part the module actually imported.
 
     Deduplicated by (owner, name), unlike the per-position annotation edges: an
     enum named forty times in one function is one fact, and the orphan query
@@ -458,12 +460,18 @@ def emit_name_reference_edges(
     """
     seen: set[tuple[str, str]] = set()
     for source_fqn, name, line in candidates:
-        if name in _NOT_A_REFERENCE or name not in known_names or (source_fqn, name) in seen:
+        head = name.partition(".")[0]
+        if head in _NOT_A_REFERENCE or head not in known_names or (source_fqn, name) in seen:
             continue
         seen.add((source_fqn, name))
         edges.append(
             Edge(
-                id=f"{file_path}:nameref_{source_fqn}_{name}",
+                # `|` separates: it cannot occur in an FQN or a Python name,
+                # so two distinct (owner, name) pairs cannot share an id.
+                # `_` could — owner `m.handle_User` + `Session` and owner
+                # `m.handle` + `User_Session` collided, and edge ids are a
+                # PRIMARY KEY under INSERT OR REPLACE, so one edge vanished.
+                id=f"{file_path}:nameref_{source_fqn}|{name}",
                 type=EdgeType.DEPENDS_ON,
                 source=source_fqn,
                 target=f"raw_dep:{name}",

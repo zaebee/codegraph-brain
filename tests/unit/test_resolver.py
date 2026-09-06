@@ -1838,3 +1838,40 @@ def test_the_member_half_of_an_attribute_is_not_a_candidate() -> None:
     user = "from pkg.w import Widget\n\ndef go(thing):\n    return thing.Widget\n"
     resolved = _resolve_two("pkg/w.py", _WIDGET, "pkg/user.py", user)
     assert ("pkg.user.go", "pkg.w.Widget") not in _refs(resolved)
+
+
+def test_two_owners_whose_names_run_together_get_distinct_edges() -> None:
+    """Edge ids are a PRIMARY KEY, so an ambiguous id silently drops an edge.
+
+    `nameref_{owner}_{name}` made `handle_User` + `Session` and `handle` +
+    `User_Session` produce one id, and INSERT OR REPLACE kept whichever came
+    last. The separator has to be a character neither an FQN nor a Python name
+    can contain.
+    """
+    lib = "class Session:\n    pass\n\n\nclass User_Session:\n    pass\n"
+    user = (
+        "from pkg.lib import Session, User_Session\n\n"
+        "def handle_User(app):\n"
+        "    app.add(Session)\n\n"
+        "def handle(app):\n"
+        "    app.add(User_Session)\n"
+    )
+    resolved = _resolve_two("pkg/lib.py", lib, "pkg/user.py", user)
+    refs = _refs(resolved)
+    assert ("pkg.user.handle_User", "pkg.lib.Session") in refs
+    assert ("pkg.user.handle", "pkg.lib.User_Session") in refs
+    ids = [e.id for e in resolved if e.type == EdgeType.REFERENCES]
+    assert len(ids) == len(set(ids)), "two references collapsed onto one edge id"
+
+
+def test_a_class_reached_through_its_module_alias_is_referenced() -> None:
+    """`from pkg import mod` then `mod.Widget.build()` — the head is a module, not a class.
+
+    Found by review: the candidate for the head alone resolves to a module and
+    D3 drops it, so a class only ever reached this way stayed invisible. Two
+    production classes in owner-api were reported dead for exactly this reason.
+    """
+    widget = "class Widget:\n    @classmethod\n    def build(cls):\n        return cls()\n"
+    user = "from pkg import w\n\ndef go():\n    return w.Widget.build()\n"
+    resolved = _resolve_two("pkg/w.py", widget, "pkg/user.py", user)
+    assert ("pkg.user.go", "pkg.w.Widget") in _refs(resolved)

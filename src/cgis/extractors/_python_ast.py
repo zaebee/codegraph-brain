@@ -248,9 +248,30 @@ def extract_decorator_names(node: BaseNode, code_bytes: bytes) -> list[str]:
     return names
 
 
+# Nodes that only group other nodes: a tuple, a list, an unpacking target. An
+# identifier inside one is used — or bound — by whatever encloses the group, so
+# the test climbs out of them before deciding. This is what makes
+# `for a, (b, Widget) in xs` a binding and `f((a, Widget))` a use without
+# enumerating either shape.
+_GROUPING: frozenset[str] = frozenset(
+    {
+        "tuple",
+        "list",
+        "set",
+        "dictionary",
+        "pair",
+        "parenthesized_expression",
+        "list_splat",
+        "dictionary_splat",
+        "pattern_list",
+        "tuple_pattern",
+        "list_pattern",
+        "list_splat_pattern",
+        "dictionary_splat_pattern",
+    }
+)
+
 # The parent field an identifier sits in when it is NOT a use of that name.
-# Everything else — a tuple member, an argument, the object half of an
-# attribute, an `except` clause, the right of an assignment — is a load.
 _NOT_A_LOAD: frozenset[tuple[str, str]] = frozenset(
     {
         ("call", "function"),  # a construction; CALLS already carries it
@@ -263,14 +284,34 @@ _NOT_A_LOAD: frozenset[tuple[str, str]] = frozenset(
         ("typed_default_parameter", "name"),
         ("function_definition", "name"),
         ("class_definition", "name"),
-        ("keyword_pattern", "name"),
+        ("for_statement", "left"),  # the loop variable
+        ("for_in_clause", "left"),  # the same, in a comprehension
+        ("named_expression", "name"),  # the walrus binds its left side
     }
 )
 
-# Parents whose every identifier child is a binding or a module path, never a use.
+# Parents whose identifier children are all bindings, module paths, or already
+# covered by another edge.
 _BINDING_PARENTS: frozenset[str] = frozenset(
-    {"dotted_name", "aliased_import", "parameters", "lambda_parameters", "global_statement"}
+    {
+        "aliased_import",
+        "parameters",
+        "lambda_parameters",
+        "global_statement",
+        "nonlocal_statement",
+        "delete_statement",
+        "as_pattern_target",  # the name `with x as N` / `except E as N` binds
+        # An annotation is already a `rawdep_` edge from the annotation path, and
+        # the same node type also spells a PEP 695 alias name (`type N = ...`)
+        # and a type parameter (`def f[N]`), both of which bind. Excluding it
+        # here removes a duplicate and two bindings in one line.
+        "type",
+    }
 )
+
+# Two parents hold a use and a binding side by side, told apart only by order.
+_LOAD_IS_FIRST_CHILD: frozenset[str] = frozenset({"as_pattern"})  # `except Widget as e`
+_LOAD_IS_NOT_FIRST_CHILD: frozenset[str] = frozenset({"keyword_pattern"})  # `case O(label=W)`
 
 
 def _field_name(parent: BaseNode, child: BaseNode) -> str | None:
@@ -286,18 +327,41 @@ def is_name_load(node: BaseNode) -> bool:
     """Does this identifier *use* the name it spells, rather than bind or qualify it?
 
     The question D10 turns on: `add_middleware(Widget)`, `except Widget:`,
-    `Widget.SIZE` and `[("w", Widget)]` all name a class without constructing
-    it, and a class that is only ever named this way has no edge at all — which
-    is what made the #415 orphan query wrong on a third of what it reported for
-    every application codebase measured.
+    `Widget.SIZE`, `[("w", Widget)]` and `case Widget():` all name a class
+    without constructing it, and a class only ever used that way has no edge at
+    all — which is what made the #415 orphan query wrong on a third of what it
+    reported for every application codebase measured.
 
-    Excluded are the positions that either bind the name (an assignment target,
-    a parameter, a definition's own name) or already have an edge of their own
-    (a call's `function`, which is CALLS). The member half of an attribute is
-    excluded too: `TOP_UP` in `TransactionType.TOP_UP` is a field lookup on
-    whatever the object turns out to be, not a class anyone imported.
+    Excluded are the positions that bind the name (an assignment or loop target,
+    a parameter, a walrus, a `with`/`except`/`case` alias, a definition's own
+    name) and those that already carry an edge of their own: a call's `function`
+    field is CALLS, and an annotation is the annotation path's `rawdep_` edge.
+    The member half of an attribute is excluded too — `TOP_UP` in
+    `TransactionType.TOP_UP` is a field lookup on whatever the object turns out
+    to be, not a class anyone imported.
+
+    Both reviewers of the original version found the same hole: a denylist over
+    a grammar rots. `test_name_load_positions` pins every position this docstring
+    claims, so a grammar the list has not met fails there rather than silently.
     """
-    parent = node.parent
+    target = node
+    parent = target.parent
+    while parent is not None and parent.type in _GROUPING:
+        target, parent = parent, parent.parent
     if parent is None or parent.type in _BINDING_PARENTS:
         return False
-    return (parent.type, _field_name(parent, node) or "") not in _NOT_A_LOAD
+    if parent.type in _LOAD_IS_FIRST_CHILD:
+        return bool(parent.named_children) and parent.named_children[0].id == target.id
+    if parent.type in _LOAD_IS_NOT_FIRST_CHILD:
+        return bool(parent.named_children) and parent.named_children[0].id != target.id
+    if parent.type == "dotted_name":
+        # `case Widget:` binds a fresh name; `case Widget():` and `case Widget.A:`
+        # name the class. All three spell it through a dotted_name, and only the
+        # bare one-segment form directly under a case_pattern is the capture.
+        grandparent = parent.parent
+        return not (
+            grandparent is not None
+            and grandparent.type == "case_pattern"
+            and len(parent.named_children) == 1
+        )
+    return (parent.type, _field_name(parent, target) or "") not in _NOT_A_LOAD
