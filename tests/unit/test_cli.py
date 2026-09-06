@@ -1624,3 +1624,25 @@ def test_orphans_without_a_database_says_so(tmp_path: Path) -> None:
     result = runner.invoke(app, ["orphans", "--db", str(tmp_path / "nope.db")])
     assert result.exit_code == 1
     assert "Database not found" in result.output
+
+
+def test_orphans_rejects_a_prefix_that_matches_nothing(tmp_path: Path) -> None:
+    """A gate that examined nothing must not report success.
+
+    `--prefix app.domains` against a graph ingested from `app/` matches no FQN
+    at all, and the first version printed "0 of 0" and exited 0 — a CI check
+    that passes because it looked at nothing. The command's own docstring
+    carried that exact example.
+    """
+    db = _orphan_graph(tmp_path)
+    result = runner.invoke(app, ["orphans", "--db", db, "--prefix", "nonexistent.pkg"])
+    assert result.exit_code == 2, result.output
+    assert "No classes under prefix" in result.output
+
+
+def test_orphans_with_a_matching_prefix_still_reports(tmp_path: Path) -> None:
+    """Guard on the above: a prefix that does match must behave normally."""
+    db = _orphan_graph(tmp_path)
+    result = runner.invoke(app, ["orphans", "--db", db, "--prefix", "app.c"])
+    assert result.exit_code == 1, result.output
+    assert "app.c.Dead" in result.output

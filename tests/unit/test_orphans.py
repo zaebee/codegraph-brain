@@ -6,6 +6,7 @@ pair #415 identifies as decisive: without the test filter all six of its worked
 rows read as live, and without the re-export exclusion nothing is ever reported.
 """
 
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -192,3 +193,42 @@ def test_considered_counts_the_population_not_the_findings(store: SQLiteStore) -
     report = find_orphan_classes(store)
     assert [o.fqn for o in report.orphans] == ["app.b.Dead"]
     assert report.considered == 2
+
+
+def test_a_pre_column_graph_is_backfilled_on_open(tmp_path: Path) -> None:
+    """A graph ingested before `is_test` existed must still answer correctly.
+
+    Without the backfill the migration leaves every row at 0, every test counts
+    as production, and the query silently under-reports — the failure mode the
+    column exists to prevent, reintroduced by the upgrade path. `is_test_path`
+    is pure and `file_path` is already stored, so nothing needs re-ingesting.
+    """
+    db = str(tmp_path / "old.db")
+    conn = sqlite3.connect(db)
+    conn.executescript(
+        """
+        CREATE TABLE nodes (
+            id TEXT PRIMARY KEY, type TEXT, name TEXT, file_path TEXT,
+            start_line INTEGER, end_line INTEGER, language TEXT,
+            ontology_class TEXT, domains TEXT, confidence_score REAL,
+            metadata TEXT, namespace TEXT NOT NULL DEFAULT 'INTERNAL'
+        );
+        CREATE TABLE edges (
+            id TEXT PRIMARY KEY, source TEXT, target TEXT, type TEXT,
+            weight REAL, confidence REAL, context TEXT, file_path TEXT,
+            line_number INTEGER
+        );
+        INSERT INTO nodes VALUES
+            ('app.a.Dead','CLASS','Dead','app/a.py',1,2,'python',NULL,'[]',1.0,'{}','INTERNAL'),
+            ('tests.t','FILE','t','tests/test_a.py',1,2,'python',NULL,'[]',1.0,'{}','INTERNAL');
+        INSERT INTO edges VALUES
+            ('e1','tests.t','app.a.Dead','CALLS',1.0,1.0,NULL,'tests/test_a.py',1);
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    with SQLiteStore(db) as opened:
+        report = find_orphan_classes(opened)
+    assert report.test_sources == 1, "the migration did not backfill is_test from file_path"
+    assert [o.fqn for o in report.orphans] == ["app.a.Dead"]

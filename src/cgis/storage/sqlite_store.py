@@ -2,10 +2,12 @@
 
 import json
 import sqlite3
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
+from cgis.core.paths import is_test_path
 
 RAW_CALL_PREFIX = "raw_call:"
 
@@ -122,11 +124,24 @@ class SQLiteStore:
             )
             self._conn.commit()
         if "is_test" not in cols:
-            # An existing graph gets 0 for every row, which reads as "all
-            # production" — the behaviour before this column existed. Re-ingest
-            # to populate it; the orphan query says so when it finds none.
             self._conn.execute("ALTER TABLE nodes ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0")
+            self._backfill_is_test()
             self._conn.commit()
+
+    def _backfill_is_test(self) -> None:
+        """Populate the new column from the paths already stored (spec D5).
+
+        `is_test_path` is pure and `file_path` is in every row, so a migrated
+        graph does not have to be re-ingested to answer the orphan query
+        correctly — without this it would report every test as production code
+        and silently under-report. One pass, at migration time only.
+        """
+        if not self._conn:
+            return
+        rows = self._conn.execute("SELECT id, file_path FROM nodes").fetchall()
+        test_ids = [(row["id"],) for row in rows if is_test_path(row["file_path"] or "")]
+        if test_ids:
+            self._conn.executemany("UPDATE nodes SET is_test = 1 WHERE id = ?", test_ids)
 
     _NODE_INSERT = """
         INSERT OR REPLACE INTO nodes (
@@ -207,6 +222,33 @@ class SQLiteStore:
             raise RuntimeError(self._error_message)
         cursor = self._conn.execute("SELECT * FROM nodes")
         return [self._row_to_node(row) for row in cursor.fetchall()]
+
+    def get_referenced_targets(
+        self, edge_types: Iterable[EdgeType], *, from_test_sources: bool = True
+    ) -> set[str]:
+        """Distinct targets of edges of these types, optionally from production sources only.
+
+        Answers "what does anything point at" without materialising the edges.
+        The orphan query needs a set of ids out of 75 000 edges on a mid-sized
+        backend; going through `get_all_edges` builds 75 000 Pydantic models to
+        throw all but the target away, which is where its 168 MB went — and 1.8 GB
+        on a 1M-edge graph. This does it in SQL, which is what the store is for.
+        """
+        types = sorted({t.value for t in edge_types})
+        if not types:
+            return set()
+        placeholders = ",".join("?" * len(types))
+        source_filter = "" if from_test_sources else " AND n.is_test = 0"
+        # A join rather than a subquery: an edge whose source is not a node at
+        # all (a virtual boundary target has no row until the resolver mints
+        # one) must not count as a production reference.
+        sql = (
+            "SELECT DISTINCT e.target FROM edges e "
+            "JOIN nodes n ON e.source = n.id "
+            f"WHERE e.type IN ({placeholders}){source_filter}"
+        )
+        rows = self._conn.execute(sql, types).fetchall() if self._conn else []
+        return {row[0] for row in rows}
 
     def get_all_edges(self) -> list[Edge]:
         """Return every edge currently in the store."""

@@ -1439,10 +1439,13 @@ def _render_orphans(report: OrphanReport) -> None:
         "CALLS / EXTENDS / REFERENCES from production code"
     )
     if report.test_sources == 0:
+        # Not "re-ingest": a migrated graph is backfilled, and if the tests live
+        # outside the ingested root, re-ingesting that root changes nothing. The
+        # actionable fact is which root was ingested.
         console.print(
-            "  [yellow]⚠  no test sources in this graph.[/yellow] If the repository has "
-            "tests, re-ingest — a graph built before the is_test column counts them as "
-            "production and will under-report."
+            "  [yellow]⚠  no test files under the ingested root.[/yellow] Every caller "
+            "therefore counts as production, so a class kept alive only by its tests "
+            "will not be reported. Ingest a root that contains them to see it."
         )
     for orphan in report.orphans:
         console.print(
@@ -1477,7 +1480,7 @@ def orphans(
     because each of them is imported somewhere — a package re-export keeps a
     class importable long after its last real caller is gone:
 
-        cgis orphans --prefix app.domains
+        cgis orphans --prefix domains
 
     Two filters make the answer usable, and both are deliberate. **Tests are not
     users:** a class built only by its own test is the shape being hunted. **A
@@ -1501,6 +1504,18 @@ def orphans(
 
     with SQLiteStore(db) as store:
         report = find_orphan_classes(store, prefix=prefix, include_tests=include_tests)
+
+    if prefix and report.considered == 0:
+        # A typo'd or wrongly-rooted prefix would otherwise print "0 of 0" and
+        # exit 0 — a CI gate that passes because it examined nothing. The
+        # commonest cause is the ingest root: a graph built from `app/` has FQNs
+        # like `domains.x`, so `--prefix app.domains` matches nothing at all.
+        console.print(
+            f"[bold red]❌ No classes under prefix[/bold red] {escape(prefix)}. "
+            "Check the prefix against the graph's FQNs — they are relative to the "
+            "ingested root, so a graph built from `app/` has no `app.` prefix."
+        )
+        raise typer.Exit(code=2)
 
     if output_format == OutputFormat.JSON:
         typer.echo(_json.dumps(dataclasses.asdict(report), indent=2))
