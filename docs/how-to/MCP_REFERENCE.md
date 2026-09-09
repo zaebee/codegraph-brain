@@ -126,18 +126,30 @@ Classes nothing in production builds, extends or names — dead-code candidates 
     ``prefix`` narrows to one package on a dot boundary. ``include_tests`` counts
     test code as a user, turning the report into "unreachable from anywhere".
 
-    Returns JSON ``{orphans, considered, test_sources}``; each orphan carries
-    ``fqn``/``file``/``line``. **A listing is a candidate for deletion, not a
-    proof** — a class named only inside a decorator (#429) or arriving through a
-    star import is invisible here, so the sweep errs towards reporting a live
-    class rather than hiding a dead one. ``test_sources: 0`` in a repository that
-    has tests means the graph predates the ``is_test`` column: re-ingest.
+    Machine-generated classes are **hidden by default**, and ``include_generated``
+    puts them back. The query is right about them — nothing constructs a
+    betterproto stub — but nobody hand-deletes one either, so they are noise
+    rather than a finding. Measured on owner-api at b7d02fe6, five of six
+    reported orphans were generated entities and the sixth a nested pydantic
+    ``Config``: the unfiltered report had no actionable row in it (#432).
+
+    Returns JSON ``{orphans, considered, test_sources, generated_excluded}``;
+    each orphan carries ``fqn``/``file``/``line``. **A listing is a candidate for
+    deletion, not a proof** — a class named only inside a decorator (#429) or
+    arriving through a star import is invisible here, so the sweep errs towards
+    reporting a live class rather than hiding a dead one. ``test_sources: 0`` in a
+    repository that has tests means the graph predates the ``is_test`` column:
+    re-ingest. ``generated_excluded`` counts every generated class left out of
+    the population under the same ``prefix``, referenced or not — so ``0`` on a
+    repository with generated code means the same for ``is_generated``, which has
+    no backfill: the marker is in the file header, not in the database.
 
 | Argument | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
 | `db_path` | `string` |  |  |
 | `prefix` | `any` |  |  |
 | `include_tests` | `boolean` |  |  |
+| `include_generated` | `boolean` |  |  |
 
 ---
 
@@ -267,11 +279,22 @@ Whole-graph architectural metrics — coupling bottlenecks + God classes (#16).
     (e.g. ``["tests"]`` removes both ``tests.*`` and ``domains.*.tests.*``) so
     test/vendor scaffolding stays out of the rankings.
 
+    ``scope`` is its complement: it keeps only nodes under one of the given
+    dot-prefixes, anchored and cut on a dot boundary, so
+    ``["domains.reservation"]`` is that subtree and not
+    ``domains.reservation_archive``. Use it for a per-domain review. The two
+    compose, and they differ where it matters for PageRank — ``exclude`` removes
+    nodes from the propagation graph, ``scope`` filters the rows and lets rank
+    propagate over the whole graph, so a scoped run reports how central the
+    subtree is *globally*. Coupling in-degree likewise keeps counting callers
+    from outside the scope, which is the ripple a domain review is after (#239).
+
 | Argument | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
 | `db_path` | `string` |  |  |
 | `limit` | `integer` |  |  |
 | `exclude` | `any` |  |  |
+| `scope` | `any` |  |  |
 
 ---
 
