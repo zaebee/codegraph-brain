@@ -606,3 +606,21 @@ def test_exclude_given_as_a_bare_string_is_one_segment(tmp_path: Path) -> None:
 
     assert as_string == as_list
     assert "tests.utils.rnd" not in as_string
+
+
+def test_filter_helpers_tolerate_none(tmp_path: Path) -> None:
+    """`None` means "no filter", as it did before `_as_terms` centralised the guard.
+
+    `_segment_exclusion`'s own comment said it guarded a `None` caller; folding
+    the blank check into `_as_terms` dropped that, turning it into a `TypeError`.
+    No shipped caller passes `None` — the MCP tools do `exclude or []` — but
+    `DuckDBAnalyzer` is public, and a direct caller is exactly the audience the
+    bare-string guard was added for.
+    """
+    db = _scope_fixture(tmp_path)
+    with DuckDBAnalyzer(db) as analyzer:
+        none_filters = {m.node_id for m in analyzer.get_coupling_metrics(exclude=None, scope=None)}
+        no_filters = {m.node_id for m in analyzer.get_coupling_metrics()}
+
+    assert none_filters == no_filters
+    assert none_filters

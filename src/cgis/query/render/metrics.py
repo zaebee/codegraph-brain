@@ -35,7 +35,7 @@ _DUCKDB_MISSING = (
 )
 
 
-def _as_terms(terms: Sequence[str]) -> list[str]:
+def _as_terms(terms: Sequence[str] | None) -> list[str]:
     """Normalise a filter argument into a list of non-blank, trimmed terms.
 
     A bare string is one term, not a sequence of one-character terms: `Sequence`
@@ -48,7 +48,14 @@ def _as_terms(terms: Sequence[str]) -> list[str]:
     Trimming for the same reason `find_orphan_classes` trims its `prefix`: a
     copy-pasted `" domains.reservation"` otherwise passes the blank check and
     then matches nothing.
+
+    `None` means "no filter", which `_segment_exclusion`'s own `if not segments`
+    used to cover before this centralised it. No shipped caller passes it — the
+    MCP tools do `exclude or []` — but `DuckDBAnalyzer` is public, and a direct
+    caller is the same audience the bare-string guard above is for.
     """
+    if terms is None:
+        return []
     if isinstance(terms, str):
         terms = [terms]
     # dict.fromkeys dedupes while preserving order.
