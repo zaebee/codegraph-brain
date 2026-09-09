@@ -63,7 +63,7 @@ query, so freshness can be checked on every call rather than on request.
 
 ## Decisions
 
-### D1 — `ingest_state` table, two rows
+### D1 — `ingest_state` table, three rows
 
 ```sql
 CREATE TABLE IF NOT EXISTS ingest_state (
@@ -72,8 +72,17 @@ CREATE TABLE IF NOT EXISTS ingest_state (
 );
 ```
 
-Holding `root` (the absolute path passed to `cgis ingest`) and `ingested_at`
-(unix seconds). Written at the end of both full and incremental ingests.
+Holding `root` (the absolute path passed to `cgis ingest`), `ingested_at` (unix
+seconds), and `extensions` (a comma-separated list, e.g. `.py,.ts`). Written at
+the end of both full and incremental ingests.
+
+`extensions` is what lets the probe reproduce the pipeline's walk without the
+caller supplying it. The filter — which directories are skipped, which suffixes
+have an extractor — lives in `IngestionPipeline` and `build_extractors`, while
+the probe lives in the store; threading the extractor registry through
+twenty-two query call sites to answer a freshness question would be the wrong
+dependency. Recording it once at ingest keeps the probe self-contained and keeps
+D2's "the same walk" promise honest rather than approximate.
 
 `CREATE TABLE IF NOT EXISTS` is the whole migration; there is no backfill and
 none is possible, since the root is not derivable from stored data. Unlike the
