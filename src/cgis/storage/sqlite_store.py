@@ -665,16 +665,17 @@ class SQLiteStore:
         """Does this graph still match the tree it was built from? (#175)
 
         Decided by `st_mtime` against the recorded ingest time, never by
-        re-hashing: statting a known list is ~4 ms on an 800-file repository,
+        re-hashing: the whole probe measures 6.8 ms on an 800-file repository,
         which is noise next to a query, while hashing is seconds. `touch` on an
         unmodified file therefore reports `STALE` when nothing changed. That is
         the chosen direction — over-reporting costs a re-ingest, under-reporting
         returns a confident wrong answer, which is the failure this exists to
         remove.
 
-        Statting a known list rather than walking the tree, because a walk would
-        have to reproduce `IngestionPipeline`'s directory exclusions or count
-        every file in a `.venv` as new. The two halves are complementary and
+        Statting a known list rather than walking the tree — for correctness, not
+        for speed: measured, the two cost the same, and a walk would have to
+        reproduce `IngestionPipeline`'s directory exclusions or count every file
+        in a `.venv` as new. The two halves are complementary and
         measured: a file's own mtime catches an edit, and its *directory's* mtime
         catches an addition, a deletion and a new subdirectory — a directory's
         mtime does not move when a file inside it is edited.

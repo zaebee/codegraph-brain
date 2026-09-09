@@ -45,8 +45,10 @@ Measured at `52e0de1` against `Ownima/owner-api` at `b7d02fe6` and cgis's own
 | `files_state` rows after `cgis ingest` | **0** |
 | `files_state` rows after `cgis ingest -i` | one per file |
 | distinct `nodes.file_path` after either | one per file that produced a node |
-| probe: 811 tracked files + 102 dirs, `os.stat` | **3.7 ms** |
+| statting the 811 tracked files, `os.stat` | 3.7 ms |
 | the same through `pathlib.Path` | 18.8 ms |
+| **the whole probe** (811 files + 102 dirs), measured after implementation | **6.8 ms**, fresh and stale alike |
+| `os.walk` + stat over the same tree | 6.8 ms |
 
 The "what records the ingested root" row is the constraint the design turns on:
 `files_state` holds a *relative* `file_path` and a content hash, so nothing in
@@ -117,6 +119,12 @@ directories that contain them, which covers every change that matters:
 Measured, not assumed: a directory's mtime moves on add, on delete, and on a new
 subdirectory, and does *not* move on an edit to a file inside it — so the two
 halves are complementary rather than redundant.
+
+**Not walking is a correctness choice, not a performance one.** Measured after
+implementation, the probe and a tree walk cost the same 6.8 ms; an earlier note
+here implying the probe was cheaper was comparing its file half against a whole
+walk. What the walk cannot do is stay correct without duplicating the pipeline's
+exclusions.
 
 Walking was the first design and it was wrong twice over. `Path.rglob` does not
 honour `IngestionPipeline`'s directory exclusions, so a `.venv` under the ingest
@@ -201,6 +209,31 @@ silently.
 | stored root no longer exists | `UNKNOWN`, with the moved-root reason |
 | explicit `root` given | overrides the stored one |
 | probe cost | no file contents are read (D5) |
+
+## What implementation changed
+
+Three things this spec got wrong were found by building it, each measured:
+
+1. **`ingested_at` cannot be the wall clock.** All 200 of 200 writes received an
+   mtime 2.5-6.4 ms *earlier* than a `time.time()` reading taken before the
+   write — mtimes are quantised and rounded down — so a wall-clock mark misses
+   edits made near the ingest, the one direction D3 forbids. It is now the
+   largest mtime among the ingested files, which puts both sides of the
+   comparison on the same clock.
+
+2. **A directory's mtime is not evidence on its own.** `cgis ingest . -o
+   graph.db` is the default shape, and writing the database bumps the directory
+   holding it *after* the ingest is recorded — so every graph stored inside the
+   tree it describes reported `STALE` immediately and permanently. A suspicious
+   directory is now opened once and asked whether it holds an entry that is
+   newer, untracked and not this database. That also covers editor swap files
+   and a freshly created `__pycache__`.
+
+3. **The CLI note belongs on stderr.** On stdout it broke thirteen tests at once:
+   `--format json` is piped, and a warning beside the payload makes it
+   unparseable. The same hazard in MCP is why D4 splits by return type — and
+   three tools the plan called text turned out to share a renderer that emits
+   either shape, so the renderer places the signal itself.
 
 ## Out of scope
 
