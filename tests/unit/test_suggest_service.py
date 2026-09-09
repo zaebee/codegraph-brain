@@ -237,3 +237,31 @@ def test_bridge_endpoints_are_named_like_members(tmp_path: Path) -> None:
 
     members = {f for community in report.communities for f in community.files}
     assert endpoints <= members, endpoints - members
+
+
+def test_the_package_root_does_not_collide_with_a_same_named_module(tmp_path: Path) -> None:
+    """Analysing `p` itself, `p` and `p.p` must not both render as `p` (#447 review).
+
+    The first fix named members relative to the prefix, which leaves the package's
+    own node — where `fqn == prefix` — falling through to the last-segment
+    fallback. Real case: `cgis suggest-packages cgis.query.drift` listed `drift`
+    twice, for `drift/__init__.py` and `drift/drift.py`.
+
+    The root renders as `__init__`, which is the file it stands for and cannot
+    clash: a nested `__init__.py` has its id folded into its package's name.
+    """
+    files = [make_file_node(n) for n in ("p", "p.p", "p.other", "p.third")]
+    edges = [
+        make_import_edge(s, t)
+        for s in ("p", "p.p", "p.other", "p.third")
+        for t in ("p", "p.p", "p.other", "p.third")
+        if s != t
+    ]
+    db = _store_with(tmp_path, files, edges)
+
+    report = suggest_packages(db, prefix="p", with_calls=False)
+
+    rendered = [f for community in report.communities for f in community.files]
+    assert len(rendered) == len(set(rendered)), rendered
+    assert "__init__" in rendered
+    assert "p" in rendered

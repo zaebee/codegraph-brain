@@ -73,7 +73,16 @@ def _member_name(fqn: str, prefix: str) -> str:
 
     The path under the prefix is unique by construction, because full FQNs are —
     `sub` and `sub.sub` here — and stays as short as the ambiguity allows.
+
+    The package's own node is the one file with nothing under the prefix left to
+    name, and naming it by the prefix's last segment reintroduced the collision
+    one level down: `suggest-packages cgis.query.drift` listed `drift` for both
+    `drift/__init__.py` and `drift/drift.py` (#447 review). It renders as
+    `__init__`, the file it stands for, which cannot clash — a nested
+    `__init__.py` has its id folded into its own package's name.
     """
+    if fqn == prefix:
+        return "__init__"
     if not prefix or not fqn.startswith(f"{prefix}."):
         return fqn.rsplit(".", 1)[-1]
     return fqn[len(prefix) + 1 :]
