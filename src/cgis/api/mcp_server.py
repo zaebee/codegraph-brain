@@ -187,6 +187,7 @@ def cgis_ingest(project_path: str, db_path: str = _DEFAULT_DB, full_rebuild: boo
                 # uplift inside the pipeline (store provided) — all in one path.
                 store.clear()
             _nodes, _raw, resolved = pipeline.run(project_path, store=store)
+            store.record_ingest(project_path)
             total_nodes = store.get_node_count()
             total_edges = store.get_edge_count()
     except Exception as exc:

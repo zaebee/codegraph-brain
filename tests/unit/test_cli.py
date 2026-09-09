@@ -15,6 +15,7 @@ from conftest import (
 from typer.testing import CliRunner
 
 from cgis.cli import _drift_status_label, app
+from cgis.core.freshness import FreshnessState
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.extractors.python_extractor import file_path_to_module_fqn
 from cgis.query.engine import QueryEngine
@@ -1888,3 +1889,43 @@ def test_orphans_prefix_over_a_referenced_generated_subtree_is_not_a_typo(
 
     assert result.exit_code == 0
     assert "No classes under prefix" not in result.stdout
+
+
+def test_ingest_records_state_so_freshness_works(tmp_path: Path) -> None:
+    """A graph straight out of `cgis ingest` reports FRESH, not UNKNOWN (#175)."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "m.py").write_text("def f():\n    pass\n", encoding="utf-8")
+    db = str(tmp_path / "g.db")
+
+    result = runner.invoke(app, ["ingest", str(repo), "--output", db])
+    assert result.exit_code == 0
+
+    with SQLiteStore(db) as store:
+        assert store.freshness().state is FreshnessState.FRESH
+
+
+def test_incremental_ingest_records_state_too(tmp_path: Path) -> None:
+    """Both ingest modes, or the mode you happen to use decides whether it works."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "m.py").write_text("def f():\n    pass\n", encoding="utf-8")
+    db = str(tmp_path / "g.db")
+
+    assert runner.invoke(app, ["ingest", str(repo), "--output", db, "-i"]).exit_code == 0
+
+    with SQLiteStore(db) as store:
+        assert store.freshness().state is FreshnessState.FRESH
+
+
+def test_json_output_does_not_create_a_stray_database(tmp_path: Path) -> None:
+    """`--output graph.json` writes no .db, so none must be opened to record state."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "m.py").write_text("def f():\n    pass\n", encoding="utf-8")
+    out = tmp_path / "graph.json"
+
+    assert runner.invoke(app, ["ingest", str(repo), "--output", str(out)]).exit_code == 0
+
+    assert out.is_file()
+    assert list(tmp_path.glob("*.db")) == []

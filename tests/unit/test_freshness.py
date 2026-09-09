@@ -89,30 +89,21 @@ def test_a_deleted_file_is_stale(tmp_path: Path) -> None:
     # filesystem. The file-level signal is what makes this case reliable.
 
 
-def test_a_new_file_is_stale_through_its_directory(tmp_path: Path) -> None:
-    """The probe never walks, so an added file is seen via its directory (#175).
+def test_a_touched_directory_alone_is_not_stale(tmp_path: Path) -> None:
+    """A directory whose mtime moved but which gained nothing is not a change (#175).
 
-    The directory's mtime is advanced explicitly rather than by racing the clock.
-    That a real addition bumps it is a filesystem property, measured separately —
-    a directory's mtime moves on add, on delete and on a new subdirectory, and
-    does not move when a file inside it is edited. What this test pins is the
-    probe's half: that a directory newer than the ingest makes the graph stale,
-    with no file having changed.
-
-    Writing the file and checking immediately is flaky by construction — mtimes
-    are quantised (~4 ms here) so a change within one tick of the ingest lands on
-    the same value. That blind spot is real and documented; it is not what this
-    test is for.
+    Any write into a directory bumps its mtime — this database when it lives in
+    the tree it describes, an editor swap file, a freshly created `__pycache__`.
+    Treating that as staleness made the default `cgis ingest . -o graph.db`
+    permanently stale, so a suspicious directory is opened and asked whether it
+    actually holds something new.
     """
     db, repo = _graph_of(tmp_path, "a.py")
-    (repo / "brand_new.py").write_text("z = 3\n", encoding="utf-8")
     future = time.time() + 5
     os.utime(repo, (future, future))
+
     with SQLiteStore(db) as store:
-        result = store.freshness()
-    assert result.state is FreshnessState.STALE
-    assert result.changed == 1
-    assert result.missing == 0
+        assert store.freshness().state is FreshnessState.FRESH
 
 
 def test_a_graph_without_ingest_state_is_unknown(tmp_path: Path) -> None:
@@ -176,3 +167,53 @@ def test_the_probe_never_reads_file_contents(
     with SQLiteStore(db) as store:
         store.freshness()
     assert [p for p in opened if p.endswith(".py")] == []
+
+
+def test_the_database_living_in_the_tree_does_not_make_it_stale(tmp_path: Path) -> None:
+    """`cgis ingest . -o graph.db` is the default, and it must not self-report stale.
+
+    Writing the database bumps the mtime of the directory holding it, and that
+    write finishes *after* the ingest is recorded — so a directory-only check
+    reported STALE for every graph stored inside the tree it describes. Measured
+    before the fix: dir mtime 583.3405 against ingested_at 583.3325.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "a.py").write_text("x = 1\n", encoding="utf-8")
+    db = str(repo / "graph.db")
+    with SQLiteStore(db) as store:
+        store.save_graph(
+            [
+                Node(
+                    id="a",
+                    type=NodeType.FILE,
+                    name="a.py",
+                    file_path="a.py",
+                    start_line=1,
+                    end_line=1,
+                )
+            ],
+            [],
+        )
+        store.record_ingest(str(repo))
+    # Simulate the post-record write that closing the store performs.
+    future = time.time() + 5
+    os.utime(repo, (future, future))
+
+    with SQLiteStore(db) as store:
+        assert store.freshness().state is FreshnessState.FRESH
+
+
+def test_an_untracked_source_file_still_makes_it_stale(tmp_path: Path) -> None:
+    """Ignoring the database must not also ignore a genuinely new source file."""
+    db, repo = _graph_of(tmp_path, "a.py")
+    (repo / "brand_new.py").write_text("z = 3\n", encoding="utf-8")
+    future = time.time() + 5
+    os.utime(repo, (future, future))
+    os.utime(repo / "brand_new.py", (future, future))
+
+    with SQLiteStore(db) as store:
+        result = store.freshness()
+
+    assert result.state is FreshnessState.STALE
+    assert result.changed == 1

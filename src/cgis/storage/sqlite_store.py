@@ -716,13 +716,51 @@ class SQLiteStore:
             try:
                 path = os.path.join(base, rel_dir)  # noqa: PTH118
                 if os.stat(path).st_mtime > ingested_at:  # noqa: PTH116
-                    changed += 1
+                    changed += self._directory_gained_a_source(path, tracked, base, ingested_at)
             except OSError:
                 missing += 1
 
         if changed or missing:
             return Freshness(state=FreshnessState.STALE, changed=changed, missing=missing)
         return Freshness(state=FreshnessState.FRESH)
+
+    def _directory_gained_a_source(
+        self, path: str, tracked: set[str], base: str, ingested_at: float
+    ) -> int:
+        """1 when a newer directory holds something the graph should have seen.
+
+        A directory's mtime moves for any write into it, not only for a new source
+        file — this database itself is the common case, since `cgis ingest . -o
+        graph.db` puts it in the tree it describes and finishes writing *after*
+        the ingest is recorded. Reported as stale, that made the default usage
+        permanently stale. Editor swap files and a freshly created `__pycache__`
+        are the same shape.
+
+        So a suspicious directory is opened once and asked the sharper question:
+        does it hold an entry that is newer than the ingest, is not already in the
+        graph, and is not this database? Only then did it really gain something.
+        Scanning happens solely for directories that already look changed, so the
+        ceiling is one pass over the tree — the cost this design avoids paying on
+        every query.
+        """
+        # Absolute on both sides: `-o graph.db` stores a relative path while
+        # scandir yields absolute ones, and a mismatch would let the database
+        # count as a new source file — the very case this exists to exclude.
+        db_abs = os.path.abspath(self.db_path)  # noqa: PTH100
+        db_family = {db_abs, f"{db_abs}-wal", f"{db_abs}-shm"}
+        try:
+            with os.scandir(path) as entries:
+                for entry in entries:
+                    if not entry.is_file() or os.path.abspath(entry.path) in db_family:  # noqa: PTH100
+                        continue
+                    rel = os.path.relpath(entry.path, base)
+                    if rel not in tracked and entry.stat().st_mtime > ingested_at:
+                        return 1
+        except OSError:
+            # Unreadable now but statted a moment ago: report it rather than
+            # silently treating the directory as unchanged.
+            return 1
+        return 0
 
     def get_tracked_source_files(self) -> set[str]:
         """The real source files this graph was built from, as stored paths.

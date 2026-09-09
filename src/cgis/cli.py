@@ -223,6 +223,7 @@ def ingest(
         if incremental:
             with SQLiteStore(output) as store:
                 nodes, raw_edges, resolved_edges = pipeline.run(path, store=store)
+                store.record_ingest(path)
         else:
             nodes, raw_edges, resolved_edges = pipeline.run(path)
 
@@ -235,6 +236,11 @@ def ingest(
 
         if not incremental:
             _write_graph_output(output, path, nodes, resolved_edges, domains)
+            # Only for a database. `--output graph.json` writes no .db, and opening
+            # one to record state would leave an empty file beside the JSON.
+            if output.endswith(".db"):
+                with SQLiteStore(output) as store:
+                    store.record_ingest(path)
 
         table = Table(title="Ingestion Summary")
         table.add_column("Metric", style="cyan")
