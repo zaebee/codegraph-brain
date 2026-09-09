@@ -223,8 +223,13 @@ bridges table (source, target, weight). JSON output via the same enum pattern as
 
 `layer` is `"imports"` or `"imports+calls"`. `verdict` is one of `split` / `consolidate` /
 `aligned` / `leave` / `no_signal`; `direction` is `under_split` / `over_split` / `matched`.
-File names in `communities`/`bridges` are the last FQN segment (the module name) for
-readability.
+File names in `communities`/`bridges` are the file's **path under the analysed
+package** — `analysis.analyzer`, not `analyzer` — or its full FQN where a
+relative name would be ambiguous. Superseded the original "last FQN segment"
+rule in #446/#447: a bare segment cannot tell `p/sub/` from `p/sub/sub.py`, and
+an integrator sizing fields or matching on leaf names will mis-handle a dotted
+member. Every name maps back to a node id, by joining the prefix when relative
+and as-is when absolute.
 
 ## Error / edge handling
 

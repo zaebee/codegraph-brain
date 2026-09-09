@@ -179,3 +179,106 @@ def test_two_ingest_roots_yield_same_verdict(tmp_path: Path) -> None:
     assert ra.verdict == rb.verdict == "split"
     assert ra.modularity_q == pytest.approx(rb.modularity_q)
     assert ra.file_count == rb.file_count == 6
+
+
+def _nested_name_collision() -> tuple[list[Node], list[Edge]]:
+    """`p.sub` (a sub-package) beside `p.sub.sub` (a module inside it) — #446.
+
+    An ordinary Python layout: `p/sub/` holding `p/sub/sub.py`. Both files end in
+    the same segment, which is what the display collapsed them to.
+    """
+    names = ("sub", "sub.sub", "sub.other", "a", "b", "c")
+    files = [make_file_node(f"p.{n}") for n in names]
+    edges = [
+        make_import_edge(f"p.{s}", f"p.{t}")
+        for grp in (("sub", "sub.sub", "sub.other"), ("a", "b", "c"))
+        for s in grp
+        for t in grp
+        if s != t
+    ]
+    # One edge across the two groups, so a bridge exists to name — and it starts
+    # at the ambiguous file on purpose.
+    edges.append(make_import_edge("p.sub.sub", "p.a"))
+    return files, edges
+
+
+def test_two_files_never_render_under_the_same_name(tmp_path: Path) -> None:
+    """A member's rendered name identifies it, or the advice cannot be acted on (#446).
+
+    `p.sub` and `p.sub.sub` both displayed as `sub`, in different communities, so
+    a reader told to split the package could not tell which one belonged where.
+    """
+    db = _store_with(tmp_path, *_nested_name_collision())
+    report = suggest_packages(db, prefix="p", with_calls=False)
+
+    rendered = [f for community in report.communities for f in community.files]
+    assert len(rendered) == len(set(rendered)), rendered
+    assert "sub" in rendered
+    assert "sub.sub" in rendered
+
+
+def test_bridge_endpoints_are_named_like_members(tmp_path: Path) -> None:
+    """A bridge names the same files the communities do, so it needs the same names.
+
+    Rendered separately, the two lists could disagree — a bridge saying `sub`
+    while the communities say `sub` and `sub.sub` leaves the reader guessing
+    which one the bridge crosses (#446).
+    """
+    db = _store_with(tmp_path, *_nested_name_collision())
+    report = suggest_packages(db, prefix="p", with_calls=False)
+
+    assert report.bridges, "fixture must produce at least one bridge to test"
+
+    # The fixture's crossing edge starts at `p.sub.sub`. Under the old rendering
+    # that endpoint printed as `sub` — the name the communities give to a
+    # *different* file — so the bridge pointed at the wrong one.
+    endpoints = {b.source for b in report.bridges} | {b.target for b in report.bridges}
+    assert "sub.sub" in endpoints, endpoints
+
+    members = {f for community in report.communities for f in community.files}
+    assert endpoints <= members, endpoints - members
+
+
+def test_the_package_root_does_not_collide_with_a_same_named_module(tmp_path: Path) -> None:
+    """Analysing `p` itself, `p` and `p.p` must not both render as `p` (#447 review).
+
+    The first fix named members relative to the prefix, which leaves the package's
+    own node — where `fqn == prefix` — falling through to the last-segment
+    fallback. Real case: `cgis suggest-packages cgis.query.drift` listed `drift`
+    twice, for `drift/__init__.py` and `drift/drift.py`.
+
+    A module named exactly after its own package is the one shape where relative
+    naming cannot separate them, so the whole report falls back to full FQNs —
+    one visible rule, rather than one row spelled unlike its neighbours.
+    """
+    ids = ("p", "p.p", "p.other", "p.third")
+    files = [make_file_node(n) for n in ids]
+    edges = [make_import_edge(s, t) for s in ids for t in ids if s != t]
+    db = _store_with(tmp_path, files, edges)
+
+    report = suggest_packages(db, prefix="p", with_calls=False)
+
+    rendered = [f for community in report.communities for f in community.files]
+    assert len(rendered) == len(set(rendered)), rendered
+    assert set(rendered) == set(ids), rendered
+
+
+def test_every_member_name_resolves_back_to_a_node_id(tmp_path: Path) -> None:
+    """A member must name a file the caller can then ask about (#447 review).
+
+    This tool is MCP-facing: an agent reads a community, picks a member and calls
+    `cgis_context` on it. `__init__` — the first attempt at naming the package's
+    own node — resolved to nothing, and named a file that does not exist at all
+    in a TypeScript package, where the extractor folds `/index` exactly as the
+    Python one folds `/__init__`.
+    """
+    ids = ("q", "q.a", "q.sub", "q.sub.b")
+    files = [make_file_node(n) for n in ids]
+    edges = [make_import_edge(s, t) for s in ids for t in ids if s != t]
+    db = _store_with(tmp_path, files, edges)
+
+    report = suggest_packages(db, prefix="q", with_calls=False)
+
+    rendered = [f for community in report.communities for f in community.files]
+    resolved = {name if name in ids else f"q.{name}" for name in rendered}
+    assert resolved == set(ids), resolved.symmetric_difference(ids)

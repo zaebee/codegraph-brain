@@ -26,7 +26,12 @@ _ROOT_GROUP = "<root>"
 
 @dataclass(frozen=True)
 class Community:
-    """One detected community: an id and its member files (last FQN segment)."""
+    """One detected community: an id and its member files.
+
+    A member is named by its path under the analysed package — `analysis.analyzer`
+    — or by its full FQN where that would be ambiguous. See `_member_names`; the
+    values are not bare module names, and were not since #446.
+    """
 
     id: int
     files: list[str]
@@ -34,7 +39,11 @@ class Community:
 
 @dataclass(frozen=True)
 class Bridge:
-    """A cross-community edge — the cost of splitting (file names, last segment)."""
+    """A cross-community edge — the cost of splitting.
+
+    Endpoints are named exactly as community members are, so the two lists can be
+    read against each other.
+    """
 
     source: str
     target: str
@@ -63,9 +72,37 @@ class SuggestReport:
     note: str | None = None
 
 
-def _leaf(fqn: str) -> str:
-    """Return the last FQN segment (the module name) for readable output."""
-    return fqn.rsplit(".", 1)[-1]
+def _member_names(file_ids: tuple[str, ...], prefix: str) -> dict[str, str]:
+    """Map every file under `prefix` to a display name, unique across the report.
+
+    Uniqueness is a property of the whole set, not of each name, so it is decided
+    once here rather than argued per row. Two earlier attempts each fixed one
+    shape and left another (#446, #447 review):
+
+    * the last FQN segment collided for `p/sub/` against `p/sub/sub.py`;
+    * the path under the prefix collided for the package's own node against a
+      module named after it — `p` and `p.p` both render `p`.
+
+    So: members are named by their path under the prefix, the package's own node
+    by its full FQN, and if those still clash — only possible when a module is
+    named exactly after its package — the whole report falls back to full FQNs.
+    Degrading the entire table keeps one rule visible in the output instead of
+    one row spelled differently from its neighbours for reasons the reader
+    cannot see.
+
+    Every name maps back to a node id: relative ones by joining the prefix, and
+    absolute ones as they stand. That matters because this tool is MCP-facing —
+    an agent reads a community, picks a member and asks about it — and it is why
+    `__init__` was wrong: no such file exists in a TypeScript package, where the
+    extractor folds `/index` just as Python folds `/__init__`, and
+    `prefix + ".__init__"` names nothing in either.
+    """
+    absolute = {fid: fid for fid in file_ids}
+    if not prefix:
+        return absolute
+
+    relative = {fid: fid if fid == prefix else fid[len(prefix) + 1 :] for fid in file_ids}
+    return relative if len(set(relative.values())) == len(relative) else absolute
 
 
 def _dir_group(fqn: str, prefix: str) -> str:
@@ -188,9 +225,10 @@ def suggest_packages(
         )
         verdict = "leave"
 
+    names = _member_names(graph.files, package)
     bridges = sorted(
         (
-            Bridge(source=_leaf(a), target=_leaf(b), weight=w)
+            Bridge(source=names[a], target=names[b], weight=w)
             for a in graph.adj
             for b, w in graph.adj[a].items()
             if a < b and comm_of[a] != comm_of[b]
@@ -207,7 +245,7 @@ def suggest_packages(
         direction=direction,
         verdict=verdict,
         communities=[
-            Community(id=i, files=[_leaf(f) for f in c]) for i, c in enumerate(communities)
+            Community(id=i, files=[names[f] for f in c]) for i, c in enumerate(communities)
         ],
         bridges=bridges,
         thresholds=thresholds,
