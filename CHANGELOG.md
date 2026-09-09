@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.19.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.18.0...codegraph-brain-v0.19.0) (2026-09-09)
+
+
+### Features
+
+* **freshness:** every query says when the graph is out of date ([#175](https://github.com/zaebee/codegraph-brain/issues/175) part 2) ([#443](https://github.com/zaebee/codegraph-brain/issues/443)) ([0d6d197](https://github.com/zaebee/codegraph-brain/commit/0d6d197133c1315698b10a223aaf8efb47784578))
+* **metrics:** --scope &lt;prefix&gt; to focus rankings on one subtree ([#239](https://github.com/zaebee/codegraph-brain/issues/239)) ([#439](https://github.com/zaebee/codegraph-brain/issues/439)) ([59605d3](https://github.com/zaebee/codegraph-brain/commit/59605d361f95aeea18b8272183f20938c0ca10b8))
+* **orphans:** generated classes are noise, not findings — hide them by default ([#432](https://github.com/zaebee/codegraph-brain/issues/432)) ([#441](https://github.com/zaebee/codegraph-brain/issues/441)) ([52e0de1](https://github.com/zaebee/codegraph-brain/commit/52e0de1e666612f72d5a58eaad9509252db098e2))
+
+
+### Bug Fixes
+
+* **extractor:** `with X() as y` records y's type ([#444](https://github.com/zaebee/codegraph-brain/issues/444)) ([#445](https://github.com/zaebee/codegraph-brain/issues/445)) ([529b2e2](https://github.com/zaebee/codegraph-brain/commit/529b2e2239ab62a14211d95291afb1d7a6666cfc))
+* **resolver:** only a head-discarding strip is forbidden a foreign head ([#435](https://github.com/zaebee/codegraph-brain/issues/435)) ([#437](https://github.com/zaebee/codegraph-brain/issues/437)) ([3e5309a](https://github.com/zaebee/codegraph-brain/commit/3e5309ac6e65cfdc5174dc70c6ae9d4b5036d92a))
+* **suggest-packages:** name a member by its path under the package ([#446](https://github.com/zaebee/codegraph-brain/issues/446)) ([#447](https://github.com/zaebee/codegraph-brain/issues/447)) ([08af353](https://github.com/zaebee/codegraph-brain/commit/08af353f88b0026f799eb2cb2f9ed5f0c9733d22))
+
+
+### Documentation
+
+* auto-sync architecture graph and MCP reference ([#442](https://github.com/zaebee/codegraph-brain/issues/442)) ([47a6aab](https://github.com/zaebee/codegraph-brain/commit/47a6aab38225f8e8936abd9d9e72b9449f10afe2))
+
 ## [0.18.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.17.0...codegraph-brain-v0.18.0) (2026-09-06)
 
 
