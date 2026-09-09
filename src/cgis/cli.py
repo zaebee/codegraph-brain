@@ -1288,7 +1288,6 @@ def metrics(
     scope: list[str] = typer.Option(
         [],
         "--scope",
-        "-s",
         help=(
             "Rank only nodes under this dot-prefix, e.g. '-s domains.reservation' "
             "keeps that subtree and not domains.reservation_archive (repeatable)."
@@ -1331,6 +1330,19 @@ def metrics(
     except Exception as e:  # duckdb missing, extension fetch, or a non-SQLite file
         console.print(f"[bold red]❌ {escape(str(e))}[/bold red]")
         raise typer.Exit(code=1) from e
+
+    if scope and not (report.bottlenecks or report.god_classes or report.critical):
+        # Same failure `cgis orphans --prefix` already guards: three empty tables
+        # and exit 0 read as "this subtree has no hotspots" rather than "that
+        # prefix matched nothing". The commonest cause is the ingest root — a
+        # graph built from `app/` has FQNs like `domains.x`, so `--scope
+        # app.domains` matches nothing at all.
+        console.print(
+            f"[bold red]❌ No nodes under scope[/bold red] {escape(', '.join(scope))}. "
+            "Check it against the graph's FQNs — they are relative to the ingested "
+            "root, so a graph built from `app/` has no `app.` prefix."
+        )
+        raise typer.Exit(code=2)
 
     if output_format == OutputFormat.JSON:
         typer.echo(_json.dumps(report.model_dump(), indent=2))

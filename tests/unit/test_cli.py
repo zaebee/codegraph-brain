@@ -1743,3 +1743,27 @@ def test_metrics_scope_is_repeatable(tmp_path: Path) -> None:
     ids = {m["node_id"] for m in json.loads(result.stdout)["bottlenecks"]}
     assert {"domains.reservation.rules.check", "domains.billing.charge"} <= ids
     assert "domains.reservation_archive.purge" not in ids
+
+
+def test_metrics_scope_matching_nothing_is_an_error(tmp_path: Path) -> None:
+    """A wrongly-rooted --scope must not print three empty tables and exit 0 (#439 review).
+
+    The same failure `cgis orphans --prefix` already guards: FQNs are relative to
+    the ingested root, so a graph built from `app/` has no `app.` prefix, and a
+    silent empty report reads as "this subtree has no hotspots".
+    """
+    db = _scope_cli_db(tmp_path)
+    result = runner.invoke(app, ["metrics", "--db", db, "--scope", "app.domains.reservation"])
+
+    assert result.exit_code == 2
+    assert "app.domains.reservation" in result.stdout
+
+
+def test_metrics_scope_matching_nothing_errors_in_json_too(tmp_path: Path) -> None:
+    """The JSON path must fail the same way, not emit three empty lists (#439 review)."""
+    db = _scope_cli_db(tmp_path)
+    result = runner.invoke(
+        app, ["metrics", "--db", db, "--scope", "nope.nothing", "--format", "json"]
+    )
+
+    assert result.exit_code == 2

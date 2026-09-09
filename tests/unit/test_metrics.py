@@ -559,3 +559,50 @@ def test_scope_empty_or_whitespace_prefix_is_a_noop(tmp_path: Path) -> None:
         ids = {m.node_id for m in analyzer.get_coupling_metrics(limit=50, scope=["  "])}
 
     assert "domains.billing.charge" in ids
+
+
+def test_scope_tolerates_surrounding_whitespace(tmp_path: Path) -> None:
+    """A padded scope means the same subtree, not an empty report (#439 review).
+
+    The blank check already called `.strip()`, but the raw value was bound into
+    the query — so ` domains.reservation` passed the guard and then matched
+    nothing, emptying every section. `find_orphan_classes` normalises its
+    `prefix` for exactly this reason.
+    """
+    db = _scope_fixture(tmp_path)
+    with DuckDBAnalyzer(db) as analyzer:
+        padded = {
+            m.node_id for m in analyzer.get_coupling_metrics(scope=["  domains.reservation  "])
+        }
+        clean = {m.node_id for m in analyzer.get_coupling_metrics(scope=["domains.reservation"])}
+
+    assert padded == clean
+    assert padded
+
+
+def test_scope_given_as_a_bare_string_is_one_prefix(tmp_path: Path) -> None:
+    """A string is a prefix, not a sequence of one-character prefixes (#439 review).
+
+    `dict.fromkeys("domains.res")` iterates characters, which produced eleven
+    single-letter clauses: the report came back empty, and a node named `d.foo`
+    would have matched the stray `'d'`. Direct Python callers — the MCP tools are
+    invoked that way in tests — hit this without FastMCP's schema validation.
+    """
+    db = _scope_fixture(tmp_path)
+    with DuckDBAnalyzer(db) as analyzer:
+        as_string = {m.node_id for m in analyzer.get_coupling_metrics(scope="domains.reservation")}
+        as_list = {m.node_id for m in analyzer.get_coupling_metrics(scope=["domains.reservation"])}
+
+    assert as_string == as_list
+    assert as_string
+
+
+def test_exclude_given_as_a_bare_string_is_one_segment(tmp_path: Path) -> None:
+    """Same guard on `exclude`, which shares the helper's shape (#439 review)."""
+    db = _exclude_fixture(tmp_path)
+    with DuckDBAnalyzer(db) as analyzer:
+        as_string = {m.node_id for m in analyzer.get_coupling_metrics(exclude="tests")}
+        as_list = {m.node_id for m in analyzer.get_coupling_metrics(exclude=["tests"])}
+
+    assert as_string == as_list
+    assert "tests.utils.rnd" not in as_string

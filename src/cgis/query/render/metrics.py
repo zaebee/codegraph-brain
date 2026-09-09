@@ -35,6 +35,26 @@ _DUCKDB_MISSING = (
 )
 
 
+def _as_terms(terms: Sequence[str]) -> list[str]:
+    """Normalise a filter argument into a list of non-blank, trimmed terms.
+
+    A bare string is one term, not a sequence of one-character terms: `Sequence`
+    admits `str`, so `dict.fromkeys("domains.res")` iterated characters and built
+    eleven single-letter clauses. Over the MCP wire FastMCP's schema catches the
+    shape, but a direct Python caller — which is how the MCP tools are invoked in
+    tests — got an empty report from a scope, and a stray `'d'` clause that a
+    node named `d.foo` would match.
+
+    Trimming for the same reason `find_orphan_classes` trims its `prefix`: a
+    copy-pasted `" domains.reservation"` otherwise passes the blank check and
+    then matches nothing.
+    """
+    if isinstance(terms, str):
+        terms = [terms]
+    # dict.fromkeys dedupes while preserving order.
+    return [t for t in dict.fromkeys(term.strip() for term in terms) if t]
+
+
 def _segment_exclusion(id_expr: str, segments: Sequence[str]) -> tuple[str, list[str]]:
     """Build a WHERE fragment excluding FQNs that contain any of ``segments``.
 
@@ -46,20 +66,15 @@ def _segment_exclusion(id_expr: str, segments: Sequence[str]) -> tuple[str, list
     ``LIKE … ESCAPE '\\'`` with ``%``/``_``/``\\`` escaped, so a segment is matched
     literally and the path stays injection-safe.
     """
-    if not segments:  # reachable empty case (default ()) — and guards a None caller
+    terms = _as_terms(segments)
+    if not terms:  # reachable empty case (default ()) — and guards a None caller
         return "", []
     clauses: list[str] = []
     params: list[str] = []
-    # dict.fromkeys dedupes while preserving order; skip empty/whitespace segments
-    # (they would yield a '%..%' pattern that matches no real FQN — a silent no-op).
-    for seg in dict.fromkeys(segments):
-        if not seg.strip():
-            continue
+    for seg in terms:
         escaped = seg.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         clauses.append(f"('.' || {id_expr} || '.') NOT LIKE ? ESCAPE '\\'")
         params.append(f"%.{escaped}.%")
-    if not clauses:
-        return "", []
     return " AND " + " AND ".join(clauses), params
 
 
@@ -77,21 +92,16 @@ def _scope_restriction(id_expr: str, prefixes: Sequence[str]) -> tuple[str, list
     parameters and ``%``/``_``/``\\`` are escaped, so ``a_b`` is a literal
     underscore rather than LIKE's single-character wildcard.
     """
-    if not prefixes:
+    terms = _as_terms(prefixes)
+    if not terms:
         return "", []
     clauses: list[str] = []
     params: list[str] = []
-    # dict.fromkeys dedupes while preserving order; a blank prefix is skipped
-    # rather than matched, which would otherwise empty the whole report.
-    for prefix in dict.fromkeys(prefixes):
-        if not prefix.strip():
-            continue
+    for prefix in terms:
         escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         clauses.append(f"({id_expr} = ? OR {id_expr} LIKE ? ESCAPE '\\')")
         params.append(prefix)
         params.append(f"{escaped}.%")
-    if not clauses:
-        return "", []
     return " AND (" + " OR ".join(clauses) + ")", params
 
 
