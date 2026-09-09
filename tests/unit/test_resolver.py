@@ -2180,3 +2180,82 @@ def test_module_style_first_party_import_at_subdirectory_ingest() -> None:
     result, _ = ResolverEngine(nodes, edges).resolve()
     targets = {e.target for e in result if e.source == "svc.go"}
     assert "models.get_user" in targets
+
+
+def test_local_type_from_a_with_binding() -> None:
+    """`with Engine() as eng` records eng's type, the way an assignment does (#444).
+
+    Found by dogfooding: `SQLiteStore.freshness` reported `in_degree = 0` while
+    nine CLI commands called it, because every one of them goes through
+    `with SQLiteStore(db) as store`.
+    """
+    code = """
+class Engine:
+    def execute(self):
+        pass
+
+def main():
+    with Engine() as eng:
+        eng.execute()
+"""
+    nodes, edges = PythonExtractor().parse(code, "src/mod.py")
+    result, _ = ResolverEngine(nodes, edges).resolve()
+    assert any(e.source == "src.mod.main" and e.target == "src.mod.Engine.execute" for e in result)
+
+
+def test_local_type_from_several_with_items() -> None:
+    """`with A() as a, B() as b` binds both — one clause, several items (#444)."""
+    code = """
+class Reader:
+    def read(self):
+        pass
+
+class Writer:
+    def write(self):
+        pass
+
+def main():
+    with Reader() as r, Writer() as w:
+        r.read()
+        w.write()
+"""
+    nodes, edges = PythonExtractor().parse(code, "src/mod.py")
+    result, _ = ResolverEngine(nodes, edges).resolve()
+    targets = {e.target for e in result if e.source == "src.mod.main"}
+    assert "src.mod.Reader.read" in targets
+    assert "src.mod.Writer.write" in targets
+
+
+def test_with_binding_honours_the_import_alias_rule() -> None:
+    """A module-qualified constructor counts only behind a known alias, as in assignment."""
+    code = """
+import src.other as other
+
+def main():
+    with other.Engine() as eng:
+        eng.execute()
+"""
+    nodes, _edges = PythonExtractor().parse(code, "src/mod.py")
+    main_node = next(n for n in nodes if n.id == "src.mod.main")
+    assert main_node.metadata.get("local_types", {}).get("eng") == "src.other.Engine"
+
+
+def test_a_with_binding_on_an_external_type_records_that_type() -> None:
+    """`with pytest.raises(X) as e` binds `e` to the external type, deliberately (#444).
+
+    `__enter__` returns an `ExceptionInfo`, not the context manager, so this is
+    an approximation. It is recorded rather than avoided because both spellings
+    end in a virtual node — `pytest.raises.value` instead of `e.value` — and the
+    named one carries more information. Every *internal* context manager in this
+    repository returns `self`, which is the case the approximation is for.
+    """
+    code = """
+import pytest
+
+def test_it():
+    with pytest.raises(ValueError) as caught:
+        pass
+"""
+    nodes, _edges = PythonExtractor().parse(code, "tests/test_it.py")
+    fn = next(n for n in nodes if n.id.endswith("test_it.test_it"))
+    assert fn.metadata.get("local_types", {}).get("caught") == "pytest.raises"
