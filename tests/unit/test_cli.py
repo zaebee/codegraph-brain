@@ -1646,3 +1646,124 @@ def test_orphans_with_a_matching_prefix_still_reports(tmp_path: Path) -> None:
     result = runner.invoke(app, ["orphans", "--db", db, "--prefix", "app.c"])
     assert result.exit_code == 1, result.output
     assert "app.c.Dead" in result.output
+
+
+def _scope_cli_db(tmp_path: Path) -> str:
+    """Two domains plus a `reservation_archive` decoy, for the --scope CLI tests (#239)."""
+    nodes = [
+        Node(
+            id=fqn,
+            type=NodeType.FUNCTION,
+            name=fqn.rsplit(".", maxsplit=1)[-1],
+            file_path="m.py",
+            start_line=1,
+            end_line=2,
+        )
+        for fqn in (
+            "domains.reservation.rules.check",
+            "domains.reservation.tests.test_check",
+            "domains.reservation_archive.purge",
+            "domains.billing.charge",
+        )
+    ]
+    edges = [
+        Edge(
+            id="c1",
+            source="domains.billing.charge",
+            target="domains.reservation.rules.check",
+            type=EdgeType.CALLS,
+        ),
+        Edge(
+            id="c2",
+            source="domains.reservation.tests.test_check",
+            target="domains.reservation.rules.check",
+            type=EdgeType.CALLS,
+        ),
+    ]
+    db = str(tmp_path / "scope.db")
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)
+    return db
+
+
+def test_metrics_scope_restricts_rankings_to_the_subtree(tmp_path: Path) -> None:
+    """`cgis metrics --scope domains.reservation` ranks only that subtree (#239)."""
+    db = _scope_cli_db(tmp_path)
+    result = runner.invoke(
+        app, ["metrics", "--db", db, "--scope", "domains.reservation", "--format", "json"]
+    )
+    assert result.exit_code == 0
+    ids = {m["node_id"] for m in json.loads(result.stdout)["bottlenecks"]}
+    assert "domains.reservation.rules.check" in ids
+    assert "domains.billing.charge" not in ids
+    assert "domains.reservation_archive.purge" not in ids
+
+
+def test_metrics_scope_composes_with_exclude(tmp_path: Path) -> None:
+    """`--scope` and `--exclude` combine: one domain, minus its own tests (#239)."""
+    db = _scope_cli_db(tmp_path)
+    result = runner.invoke(
+        app,
+        [
+            "metrics",
+            "--db",
+            db,
+            "--scope",
+            "domains.reservation",
+            "--exclude",
+            "tests",
+            "--format",
+            "json",
+        ],
+    )
+    assert result.exit_code == 0
+    ids = {m["node_id"] for m in json.loads(result.stdout)["bottlenecks"]}
+    assert "domains.reservation.rules.check" in ids
+    assert "domains.reservation.tests.test_check" not in ids
+
+
+def test_metrics_scope_is_repeatable(tmp_path: Path) -> None:
+    """Repeating `--scope` widens the ranked universe to the union of subtrees (#239)."""
+    db = _scope_cli_db(tmp_path)
+    result = runner.invoke(
+        app,
+        [
+            "metrics",
+            "--db",
+            db,
+            "--scope",
+            "domains.reservation",
+            "--scope",
+            "domains.billing",
+            "--format",
+            "json",
+        ],
+    )
+    assert result.exit_code == 0
+    ids = {m["node_id"] for m in json.loads(result.stdout)["bottlenecks"]}
+    assert {"domains.reservation.rules.check", "domains.billing.charge"} <= ids
+    assert "domains.reservation_archive.purge" not in ids
+
+
+def test_metrics_scope_matching_nothing_is_an_error(tmp_path: Path) -> None:
+    """A wrongly-rooted --scope must not print three empty tables and exit 0 (#439 review).
+
+    The same failure `cgis orphans --prefix` already guards: FQNs are relative to
+    the ingested root, so a graph built from `app/` has no `app.` prefix, and a
+    silent empty report reads as "this subtree has no hotspots".
+    """
+    db = _scope_cli_db(tmp_path)
+    result = runner.invoke(app, ["metrics", "--db", db, "--scope", "app.domains.reservation"])
+
+    assert result.exit_code == 2
+    assert "app.domains.reservation" in result.stdout
+
+
+def test_metrics_scope_matching_nothing_errors_in_json_too(tmp_path: Path) -> None:
+    """The JSON path must fail the same way, not emit three empty lists (#439 review)."""
+    db = _scope_cli_db(tmp_path)
+    result = runner.invoke(
+        app, ["metrics", "--db", db, "--scope", "nope.nothing", "--format", "json"]
+    )
+
+    assert result.exit_code == 2

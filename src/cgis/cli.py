@@ -1285,6 +1285,14 @@ def metrics(
             "'-x tests' removes both tests.* and domains.*.tests.* (repeatable)."
         ),
     ),
+    scope: list[str] = typer.Option(
+        [],
+        "--scope",
+        help=(
+            "Rank only nodes under this dot-prefix, e.g. '-s domains.reservation' "
+            "keeps that subtree and not domains.reservation_archive (repeatable)."
+        ),
+    ),
     output_format: OutputFormat = typer.Option(
         OutputFormat.TEXT, "--format", "-f", help=_TEXT_JSON_FORMAT_HELP
     ),
@@ -1293,7 +1301,14 @@ def metrics(
 
     Runs vectorized aggregations over the graph via an optional DuckDB layer.
     Install it with `pip install 'codegraph-brain[analytics]'` if missing.
-    Use `--exclude tests` to keep test scaffolding out of the rankings.
+    Use `--exclude tests` to keep test scaffolding out of the rankings, and
+    `--scope domains.reservation` to focus them on one subtree.
+
+    The two are complements and differ where it matters for PageRank: `--exclude`
+    removes nodes from the propagation graph, while `--scope` filters the rows
+    and lets rank propagate over the whole graph — so a scoped run says how
+    central this subtree is *globally*. Coupling in-degree likewise keeps
+    counting callers from outside the scope.
     """
     if output_format == OutputFormat.MERMAID:
         console.print("[bold red]❌ metrics supports --format text or json only.[/bold red]")
@@ -1306,11 +1321,28 @@ def metrics(
     try:
         with DuckDBAnalyzer(db) as analyzer:
             report = analyzer.architecture_report(
-                bottleneck_limit=limit, god_limit=limit, critical_limit=limit, exclude=exclude
+                bottleneck_limit=limit,
+                god_limit=limit,
+                critical_limit=limit,
+                exclude=exclude,
+                scope=scope,
             )
     except Exception as e:  # duckdb missing, extension fetch, or a non-SQLite file
         console.print(f"[bold red]❌ {escape(str(e))}[/bold red]")
         raise typer.Exit(code=1) from e
+
+    if scope and not (report.bottlenecks or report.god_classes or report.critical):
+        # Same failure `cgis orphans --prefix` already guards: three empty tables
+        # and exit 0 read as "this subtree has no hotspots" rather than "that
+        # prefix matched nothing". The commonest cause is the ingest root — a
+        # graph built from `app/` has FQNs like `domains.x`, so `--scope
+        # app.domains` matches nothing at all.
+        console.print(
+            f"[bold red]❌ No nodes under scope[/bold red] {escape(', '.join(scope))}. "
+            "Check it against the graph's FQNs — they are relative to the ingested "
+            "root, so a graph built from `app/` has no `app.` prefix."
+        )
+        raise typer.Exit(code=2)
 
     if output_format == OutputFormat.JSON:
         typer.echo(_json.dumps(report.model_dump(), indent=2))

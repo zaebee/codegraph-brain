@@ -514,7 +514,10 @@ def cgis_context(
 
 @mcp.tool()
 def cgis_metrics(
-    db_path: str = _DEFAULT_DB, limit: int = 10, exclude: list[str] | None = None
+    db_path: str = _DEFAULT_DB,
+    limit: int = 10,
+    exclude: list[str] | None = None,
+    scope: list[str] | None = None,
 ) -> str:
     """Whole-graph architectural metrics — coupling bottlenecks + God classes (#16).
 
@@ -528,6 +531,16 @@ def cgis_metrics(
     ``exclude`` drops any node whose FQN contains one of the given dot-segments
     (e.g. ``["tests"]`` removes both ``tests.*`` and ``domains.*.tests.*``) so
     test/vendor scaffolding stays out of the rankings.
+
+    ``scope`` is its complement: it keeps only nodes under one of the given
+    dot-prefixes, anchored and cut on a dot boundary, so
+    ``["domains.reservation"]`` is that subtree and not
+    ``domains.reservation_archive``. Use it for a per-domain review. The two
+    compose, and they differ where it matters for PageRank — ``exclude`` removes
+    nodes from the propagation graph, ``scope`` filters the rows and lets rank
+    propagate over the whole graph, so a scoped run reports how central the
+    subtree is *globally*. Coupling in-degree likewise keeps counting callers
+    from outside the scope, which is the ripple a domain review is after (#239).
     """
     if not Path(db_path).exists():
         return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
@@ -538,6 +551,7 @@ def cgis_metrics(
                 god_limit=limit,
                 critical_limit=limit,
                 exclude=exclude or [],
+                scope=scope or [],
             )
     except Exception as exc:
         return f"❌ {exc}"
