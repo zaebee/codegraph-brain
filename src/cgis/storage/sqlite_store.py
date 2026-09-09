@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+import time
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -101,6 +102,11 @@ class SQLiteStore:
         CREATE TABLE IF NOT EXISTS files_state (
             file_path TEXT PRIMARY KEY,
             hash TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS ingest_state (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
         );
 
         CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(type);
@@ -645,6 +651,40 @@ class SQLiteStore:
             unresolved_ratio=ratio,
             top_unresolved=top,
         )
+
+    def record_ingest(self, root: str) -> None:
+        """Record what this graph was built from, for the freshness probe (#175).
+
+        Stored absolute: a relative path is meaningless to a later process with a
+        different working directory.
+        """
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        self._conn.executemany(
+            "INSERT OR REPLACE INTO ingest_state (key, value) VALUES (?, ?)",
+            [
+                ("root", str(Path(root).resolve())),
+                ("ingested_at", str(time.time())),
+            ],
+        )
+        self._conn.commit()
+
+    def get_ingest_state(self) -> tuple[str, float] | None:
+        """The recorded (root, ingested_at), or None on a graph that predates it.
+
+        `None` rather than a default: a zero timestamp would make every older
+        graph look freshly ingested in 1970, which is a `FRESH`-shaped answer to
+        a question that cannot be answered.
+        """
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        rows = {
+            row["key"]: row["value"]
+            for row in self._conn.execute("SELECT key, value FROM ingest_state")
+        }
+        if not {"root", "ingested_at"} <= rows.keys():
+            return None
+        return rows["root"], float(rows["ingested_at"])
 
     def get_all_tracked_files(self) -> set[str]:
         """Return the set of all file paths currently tracked in files_state."""
