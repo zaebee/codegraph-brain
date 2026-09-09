@@ -17,6 +17,7 @@ from cgis.extractors._python_ast import file_path_to_module_fqn as _file_path_to
 from cgis.extractors._python_classes import ClassHandler
 from cgis.extractors._python_functions import (
     FunctionHandler,
+    collect_context_manager_type,
     collect_return_annotation,
     emit_annotation_edges,
     emit_name_reference_edges,
@@ -165,6 +166,35 @@ def find_reexports(root: BaseNode, code_bytes: bytes, import_map: dict[str, str]
     """
     used = _identifiers_outside_imports(root, code_bytes)
     return {local: target for local, target in import_map.items() if local not in used}
+
+
+#: Nodes that contribute a local variable's type, collected only inside a function.
+_LOCAL_TYPE_NODES = frozenset({"with_statement", "typed_parameter", "typed_default_parameter"})
+
+
+def _collect_local_type(
+    functions: FunctionHandler,
+    node: BaseNode,
+    code_bytes: bytes,
+    import_map: dict[str, str] | None,
+    current_func_node: Node,
+    local_types_acc: dict[str, dict[str, str]],
+    edges: list[Edge],
+) -> None:
+    """Record the type a `with` binding or an annotated parameter introduces.
+
+    One function for both shapes so `_walk` keeps a single branch — and a module
+    -level one, because both `PythonExtractor` and `FunctionHandler` sit at the
+    self-parsing God-object threshold and neither should grow to hold it.
+    """
+    if node.type == "with_statement":
+        collect_context_manager_type(
+            functions.types, node, code_bytes, import_map, current_func_node, local_types_acc
+        )
+    else:
+        functions.collect_param_type(
+            node, code_bytes, import_map, current_func_node, local_types_acc, edges
+        )
 
 
 class PythonExtractor(BaseExtractor):
@@ -407,13 +437,18 @@ class PythonExtractor(BaseExtractor):
                 local_types_acc,
                 self_types_acc,
             )
-        elif (
-            node.type in ("typed_parameter", "typed_default_parameter")
-            and current_func_node
-            and local_types_acc is not None
-        ):
-            self._functions.collect_param_type(
-                node, code_bytes, import_map, current_func_node, local_types_acc, edges
+        elif node.type in _LOCAL_TYPE_NODES and current_func_node and local_types_acc is not None:
+            # One branch for both shapes, so adding the `with` case does not push
+            # `_walk` past its complexity ceiling. The guard is shared anyway: a
+            # binding outside a function has nothing to own its type.
+            _collect_local_type(
+                self._functions,
+                node,
+                code_bytes,
+                import_map,
+                current_func_node,
+                local_types_acc,
+                edges,
             )
         elif node.type == "identifier" and name_refs_acc is not None:
             self._record_name_load(

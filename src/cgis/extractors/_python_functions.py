@@ -26,6 +26,25 @@ from cgis.extractors._python_ast import (
 from cgis.extractors._python_types import TypeResolver
 
 
+def _descendants_of_type(node: BaseNode, node_type: str) -> list[BaseNode]:
+    """Every descendant of `node` with the given type, in source order.
+
+    The order is load-bearing, not incidental: a caller recording bindings into a
+    dict needs the *last* one to win, and `with A() as x, B() as x` binds `x` to
+    `B` at runtime. Popping a stack of children walks right-to-left and let the
+    first binding overwrite the last (#445 review), so children are reversed on
+    the way in to give a left-to-right pre-order walk.
+    """
+    found: list[BaseNode] = []
+    stack = list(reversed(node.children))
+    while stack:
+        current = stack.pop()
+        if current.type == node_type:
+            found.append(current)
+        stack.extend(reversed(current.children))
+    return found
+
+
 class FunctionHandler:
     """Extracts function/method nodes, call edges and local type metadata.
 
@@ -45,6 +64,9 @@ class FunctionHandler:
         """Store the source-root picker and the shared type resolver."""
         self._pick_source_root = pick_source_root
         self._types = type_resolver
+        #: Read-only view for collaborators that need type resolution without
+        #: reaching through a private attribute.
+        self.types = type_resolver
 
     def process_function_node(
         self,
@@ -274,17 +296,13 @@ class FunctionHandler:
         func_call_node = right_node.child_by_field_name("function")
         if not func_call_node:
             return
-        class_name = get_identifier(func_call_node, code_bytes)
-        if class_name == "unknown":
-            return
-        if "." in class_name:
-            # Module-qualified constructor (e.g. models.Store()): keep only if prefix
-            # is a known import alias. Otherwise it's a method-call result — skip.
-            module_part, _, _ = class_name.partition(".")
-            if not import_map or module_part not in import_map:
-                return
-        acc.setdefault(func_node.id, {})[var_name] = self._types.resolve_type_fqn(
-            class_name, import_map, func_node.file_path
+        _record_constructed_type(
+            self._types,
+            var_name,
+            get_identifier(func_call_node, code_bytes),
+            import_map,
+            func_node,
+            acc,
         )
 
     def collect_param_type(
@@ -560,3 +578,96 @@ def _resolve_self_type_from_rhs(
             return None
         return type_resolver.resolve_type_fqn(class_name, import_map, file_path)
     return None
+
+
+def collect_context_manager_type(
+    types: TypeResolver,
+    node: BaseNode,
+    code_bytes: bytes,
+    import_map: dict[str, str] | None,
+    func_node: Node,
+    acc: dict[str, dict[str, str]],
+) -> None:
+    """Populate acc with var→FQN for `with ClassName(...) as var` bindings (#444).
+
+    The recorded type is the constructed class, which assumes `__enter__` returns
+    `self`. That holds for every context manager in this repository, and where it
+    does not — `pytest.raises`, `mock.patch` — both spellings end in a virtual
+    node, so naming the type loses nothing and says more.
+
+    Without this, every call through `with X() as y` was unresolved. That is the
+    dominant data-access shape here: `store` was the fifth most common virtual
+    receiver in cgis's own graph, and `SQLiteStore.freshness` reported
+    `in_degree = 0` while nine CLI commands called it.
+
+    A module-level function rather than a `FunctionHandler` method: that class is
+    at the self-parsing God-object threshold, and this needs only a resolver.
+
+    Only the `with_clause` is scanned, never the body. Scanning the whole
+    statement reached into nested `def`s and recorded their bindings against the
+    *enclosing* function — and because the walk arrives here after the parameter
+    list, it overwrote a correct type and produced a confidently wrong edge
+    rather than a missing one (#445 review). Every form of the statement —
+    plain, `async with`, multi-item, and the parenthesized 3.10 spelling — has
+    exactly one `with_clause` child; it is a child *type*, not a named field, so
+    `child_by_field_name` does not reach it.
+    """
+    clause = next((c for c in node.children if c.type == "with_clause"), None)
+    if clause is None:
+        return
+    for pattern in _descendants_of_type(clause, "as_pattern"):
+        # `children` and `named_children` build a fresh wrapper list on every
+        # access, so each is read once.
+        pattern_children = pattern.children
+        value_node = pattern_children[0] if pattern_children else None
+        target = pattern.child_by_field_name("alias")
+        if value_node is None or value_node.type != "call" or target is None:
+            continue
+        # `as_pattern_target` wraps the identifier, and `get_identifier` on the
+        # wrapper answers "unknown" — take the name from inside it.
+        named = target.named_children
+        inner = named[0] if named else target
+        var_name = get_identifier(inner, code_bytes)
+        func_call_node = value_node.child_by_field_name("function")
+        if var_name == "unknown" or func_call_node is None:
+            continue
+        class_name = get_identifier(func_call_node, code_bytes)
+        # Bare names only. A dotted constructor here is the unverifiable case:
+        # `mock.patch(...)`, `pytest.raises(...)` and `path.open(...)` all return
+        # something other than the callable, so naming that callable as the type
+        # produces a *wrong* target — and, unlike the honest unresolved form it
+        # replaces, one asserted at confidence 1.0 (#445 review). The assignment
+        # path may keep dotted constructors because `x = pkg.C()` really does make
+        # `x` a `pkg.C`; a `with` only approximates that.
+        if "." in class_name:
+            continue
+        _record_constructed_type(types, var_name, class_name, import_map, func_node, acc)
+
+
+def _record_constructed_type(
+    types: TypeResolver,
+    var_name: str,
+    class_name: str,
+    import_map: dict[str, str] | None,
+    func_node: Node,
+    acc: dict[str, dict[str, str]],
+) -> None:
+    """Record `var_name` as an instance of whatever `class_name` constructs.
+
+    Takes the name rather than the node: the `with` path already extracts it to
+    test for a dot, and re-deriving it here decoded the same bytes twice.
+
+    Shared by the assignment and `with` paths so the module-qualified rule cannot
+    drift between them.
+    """
+    if class_name == "unknown":
+        return
+    if "." in class_name:
+        # Module-qualified constructor (e.g. models.Store()): keep only if prefix
+        # is a known import alias. Otherwise it's a method-call result — skip.
+        module_part, _, _ = class_name.partition(".")
+        if not import_map or module_part not in import_map:
+            return
+    acc.setdefault(func_node.id, {})[var_name] = types.resolve_type_fqn(
+        class_name, import_map, func_node.file_path
+    )

@@ -2180,3 +2180,208 @@ def test_module_style_first_party_import_at_subdirectory_ingest() -> None:
     result, _ = ResolverEngine(nodes, edges).resolve()
     targets = {e.target for e in result if e.source == "svc.go"}
     assert "models.get_user" in targets
+
+
+def test_local_type_from_a_with_binding() -> None:
+    """`with Engine() as eng` records eng's type, the way an assignment does (#444).
+
+    Found by dogfooding: `SQLiteStore.freshness` reported `in_degree = 0` while
+    nine CLI commands called it, because every one of them goes through
+    `with SQLiteStore(db) as store`.
+    """
+    code = """
+class Engine:
+    def execute(self):
+        pass
+
+def main():
+    with Engine() as eng:
+        eng.execute()
+"""
+    nodes, edges = PythonExtractor().parse(code, "src/mod.py")
+    result, _ = ResolverEngine(nodes, edges).resolve()
+    assert any(e.source == "src.mod.main" and e.target == "src.mod.Engine.execute" for e in result)
+
+
+def test_local_type_from_several_with_items() -> None:
+    """`with A() as a, B() as b` binds both — one clause, several items (#444)."""
+    code = """
+class Reader:
+    def read(self):
+        pass
+
+class Writer:
+    def write(self):
+        pass
+
+def main():
+    with Reader() as r, Writer() as w:
+        r.read()
+        w.write()
+"""
+    nodes, edges = PythonExtractor().parse(code, "src/mod.py")
+    result, _ = ResolverEngine(nodes, edges).resolve()
+    targets = {e.target for e in result if e.source == "src.mod.main"}
+    assert "src.mod.Reader.read" in targets
+    assert "src.mod.Writer.write" in targets
+
+
+def test_a_dotted_constructor_in_a_with_is_not_recorded() -> None:
+    """`with pkg.C() as v` records nothing, unlike the assignment path (#445 review).
+
+    The two paths differ on purpose. `v = pkg.C()` really does make `v` a `pkg.C`,
+    so the assignment path keeps it. A `with` only approximates that — it assumes
+    `__enter__` returns `self` — and every dotted constructor in this repository
+    is a case where it does not: `mock.patch`, `pytest.raises`, `path.open`. Left
+    in, they replaced an honest unresolved edge at confidence 0.8 with a wrong
+    target at 1.0.
+
+    A bare name is the case the feature exists for, and the one it keeps.
+    """
+    code = """
+import src.other as other
+
+def main():
+    with other.Engine() as eng:
+        eng.execute()
+    plain = other.Engine()
+    plain.execute()
+"""
+    nodes, _edges = PythonExtractor().parse(code, "src/mod.py")
+    main_node = next(n for n in nodes if n.id == "src.mod.main")
+    local_types = main_node.metadata.get("local_types", {})
+
+    assert "eng" not in local_types
+    assert local_types.get("plain") == "src.other.Engine"
+
+
+def test_a_with_binding_on_an_unseen_type_stays_unresolved() -> None:
+    """`with mock.patch(...) as m` must not fabricate a confident wrong target (#445 review).
+
+    `patch.__enter__` returns a `MagicMock`, not the patcher, so binding `m` to
+    `patch` names the wrong type. The assignment path may fall back to an
+    EXTERNAL virtual node because `x = C()` really does make `x` a `C`; the
+    `with` path is an approximation, so where the type cannot be checked against
+    a real node it keeps the honest unresolved form instead.
+
+    Measured: this edge was `mocked.assert_called_once` at confidence 0.8 before
+    the feature, and `unittest.mock.patch.assert_called_once` at **1.0** with the
+    first version of it — a definitively wrong target, asserted harder.
+    """
+    code = """
+from unittest import mock
+
+def test_it():
+    with mock.patch("m.f") as mocked:
+        mocked.assert_called_once()
+"""
+    nodes, edges = PythonExtractor().parse(code, "tests/test_it.py")
+    result, _ = ResolverEngine(nodes, edges).resolve()
+    edge = next(e for e in result if "assert_called_once" in e.target)
+    assert edge.target == "mocked.assert_called_once"
+    assert edge.confidence < 1.0
+
+
+def test_a_with_binding_on_a_visible_class_still_resolves() -> None:
+    """The internal case — the one the feature is for — is unaffected by that guard."""
+    code = """
+class Store:
+    def query(self):
+        pass
+
+def main():
+    with Store() as s:
+        s.query()
+"""
+    nodes, edges = PythonExtractor().parse(code, "src/mod.py")
+    result, _ = ResolverEngine(nodes, edges).resolve()
+    edge = next(e for e in result if e.target.endswith("Store.query"))
+    assert edge.target == "src.mod.Store.query"
+    assert edge.confidence == 1.0
+
+
+def test_a_nested_functions_with_binding_does_not_leak_outward() -> None:
+    """An inner `with` must not overwrite the enclosing function's type (#445 review).
+
+    Scanning the whole `with_statement` reached into its body, so a binding
+    inside a nested `def` was recorded against the *outer* function — and since
+    the walk reaches it after the parameter list, it overwrote a correct type.
+    The result was a confidently **wrong** edge, not a missing one.
+
+    cgis's own `src/` has no nested `def` inside a `with`, so the self-parsing
+    gate cannot see this; it only appears on target repositories.
+    """
+    code = """
+class A:
+    def foo(self):
+        pass
+
+class B:
+    def go(self):
+        pass
+
+class C:
+    def foo(self):
+        pass
+
+def outer(x: A):
+    with B() as helper:
+        def inner():
+            with C() as x:
+                pass
+        helper.go()
+    x.foo()
+"""
+    nodes, edges = PythonExtractor().parse(code, "src/mod.py")
+    outer = next(n for n in nodes if n.id == "src.mod.outer")
+    assert outer.metadata.get("local_types", {}).get("x") == "src.mod.A"
+
+    result, _ = ResolverEngine(nodes, edges).resolve()
+    targets = {e.target for e in result if e.source == "src.mod.outer"}
+    assert "src.mod.A.foo" in targets
+    assert "src.mod.C.foo" not in targets
+
+
+def test_an_async_with_binding_is_recorded() -> None:
+    """`async with` carries an extra child before the clause; the scan must still find it."""
+    code = """
+class Session:
+    def fetch(self):
+        pass
+
+async def main():
+    async with Session() as sess:
+        sess.fetch()
+"""
+    nodes, edges = PythonExtractor().parse(code, "src/mod.py")
+    result, _ = ResolverEngine(nodes, edges).resolve()
+    assert any(e.source == "src.mod.main" and e.target == "src.mod.Session.fetch" for e in result)
+
+
+def test_the_last_binding_of_a_repeated_name_wins() -> None:
+    """`with A() as x, B() as x` binds x to B, as Python does (#445 review).
+
+    The scan used a stack and popped, so it walked the clause right-to-left and
+    let the *first* binding overwrite the last — the opposite of the runtime.
+    """
+    code = """
+class A:
+    def who(self):
+        pass
+
+class B:
+    def who(self):
+        pass
+
+def main():
+    with A() as x, B() as x:
+        x.who()
+"""
+    nodes, edges = PythonExtractor().parse(code, "src/mod.py")
+    main_node = next(n for n in nodes if n.id == "src.mod.main")
+    assert main_node.metadata.get("local_types", {}).get("x") == "src.mod.B"
+
+    result, _ = ResolverEngine(nodes, edges).resolve()
+    targets = {e.target for e in result if e.source == "src.mod.main"}
+    assert "src.mod.B.who" in targets
+    assert "src.mod.A.who" not in targets
