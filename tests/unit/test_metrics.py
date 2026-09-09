@@ -371,3 +371,191 @@ def test_pagerank_rows_carry_internal_degree(tmp_path: Path) -> None:
     # a caller: pure source — out 1, in 0 (so its rank is floor/dangling only)
     assert ranked["app.c0"].in_degree == 0
     assert ranked["app.c0"].out_degree == 1
+
+
+def _scope_fixture(tmp_path: Path) -> str:
+    """Two domains plus a `reservation_archive` decoy — used by the --scope tests (#239).
+
+    `domains.billing.charge` calls into reservation on purpose: the ripple *into*
+    a domain is the signal a per-domain review wants, so a caller from outside
+    the scope must keep counting toward in-degree.
+    """
+    nodes = [
+        _node("domains.reservation"),
+        _node("domains.reservation.service.create"),
+        _node("domains.reservation.rules.check"),
+        _node("domains.reservation.tests.test_create"),
+        _node("domains.reservation_archive.purge"),
+        _node("domains.billing.charge"),
+        _node("domains.reservation.models.Booking", NodeType.CLASS),
+        _node("domains.reservation.models.Booking.save", NodeType.METHOD),
+        _node("domains.reservation.models.Booking.load", NodeType.METHOD),
+        _node("domains.billing.models.Invoice", NodeType.CLASS),
+        _node("domains.billing.models.Invoice.total", NodeType.METHOD),
+    ]
+    edges = [
+        Edge(
+            id="x1",
+            source="domains.billing.charge",
+            target="domains.reservation.rules.check",
+            type=EdgeType.CALLS,
+        ),
+        Edge(
+            id="x2",
+            source="domains.reservation.service.create",
+            target="domains.reservation.rules.check",
+            type=EdgeType.CALLS,
+        ),
+        Edge(
+            id="x3",
+            source="domains.reservation.tests.test_create",
+            target="domains.reservation.service.create",
+            type=EdgeType.CALLS,
+        ),
+        Edge(
+            id="x4",
+            source="domains.reservation_archive.purge",
+            target="domains.reservation.rules.check",
+            type=EdgeType.CALLS,
+        ),
+        Edge(
+            id="b1",
+            source="domains.reservation.models.Booking",
+            target="domains.reservation.models.Booking.save",
+            type=EdgeType.DECLARES,
+        ),
+        Edge(
+            id="b2",
+            source="domains.reservation.models.Booking",
+            target="domains.reservation.models.Booking.load",
+            type=EdgeType.DECLARES,
+        ),
+        Edge(
+            id="i1",
+            source="domains.billing.models.Invoice",
+            target="domains.billing.models.Invoice.total",
+            type=EdgeType.DECLARES,
+        ),
+    ]
+    return _write_db(tmp_path, nodes, edges)
+
+
+def test_scope_restricts_every_section_to_the_subtree(tmp_path: Path) -> None:
+    """`scope=['domains.reservation']` ranks only reservation nodes, in all three sections."""
+    db = _scope_fixture(tmp_path)
+    with DuckDBAnalyzer(db) as analyzer:
+        report = analyzer.architecture_report(scope=["domains.reservation"])
+
+    ids = (
+        {m.node_id for m in report.bottlenecks}
+        | {m.node_id for m in report.god_classes}
+        | {m.node_id for m in report.critical}
+    )
+    assert ids
+    assert all(i == "domains.reservation" or i.startswith("domains.reservation.") for i in ids), (
+        sorted(ids)
+    )
+
+
+def test_scope_is_anchored_on_a_dot_boundary(tmp_path: Path) -> None:
+    """A scope is a subtree root: it keeps the bare prefix and rejects a longer sibling."""
+    db = _scope_fixture(tmp_path)
+    with DuckDBAnalyzer(db) as analyzer:
+        ids = {m.node_id for m in analyzer.get_coupling_metrics(scope=["domains.reservation"])}
+
+    assert "domains.reservation" in ids
+    assert "domains.reservation_archive.purge" not in ids
+
+
+def test_scope_keeps_counting_callers_from_outside_it(tmp_path: Path) -> None:
+    """In-degree still counts cross-scope callers — the ripple into a domain is the signal.
+
+    `rules.check` is called by reservation's own service, by billing, and by
+    reservation_archive. Restricting the *ranking* to reservation must not
+    silently restrict the *counting* to it.
+    """
+    db = _scope_fixture(tmp_path)
+    with DuckDBAnalyzer(db) as analyzer:
+        rows = {m.node_id: m for m in analyzer.get_coupling_metrics(scope=["domains.reservation"])}
+
+    assert rows["domains.reservation.rules.check"].in_degree == 3
+
+
+def test_scope_pagerank_keeps_whole_graph_propagation(tmp_path: Path) -> None:
+    """Scope filters PageRank rows; it does not shrink the graph rank propagates over.
+
+    The question a scoped ranking answers is "how central is reservation code
+    *globally*", so an in-scope node's score must be identical to its score in
+    the unscoped run. `--exclude` is the other semantics on purpose: it removes
+    nodes from the propagation universe.
+    """
+    db = _scope_fixture(tmp_path)
+    with DuckDBAnalyzer(db) as analyzer:
+        whole = {m.node_id: m.page_rank for m in analyzer.get_pagerank(limit=50)}
+        scoped = {
+            m.node_id: m.page_rank
+            for m in analyzer.get_pagerank(limit=50, scope=["domains.reservation"])
+        }
+
+    assert scoped
+    assert set(scoped) < set(whole)
+    for node_id, rank in scoped.items():
+        assert rank == pytest.approx(whole[node_id]), node_id
+
+
+def test_scope_composes_with_exclude(tmp_path: Path) -> None:
+    """`--scope domains.reservation --exclude tests` keeps the domain minus its tests."""
+    db = _scope_fixture(tmp_path)
+    with DuckDBAnalyzer(db) as analyzer:
+        ids = {
+            m.node_id
+            for m in analyzer.get_coupling_metrics(scope=["domains.reservation"], exclude=["tests"])
+        }
+
+    assert "domains.reservation.service.create" in ids
+    assert "domains.reservation.tests.test_create" not in ids
+
+
+def test_scope_accepts_several_prefixes_as_a_union(tmp_path: Path) -> None:
+    """Repeating --scope widens the ranked universe to the union of the subtrees."""
+    db = _scope_fixture(tmp_path)
+    with DuckDBAnalyzer(db) as analyzer:
+        ids = {
+            m.node_id
+            for m in analyzer.get_coupling_metrics(
+                scope=["domains.reservation.rules", "domains.billing"]
+            )
+        }
+
+    assert "domains.reservation.rules.check" in ids
+    assert "domains.billing.charge" in ids
+    assert "domains.reservation.service.create" not in ids
+
+
+def test_scope_default_is_the_whole_graph(tmp_path: Path) -> None:
+    """Scope is opt-in: no scope ranks everything, as before."""
+    db = _scope_fixture(tmp_path)
+    with DuckDBAnalyzer(db) as analyzer:
+        ids = {m.node_id for m in analyzer.get_coupling_metrics(limit=50)}
+
+    assert "domains.billing.charge" in ids
+    assert "domains.reservation_archive.purge" in ids
+
+
+def test_scope_escapes_like_metacharacters(tmp_path: Path) -> None:
+    """An underscore in a scope is literal, not LIKE's single-character wildcard."""
+    nodes = [_node("a_b.f"), _node("axb.f")]
+    db = _write_db(tmp_path, nodes, [])
+    with DuckDBAnalyzer(db) as analyzer:
+        ids = {m.node_id for m in analyzer.get_coupling_metrics(scope=["a_b"])}
+
+    assert ids == {"a_b.f"}
+
+
+def test_scope_empty_or_whitespace_prefix_is_a_noop(tmp_path: Path) -> None:
+    """A blank scope would match nothing; it is skipped rather than emptying the report."""
+    db = _scope_fixture(tmp_path)
+    with DuckDBAnalyzer(db) as analyzer:
+        ids = {m.node_id for m in analyzer.get_coupling_metrics(limit=50, scope=["  "])}
+
+    assert "domains.billing.charge" in ids

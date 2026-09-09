@@ -1285,6 +1285,15 @@ def metrics(
             "'-x tests' removes both tests.* and domains.*.tests.* (repeatable)."
         ),
     ),
+    scope: list[str] = typer.Option(
+        [],
+        "--scope",
+        "-s",
+        help=(
+            "Rank only nodes under this dot-prefix, e.g. '-s domains.reservation' "
+            "keeps that subtree and not domains.reservation_archive (repeatable)."
+        ),
+    ),
     output_format: OutputFormat = typer.Option(
         OutputFormat.TEXT, "--format", "-f", help=_TEXT_JSON_FORMAT_HELP
     ),
@@ -1293,7 +1302,14 @@ def metrics(
 
     Runs vectorized aggregations over the graph via an optional DuckDB layer.
     Install it with `pip install 'codegraph-brain[analytics]'` if missing.
-    Use `--exclude tests` to keep test scaffolding out of the rankings.
+    Use `--exclude tests` to keep test scaffolding out of the rankings, and
+    `--scope domains.reservation` to focus them on one subtree.
+
+    The two are complements and differ where it matters for PageRank: `--exclude`
+    removes nodes from the propagation graph, while `--scope` filters the rows
+    and lets rank propagate over the whole graph — so a scoped run says how
+    central this subtree is *globally*. Coupling in-degree likewise keeps
+    counting callers from outside the scope.
     """
     if output_format == OutputFormat.MERMAID:
         console.print("[bold red]❌ metrics supports --format text or json only.[/bold red]")
@@ -1306,7 +1322,11 @@ def metrics(
     try:
         with DuckDBAnalyzer(db) as analyzer:
             report = analyzer.architecture_report(
-                bottleneck_limit=limit, god_limit=limit, critical_limit=limit, exclude=exclude
+                bottleneck_limit=limit,
+                god_limit=limit,
+                critical_limit=limit,
+                exclude=exclude,
+                scope=scope,
             )
     except Exception as e:  # duckdb missing, extension fetch, or a non-SQLite file
         console.print(f"[bold red]❌ {escape(str(e))}[/bold red]")

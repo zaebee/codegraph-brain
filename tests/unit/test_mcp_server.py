@@ -976,3 +976,39 @@ def test_ingest_accepts_an_uppercase_suffix(tmp_path: Path) -> None:
     result = cgis_ingest(str(tmp_path), str(db))
 
     assert "✅" in result
+
+
+def test_cgis_metrics_scope_restricts_rankings(tmp_path: Path) -> None:
+    """cgis_metrics(scope=...) ranks only the given subtree, anchored on a dot (#239)."""
+    nodes = [
+        Node(
+            id=fqn,
+            type=NodeType.FUNCTION,
+            name=fqn.rsplit(".", maxsplit=1)[-1],
+            file_path="m.py",
+            start_line=1,
+            end_line=2,
+        )
+        for fqn in (
+            "domains.reservation.rules.check",
+            "domains.reservation_archive.purge",
+            "domains.billing.charge",
+        )
+    ]
+    edges = [
+        Edge(
+            id="c1",
+            source="domains.billing.charge",
+            target="domains.reservation.rules.check",
+            type=EdgeType.CALLS,
+        )
+    ]
+    db = tmp_path / "scope.db"
+    with SQLiteStore(str(db)) as store:
+        store.save_graph(nodes, edges)
+
+    payload = json.loads(cgis_metrics(str(db), scope=["domains.reservation"]))
+    ids = {m["node_id"] for m in payload["bottlenecks"]}
+    assert "domains.reservation.rules.check" in ids
+    assert "domains.billing.charge" not in ids
+    assert "domains.reservation_archive.purge" not in ids

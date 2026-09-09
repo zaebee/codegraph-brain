@@ -63,8 +63,45 @@ def _segment_exclusion(id_expr: str, segments: Sequence[str]) -> tuple[str, list
     return " AND " + " AND ".join(clauses), params
 
 
-def _coupling_query(exclude_sql: str) -> str:
-    """Coupling query with an optional segment-exclusion fragment on the node list."""
+def _scope_restriction(id_expr: str, prefixes: Sequence[str]) -> tuple[str, list[str]]:
+    """Build a WHERE fragment keeping only FQNs under one of ``prefixes``.
+
+    The complement of :func:`_segment_exclusion`, and deliberately a different
+    match: a scope is a *subtree root*, so it is anchored at the start and cut on
+    a dot boundary — ``domains.reservation`` keeps ``domains.reservation`` itself
+    and everything under ``domains.reservation.``, and rejects the sibling
+    ``domains.reservation_archive``. Several prefixes are a union, so repeating
+    the flag widens the subtree rather than intersecting it. Returns ``("", [])``
+    when ``prefixes`` is empty, which is the whole-graph default. Escaping and
+    parameterization match ``_segment_exclusion``: the prefixes ride in as query
+    parameters and ``%``/``_``/``\\`` are escaped, so ``a_b`` is a literal
+    underscore rather than LIKE's single-character wildcard.
+    """
+    if not prefixes:
+        return "", []
+    clauses: list[str] = []
+    params: list[str] = []
+    # dict.fromkeys dedupes while preserving order; a blank prefix is skipped
+    # rather than matched, which would otherwise empty the whole report.
+    for prefix in dict.fromkeys(prefixes):
+        if not prefix.strip():
+            continue
+        escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        clauses.append(f"({id_expr} = ? OR {id_expr} LIKE ? ESCAPE '\\')")
+        params.append(prefix)
+        params.append(f"{escaped}.%")
+    if not clauses:
+        return "", []
+    return " AND (" + " OR ".join(clauses) + ")", params
+
+
+def _coupling_query(filter_sql: str) -> str:
+    """Coupling query with optional exclusion/scope fragments on the ranked node list.
+
+    The fragments restrict which nodes are *ranked*; the ``incoming``/``outgoing``
+    CTEs above stay whole-graph on purpose, so a scoped ranking still counts
+    callers from outside the scope (#239).
+    """
     return f"""
 WITH incoming AS (
     SELECT target AS node_id, COUNT(*) AS in_deg
@@ -89,19 +126,19 @@ LEFT JOIN incoming i ON n.id = i.node_id
 LEFT JOIN outgoing o ON n.id = o.node_id
 WHERE n.namespace = 'INTERNAL'
   AND n.type IN ('FUNCTION', 'METHOD')
-  AND n.file_path != '{VIRTUAL_FILE_PATH}'{exclude_sql}
+  AND n.file_path != '{VIRTUAL_FILE_PATH}'{filter_sql}
 ORDER BY (COALESCE(i.in_deg, 0) + COALESCE(o.out_deg, 0)) DESC, n.id
 LIMIT ?
 """
 
 
-def _god_class_query(exclude_sql: str) -> str:
-    """God-class query with an optional segment-exclusion fragment on the class id."""
+def _god_class_query(filter_sql: str) -> str:
+    """God-class query with optional exclusion/scope fragments on the class id."""
     return f"""
 SELECT e.source AS node_id, COUNT(*) AS declares
 FROM edges e
 JOIN nodes n ON e.source = n.id
-WHERE e.type = 'DECLARES' AND n.type = 'CLASS'{exclude_sql}
+WHERE e.type = 'DECLARES' AND n.type = 'CLASS'{filter_sql}
 GROUP BY e.source
 ORDER BY declares DESC, e.source
 LIMIT ?
@@ -220,7 +257,7 @@ class DuckDBAnalyzer:
         ]
 
     def get_coupling_metrics(
-        self, limit: int = 10, exclude: Sequence[str] = ()
+        self, limit: int = 10, exclude: Sequence[str] = (), scope: Sequence[str] = ()
     ) -> list[NodeMetric]:
         """Top INTERNAL functions/methods by total coupling (fan-in + fan-out).
 
@@ -228,21 +265,35 @@ class DuckDBAnalyzer:
         marks an over-orchestrating or complex unit. External/stdlib and
         unresolved ``raw_call:`` targets are excluded so ``len``/``print`` noise
         never tops the list. ``exclude`` drops any node whose FQN contains one of
-        the given dot-segments (e.g. ``["tests"]``) from the ranked list.
+        the given dot-segments (e.g. ``["tests"]``) from the ranked list; ``scope``
+        keeps only nodes under one of the given dot-prefixes.
+
+        Both restrict the *ranking*, not the counting: in-degree still counts
+        callers from outside the scope, because the ripple into a domain is the
+        signal a per-domain review is after (#239).
         """
         where, params = _segment_exclusion("n.id", exclude)
-        rows = self.conn.execute(_coupling_query(where), [*params, limit]).fetchall()
+        scope_sql, scope_params = _scope_restriction("n.id", scope)
+        rows = self.conn.execute(
+            _coupling_query(where + scope_sql), [*params, *scope_params, limit]
+        ).fetchall()
         return self._rows_to_metrics(rows)
 
-    def get_god_classes(self, limit: int = 5, exclude: Sequence[str] = ()) -> list[NodeMetric]:
+    def get_god_classes(
+        self, limit: int = 5, exclude: Sequence[str] = (), scope: Sequence[str] = ()
+    ) -> list[NodeMetric]:
         """Top classes by declared-member count (DECLARES fan-out).
 
         ``out_degree`` carries the number of methods/attributes the class
         declares — a high value is the classic God-object smell. ``exclude`` drops
-        classes whose FQN contains one of the given dot-segments.
+        classes whose FQN contains one of the given dot-segments; ``scope`` keeps
+        only classes under one of the given dot-prefixes.
         """
         where, params = _segment_exclusion("n.id", exclude)
-        rows = self.conn.execute(_god_class_query(where), [*params, limit]).fetchall()
+        scope_sql, scope_params = _scope_restriction("n.id", scope)
+        rows = self.conn.execute(
+            _god_class_query(where + scope_sql), [*params, *scope_params, limit]
+        ).fetchall()
         return [
             NodeMetric(
                 node_id=str(node_id),
@@ -253,7 +304,9 @@ class DuckDBAnalyzer:
             for node_id, declares in rows
         ]
 
-    def get_pagerank(self, limit: int = 10, exclude: Sequence[str] = ()) -> list[NodeMetric]:
+    def get_pagerank(
+        self, limit: int = 10, exclude: Sequence[str] = (), scope: Sequence[str] = ()
+    ) -> list[NodeMetric]:
         """Top INTERNAL nodes by PageRank over the internal CALLS graph.
 
         PageRank weights a node by the *transitive* importance of what reaches it,
@@ -269,6 +322,13 @@ class DuckDBAnalyzer:
         ``exclude`` removes any node whose FQN contains one of the given
         dot-segments from the PageRank universe entirely (so excluded nodes leave
         the propagation graph, not just the final ranking).
+
+        ``scope`` is the other semantics on purpose: it filters the *rows*, and
+        rank still propagates over the whole graph. A scoped run therefore answers
+        "how central is this subtree's code **globally**", and an in-scope node
+        scores identically with and without the scope. Restricting the universe
+        instead would answer "what is central *within* the subtree" — a different
+        question, and one ``--exclude`` already provides the machinery for (#239).
 
         Each row also carries its ``in_degree``/``out_degree`` **within the same
         internal, exclude-applied CALLS graph PageRank ran on** (#237) — so a
@@ -307,14 +367,16 @@ class DuckDBAnalyzer:
         for _ in range(_PAGERANK_ITERATIONS):
             conn.execute(_PAGERANK_STEP, [base, _PAGERANK_DAMPING, n])
             conn.execute("CREATE OR REPLACE TEMP TABLE pr_rank AS SELECT * FROM pr_next")
+        scope_sql, scope_params = _scope_restriction("r.id", scope)
         rows = conn.execute(
             "SELECT r.id, nd.type, r.r, "
             "COALESCE(pin.deg, 0) AS in_deg, COALESCE(pout.deg, 0) AS out_deg "
             "FROM pr_rank r JOIN nodes nd ON r.id = nd.id "
             "LEFT JOIN pr_in pin ON r.id = pin.dst "
             "LEFT JOIN pr_out pout ON r.id = pout.src "
+            f"WHERE TRUE{scope_sql} "
             "ORDER BY r.r DESC, r.id LIMIT ?",
-            [limit],
+            [*scope_params, limit],
         ).fetchall()
         return [
             NodeMetric(
@@ -333,14 +395,18 @@ class DuckDBAnalyzer:
         god_limit: int = 5,
         critical_limit: int = 10,
         exclude: Sequence[str] = (),
+        scope: Sequence[str] = (),
     ) -> ArchitectureReport:
         """Bundle the coupling bottlenecks, God classes, and PageRank-critical nodes.
 
-        ``exclude`` is threaded into all three sections — any node whose FQN
-        contains one of the given dot-segments (e.g. ``["tests"]``) is dropped.
+        ``exclude`` and ``scope`` are threaded into all three sections: ``exclude``
+        drops any node whose FQN contains one of the given dot-segments (e.g.
+        ``["tests"]``), ``scope`` keeps only nodes under one of the given
+        dot-prefixes. They compose, so ``scope=["domains.reservation"]`` with
+        ``exclude=["tests"]`` is one domain minus its own test scaffolding.
         """
         return ArchitectureReport(
-            bottlenecks=self.get_coupling_metrics(bottleneck_limit, exclude),
-            god_classes=self.get_god_classes(god_limit, exclude),
-            critical=self.get_pagerank(critical_limit, exclude),
+            bottlenecks=self.get_coupling_metrics(bottleneck_limit, exclude, scope),
+            god_classes=self.get_god_classes(god_limit, exclude, scope),
+            critical=self.get_pagerank(critical_limit, exclude, scope),
         )
