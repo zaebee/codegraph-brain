@@ -37,3 +37,18 @@ def is_test_path(file_path: str) -> bool:
     the shape being hunted, so counting the test as a user defeats the query.
     """
     return bool(_TEST_DIR.search(file_path) or _TEST_FILE.search(file_path))
+
+
+#: Directories that never hold ingestable source. `IngestionPipeline` skips them
+#: while walking, and the freshness probe skips them when deciding whether a
+#: directory gained something — the two must agree, or a `.venv` appearing after
+#: an ingest reports thousands of changes the ingest would never have read.
+#: Dot-directories are excluded separately, by prefix, in both places.
+EXCLUDED_DIRS: frozenset[str] = frozenset(
+    {"venv", ".venv", "__pycache__", "node_modules", "build", "dist"}
+)
+
+
+def is_excluded_dir(name: str) -> bool:
+    """Is this directory name one the ingest would never descend into?"""
+    return name.startswith(".") or name in EXCLUDED_DIRS

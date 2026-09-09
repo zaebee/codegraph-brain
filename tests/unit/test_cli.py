@@ -1,7 +1,9 @@
 """Unit test cases for cli."""
 
 import json
+import os
 import re
+import time
 from pathlib import Path
 
 from conftest import (
@@ -15,6 +17,7 @@ from conftest import (
 from typer.testing import CliRunner
 
 from cgis.cli import _drift_status_label, app
+from cgis.core.freshness import FreshnessState
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.extractors.python_extractor import file_path_to_module_fqn
 from cgis.query.engine import QueryEngine
@@ -1598,7 +1601,9 @@ def test_orphans_json_carries_the_population(tmp_path: Path) -> None:
     """`considered` travels with the findings — 2 of 3 reads unlike 2 of 1800."""
     db = _orphan_graph(tmp_path)
     result = runner.invoke(app, ["orphans", "--db", db, "--format", "json"])
-    payload = json.loads(result.output)
+    # stdout, not `output`: this fixture's graph carries no ingest record, so the
+    # freshness note is on stderr, and `output` merges the two streams (#175).
+    payload = json.loads(result.stdout)
     assert payload["considered"] == 3
     assert payload["test_sources"] == 1
     assert [o["fqn"] for o in payload["orphans"]] == ["app.b.TestOnly", "app.c.Dead"]
@@ -1609,7 +1614,7 @@ def test_orphans_include_tests_drops_the_test_only_class(tmp_path: Path) -> None
     """The opt-out of the decisive filter, so its effect is visible from the CLI."""
     db = _orphan_graph(tmp_path)
     result = runner.invoke(app, ["orphans", "--db", db, "--include-tests", "--format", "json"])
-    assert [o["fqn"] for o in json.loads(result.output)["orphans"]] == ["app.c.Dead"]
+    assert [o["fqn"] for o in json.loads(result.stdout)["orphans"]] == ["app.c.Dead"]
 
 
 def test_orphans_rejects_mermaid(tmp_path: Path) -> None:
@@ -1888,3 +1893,128 @@ def test_orphans_prefix_over_a_referenced_generated_subtree_is_not_a_typo(
 
     assert result.exit_code == 0
     assert "No classes under prefix" not in result.stdout
+
+
+def test_ingest_records_state_so_freshness_works(tmp_path: Path) -> None:
+    """A graph straight out of `cgis ingest` reports FRESH, not UNKNOWN (#175)."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "m.py").write_text("def f():\n    pass\n", encoding="utf-8")
+    db = str(tmp_path / "g.db")
+
+    result = runner.invoke(app, ["ingest", str(repo), "--output", db])
+    assert result.exit_code == 0
+
+    with SQLiteStore(db) as store:
+        assert store.freshness().state is FreshnessState.FRESH
+
+
+def test_incremental_ingest_records_state_too(tmp_path: Path) -> None:
+    """Both ingest modes, or the mode you happen to use decides whether it works."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "m.py").write_text("def f():\n    pass\n", encoding="utf-8")
+    db = str(tmp_path / "g.db")
+
+    assert runner.invoke(app, ["ingest", str(repo), "--output", db, "-i"]).exit_code == 0
+
+    with SQLiteStore(db) as store:
+        assert store.freshness().state is FreshnessState.FRESH
+
+
+def test_json_output_does_not_create_a_stray_database(tmp_path: Path) -> None:
+    """`--output graph.json` writes no .db, so none must be opened to record state."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "m.py").write_text("def f():\n    pass\n", encoding="utf-8")
+    out = tmp_path / "graph.json"
+
+    assert runner.invoke(app, ["ingest", str(repo), "--output", str(out)]).exit_code == 0
+
+    assert out.is_file()
+    assert list(tmp_path.glob("*.db")) == []
+
+
+def _ingested_repo(tmp_path: Path) -> tuple[str, Path]:
+    """A one-module repo and a graph of it, ingested through the CLI (#175)."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "m.py").write_text("def f():\n    pass\n", encoding="utf-8")
+    db = str(tmp_path / "g.db")
+    runner.invoke(app, ["ingest", str(repo), "--output", db])
+    return db, repo
+
+
+def test_a_stale_graph_warns_before_the_answer(tmp_path: Path) -> None:
+    """The answer still comes; the reader is told what it was computed from (#175)."""
+    db, repo = _ingested_repo(tmp_path)
+    future = time.time() + 5
+    os.utime(repo / "m.py", (future, future))
+
+    result = runner.invoke(app, ["validate", "--db", db])
+
+    assert "stale" in result.stderr.lower()
+    assert "1 changed" in result.stderr
+
+
+def test_a_fresh_graph_says_nothing_about_freshness(tmp_path: Path) -> None:
+    """No note on the happy path, matching `_render_orphans`' warn-only idiom."""
+    db, _repo = _ingested_repo(tmp_path)
+
+    result = runner.invoke(app, ["validate", "--db", db])
+
+    assert "stale" not in result.stderr.lower()
+    assert "freshness" not in result.stderr.lower()
+
+
+def test_a_graph_that_cannot_be_checked_says_so(tmp_path: Path) -> None:
+    """UNKNOWN is reported distinctly, never as silence and never as STALE (#175)."""
+    db = str(tmp_path / "old.db")
+    with SQLiteStore(db) as store:
+        store.save_graph(
+            [
+                Node(
+                    id="a",
+                    type=NodeType.FILE,
+                    name="a.py",
+                    file_path="a.py",
+                    start_line=1,
+                    end_line=1,
+                )
+            ],
+            [],
+        )
+
+    result = runner.invoke(app, ["validate", "--db", db])
+
+    assert "unknowable" in result.stderr.lower()
+    assert "stale" not in result.stderr.lower()
+
+
+def test_a_sqlite_suffixed_output_also_records_state(tmp_path: Path) -> None:
+    """`_write_graph_output` writes a database for anything but .json (#443 review).
+
+    Gating the record on `.db` alone left `-o graph.sqlite` reporting "graph
+    predates the ingest_state table — re-ingest", advice that could never help
+    because re-ingesting took the same branch again.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "m.py").write_text("def f():\n    pass\n", encoding="utf-8")
+    db = str(tmp_path / "g.sqlite")
+
+    assert runner.invoke(app, ["ingest", str(repo), "--output", db]).exit_code == 0
+
+    with SQLiteStore(db) as store:
+        assert store.freshness().state is FreshnessState.FRESH
+
+
+def test_fractal_warns_about_a_stale_graph_too(tmp_path: Path) -> None:
+    """`cgis fractal` reads the graph, so it owes the reader the same warning."""
+    db, repo = _ingested_repo(tmp_path)
+    future = time.time() + 5
+    os.utime(repo / "m.py", (future, future))
+
+    result = runner.invoke(app, ["fractal", "--db", db])
+
+    assert "stale" in result.stderr.lower()

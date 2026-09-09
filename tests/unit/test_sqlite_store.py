@@ -933,3 +933,30 @@ def test_adding_a_column_twice_is_not_an_error(tmp_path: Path) -> None:
         # there, exactly as it would be after the winner's ALTER committed.
         store._add_column_if_missing("is_generated", "INTEGER NOT NULL DEFAULT 0")  # noqa: SLF001
         store._add_column_if_missing("is_generated", "INTEGER NOT NULL DEFAULT 0")  # noqa: SLF001
+
+
+def test_ingest_state_round_trips(tmp_path: Path) -> None:
+    """The store remembers the root and the time it ingested (#175)."""
+    db_path = str(tmp_path / "g.db")
+    with SQLiteStore(db_path) as store:
+        store.record_ingest("/abs/repo")
+
+    with SQLiteStore(db_path) as store:
+        recorded = store.get_ingest_state()
+
+    assert recorded is not None
+    root, ingested_at = recorded
+    assert root == "/abs/repo"
+    assert ingested_at > 0
+
+
+def test_ingest_state_absent_on_an_older_graph(tmp_path: Path) -> None:
+    """A graph that predates the table reports nothing, rather than a default (#175).
+
+    Returning a zero timestamp here would make every such graph look freshly
+    ingested in 1970 — a `FRESH`-shaped answer to a question that cannot be
+    answered. `None` is what forces the `UNKNOWN` branch.
+    """
+    db_path = str(tmp_path / "g.db")
+    with SQLiteStore(db_path) as store:
+        assert store.get_ingest_state() is None

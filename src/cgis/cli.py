@@ -31,6 +31,7 @@ from rich.table import Table
 from rich.tree import Tree
 
 from cgis import __app_name__, __version__
+from cgis.core.freshness import FreshnessState
 from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeNamespace, NodeType
 from cgis.extractors.python_extractor import file_path_to_module_fqn
 from cgis.extractors.registry import build_extractors, is_supported, language_for
@@ -114,6 +115,10 @@ class FractalOutputFormat(StrEnum):
 
 
 console = Console()
+# Diagnostics go here, never to stdout: `--format json` is piped into other
+# programs, and a warning printed alongside the payload makes it unparseable —
+# which is how the freshness note first landed, breaking thirteen tests (#175).
+err_console = Console(stderr=True)
 app = typer.Typer(help="CGIS: Code Graph Intelligence System CLI")
 
 
@@ -223,6 +228,7 @@ def ingest(
         if incremental:
             with SQLiteStore(output) as store:
                 nodes, raw_edges, resolved_edges = pipeline.run(path, store=store)
+                store.record_ingest(path)
         else:
             nodes, raw_edges, resolved_edges = pipeline.run(path)
 
@@ -235,6 +241,12 @@ def ingest(
 
         if not incremental:
             _write_graph_output(output, path, nodes, resolved_edges, domains)
+            # Anything but JSON is a database — `_write_graph_output` branches on
+            # exactly that, and gating on `.db` alone left `-o graph.sqlite`
+            # advising a re-ingest that would take the same branch again.
+            if not output.endswith(".json"):
+                with SQLiteStore(output) as store:
+                    store.record_ingest(path)
 
         table = Table(title="Ingestion Summary")
         table.add_column("Metric", style="cyan")
@@ -389,6 +401,7 @@ def trace(
             f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
         )
         raise typer.Exit(code=1)
+    _warn_if_not_fresh(db)
 
     allowed: frozenset[EdgeType] | None = None if show_structure else BEHAVIORAL_EDGE_TYPES
 
@@ -520,6 +533,7 @@ def impact(
             f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
         )
         raise typer.Exit(code=1)
+    _warn_if_not_fresh(db)
 
     allowed: frozenset[EdgeType] | None = None if show_structure else BEHAVIORAL_EDGE_TYPES
 
@@ -587,6 +601,7 @@ def validate(
             f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
         )
         raise typer.Exit(code=1)
+    _warn_if_not_fresh(db)
 
     try:
         with SQLiteStore(db) as store:
@@ -664,6 +679,7 @@ def find(
             f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
         )
         raise typer.Exit(code=1)
+    _warn_if_not_fresh(db)
 
     kinds = (kind.strip().upper(),) if kind and kind.strip() else ()
     with SQLiteStore(db) as store:
@@ -709,6 +725,7 @@ def structure(
             f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
         )
         raise typer.Exit(code=1)
+    _warn_if_not_fresh(db)
 
     # Normalize file path → FQN. Per-language, because the helpers disagree:
     # the Python one strips ".py" and collapses "/__init__", so it would turn
@@ -807,6 +824,7 @@ def analyze(
             f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
         )
         raise typer.Exit(code=1)
+    _warn_if_not_fresh(db)
 
     with SQLiteStore(db) as store:
         report = AnalyzerEngine(store).run()
@@ -1073,6 +1091,7 @@ def drift(
             f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
         )
         raise typer.Exit(code=1)
+    _warn_if_not_fresh(db)
 
     if not Path(patterns).is_file():
         console.print(f"[bold red]❌ Patterns file not found:[/bold red] {escape(patterns)}")
@@ -1211,6 +1230,7 @@ def context(
             f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
         )
         raise typer.Exit(code=1)
+    _warn_if_not_fresh(db)
 
     err_console = Console(stderr=True)
     with SQLiteStore(db) as store:
@@ -1318,6 +1338,7 @@ def metrics(
             f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
         )
         raise typer.Exit(code=1)
+    _warn_if_not_fresh(db)
     try:
         with DuckDBAnalyzer(db) as analyzer:
             report = analyzer.architecture_report(
@@ -1443,6 +1464,7 @@ def audit(
             f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
         )
         raise typer.Exit(code=1)
+    _warn_if_not_fresh(db)
 
     with SQLiteStore(db) as store:
         resolved = _resolve_checkpoint(store, target)
@@ -1461,6 +1483,37 @@ def audit(
     # Exit non-zero when gaps exist so `cgis audit` can gate CI like a linter.
     if result.gaps:
         raise typer.Exit(code=1)
+
+
+def _warn_if_not_fresh(db: str) -> None:
+    """Tell the reader when the graph no longer matches its tree (#175).
+
+    Printed to **stderr** before the result, and only when there is something to
+    say — a fresh graph adds nothing, the same way `_render_orphans` warns only
+    when `test_sources` is zero. stderr because `--format json` is piped: a note
+    on stdout makes the payload unparseable, which is exactly what happened when
+    this first landed.
+
+    Never raises. A freshness check is a courtesy on top of the query the user
+    actually asked for, and must not be able to take it down.
+    """
+    # Existence first: `SQLiteStore` *creates* the file it is pointed at, so
+    # probing a missing database would materialise an empty one — which made
+    # `cgis fractal --db nope.db` succeed instead of failing (#443 review).
+    if not Path(db).is_file():
+        return
+    try:
+        with SQLiteStore(db) as store:
+            result = store.freshness()
+    except Exception:
+        return
+    if result.state is FreshnessState.STALE:
+        err_console.print(
+            f"[bold yellow]⚠  Graph is stale:[/bold yellow] {result.changed} changed, "
+            f"{result.missing} missing since ingest. Re-ingest for a current answer."
+        )
+    elif result.state is FreshnessState.UNKNOWN:
+        err_console.print(f"[dim]· Freshness unknowable: {escape(result.reason or '')}[/dim]")
 
 
 def _render_orphans(report: OrphanReport) -> None:
@@ -1547,6 +1600,7 @@ def orphans(
             f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
         )
         raise typer.Exit(code=1)
+    _warn_if_not_fresh(db)
 
     with SQLiteStore(db) as store:
         report = find_orphan_classes(
@@ -1651,6 +1705,7 @@ def suggest_packages_cmd(
             f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
         )
         raise typer.Exit(code=1)
+    _warn_if_not_fresh(db)
     try:
         report = suggest_packages(db, prefix, with_calls=with_calls, min_q=min_q)
     except Exception as e:
@@ -1712,6 +1767,7 @@ def fractal(
     negative one means it destroys it (`flat`). Observe-only: always exits 0 on
     success. Run `ingest` first.
     """
+    _warn_if_not_fresh(db)
     try:
         reports = analyze_fractal_db(db)
     except FileNotFoundError as e:

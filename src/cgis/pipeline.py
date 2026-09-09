@@ -12,6 +12,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from cgis.core.generated import is_generated_source
 from cgis.core.models import Edge, Node
+from cgis.core.paths import EXCLUDED_DIRS
 from cgis.extractors.base import BaseExtractor
 from cgis.resolver.engine import ResolverEngine
 from cgis.resolver.uplift import SemanticUpliftEngine
@@ -42,7 +43,7 @@ class IngestionPipeline:
         """
         self._extractors = extractors
         self._domains_config = domains_config
-        self._excluded = {"venv", ".venv", "__pycache__", "node_modules", "build", "dist"}
+        self._excluded = EXCLUDED_DIRS
 
     @staticmethod
     def _compute_hash(content: str) -> str:
