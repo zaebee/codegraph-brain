@@ -2356,3 +2356,32 @@ async def main():
     nodes, edges = PythonExtractor().parse(code, "src/mod.py")
     result, _ = ResolverEngine(nodes, edges).resolve()
     assert any(e.source == "src.mod.main" and e.target == "src.mod.Session.fetch" for e in result)
+
+
+def test_the_last_binding_of_a_repeated_name_wins() -> None:
+    """`with A() as x, B() as x` binds x to B, as Python does (#445 review).
+
+    The scan used a stack and popped, so it walked the clause right-to-left and
+    let the *first* binding overwrite the last — the opposite of the runtime.
+    """
+    code = """
+class A:
+    def who(self):
+        pass
+
+class B:
+    def who(self):
+        pass
+
+def main():
+    with A() as x, B() as x:
+        x.who()
+"""
+    nodes, edges = PythonExtractor().parse(code, "src/mod.py")
+    main_node = next(n for n in nodes if n.id == "src.mod.main")
+    assert main_node.metadata.get("local_types", {}).get("x") == "src.mod.B"
+
+    result, _ = ResolverEngine(nodes, edges).resolve()
+    targets = {e.target for e in result if e.source == "src.mod.main"}
+    assert "src.mod.B.who" in targets
+    assert "src.mod.A.who" not in targets

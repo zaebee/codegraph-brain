@@ -27,14 +27,21 @@ from cgis.extractors._python_types import TypeResolver
 
 
 def _descendants_of_type(node: BaseNode, node_type: str) -> list[BaseNode]:
-    """Every descendant of `node` with the given type."""
+    """Every descendant of `node` with the given type, in source order.
+
+    The order is load-bearing, not incidental: a caller recording bindings into a
+    dict needs the *last* one to win, and `with A() as x, B() as x` binds `x` to
+    `B` at runtime. Popping a stack of children walks right-to-left and let the
+    first binding overwrite the last (#445 review), so children are reversed on
+    the way in to give a left-to-right pre-order walk.
+    """
     found: list[BaseNode] = []
-    stack = list(node.children)
+    stack = list(reversed(node.children))
     while stack:
         current = stack.pop()
         if current.type == node_type:
             found.append(current)
-        stack.extend(current.children)
+        stack.extend(reversed(current.children))
     return found
 
 
