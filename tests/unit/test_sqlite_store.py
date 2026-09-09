@@ -913,3 +913,23 @@ def test_is_generated_migration_forces_reingest_of_unchanged_files(tmp_path: Pat
         # ...and the row survives, so a file deleted before the upgrade is still
         # detectable as stale.
         assert store.get_all_tracked_files() == {"gen/e.py"}
+
+
+def test_adding_a_column_twice_is_not_an_error(tmp_path: Path) -> None:
+    """Two processes migrating the same old graph must not hand one a traceback (#441).
+
+    `_migrate` reads `PRAGMA table_info` and then issues `ALTER TABLE`. Two cgis
+    processes opening the same pre-column database — the MCP server and a CLI run,
+    which is the normal workflow here — both see the column missing and both
+    issue the ALTER; the loser gets `sqlite3.OperationalError: duplicate column
+    name`. `cli.orphans` does not wrap the store open, so that surfaces as a
+    traceback rather than the ❌ the command uses everywhere else. Pre-existing
+    for `namespace` and `is_test`; the `is_generated` branch widened the window.
+    """
+    db_path = str(tmp_path / "g.db")
+    with SQLiteStore(db_path) as store:
+        assert store._conn is not None  # noqa: SLF001
+        # The second call stands in for the losing process: the column is already
+        # there, exactly as it would be after the winner's ALTER committed.
+        store._add_column_if_missing("is_generated", "INTEGER NOT NULL DEFAULT 0")  # noqa: SLF001
+        store._add_column_if_missing("is_generated", "INTEGER NOT NULL DEFAULT 0")  # noqa: SLF001
