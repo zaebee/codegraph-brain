@@ -29,6 +29,15 @@ import re
 # above the marker without reaching into module docstrings.
 _HEADER_LINES = 5
 
+# And a byte cap on top of the line count, so the cost of this check does not
+# depend on the file: a minified or single-line source has no newline to stop
+# `split` at, and the regexes would then scan the whole thing. Measured against
+# real headers rather than picked: the largest five-line window across
+# owner-api's six generated files is 690 bytes — betterproto's `# sources:` line
+# listing eighteen protos — and every marker sits within the first 59. That is
+# roughly six times the headroom needed.
+_HEADER_BYTES = 4096
+
 # Two markers, two casing rules, so they need two patterns — one combined regex
 # with IGNORECASE would quietly make both case-insensitive.
 #
@@ -57,7 +66,7 @@ def is_generated_source(code: str) -> bool:
     genuinely unreferenced, and reporting them is noise rather than a finding.
     `--include-generated` puts them back for the rare audit that wants them.
     """
-    header = code.split("\n", maxsplit=_HEADER_LINES)[:_HEADER_LINES]
+    header = code[:_HEADER_BYTES].split("\n", maxsplit=_HEADER_LINES)[:_HEADER_LINES]
     if any(_GENERATED.search(line) for line in header):
         return True
     return any(_DO_NOT_EDIT.search(line) for line in header) and any(

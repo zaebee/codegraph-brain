@@ -179,7 +179,7 @@ class IngestionPipeline:
             # Stamped here rather than inside each extractor: the marker lives in
             # the source text the pipeline already holds, so every present and
             # future language extractor inherits this without knowing about it.
-            if is_generated_source(code):
+            if nodes and is_generated_source(code):
                 nodes = [n.model_copy(update={"is_generated": True}) for n in nodes]
             if nodes:
                 logger.info("Parsed nodes from file", nodes=len(nodes), full_path=full_path_str)

@@ -96,3 +96,22 @@ def test_do_not_edit_beside_a_generation_claim_is_a_marker() -> None:
 def test_at_generated_needs_no_companion() -> None:
     """`@generated` is a machine token nobody writes in prose, so it stands alone."""
     assert is_generated_source("# @generated\n")
+
+
+def test_a_long_header_line_does_not_hide_a_later_marker() -> None:
+    """The scanned prefix is capped, so the cap must clear real headers with room.
+
+    betterproto's `# sources:` line is the long one — 690 bytes for owner-api's
+    whole five-line window, against a 4096-byte cap. This pins that a header of
+    that shape still finds a marker on a later line, so shrinking the cap breaks
+    a test rather than silently unclassifying generated files.
+    """
+    sources = "# sources: " + ", ".join(f"proto/entities/thing_{i}.proto" for i in range(60))
+    assert len(sources) > 690
+    assert is_generated_source(f"# Protocol buffer compiler.\n{sources}\n# @generated\n")
+
+
+def test_a_marker_past_the_scanned_prefix_is_not_read() -> None:
+    """The cap is a real boundary, not decoration — a marker beyond it is not seen."""
+    filler = "# " + "x" * 5000
+    assert not is_generated_source(f"{filler}\n# @generated\n")
