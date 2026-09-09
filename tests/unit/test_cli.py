@@ -1825,3 +1825,27 @@ def test_orphans_text_output_reports_what_was_hidden(tmp_path: Path) -> None:
     result = runner.invoke(app, ["orphans", "--db", db])
 
     assert "1 generated" in result.stdout
+
+
+def test_orphans_prefix_over_an_all_generated_subtree_is_not_a_typo(tmp_path: Path) -> None:
+    """A correct prefix whose classes are all generated must not read as a typo (#441 review).
+
+    `considered` is counted after the generated filter, so an all-generated
+    subtree lands on the wrong-prefix guard — exit 2 with "check the prefix
+    against the graph's FQNs" — and exits before the line that would explain it.
+    """
+    db = _generated_orphan_db(tmp_path)
+    result = runner.invoke(app, ["orphans", "--db", db, "--prefix", "gen"])
+
+    assert result.exit_code == 0
+    assert "No classes under prefix" not in result.stdout
+    assert "1 generated" in result.stdout
+
+
+def test_orphans_prefix_matching_nothing_still_errors(tmp_path: Path) -> None:
+    """The typo guard itself must survive the fix (#441 review)."""
+    db = _generated_orphan_db(tmp_path)
+    result = runner.invoke(app, ["orphans", "--db", db, "--prefix", "app.nope"])
+
+    assert result.exit_code == 2
+    assert "No classes under prefix" in result.stdout

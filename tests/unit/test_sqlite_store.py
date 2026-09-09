@@ -861,3 +861,39 @@ def test_migrate_adds_is_generated_column_defaulting_to_false(tmp_path: Path) ->
         }
         assert "is_generated" in cols
         assert store.get_all_nodes()[0].is_generated is False
+
+
+def test_is_generated_migration_forces_reingest_of_unchanged_files(tmp_path: Path) -> None:
+    """Adding the column clears `files_state`, or incremental ingest never stamps it (#441 review).
+
+    `_process_file` short-circuits on a matching content hash and reuses the
+    stored nodes, and `_persist_incremental` only writes files it re-parsed. So
+    `cgis ingest -i` over an upgraded database would skip every unchanged file
+    and leave `is_generated` false forever — while the report tells the reader to
+    re-ingest. Dropping the hashes makes the documented remedy actually work.
+    """
+    db_path = str(tmp_path / "old.db")
+    conn = sqlite3.connect(db_path)
+    conn.executescript("""
+        CREATE TABLE nodes (
+            id TEXT PRIMARY KEY, type TEXT NOT NULL, name TEXT NOT NULL,
+            file_path TEXT NOT NULL, start_line INTEGER NOT NULL,
+            end_line INTEGER NOT NULL, language TEXT NOT NULL,
+            ontology_class TEXT, domains TEXT,
+            confidence_score REAL NOT NULL, metadata TEXT,
+            namespace TEXT NOT NULL DEFAULT 'INTERNAL',
+            is_test INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE edges (
+            id TEXT PRIMARY KEY, source TEXT NOT NULL, target TEXT NOT NULL,
+            type TEXT NOT NULL, weight REAL NOT NULL, confidence REAL NOT NULL,
+            context TEXT, file_path TEXT, line_number INTEGER
+        );
+        CREATE TABLE files_state (file_path TEXT PRIMARY KEY, hash TEXT NOT NULL);
+        INSERT INTO files_state VALUES ('gen/e.py', 'deadbeef');
+    """)
+    conn.commit()
+    conn.close()
+
+    with SQLiteStore(db_path) as store:
+        assert store.get_file_hash("gen/e.py") is None

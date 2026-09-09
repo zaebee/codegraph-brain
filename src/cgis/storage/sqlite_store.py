@@ -136,6 +136,11 @@ class SQLiteStore:
             self._conn.execute(
                 "ALTER TABLE nodes ADD COLUMN is_generated INTEGER NOT NULL DEFAULT 0"
             )
+            # And the hashes go, or "re-ingest" is advice that cannot be followed:
+            # `_process_file` skips any file whose content hash still matches and
+            # reuses its stored nodes, so an incremental run over an upgraded
+            # database would re-parse nothing and leave the column false forever.
+            self._conn.execute("DELETE FROM files_state")
             self._conn.commit()
 
     def _backfill_is_test(self) -> None:

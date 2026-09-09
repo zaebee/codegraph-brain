@@ -1554,11 +1554,16 @@ def orphans(
             include_generated=include_generated,
         )
 
-    if prefix and report.considered == 0:
+    if prefix and report.considered == 0 and not report.generated_excluded:
         # A typo'd or wrongly-rooted prefix would otherwise print "0 of 0" and
         # exit 0 — a CI gate that passes because it examined nothing. The
         # commonest cause is the ingest root: a graph built from `app/` has FQNs
         # like `domains.x`, so `--prefix app.domains` matches nothing at all.
+        #
+        # `considered` is counted after the generated filter, so a subtree that is
+        # entirely generated also reaches zero. That prefix matched fine, and
+        # calling it a typo would be a false diagnosis — and would exit before the
+        # line that explains where its classes went (#441 review).
         console.print(
             f"[bold red]❌ No classes under prefix[/bold red] {escape(prefix)}. "
             "Check the prefix against the graph's FQNs — they are relative to the "

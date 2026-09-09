@@ -33,15 +33,21 @@ _HEADER_LINES = 5
 # with IGNORECASE would quietly make both case-insensitive.
 #
 # `@generated` is a machine token and the lowercase spelling is the convention,
-# so it is matched exactly: any casing would let a header that writes
-# "@Generated" in prose pass. (Java's `@Generated` annotation is a real
-# spelling, but it sits on a declaration rather than a header line, and no Java
-# extractor exists yet — one can add it with a test rather than inherit it.)
-#
-# `do not edit` is an English instruction and generators disagree: protoc shouts
-# it, openapi-generator writes "Do not edit the class manually."
+# so it is matched exactly and stands alone: nobody writes it in prose. (Java's
+# `@Generated` annotation is a real spelling, but it sits on a declaration rather
+# than a header line, and no Java extractor exists yet — one can add it with a
+# test rather than inherit it.)
 _GENERATED = re.compile(r"@generated")
+
+# `do not edit` is ordinary English, so on its own it is not evidence: a
+# hand-written docstring saying "we do not edit these by hand" would hide every
+# class in the file from the orphan report — silent under-reporting, the
+# direction that report errs away from. It counts only beside a generation claim
+# in the same header. Measured on owner-api: all six genuinely generated headers
+# say "generated" (protoc puts both on one line, openapi-generator splits them
+# across two), and the prose counterexample says neither.
 _DO_NOT_EDIT = re.compile(r"do not edit", re.IGNORECASE)
+_GENERATION_CLAIM = re.compile(r"generat", re.IGNORECASE)
 
 
 def is_generated_source(code: str) -> bool:
@@ -52,4 +58,8 @@ def is_generated_source(code: str) -> bool:
     `--include-generated` puts them back for the rare audit that wants them.
     """
     header = code.split("\n", maxsplit=_HEADER_LINES)[:_HEADER_LINES]
-    return any(_GENERATED.search(line) or _DO_NOT_EDIT.search(line) for line in header)
+    if any(_GENERATED.search(line) for line in header):
+        return True
+    return any(_DO_NOT_EDIT.search(line) for line in header) and any(
+        _GENERATION_CLAIM.search(line) for line in header
+    )
