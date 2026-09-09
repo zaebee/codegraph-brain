@@ -114,6 +114,10 @@ class Node(BaseModel):
         default=False,
         description="Test code rather than production code — derived from file_path (spec D5)",
     )
+    is_generated: bool = Field(
+        default=False,
+        description="Machine-generated source — stamped from the file header at ingest (#432)",
+    )
 
     # Reliability
     confidence_score: float = Field(default=1.0, ge=0.0, le=1.0)

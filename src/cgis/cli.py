@@ -1479,6 +1479,14 @@ def _render_orphans(report: OrphanReport) -> None:
             "therefore counts as production, so a class kept alive only by its tests "
             "will not be reported. Ingest a root that contains them to see it."
         )
+    if report.generated_excluded:
+        # Said out loud rather than silently dropped: the reader needs to know the
+        # report was filtered, and by how much, to trust that it is complete.
+        console.print(
+            f"  [dim]· {report.generated_excluded} generated "
+            f"{'class' if report.generated_excluded == 1 else 'classes'} hidden "
+            "(--include-generated to show).[/dim]"
+        )
     for orphan in report.orphans:
         console.print(
             f"  [bold red]✗ {escape(orphan.fqn)}[/bold red] "
@@ -1501,6 +1509,11 @@ def orphans(
         False,
         "--include-tests",
         help="Count test code as a user. Turns the report into 'unreachable from anywhere'.",
+    ),
+    include_generated: bool = typer.Option(
+        False,
+        "--include-generated",
+        help="Report machine-generated classes too. Hidden by default: nobody deletes them.",
     ),
     output_format: OutputFormat = typer.Option(
         OutputFormat.TEXT, "--format", "-f", help=_TEXT_JSON_FORMAT_HELP
@@ -1534,7 +1547,12 @@ def orphans(
         raise typer.Exit(code=1)
 
     with SQLiteStore(db) as store:
-        report = find_orphan_classes(store, prefix=prefix, include_tests=include_tests)
+        report = find_orphan_classes(
+            store,
+            prefix=prefix,
+            include_tests=include_tests,
+            include_generated=include_generated,
+        )
 
     if prefix and report.considered == 0:
         # A typo'd or wrongly-rooted prefix would otherwise print "0 of 0" and

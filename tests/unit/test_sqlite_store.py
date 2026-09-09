@@ -789,3 +789,75 @@ def test_count_helpers_avoid_deserializing_the_graph(temp_store: SQLiteStore) ->
     temp_store.save_graph(nodes, edges)
     assert temp_store.get_node_count() == len(temp_store.get_all_nodes())
     assert temp_store.get_edge_count() == temp_store.get_edge_stats().total
+
+
+def test_is_generated_round_trips(tmp_path: Path) -> None:
+    """A stamped node keeps `is_generated` through save and reload (#432)."""
+    db_path = str(tmp_path / "gen.db")
+    stub = Node(
+        id="gen.entities.Vehicle",
+        type=NodeType.CLASS,
+        name="Vehicle",
+        file_path="gen/entities/__init__.py",
+        start_line=1,
+        end_line=2,
+        is_generated=True,
+    )
+    plain = Node(
+        id="svc.Service",
+        type=NodeType.CLASS,
+        name="Service",
+        file_path="svc.py",
+        start_line=1,
+        end_line=2,
+    )
+    with SQLiteStore(db_path) as store:
+        store.save_graph([stub, plain], [])
+
+    with SQLiteStore(db_path) as store:
+        flags = {n.id: n.is_generated for n in store.get_all_nodes()}
+
+    assert flags == {"gen.entities.Vehicle": True, "svc.Service": False}
+
+
+def test_migrate_adds_is_generated_column_defaulting_to_false(tmp_path: Path) -> None:
+    """An older graph gains the column as False — there is no backfill (#432).
+
+    Unlike `is_test`, this cannot be re-derived from stored data: the marker is
+    in the file header, which the database does not keep. A graph ingested
+    before this column therefore reports zero generated nodes until re-ingest,
+    which `OrphanReport.generated_excluded` is what makes visible.
+    """
+    db_path = str(tmp_path / "old.db")
+    conn = sqlite3.connect(db_path)
+    conn.executescript("""
+        CREATE TABLE nodes (
+            id TEXT PRIMARY KEY, type TEXT NOT NULL, name TEXT NOT NULL,
+            file_path TEXT NOT NULL, start_line INTEGER NOT NULL,
+            end_line INTEGER NOT NULL, language TEXT NOT NULL,
+            ontology_class TEXT, domains TEXT,
+            confidence_score REAL NOT NULL, metadata TEXT,
+            namespace TEXT NOT NULL DEFAULT 'INTERNAL',
+            is_test INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE edges (
+            id TEXT PRIMARY KEY, source TEXT NOT NULL, target TEXT NOT NULL,
+            type TEXT NOT NULL, weight REAL NOT NULL, confidence REAL NOT NULL,
+            context TEXT, file_path TEXT, line_number INTEGER
+        );
+        CREATE TABLE files_state (file_path TEXT PRIMARY KEY, hash TEXT NOT NULL);
+        INSERT INTO nodes VALUES
+            ('gen.X', 'CLASS', 'X', 'gen/e.py', 1, 2, 'python', NULL, NULL, 1.0, '{}',
+             'INTERNAL', 0);
+    """)
+    conn.commit()
+    conn.close()
+
+    with SQLiteStore(db_path) as store:
+        assert store._conn is not None  # noqa: SLF001
+        cols = {
+            row["name"]
+            for row in store._conn.execute("PRAGMA table_info(nodes)").fetchall()  # noqa: SLF001
+        }
+        assert "is_generated" in cols
+        assert store.get_all_nodes()[0].is_generated is False

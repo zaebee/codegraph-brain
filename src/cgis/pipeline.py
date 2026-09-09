@@ -10,6 +10,7 @@ import structlog
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
+from cgis.core.generated import is_generated_source
 from cgis.core.models import Edge, Node
 from cgis.extractors.base import BaseExtractor
 from cgis.resolver.engine import ResolverEngine
@@ -175,6 +176,11 @@ class IngestionPipeline:
                 changed_files[full_path_str] = file_hash
 
             nodes, edges = extractor.parse(code, full_path_str)
+            # Stamped here rather than inside each extractor: the marker lives in
+            # the source text the pipeline already holds, so every present and
+            # future language extractor inherits this without knowing about it.
+            if is_generated_source(code):
+                nodes = [n.model_copy(update={"is_generated": True}) for n in nodes]
             if nodes:
                 logger.info("Parsed nodes from file", nodes=len(nodes), full_path=full_path_str)
             all_nodes.extend(nodes)

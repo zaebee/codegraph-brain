@@ -82,7 +82,8 @@ class SQLiteStore:
             confidence_score REAL NOT NULL,
             metadata TEXT,
             namespace TEXT NOT NULL DEFAULT 'INTERNAL',
-            is_test INTEGER NOT NULL DEFAULT 0
+            is_test INTEGER NOT NULL DEFAULT 0,
+            is_generated INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS edges (
@@ -127,6 +128,15 @@ class SQLiteStore:
             self._conn.execute("ALTER TABLE nodes ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0")
             self._backfill_is_test()
             self._conn.commit()
+        if "is_generated" not in cols:
+            # No backfill, unlike is_test: the marker is in the file header, which
+            # this database does not keep, so it cannot be re-derived from stored
+            # rows. An older graph reports zero generated nodes until re-ingest —
+            # `OrphanReport.generated_excluded` is what makes that visible (#432).
+            self._conn.execute(
+                "ALTER TABLE nodes ADD COLUMN is_generated INTEGER NOT NULL DEFAULT 0"
+            )
+            self._conn.commit()
 
     def _backfill_is_test(self) -> None:
         """Populate the new column from the paths already stored (spec D5).
@@ -146,8 +156,9 @@ class SQLiteStore:
     _NODE_INSERT = """
         INSERT OR REPLACE INTO nodes (
             id, type, name, file_path, start_line, end_line, language,
-            ontology_class, domains, confidence_score, metadata, namespace, is_test
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ontology_class, domains, confidence_score, metadata, namespace, is_test,
+            is_generated
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
     _EDGE_INSERT = """
         INSERT OR REPLACE INTO edges (
@@ -158,7 +169,7 @@ class SQLiteStore:
 
     def _node_to_row(
         self, n: Node
-    ) -> tuple[str, str, str, str, int, int, str, str | None, str, float, str, str, int]:
+    ) -> tuple[str, str, str, str, int, int, str, str | None, str, float, str, str, int, int]:
         """Serialise a Node into a tuple matching the nodes table column order."""
         return (
             n.id,
@@ -174,6 +185,7 @@ class SQLiteStore:
             json.dumps(n.metadata),
             n.namespace.value,
             int(n.is_test),
+            int(n.is_generated),
         )
 
     def _edge_to_row(
@@ -623,6 +635,9 @@ class SQLiteStore:
             # so the shorter form ruff suggests (SIM118) is always False here
             # and would silently mark every node as production code.
             is_test=bool(row["is_test"]) if "is_test" in row.keys() else False,  # noqa: SIM118
+            is_generated=bool(row["is_generated"])
+            if "is_generated" in row.keys()  # noqa: SIM118
+            else False,
             namespace=NodeNamespace(row["namespace"])
             if row["namespace"]
             else NodeNamespace.INTERNAL,
