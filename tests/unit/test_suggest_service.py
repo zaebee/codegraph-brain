@@ -247,21 +247,38 @@ def test_the_package_root_does_not_collide_with_a_same_named_module(tmp_path: Pa
     fallback. Real case: `cgis suggest-packages cgis.query.drift` listed `drift`
     twice, for `drift/__init__.py` and `drift/drift.py`.
 
-    The root renders as `__init__`, which is the file it stands for and cannot
-    clash: a nested `__init__.py` has its id folded into its package's name.
+    A module named exactly after its own package is the one shape where relative
+    naming cannot separate them, so the whole report falls back to full FQNs —
+    one visible rule, rather than one row spelled unlike its neighbours.
     """
-    files = [make_file_node(n) for n in ("p", "p.p", "p.other", "p.third")]
-    edges = [
-        make_import_edge(s, t)
-        for s in ("p", "p.p", "p.other", "p.third")
-        for t in ("p", "p.p", "p.other", "p.third")
-        if s != t
-    ]
+    ids = ("p", "p.p", "p.other", "p.third")
+    files = [make_file_node(n) for n in ids]
+    edges = [make_import_edge(s, t) for s in ids for t in ids if s != t]
     db = _store_with(tmp_path, files, edges)
 
     report = suggest_packages(db, prefix="p", with_calls=False)
 
     rendered = [f for community in report.communities for f in community.files]
     assert len(rendered) == len(set(rendered)), rendered
-    assert "__init__" in rendered
-    assert "p" in rendered
+    assert set(rendered) == set(ids), rendered
+
+
+def test_every_member_name_resolves_back_to_a_node_id(tmp_path: Path) -> None:
+    """A member must name a file the caller can then ask about (#447 review).
+
+    This tool is MCP-facing: an agent reads a community, picks a member and calls
+    `cgis_context` on it. `__init__` — the first attempt at naming the package's
+    own node — resolved to nothing, and named a file that does not exist at all
+    in a TypeScript package, where the extractor folds `/index` exactly as the
+    Python one folds `/__init__`.
+    """
+    ids = ("q", "q.a", "q.sub", "q.sub.b")
+    files = [make_file_node(n) for n in ids]
+    edges = [make_import_edge(s, t) for s in ids for t in ids if s != t]
+    db = _store_with(tmp_path, files, edges)
+
+    report = suggest_packages(db, prefix="q", with_calls=False)
+
+    rendered = [f for community in report.communities for f in community.files]
+    resolved = {name if name in ids else f"q.{name}" for name in rendered}
+    assert resolved == set(ids), resolved.symmetric_difference(ids)
