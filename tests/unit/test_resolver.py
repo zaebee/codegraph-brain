@@ -2161,8 +2161,8 @@ def test_layout_prefix_survives_the_foreign_head_guard() -> None:
     strict=True,
     reason="`app` misclassifies EXTERNAL when every first-party import under it is "
     "two segments — `_strips_to_a_node` needs two segments to remain. Pre-existing "
-    "in classify_fqn; the #435 guard turns it into a failed resolution. Remove this "
-    "marker when the classifier is fixed.",
+    "in classify_fqn; the #435 guard turns it into a failed resolution. Tracked in "
+    "#438 — remove this marker when the classifier is fixed.",
 )
 def test_module_style_first_party_import_at_subdirectory_ingest() -> None:
     """`from app import models` must still reach `models.get_user` (known gap).
