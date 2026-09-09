@@ -232,3 +232,96 @@ def test_a_pre_column_graph_is_backfilled_on_open(tmp_path: Path) -> None:
         report = find_orphan_classes(opened)
     assert report.test_sources == 1, "the migration did not backfill is_test from file_path"
     assert [o.fqn for o in report.orphans] == ["app.a.Dead"]
+
+
+def _generated(node_id: str) -> Node:
+    """A class from a file the pipeline stamped as machine-generated."""
+    return Node(
+        id=node_id,
+        type=NodeType.CLASS,
+        name=node_id.rsplit(".", maxsplit=1)[-1],
+        file_path="app/gen/entities/__init__.py",
+        start_line=1,
+        end_line=2,
+        is_generated=True,
+    )
+
+
+def test_generated_classes_are_excluded_by_default(store: SQLiteStore) -> None:
+    """A generated stub is unreferenced and undeletable, so it is noise, not a finding (#432).
+
+    On owner-api at b7d02fe6 five of the six reported orphans were betterproto
+    entities under `gen/` and the sixth was a nested pydantic `Config` — the
+    report had no actionable row left in it.
+    """
+    _save(store, [_generated("gen.entities.Vehicle"), _node("app.adapters.Dead")], [])
+
+    report = find_orphan_classes(store)
+
+    assert [o.fqn for o in report.orphans] == ["app.adapters.Dead"]
+
+
+def test_include_generated_puts_them_back(store: SQLiteStore) -> None:
+    """The opt-out exists for the audit that does want them."""
+    _save(store, [_generated("gen.entities.Vehicle"), _node("app.adapters.Dead")], [])
+
+    report = find_orphan_classes(store, include_generated=True)
+
+    assert [o.fqn for o in report.orphans] == ["app.adapters.Dead", "gen.entities.Vehicle"]
+
+
+def test_report_counts_what_the_generated_filter_removed(store: SQLiteStore) -> None:
+    """`generated_excluded` makes a stale graph legible, the way `test_sources` does.
+
+    The column has no backfill — the marker is in the file header, not in the
+    database — so a graph ingested before it silently has no generated nodes.
+    A zero here on a repository with generated code is the signal to re-ingest.
+    """
+    _save(
+        store,
+        [
+            _generated("gen.entities.Vehicle"),
+            _generated("gen.entities.Owner"),
+            _node("app.adapters.Dead"),
+        ],
+        [],
+    )
+
+    report = find_orphan_classes(store)
+
+    assert report.generated_excluded == 2
+    assert report.considered == 1
+
+
+def test_a_referenced_generated_class_is_still_counted_as_excluded(store: SQLiteStore) -> None:
+    """`generated_excluded` counts what left the population, not what left the findings (#441).
+
+    Counting only the *unused* ones made the number answer two questions badly.
+    The report's own claim — "zero on a repository with generated code means the
+    graph predates the column" — was false whenever every generated class
+    happened to be referenced, the common case for a protobuf package actually in
+    use. And a prefix over such a subtree reached zero on both counters, so the
+    CLI called a correct prefix a typo.
+    """
+    _save(
+        store,
+        [_generated("gen.entities.Vehicle"), _node("app.adapters.Caller")],
+        [_edge("app.adapters.Caller", "gen.entities.Vehicle", EdgeType.CALLS)],
+    )
+
+    report = find_orphan_classes(store)
+
+    assert [o.fqn for o in report.orphans] == ["app.adapters.Caller"]
+    assert report.generated_excluded == 1
+
+
+def test_generated_excluded_is_scoped_by_prefix(store: SQLiteStore) -> None:
+    """A prefix narrows the counter too, or it cannot tell a typo from a filter.
+
+    Whole-graph counting would let any repository with generated code anywhere
+    suppress the wrong-prefix guard for every prefix, including a real typo.
+    """
+    _save(store, [_generated("gen.entities.Vehicle"), _node("app.adapters.Dead")], [])
+
+    assert find_orphan_classes(store, prefix="gen").generated_excluded == 1
+    assert find_orphan_classes(store, prefix="app").generated_excluded == 0

@@ -14,6 +14,7 @@ from cgis.api.mcp_server import (
     cgis_audit_reachability,
     cgis_context,
     cgis_drift,
+    cgis_find_orphans,
     cgis_find_symbol,
     cgis_get_structure,
     cgis_ingest,
@@ -1012,3 +1013,36 @@ def test_cgis_metrics_scope_restricts_rankings(tmp_path: Path) -> None:
     assert "domains.reservation.rules.check" in ids
     assert "domains.billing.charge" not in ids
     assert "domains.reservation_archive.purge" not in ids
+
+
+def test_cgis_find_orphans_hides_generated_by_default(tmp_path: Path) -> None:
+    """cgis_find_orphans leaves generated stubs out, with an opt-out (#432)."""
+    nodes = [
+        Node(
+            id="gen.entities.Vehicle",
+            type=NodeType.CLASS,
+            name="Vehicle",
+            file_path="gen/entities/__init__.py",
+            start_line=1,
+            end_line=2,
+            is_generated=True,
+        ),
+        Node(
+            id="app.adapters.Dead",
+            type=NodeType.CLASS,
+            name="Dead",
+            file_path="app/adapters.py",
+            start_line=1,
+            end_line=2,
+        ),
+    ]
+    db = tmp_path / "gen.db"
+    with SQLiteStore(str(db)) as store:
+        store.save_graph(nodes, [])
+
+    default = cgis_find_orphans(str(db))
+    assert "app.adapters.Dead" in default
+    assert "gen.entities.Vehicle" not in default
+
+    opted_in = cgis_find_orphans(str(db), include_generated=True)
+    assert "gen.entities.Vehicle" in opted_in

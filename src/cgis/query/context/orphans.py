@@ -28,17 +28,19 @@ is large enough to state.** Hand-checking 14 of owner-api's 43 found 11 genuinel
 dead, and three kinds of noise the graph is right about and a reader is not
 interested in:
 
-* **Generated code** — 16 of the 43 are betterproto stubs under
-  `api/dependencies/grpc/`, carrying a "DO NOT EDIT" header. Really unused,
-  never deleted by hand.
+* **Generated code** — betterproto stubs carrying a "DO NOT EDIT" header.
+  Really unused, never deleted by hand. **Now filtered by default** (#432): the
+  pipeline stamps `Node.is_generated` from the file header, and
+  `include_generated=True` puts them back. On owner-api at `b7d02fe6` that takes
+  the report from 6 to 1 and the population from 699 classes to 488.
 * **Alive by metaclass** — a pydantic inner `class Config`, consumed by the
-  model's metaclass and never named by anything.
+  model's metaclass and never named by anything. Still reported, and on that
+  repository it is now the *only* row: the question of whether nested classes
+  belong in this report at all is a scope decision rather than a filter, and is
+  still open in #432.
 * **Alive by registration** — a `SQLModel` with `table=True` is a table
-  definition; the import is the point.
-
-So on that repository the usable signal is roughly 25 of 43. Filtering these is #432
-rather than guessed at here, because each needs a marker the
-graph does not yet carry.
+  definition; the import is the point. Not reported on the current ref, so it
+  needs a repository where it recurs before it can be measured.
 
 One blind spot remains, and it under-reports rather than over-reports — the
 cheap direction for a check whose value is that people trust it: a class
@@ -78,11 +80,22 @@ class OrphanReport:
     ingested before the `is_test` column existed silently has no test nodes at
     all — `test_sources` being 0 in a repository that has tests is the signal to
     re-ingest.
+
+    `generated_excluded` is the same kind of signal for `is_generated`, and needs
+    it more: that column has no backfill, because the marker lives in the file
+    header rather than in the database. A zero on a repository with generated
+    code means the graph predates the column, not that there is none (#432).
+
+    It counts every generated class dropped from the candidate population, under
+    the same `prefix`, whether or not anything references it — so it answers "was
+    this graph stamped, and did this prefix match generated code", not "how many
+    findings were hidden". `--include-generated` is how you see the findings.
     """
 
     orphans: list[OrphanClass]
     considered: int
     test_sources: int
+    generated_excluded: int = 0
 
 
 def _is_candidate(node: Node, prefix: str | None) -> bool:
@@ -93,7 +106,11 @@ def _is_candidate(node: Node, prefix: str | None) -> bool:
 
 
 def find_orphan_classes(
-    store: SQLiteStore, *, prefix: str | None = None, include_tests: bool = False
+    store: SQLiteStore,
+    *,
+    prefix: str | None = None,
+    include_tests: bool = False,
+    include_generated: bool = False,
 ) -> OrphanReport:
     """Report internal classes that no production code builds, extends or names.
 
@@ -102,6 +119,13 @@ def find_orphan_classes(
     which turns the report into "unreachable from anywhere" — useful for finding
     a class only its own deleted test ever touched, and useless as a dead-code
     check, which is why it is off by default.
+
+    `include_generated` puts machine-generated classes back into the report.
+    They are excluded by default because the query is *right* about them and a
+    reader still will not act: nothing constructs a betterproto stub, and nobody
+    hand-deletes one either. Measured on owner-api at b7d02fe6, five of the six
+    reported orphans were generated entities and the sixth was a nested pydantic
+    `Config`, so the default report there had no actionable row left (#432).
 
     An orphan is a *candidate* for deletion, not a proof. The two blind spots in
     the module docstring both under-report, so a class listed here has no
@@ -115,9 +139,25 @@ def find_orphan_classes(
     # mid-sized backend and 1.8 GB on a million-edge graph.
     used = store.get_referenced_targets(_USE_EDGE_TYPES, from_test_sources=include_tests)
     candidates = [node for node in nodes if _is_candidate(node, prefix)]
+    if not include_generated:
+        # Every generated candidate, referenced or not — this counts what left the
+        # *population*, not what left the findings. Counting only the unused ones
+        # made one number answer two questions badly: it read as zero on a graph
+        # whose generated classes are all referenced, which is the common case for
+        # a protobuf package in use, so both the staleness signal and the CLI's
+        # wrong-prefix guard misfired there (#441).
+        generated_excluded = sum(1 for n in candidates if n.is_generated)
+        candidates = [n for n in candidates if not n.is_generated]
+    else:
+        generated_excluded = 0
     orphans = [
         OrphanClass(fqn=node.id, file=node.file_path, line=node.start_line)
         for node in sorted(candidates, key=lambda n: n.id)
         if node.id not in used
     ]
-    return OrphanReport(orphans=orphans, considered=len(candidates), test_sources=test_sources)
+    return OrphanReport(
+        orphans=orphans,
+        considered=len(candidates),
+        test_sources=test_sources,
+        generated_excluded=generated_excluded,
+    )

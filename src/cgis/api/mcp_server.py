@@ -564,6 +564,7 @@ def cgis_find_orphans(
     db_path: str = _DEFAULT_DB,
     prefix: str | None = None,
     include_tests: bool = False,
+    include_generated: bool = False,
 ) -> str:
     """Classes nothing in production builds, extends or names — dead-code candidates (#415).
 
@@ -583,19 +584,33 @@ def cgis_find_orphans(
     ``prefix`` narrows to one package on a dot boundary. ``include_tests`` counts
     test code as a user, turning the report into "unreachable from anywhere".
 
-    Returns JSON ``{orphans, considered, test_sources}``; each orphan carries
-    ``fqn``/``file``/``line``. **A listing is a candidate for deletion, not a
-    proof** — a class named only inside a decorator (#429) or arriving through a
-    star import is invisible here, so the sweep errs towards reporting a live
-    class rather than hiding a dead one. ``test_sources: 0`` in a repository that
-    has tests means the graph predates the ``is_test`` column: re-ingest.
+    Machine-generated classes are **hidden by default**, and ``include_generated``
+    puts them back. The query is right about them — nothing constructs a
+    betterproto stub — but nobody hand-deletes one either, so they are noise
+    rather than a finding. Measured on owner-api at b7d02fe6, five of six
+    reported orphans were generated entities and the sixth a nested pydantic
+    ``Config``: the unfiltered report had no actionable row in it (#432).
+
+    Returns JSON ``{orphans, considered, test_sources, generated_excluded}``;
+    each orphan carries ``fqn``/``file``/``line``. **A listing is a candidate for
+    deletion, not a proof** — a class named only inside a decorator (#429) or
+    arriving through a star import is invisible here, so the sweep errs towards
+    reporting a live class rather than hiding a dead one. ``test_sources: 0`` in a
+    repository that has tests means the graph predates the ``is_test`` column:
+    re-ingest. ``generated_excluded`` counts every generated class left out of
+    the population under the same ``prefix``, referenced or not — so ``0`` on a
+    repository with generated code means the same for ``is_generated``, which has
+    no backfill: the marker is in the file header, not in the database.
     """
     if not Path(db_path).exists():
         return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
     try:
         with SQLiteStore(db_path) as store:
             report = find_orphan_classes(
-                store, prefix=(prefix or "").strip() or None, include_tests=include_tests
+                store,
+                prefix=(prefix or "").strip() or None,
+                include_tests=include_tests,
+                include_generated=include_generated,
             )
     except Exception as exc:
         return f"❌ {exc}"

@@ -82,7 +82,8 @@ class SQLiteStore:
             confidence_score REAL NOT NULL,
             metadata TEXT,
             namespace TEXT NOT NULL DEFAULT 'INTERNAL',
-            is_test INTEGER NOT NULL DEFAULT 0
+            is_test INTEGER NOT NULL DEFAULT 0,
+            is_generated INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS edges (
@@ -119,14 +120,59 @@ class SQLiteStore:
             return
         cols = {row["name"] for row in self._conn.execute("PRAGMA table_info(nodes)").fetchall()}
         if "namespace" not in cols:
-            self._conn.execute(
-                "ALTER TABLE nodes ADD COLUMN namespace TEXT NOT NULL DEFAULT 'INTERNAL'"
-            )
+            self._add_column_if_missing("namespace", "TEXT NOT NULL DEFAULT 'INTERNAL'")
             self._conn.commit()
         if "is_test" not in cols:
-            self._conn.execute("ALTER TABLE nodes ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0")
+            self._add_column_if_missing("is_test", "INTEGER NOT NULL DEFAULT 0")
             self._backfill_is_test()
             self._conn.commit()
+        if "is_generated" not in cols:
+            # No backfill, unlike is_test: the marker is in the file header, which
+            # this database does not keep, so it cannot be re-derived from stored
+            # rows. An older graph reports zero generated nodes until re-ingest —
+            # `OrphanReport.generated_excluded` is what makes that visible (#432).
+            self._add_column_if_missing("is_generated", "INTEGER NOT NULL DEFAULT 0")
+            # And the hashes are invalidated, or "re-ingest" is advice that cannot
+            # be followed: `_process_file` skips any file whose content hash still
+            # matches and reuses its stored nodes, so an incremental run over an
+            # upgraded database would re-parse nothing and leave the column false
+            # forever.
+            #
+            # Blanked, not deleted. `_persist_incremental` computes its stale set
+            # as `get_all_tracked_files() - found_file_paths`, and that reads this
+            # table — so dropping the rows would make a file deleted *before* the
+            # upgrade unknowable, and its nodes would survive every later ingest.
+            # An empty string never equals a hex digest, so every file re-parses
+            # exactly as it would have, and stale detection keeps working.
+            #
+            # This fires on the first open of an old graph whatever opened it, so
+            # a read-only `cgis orphans` invalidates them too. Deliberate: the
+            # invalidation is required for correctness whenever it happens, first
+            # open is the earliest moment it can happen, and the only cost is that
+            # the next incremental ingest is a full one — which that graph needs
+            # anyway. Deferring it to ingest would leave every query in between
+            # reading a column that is silently false.
+            self._conn.execute("UPDATE files_state SET hash = ''")
+            self._conn.commit()
+
+    def _add_column_if_missing(self, name: str, ddl: str) -> None:
+        """Add a column to `nodes`, tolerating another process having just added it.
+
+        `_migrate` reads `PRAGMA table_info` and then issues `ALTER TABLE`, and two
+        cgis processes opening the same old graph — the MCP server and a CLI run,
+        which is the ordinary workflow here — both see the column missing and both
+        issue it. SQLite fails the loser with "duplicate column name", and
+        `cli.orphans` does not wrap the store open, so that reached the user as a
+        traceback rather than the ❌ every other failure gets. Only that one error
+        is swallowed; anything else still raises (#441).
+        """
+        if not self._conn:
+            return
+        try:
+            self._conn.execute(f"ALTER TABLE nodes ADD COLUMN {name} {ddl}")
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" not in str(exc).lower():
+                raise
 
     def _backfill_is_test(self) -> None:
         """Populate the new column from the paths already stored (spec D5).
@@ -146,8 +192,9 @@ class SQLiteStore:
     _NODE_INSERT = """
         INSERT OR REPLACE INTO nodes (
             id, type, name, file_path, start_line, end_line, language,
-            ontology_class, domains, confidence_score, metadata, namespace, is_test
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ontology_class, domains, confidence_score, metadata, namespace, is_test,
+            is_generated
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
     _EDGE_INSERT = """
         INSERT OR REPLACE INTO edges (
@@ -158,7 +205,7 @@ class SQLiteStore:
 
     def _node_to_row(
         self, n: Node
-    ) -> tuple[str, str, str, str, int, int, str, str | None, str, float, str, str, int]:
+    ) -> tuple[str, str, str, str, int, int, str, str | None, str, float, str, str, int, int]:
         """Serialise a Node into a tuple matching the nodes table column order."""
         return (
             n.id,
@@ -174,6 +221,7 @@ class SQLiteStore:
             json.dumps(n.metadata),
             n.namespace.value,
             int(n.is_test),
+            int(n.is_generated),
         )
 
     def _edge_to_row(
@@ -623,6 +671,9 @@ class SQLiteStore:
             # so the shorter form ruff suggests (SIM118) is always False here
             # and would silently mark every node as production code.
             is_test=bool(row["is_test"]) if "is_test" in row.keys() else False,  # noqa: SIM118
+            is_generated=bool(row["is_generated"])
+            if "is_generated" in row.keys()  # noqa: SIM118
+            else False,
             namespace=NodeNamespace(row["namespace"])
             if row["namespace"]
             else NodeNamespace.INTERNAL,

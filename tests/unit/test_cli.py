@@ -1767,3 +1767,124 @@ def test_metrics_scope_matching_nothing_errors_in_json_too(tmp_path: Path) -> No
     )
 
     assert result.exit_code == 2
+
+
+def _generated_orphan_db(tmp_path: Path) -> str:
+    """A graph with one generated orphan and one hand-written orphan (#432)."""
+    nodes = [
+        Node(
+            id="gen.entities.Vehicle",
+            type=NodeType.CLASS,
+            name="Vehicle",
+            file_path="gen/entities/__init__.py",
+            start_line=1,
+            end_line=2,
+            is_generated=True,
+        ),
+        Node(
+            id="app.adapters.Dead",
+            type=NodeType.CLASS,
+            name="Dead",
+            file_path="app/adapters.py",
+            start_line=1,
+            end_line=2,
+        ),
+    ]
+    db = str(tmp_path / "gen.db")
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, [])
+    return db
+
+
+def test_orphans_hides_generated_classes_by_default(tmp_path: Path) -> None:
+    """`cgis orphans` leaves generated stubs out of the report (#432)."""
+    db = _generated_orphan_db(tmp_path)
+    result = runner.invoke(app, ["orphans", "--db", db, "--format", "json"])
+    payload = json.loads(result.stdout)
+
+    assert [o["fqn"] for o in payload["orphans"]] == ["app.adapters.Dead"]
+    assert payload["generated_excluded"] == 1
+
+
+def test_orphans_include_generated_puts_them_back(tmp_path: Path) -> None:
+    """`--include-generated` is the opt-out for an audit that wants them (#432)."""
+    db = _generated_orphan_db(tmp_path)
+    result = runner.invoke(app, ["orphans", "--db", db, "--include-generated", "--format", "json"])
+    payload = json.loads(result.stdout)
+
+    assert [o["fqn"] for o in payload["orphans"]] == [
+        "app.adapters.Dead",
+        "gen.entities.Vehicle",
+    ]
+    assert payload["generated_excluded"] == 0
+
+
+def test_orphans_text_output_reports_what_was_hidden(tmp_path: Path) -> None:
+    """The count of hidden generated classes is visible, not silent (#432)."""
+    db = _generated_orphan_db(tmp_path)
+    result = runner.invoke(app, ["orphans", "--db", db])
+
+    assert "1 generated" in result.stdout
+
+
+def test_orphans_prefix_over_an_all_generated_subtree_is_not_a_typo(tmp_path: Path) -> None:
+    """A correct prefix whose classes are all generated must not read as a typo (#441 review).
+
+    `considered` is counted after the generated filter, so an all-generated
+    subtree lands on the wrong-prefix guard — exit 2 with "check the prefix
+    against the graph's FQNs" — and exits before the line that would explain it.
+    """
+    db = _generated_orphan_db(tmp_path)
+    result = runner.invoke(app, ["orphans", "--db", db, "--prefix", "gen"])
+
+    assert result.exit_code == 0
+    assert "No classes under prefix" not in result.stdout
+    assert "1 generated" in result.stdout
+
+
+def test_orphans_prefix_matching_nothing_still_errors(tmp_path: Path) -> None:
+    """The typo guard itself must survive the fix (#441 review)."""
+    db = _generated_orphan_db(tmp_path)
+    result = runner.invoke(app, ["orphans", "--db", db, "--prefix", "app.nope"])
+
+    assert result.exit_code == 2
+    assert "No classes under prefix" in result.stdout
+
+
+def test_orphans_prefix_over_a_referenced_generated_subtree_is_not_a_typo(
+    tmp_path: Path,
+) -> None:
+    """The half-fixed guard: a generated subtree that production *uses* (#441 review).
+
+    The first fix keyed on a counter that only saw *unused* generated classes, so
+    a protobuf package actually in use still reached zero on both counters and
+    the correct prefix was reported as a typo.
+    """
+    nodes = [
+        Node(
+            id="gen.entities.Vehicle",
+            type=NodeType.CLASS,
+            name="Vehicle",
+            file_path="gen/entities.py",
+            start_line=1,
+            end_line=2,
+            is_generated=True,
+        ),
+        Node(
+            id="app.Caller",
+            type=NodeType.CLASS,
+            name="Caller",
+            file_path="app.py",
+            start_line=1,
+            end_line=2,
+        ),
+    ]
+    edges = [Edge(id="e1", source="app.Caller", target="gen.entities.Vehicle", type=EdgeType.CALLS)]
+    db = str(tmp_path / "used_gen.db")
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)
+
+    result = runner.invoke(app, ["orphans", "--db", db, "--prefix", "gen"])
+
+    assert result.exit_code == 0
+    assert "No classes under prefix" not in result.stdout

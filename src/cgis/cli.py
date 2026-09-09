@@ -1479,6 +1479,16 @@ def _render_orphans(report: OrphanReport) -> None:
             "therefore counts as production, so a class kept alive only by its tests "
             "will not be reported. Ingest a root that contains them to see it."
         )
+    if report.generated_excluded:
+        # Said out loud rather than silently dropped: the reader needs to know the
+        # report was filtered, and by how much, to trust that it is complete. The
+        # count is of classes left out of the population above — not of findings
+        # suppressed, most of which were referenced and would never have appeared.
+        console.print(
+            f"  [dim]· {report.generated_excluded} generated "
+            f"{'class' if report.generated_excluded == 1 else 'classes'} not considered "
+            "(--include-generated to include them).[/dim]"
+        )
     for orphan in report.orphans:
         console.print(
             f"  [bold red]✗ {escape(orphan.fqn)}[/bold red] "
@@ -1501,6 +1511,11 @@ def orphans(
         False,
         "--include-tests",
         help="Count test code as a user. Turns the report into 'unreachable from anywhere'.",
+    ),
+    include_generated: bool = typer.Option(
+        False,
+        "--include-generated",
+        help="Report machine-generated classes too. Hidden by default: nobody deletes them.",
     ),
     output_format: OutputFormat = typer.Option(
         OutputFormat.TEXT, "--format", "-f", help=_TEXT_JSON_FORMAT_HELP
@@ -1534,13 +1549,23 @@ def orphans(
         raise typer.Exit(code=1)
 
     with SQLiteStore(db) as store:
-        report = find_orphan_classes(store, prefix=prefix, include_tests=include_tests)
+        report = find_orphan_classes(
+            store,
+            prefix=prefix,
+            include_tests=include_tests,
+            include_generated=include_generated,
+        )
 
-    if prefix and report.considered == 0:
+    if prefix and report.considered == 0 and not report.generated_excluded:
         # A typo'd or wrongly-rooted prefix would otherwise print "0 of 0" and
         # exit 0 — a CI gate that passes because it examined nothing. The
         # commonest cause is the ingest root: a graph built from `app/` has FQNs
         # like `domains.x`, so `--prefix app.domains` matches nothing at all.
+        #
+        # `considered` is counted after the generated filter, so a subtree that is
+        # entirely generated also reaches zero. That prefix matched fine, and
+        # calling it a typo would be a false diagnosis — and would exit before the
+        # line that explains where its classes went (#441 review).
         console.print(
             f"[bold red]❌ No classes under prefix[/bold red] {escape(prefix)}. "
             "Check the prefix against the graph's FQNs — they are relative to the "
