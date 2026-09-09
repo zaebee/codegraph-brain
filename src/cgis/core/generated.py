@@ -29,10 +29,19 @@ import re
 # above the marker without reaching into module docstrings.
 _HEADER_LINES = 5
 
-# `@generated` is matched case-sensitively — it is a machine token, and the
-# lowercase spelling is the convention. `do not edit` is not: protoc shouts it,
-# openapi-generator writes "Do not edit the class manually."
-_MARKERS = re.compile(r"@generated|do not edit", re.IGNORECASE)
+# Two markers, two casing rules, so they need two patterns — one combined regex
+# with IGNORECASE would quietly make both case-insensitive.
+#
+# `@generated` is a machine token and the lowercase spelling is the convention,
+# so it is matched exactly: any casing would let a header that writes
+# "@Generated" in prose pass. (Java's `@Generated` annotation is a real
+# spelling, but it sits on a declaration rather than a header line, and no Java
+# extractor exists yet — one can add it with a test rather than inherit it.)
+#
+# `do not edit` is an English instruction and generators disagree: protoc shouts
+# it, openapi-generator writes "Do not edit the class manually."
+_GENERATED = re.compile(r"@generated")
+_DO_NOT_EDIT = re.compile(r"do not edit", re.IGNORECASE)
 
 
 def is_generated_source(code: str) -> bool:
@@ -43,4 +52,4 @@ def is_generated_source(code: str) -> bool:
     `--include-generated` puts them back for the rare audit that wants them.
     """
     header = code.split("\n", maxsplit=_HEADER_LINES)[:_HEADER_LINES]
-    return any(_MARKERS.search(line) for line in header)
+    return any(_GENERATED.search(line) or _DO_NOT_EDIT.search(line) for line in header)
