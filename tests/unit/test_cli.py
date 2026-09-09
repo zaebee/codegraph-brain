@@ -1989,3 +1989,32 @@ def test_a_graph_that_cannot_be_checked_says_so(tmp_path: Path) -> None:
 
     assert "unknowable" in result.stderr.lower()
     assert "stale" not in result.stderr.lower()
+
+
+def test_a_sqlite_suffixed_output_also_records_state(tmp_path: Path) -> None:
+    """`_write_graph_output` writes a database for anything but .json (#443 review).
+
+    Gating the record on `.db` alone left `-o graph.sqlite` reporting "graph
+    predates the ingest_state table — re-ingest", advice that could never help
+    because re-ingesting took the same branch again.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "m.py").write_text("def f():\n    pass\n", encoding="utf-8")
+    db = str(tmp_path / "g.sqlite")
+
+    assert runner.invoke(app, ["ingest", str(repo), "--output", db]).exit_code == 0
+
+    with SQLiteStore(db) as store:
+        assert store.freshness().state is FreshnessState.FRESH
+
+
+def test_fractal_warns_about_a_stale_graph_too(tmp_path: Path) -> None:
+    """`cgis fractal` reads the graph, so it owes the reader the same warning."""
+    db, repo = _ingested_repo(tmp_path)
+    future = time.time() + 5
+    os.utime(repo / "m.py", (future, future))
+
+    result = runner.invoke(app, ["fractal", "--db", db])
+
+    assert "stale" in result.stderr.lower()

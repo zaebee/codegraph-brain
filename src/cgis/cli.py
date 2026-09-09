@@ -241,9 +241,10 @@ def ingest(
 
         if not incremental:
             _write_graph_output(output, path, nodes, resolved_edges, domains)
-            # Only for a database. `--output graph.json` writes no .db, and opening
-            # one to record state would leave an empty file beside the JSON.
-            if output.endswith(".db"):
+            # Anything but JSON is a database — `_write_graph_output` branches on
+            # exactly that, and gating on `.db` alone left `-o graph.sqlite`
+            # advising a re-ingest that would take the same branch again.
+            if not output.endswith(".json"):
                 with SQLiteStore(output) as store:
                     store.record_ingest(path)
 
@@ -1496,6 +1497,11 @@ def _warn_if_not_fresh(db: str) -> None:
     Never raises. A freshness check is a courtesy on top of the query the user
     actually asked for, and must not be able to take it down.
     """
+    # Existence first: `SQLiteStore` *creates* the file it is pointed at, so
+    # probing a missing database would materialise an empty one — which made
+    # `cgis fractal --db nope.db` succeed instead of failing (#443 review).
+    if not Path(db).is_file():
+        return
     try:
         with SQLiteStore(db) as store:
             result = store.freshness()
@@ -1761,6 +1767,7 @@ def fractal(
     negative one means it destroys it (`flat`). Observe-only: always exits 0 on
     success. Run `ingest` first.
     """
+    _warn_if_not_fresh(db)
     try:
         reports = analyze_fractal_db(db)
     except FileNotFoundError as e:

@@ -217,3 +217,124 @@ def test_an_untracked_source_file_still_makes_it_stale(tmp_path: Path) -> None:
 
     assert result.state is FreshnessState.STALE
     assert result.changed == 1
+
+
+def test_a_whole_new_subpackage_is_stale(tmp_path: Path) -> None:
+    """A new directory of source files must not read as FRESH (#443 review).
+
+    The scan skipped every non-file entry, so an added sub-package was invisible
+    — silent under-reporting, the one direction this signal must never fail in.
+    """
+    db, repo = _graph_of(tmp_path, "a.py")
+    (repo / "newpkg").mkdir()
+    (repo / "newpkg" / "mod.py").write_text("def f():\n    pass\n", encoding="utf-8")
+    # mtimes advanced explicitly rather than raced: a change inside one filesystem
+    # tick of the ingest lands on the same quantised value (~4 ms here).
+    future = time.time() + 5
+    os.utime(repo, (future, future))
+    os.utime(repo / "newpkg", (future, future))
+
+    with SQLiteStore(db) as store:
+        result = store.freshness()
+
+    assert result.state is FreshnessState.STALE
+    assert result.changed == 1
+
+
+def test_an_excluded_directory_appearing_is_not_a_change(tmp_path: Path) -> None:
+    """`__pycache__` and friends are not source, and the ingest never read them."""
+    db, repo = _graph_of(tmp_path, "a.py")
+    (repo / "__pycache__").mkdir()
+    (repo / ".venv").mkdir()
+    future = time.time() + 5
+    os.utime(repo, (future, future))
+
+    with SQLiteStore(db) as store:
+        assert store.freshness().state is FreshnessState.FRESH
+
+
+def test_a_file_dated_in_the_future_does_not_blind_the_probe(tmp_path: Path) -> None:
+    """One future mtime must not suppress every later edit (#443 review).
+
+    An unclamped max over file mtimes let a single file — from a tar extraction
+    preserving timestamps, clock skew, or a generator calling `os.utime` —
+    push `ingested_at` hours ahead and mark real changes FRESH until then.
+    """
+    db, repo = _graph_of(tmp_path, "a.py", "b.py")
+    tomorrow = time.time() + 86400
+    os.utime(repo / "a.py", (tomorrow, tomorrow))
+    with SQLiteStore(db) as store:
+        store.record_ingest(str(repo))
+        _root, ingested_at = store.get_ingest_state() or ("", 0.0)
+        assert ingested_at <= time.time() + 1, "ingested_at must not be in the future"
+
+        (repo / "b.py").write_text("genuinely edited\n", encoding="utf-8")
+        later = time.time() + 5
+        os.utime(repo / "b.py", (later, later))
+        assert store.freshness().state is FreshnessState.STALE
+
+
+def test_a_symlinked_root_still_recognises_its_own_database(tmp_path: Path) -> None:
+    """The db-exclusion compared unresolved paths, so a symlink reintroduced the bug.
+
+    `cgis ingest link/ -o link/graph.db` where `link -> real/`: scanning yields
+    resolved paths while the exclusion set held the unresolved spelling, so the
+    database counted as a new source file and the graph was stale forever.
+    """
+    real = tmp_path / "real"
+    real.mkdir()
+    (real / "a.py").write_text("x = 1\n", encoding="utf-8")
+    link = tmp_path / "link"
+    link.symlink_to(real)
+
+    db = str(link / "graph.db")
+    with SQLiteStore(db) as store:
+        store.save_graph(
+            [
+                Node(
+                    id="a",
+                    type=NodeType.FILE,
+                    name="a.py",
+                    file_path="a.py",
+                    start_line=1,
+                    end_line=1,
+                )
+            ],
+            [],
+        )
+        store.record_ingest(str(link))
+    future = time.time() + 5
+    os.utime(real, (future, future))
+
+    with SQLiteStore(db) as store:
+        assert store.freshness().state is FreshnessState.FRESH
+
+
+def test_a_deleted_directory_is_counted_once_per_file(tmp_path: Path) -> None:
+    """ "N missing" means files, so a gone directory must not add itself to the count."""
+    repo = tmp_path / "repo"
+    (repo / "pkg").mkdir(parents=True)
+    nodes = []
+    for name in ("pkg/a.py", "pkg/b.py"):
+        (repo / name).write_text("x = 1\n", encoding="utf-8")
+        nodes.append(
+            Node(
+                id=name.replace("/", "."),
+                type=NodeType.FILE,
+                name=name,
+                file_path=name,
+                start_line=1,
+                end_line=1,
+            )
+        )
+    db = str(tmp_path / "g.db")
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, [])
+        store.record_ingest(str(repo))
+
+    shutil.rmtree(repo / "pkg")
+
+    with SQLiteStore(db) as store:
+        result = store.freshness()
+
+    assert result.missing == 2

@@ -188,6 +188,10 @@ def _graph_freshness(db_path: str) -> Freshness | None:
     Never raises: a freshness check is a courtesy on top of the query the caller
     actually asked for, and must not be able to take it down.
     """
+    # Existence first: `SQLiteStore` creates the file it is pointed at, and a
+    # probe must not materialise a database as a side effect of asking about one.
+    if not Path(db_path).is_file():
+        return None
     try:
         with SQLiteStore(db_path) as store:
             return store.freshness()
@@ -535,9 +539,15 @@ def cgis_find_symbol(
         }
         for n in matches
     ]
-    # A list, not an object: there is no key to add one to, so this tool keeps the
-    # prose note it already prefixes for suffix resolution (#175).
-    return _freshness_note(db_path) + json.dumps(payload, indent=2)
+    # No freshness here, deliberately. This tool's documented return is a JSON
+    # *list*, so there is no key to put the signal in, and prefixing prose would
+    # break `json.loads` for every caller the moment the tree is edited — the
+    # exact hazard the split-by-return-type rule exists to prevent. An earlier
+    # revision claimed this tool "already prefixes a note for suffix resolution";
+    # it does not — that note belongs to the five traversal tools (#443 review).
+    # Giving it a signal means changing the documented shape, which is its own
+    # decision rather than a side effect of this one.
+    return json.dumps(payload, indent=2)
 
 
 @mcp.tool()
@@ -558,7 +568,13 @@ def cgis_init_ontology(
     if not Path(db_path).exists():
         return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
     try:
-        return propose_ontology(db_path, margin=margin, min_nodes=min_nodes, depth=depth)
+        # It proposes drift tolerances from whatever the graph holds, so it owes
+        # the caller the same signal every other reading tool gives (#443 review).
+        # As a YAML *comment*: this output is a document meant to be saved, and a
+        # prose prefix breaks the parse exactly the way it would break JSON.
+        note = _freshness_text(_graph_freshness(db_path)).strip().lstrip("> ")
+        prefix = f"# {note}\n" if note else ""
+        return prefix + propose_ontology(db_path, margin=margin, min_nodes=min_nodes, depth=depth)
     except Exception as e:  # translate errors to the ❌-message medium
         return f"❌ Error proposing ontology: {e}"
 

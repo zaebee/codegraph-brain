@@ -17,7 +17,7 @@ from cgis.core.models import (
     NodeNamespace,
     NodeType,
 )
-from cgis.core.paths import is_test_path
+from cgis.core.paths import is_excluded_dir, is_test_path
 
 RAW_CALL_PREFIX = "raw_call:"
 
@@ -693,9 +693,17 @@ class SQLiteStore:
         recorded_root, ingested_at = recorded
         base = root or recorded_root
         if not os.path.isdir(base):  # noqa: PTH112 - see the note on pathlib cost below
+            # Name the path actually checked, not the recorded one: telling a
+            # caller who just passed `root=` to "pass an explicit root" is advice
+            # they have already taken (#443 review).
+            hint = (
+                "pass the current location as `root`"
+                if base == recorded_root
+                else "check the path given"
+            )
             return Freshness(
                 state=FreshnessState.UNKNOWN,
-                reason=f"ingest root {recorded_root} no longer exists — pass an explicit root",
+                reason=f"ingest root {base} no longer exists — {hint}",
             )
 
         tracked = self.get_tracked_source_files()
@@ -719,7 +727,9 @@ class SQLiteStore:
                 if os.stat(path).st_mtime > ingested_at:  # noqa: PTH116
                     changed += self._directory_gained_a_source(path, tracked, base, ingested_at)
             except OSError:
-                missing += 1
+                # Nothing added: the report says "N missing" of *files*, and every
+                # file under a vanished directory has already been counted above.
+                continue
 
         if changed or missing:
             return Freshness(state=FreshnessState.STALE, changed=changed, missing=missing)
@@ -734,8 +744,14 @@ class SQLiteStore:
         file — this database itself is the common case, since `cgis ingest . -o
         graph.db` puts it in the tree it describes and finishes writing *after*
         the ingest is recorded. Reported as stale, that made the default usage
-        permanently stale. Editor swap files and a freshly created `__pycache__`
-        are the same shape.
+        permanently stale.
+
+        Excluded here: the database and its `-wal`/`-shm` siblings, and any
+        directory the ingest would not descend into. **Not** excluded: an editor
+        swap file, a `.coverage`, a log written beside the source. Those still
+        report stale, which is the over-reporting direction — it costs a
+        re-ingest rather than a wrong answer. Filtering them would need the
+        ingested extension set, which this table does not store.
 
         So a suspicious directory is opened once and asked the sharper question:
         does it hold an entry that is newer than the ingest, is not already in the
@@ -744,15 +760,24 @@ class SQLiteStore:
         ceiling is one pass over the tree — the cost this design avoids paying on
         every query.
         """
-        # Absolute on both sides: `-o graph.db` stores a relative path while
-        # scandir yields absolute ones, and a mismatch would let the database
-        # count as a new source file — the very case this exists to exclude.
-        db_abs = os.path.abspath(self.db_path)  # noqa: PTH100
-        db_family = {db_abs, f"{db_abs}-wal", f"{db_abs}-shm"}
+        # `realpath`, not `abspath`, on both sides. `-o graph.db` stores a
+        # relative path, and a tree reached through a symlink (`/tmp` on macOS,
+        # a symlinked checkout) yields a different spelling from the scan than
+        # from the stored path — a mismatch lets the database count as a new
+        # source file, which is the failure this whole method exists to prevent.
+        db_real = os.path.realpath(self.db_path)
+        db_family = {db_real, f"{db_real}-wal", f"{db_real}-shm"}
         try:
             with os.scandir(path) as entries:
                 for entry in entries:
-                    if not entry.is_file() or os.path.abspath(entry.path) in db_family:  # noqa: PTH100
+                    if entry.is_dir():
+                        # A new sub-package is a gain — skipping non-files made a
+                        # whole directory of source invisible. Directories the
+                        # ingest would never descend into are not.
+                        if not is_excluded_dir(entry.name) and entry.stat().st_mtime > ingested_at:
+                            return 1
+                        continue
+                    if os.path.realpath(entry.path) in db_family:
                         continue
                     rel = os.path.relpath(entry.path, base)
                     if rel not in tracked and entry.stat().st_mtime > ingested_at:
@@ -809,6 +834,7 @@ class SQLiteStore:
         Falls back to the wall clock for a graph with no source files, where
         there is nothing to take a maximum over.
         """
+        now = time.time()
         newest = 0.0
         for rel in self.get_tracked_source_files():
             joined = os.path.join(root, rel)  # noqa: PTH118 - see freshness() on pathlib cost
@@ -817,7 +843,12 @@ class SQLiteStore:
                     newest = max(newest, os.stat(candidate).st_mtime)  # noqa: PTH116
                 except OSError:
                     continue
-        return newest or time.time()
+        # Clamped to now. An unclamped maximum let one future-dated file — a tar
+        # extraction preserving timestamps, clock skew, a generator calling
+        # `os.utime` — push the mark hours ahead and report every real edit as
+        # FRESH until then. The quantisation fix survives the clamp; the blindness
+        # does not.
+        return min(newest, now) or now
 
     def get_ingest_state(self) -> tuple[str, float] | None:
         """The recorded (root, ingested_at), or None on a graph that predates it.
