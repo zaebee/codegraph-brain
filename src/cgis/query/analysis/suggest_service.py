@@ -97,12 +97,12 @@ def _member_names(file_ids: tuple[str, ...], prefix: str) -> dict[str, str]:
     extractor folds `/index` just as Python folds `/__init__`, and
     `prefix + ".__init__"` names nothing in either.
     """
-    relative = {
-        fid: fid if fid == prefix else fid[len(prefix) + 1 :] if prefix else fid for fid in file_ids
-    }
-    if len(set(relative.values())) == len(relative):
-        return relative
-    return {fid: fid for fid in file_ids}
+    absolute = {fid: fid for fid in file_ids}
+    if not prefix:
+        return absolute
+
+    relative = {fid: fid if fid == prefix else fid[len(prefix) + 1 :] for fid in file_ids}
+    return relative if len(set(relative.values())) == len(relative) else absolute
 
 
 def _dir_group(fqn: str, prefix: str) -> str:
