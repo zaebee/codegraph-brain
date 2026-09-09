@@ -2007,3 +2007,74 @@ def test_a_class_named_in_an_unusual_decorator_shape_is_referenced(
     user = f"from pkg.s import Schema, Other\n\n{decorator}\ndef f():\n    pass\n"
     resolved = _resolve_two("pkg/s.py", schema, "pkg/user.py", user)
     assert ("pkg.user.f", "pkg.s.Schema") in _refs(resolved), label
+
+
+def test_resolver_external_head_blocks_strip_to_internal_node() -> None:
+    """`pytest.mark.api` must not resolve to the repository's own `api` package (#435).
+
+    The import map resolves the head `pytest` to an external root, so the whole
+    dotted chain is external. Stripping leading segments off it until something
+    matches an internal node contradicts the head that was just resolved — and
+    is what turned `@pytest.mark.api` into a CALLS edge on `api/__init__.py`.
+    """
+    nodes = [
+        _file_node("tests/test_thing.py", {"pytest": "pytest"}),
+        Node(
+            id="api",
+            type=NodeType.FILE,
+            name="__init__.py",
+            file_path="api/__init__.py",
+            start_line=1,
+            end_line=1,
+        ),
+        _func_node("tests.test_thing.test_x", "tests/test_thing.py"),
+    ]
+    edges = [
+        Edge(
+            id="e1",
+            source="tests.test_thing.test_x",
+            target="raw_call:pytest.mark.api",
+            type=EdgeType.CALLS,
+            confidence=0.5,
+            file_path="tests/test_thing.py",
+        )
+    ]
+    resolver = ResolverEngine(nodes, edges)
+    result, _ = resolver.resolve()
+    edge = next(e for e in result if e.id == "e1")
+    assert edge.target == "pytest.mark.api"
+
+
+def test_resolver_external_direct_import_blocks_strip_to_internal_node() -> None:
+    """`from pytest import mark` → `mark` must not resolve to a top-level `mark` node (#435).
+
+    Same defect as the dotted chain, reached through the direct-import branch:
+    the import map says the name is `pytest.mark`, and stripping that down to a
+    node of ours discards the head it just resolved.
+    """
+    nodes = [
+        _file_node("tests/test_thing.py", {"mark": "pytest.mark"}),
+        Node(
+            id="mark",
+            type=NodeType.FILE,
+            name="mark.py",
+            file_path="mark.py",
+            start_line=1,
+            end_line=1,
+        ),
+        _func_node("tests.test_thing.test_x", "tests/test_thing.py"),
+    ]
+    edges = [
+        Edge(
+            id="e1",
+            source="tests.test_thing.test_x",
+            target="raw_call:mark",
+            type=EdgeType.CALLS,
+            confidence=0.5,
+            file_path="tests/test_thing.py",
+        )
+    ]
+    resolver = ResolverEngine(nodes, edges)
+    result, _ = resolver.resolve()
+    edge = next(e for e in result if e.id == "e1")
+    assert edge.target == "pytest.mark"
