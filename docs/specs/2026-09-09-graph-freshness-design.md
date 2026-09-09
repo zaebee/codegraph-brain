@@ -39,12 +39,14 @@ Measured at `52e0de1` against `Ownima/owner-api` at `b7d02fe6` and cgis's own
 | stat-only walk, owner-api `app/` | **5.6 ms** / 814 `.py` files |
 | stat-only walk, cgis `src/` | **0.3 ms** / 77 files |
 | CLI commands that read the graph | 9 |
-| MCP tools that read the graph | 13 |
+| MCP tools that read the graph | 12 (8 JSON, 4 text) |
 | Tables in `graph.db` today | `nodes`, `edges`, `files_state` |
 | What records the ingested root | **nothing** |
 | `files_state` rows after `cgis ingest` | **0** |
 | `files_state` rows after `cgis ingest -i` | one per file |
 | distinct `nodes.file_path` after either | one per file that produced a node |
+| probe: 811 tracked files + 102 dirs, `os.stat` | **3.7 ms** |
+| the same through `pathlib.Path` | 18.8 ms |
 
 The "what records the ingested root" row is the constraint the design turns on:
 `files_state` holds a *relative* `file_path` and a content hash, so nothing in
@@ -63,7 +65,7 @@ query, so freshness can be checked on every call rather than on request.
 
 ## Decisions
 
-### D1 — `ingest_state` table, three rows
+### D1 — `ingest_state` table, two rows
 
 ```sql
 CREATE TABLE IF NOT EXISTS ingest_state (
@@ -72,17 +74,11 @@ CREATE TABLE IF NOT EXISTS ingest_state (
 );
 ```
 
-Holding `root` (the absolute path passed to `cgis ingest`), `ingested_at` (unix
-seconds), and `extensions` (a comma-separated list, e.g. `.py,.ts`). Written at
-the end of both full and incremental ingests.
+Holding `root` (the absolute path passed to `cgis ingest`) and `ingested_at`
+(unix seconds). Written at the end of both full and incremental ingests.
 
-`extensions` is what lets the probe reproduce the pipeline's walk without the
-caller supplying it. The filter — which directories are skipped, which suffixes
-have an extractor — lives in `IngestionPipeline` and `build_extractors`, while
-the probe lives in the store; threading the extractor registry through
-twenty-two query call sites to answer a freshness question would be the wrong
-dependency. Recording it once at ingest keeps the probe self-contained and keeps
-D2's "the same walk" promise honest rather than approximate.
+An earlier revision added an `extensions` row so the probe could reproduce the
+pipeline's walk. D2 no longer walks, so it is not needed and is not stored.
 
 `CREATE TABLE IF NOT EXISTS` is the whole migration; there is no backfill and
 none is possible, since the root is not derivable from stored data. Unlike the
@@ -106,14 +102,33 @@ queried on another is `UNKNOWN` anyway, because its stored root will not exist.
 | `UNKNOWN` | no `ingest_state` row, or the stored root does not exist | `freshness unknowable: <why>` |
 
 The **tracked set** is `SELECT DISTINCT file_path FROM nodes WHERE file_path !=
-VIRTUAL_FILE_PATH`, not `files_state` — see the measurement basis. The **on-disk
-set** is the same walk `IngestionPipeline` performs, so the two are comparable by
-construction; a file the extractors would skip is not counted as missing.
+VIRTUAL_FILE_PATH`, not `files_state` — see the measurement basis.
 
-A file that is on disk but tracks no node (an empty `__init__.py`, say — 812
-tracked against 814 on disk on owner-api) is never reported missing, and counts
-as changed only if its mtime says so. Both are the over-reporting direction of
-D3.
+**The probe does not walk the tree.** It stats the tracked files and the
+directories that contain them, which covers every change that matters:
+
+| change | detected by |
+|---|---|
+| a tracked file edited | that file's `st_mtime` |
+| a tracked file deleted | `OSError` on its `stat` |
+| a file added | its **directory's** `st_mtime` |
+| a subdirectory added | its **parent directory's** `st_mtime` |
+
+Measured, not assumed: a directory's mtime moves on add, on delete, and on a new
+subdirectory, and does *not* move on an edit to a file inside it — so the two
+halves are complementary rather than redundant.
+
+Walking was the first design and it was wrong twice over. `Path.rglob` does not
+honour `IngestionPipeline`'s directory exclusions, so a `.venv` under the ingest
+root would report thousands of changed files; and reproducing those exclusions
+would mean either duplicating the filter or threading the extractor registry
+through every query call site. Statting a known list needs neither.
+
+A file on disk that tracks no node (an empty `__init__.py` — 811 tracked against
+814 on disk on owner-api) is never reported missing, and shows up only through
+its directory. A `__pycache__` created after the ingest bumps its package
+directory once and reports `STALE` when nothing source-level changed: the
+over-reporting direction of D3, and self-clearing on the next ingest.
 
 `UNKNOWN` is a separate state rather than a pessimistic `STALE` or an optimistic
 `FRESH` because #441 established the cost of one value meaning two things: a
@@ -144,19 +159,35 @@ One helper, two calling layers:
 - **CLI** — a line before the result, emitted only for `STALE` and `UNKNOWN`. A
   fresh graph adds nothing to the output. This matches `_render_orphans`, which
   already warns only when `test_sources == 0`.
-- **MCP** — tools returning JSON gain a top-level `"freshness"` key, so the
-  payload stays parseable; tools returning text gain a prefixed note, the idiom
-  `cgis_find_symbol` already uses (`return note + payload`).
+- **MCP** — measured: **8 of the 12** reading tools return JSON (`cgis_drift`,
+  `cgis_suggest_packages`, `cgis_validate`, `cgis_find_symbol`, `cgis_metrics`,
+  `cgis_find_orphans`, `cgis_audit_reachability`, `cgis_fractal`) and 4 return
+  text (`cgis_trace_flow`, `cgis_analyze_impact`, `cgis_get_structure`,
+  `cgis_context`). The JSON tools gain a top-level `"freshness"` key; the text
+  tools gain a prefixed note, the idiom `cgis_find_symbol` already uses
+  (`return note + payload`).
 
-Nine CLI and thirteen MCP call sites, one line each. Adding the field to every
-payload rather than exposing a separate `cgis_freshness` tool is the point: a
-tool an agent must remember to call is the trap this issue describes, restated.
+  Splitting by return type is not fussiness. Prefixing text to a JSON payload
+  would break `json.loads` for every consumer **exactly when the graph is
+  stale** — the tool's output shape would depend on its freshness, and it would
+  change shape at the moment the caller most needs an answer.
+
+Nine CLI and twelve MCP call sites, one line each. Putting the signal in every
+answer rather than behind a separate `cgis_freshness` tool is the point: a tool
+an agent must remember to call is the trap this issue describes, restated.
 
 ### D5 — the probe does not read file contents
 
 Asserted by a test, not only by review. A future change that reaches for hashes
 would move the per-query cost from milliseconds to seconds without failing
 anything otherwise.
+
+Related and measured: stat with `os.stat` on joined strings, not `pathlib`.
+The same 811 files cost **3.7 ms** through `os.stat` and **18.8 ms** through
+`Path.stat()` plus `Path.exists()` — the second is slower than the tree walk it
+replaces, which is how the first version of this design came out looking worse
+than the thing it improved on. Tidying this to `Path` would triple the cost
+silently.
 
 ## Testing
 
