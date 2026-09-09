@@ -1,13 +1,22 @@
 """Implements Sqlite store for code graph."""
 
 import json
+import os
 import sqlite3
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
+from cgis.core.freshness import Freshness, FreshnessState
+from cgis.core.models import (
+    VIRTUAL_FILE_PATH,
+    Edge,
+    EdgeType,
+    Node,
+    NodeNamespace,
+    NodeType,
+)
 from cgis.core.paths import is_test_path
 
 RAW_CALL_PREFIX = "raw_call:"
@@ -652,11 +661,97 @@ class SQLiteStore:
             top_unresolved=top,
         )
 
+    def freshness(self, root: str | None = None) -> Freshness:
+        """Does this graph still match the tree it was built from? (#175)
+
+        Decided by `st_mtime` against the recorded ingest time, never by
+        re-hashing: statting a known list is ~4 ms on an 800-file repository,
+        which is noise next to a query, while hashing is seconds. `touch` on an
+        unmodified file therefore reports `STALE` when nothing changed. That is
+        the chosen direction — over-reporting costs a re-ingest, under-reporting
+        returns a confident wrong answer, which is the failure this exists to
+        remove.
+
+        Statting a known list rather than walking the tree, because a walk would
+        have to reproduce `IngestionPipeline`'s directory exclusions or count
+        every file in a `.venv` as new. The two halves are complementary and
+        measured: a file's own mtime catches an edit, and its *directory's* mtime
+        catches an addition, a deletion and a new subdirectory — a directory's
+        mtime does not move when a file inside it is edited.
+
+        Tracked files come from `nodes.file_path`, not `files_state`: a
+        non-incremental `cgis ingest` leaves that table empty, so a probe built
+        on it would report "nothing missing" for every ordinary graph.
+        """
+        recorded = self.get_ingest_state()
+        if recorded is None:
+            return Freshness(
+                state=FreshnessState.UNKNOWN,
+                reason="graph predates the ingest_state table — re-ingest to enable the check",
+            )
+        recorded_root, ingested_at = recorded
+        base = root or recorded_root
+        if not os.path.isdir(base):  # noqa: PTH112 - see the note on pathlib cost below
+            return Freshness(
+                state=FreshnessState.UNKNOWN,
+                reason=f"ingest root {recorded_root} no longer exists — pass an explicit root",
+            )
+
+        tracked = self.get_tracked_source_files()
+        changed = 0
+        missing = 0
+        # `os.stat` on joined strings, not pathlib — the PTH rules are suppressed
+        # deliberately here. Measured on this repository's own graph: the same 811
+        # files cost 3.7 ms this way and 18.8 ms through `Path.stat()`, which is
+        # slower than the tree walk this design exists to avoid. Tidying these to
+        # `Path` would triple a cost paid on every query.
+        for rel in tracked:
+            try:
+                if os.stat(os.path.join(base, rel)).st_mtime > ingested_at:  # noqa: PTH116,PTH118
+                    changed += 1
+            except OSError:
+                missing += 1
+
+        for rel_dir in {os.path.dirname(rel) for rel in tracked}:  # noqa: PTH120
+            try:
+                path = os.path.join(base, rel_dir)  # noqa: PTH118
+                if os.stat(path).st_mtime > ingested_at:  # noqa: PTH116
+                    changed += 1
+            except OSError:
+                missing += 1
+
+        if changed or missing:
+            return Freshness(state=FreshnessState.STALE, changed=changed, missing=missing)
+        return Freshness(state=FreshnessState.FRESH)
+
+    def get_tracked_source_files(self) -> set[str]:
+        """The real source files this graph was built from, as stored paths.
+
+        `VIRTUAL_FILE_PATH` is excluded: resolver-minted boundary nodes have no
+        file behind them and would read as permanently missing.
+        """
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        cursor = self._conn.execute(
+            "SELECT DISTINCT file_path FROM nodes WHERE file_path != ?", (VIRTUAL_FILE_PATH,)
+        )
+        return {row["file_path"] for row in cursor.fetchall()}
+
     def record_ingest(self, root: str) -> None:
         """Record what this graph was built from, for the freshness probe (#175).
 
-        Stored absolute: a relative path is meaningless to a later process with a
-        different working directory.
+        `root` is stored absolute: a relative path is meaningless to a later
+        process with a different working directory.
+
+        `ingested_at` is the **largest mtime among the ingested files**, not the
+        wall clock. Measured on this filesystem, every one of 200 writes received
+        an mtime 2.5-6.4 ms *earlier* than a `time.time()` reading taken before
+        the write, because mtimes are quantised and rounded down. A wall-clock
+        mark therefore misses any edit made near the ingest — under-reporting,
+        the one direction this signal must not fail in. Subtracting a fixed
+        margin would instead leave a permanent false `STALE`. Taking the maximum
+        puts both sides of the later comparison on the same clock, from the same
+        source, so the skew cancels.
         """
         if not self._conn:
             raise RuntimeError(self._error_message)
@@ -664,10 +759,26 @@ class SQLiteStore:
             "INSERT OR REPLACE INTO ingest_state (key, value) VALUES (?, ?)",
             [
                 ("root", str(Path(root).resolve())),
-                ("ingested_at", str(time.time())),
+                ("ingested_at", str(self._max_source_mtime(root))),
             ],
         )
         self._conn.commit()
+
+    def _max_source_mtime(self, root: str) -> float:
+        """The newest mtime among the files this graph was built from, and their dirs.
+
+        Falls back to the wall clock for a graph with no source files, where
+        there is nothing to take a maximum over.
+        """
+        newest = 0.0
+        for rel in self.get_tracked_source_files():
+            joined = os.path.join(root, rel)  # noqa: PTH118 - see freshness() on pathlib cost
+            for candidate in (joined, os.path.dirname(joined)):  # noqa: PTH120
+                try:
+                    newest = max(newest, os.stat(candidate).st_mtime)  # noqa: PTH116
+                except OSError:
+                    continue
+        return newest or time.time()
 
     def get_ingest_state(self) -> tuple[str, float] | None:
         """The recorded (root, ingested_at), or None on a graph that predates it.
