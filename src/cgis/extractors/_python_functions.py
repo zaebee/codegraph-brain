@@ -590,8 +590,20 @@ def collect_context_manager_type(
 
     A module-level function rather than a `FunctionHandler` method: that class is
     at the self-parsing God-object threshold, and this needs only a resolver.
+
+    Only the `with_clause` is scanned, never the body. Scanning the whole
+    statement reached into nested `def`s and recorded their bindings against the
+    *enclosing* function — and because the walk arrives here after the parameter
+    list, it overwrote a correct type and produced a confidently wrong edge
+    rather than a missing one (#445 review). Every form of the statement —
+    plain, `async with`, multi-item, and the parenthesized 3.10 spelling — has
+    exactly one `with_clause` child; it is a child *type*, not a named field, so
+    `child_by_field_name` does not reach it.
     """
-    for pattern in _descendants_of_type(node, "as_pattern"):
+    clause = next((c for c in node.children if c.type == "with_clause"), None)
+    if clause is None:
+        return
+    for pattern in _descendants_of_type(clause, "as_pattern"):
         value_node = pattern.children[0] if pattern.children else None
         target = pattern.child_by_field_name("alias")
         if value_node is None or value_node.type != "call" or target is None:
@@ -602,6 +614,15 @@ def collect_context_manager_type(
         var_name = get_identifier(inner, code_bytes)
         func_call_node = value_node.child_by_field_name("function")
         if var_name == "unknown" or func_call_node is None:
+            continue
+        # Bare names only. A dotted constructor here is the unverifiable case:
+        # `mock.patch(...)`, `pytest.raises(...)` and `path.open(...)` all return
+        # something other than the callable, so naming that callable as the type
+        # produces a *wrong* target — and, unlike the honest unresolved form it
+        # replaces, one asserted at confidence 1.0 (#445 review). The assignment
+        # path may keep dotted constructors because `x = pkg.C()` really does make
+        # `x` a `pkg.C`; a `with` only approximates that.
+        if "." in get_identifier(func_call_node, code_bytes):
             continue
         _record_constructed_type(
             types, var_name, func_call_node, code_bytes, import_map, func_node, acc
