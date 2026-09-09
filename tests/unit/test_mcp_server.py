@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import time
 from pathlib import Path
 
 import pytest
@@ -1046,3 +1047,50 @@ def test_cgis_find_orphans_hides_generated_by_default(tmp_path: Path) -> None:
 
     opted_in = cgis_find_orphans(str(db), include_generated=True)
     assert "gen.entities.Vehicle" in opted_in
+
+
+def _mcp_repo(tmp_path: Path) -> tuple[str, Path]:
+    """A one-module repo ingested through the MCP tool (#175)."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "m.py").write_text("def f():\n    pass\n", encoding="utf-8")
+    db = str(tmp_path / "g.db")
+    cgis_ingest(str(repo), db_path=db)
+    return db, repo
+
+
+def test_a_json_tool_carries_freshness_inside_the_payload(tmp_path: Path) -> None:
+    """Staleness reaches an agent as a key, never as a prefix (#175).
+
+    A text prefix would break `json.loads` for every consumer exactly when the
+    graph goes stale — the shape would depend on the freshness — so the eight
+    tools that return JSON put it inside the object instead.
+    """
+    db, repo = _mcp_repo(tmp_path)
+    future = time.time() + 5
+    os.utime(repo / "m.py", (future, future))
+
+    payload = json.loads(cgis_validate(db))
+
+    assert payload["freshness"]["state"] == "STALE"
+    assert payload["freshness"]["changed"] == 1
+
+
+def test_a_json_tool_stays_unchanged_on_a_fresh_graph(tmp_path: Path) -> None:
+    """No key when there is nothing to say, so existing consumers see one shape."""
+    db, _repo = _mcp_repo(tmp_path)
+
+    payload = json.loads(cgis_validate(db))
+
+    assert "freshness" not in payload
+
+
+def test_a_text_tool_gets_a_prefixed_note(tmp_path: Path) -> None:
+    """The four prose tools use the note idiom `cgis_find_symbol` established."""
+    db, repo = _mcp_repo(tmp_path)
+    future = time.time() + 5
+    os.utime(repo / "m.py", (future, future))
+
+    answer = cgis_get_structure("m", db_path=db)
+
+    assert answer.lower().startswith("> ⚠ graph is stale") or "graph is stale" in answer.lower()

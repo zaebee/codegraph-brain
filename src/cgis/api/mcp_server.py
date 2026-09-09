@@ -8,10 +8,12 @@ import dataclasses
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import structlog
 from mcp.server.mcpserver import MCPServer
 
+from cgis.core.freshness import Freshness, FreshnessState
 from cgis.core.models import Edge, Node, NodeType
 from cgis.extractors.python_extractor import PythonExtractor
 from cgis.extractors.typescript_extractor import TypeScriptExtractor
@@ -62,7 +64,8 @@ def _blank_fqn_error(fqn: str) -> str | None:
     return None
 
 
-def _render_subgraph(
+def _render_subgraph_with_freshness(
+    db_path: str,
     output_format: str,
     root: str,
     note: str,
@@ -70,19 +73,44 @@ def _render_subgraph(
     nodes: list[Node],
     edges: list[Edge],
 ) -> str:
+    """`_render_subgraph`, with this database's freshness measured for it (#175)."""
+    return _render_subgraph(
+        output_format, root, note, title, nodes, edges, _graph_freshness(db_path)
+    )
+
+
+def _render_subgraph(
+    output_format: str,
+    root: str,
+    note: str,
+    title: str,
+    nodes: list[Node],
+    edges: list[Edge],
+    freshness: "Freshness | None" = None,
+) -> str:
     """Render a traversal result as a Mermaid diagram or joinable JSON (#171).
 
     ``json`` returns the raw ``{root, nodes, edges}`` payload with real FQNs —
     no markdown wrapper — so an agent can parse and combine it across calls.
     ``mermaid`` (default) returns the human-readable diagram. Any other value
     is an explicit error rather than a silent fallback.
+
+    ``freshness`` is placed differently in each: a key inside the JSON object,
+    a prose note above the diagram. Prefixing the JSON would make it unparseable
+    exactly when the graph goes stale, and this renderer is the only place that
+    knows which shape it is about to produce (#175).
     """
     fmt = output_format.strip().lower()
     if fmt == "json":
-        return json.dumps(graph_to_json(root, nodes, edges), indent=2)
+        payload = graph_to_json(root, nodes, edges)
+        if freshness is not None and freshness.state is not FreshnessState.FRESH:
+            payload = {**payload, "freshness": freshness.model_dump()}
+        return json.dumps(payload, indent=2)
     if fmt == "mermaid":
         diagram = MermaidCompiler().compile(nodes, edges)
-        return f"{note}### {title} `{root}`:\n\n```mermaid\n{diagram}\n```"
+        return (
+            f"{_freshness_text(freshness)}{note}### {title} `{root}`:\n\n```mermaid\n{diagram}\n```"
+        )
     return f"❌ Unknown format '{output_format}'. Use 'mermaid' or 'json'."
 
 
@@ -152,6 +180,56 @@ def _reject_db_path(db_path: str) -> str | None:
     except OSError as exc:
         return f"❌ Refusing db_path '{db_path}': path is inaccessible ({exc})."
     return None
+
+
+def _graph_freshness(db_path: str) -> Freshness | None:
+    """The freshness of `db_path`, or None when the probe itself could not run.
+
+    Never raises: a freshness check is a courtesy on top of the query the caller
+    actually asked for, and must not be able to take it down.
+    """
+    try:
+        with SQLiteStore(db_path) as store:
+            return store.freshness()
+    except Exception:
+        return None
+
+
+def _freshness_text(result: "Freshness | None") -> str:
+    """Format a freshness result as a prose note, or "" when there is nothing to say."""
+    if result is None or result.state is FreshnessState.FRESH:
+        return ""
+    if result.state is FreshnessState.STALE:
+        return (
+            f"> \u26a0 Graph is stale: {result.changed} changed, {result.missing} missing "
+            "since ingest. Re-run cgis_ingest for a current answer.\n\n"
+        )
+    return f"> Freshness unknowable: {result.reason}\n\n"
+
+
+def _freshness_note(db_path: str) -> str:
+    """A one-line staleness prefix for a *text* answer, or "" when fresh (#175).
+
+    The idiom `cgis_find_symbol` already uses (`return note + payload`). Only for
+    tools returning prose — a JSON tool gets `_with_freshness` instead, because a
+    prefix would break `json.loads` for every consumer exactly when the graph
+    goes stale.
+    """
+    return _freshness_text(_graph_freshness(db_path))
+
+
+def _with_freshness(db_path: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Add a `freshness` key to a JSON payload, but only when there is one (#175).
+
+    Inside the object rather than prefixed to the string: a text prefix would
+    make the payload unparseable at the moment the caller most needs a parseable
+    answer, and would make the tool's output shape depend on its freshness. A
+    fresh graph adds no key, so existing consumers see an unchanged shape.
+    """
+    result = _graph_freshness(db_path)
+    if result is None or result.state is FreshnessState.FRESH:
+        return payload
+    return {**payload, "freshness": result.model_dump()}
 
 
 @mcp.tool()
@@ -236,7 +314,9 @@ def cgis_trace_flow(
         return f"❌ {exc}"
 
     note = f"> Resolved '{fqn}' → '{res.resolved}'\n\n" if res.via_suffix else ""
-    return _render_subgraph(output_format, res.resolved, note, "Execution flow for", nodes, edges)
+    return _render_subgraph_with_freshness(
+        db_path, output_format, res.resolved, note, "Execution flow for", nodes, edges
+    )
 
 
 @mcp.tool()
@@ -264,7 +344,9 @@ def cgis_analyze_impact(
         return f"❌ {exc}"
 
     note = f"> Resolved '{fqn}' → '{res.resolved}'\n\n" if res.via_suffix else ""
-    return _render_subgraph(output_format, res.resolved, note, "Impact analysis for", nodes, edges)
+    return _render_subgraph_with_freshness(
+        db_path, output_format, res.resolved, note, "Impact analysis for", nodes, edges
+    )
 
 
 @mcp.tool()
@@ -292,7 +374,9 @@ def cgis_get_structure(
         return f"❌ {exc}"
 
     note = f"> Resolved '{fqn}' → '{res.resolved}'\n\n" if res.via_suffix else ""
-    return _render_subgraph(output_format, res.resolved, note, "Structure of", nodes, edges)
+    return _render_subgraph_with_freshness(
+        db_path, output_format, res.resolved, note, "Structure of", nodes, edges
+    )
 
 
 @mcp.tool()
@@ -353,7 +437,7 @@ def cgis_drift(
             ],
             "coverage": analysis.coverage,
         }
-        return json.dumps(payload, indent=2)
+        return json.dumps(_with_freshness(db_path, payload), indent=2)
     except Exception as exc:
         return f"❌ {exc}"
 
@@ -382,7 +466,7 @@ def cgis_suggest_packages(
         report = suggest_packages(db_path, prefix, with_calls=with_calls, min_q=min_q)
     except Exception as exc:
         return f"❌ Error during suggest-packages: {exc}"
-    return json.dumps(report_to_dict(report), indent=2)
+    return json.dumps(_with_freshness(db_path, report_to_dict(report)), indent=2)
 
 
 @mcp.tool()
@@ -410,7 +494,7 @@ def cgis_validate(db_path: str = _DEFAULT_DB, threshold: float = 0.30) -> str:
             "threshold": threshold,
             "healthy": stats.unresolved_ratio <= threshold,
         }
-        return json.dumps(payload, indent=2)
+        return json.dumps(_with_freshness(db_path, payload), indent=2)
     except Exception as exc:
         return f"❌ {exc}"
 
@@ -451,7 +535,9 @@ def cgis_find_symbol(
         }
         for n in matches
     ]
-    return json.dumps(payload, indent=2)
+    # A list, not an object: there is no key to add one to, so this tool keeps the
+    # prose note it already prefixes for suffix resolution (#175).
+    return _freshness_note(db_path) + json.dumps(payload, indent=2)
 
 
 @mcp.tool()
@@ -510,7 +596,7 @@ def cgis_context(
         return f"❌ {exc}"
 
     note = f"> Resolved '{fqn}' → '{res.resolved}'\n\n" if res.via_suffix else ""
-    return note + payload
+    return _freshness_note(db_path) + note + payload
 
 
 @mcp.tool()
@@ -557,7 +643,7 @@ def cgis_metrics(
     except Exception as exc:
         return f"❌ {exc}"
 
-    return json.dumps(report.model_dump(), indent=2)
+    return json.dumps(_with_freshness(db_path, report.model_dump()), indent=2)
 
 
 @mcp.tool()
@@ -615,7 +701,7 @@ def cgis_find_orphans(
             )
     except Exception as exc:
         return f"❌ {exc}"
-    return json.dumps(dataclasses.asdict(report), indent=2)
+    return json.dumps(_with_freshness(db_path, dataclasses.asdict(report)), indent=2)
 
 
 @mcp.tool()
@@ -669,7 +755,7 @@ def cgis_audit_reachability(
         return f"❌ {exc}"
 
     note = f"> Resolved '{target}' → '{res.resolved}'\n\n" if res.via_suffix else ""
-    return note + json.dumps(dataclasses.asdict(result), indent=2)
+    return note + json.dumps(_with_freshness(db_path, dataclasses.asdict(result)), indent=2)
 
 
 @mcp.tool()
@@ -697,6 +783,6 @@ def cgis_fractal(db_path: str = _DEFAULT_DB) -> str:
     try:
         reports = analyze_fractal_db(db_path)
         payload = {"layers": [dataclasses.asdict(r) for r in reports]}
-        return json.dumps(payload, indent=2)
+        return json.dumps(_with_freshness(db_path, payload), indent=2)
     except Exception as exc:
         return f"❌ {exc}"
