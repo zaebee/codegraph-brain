@@ -86,7 +86,8 @@ CREATE TABLE IF NOT EXISTS nodes (
             confidence_score REAL NOT NULL,
             metadata TEXT,
             namespace TEXT NOT NULL DEFAULT 'INTERNAL',
-            is_test INTEGER NOT NULL DEFAULT 0
+            is_test INTEGER NOT NULL DEFAULT 0,
+            is_generated INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS edges (
@@ -104,6 +105,11 @@ CREATE TABLE IF NOT EXISTS nodes (
         CREATE TABLE IF NOT EXISTS files_state (
             file_path TEXT PRIMARY KEY,
             hash TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS ingest_state (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
         );
 
         CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(type);
