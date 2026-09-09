@@ -4,20 +4,6 @@ from cgis.core.models import RAW_CLASS_PREFIX, Edge, EdgeType, Node, NodeNamespa
 from cgis.resolver.indices import IndexBuilder, SymbolIndex
 
 
-def _is_foreign_chain(index: SymbolIndex, fqn: str) -> bool:
-    """True when an import-map FQN belongs to a third-party or stdlib package.
-
-    `internal_roots` already carries the *first-party* prefixes discovered in
-    #424 — a root whose imports reach real nodes once the head is stripped, which
-    is how `app.crud.X` is told apart from `pydantic.X`. So a root that classifies
-    EXTERNAL or STDLIB here is one no node of ours sits under, and reconciling the
-    FQN against node ids can only succeed by discarding the very head the import
-    map just resolved. That is how `@pytest.mark.api` became a CALLS edge on the
-    repository's own `api/__init__.py` (#435).
-    """
-    return index.classify_fqn(fqn) in (NodeNamespace.EXTERNAL, NodeNamespace.STDLIB)
-
-
 def _owning_class(index: SymbolIndex, source_fqn: str) -> str | None:
     """The nearest enclosing class of source_fqn that the index knows methods for.
 
@@ -235,16 +221,12 @@ class SymbolResolver:
 
         if name in file_import_map:
             target_fqn = file_import_map[name]
-            if _is_foreign_chain(self.index, target_fqn):
-                return target_fqn
             return self.index.map_to_node_fqn(target_fqn) or target_fqn
 
         first_part = name.split(".", maxsplit=1)[0]
         if first_part in file_import_map and "." in name:
             rest = name[len(first_part) + 1 :]
             target_fqn = f"{file_import_map[first_part]}.{rest}"
-            if _is_foreign_chain(self.index, target_fqn):
-                return target_fqn
             return self.index.map_to_node_fqn(target_fqn) or target_fqn
 
         return None
