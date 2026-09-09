@@ -4,7 +4,7 @@
 
 **Goal:** Let any cgis query tell its reader that the graph it answered from is out of date.
 
-**Architecture:** An `ingest_state` table records the ingested root, the ingest time, and the file extensions that were ingested. A stat-only probe on `SQLiteStore` compares the files the graph was built from (`nodes.file_path`) against the tree as it is now, returning one of three states. CLI and MCP surface that state only when it is not `FRESH`.
+**Architecture:** An `ingest_state` table records the ingested root and the ingest time. A probe on `SQLiteStore` stats the files the graph was built from (`nodes.file_path`) and the directories containing them — never walking the tree — and returns one of three states. CLI and MCP surface that state only when it is not `FRESH`.
 
 **Tech Stack:** Python 3.12, SQLite (`sqlite3`), Pydantic v2, Typer, FastMCP, pytest, ruff, mypy strict.
 
@@ -18,6 +18,8 @@
 - Pydantic models in `core/models.py` are **frozen**; use `model_copy(update={...})`.
 - The full gate before every commit: `make format && make lint && make type-check && make pytest && make doc-coverage`.
 - The probe must never read file contents — `os.stat` only (spec D5).
+- Stat with `os.stat` on joined strings, **not** `pathlib`. Measured: 811 files cost 3.7 ms through `os.stat` and 18.8 ms through `Path.stat()` + `Path.exists()`, which is slower than the tree walk this design replaces.
+- The probe must not walk the tree. `Path.rglob` ignores `IngestionPipeline`'s directory exclusions, so a `.venv` under the ingest root would report thousands of changed files.
 - Tracked files come from `nodes.file_path`, never from `files_state` (spec D2, measurement basis).
 
 ---
@@ -31,7 +33,7 @@
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `FreshnessState` (str enum: `FRESH`, `STALE`, `UNKNOWN`), `Freshness` (frozen Pydantic model with `state: FreshnessState`, `changed: int`, `missing: int`, `reason: str | None`), and on `SQLiteStore`: `record_ingest(root: str, extensions: Iterable[str]) -> None` and `get_ingest_state() -> tuple[str, float, tuple[str, ...]] | None`.
+- Produces: `FreshnessState` (str enum: `FRESH`, `STALE`, `UNKNOWN`), `Freshness` (frozen Pydantic model with `state: FreshnessState`, `changed: int`, `missing: int`, `reason: str | None`), and on `SQLiteStore`: `record_ingest(root: str) -> None` and `get_ingest_state() -> tuple[str, float] | None`.
 
 - [ ] **Step 1: Write the failing test for the model**
 
@@ -118,19 +120,18 @@ Expected: PASS (2 tests)
 ```python
 # append to tests/unit/test_sqlite_store.py
 def test_ingest_state_round_trips(tmp_path: Path) -> None:
-    """The store remembers the root, the time and the extensions it ingested (#175)."""
+    """The store remembers the root and the time it ingested (#175)."""
     db_path = str(tmp_path / "g.db")
     with SQLiteStore(db_path) as store:
-        store.record_ingest("/abs/repo", [".py", ".ts"])
+        store.record_ingest("/abs/repo")
 
     with SQLiteStore(db_path) as store:
         recorded = store.get_ingest_state()
 
     assert recorded is not None
-    root, ingested_at, extensions = recorded
+    root, ingested_at = recorded
     assert root == "/abs/repo"
     assert ingested_at > 0
-    assert extensions == (".py", ".ts")
 
 
 def test_ingest_state_absent_on_an_older_graph(tmp_path: Path) -> None:
@@ -166,13 +167,11 @@ No entry in `_migrate` is needed or wanted: `CREATE TABLE IF NOT EXISTS` runs on
 - [ ] **Step 8: Add the read and write methods**
 
 ```python
-    def record_ingest(self, root: str, extensions: Iterable[str]) -> None:
+    def record_ingest(self, root: str) -> None:
         """Record what this graph was built from, for the freshness probe (#175).
 
-        `root` is stored absolute because a relative path is meaningless to a
-        later process with a different working directory. `extensions` is stored
-        so the probe can reproduce the pipeline's walk without the caller
-        threading the extractor registry through every query.
+        Stored absolute: a relative path is meaningless to a later process with a
+        different working directory.
         """
         if not self._conn:
             raise RuntimeError(self._error_message)
@@ -181,26 +180,24 @@ No entry in `_migrate` is needed or wanted: `CREATE TABLE IF NOT EXISTS` runs on
             [
                 ("root", str(Path(root).resolve())),
                 ("ingested_at", str(time.time())),
-                ("extensions", ",".join(sorted(set(extensions)))),
             ],
         )
         self._conn.commit()
 
-    def get_ingest_state(self) -> tuple[str, float, tuple[str, ...]] | None:
-        """The recorded (root, ingested_at, extensions), or None on an older graph."""
+    def get_ingest_state(self) -> tuple[str, float] | None:
+        """The recorded (root, ingested_at), or None on an older graph."""
         if not self._conn:
             raise RuntimeError(self._error_message)
         rows = {
             row["key"]: row["value"]
             for row in self._conn.execute("SELECT key, value FROM ingest_state")
         }
-        if not {"root", "ingested_at", "extensions"} <= rows.keys():
+        if not {"root", "ingested_at"} <= rows.keys():
             return None
-        exts = tuple(e for e in rows["extensions"].split(",") if e)
-        return rows["root"], float(rows["ingested_at"]), exts
+        return rows["root"], float(rows["ingested_at"])
 ```
 
-Add `import time` and `from collections.abc import Iterable` to the module's imports if absent; `Path` is already imported.
+Add `import time` and `import os` to the module's imports if absent; `Path` is already imported.
 
 - [ ] **Step 9: Run the tests and watch them pass**
 
@@ -260,7 +257,7 @@ def _graph_of(tmp_path: Path, *names: str) -> tuple[str, Path]:
     db = str(tmp_path / "g.db")
     with SQLiteStore(db) as store:
         store.save_graph(nodes, [])
-        store.record_ingest(str(repo), [".py"])
+        store.record_ingest(str(repo))
     return db, repo
 
 
@@ -291,6 +288,24 @@ def test_a_deleted_file_is_stale(tmp_path: Path) -> None:
         result = store.freshness()
     assert result.state is FreshnessState.STALE
     assert result.missing == 1
+    # the deletion also bumps the containing directory's mtime, which is the same
+    # signal a *new* file raises — both halves of the probe fire here
+    assert result.changed == 1
+
+
+def test_a_new_file_is_stale_through_its_directory(tmp_path: Path) -> None:
+    """The probe never walks, so an added file is seen via its directory (#175).
+
+    Measured behaviour, not assumed: a directory's mtime moves when a file is
+    added to it and does not move when a file inside it is edited.
+    """
+    db, repo = _graph_of(tmp_path, "a.py")
+    (repo / "brand_new.py").write_text("z = 3\n", encoding="utf-8")
+    with SQLiteStore(db) as store:
+        result = store.freshness()
+    assert result.state is FreshnessState.STALE
+    assert result.changed == 1
+    assert result.missing == 0
 
 
 def test_a_graph_without_ingest_state_is_unknown(tmp_path: Path) -> None:
@@ -351,7 +366,7 @@ def test_the_probe_never_reads_file_contents(tmp_path: Path, monkeypatch) -> Non
 - [ ] **Step 2: Run them and watch them fail**
 
 Run: `uv run pytest tests/unit/test_freshness.py -v --no-header`
-Expected: the two Task-1 tests PASS; the seven new ones FAIL with `AttributeError: 'SQLiteStore' object has no attribute 'freshness'`
+Expected: the two Task-1 tests PASS; the eight new ones FAIL with `AttributeError: 'SQLiteStore' object has no attribute 'freshness'`
 
 - [ ] **Step 3: Implement the probe**
 
@@ -360,11 +375,19 @@ Expected: the two Task-1 tests PASS; the seven new ones FAIL with `AttributeErro
         """Does this graph still match the tree it was built from? (#175)
 
         Decided by `st_mtime` against the recorded ingest time, never by
-        re-hashing: a stat-only walk is ~6 ms on an 800-file repository, which is
-        noise next to a query, while hashing is seconds. `touch` on an unmodified
-        file therefore reports `STALE` when nothing changed. That is the chosen
-        direction — over-reporting costs a re-ingest, under-reporting returns a
-        confident wrong answer, which is the failure this exists to remove.
+        re-hashing: statting a known list is ~4 ms on an 800-file repository,
+        which is noise next to a query, while hashing is seconds. `touch` on an
+        unmodified file therefore reports `STALE` when nothing changed. That is
+        the chosen direction — over-reporting costs a re-ingest, under-reporting
+        returns a confident wrong answer, which is the failure this exists to
+        remove.
+
+        Statting a known list rather than walking the tree, because a walk would
+        have to reproduce `IngestionPipeline`'s directory exclusions or count
+        every file in a `.venv` as new. The two halves are complementary and
+        measured: a file's own mtime catches an edit, and its *directory's* mtime
+        catches an addition, a deletion and a new subdirectory — a directory's
+        mtime does not move when a file inside it is edited.
 
         Tracked files come from `nodes.file_path`, not `files_state`: a
         non-incremental `cgis ingest` leaves that table empty, so a probe built
@@ -376,9 +399,9 @@ Expected: the two Task-1 tests PASS; the seven new ones FAIL with `AttributeErro
                 state=FreshnessState.UNKNOWN,
                 reason="graph predates the ingest_state table — re-ingest to enable the check",
             )
-        recorded_root, ingested_at, extensions = recorded
-        base = Path(root or recorded_root)
-        if not base.is_dir():
+        recorded_root, ingested_at = recorded
+        base = root or recorded_root
+        if not os.path.isdir(base):
             return Freshness(
                 state=FreshnessState.UNKNOWN,
                 reason=f"ingest root {recorded_root} no longer exists — pass an explicit root",
@@ -387,18 +410,21 @@ Expected: the two Task-1 tests PASS; the seven new ones FAIL with `AttributeErro
         tracked = self.get_tracked_source_files()
         changed = 0
         missing = 0
+        # os.stat on joined strings, not pathlib: the same list costs 3.7 ms this
+        # way and 18.8 ms through Path, which is slower than the walk this avoids.
         for rel in tracked:
             try:
-                if (base / rel).stat().st_mtime > ingested_at:
+                if os.stat(os.path.join(base, rel)).st_mtime > ingested_at:
                     changed += 1
             except OSError:
                 missing += 1
 
-        for path in base.rglob("*"):
-            if path.suffix in extensions and path.is_file():
-                rel_path = str(path.relative_to(base))
-                if rel_path not in tracked and path.stat().st_mtime > ingested_at:
+        for rel_dir in {os.path.dirname(rel) for rel in tracked}:
+            try:
+                if os.stat(os.path.join(base, rel_dir)).st_mtime > ingested_at:
                     changed += 1
+            except OSError:
+                missing += 1
 
         if changed or missing:
             return Freshness(state=FreshnessState.STALE, changed=changed, missing=missing)
@@ -423,7 +449,7 @@ Add `from cgis.core.freshness import Freshness, FreshnessState` to the module im
 - [ ] **Step 4: Run the tests and watch them pass**
 
 Run: `uv run pytest tests/unit/test_freshness.py -v --no-header`
-Expected: PASS (9 tests)
+Expected: PASS (10 tests)
 
 - [ ] **Step 5: Run the full gate and commit**
 
@@ -492,7 +518,7 @@ In `src/cgis/cli.py`, replace the persistence block (currently lines 224-237):
         if incremental:
             with SQLiteStore(output) as store:
                 nodes, raw_edges, resolved_edges = pipeline.run(path, store=store)
-                store.record_ingest(path, extractors.keys())
+                store.record_ingest(path)
         else:
             nodes, raw_edges, resolved_edges = pipeline.run(path)
 
@@ -507,7 +533,7 @@ In `src/cgis/cli.py`, replace the persistence block (currently lines 224-237):
             _write_graph_output(output, path, nodes, resolved_edges, domains)
             if output.endswith(".db"):
                 with SQLiteStore(output) as store:
-                    store.record_ingest(path, extractors.keys())
+                    store.record_ingest(path)
 ```
 
 The `.db` guard matters: `--output graph.json` writes no database, and opening one to record state would create an empty file beside the JSON.
@@ -644,7 +670,7 @@ git commit -m "feat(cli): warn when a query answers from a stale graph (#175)"
 ### Task 5: Surface it in the MCP tools
 
 **Files:**
-- Modify: `src/cgis/api/mcp_server.py` — one helper plus one call in each of `cgis_trace_flow`, `cgis_analyze_impact`, `cgis_get_structure`, `cgis_drift`, `cgis_suggest_packages`, `cgis_validate`, `cgis_find_symbol`, `cgis_context`, `cgis_metrics`, `cgis_find_orphans`, `cgis_audit_reachability`, `cgis_fractal`
+- Modify: `src/cgis/api/mcp_server.py` — two helpers plus one call in each of `cgis_trace_flow`, `cgis_analyze_impact`, `cgis_get_structure`, `cgis_drift`, `cgis_suggest_packages`, `cgis_validate`, `cgis_find_symbol`, `cgis_context`, `cgis_metrics`, `cgis_find_orphans`, `cgis_audit_reachability`, `cgis_fractal`
 - Test: `tests/unit/test_mcp_server.py`
 
 **Interfaces:**
@@ -685,36 +711,69 @@ Add `import os`, `import time` and `cgis_ingest` to the test module's imports if
 Run: `uv run pytest tests/unit/test_mcp_server.py -k "flag_a_stale or stay_quiet" -v --no-header`
 Expected: the first FAILs; the second PASSes vacuously
 
-- [ ] **Step 3: Write the helper**
+- [ ] **Step 3: Write the two helpers**
+
+Measured: 8 of the 12 reading tools return JSON and 4 return text. Prefixing text
+to a JSON payload would break `json.loads` for every consumer **exactly when the
+graph is stale** — the output shape would depend on freshness — so the two get
+different treatment.
 
 ```python
-def _freshness_note(db_path: str) -> str:
-    """A one-line staleness prefix for a tool's answer, or "" when fresh (#175).
+def _graph_freshness(db_path: str) -> Freshness | None:
+    """The freshness of `db_path`, or None when the probe itself could not run.
 
-    Prefixed rather than merged into each payload: the tools return a mix of JSON
-    and markdown, and `cgis_find_symbol` already establishes the idiom
-    (`return note + payload`). Never raises — a probe must not break the query.
+    Never raises: a freshness check failing must not take down the query the
+    caller actually asked for.
     """
     try:
         with SQLiteStore(db_path) as store:
-            result = store.freshness()
+            return store.freshness()
     except Exception:  # noqa: BLE001 - a probe must never break the real query
+        return None
+
+
+def _freshness_note(db_path: str) -> str:
+    """A one-line staleness prefix for a *text* answer, or "" when fresh (#175).
+
+    The idiom `cgis_find_symbol` already uses (`return note + payload`). Only for
+    tools that return prose — a JSON tool gets `_with_freshness` instead.
+    """
+    result = _graph_freshness(db_path)
+    if result is None or result.state is FreshnessState.FRESH:
         return ""
     if result.state is FreshnessState.STALE:
         return (
             f"> ⚠ Graph is stale: {result.changed} changed, {result.missing} missing "
             "since ingest. Re-run cgis_ingest for a current answer.\n\n"
         )
-    if result.state is FreshnessState.UNKNOWN:
-        return f"> Freshness unknowable: {result.reason}\n\n"
-    return ""
+    return f"> Freshness unknowable: {result.reason}\n\n"
+
+
+def _with_freshness(db_path: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Add a `freshness` key to a JSON payload, but only when there is one (#175).
+
+    Inside the object rather than prefixed to the string: a text prefix would
+    break `json.loads` for every consumer at the moment the graph goes stale,
+    which is when the caller most needs a parseable answer. A fresh graph adds no
+    key, so existing consumers see an unchanged shape.
+    """
+    result = _graph_freshness(db_path)
+    if result is None or result.state is FreshnessState.FRESH:
+        return payload
+    return {**payload, "freshness": result.model_dump()}
 ```
 
-- [ ] **Step 4: Prefix it in each of the twelve reading tools**
+Add `from cgis.core.freshness import Freshness, FreshnessState` and, if absent, `from typing import Any` to `mcp_server.py`'s imports.
 
-For each tool listed under **Files**, change its `return <payload>` to `return _freshness_note(db_path) + <payload>`, leaving the early `❌ Database not found` returns untouched — those are not answers about the graph.
+- [ ] **Step 4: Apply each helper to the tools that match its return type**
 
-`cgis_find_symbol` already builds a `note` prefix; there, prepend to that existing note rather than adding a second concatenation, so the two notes stack in one block.
+**Text tools** — `cgis_trace_flow`, `cgis_analyze_impact`, `cgis_get_structure`, `cgis_context`: change `return <payload>` to `return _freshness_note(db_path) + <payload>`.
+
+**JSON tools** — `cgis_drift`, `cgis_suggest_packages`, `cgis_validate`, `cgis_find_symbol`, `cgis_metrics`, `cgis_find_orphans`, `cgis_audit_reachability`, `cgis_fractal`: each ends in `json.dumps(<obj>, indent=2)`; change to `json.dumps(_with_freshness(db_path, <obj>), indent=2)`. Where `<obj>` is not already a dict (e.g. a `dataclasses.asdict(...)` result), it is one — pass it through unchanged.
+
+`cgis_find_symbol` returns `note + payload` where `payload` is JSON; there, put the freshness inside the JSON via `_with_freshness` and leave its existing resolution note as the prefix.
+
+Leave every early `❌ Database not found` return untouched: those are not answers about a graph.
 
 - [ ] **Step 5: Run the tests and watch them pass**
 
@@ -725,7 +784,7 @@ Expected: PASS (2 tests)
 
 Run: `uv run pytest -q --no-header`
 
-Existing tests that do `json.loads(cgis_x(...))` on a **fresh** graph keep passing, because a fresh graph prefixes nothing. Any that fail are asserting on a stale or ingest-state-less fixture; give the fixture a `record_ingest` call rather than weakening the assertion — a test that needs the note suppressed is a test whose fixture does not represent a real graph.
+JSON tools stay parseable in every state now, so `json.loads(cgis_x(...))` cannot break. What *can* fail is a test asserting an exact payload shape on a fixture with no `ingest_state` — that graph is `UNKNOWN`, so a `freshness` key appears. Give such a fixture a `record_ingest` call rather than weakening the assertion: a fixture that has never been ingested does not represent a real graph, and the key appearing there is the feature working.
 
 - [ ] **Step 7: Run the full gate and commit**
 
@@ -783,4 +842,4 @@ git commit -m "docs(spec): record the measured freshness probe cost (#175)"
 
 **Placeholders:** none. Task 3 step 5 and Task 5 step 4 describe mechanical repetition across an enumerated list of functions rather than pasting twelve near-identical diffs; the helper's code and the exact transformation are given.
 
-**Type consistency:** `Freshness`/`FreshnessState` are defined in Task 1 and used unchanged in Tasks 2, 4, 5. `record_ingest(root, extensions)` and `get_ingest_state() -> tuple[str, float, tuple[str, ...]] | None` are defined in Task 1 and consumed in Tasks 2 and 3. `freshness(root=None) -> Freshness` is defined in Task 2 and consumed in Tasks 3, 4, 5. `get_tracked_source_files() -> set[str]` is introduced and used inside Task 2 only.
+**Type consistency:** `Freshness`/`FreshnessState` are defined in Task 1 and used unchanged in Tasks 2, 4, 5. `record_ingest(root: str) -> None` and `get_ingest_state() -> tuple[str, float] | None` are defined in Task 1 and consumed in Tasks 2 and 3. `freshness(root=None) -> Freshness` is defined in Task 2 and consumed in Tasks 3, 4, 5. `get_tracked_source_files() -> set[str]` is introduced and used inside Task 2 only.
