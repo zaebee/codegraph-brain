@@ -597,9 +597,10 @@ def cgis_find_orphans(
     arriving through a star import is invisible here, so the sweep errs towards
     reporting a live class rather than hiding a dead one. ``test_sources: 0`` in a
     repository that has tests means the graph predates the ``is_test`` column:
-    re-ingest. ``generated_excluded: 0`` on a repository with generated code
-    means the same for ``is_generated``, which has no backfill — the marker is in
-    the file header, not in the database.
+    re-ingest. ``generated_excluded`` counts every generated class left out of
+    the population under the same ``prefix``, referenced or not — so ``0`` on a
+    repository with generated code means the same for ``is_generated``, which has
+    no backfill: the marker is in the file header, not in the database.
     """
     if not Path(db_path).exists():
         return f"❌ Database not found at: {db_path}. Run cgis_ingest first."

@@ -293,13 +293,15 @@ def test_report_counts_what_the_generated_filter_removed(store: SQLiteStore) -> 
     assert report.considered == 1
 
 
-def test_a_referenced_generated_class_is_not_counted_as_excluded(store: SQLiteStore) -> None:
-    """The counter reports generated *orphans* removed, not every generated class.
+def test_a_referenced_generated_class_is_still_counted_as_excluded(store: SQLiteStore) -> None:
+    """`generated_excluded` counts what left the population, not what left the findings (#441).
 
-    A generated class production still uses was never going to be reported, so
-    counting it would overstate what the filter is doing. `Caller` is itself
-    unreferenced and stays in the report — the counter is about the generated
-    class, not about the graph being empty.
+    Counting only the *unused* ones made the number answer two questions badly.
+    The report's own claim — "zero on a repository with generated code means the
+    graph predates the column" — was false whenever every generated class
+    happened to be referenced, the common case for a protobuf package actually in
+    use. And a prefix over such a subtree reached zero on both counters, so the
+    CLI called a correct prefix a typo.
     """
     _save(
         store,
@@ -310,4 +312,16 @@ def test_a_referenced_generated_class_is_not_counted_as_excluded(store: SQLiteSt
     report = find_orphan_classes(store)
 
     assert [o.fqn for o in report.orphans] == ["app.adapters.Caller"]
-    assert report.generated_excluded == 0
+    assert report.generated_excluded == 1
+
+
+def test_generated_excluded_is_scoped_by_prefix(store: SQLiteStore) -> None:
+    """A prefix narrows the counter too, or it cannot tell a typo from a filter.
+
+    Whole-graph counting would let any repository with generated code anywhere
+    suppress the wrong-prefix guard for every prefix, including a real typo.
+    """
+    _save(store, [_generated("gen.entities.Vehicle"), _node("app.adapters.Dead")], [])
+
+    assert find_orphan_classes(store, prefix="gen").generated_excluded == 1
+    assert find_orphan_classes(store, prefix="app").generated_excluded == 0

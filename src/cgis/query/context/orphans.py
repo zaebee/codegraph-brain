@@ -85,6 +85,11 @@ class OrphanReport:
     it more: that column has no backfill, because the marker lives in the file
     header rather than in the database. A zero on a repository with generated
     code means the graph predates the column, not that there is none (#432).
+
+    It counts every generated class dropped from the candidate population, under
+    the same `prefix`, whether or not anything references it — so it answers "was
+    this graph stamped, and did this prefix match generated code", not "how many
+    findings were hidden". `--include-generated` is how you see the findings.
     """
 
     orphans: list[OrphanClass]
@@ -135,10 +140,13 @@ def find_orphan_classes(
     used = store.get_referenced_targets(_USE_EDGE_TYPES, from_test_sources=include_tests)
     candidates = [node for node in nodes if _is_candidate(node, prefix)]
     if not include_generated:
-        # Counted before dropping, and counted among the *unused* only: a
-        # generated class production still calls was never going to be reported,
-        # so including it would overstate what the filter removed.
-        generated_excluded = sum(1 for n in candidates if n.is_generated and n.id not in used)
+        # Every generated candidate, referenced or not — this counts what left the
+        # *population*, not what left the findings. Counting only the unused ones
+        # made one number answer two questions badly: it read as zero on a graph
+        # whose generated classes are all referenced, which is the common case for
+        # a protobuf package in use, so both the staleness signal and the CLI's
+        # wrong-prefix guard misfired there (#441).
+        generated_excluded = sum(1 for n in candidates if n.is_generated)
         candidates = [n for n in candidates if not n.is_generated]
     else:
         generated_excluded = 0

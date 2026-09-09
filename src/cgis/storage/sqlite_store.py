@@ -136,11 +136,27 @@ class SQLiteStore:
             self._conn.execute(
                 "ALTER TABLE nodes ADD COLUMN is_generated INTEGER NOT NULL DEFAULT 0"
             )
-            # And the hashes go, or "re-ingest" is advice that cannot be followed:
-            # `_process_file` skips any file whose content hash still matches and
-            # reuses its stored nodes, so an incremental run over an upgraded
-            # database would re-parse nothing and leave the column false forever.
-            self._conn.execute("DELETE FROM files_state")
+            # And the hashes are invalidated, or "re-ingest" is advice that cannot
+            # be followed: `_process_file` skips any file whose content hash still
+            # matches and reuses its stored nodes, so an incremental run over an
+            # upgraded database would re-parse nothing and leave the column false
+            # forever.
+            #
+            # Blanked, not deleted. `_persist_incremental` computes its stale set
+            # as `get_all_tracked_files() - found_file_paths`, and that reads this
+            # table — so dropping the rows would make a file deleted *before* the
+            # upgrade unknowable, and its nodes would survive every later ingest.
+            # An empty string never equals a hex digest, so every file re-parses
+            # exactly as it would have, and stale detection keeps working.
+            #
+            # This fires on the first open of an old graph whatever opened it, so
+            # a read-only `cgis orphans` invalidates them too. Deliberate: the
+            # invalidation is required for correctness whenever it happens, first
+            # open is the earliest moment it can happen, and the only cost is that
+            # the next incremental ingest is a full one — which that graph needs
+            # anyway. Deferring it to ingest would leave every query in between
+            # reading a column that is silently false.
+            self._conn.execute("UPDATE files_state SET hash = ''")
             self._conn.commit()
 
     def _backfill_is_test(self) -> None:

@@ -871,6 +871,18 @@ def test_is_generated_migration_forces_reingest_of_unchanged_files(tmp_path: Pat
     `cgis ingest -i` over an upgraded database would skip every unchanged file
     and leave `is_generated` false forever — while the report tells the reader to
     re-ingest. Dropping the hashes makes the documented remedy actually work.
+
+    The hashes are *invalidated*, not deleted. `_persist_incremental` computes
+    `stale_files` as `get_all_tracked_files() - found_file_paths`, and that reads
+    `files_state` — so dropping the rows would make files deleted before the
+    upgrade unknowable, and their nodes would survive every later ingest. Blanking
+    the hash re-parses everything just the same and keeps stale detection working.
+
+    Note what triggers it: **opening** the store, so a read-only `cgis orphans`
+    on an old graph invalidates them too. That is deliberate — until the hashes
+    go, every query in between reads a column that is silently false — and the
+    only cost is that the next incremental ingest is a full one, which that graph
+    needs anyway.
     """
     db_path = str(tmp_path / "old.db")
     conn = sqlite3.connect(db_path)
@@ -896,4 +908,8 @@ def test_is_generated_migration_forces_reingest_of_unchanged_files(tmp_path: Pat
     conn.close()
 
     with SQLiteStore(db_path) as store:
-        assert store.get_file_hash("gen/e.py") is None
+        # No hash matches, so every file re-parses...
+        assert store.get_file_hash("gen/e.py") != "deadbeef"
+        # ...and the row survives, so a file deleted before the upgrade is still
+        # detectable as stale.
+        assert store.get_all_tracked_files() == {"gen/e.py"}

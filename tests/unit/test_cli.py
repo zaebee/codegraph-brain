@@ -1849,3 +1849,42 @@ def test_orphans_prefix_matching_nothing_still_errors(tmp_path: Path) -> None:
 
     assert result.exit_code == 2
     assert "No classes under prefix" in result.stdout
+
+
+def test_orphans_prefix_over_a_referenced_generated_subtree_is_not_a_typo(
+    tmp_path: Path,
+) -> None:
+    """The half-fixed guard: a generated subtree that production *uses* (#441 review).
+
+    The first fix keyed on a counter that only saw *unused* generated classes, so
+    a protobuf package actually in use still reached zero on both counters and
+    the correct prefix was reported as a typo.
+    """
+    nodes = [
+        Node(
+            id="gen.entities.Vehicle",
+            type=NodeType.CLASS,
+            name="Vehicle",
+            file_path="gen/entities.py",
+            start_line=1,
+            end_line=2,
+            is_generated=True,
+        ),
+        Node(
+            id="app.Caller",
+            type=NodeType.CLASS,
+            name="Caller",
+            file_path="app.py",
+            start_line=1,
+            end_line=2,
+        ),
+    ]
+    edges = [Edge(id="e1", source="app.Caller", target="gen.entities.Vehicle", type=EdgeType.CALLS)]
+    db = str(tmp_path / "used_gen.db")
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)
+
+    result = runner.invoke(app, ["orphans", "--db", db, "--prefix", "gen"])
+
+    assert result.exit_code == 0
+    assert "No classes under prefix" not in result.stdout

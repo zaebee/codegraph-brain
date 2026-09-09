@@ -1481,11 +1481,13 @@ def _render_orphans(report: OrphanReport) -> None:
         )
     if report.generated_excluded:
         # Said out loud rather than silently dropped: the reader needs to know the
-        # report was filtered, and by how much, to trust that it is complete.
+        # report was filtered, and by how much, to trust that it is complete. The
+        # count is of classes left out of the population above — not of findings
+        # suppressed, most of which were referenced and would never have appeared.
         console.print(
             f"  [dim]· {report.generated_excluded} generated "
-            f"{'class' if report.generated_excluded == 1 else 'classes'} hidden "
-            "(--include-generated to show).[/dim]"
+            f"{'class' if report.generated_excluded == 1 else 'classes'} not considered "
+            "(--include-generated to include them).[/dim]"
         )
     for orphan in report.orphans:
         console.print(
