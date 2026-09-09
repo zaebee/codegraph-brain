@@ -2007,3 +2007,176 @@ def test_a_class_named_in_an_unusual_decorator_shape_is_referenced(
     user = f"from pkg.s import Schema, Other\n\n{decorator}\ndef f():\n    pass\n"
     resolved = _resolve_two("pkg/s.py", schema, "pkg/user.py", user)
     assert ("pkg.user.f", "pkg.s.Schema") in _refs(resolved), label
+
+
+def test_resolver_external_head_blocks_strip_to_internal_node() -> None:
+    """`pytest.mark.api` must not resolve to the repository's own `api` package (#435).
+
+    The import map resolves the head `pytest` to an external root, so the whole
+    dotted chain is external. Stripping leading segments off it until something
+    matches an internal node contradicts the head that was just resolved — and
+    is what turned `@pytest.mark.api` into a CALLS edge on `api/__init__.py`.
+    """
+    nodes = [
+        _file_node("tests/test_thing.py", {"pytest": "pytest"}),
+        Node(
+            id="api",
+            type=NodeType.FILE,
+            name="__init__.py",
+            file_path="api/__init__.py",
+            start_line=1,
+            end_line=1,
+        ),
+        _func_node("tests.test_thing.test_x", "tests/test_thing.py"),
+    ]
+    edges = [
+        Edge(
+            id="e1",
+            source="tests.test_thing.test_x",
+            target="raw_call:pytest.mark.api",
+            type=EdgeType.CALLS,
+            confidence=0.5,
+            file_path="tests/test_thing.py",
+        )
+    ]
+    resolver = ResolverEngine(nodes, edges)
+    result, _ = resolver.resolve()
+    edge = next(e for e in result if e.id == "e1")
+    assert edge.target == "pytest.mark.api"
+
+
+def test_resolver_external_direct_import_blocks_strip_to_internal_node() -> None:
+    """`from pytest import mark` → `mark` must not resolve to a top-level `mark` node (#435).
+
+    Same defect as the dotted chain, reached through the direct-import branch:
+    the import map says the name is `pytest.mark`, and stripping that down to a
+    node of ours discards the head it just resolved.
+    """
+    nodes = [
+        _file_node("tests/test_thing.py", {"mark": "pytest.mark"}),
+        Node(
+            id="mark",
+            type=NodeType.FILE,
+            name="mark.py",
+            file_path="mark.py",
+            start_line=1,
+            end_line=1,
+        ),
+        _func_node("tests.test_thing.test_x", "tests/test_thing.py"),
+    ]
+    edges = [
+        Edge(
+            id="e1",
+            source="tests.test_thing.test_x",
+            target="raw_call:mark",
+            type=EdgeType.CALLS,
+            confidence=0.5,
+            file_path="tests/test_thing.py",
+        )
+    ]
+    resolver = ResolverEngine(nodes, edges)
+    result, _ = resolver.resolve()
+    edge = next(e for e in result if e.id == "e1")
+    assert edge.target == "pytest.mark"
+
+
+def _graph_from(files: dict[str, str]) -> tuple[list[Node], list[Edge]]:
+    """Parse several sources into one graph, so cross-file resolution is exercised."""
+    nodes: list[Node] = []
+    edges: list[Edge] = []
+    for path, code in files.items():
+        file_nodes, file_edges = PythonExtractor().parse(code, path)
+        nodes += file_nodes
+        edges += file_edges
+    return nodes, edges
+
+
+def test_self_attr_of_foreign_type_does_not_call_an_internal_method() -> None:
+    """`self.c: httpx.client.Client` must not make `self.c.get()` call our own `Client.get` (#435).
+
+    Sharper than the decorator case that opened the issue: the target here is a
+    METHOD, not a FILE, so the graph gains a confident CALLS edge between two
+    pieces of code that have nothing to do with each other — which `impact`,
+    `trace_flow` and the orphan query all read as a real relationship.
+    """
+    nodes, edges = _graph_from(
+        {
+            "client.py": "class Client:\n    def get(self):\n        pass\n",
+            "app/service.py": (
+                "import httpx.client\n\n"
+                "class Service:\n"
+                "    def __init__(self):\n"
+                "        self.c: httpx.client.Client = None\n\n"
+                "    def fetch(self):\n"
+                "        self.c.get()\n"
+            ),
+        }
+    )
+    result, _ = ResolverEngine(nodes, edges).resolve()
+    targets = {e.target for e in result if e.source == "app.service.Service.fetch"}
+    assert "client.Client.get" not in targets
+    assert "httpx.client.Client.get" in targets
+
+
+def test_from_import_of_foreign_symbol_does_not_link_an_internal_module() -> None:
+    """`from pytest import mark` must not emit IMPORTS_SYMBOL into our own `mark` module (#435).
+
+    `_resolved_import_edge` documents that an external symbol drops the edge.
+    Suffix stripping made it keep one instead, at confidence 1.0.
+    """
+    nodes, edges = _graph_from(
+        {
+            "mark.py": "def helper():\n    pass\n",
+            "app/t.py": "from pytest import mark\n\ndef test_x():\n    mark()\n",
+        }
+    )
+    result, _ = ResolverEngine(nodes, edges).resolve()
+    assert not [
+        e for e in result if e.type == EdgeType.IMPORTS_SYMBOL and e.target.startswith("mark")
+    ]
+
+
+def test_layout_prefix_survives_the_foreign_head_guard() -> None:
+    """A node id carrying an extra layout prefix still resolves (#435 guard boundary).
+
+    Nodes are `backend.cgis.*` while the code imports `cgis.pipeline`, so `cgis`
+    is absent from `internal_roots` — `_add_node_to_suffix_map` only promotes a
+    second segment under `src`/`lib` — and `classify_fqn` calls it EXTERNAL. The
+    guard must not fire here: `suffix_map` resolves this by matching a node id
+    that *ends* with the FQN, which keeps the head rather than discarding it.
+    That is why the guard sits on the strip loop alone.
+    """
+    nodes, edges = _graph_from(
+        {
+            "backend/cgis/pipeline.py": "def run():\n    pass\n",
+            "backend/cgis/app.py": "from cgis.pipeline import run\n\ndef go():\n    run()\n",
+        }
+    )
+    result, _ = ResolverEngine(nodes, edges).resolve()
+    targets = {e.target for e in result if e.source == "backend.cgis.app.go"}
+    assert "backend.cgis.pipeline.run" in targets
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="`app` misclassifies EXTERNAL when every first-party import under it is "
+    "two segments — `_strips_to_a_node` needs two segments to remain. Pre-existing "
+    "in classify_fqn; the #435 guard turns it into a failed resolution. Tracked in "
+    "#438 — remove this marker when the classifier is fixed.",
+)
+def test_module_style_first_party_import_at_subdirectory_ingest() -> None:
+    """`from app import models` must still reach `models.get_user` (known gap).
+
+    Narrow: one deeper first-party import anywhere in the repository (`from
+    app.models import x`) puts `app` in `first_party` and this resolves. It takes
+    a codebase whose every import under the root is exactly two segments to hit.
+    """
+    nodes, edges = _graph_from(
+        {
+            "models.py": "def get_user():\n    pass\n",
+            "svc.py": "from app import models\n\ndef go():\n    models.get_user()\n",
+        }
+    )
+    result, _ = ResolverEngine(nodes, edges).resolve()
+    targets = {e.target for e in result if e.source == "svc.go"}
+    assert "models.get_user" in targets

@@ -64,7 +64,18 @@ class SymbolIndex:
         - Node has extra layout prefix: `cgis.pipeline.X` → node `src.cgis.pipeline.X`
           (look up in suffix_map built from node IDs)
 
-        Returns None when the target is ambiguous or not in the graph.
+        Returns None when the target is ambiguous or not in the graph, and for
+        any FQN whose head is third-party or stdlib: every reconciliation below
+        works by discarding leading segments, and `internal_roots` already
+        carries the *first-party* prefixes discovered in #424 — a root whose
+        imports reach real nodes once the head is stripped, which is what tells
+        `app.crud.X` apart from `pydantic.X`. So a root classifying EXTERNAL or
+        STDLIB is one no node of ours sits under, and a match could only be
+        reached by throwing away the very head that named the package. That is
+        how `@pytest.mark.api` became a CALLS edge on the repository's own
+        `api/__init__.py`, `from pytest import mark` an IMPORTS_SYMBOL into a
+        module named `mark`, and `self.c: httpx.client.Client` a confident call
+        into our own `Client.get` (#435).
         """
         direct = self.resolve_layout(imported_fqn)
         if direct is not None:
@@ -103,6 +114,8 @@ class SymbolIndex:
         candidates = self.suffix_map.get(fqn, [])
         if len(candidates) == 1:
             return candidates[0]
+        if self.classify_fqn(fqn) in (NodeNamespace.EXTERNAL, NodeNamespace.STDLIB):
+            return None
         parts = fqn.split(".")
         for i in range(1, len(parts)):
             candidate = ".".join(parts[i:])
