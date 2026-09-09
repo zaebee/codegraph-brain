@@ -63,9 +63,20 @@ class SuggestReport:
     note: str | None = None
 
 
-def _leaf(fqn: str) -> str:
-    """Return the last FQN segment (the module name) for readable output."""
-    return fqn.rsplit(".", 1)[-1]
+def _member_name(fqn: str, prefix: str) -> str:
+    """Name a file by its path under the analysed package, for readable output.
+
+    The last segment alone is not enough to identify a file: `p/sub/` and
+    `p/sub/sub.py` both end in `sub`, so a report telling the reader to split `p`
+    listed the same name in two communities and left them guessing which one it
+    meant (#446). `pkg/sub/sub.py` is an ordinary Python layout.
+
+    The path under the prefix is unique by construction, because full FQNs are —
+    `sub` and `sub.sub` here — and stays as short as the ambiguity allows.
+    """
+    if not prefix or not fqn.startswith(f"{prefix}."):
+        return fqn.rsplit(".", 1)[-1]
+    return fqn[len(prefix) + 1 :]
 
 
 def _dir_group(fqn: str, prefix: str) -> str:
@@ -190,7 +201,7 @@ def suggest_packages(
 
     bridges = sorted(
         (
-            Bridge(source=_leaf(a), target=_leaf(b), weight=w)
+            Bridge(source=_member_name(a, package), target=_member_name(b, package), weight=w)
             for a in graph.adj
             for b, w in graph.adj[a].items()
             if a < b and comm_of[a] != comm_of[b]
@@ -207,7 +218,8 @@ def suggest_packages(
         direction=direction,
         verdict=verdict,
         communities=[
-            Community(id=i, files=[_leaf(f) for f in c]) for i, c in enumerate(communities)
+            Community(id=i, files=[_member_name(f, package) for f in c])
+            for i, c in enumerate(communities)
         ],
         bridges=bridges,
         thresholds=thresholds,
