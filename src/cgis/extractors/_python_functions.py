@@ -297,7 +297,12 @@ class FunctionHandler:
         if not func_call_node:
             return
         _record_constructed_type(
-            self._types, var_name, func_call_node, code_bytes, import_map, func_node, acc
+            self._types,
+            var_name,
+            get_identifier(func_call_node, code_bytes),
+            import_map,
+            func_node,
+            acc,
         )
 
     def collect_param_type(
@@ -611,17 +616,22 @@ def collect_context_manager_type(
     if clause is None:
         return
     for pattern in _descendants_of_type(clause, "as_pattern"):
-        value_node = pattern.children[0] if pattern.children else None
+        # `children` and `named_children` build a fresh wrapper list on every
+        # access, so each is read once.
+        pattern_children = pattern.children
+        value_node = pattern_children[0] if pattern_children else None
         target = pattern.child_by_field_name("alias")
         if value_node is None or value_node.type != "call" or target is None:
             continue
         # `as_pattern_target` wraps the identifier, and `get_identifier` on the
         # wrapper answers "unknown" — take the name from inside it.
-        inner = target.named_children[0] if target.named_children else target
+        named = target.named_children
+        inner = named[0] if named else target
         var_name = get_identifier(inner, code_bytes)
         func_call_node = value_node.child_by_field_name("function")
         if var_name == "unknown" or func_call_node is None:
             continue
+        class_name = get_identifier(func_call_node, code_bytes)
         # Bare names only. A dotted constructor here is the unverifiable case:
         # `mock.patch(...)`, `pytest.raises(...)` and `path.open(...)` all return
         # something other than the callable, so naming that callable as the type
@@ -629,28 +639,27 @@ def collect_context_manager_type(
         # replaces, one asserted at confidence 1.0 (#445 review). The assignment
         # path may keep dotted constructors because `x = pkg.C()` really does make
         # `x` a `pkg.C`; a `with` only approximates that.
-        if "." in get_identifier(func_call_node, code_bytes):
+        if "." in class_name:
             continue
-        _record_constructed_type(
-            types, var_name, func_call_node, code_bytes, import_map, func_node, acc
-        )
+        _record_constructed_type(types, var_name, class_name, import_map, func_node, acc)
 
 
 def _record_constructed_type(
     types: TypeResolver,
     var_name: str,
-    func_call_node: BaseNode,
-    code_bytes: bytes,
+    class_name: str,
     import_map: dict[str, str] | None,
     func_node: Node,
     acc: dict[str, dict[str, str]],
 ) -> None:
-    """Record `var_name` as an instance of whatever `func_call_node` constructs.
+    """Record `var_name` as an instance of whatever `class_name` constructs.
+
+    Takes the name rather than the node: the `with` path already extracts it to
+    test for a dot, and re-deriving it here decoded the same bytes twice.
 
     Shared by the assignment and `with` paths so the module-qualified rule cannot
     drift between them.
     """
-    class_name = get_identifier(func_call_node, code_bytes)
     if class_name == "unknown":
         return
     if "." in class_name:
