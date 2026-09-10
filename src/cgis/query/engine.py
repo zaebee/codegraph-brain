@@ -5,7 +5,7 @@ from collections.abc import Callable
 from typing import NamedTuple
 
 from cgis.core.coverage import TraversalCoverage, rank_unresolved
-from cgis.core.models import Edge, EdgeType, Node, NodeNamespace
+from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
 from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 
 STRUCTURAL_EDGE_TYPES: frozenset[EdgeType] = frozenset({EdgeType.CONTAINS, EdgeType.DECLARES})
@@ -15,11 +15,16 @@ BEHAVIORAL_EDGE_TYPES: frozenset[EdgeType] = frozenset(
 
 
 class TraversalResult(NamedTuple):
-    """A traversal's subgraph together with the coverage of the calls around it (#201)."""
+    """A traversal's subgraph together with the coverage of the calls around it (#201).
+
+    ``coverage`` is None when it was not asked for, or when the traversal
+    followed no CALLS edges: a zero it did not measure would read as "fully
+    resolved".
+    """
 
     nodes: list[Node]
     edges: list[Edge]
-    coverage: TraversalCoverage
+    coverage: TraversalCoverage | None
 
 
 class _Walk(NamedTuple):
@@ -91,6 +96,16 @@ def _edge_accepted(
     return not (min_confidence is not None and edge.confidence < min_confidence)
 
 
+#: Node types a call can name. Only these are matched against unresolved calls:
+#: a module's or a file's name is not something anyone calls.
+_CALLABLE_TYPES = frozenset({NodeType.FUNCTION, NodeType.METHOD, NodeType.CLASS})
+
+
+def _follows_calls(allowed_edge_types: frozenset[EdgeType] | None) -> bool:
+    """True when a traversal with this type allow-list crosses CALLS edges at all."""
+    return allowed_edge_types is None or EdgeType.CALLS in allowed_edge_types
+
+
 def _is_unresolved(target: str, known: dict[str, Node]) -> bool:
     """The `get_edge_stats` definition: a `raw_call:` target, no node, or an UNKNOWN one."""
     if target.startswith(RAW_CALL_PREFIX):
@@ -152,14 +167,18 @@ class QueryEngine:
         allowed_edge_types: frozenset[EdgeType] | None = None,
         show_external: bool = True,
         min_confidence: float | None = None,
+        with_coverage: bool = True,
     ) -> TraversalResult:
         """`get_impact_graph`, plus how many callers the graph may be failing to show (#201).
 
         An incoming edge only exists for a call that resolved, so the unresolved
         calls that belong to this answer are never on the traversed path. They
         are counted by name instead: unresolved calls whose called name matches
-        a node the traversal expanded. That is an upper bound — see
-        ``CoverageBasis`` — and it is labelled as one in the result.
+        a function, method or class of ours the traversal expanded. That is an
+        upper bound — see ``CoverageBasis`` — and it is labelled as one.
+
+        ``with_coverage=False`` skips the count and its query, for a caller that
+        will not render it.
         """
         walk = self._bfs_traverse(
             target_node_id,
@@ -170,10 +189,20 @@ class QueryEngine:
             min_confidence,
         )
         nodes = self.store.get_nodes(list(walk.discovered))
-        hidden: dict[str, int] = {}
-        if allowed_edge_types is None or EdgeType.CALLS in allowed_edge_types:
-            names = {n.name for n in nodes if n.id in walk.expanded}
-            hidden = self.store.unknown_calls_named(names)
+        subgraph = _finish(target_node_id, nodes, walk, _source, show_external)
+        if not (with_coverage and _follows_calls(allowed_edge_types)):
+            return TraversalResult(*subgraph, None)
+        # Our own callables only. An UNKNOWN root is itself an unresolved target,
+        # its callers already on the path — matching its name found the same
+        # edge twice (found in review).
+        names = {
+            n.name
+            for n in nodes
+            if n.id in walk.expanded
+            and n.namespace == NodeNamespace.INTERNAL
+            and n.type in _CALLABLE_TYPES
+        }
+        hidden = self.store.unknown_calls_named(names)
         total_hidden = sum(hidden.values())
         coverage = TraversalCoverage(
             basis="unresolved_calls_by_name",
@@ -181,9 +210,7 @@ class QueryEngine:
             calls_unresolved=total_hidden,
             top_unresolved=rank_unresolved(hidden),
         )
-        return TraversalResult(
-            *_finish(target_node_id, nodes, walk, _source, show_external), coverage
-        )
+        return TraversalResult(*subgraph, coverage)
 
     def get_flow_graph(
         self,
@@ -215,12 +242,16 @@ class QueryEngine:
         allowed_edge_types: frozenset[EdgeType] | None = None,
         show_external: bool = True,
         min_confidence: float | None = None,
+        with_coverage: bool = True,
     ) -> TraversalResult:
         """`get_flow_graph`, plus how many of the calls it passed resolved to nothing (#201).
 
         Counts every CALLS edge leaving an expanded node, including the ones a
         confidence floor or external pruning then removes from the answer — those
         are exactly the calls the answer is missing.
+
+        ``with_coverage=False`` skips the count and the lookup of call targets,
+        for a caller that will not render it.
         """
         walk = self._bfs_traverse(
             start_node_id,
@@ -230,6 +261,11 @@ class QueryEngine:
             allowed_edge_types,
             min_confidence,
         )
+        if not (with_coverage and _follows_calls(allowed_edge_types)):
+            nodes = self.store.get_nodes(list(walk.discovered))
+            return TraversalResult(
+                *_finish(start_node_id, nodes, walk, _target, show_external), None
+            )
         call_targets = [e.target for e in walk.calls.values()]
         known = {n.id: n for n in self.store.get_nodes([*walk.discovered, *call_targets])}
         nodes = [n for n in known.values() if n.id in walk.discovered]
@@ -281,7 +317,7 @@ class QueryEngine:
         visited_edges: dict[str, Edge] = {}
         expanded: set[str] = set()
         calls: dict[str, Edge] = {}
-        count_calls = allowed_edge_types is None or EdgeType.CALLS in allowed_edge_types
+        count_calls = _follows_calls(allowed_edge_types)
         current_frontier = [start_id]
         depth = 0
 

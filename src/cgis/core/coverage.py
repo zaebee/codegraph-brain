@@ -35,9 +35,10 @@ class TraversalCoverage(BaseModel):
 
     ``top_unresolved`` names what the counts are made of, because a ratio alone
     cannot tell ``logger.info`` from ``billing.charge``. On cgis's own
-    ``IngestionPipeline.run`` 92 of 235 calls are unresolved, and the most
-    frequent are ``get``, ``model_copy``, ``info``, ``append`` — methods on
-    untyped locals, none of them a first-party call the flow is missing.
+    ``IngestionPipeline.run`` (``cgis trace --depth 3`` at 7eb324b) 92 of 235
+    calls are unresolved, and the most frequent are ``logger.info``,
+    ``edge.model_copy`` and ``resolved_edges.append`` — methods on untyped
+    locals, none of them a first-party call the flow is missing.
     """
 
     model_config = ConfigDict(frozen=True)

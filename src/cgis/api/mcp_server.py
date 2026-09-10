@@ -65,6 +65,11 @@ def _blank_fqn_error(fqn: str) -> str | None:
     return None
 
 
+def _wants_json(output_format: str) -> bool:
+    """True when a traversal will be rendered as JSON — the only shape that carries coverage."""
+    return output_format.strip().lower() == "json"
+
+
 def _render_subgraph_with_freshness(
     db_path: str,
     output_format: str,
@@ -321,7 +326,9 @@ def cgis_trace_flow(
             res = resolve_fqn(store, fqn)
             if res.resolved is None:
                 return _resolution_error(fqn, res.candidates, res.truncated)
-            result = QueryEngine(store).get_flow_result(res.resolved, max_depth=depth)
+            result = QueryEngine(store).get_flow_result(
+                res.resolved, max_depth=depth, with_coverage=_wants_json(output_format)
+            )
     except Exception as exc:
         return f"❌ {exc}"
 
@@ -349,7 +356,7 @@ def cgis_analyze_impact(
     coverage}`` payload with real FQNs — letting an agent compute set
     differences (e.g. "which route handlers never reach ``verify_ownership``?")
     directly. ``coverage`` counts unresolved calls whose name matches a
-    traversed function: callers that may be missing, named in
+    traversed function, method or class: callers that may be missing, named in
     ``top_unresolved``. It is an upper bound — a common name matches calls on
     unrelated objects, which the names make visible.
     """
@@ -362,7 +369,9 @@ def cgis_analyze_impact(
             res = resolve_fqn(store, fqn)
             if res.resolved is None:
                 return _resolution_error(fqn, res.candidates, res.truncated)
-            result = QueryEngine(store).get_impact_result(res.resolved, max_depth=depth)
+            result = QueryEngine(store).get_impact_result(
+                res.resolved, max_depth=depth, with_coverage=_wants_json(output_format)
+            )
     except Exception as exc:
         return f"❌ {exc}"
 

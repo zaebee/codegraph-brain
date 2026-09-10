@@ -420,6 +420,7 @@ def trace(
         if output_format != OutputFormat.TEXT:
             flow = QueryEngine(store).get_flow_result(
                 start,
+                with_coverage=output_format == OutputFormat.JSON,
                 max_depth=depth,
                 allowed_edge_types=allowed,
                 show_external=show_external,
@@ -556,6 +557,7 @@ def impact(
         if output_format != OutputFormat.TEXT:
             impact_result = QueryEngine(store).get_impact_result(
                 target,
+                with_coverage=output_format == OutputFormat.JSON,
                 max_depth=depth,
                 allowed_edge_types=allowed,
                 show_external=show_external,
