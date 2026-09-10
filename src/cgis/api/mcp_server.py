@@ -13,6 +13,7 @@ from typing import Any
 import structlog
 from mcp.server.mcpserver import MCPServer
 
+from cgis.core.coverage import TraversalCoverage
 from cgis.core.freshness import Freshness, FreshnessState
 from cgis.core.models import Edge, Node, NodeType
 from cgis.extractors.python_extractor import PythonExtractor
@@ -72,10 +73,11 @@ def _render_subgraph_with_freshness(
     title: str,
     nodes: list[Node],
     edges: list[Edge],
+    coverage: TraversalCoverage | None = None,
 ) -> str:
     """`_render_subgraph`, with this database's freshness measured for it (#175)."""
     return _render_subgraph(
-        output_format, root, note, title, nodes, edges, _graph_freshness(db_path)
+        output_format, root, note, title, nodes, edges, _graph_freshness(db_path), coverage
     )
 
 
@@ -87,6 +89,7 @@ def _render_subgraph(
     nodes: list[Node],
     edges: list[Edge],
     freshness: "Freshness | None" = None,
+    coverage: TraversalCoverage | None = None,
 ) -> str:
     """Render a traversal result as a Mermaid diagram or joinable JSON (#171).
 
@@ -98,11 +101,12 @@ def _render_subgraph(
     ``freshness`` is placed differently in each: a key inside the JSON object,
     a prose note above the diagram. Prefixing the JSON would make it unparseable
     exactly when the graph goes stale, and this renderer is the only place that
-    knows which shape it is about to produce (#175).
+    knows which shape it is about to produce (#175). ``coverage`` (#201) rides
+    in the JSON only.
     """
     fmt = output_format.strip().lower()
     if fmt == "json":
-        payload = graph_to_json(root, nodes, edges)
+        payload = graph_to_json(root, nodes, edges, coverage)
         if freshness is not None and freshness.state is not FreshnessState.FRESH:
             payload = {**payload, "freshness": freshness.model_dump()}
         return json.dumps(payload, indent=2)
@@ -300,8 +304,12 @@ def cgis_trace_flow(
     """Trace the execution call-graph starting from a specific FQN downwards.
 
     ``output_format="mermaid"`` (default) returns a human-readable diagram;
-    ``"json"`` returns a joinable ``{root, nodes, edges}`` payload with real
-    FQNs (not display hashes) for agent/CI use. Use ``cgis_ingest`` first if
+    ``"json"`` returns a joinable ``{root, nodes, edges, coverage}`` payload
+    with real FQNs (not display hashes) for agent/CI use. ``coverage`` counts
+    the calls the traversed functions make that resolved to nothing, and
+    ``top_unresolved`` names the most frequent. Read the names, not only the
+    ratio: in Python most are methods on untyped locals (``logger.info``,
+    ``items.append``), which cut nothing short. Use ``cgis_ingest`` first if
     the database does not exist yet.
     """
     if blank := _blank_fqn_error(fqn):
@@ -313,13 +321,20 @@ def cgis_trace_flow(
             res = resolve_fqn(store, fqn)
             if res.resolved is None:
                 return _resolution_error(fqn, res.candidates, res.truncated)
-            nodes, edges = QueryEngine(store).get_flow_graph(res.resolved, max_depth=depth)
+            result = QueryEngine(store).get_flow_result(res.resolved, max_depth=depth)
     except Exception as exc:
         return f"❌ {exc}"
 
     note = f"> Resolved '{fqn}' → '{res.resolved}'\n\n" if res.via_suffix else ""
     return _render_subgraph_with_freshness(
-        db_path, output_format, res.resolved, note, "Execution flow for", nodes, edges
+        db_path,
+        output_format,
+        res.resolved,
+        note,
+        "Execution flow for",
+        result.nodes,
+        result.edges,
+        result.coverage,
     )
 
 
@@ -330,9 +345,13 @@ def cgis_analyze_impact(
     """Analyse transitive upstream callers of a specific FQN.
 
     Answers "what breaks if I change X?". ``output_format="mermaid"`` (default)
-    returns a diagram; ``"json"`` returns a joinable ``{root, nodes, edges}``
-    payload with real FQNs — letting an agent compute set differences (e.g.
-    "which route handlers never reach ``verify_ownership``?") directly.
+    returns a diagram; ``"json"`` returns a joinable ``{root, nodes, edges,
+    coverage}`` payload with real FQNs — letting an agent compute set
+    differences (e.g. "which route handlers never reach ``verify_ownership``?")
+    directly. ``coverage`` counts unresolved calls whose name matches a
+    traversed function: callers that may be missing, named in
+    ``top_unresolved``. It is an upper bound — a common name matches calls on
+    unrelated objects, which the names make visible.
     """
     if blank := _blank_fqn_error(fqn):
         return blank
@@ -343,13 +362,20 @@ def cgis_analyze_impact(
             res = resolve_fqn(store, fqn)
             if res.resolved is None:
                 return _resolution_error(fqn, res.candidates, res.truncated)
-            nodes, edges = QueryEngine(store).get_impact_graph(res.resolved, max_depth=depth)
+            result = QueryEngine(store).get_impact_result(res.resolved, max_depth=depth)
     except Exception as exc:
         return f"❌ {exc}"
 
     note = f"> Resolved '{fqn}' → '{res.resolved}'\n\n" if res.via_suffix else ""
     return _render_subgraph_with_freshness(
-        db_path, output_format, res.resolved, note, "Impact analysis for", nodes, edges
+        db_path,
+        output_format,
+        res.resolved,
+        note,
+        "Impact analysis for",
+        result.nodes,
+        result.edges,
+        result.coverage,
     )
 
 

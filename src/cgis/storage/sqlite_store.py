@@ -473,6 +473,32 @@ class SQLiteStore:
         """Fetch all incoming edges for a set of nodes in one query per chunk."""
         return self._get_edges_batch(node_ids, column="target")
 
+    def unknown_calls_named(self, names: set[str]) -> dict[str, int]:
+        """Count CALLS edges into UNKNOWN virtual nodes named one of ``names``, per target.
+
+        An unresolved ``repo.get_user()`` is stored as an edge into a virtual
+        node ``repo.get_user`` named ``get_user``. Counting those by name is how
+        an upstream traversal estimates the callers it cannot see (#201); keying
+        the counts by target lets the report name them.
+        """
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        unique = sorted(names)
+        chunk_size = 999 - 2  # two parameters go to the type and namespace
+        counts: dict[str, int] = {}
+        for i in range(0, len(unique), chunk_size):
+            chunk = unique[i : i + chunk_size]
+            placeholders = ", ".join(["?"] * len(chunk))
+            rows = self._conn.execute(
+                "SELECT e.target, COUNT(*) FROM edges e JOIN nodes n ON e.target = n.id"
+                f" WHERE e.type = ? AND n.namespace = ? AND n.name IN ({placeholders})"
+                " GROUP BY e.target",
+                [EdgeType.CALLS.value, NodeNamespace.UNKNOWN.value, *chunk],
+            ).fetchall()
+            for row in rows:
+                counts[row[0]] = counts.get(row[0], 0) + row[1]
+        return counts
+
     def _get_edges_batch(self, node_ids: list[str], column: str) -> list[Edge]:
         """Fetch edges for many nodes at once, chunked to respect SQLite's 999-param limit."""
         if column not in ("source", "target"):
