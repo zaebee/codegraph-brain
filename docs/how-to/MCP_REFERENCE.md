@@ -10,9 +10,13 @@
 Analyse transitive upstream callers of a specific FQN.
 
     Answers "what breaks if I change X?". ``output_format="mermaid"`` (default)
-    returns a diagram; ``"json"`` returns a joinable ``{root, nodes, edges}``
-    payload with real FQNs — letting an agent compute set differences (e.g.
-    "which route handlers never reach ``verify_ownership``?") directly.
+    returns a diagram; ``"json"`` returns a joinable ``{root, nodes, edges,
+    coverage}`` payload with real FQNs — letting an agent compute set
+    differences (e.g. "which route handlers never reach ``verify_ownership``?")
+    directly. ``coverage`` counts unresolved calls whose name matches a
+    traversed function, method or class: callers that may be missing, named in
+    ``top_unresolved``. It is an upper bound — a common name matches calls on
+    unrelated objects, which the names make visible.
 
 | Argument | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
@@ -325,8 +329,12 @@ Suggest sub-package boundaries for a package from its dependency communities.
 Trace the execution call-graph starting from a specific FQN downwards.
 
     ``output_format="mermaid"`` (default) returns a human-readable diagram;
-    ``"json"`` returns a joinable ``{root, nodes, edges}`` payload with real
-    FQNs (not display hashes) for agent/CI use. Use ``cgis_ingest`` first if
+    ``"json"`` returns a joinable ``{root, nodes, edges, coverage}`` payload
+    with real FQNs (not display hashes) for agent/CI use. ``coverage`` counts
+    the calls the traversed functions make that resolved to nothing, and
+    ``top_unresolved`` names the most frequent. Read the names, not only the
+    ratio: in Python most are methods on untyped locals (``logger.info``,
+    ``items.append``), which cut nothing short. Use ``cgis_ingest`` first if
     the database does not exist yet.
 
 | Argument | Type | Required | Description |
