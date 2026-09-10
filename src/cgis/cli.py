@@ -31,6 +31,7 @@ from rich.table import Table
 from rich.tree import Tree
 
 from cgis import __app_name__, __version__
+from cgis.core.coverage import TraversalCoverage
 from cgis.core.freshness import FreshnessState
 from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeNamespace, NodeType
 from cgis.extractors.python_extractor import file_path_to_module_fqn
@@ -287,12 +288,17 @@ def _render_graph(
     nodes: list[Node],
     edges: list[Edge],
     internal_only: bool = False,
+    coverage: TraversalCoverage | None = None,
 ) -> str:
-    """Render a subgraph for a non-text format (Mermaid for eyes, JSON for agents)."""
+    """Render a subgraph for a non-text format (Mermaid for eyes, JSON for agents).
+
+    ``coverage`` was measured by the engine before ``internal_only`` filters
+    anything, so the filter cannot hide the unresolved calls it removes (#201).
+    """
     if internal_only:
         nodes, edges = _filter_internal(nodes, edges)
     if output_format == OutputFormat.JSON:
-        return _json.dumps(graph_to_json(root, nodes, edges), indent=2)
+        return _json.dumps(graph_to_json(root, nodes, edges, coverage), indent=2)
     return MermaidCompiler().compile(nodes, edges)
 
 
@@ -412,14 +418,19 @@ def trace(
             raise typer.Exit(code=1)
 
         if output_format != OutputFormat.TEXT:
-            nodes, edges = QueryEngine(store).get_flow_graph(
+            flow = QueryEngine(store).get_flow_result(
                 start,
+                with_coverage=output_format == OutputFormat.JSON,
                 max_depth=depth,
                 allowed_edge_types=allowed,
                 show_external=show_external,
                 min_confidence=min_confidence,
             )
-            typer.echo(_render_graph(output_format, start, nodes, edges, internal_only))
+            typer.echo(
+                _render_graph(
+                    output_format, start, flow.nodes, flow.edges, internal_only, flow.coverage
+                )
+            )
         else:
             if internal_only:
                 raise typer.BadParameter(_INTERNAL_ONLY_TEXT_ERR)
@@ -544,14 +555,24 @@ def impact(
             raise typer.Exit(code=1)
 
         if output_format != OutputFormat.TEXT:
-            nodes, edges = QueryEngine(store).get_impact_graph(
+            impact_result = QueryEngine(store).get_impact_result(
                 target,
+                with_coverage=output_format == OutputFormat.JSON,
                 max_depth=depth,
                 allowed_edge_types=allowed,
                 show_external=show_external,
                 min_confidence=min_confidence,
             )
-            typer.echo(_render_graph(output_format, target, nodes, edges, internal_only))
+            typer.echo(
+                _render_graph(
+                    output_format,
+                    target,
+                    impact_result.nodes,
+                    impact_result.edges,
+                    internal_only,
+                    impact_result.coverage,
+                )
+            )
         else:
             if internal_only:
                 raise typer.BadParameter(_INTERNAL_ONLY_TEXT_ERR)

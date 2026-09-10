@@ -1,5 +1,6 @@
 """Unit tests for the JSON graph serializer (#171)."""
 
+from cgis.core.coverage import TraversalCoverage
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.query.render.graph_json import graph_to_json
 
@@ -61,3 +62,30 @@ def test_graph_to_json_preserves_unresolved_raw_call_targets() -> None:
     payload = graph_to_json("pkg.a", nodes, edges)
 
     assert payload["edges"][0]["dst"] == "raw_call:mystery"
+
+
+def test_graph_to_json_carries_coverage_when_given() -> None:
+    """A traversal's local coverage rides in the same payload as its subgraph (#201)."""
+    coverage = TraversalCoverage(
+        basis="unresolved_calls_made",
+        calls_examined=4,
+        calls_unresolved=1,
+        top_unresolved=[("logger.info", 1)],
+    )
+
+    payload = graph_to_json("pkg.a", [_make_node("pkg.a")], [], coverage=coverage)
+
+    assert payload["coverage"] == {
+        "basis": "unresolved_calls_made",
+        "calls_examined": 4,
+        "calls_unresolved": 1,
+        "top_unresolved": [("logger.info", 1)],
+        "unresolved_ratio": 0.25,
+    }
+
+
+def test_graph_to_json_omits_coverage_when_none() -> None:
+    """Structure queries follow no calls, so they carry no coverage key at all."""
+    payload = graph_to_json("pkg.a", [_make_node("pkg.a")], [])
+
+    assert "coverage" not in payload

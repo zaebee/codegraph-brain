@@ -8,18 +8,28 @@ set operations (e.g. authz-coverage or dead-code sweeps). See issue #171.
 
 from typing import Any
 
+from cgis.core.coverage import TraversalCoverage
 from cgis.core.models import Edge, Node
 
 
-def graph_to_json(root: str, nodes: list[Node], edges: list[Edge]) -> dict[str, Any]:
-    """Build the JSON shape ``{root, nodes, edges}`` for a traversal result.
+def graph_to_json(
+    root: str,
+    nodes: list[Node],
+    edges: list[Edge],
+    coverage: TraversalCoverage | None = None,
+) -> dict[str, Any]:
+    """Build the JSON shape ``{root, nodes, edges[, coverage]}`` for a traversal result.
 
     ``root`` is the resolved FQN the traversal started from. Node entries carry
     ``fqn``/``type``/``file``/``line``; edge entries carry ``src``/``dst``/
     ``type``/``confidence``. Unresolved targets keep their ``raw_call:`` prefix
     so consumers can tell a resolved edge from a dangling one.
+
+    ``coverage`` is the traversal's local resolution coverage (#201). A
+    structure query follows no calls and passes none, so the key is omitted
+    rather than reported as a zero it did not measure.
     """
-    return {
+    payload: dict[str, Any] = {
         "root": root,
         "nodes": [
             {
@@ -40,3 +50,6 @@ def graph_to_json(root: str, nodes: list[Node], edges: list[Edge]) -> dict[str, 
             for edge in edges
         ],
     }
+    if coverage is not None:
+        payload["coverage"] = coverage.model_dump()
+    return payload

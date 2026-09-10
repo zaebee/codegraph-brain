@@ -185,6 +185,36 @@ def test_cgis_analyze_impact_json_returns_joinable_payload(
     assert any(e["src"].endswith("mod.caller") for e in payload["edges"])
 
 
+def test_cgis_trace_flow_json_reports_local_coverage(
+    repo_with_calls: tuple[Path, Path],
+) -> None:
+    """`extra.x` makes one call, `ghost_fn()`, and it did not resolve (#201)."""
+    repo, db = repo_with_calls
+    cgis_ingest(str(repo), str(db))
+
+    payload = json.loads(cgis_trace_flow("extra.x", str(db), depth=3, output_format="json"))
+
+    assert payload["coverage"]["basis"] == "unresolved_calls_made"
+    assert payload["coverage"]["calls_examined"] == 1
+    assert payload["coverage"]["calls_unresolved"] == 1
+    assert payload["coverage"]["unresolved_ratio"] == pytest.approx(1.0)
+    assert payload["coverage"]["top_unresolved"] == [["ghost_fn", 1]]
+
+
+def test_cgis_analyze_impact_json_reports_local_coverage(
+    repo_with_calls: tuple[Path, Path],
+) -> None:
+    """Nothing unresolved is named `callee`, so its one caller is the whole answer (#201)."""
+    repo, db = repo_with_calls
+    cgis_ingest(str(repo), str(db))
+
+    payload = json.loads(cgis_analyze_impact("mod.callee", str(db), depth=3, output_format="json"))
+
+    assert payload["coverage"]["basis"] == "unresolved_calls_by_name"
+    assert payload["coverage"]["calls_examined"] == 1
+    assert payload["coverage"]["calls_unresolved"] == 0
+
+
 def test_cgis_get_structure_json_returns_joinable_payload(
     repo_with_calls: tuple[Path, Path],
 ) -> None:

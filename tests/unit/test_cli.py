@@ -981,6 +981,41 @@ def test_impact_json_emits_real_fqns(tmp_path: Path) -> None:
     assert any(e["src"] == caller_fqn for e in payload["edges"])
 
 
+def test_trace_json_reports_coverage_the_internal_filter_would_hide(tmp_path: Path) -> None:
+    """`--internal-only` drops the UNKNOWN node from the output, not from the count (#201).
+
+    The filter runs in the CLI after the engine returns, so a coverage figure
+    derived from the rendered edges would say "nothing unresolved" here.
+    """
+    py_file = tmp_path / "funcs.py"
+    py_file.write_text("def caller():\n    ghost_fn()\n", encoding="utf-8")
+    db_file = tmp_path / "graph.db"
+    runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
+    caller_fqn = f"{file_path_to_module_fqn(py_file.relative_to(tmp_path).as_posix())}.caller"
+
+    result = runner.invoke(
+        app,
+        ["trace", caller_fqn, "--db", str(db_file), "--format", "json", "--internal-only"],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["edges"] == []
+    assert payload["coverage"]["calls_unresolved"] == 1
+    assert payload["coverage"]["calls_examined"] == 1
+
+
+def test_impact_json_reports_coverage(tmp_path: Path) -> None:
+    """`impact --format json` carries the upstream coverage basis (#201)."""
+    db_file, caller_fqn = _ingest_caller_callee(tmp_path)
+    callee_fqn = caller_fqn.replace(".caller", ".callee")
+
+    result = runner.invoke(app, ["impact", callee_fqn, "--db", str(db_file), "--format", "json"])
+
+    assert result.exit_code == 0
+    assert json.loads(result.output)["coverage"]["basis"] == "unresolved_calls_by_name"
+
+
 def test_structure_json_emits_real_fqns(tmp_path: Path) -> None:
     """`structure --format json` returns parseable JSON (#171)."""
     db_file, caller_fqn = _ingest_caller_callee(tmp_path)
