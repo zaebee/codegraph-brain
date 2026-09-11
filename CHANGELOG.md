@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.20.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.19.0...codegraph-brain-v0.20.0) (2026-09-11)
+
+
+### Features
+
+* **query:** a traversal says how much of its neighbourhood resolved ([#201](https://github.com/zaebee/codegraph-brain/issues/201)) ([#448](https://github.com/zaebee/codegraph-brain/issues/448)) ([0c63469](https://github.com/zaebee/codegraph-brain/commit/0c634697789f5264316c8a218e993f13a9a0f73f))
+
+
+### Documentation
+
+* auto-sync architecture graph and MCP reference ([#449](https://github.com/zaebee/codegraph-brain/issues/449)) ([e9eccae](https://github.com/zaebee/codegraph-brain/commit/e9eccae8d43e8dc264ca87f8ea0a45752471f079))
+
 ## [0.19.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.18.0...codegraph-brain-v0.19.0) (2026-09-09)
 
 
