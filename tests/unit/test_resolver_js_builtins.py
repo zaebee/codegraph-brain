@@ -127,6 +127,16 @@ def test_edge_without_file_path_uses_source_node_file() -> None:
         ("export function f(process: Proc) {\n  process.run();\n}\n", "process.run"),
         ("export const g = (console: Log) => console.log('x');\n", "console.log"),
         (
+            "import crypto = require('crypto');\n"
+            "export function g() {\n  crypto.randomUUID();\n}\n",
+            "crypto.randomUUID",
+        ),
+        (
+            "namespace crypto {\n  export function x() {}\n}\n"
+            "export function g() {\n  crypto.x();\n}\n",
+            "crypto.x",
+        ),
+        (
             "export function f() {\n  try { x(); } catch (Event) { Event.stop(); }\n}\n",
             "Event.stop",
         ),
@@ -156,7 +166,7 @@ def _shadowed(code: str) -> list[str]:
     """The shadowed_globals the TS extractor records on the FILE node."""
     nodes, _ = TypeScriptExtractor().parse(code, "src/app/m.ts")
     file_node = next(n for n in nodes if n.type == NodeType.FILE)
-    shadowed: list[str] = file_node.metadata["shadowed_globals"]
+    shadowed: list[str] = file_node.metadata.get("shadowed_globals", [])
     return shadowed
 
 
@@ -170,6 +180,10 @@ def _shadowed(code: str) -> list[str]:
         ("const h = async Response => 1;", ["Response"]),
         ("function f({ Headers = 1 }: T, URLSearchParams?: U) {}", ["Headers", "URLSearchParams"]),
         ("let history; var location;", ["history", "location"]),
+        ("import crypto = require('crypto');", ["crypto"]),
+        ("export import history = X.Y;", ["history"]),
+        ("namespace crypto { }\nmodule history { }", ["crypto", "history"]),
+        ("declare namespace location { }\nnamespace process.v2 { }", ["location", "process"]),
     ],
 )
 def test_shadowed_globals_binding_positions(code: str, expected: list[str]) -> None:
@@ -186,6 +200,7 @@ def test_shadowed_globals_binding_positions(code: str, expected: list[str]) -> N
         "import { fetch as f } from 'undici';",
         "const x = Math.max(1, 2);\nfetch('a');",  # plain use is not a binding
         "const notAGlobal = 1;",
+        "declare module 'fetch' { }",  # a quoted module name binds nothing
     ],
 )
 def test_shadowed_globals_ignores_non_bindings(code: str) -> None:

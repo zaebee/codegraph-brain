@@ -127,8 +127,10 @@ class TypeScriptExtractor(BaseExtractor):
             start_line=1,
             end_line=tree.root_node.end_point[0] + 1,
             namespace=NodeNamespace.INTERNAL,
-            metadata={"shadowed_globals": shadowed_globals(tree.root_node)},
         )
+        shadowed = shadowed_globals(tree.root_node)
+        if shadowed:
+            file_node = file_node.model_copy(update={"metadata": {"shadowed_globals": shadowed}})
         nodes: list[Node] = [file_node]
         edges: list[Edge] = []
 

@@ -33,8 +33,14 @@ _NAMED_DECLARATIONS: frozenset[str] = frozenset(
         "class_declaration",
         "abstract_class_declaration",
         "enum_declaration",
+        "internal_module",  # namespace crypto { }
+        "module",  # module history { }  — a quoted `declare module 'x'` binds nothing
     }
 )
+
+#: `import crypto = require('crypto')` and `import history = X.Y`: the local name
+#: is the node's first identifier child.
+_IMPORT_EQUALS: frozenset[str] = frozenset({"import_require_clause", "import_alias"})
 
 
 def shadowed_globals(root: TSNode) -> list[str]:
@@ -48,10 +54,17 @@ def _collect(node: TSNode, bound: set[str]) -> None:
     """Walk the tree, adding every name introduced by a binding position."""
     if node.type == "import_clause":
         _collect_import_clause(node, bound)
+    elif node.type in _IMPORT_EQUALS:
+        local = next((c for c in node.children if c.type == "identifier"), None)
+        if local is not None:
+            _add(local, bound)
     elif node.type in _NAMED_DECLARATIONS:
         name = node.child_by_field_name("name")
-        if name is not None and name.text is not None:
-            bound.add(name.text.decode("utf-8"))
+        if name is not None and name.type in ("identifier", "type_identifier"):
+            _add(name, bound)
+        elif name is not None and name.type == "nested_identifier" and name.text is not None:
+            # namespace history.v2 { } binds `history`
+            bound.add(name.text.decode("utf-8").split(".", maxsplit=1)[0])
     field = _PATTERN_FIELDS.get(node.type)
     if field is not None:
         pattern = node.child_by_field_name(field)
