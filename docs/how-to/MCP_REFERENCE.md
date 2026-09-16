@@ -237,9 +237,11 @@ Scan a local directory, extract all symbols, resolve links, and build the graph 
 
     By default the ingest is **incremental**: only changed/new files are
     re-scanned, and the summary reports both what changed this run and the
-    whole-graph total. Set ``full_rebuild=True`` to re-scan every file and
-    overwrite the database from scratch — use this to drop nodes for files that
-    were deleted or renamed, which an incremental run leaves behind.
+    whole-graph total. When a change alters what other files resolve against — a
+    renamed, removed or added symbol, a deleted or new file, a changed base class
+    or re-export — the incremental run rebuilds the whole graph itself, so edges
+    in unchanged files never point at symbols that no longer exist. Set
+    ``full_rebuild=True`` to force a re-scan of every file from scratch.
 
 | Argument | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
