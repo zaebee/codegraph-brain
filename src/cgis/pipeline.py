@@ -240,8 +240,9 @@ class IngestionPipeline:
         Read before persistence, while the store still holds each changed file's
         previous nodes and edges. Three cases invalidate stored edges elsewhere:
         a file removed from disk, a file new to a non-empty graph (its names can
-        make a global lookup ambiguous or satisfy one that missed), and a changed
-        file whose resolution signature differs. Tracked files are read from the
+        make a global lookup ambiguous or satisfy one that missed — it shows up as
+        a signature against no stored rows), and a changed file whose resolution
+        signature differs. Tracked files are read from the
         nodes table, not `files_state`, which a JSON-less full `cgis ingest -o
         x.db` leaves empty.
         """
@@ -250,15 +251,34 @@ class IngestionPipeline:
             return False
         if tracked - found_file_paths:
             return True
+
+        # One pass each, not one per changed file: a lost files_state marks every
+        # file changed, and per-file scans of all nodes and edges went quadratic.
+        # Keyed by id with the last occurrence winning, which is what the store's
+        # INSERT OR REPLACE keeps when a file declares one id twice.
+        new_by_file: dict[str, dict[str, Node]] = {}
+        for node in all_nodes:
+            if node.file_path in changed_files:
+                new_by_file.setdefault(node.file_path, {})[node.id] = node
+        new_extends: dict[str, dict[str, Edge]] = {}
+        for edge in resolved_edges:
+            if edge.type == EdgeType.EXTENDS:
+                new_extends.setdefault(edge.source, {})[edge.id] = edge
+
         for file_path in changed_files:
+            # No early "no stored rows means a new file": a file whose every id is
+            # held by another file's row (`gen/api.py` beside `gen/api/`) has none,
+            # and is not new. A genuinely new file has ids the store lacks, so its
+            # fresh signature is non-empty against an empty one below.
             old_nodes = store.get_nodes_by_file(file_path)
-            if not old_nodes:
-                return True
             old_ids = [n.id for n in old_nodes]
             old = _resolution_signature(old_nodes, store.get_outgoing_edges_batch(old_ids))
-            new_nodes = [n for n in all_nodes if n.file_path == file_path]
-            new_ids = {n.id for n in new_nodes}
-            new_edges = [e for e in resolved_edges if e.source in new_ids]
+            fresh = new_by_file.get(file_path, {})
+            # An id another file's row holds (`m.py` beside `m/__init__.py`) was
+            # never this file's in the store, so it cannot be in `old` either.
+            owner = {n.id: n.file_path for n in store.get_nodes(list(fresh))}
+            new_nodes = [n for i, n in fresh.items() if owner.get(i, file_path) == file_path]
+            new_edges = [e for n in new_nodes for e in new_extends.get(n.id, {}).values()]
             if _resolution_signature(new_nodes, new_edges) != old:
                 return True
         return False

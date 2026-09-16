@@ -7,6 +7,7 @@ go stale, so the run falls back to a full rebuild. A body-only edit stays
 incremental.
 """
 
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -203,3 +204,82 @@ def test_rebuild_only_when_symbols_change(tmp_path: Path, edit: Files, expected:
     in the rebuild. That repeat is the whole cost of the check.
     """
     assert _parsed_on_second_run(tmp_path, edit) == expected
+
+
+@pytest.mark.parametrize(
+    ("initial", "edit"),
+    [
+        (
+            {"m.py": "def a():\n    return 1\n", "m/__init__.py": "def b():\n    return 1\n"},
+            {"m.py": "def a():\n    return 5\n"},
+        ),
+        (
+            {
+                "c.py": (
+                    "try:\n    import fast\n\n    class C:\n"
+                    "        def __init__(self, x: int) -> None:\n            self.x = x\n"
+                    "except ImportError:\n\n    class C:\n"
+                    "        def __init__(self, x: str) -> None:\n            self.x = x\n"
+                ),
+            },
+            {
+                "c.py": (
+                    "try:\n    import fast\n\n    class C:\n"
+                    "        def __init__(self, x: int) -> None:\n            self.x = x + 0\n"
+                    "except ImportError:\n\n    class C:\n"
+                    "        def __init__(self, x: str) -> None:\n            self.x = x\n"
+                ),
+            },
+        ),
+    ],
+    ids=["module file beside its package", "class defined in try and except"],
+)
+def test_body_edit_with_colliding_ids_stays_incremental(
+    tmp_path: Path, initial: Files, edit: Files
+) -> None:
+    """Two nodes sharing an id are stored as one row; that must not read as a symbol change.
+
+    `m.py` and `m/__init__.py` both map to module `m`, and a class defined in both
+    branches of a `try` is one id twice. The store keeps one row per id, so the
+    stored signature can never equal a naive fresh one — every edit would rebuild.
+    """
+    parsed: list[str] = []
+    pipeline = IngestionPipeline({".py": _CountingExtractor(parsed)})
+    work = tmp_path / "work"
+    _write(work, initial)
+    db = str(tmp_path / "g.db")
+    _ingest(work, db, pipeline)
+    for _ in range(2):
+        parsed.clear()
+        _write(work, edit)
+        _ingest(work, db, pipeline)
+        assert parsed == sorted(edit), "a body edit re-parsed the tree"
+        edit = {path: text + "\n" for path, text in edit.items()}
+
+
+def test_file_whose_ids_all_collide_is_not_new(tmp_path: Path) -> None:
+    """With files_state lost, a module whose every id another file holds must not rebuild.
+
+    `api.py` and `api/__init__.py` both map to `api`; the store keeps the rows of
+    whichever was written last, so `api.py` has no stored rows of its own. Treating
+    that as a new file rebuilt the owner-api graph on every lost-cache run.
+    """
+    parsed: list[str] = []
+    pipeline = IngestionPipeline({".py": _CountingExtractor(parsed)})
+    work = tmp_path / "work"
+    _write(
+        work, {"api.py": "def f():\n    return 1\n", "api/__init__.py": "def f():\n    return 2\n"}
+    )
+    db = str(tmp_path / "g.db")
+    _ingest(work, db, pipeline)
+    with SQLiteStore(db) as store:
+        owners = {n.file_path for n in store.get_all_nodes() if n.id.startswith("api")}
+    assert len(owners) == 1, "fixture no longer collides — the test would pass vacuously"
+
+    with sqlite3.connect(db) as conn:
+        conn.execute("DELETE FROM files_state")
+    parsed.clear()
+    _ingest(work, db, pipeline)
+    assert sorted(parsed) == ["api.py", "api/__init__.py"], (
+        "the run rebuilt instead of staying incremental"
+    )
