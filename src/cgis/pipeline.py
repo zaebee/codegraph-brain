@@ -44,7 +44,7 @@ def _resolution_signature(nodes: list[Node], edges: list[Edge]) -> frozenset[str
     for node in nodes:
         keys = _CROSS_FILE_METADATA.get(node.type, ())
         meta = {key: node.metadata.get(key) for key in keys}
-        signature.add(json.dumps([node.id, str(node.type), node.name, meta], sort_keys=True))
+        signature.add(json.dumps([node.id, node.type.value, node.name, meta], sort_keys=True))
     signature.update(
         json.dumps(["EXTENDS", e.source, e.target]) for e in edges if e.type == EdgeType.EXTENDS
     )
@@ -172,7 +172,29 @@ class IngestionPipeline:
                 virtual_nodes=len(virtual_nodes),
             )
 
-        if store is not None and self._cross_file_inputs_changed(
+        if store is None:
+            return all_nodes, all_edges, resolved_edges
+        return self._finish_incremental(
+            repo_path,
+            store,
+            (all_nodes, all_edges, resolved_edges),
+            changed_files,
+            found_file_paths,
+            virtual_nodes,
+        )
+
+    def _finish_incremental(
+        self,
+        repo_path: str,
+        store: "SQLiteStore",
+        result: tuple[list[Node], list[Edge], list[Edge]],
+        changed_files: dict[str, str],
+        found_file_paths: set[str],
+        virtual_nodes: list[Node],
+    ) -> tuple[list[Node], list[Edge], list[Edge]]:
+        """Persist an incremental run, or rebuild when unchanged files' edges went stale."""
+        all_nodes, _all_edges, resolved_edges = result
+        if self._cross_file_inputs_changed(
             store, all_nodes, resolved_edges, changed_files, found_file_paths
         ):
             # Unchanged files keep edges resolved against the old symbols, so the
@@ -182,15 +204,13 @@ class IngestionPipeline:
             store.clear()
             return self.run(repo_path, store=store)
 
-        if store is not None:
-            self._persist_incremental(
-                store, all_nodes, resolved_edges, changed_files, found_file_paths, virtual_nodes
-            )
-            logger.info("Running semantic uplift...")
-            SemanticUpliftEngine(store, self._domains_config).execute_uplift()
-            logger.info("Semantic uplift complete.")
-
-        return all_nodes, all_edges, resolved_edges
+        self._persist_incremental(
+            store, all_nodes, resolved_edges, changed_files, found_file_paths, virtual_nodes
+        )
+        logger.info("Running semantic uplift...")
+        SemanticUpliftEngine(store, self._domains_config).execute_uplift()
+        logger.info("Semantic uplift complete.")
+        return result
 
     def _process_file(
         self,
