@@ -78,10 +78,30 @@ class IngestionPipeline:
         """Return the MD5 hex digest of the given source content string."""
         return hashlib.md5(content.encode("utf-8"), usedforsecurity=False).hexdigest()
 
+    @staticmethod
+    def workspace_root(repo_path: str) -> Path:
+        """The canonical root to ingest, or FileNotFoundError / NotADirectoryError.
+
+        Public so a caller about to open a database can refuse a bad path before
+        creating or touching anything.
+        """
+        path = Path(repo_path)
+        if not path.exists():
+            msg = f"Path not found: {repo_path}"
+            raise FileNotFoundError(msg)
+        if not path.is_dir():
+            msg = f"Path is not a directory: {repo_path}"
+            raise NotADirectoryError(msg)
+        # Resolve symlinks + relative dots so that both `cgis ingest ./src` and
+        # `cgis ingest /abs/path/src` produce identical file_paths and FQNs.
+        return path.resolve()
+
     def run(
         self,
         repo_path: str,
         store: "SQLiteStore | None" = None,
+        *,
+        rebuild: bool = False,
     ) -> tuple[list[Node], list[Edge], list[Edge]]:
         """
         The main pipeline execution: Walk -> Extract -> Resolve.
@@ -91,6 +111,11 @@ class IngestionPipeline:
         from the store for the resolver. Only changed/new files are
         re-extracted and persisted. Stale files (removed from disk) are
         cleaned up automatically.
+
+        `rebuild=True` parses every file regardless of stored hashes and replaces
+        the stored graph in the same transaction that writes the new one, so a bad
+        path, an empty walk or a crash before that commit leaves the old graph
+        intact.
         """
         all_nodes: list[Node] = []
         all_edges: list[Edge] = []
@@ -98,18 +123,7 @@ class IngestionPipeline:
         changed_files: dict[str, str] = {}
         found_file_paths: set[str] = set()
 
-        path = Path(repo_path)
-        if not path.exists():
-            msg = f"Path not found: {repo_path}"
-            raise FileNotFoundError(msg)
-        if not path.is_dir():
-            msg = f"Path is not a directory: {repo_path}"
-            raise NotADirectoryError(msg)
-
-        # Canonical workspace root: resolve symlinks + relative dots so that
-        # both `cgis ingest ./src` and `cgis ingest /abs/path/src` produce
-        # identical file_paths and FQNs in the database.
-        workspace_root = path.resolve()
+        workspace_root = self.workspace_root(repo_path)
 
         with Progress(
             SpinnerColumn(),
@@ -145,6 +159,7 @@ class IngestionPipeline:
                         all_nodes,
                         all_edges,
                         changed_files,
+                        rebuild,
                     )
 
                     progress.update(extract_task, advance=1)
@@ -173,17 +188,21 @@ class IngestionPipeline:
         if store is None:
             return all_nodes, all_edges, resolved_edges
         if self._cross_file_inputs_changed(
-            store, all_nodes, resolved_edges, changed_files, found_file_paths
+            store, all_nodes, resolved_edges, changed_files, found_file_paths, rebuild
         ):
             # Unchanged files keep edges resolved against the old symbols, so the
-            # only correct graph is a full one (#38). After clear() the store is
-            # empty, so the re-run cannot take this branch again.
+            # only correct graph is a full one (#38). A rebuild never asks again.
             logger.info("Symbols other files resolve against changed — rebuilding the graph.")
-            store.clear()
-            return self.run(repo_path, store=store)
+            return self.run(repo_path, store=store, rebuild=True)
 
         self._persist_incremental(
-            store, all_nodes, resolved_edges, changed_files, found_file_paths, virtual_nodes
+            store,
+            all_nodes,
+            resolved_edges,
+            changed_files,
+            found_file_paths,
+            virtual_nodes,
+            rebuild,
         )
         logger.info("Running semantic uplift...")
         SemanticUpliftEngine(store, self._domains_config).execute_uplift()
@@ -199,6 +218,7 @@ class IngestionPipeline:
         all_nodes: list[Node],
         all_edges: list[Edge],
         changed_files: dict[str, str],
+        rebuild: bool = False,
     ) -> None:
         """Extract nodes/edges from one file, applying hash-based skip when store is provided."""
         try:
@@ -207,7 +227,7 @@ class IngestionPipeline:
 
             if store is not None:
                 file_hash = self._compute_hash(code)
-                if store.get_file_hash(full_path_str) == file_hash:
+                if not rebuild and store.get_file_hash(full_path_str) == file_hash:
                     all_nodes.extend(store.get_nodes_by_file(full_path_str))
                     return
                 changed_files[full_path_str] = file_hash
@@ -232,6 +252,7 @@ class IngestionPipeline:
         resolved_edges: list[Edge],
         changed_files: dict[str, str],
         found_file_paths: set[str],
+        rebuild: bool = False,
     ) -> bool:
         """True when this run changes what *unchanged* files resolved against.
 
@@ -244,6 +265,11 @@ class IngestionPipeline:
         nodes table, not `files_state`, which a JSON-less full `cgis ingest -o
         x.db` leaves empty.
         """
+        if rebuild or not found_file_paths:
+            # Nothing unchanged survives a rebuild. And an empty tree has no unchanged
+            # files whose edges could be stale: the ordinary stale path removes the
+            # deleted files, where a rebuild of an empty walk would keep them.
+            return False
         tracked = store.get_tracked_source_files()
         if not tracked:
             return False
@@ -313,8 +339,13 @@ class IngestionPipeline:
         changed_files: dict[str, str],
         found_file_paths: set[str],
         virtual_nodes: list[Node] | None = None,
+        rebuild: bool = False,
     ) -> None:
-        """Persist only changed files and clean up stale ones in one transaction."""
+        """Persist only changed files and clean up stale ones in one transaction.
+
+        On a rebuild the whole stored graph is replaced in that transaction, virtual
+        nodes included — unless nothing was extracted, when the old graph is kept.
+        """
         nodes_by_file: dict[str, list[Node]] = {}
         for node in all_nodes:
             if node.file_path in changed_files:
@@ -330,14 +361,18 @@ class IngestionPipeline:
             if file_path and file_path in changed_files:
                 edges_by_file.setdefault(file_path, []).append(edge)
 
+        if rebuild and not nodes_by_file:
+            logger.warning("Rebuild extracted nothing — keeping the stored graph.")
+            return
         stale_files = store.get_all_tracked_files() - found_file_paths
-        store.save_incremental_batch(nodes_by_file, edges_by_file, changed_files, stale_files)
-
-        # Virtual nodes are upserted separately — never deleted — because in incremental
-        # mode only changed files' edges are re-resolved, so virtual_nodes is incomplete.
-        # Orphaned virtual nodes (no incoming edges) are harmless phantom data.
-        if virtual_nodes:
-            store.upsert_virtual_nodes(virtual_nodes)
+        store.save_incremental_batch(
+            nodes_by_file,
+            edges_by_file,
+            changed_files,
+            stale_files,
+            replace_all=rebuild,
+            virtual_nodes=virtual_nodes,
+        )
 
         for file_path in changed_files:
             logger.info("Re-ingested changed file", file_path=file_path)

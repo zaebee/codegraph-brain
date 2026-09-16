@@ -54,7 +54,6 @@ from cgis.query.fqn import resolve_fqn
 from cgis.query.render.graph_json import graph_to_json
 from cgis.query.render.mermaid import MermaidCompiler
 from cgis.query.render.metrics import ArchitectureReport, DuckDBAnalyzer
-from cgis.resolver.uplift import SemanticUpliftEngine
 from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 
 _DEFAULT_DB = "graph.db"
@@ -144,33 +143,27 @@ def main(
     """CGIS — Code Graph Intelligence System CLI."""
 
 
-def _write_graph_output(
+def _write_json_graph(
     output: str,
     source_path: str,
     nodes: list[Node],
     resolved_edges: list[Edge],
-    domains: str | None,
 ) -> None:
-    """Persist the ingestion result to the given output path (.db or .json)."""
-    if output.endswith(".json"):
-        enriched_nodes = HealthScorer(nodes, resolved_edges).enrich()
-        graph_data = {
-            "metadata": {
-                "source_path": source_path,
-                "node_count": len(enriched_nodes),
-                "edge_count": len(resolved_edges),
-            },
-            "nodes": [n.model_dump() for n in enriched_nodes],
-            "edges": [e.model_dump() for e in resolved_edges],
-        }
-        output_path = Path(output)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        with output_path.open("w", encoding="utf-8") as f:
-            _json.dump(graph_data, f, indent=2)
-    else:
-        with SQLiteStore(output) as store:
-            store.save_graph(nodes, resolved_edges, overwrite=True)
-            SemanticUpliftEngine(store, domains).execute_uplift()
+    """Write the ingestion result as a health-enriched graph.json."""
+    enriched_nodes = HealthScorer(nodes, resolved_edges).enrich()
+    graph_data = {
+        "metadata": {
+            "source_path": source_path,
+            "node_count": len(enriched_nodes),
+            "edge_count": len(resolved_edges),
+        },
+        "nodes": [n.model_dump() for n in enriched_nodes],
+        "edges": [e.model_dump() for e in resolved_edges],
+    }
+    output_path = Path(output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8") as f:
+        _json.dump(graph_data, f, indent=2)
 
 
 @app.command()
@@ -225,11 +218,22 @@ def ingest(
         )
         incremental = False
 
+    # Anything but JSON is a database. A full ingest into one runs the
+    # store-backed pipeline as a rebuild — the path MCP `full_rebuild` takes — so
+    # the file hashes the next --incremental compares against are written, and
+    # stale hashes and deleted files' nodes go, in the one transaction that writes
+    # the new graph. Writing it with save_graph afterwards left files_state as it was.
+    to_database = not output.endswith(".json")
     try:
-        if incremental:
+        if to_database:
+            # A bad path must not create or touch the database.
+            IngestionPipeline.workspace_root(path)
             with SQLiteStore(output) as store:
-                nodes, raw_edges, resolved_edges = pipeline.run(path, store=store)
-                store.record_ingest(path)
+                nodes, raw_edges, resolved_edges = pipeline.run(
+                    path, store=store, rebuild=not incremental
+                )
+                if nodes:
+                    store.record_ingest(path)
         else:
             nodes, raw_edges, resolved_edges = pipeline.run(path)
 
@@ -240,14 +244,8 @@ def ingest(
             )
             return
 
-        if not incremental:
-            _write_graph_output(output, path, nodes, resolved_edges, domains)
-            # Anything but JSON is a database — `_write_graph_output` branches on
-            # exactly that, and gating on `.db` alone left `-o graph.sqlite`
-            # advising a re-ingest that would take the same branch again.
-            if not output.endswith(".json"):
-                with SQLiteStore(output) as store:
-                    store.record_ingest(path)
+        if not to_database:
+            _write_json_graph(output, path, nodes, resolved_edges)
 
         table = Table(title="Ingestion Summary")
         table.add_column("Metric", style="cyan")

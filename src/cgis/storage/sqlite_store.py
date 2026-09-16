@@ -20,6 +20,8 @@ from cgis.core.models import (
 from cgis.core.paths import is_excluded_dir, is_test_path
 
 RAW_CALL_PREFIX = "raw_call:"
+_DELETE_ALL_NODES = "DELETE FROM nodes"
+_DELETE_ALL_EDGES = "DELETE FROM edges"
 
 
 @dataclass
@@ -279,20 +281,6 @@ class SQLiteStore:
         with self._conn:
             self._conn.executemany(self._NODE_INSERT, [self._node_to_row(n) for n in nodes])
 
-    def upsert_virtual_nodes(self, nodes: list[Node]) -> None:
-        """Upsert resolver-minted boundary nodes without downgrading a known namespace.
-
-        An incremental run re-resolves only the changed files' edges, so it can mint
-        `json.dumps` as UNKNOWN from a TypeScript local while the stored node is
-        STDLIB from a Python module that did not change. Replacing it would make the
-        namespace flip with whichever language was edited last (#454); an UNKNOWN
-        reading therefore never overwrites a known one.
-        """
-        if not self._conn:
-            raise RuntimeError(self._error_message)
-        with self._conn:
-            self._conn.executemany(self._VIRTUAL_NODE_UPSERT, [self._node_to_row(n) for n in nodes])
-
     def upsert_edges(self, edges: list[Edge]) -> None:
         """Insert or replace edges without deleting existing ones first."""
         if not self._conn:
@@ -357,8 +345,8 @@ class SQLiteStore:
             raise RuntimeError(self._error_message)
         with self._conn:
             if overwrite:
-                self._conn.execute("DELETE FROM nodes")
-                self._conn.execute("DELETE FROM edges")
+                self._conn.execute(_DELETE_ALL_NODES)
+                self._conn.execute(_DELETE_ALL_EDGES)
             self._conn.executemany(self._EDGE_INSERT, [self._edge_to_row(e) for e in edges])
             self._conn.executemany(self._NODE_INSERT, [self._node_to_row(n) for n in nodes])
 
@@ -373,9 +361,15 @@ class SQLiteStore:
         if not self._conn:
             raise RuntimeError(self._error_message)
         with self._conn:
-            self._conn.execute("DELETE FROM nodes")
-            self._conn.execute("DELETE FROM edges")
-            self._conn.execute("DELETE FROM files_state")
+            self._delete_graph()
+
+    def _delete_graph(self) -> None:
+        """Delete every node, edge and file hash — inside the caller's transaction."""
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        self._conn.execute(_DELETE_ALL_NODES)
+        self._conn.execute(_DELETE_ALL_EDGES)
+        self._conn.execute("DELETE FROM files_state")
 
     def get_node_count(self) -> int:
         """Return the total node count via a cheap COUNT(*) (no deserialization)."""
@@ -590,12 +584,30 @@ class SQLiteStore:
         edges_by_file: dict[str, list[Edge]],
         file_hashes: dict[str, str],
         stale_files: set[str],
+        *,
+        replace_all: bool = False,
+        virtual_nodes: list[Node] | None = None,
     ) -> None:
-        """Atomically delete changed/stale files and insert new data in one transaction."""
+        """Atomically delete changed/stale files and insert new data in one transaction.
+
+        `replace_all` empties nodes, edges and files_state inside the same
+        transaction instead (ignoring `stale_files`), so a full rebuild either
+        commits the new graph or leaves the old one untouched.
+
+        `virtual_nodes` — resolver-minted boundary nodes — are written in the same
+        transaction and never deleted outside a rebuild, since an incremental run
+        re-resolves only the changed files' edges. They are upserted without
+        downgrading a known namespace: an incremental run can mint `json.dumps` as
+        UNKNOWN from a TypeScript local while the stored node is STDLIB from a
+        Python module that did not change, and replacing it would make the
+        namespace flip with whichever language was edited last (#454).
+        """
         if not self._conn:
             raise RuntimeError(self._error_message)
-        all_changed = set(file_hashes) | stale_files
+        all_changed = set() if replace_all else set(file_hashes) | stale_files
         with self._conn:
+            if replace_all:
+                self._delete_graph()
             for file_path in all_changed:
                 self._conn.execute(
                     "DELETE FROM edges WHERE source IN (SELECT id FROM nodes WHERE file_path = ?)",
@@ -608,6 +620,10 @@ class SQLiteStore:
                 self._conn.executemany(self._NODE_INSERT, [self._node_to_row(n) for n in nodes])
             for edges in edges_by_file.values():
                 self._conn.executemany(self._EDGE_INSERT, [self._edge_to_row(e) for e in edges])
+            if virtual_nodes:
+                self._conn.executemany(
+                    self._VIRTUAL_NODE_UPSERT, [self._node_to_row(n) for n in virtual_nodes]
+                )
             for file_path, hash_val in file_hashes.items():
                 self._conn.execute(
                     "INSERT OR REPLACE INTO files_state (file_path, hash) VALUES (?, ?)",

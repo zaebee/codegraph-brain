@@ -8,6 +8,7 @@ incremental.
 """
 
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -276,10 +277,56 @@ def test_file_whose_ids_all_collide_is_not_new(tmp_path: Path) -> None:
         owners = {n.file_path for n in store.get_all_nodes() if n.id.startswith("api")}
     assert len(owners) == 1, "fixture no longer collides — the test would pass vacuously"
 
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:  # closing() alone does not commit
         conn.execute("DELETE FROM files_state")
     parsed.clear()
     _ingest(work, db, pipeline)
     assert sorted(parsed) == ["api.py", "api/__init__.py"], (
         "the run rebuilt instead of staying incremental"
     )
+
+
+def test_rebuild_that_fails_while_writing_keeps_the_old_graph(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The old graph is replaced inside the write transaction, so a failed write rolls back."""
+    pipeline = IngestionPipeline({".py": PythonExtractor()})
+    work = tmp_path / "work"
+    _write(work, {"pkg/a.py": "def foo():\n    return 1\n", "pkg/b.py": _B_IMPORTS_FOO})
+    db = str(tmp_path / "g.db")
+    _ingest(work, db, pipeline)
+    before = _graph(db)
+
+    def broken_row(_self: SQLiteStore, _edge: Edge) -> tuple[object, ...]:
+        msg = "disk full"
+        raise sqlite3.OperationalError(msg)
+
+    monkeypatch.setattr(SQLiteStore, "_edge_to_row", broken_row)
+    root = str(work)
+    with SQLiteStore(db) as store, pytest.raises(sqlite3.OperationalError):
+        pipeline.run(root, store=store, rebuild=True)
+    monkeypatch.undo()
+    assert _graph(db) == before
+
+
+def test_incremental_run_over_a_tree_with_every_file_deleted_empties_the_graph(
+    tmp_path: Path,
+) -> None:
+    """Deleting every file is a real change, not an empty rebuild to be refused.
+
+    The stale files trigger the cross-file check; a rebuild of an empty walk would
+    keep the old graph for good, so an empty tree must take the ordinary stale path.
+    """
+    pipeline = IngestionPipeline({".py": PythonExtractor()})
+    work = tmp_path / "work"
+    _write(work, {"pkg/a.py": "def foo():\n    return 1\n", "pkg/b.py": _B_IMPORTS_FOO})
+    db = str(tmp_path / "g.db")
+    _ingest(work, db, pipeline)
+    _write(work, {"pkg/a.py": None, "pkg/b.py": None})
+    _ingest(work, db, pipeline)
+
+    edges, real_nodes = _graph(db)
+    assert edges == set()
+    assert real_nodes == set()
+    with SQLiteStore(db) as store:
+        assert store.get_all_tracked_files() == set()

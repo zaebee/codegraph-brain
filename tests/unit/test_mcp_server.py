@@ -1124,3 +1124,41 @@ def test_a_text_tool_gets_a_prefixed_note(tmp_path: Path) -> None:
     answer = cgis_get_structure("m", db_path=db)
 
     assert answer.lower().startswith("> ⚠ graph is stale") or "graph is stale" in answer.lower()
+
+
+def test_cgis_ingest_full_rebuild_of_a_bad_path_keeps_the_graph(tmp_path: Path) -> None:
+    """A typo'd path fails before the stored graph is touched."""
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "m.py").write_text("def f(): pass\n", encoding="utf-8")
+    db = tmp_path / "graph.db"
+    before = _graph_total_nodes(cgis_ingest(str(src), str(db)))
+
+    result = cgis_ingest(str(tmp_path / "typo"), str(db), full_rebuild=True)
+
+    assert result.startswith("❌")
+    with SQLiteStore(str(db)) as store:
+        assert store.get_node_count() == before
+
+
+def test_cgis_ingest_full_rebuild_of_an_empty_directory_keeps_the_graph_unstamped(
+    tmp_path: Path,
+) -> None:
+    """Nothing to extract: keep the graph, say so, and do not record the empty dir as its root."""
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "m.py").write_text("def f(): pass\n", encoding="utf-8")
+    db = tmp_path / "graph.db"
+    before = _graph_total_nodes(cgis_ingest(str(src), str(db)))
+    with SQLiteStore(str(db)) as store:
+        state = store.get_ingest_state()
+    empty = tmp_path / "empty"
+    empty.mkdir()
+
+    result = cgis_ingest(str(empty), str(db), full_rebuild=True)
+
+    assert "⚠️" in result
+    assert "✅" not in result
+    with SQLiteStore(str(db)) as store:
+        assert store.get_node_count() == before
+        assert store.get_ingest_state() == state

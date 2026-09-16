@@ -274,13 +274,12 @@ def cgis_ingest(project_path: str, db_path: str = _DEFAULT_DB, full_rebuild: boo
     pipeline = IngestionPipeline(_EXTRACTORS)
     try:
         with SQLiteStore(db_path) as store:
-            if full_rebuild:
-                # Clear first, then run incrementally over an empty DB: this drops
-                # deleted-file nodes, repopulates files_state correctly, and runs
-                # uplift inside the pipeline (store provided) — all in one path.
-                store.clear()
-            _nodes, _raw, resolved = pipeline.run(project_path, store=store)
-            store.record_ingest(project_path)
+            # A rebuild replaces the stored graph in the transaction that writes the
+            # new one: deleted-file nodes and stale hashes go, uplift runs inside
+            # the pipeline, and a failure part-way leaves the old graph intact.
+            nodes, _raw, resolved = pipeline.run(project_path, store=store, rebuild=full_rebuild)
+            if nodes:
+                store.record_ingest(project_path)
             total_nodes = store.get_node_count()
             total_edges = store.get_edge_count()
     except Exception as exc:
@@ -294,8 +293,14 @@ def cgis_ingest(project_path: str, db_path: str = _DEFAULT_DB, full_rebuild: boo
         total_edges=total_edges,
         db=db_path,
     )
-    lines = [f"✅ Ingested: {project_path} (mode: {mode})"]
-    if not full_rebuild and not resolved:
+    if not nodes:
+        # Nothing extracted: a rebuild kept the stored graph, and neither mode
+        # records this path as the graph's fresh root.
+        kept = "the stored graph was kept" if full_rebuild else "the graph now holds none"
+        lines = [f"⚠️ No source files extracted from {project_path} (mode: {mode}); {kept}."]
+    else:
+        lines = [f"✅ Ingested: {project_path} (mode: {mode})"]
+    if nodes and not full_rebuild and not resolved:
         # Incremental no-op: an empty resolved set means no files changed. Say so
         # explicitly so the stable total below doesn't read as a shrunken graph (#192).
         lines.append("No files changed since the last ingest.")

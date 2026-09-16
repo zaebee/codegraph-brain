@@ -3,9 +3,12 @@
 import json
 import os
 import re
+import sqlite3
 import time
+from contextlib import closing
 from pathlib import Path
 
+import pytest
 from conftest import (
     fit_patterns_yaml,
     make_chain_db,
@@ -21,6 +24,7 @@ from cgis.core.freshness import FreshnessState
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.extractors.python_extractor import file_path_to_module_fqn
 from cgis.query.engine import QueryEngine
+from cgis.resolver.engine import ResolverEngine
 from cgis.storage.sqlite_store import SQLiteStore
 
 runner = CliRunner()
@@ -2053,3 +2057,140 @@ def test_fractal_warns_about_a_stale_graph_too(tmp_path: Path) -> None:
     result = runner.invoke(app, ["fractal", "--db", db])
 
     assert "stale" in result.stderr.lower()
+
+
+def _files_state(db: Path) -> dict[str, str]:
+    """The incremental cache as stored: file path -> content hash."""
+    with closing(sqlite3.connect(db)) as conn:
+        return dict(conn.execute("SELECT file_path, hash FROM files_state").fetchall())
+
+
+def test_full_db_ingest_records_file_hashes(tmp_path: Path) -> None:
+    """A full `cgis ingest -o x.db` fills files_state, so --incremental has a baseline.
+
+    Without it the first incremental run after a full one re-parsed every file and,
+    since #458, checked every file's resolution signature too.
+    """
+    src = tmp_path / "src"
+    (src / "pkg").mkdir(parents=True)
+    (src / "pkg" / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    (src / "pkg" / "b.py").write_text("from pkg.a import foo\n\ndef bar():\n    return foo()\n")
+    db = tmp_path / "g.db"
+
+    result = runner.invoke(app, ["ingest", str(src), "--output", str(db)])
+    assert result.exit_code == 0, result.output
+    assert set(_files_state(db)) == {"pkg/a.py", "pkg/b.py"}
+
+
+def test_incremental_after_full_db_ingest_is_a_noop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Nothing changed since the full ingest, so the resolver must not run at all."""
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "mod.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
+    db = tmp_path / "g.db"
+    assert runner.invoke(app, ["ingest", str(src), "--output", str(db)]).exit_code == 0
+
+    calls = {"n": 0}
+    real_resolve = ResolverEngine.resolve
+
+    def counting_resolve(self: ResolverEngine) -> tuple[list[Edge], list[Node]]:
+        calls["n"] += 1
+        return real_resolve(self)
+
+    monkeypatch.setattr("cgis.pipeline.ResolverEngine.resolve", counting_resolve)
+    result = runner.invoke(app, ["ingest", str(src), "--output", str(db), "--incremental"])
+    assert result.exit_code == 0, result.output
+    assert calls["n"] == 0, "the incremental run after a full one re-resolved the graph"
+
+
+def test_full_db_ingest_replaces_a_previous_graph_entirely(tmp_path: Path) -> None:
+    """Re-running a full ingest over an existing database leaves no stale hashes or nodes."""
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "keep.py").write_text("def keep():\n    return 1\n", encoding="utf-8")
+    (src / "gone.py").write_text("def gone():\n    return 1\n", encoding="utf-8")
+    db = tmp_path / "g.db"
+    assert (
+        runner.invoke(app, ["ingest", str(src), "--output", str(db), "--incremental"]).exit_code
+        == 0
+    )
+    assert "gone.py" in _files_state(db)
+
+    (src / "gone.py").unlink()
+    (src / "keep.py").write_text("def keep():\n    return 2\n", encoding="utf-8")
+    assert runner.invoke(app, ["ingest", str(src), "--output", str(db)]).exit_code == 0
+
+    state = _files_state(db)
+    assert set(state) == {"keep.py"}
+    with SQLiteStore(str(db)) as store:
+        assert store.get_node("gone.gone") is None
+        assert store.get_node("keep.keep") is not None
+
+
+def _graph_db(tmp_path: Path) -> tuple[Path, Path, int]:
+    """A source dir, a database built from it, and the database's node count."""
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "mod.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
+    db = tmp_path / "g.db"
+    assert runner.invoke(app, ["ingest", str(src), "--output", str(db)]).exit_code == 0
+    with SQLiteStore(str(db)) as store:
+        count = store.get_node_count()
+    assert count > 0
+    return src, db, count
+
+
+def _node_count(db: Path) -> int:
+    """Nodes currently stored."""
+    with SQLiteStore(str(db)) as store:
+        return store.get_node_count()
+
+
+def test_full_ingest_of_a_bad_path_keeps_the_existing_database(tmp_path: Path) -> None:
+    """A typo'd or non-directory path fails before the database is touched."""
+    src, db, count = _graph_db(tmp_path)
+    for bad in (tmp_path / "typo", src / "mod.py"):
+        result = runner.invoke(app, ["ingest", str(bad), "--output", str(db)])
+        assert result.exit_code == 1
+        assert _node_count(db) == count, f"ingest of {bad.name} wiped the graph"
+
+
+def test_full_ingest_of_a_bad_path_creates_no_database(tmp_path: Path) -> None:
+    """Nothing to ingest means no new file at the output path either."""
+    out = tmp_path / "sub" / "new.db"
+    result = runner.invoke(app, ["ingest", str(tmp_path / "typo"), "--output", str(out)])
+    assert result.exit_code == 1
+    assert not out.exists()
+
+
+def test_full_ingest_of_an_empty_directory_keeps_the_existing_database(tmp_path: Path) -> None:
+    """An empty walk warns, as before, and neither wipes nor re-stamps the graph."""
+    _src, db, count = _graph_db(tmp_path)
+    with SQLiteStore(str(db)) as store:
+        before = store.get_ingest_state()
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    result = runner.invoke(app, ["ingest", str(empty), "--output", str(db)])
+    assert result.exit_code == 0
+    assert "No nodes were extracted" in result.output
+    assert _node_count(db) == count
+    with SQLiteStore(str(db)) as store:
+        assert store.get_ingest_state() == before, "an empty ingest was recorded as fresh"
+
+
+def test_full_ingest_that_fails_mid_run_keeps_the_existing_database(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A crash after the walk (here in resolution) leaves the previous graph in place."""
+    src, db, count = _graph_db(tmp_path)
+
+    def broken(_self: ResolverEngine) -> tuple[list[Edge], list[Node]]:
+        msg = "boom"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr("cgis.pipeline.ResolverEngine.resolve", broken)
+    result = runner.invoke(app, ["ingest", str(src), "--output", str(db)])
+    assert result.exit_code == 1
+    assert _node_count(db) == count
