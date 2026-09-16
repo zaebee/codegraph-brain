@@ -3,9 +3,11 @@
 import json
 import os
 import re
+import sqlite3
 import time
 from pathlib import Path
 
+import pytest
 from conftest import (
     fit_patterns_yaml,
     make_chain_db,
@@ -21,6 +23,7 @@ from cgis.core.freshness import FreshnessState
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.extractors.python_extractor import file_path_to_module_fqn
 from cgis.query.engine import QueryEngine
+from cgis.resolver.engine import ResolverEngine
 from cgis.storage.sqlite_store import SQLiteStore
 
 runner = CliRunner()
@@ -2053,3 +2056,73 @@ def test_fractal_warns_about_a_stale_graph_too(tmp_path: Path) -> None:
     result = runner.invoke(app, ["fractal", "--db", db])
 
     assert "stale" in result.stderr.lower()
+
+
+def _files_state(db: Path) -> dict[str, str]:
+    """The incremental cache as stored: file path -> content hash."""
+    with sqlite3.connect(db) as conn:
+        return dict(conn.execute("SELECT file_path, hash FROM files_state").fetchall())
+
+
+def test_full_db_ingest_records_file_hashes(tmp_path: Path) -> None:
+    """A full `cgis ingest -o x.db` fills files_state, so --incremental has a baseline.
+
+    Without it the first incremental run after a full one re-parsed every file and,
+    since #458, checked every file's resolution signature too.
+    """
+    src = tmp_path / "src"
+    (src / "pkg").mkdir(parents=True)
+    (src / "pkg" / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    (src / "pkg" / "b.py").write_text("from pkg.a import foo\n\ndef bar():\n    return foo()\n")
+    db = tmp_path / "g.db"
+
+    result = runner.invoke(app, ["ingest", str(src), "--output", str(db)])
+    assert result.exit_code == 0, result.output
+    assert set(_files_state(db)) == {"pkg/a.py", "pkg/b.py"}
+
+
+def test_incremental_after_full_db_ingest_is_a_noop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Nothing changed since the full ingest, so the resolver must not run at all."""
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "mod.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
+    db = tmp_path / "g.db"
+    assert runner.invoke(app, ["ingest", str(src), "--output", str(db)]).exit_code == 0
+
+    calls = {"n": 0}
+    real_resolve = ResolverEngine.resolve
+
+    def counting_resolve(self: ResolverEngine) -> tuple[list[Edge], list[Node]]:
+        calls["n"] += 1
+        return real_resolve(self)
+
+    monkeypatch.setattr("cgis.pipeline.ResolverEngine.resolve", counting_resolve)
+    result = runner.invoke(app, ["ingest", str(src), "--output", str(db), "--incremental"])
+    assert result.exit_code == 0, result.output
+    assert calls["n"] == 0, "the incremental run after a full one re-resolved the graph"
+
+
+def test_full_db_ingest_replaces_a_previous_graph_entirely(tmp_path: Path) -> None:
+    """Re-running a full ingest over an existing database leaves no stale hashes or nodes."""
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "keep.py").write_text("def keep():\n    return 1\n", encoding="utf-8")
+    (src / "gone.py").write_text("def gone():\n    return 1\n", encoding="utf-8")
+    db = tmp_path / "g.db"
+    assert (
+        runner.invoke(app, ["ingest", str(src), "--output", str(db), "--incremental"]).exit_code
+        == 0
+    )
+    assert "gone.py" in _files_state(db)
+
+    (src / "gone.py").unlink()
+    (src / "keep.py").write_text("def keep():\n    return 2\n", encoding="utf-8")
+    assert runner.invoke(app, ["ingest", str(src), "--output", str(db)]).exit_code == 0
+
+    state = _files_state(db)
+    assert set(state) == {"keep.py"}
+    with SQLiteStore(str(db)) as store:
+        assert store.get_node("gone.gone") is None
+        assert store.get_node("keep.keep") is not None
