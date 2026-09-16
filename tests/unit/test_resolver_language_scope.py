@@ -10,7 +10,11 @@ from cgis.extractors.registry import build_extractors
 from cgis.extractors.typescript_extractor import TypeScriptExtractor
 from cgis.pipeline import IngestionPipeline
 from cgis.resolver.engine import ResolverEngine
+from cgis.resolver.indices import IndexBuilder
 from cgis.storage.sqlite_store import SQLiteStore
+
+_PY_JSON = "import json\n\ndef f(x):\n    return json.dumps(x)\n"
+_TS_JSON = "export function g(json: any) {\n  json.dumps(1);\n}\n"
 
 
 def _namespaces(nodes: list[Node], edges: list[Edge]) -> dict[str, NodeNamespace]:
@@ -42,6 +46,16 @@ def test_ts_call_on_python_name_is_unknown(call: str, target: str) -> None:
     assert _namespaces(nodes, edges)[target] == NodeNamespace.UNKNOWN
 
 
+@pytest.mark.parametrize("source_file", ["cmd/main.go", "src/App.java", "lib/mod.rb"])
+def test_non_python_source_does_not_inherit_python_names(source_file: str) -> None:
+    """The Python reading is opted into by `.py`, not the default for anything that is not TS."""
+    nodes, _ = PythonExtractor().parse(_PY_JSON, "pp/mod.py")
+    index = IndexBuilder().build(nodes)
+    assert index.classify_fqn("json.dumps", source_file) == NodeNamespace.UNKNOWN
+    assert index.classify_fqn("json.dumps", "pp/mod.py") == NodeNamespace.STDLIB
+    assert index.classify_fqn("json.dumps") == NodeNamespace.STDLIB
+
+
 def test_ts_js_builtins_still_stdlib() -> None:
     """Scoping the Python check leaves the JS runtime namespace (#111) untouched."""
     code = "export function f() {\n  Math.max(1, 2);\n}\n"
@@ -57,10 +71,6 @@ def test_python_call_on_stdlib_name_is_still_stdlib(call: str) -> None:
     namespaces = _namespaces(nodes, edges)
     target = call.split("(", maxsplit=1)[0]
     assert namespaces[target] == NodeNamespace.STDLIB
-
-
-_PY_JSON = "import json\n\ndef f(x):\n    return json.dumps(x)\n"
-_TS_JSON = "export function g(json: any) {\n  json.dumps(1);\n}\n"
 
 
 def _mixed(ts_first: bool) -> dict[str, NodeNamespace]:

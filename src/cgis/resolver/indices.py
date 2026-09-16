@@ -8,9 +8,12 @@ from dataclasses import dataclass
 from types import MappingProxyType
 
 from cgis.core.models import SELF_PREFIX, Node, NodeNamespace, NodeType
-from cgis.resolver.js_builtins import JS_BUILTINS_ROOT, is_js_source
+from cgis.resolver.js_builtins import JS_BUILTINS_ROOT
 
 _BUILTINS: frozenset[str] = frozenset(dir(builtins))
+
+#: Sources whose references read against Python's stdlib, builtins and import roots.
+_PYTHON_SUFFIXES: tuple[str, ...] = (".py",)
 
 
 @dataclass(frozen=True)
@@ -174,6 +177,8 @@ class SymbolIndex:
         called `list`, `queue` or `this` is a local value, not `import this` (#454).
         The same holds for `external_roots`, which is built from Python import maps
         alone — a Python `import json` says nothing about a TS local named `json`.
+        The check names Python rather than excluding TypeScript, so a language
+        added later starts from UNKNOWN instead of inheriting Python's names.
         Without `source_file` the Python reading applies, as it always has.
         """
         if fqn.startswith("."):
@@ -189,7 +194,7 @@ class SymbolIndex:
             return NodeNamespace.INTERNAL
         if root == JS_BUILTINS_ROOT:
             return NodeNamespace.STDLIB
-        if is_js_source(source_file):
+        if source_file is not None and not source_file.endswith(_PYTHON_SUFFIXES):
             return NodeNamespace.UNKNOWN
         if root in sys.stdlib_module_names or root in _BUILTINS:
             return NodeNamespace.STDLIB
