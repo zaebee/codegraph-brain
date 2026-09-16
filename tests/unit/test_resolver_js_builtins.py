@@ -219,3 +219,12 @@ def test_shadowed_globals_binding_positions(code: str, expected: list[str]) -> N
 def test_shadowed_globals_ignores_non_bindings(code: str) -> None:
     """A global that is only read, renamed away, or used as a key stays free."""
     assert _shadowed(code) == []
+
+
+def test_deeply_nested_file_does_not_hit_the_recursion_limit() -> None:
+    """A generated 5000-operand concatenation nests past Python's recursion limit.
+
+    The extractor on main parses it; collecting shadowed globals must not be what fails.
+    """
+    code = "export const s = " + " + ".join(f"'x{i}'" for i in range(5000)) + ";\n"
+    assert _shadowed(code) == []

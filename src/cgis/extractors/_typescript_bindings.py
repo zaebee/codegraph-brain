@@ -52,12 +52,20 @@ def shadowed_globals(root: TSNode) -> list[str]:
 
 
 def _collect(node: TSNode, bound: set[str]) -> None:
-    """Walk the tree, adding every name introduced by a binding position."""
-    binder = _BINDERS.get(node.type)
-    if binder is not None:
-        binder(node, bound)
-    for child in node.children:
-        _collect(child, bound)
+    """Walk the tree, adding every name introduced by a binding position.
+
+    Iterative, not recursive: a long `'a' + 'b' + ...` chain nests one level per
+    operand, and a generated file with a couple of thousand of them exceeds
+    Python's recursion limit — a file the extractor otherwise parses fine.
+    Visit order does not matter; the result is a set.
+    """
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        binder = _BINDERS.get(current.type)
+        if binder is not None:
+            binder(current, bound)
+        stack.extend(current.children)
 
 
 def _collect_import_clause(clause: TSNode, bound: set[str]) -> None:
