@@ -172,7 +172,9 @@ class SymbolIndex:
         `source_file` is the file the reference comes from. Python's stdlib and
         builtin names only mean STDLIB in a Python source: a TypeScript receiver
         called `list`, `queue` or `this` is a local value, not `import this` (#454).
-        Without it the Python reading applies, as it always has.
+        The same holds for `external_roots`, which is built from Python import maps
+        alone — a Python `import json` says nothing about a TS local named `json`.
+        Without `source_file` the Python reading applies, as it always has.
         """
         if fqn.startswith("."):
             return NodeNamespace.INTERNAL
@@ -187,7 +189,9 @@ class SymbolIndex:
             return NodeNamespace.INTERNAL
         if root == JS_BUILTINS_ROOT:
             return NodeNamespace.STDLIB
-        if not is_js_source(source_file) and (root in sys.stdlib_module_names or root in _BUILTINS):
+        if is_js_source(source_file):
+            return NodeNamespace.UNKNOWN
+        if root in sys.stdlib_module_names or root in _BUILTINS:
             return NodeNamespace.STDLIB
         if root in self.external_roots:
             return NodeNamespace.EXTERNAL

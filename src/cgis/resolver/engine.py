@@ -164,16 +164,23 @@ class ResolverEngine:
     def _ensure_virtual_node(self, edge: Edge, virtual_nodes: dict[str, Node]) -> None:
         """Create a virtual boundary node for the edge's target if the graph lacks one.
 
-        Classified in the language of the edge's source file (#454). A target
-        string reached from both a Python and a TypeScript file keeps the
-        classification of the first edge seen; the strings rarely coincide.
+        Classified in the language of the edge's source file (#454). The node id
+        is shared, so a target string reached from both languages — `json.dumps`
+        from a Python module and from a TS local named `json` — needs one answer.
+        A known namespace beats UNKNOWN, whichever edge comes first: the Python
+        reading is a claim about the symbol, the TS one only says "not known", and
+        file walk order is not sorted, so first-seen would differ across machines.
         """
         target = edge.target
-        if not self._index.has_node(target) and target not in virtual_nodes:
-            source_file = self._index.normalized_file_path(edge.source, edge.file_path)
-            virtual_nodes[target] = self._make_virtual_node(
-                target, self._index.classify_fqn(target, source_file)
-            )
+        if self._index.has_node(target):
+            return
+        existing = virtual_nodes.get(target)
+        if existing is not None and existing.namespace != NodeNamespace.UNKNOWN:
+            return
+        source_file = self._index.normalized_file_path(edge.source, edge.file_path)
+        namespace = self._index.classify_fqn(target, source_file)
+        if existing is None or namespace != NodeNamespace.UNKNOWN:
+            virtual_nodes[target] = self._make_virtual_node(target, namespace)
 
     def _make_virtual_node(self, fqn: str, namespace: NodeNamespace) -> Node:
         """Create a placeholder node for an external/stdlib symbol."""

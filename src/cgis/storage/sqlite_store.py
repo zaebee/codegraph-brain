@@ -211,6 +211,23 @@ class SQLiteStore:
             is_generated
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
+    #: Same columns as _NODE_INSERT; on an id collision, an UNKNOWN reading
+    #: leaves a known namespace (and the rest of the row) as it was.
+    _VIRTUAL_NODE_UPSERT = """
+        INSERT INTO nodes (
+            id, type, name, file_path, start_line, end_line, language,
+            ontology_class, domains, confidence_score, metadata, namespace, is_test,
+            is_generated
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            type = excluded.type, name = excluded.name, file_path = excluded.file_path,
+            start_line = excluded.start_line, end_line = excluded.end_line,
+            language = excluded.language, ontology_class = excluded.ontology_class,
+            domains = excluded.domains, confidence_score = excluded.confidence_score,
+            metadata = excluded.metadata, namespace = excluded.namespace,
+            is_test = excluded.is_test, is_generated = excluded.is_generated
+        WHERE NOT (excluded.namespace = 'UNKNOWN' AND nodes.namespace != 'UNKNOWN')
+        """
     _EDGE_INSERT = """
         INSERT OR REPLACE INTO edges (
             id, source, target, type, weight, confidence,
@@ -261,6 +278,20 @@ class SQLiteStore:
             raise RuntimeError(self._error_message)
         with self._conn:
             self._conn.executemany(self._NODE_INSERT, [self._node_to_row(n) for n in nodes])
+
+    def upsert_virtual_nodes(self, nodes: list[Node]) -> None:
+        """Upsert resolver-minted boundary nodes without downgrading a known namespace.
+
+        An incremental run re-resolves only the changed files' edges, so it can mint
+        `json.dumps` as UNKNOWN from a TypeScript local while the stored node is
+        STDLIB from a Python module that did not change. Replacing it would make the
+        namespace flip with whichever language was edited last (#454); an UNKNOWN
+        reading therefore never overwrites a known one.
+        """
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        with self._conn:
+            self._conn.executemany(self._VIRTUAL_NODE_UPSERT, [self._node_to_row(n) for n in nodes])
 
     def upsert_edges(self, edges: list[Edge]) -> None:
         """Insert or replace edges without deleting existing ones first."""
