@@ -1,6 +1,7 @@
 """Implements Pipeline to orcestrate code traversal."""
 
 import hashlib
+import json
 import re
 from collections.abc import Mapping
 from pathlib import Path
@@ -11,7 +12,7 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from cgis.core.generated import is_generated_source
-from cgis.core.models import Edge, Node
+from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.core.paths import EXCLUDED_DIRS
 from cgis.extractors.base import BaseExtractor
 from cgis.resolver.engine import ResolverEngine
@@ -21,6 +22,33 @@ if TYPE_CHECKING:
     from cgis.storage.sqlite_store import SQLiteStore
 
 logger = structlog.getLogger(__name__)
+
+#: The node metadata another file's resolution reads, by node type. Everything
+#: else a file carries (`local_types`, `shadowed_globals`, decorators) only
+#: steers the resolution of that file's own edges, which are re-resolved anyway.
+_CROSS_FILE_METADATA: dict[NodeType, tuple[str, ...]] = {
+    NodeType.FILE: ("import_map", "reexports", "star_imports"),
+    NodeType.CLASS: ("self_types",),
+}
+
+
+def _resolution_signature(nodes: list[Node], edges: list[Edge]) -> frozenset[str]:
+    """What other files resolve against in one file's extraction (#38).
+
+    The symbol index is built from node ids, types and names; the import map and
+    re-exports of a FILE; the declared attribute types of a CLASS; and the
+    inheritance tree from EXTENDS. If none of those changed, an unchanged file's
+    stored edges are still what a fresh resolution would produce.
+    """
+    signature: set[str] = set()
+    for node in nodes:
+        keys = _CROSS_FILE_METADATA.get(node.type, ())
+        meta = {key: node.metadata.get(key) for key in keys}
+        signature.add(json.dumps([node.id, str(node.type), node.name, meta], sort_keys=True))
+    signature.update(
+        json.dumps(["EXTENDS", e.source, e.target]) for e in edges if e.type == EdgeType.EXTENDS
+    )
+    return frozenset(signature)
 
 
 class IngestionPipeline:
@@ -144,6 +172,16 @@ class IngestionPipeline:
                 virtual_nodes=len(virtual_nodes),
             )
 
+        if store is not None and self._cross_file_inputs_changed(
+            store, all_nodes, resolved_edges, changed_files, found_file_paths
+        ):
+            # Unchanged files keep edges resolved against the old symbols, so the
+            # only correct graph is a full one (#38). After clear() the store is
+            # empty, so the re-run cannot take this branch again.
+            logger.info("Symbols other files resolve against changed — rebuilding the graph.")
+            store.clear()
+            return self.run(repo_path, store=store)
+
         if store is not None:
             self._persist_incremental(
                 store, all_nodes, resolved_edges, changed_files, found_file_paths, virtual_nodes
@@ -188,6 +226,42 @@ class IngestionPipeline:
             all_edges.extend(edges)
         except Exception as e:
             logger.exception("Failed to parse file", full_path=full_path, error=str(e))
+
+    @staticmethod
+    def _cross_file_inputs_changed(
+        store: "SQLiteStore",
+        all_nodes: list[Node],
+        resolved_edges: list[Edge],
+        changed_files: dict[str, str],
+        found_file_paths: set[str],
+    ) -> bool:
+        """True when this run changes what *unchanged* files resolved against.
+
+        Read before persistence, while the store still holds each changed file's
+        previous nodes and edges. Three cases invalidate stored edges elsewhere:
+        a file removed from disk, a file new to a non-empty graph (its names can
+        make a global lookup ambiguous or satisfy one that missed), and a changed
+        file whose resolution signature differs. Tracked files are read from the
+        nodes table, not `files_state`, which a JSON-less full `cgis ingest -o
+        x.db` leaves empty.
+        """
+        tracked = store.get_tracked_source_files()
+        if not tracked:
+            return False
+        if tracked - found_file_paths:
+            return True
+        for file_path in changed_files:
+            old_nodes = store.get_nodes_by_file(file_path)
+            if not old_nodes:
+                return True
+            old_ids = [n.id for n in old_nodes]
+            old = _resolution_signature(old_nodes, store.get_outgoing_edges_batch(old_ids))
+            new_nodes = [n for n in all_nodes if n.file_path == file_path]
+            new_ids = {n.id for n in new_nodes}
+            new_edges = [e for e in resolved_edges if e.source in new_ids]
+            if _resolution_signature(new_nodes, new_edges) != old:
+                return True
+        return False
 
     def _is_noop_incremental(
         self, store: "SQLiteStore", changed_files: dict[str, str], found_file_paths: set[str]

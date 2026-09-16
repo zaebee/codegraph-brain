@@ -33,8 +33,13 @@ _GraphData = tuple[SQLiteStore, list[Node], list[Edge]]
 # — the failure mode this file exists to catch. The id prefix tells them apart:
 # `rawdep_` is an annotation position (D4/D9), `nameref_` is a name in a load
 # position (D10).
-_EXPECTED_ANNOTATION_REFERENCES = 594
-_EXPECTED_NAME_REFERENCES = 172
+#
+# Re-measured 2026-09-16 on the #38 branch (fresh `cgis ingest src --source-root src`):
+# origin/main 15e7ba1 held 641 annotation / 196 name references — the name band
+# had drifted to 172+24 through ordinary growth — and #38 adds 5 / 2 (NodeType,
+# EdgeType named in pipeline.py). Both re-centred on the branch measurement.
+_EXPECTED_ANNOTATION_REFERENCES = 646
+_EXPECTED_NAME_REFERENCES = 198
 _TOLERANCE = 60  # ~10% of the annotation band: ordinary code churn, not a lost source
 _NAME_REF_TOLERANCE = 25  # the name-reference band is smaller, so its band is too
 
