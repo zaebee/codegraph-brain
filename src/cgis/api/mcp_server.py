@@ -274,12 +274,10 @@ def cgis_ingest(project_path: str, db_path: str = _DEFAULT_DB, full_rebuild: boo
     pipeline = IngestionPipeline(_EXTRACTORS)
     try:
         with SQLiteStore(db_path) as store:
-            if full_rebuild:
-                # Clear first, then run incrementally over an empty DB: this drops
-                # deleted-file nodes, repopulates files_state correctly, and runs
-                # uplift inside the pipeline (store provided) — all in one path.
-                store.clear()
-            _nodes, _raw, resolved = pipeline.run(project_path, store=store)
+            # A rebuild replaces the stored graph in the transaction that writes the
+            # new one: deleted-file nodes and stale hashes go, uplift runs inside
+            # the pipeline, and a failure part-way leaves the old graph intact.
+            _nodes, _raw, resolved = pipeline.run(project_path, store=store, rebuild=full_rebuild)
             store.record_ingest(project_path)
             total_nodes = store.get_node_count()
             total_edges = store.get_edge_count()

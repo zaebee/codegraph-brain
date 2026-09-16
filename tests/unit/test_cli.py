@@ -2126,3 +2126,70 @@ def test_full_db_ingest_replaces_a_previous_graph_entirely(tmp_path: Path) -> No
     with SQLiteStore(str(db)) as store:
         assert store.get_node("gone.gone") is None
         assert store.get_node("keep.keep") is not None
+
+
+def _graph_db(tmp_path: Path) -> tuple[Path, Path, int]:
+    """A source dir, a database built from it, and the database's node count."""
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "mod.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
+    db = tmp_path / "g.db"
+    assert runner.invoke(app, ["ingest", str(src), "--output", str(db)]).exit_code == 0
+    with SQLiteStore(str(db)) as store:
+        count = store.get_node_count()
+    assert count > 0
+    return src, db, count
+
+
+def _node_count(db: Path) -> int:
+    """Nodes currently stored."""
+    with SQLiteStore(str(db)) as store:
+        return store.get_node_count()
+
+
+def test_full_ingest_of_a_bad_path_keeps_the_existing_database(tmp_path: Path) -> None:
+    """A typo'd or non-directory path fails before the database is touched."""
+    src, db, count = _graph_db(tmp_path)
+    for bad in (tmp_path / "typo", src / "mod.py"):
+        result = runner.invoke(app, ["ingest", str(bad), "--output", str(db)])
+        assert result.exit_code == 1
+        assert _node_count(db) == count, f"ingest of {bad.name} wiped the graph"
+
+
+def test_full_ingest_of_a_bad_path_creates_no_database(tmp_path: Path) -> None:
+    """Nothing to ingest means no new file at the output path either."""
+    out = tmp_path / "sub" / "new.db"
+    result = runner.invoke(app, ["ingest", str(tmp_path / "typo"), "--output", str(out)])
+    assert result.exit_code == 1
+    assert not out.exists()
+
+
+def test_full_ingest_of_an_empty_directory_keeps_the_existing_database(tmp_path: Path) -> None:
+    """An empty walk warns, as before, and neither wipes nor re-stamps the graph."""
+    _src, db, count = _graph_db(tmp_path)
+    with SQLiteStore(str(db)) as store:
+        before = store.get_ingest_state()
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    result = runner.invoke(app, ["ingest", str(empty), "--output", str(db)])
+    assert result.exit_code == 0
+    assert "No nodes were extracted" in result.output
+    assert _node_count(db) == count
+    with SQLiteStore(str(db)) as store:
+        assert store.get_ingest_state() == before, "an empty ingest was recorded as fresh"
+
+
+def test_full_ingest_that_fails_mid_run_keeps_the_existing_database(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A crash after the walk (here in resolution) leaves the previous graph in place."""
+    src, db, count = _graph_db(tmp_path)
+
+    def broken(_self: ResolverEngine) -> tuple[list[Edge], list[Node]]:
+        msg = "boom"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr("cgis.pipeline.ResolverEngine.resolve", broken)
+    result = runner.invoke(app, ["ingest", str(src), "--output", str(db)])
+    assert result.exit_code == 1
+    assert _node_count(db) == count

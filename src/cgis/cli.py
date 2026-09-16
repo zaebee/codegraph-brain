@@ -218,19 +218,22 @@ def ingest(
         )
         incremental = False
 
-    # Anything but JSON is a database. A full ingest into one clears it and runs
-    # the store-backed pipeline — the path MCP `full_rebuild` takes — so the file
-    # hashes the next --incremental compares against are written, stale ones and
-    # deleted files' nodes are gone, and uplift runs once inside the pipeline.
-    # Writing the graph with save_graph afterwards left files_state untouched.
+    # Anything but JSON is a database. A full ingest into one runs the
+    # store-backed pipeline as a rebuild — the path MCP `full_rebuild` takes — so
+    # the file hashes the next --incremental compares against are written, and
+    # stale hashes and deleted files' nodes go, in the one transaction that writes
+    # the new graph. Writing it with save_graph afterwards left files_state as it was.
     to_database = not output.endswith(".json")
     try:
         if to_database:
+            # A bad path must not create or touch the database.
+            IngestionPipeline.workspace_root(path)
             with SQLiteStore(output) as store:
-                if not incremental:
-                    store.clear()
-                nodes, raw_edges, resolved_edges = pipeline.run(path, store=store)
-                store.record_ingest(path)
+                nodes, raw_edges, resolved_edges = pipeline.run(
+                    path, store=store, rebuild=not incremental
+                )
+                if nodes:
+                    store.record_ingest(path)
         else:
             nodes, raw_edges, resolved_edges = pipeline.run(path)
 

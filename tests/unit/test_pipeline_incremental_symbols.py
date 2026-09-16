@@ -283,3 +283,26 @@ def test_file_whose_ids_all_collide_is_not_new(tmp_path: Path) -> None:
     assert sorted(parsed) == ["api.py", "api/__init__.py"], (
         "the run rebuilt instead of staying incremental"
     )
+
+
+def test_rebuild_that_fails_while_writing_keeps_the_old_graph(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The old graph is replaced inside the write transaction, so a failed write rolls back."""
+    pipeline = IngestionPipeline({".py": PythonExtractor()})
+    work = tmp_path / "work"
+    _write(work, {"pkg/a.py": "def foo():\n    return 1\n", "pkg/b.py": _B_IMPORTS_FOO})
+    db = str(tmp_path / "g.db")
+    _ingest(work, db, pipeline)
+    before = _graph(db)
+
+    def broken_row(_self: SQLiteStore, _edge: Edge) -> tuple[object, ...]:
+        msg = "disk full"
+        raise sqlite3.OperationalError(msg)
+
+    monkeypatch.setattr(SQLiteStore, "_edge_to_row", broken_row)
+    root = str(work)
+    with SQLiteStore(db) as store, pytest.raises(sqlite3.OperationalError):
+        pipeline.run(root, store=store, rebuild=True)
+    monkeypatch.undo()
+    assert _graph(db) == before

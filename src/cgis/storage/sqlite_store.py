@@ -590,12 +590,24 @@ class SQLiteStore:
         edges_by_file: dict[str, list[Edge]],
         file_hashes: dict[str, str],
         stale_files: set[str],
+        *,
+        replace_all: bool = False,
+        virtual_nodes: list[Node] | None = None,
     ) -> None:
-        """Atomically delete changed/stale files and insert new data in one transaction."""
+        """Atomically delete changed/stale files and insert new data in one transaction.
+
+        `replace_all` empties nodes, edges and files_state inside the same
+        transaction instead, so a full rebuild either commits the new graph or
+        leaves the old one untouched. `virtual_nodes` are inserted in it too.
+        """
         if not self._conn:
             raise RuntimeError(self._error_message)
-        all_changed = set(file_hashes) | stale_files
+        all_changed = set() if replace_all else set(file_hashes) | stale_files
         with self._conn:
+            if replace_all:
+                self._conn.execute("DELETE FROM nodes")
+                self._conn.execute("DELETE FROM edges")
+                self._conn.execute("DELETE FROM files_state")
             for file_path in all_changed:
                 self._conn.execute(
                     "DELETE FROM edges WHERE source IN (SELECT id FROM nodes WHERE file_path = ?)",
@@ -608,6 +620,10 @@ class SQLiteStore:
                 self._conn.executemany(self._NODE_INSERT, [self._node_to_row(n) for n in nodes])
             for edges in edges_by_file.values():
                 self._conn.executemany(self._EDGE_INSERT, [self._edge_to_row(e) for e in edges])
+            if virtual_nodes:
+                self._conn.executemany(
+                    self._NODE_INSERT, [self._node_to_row(n) for n in virtual_nodes]
+                )
             for file_path, hash_val in file_hashes.items():
                 self._conn.execute(
                     "INSERT OR REPLACE INTO files_state (file_path, hash) VALUES (?, ?)",
