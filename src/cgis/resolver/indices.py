@@ -12,6 +12,9 @@ from cgis.resolver.js_builtins import JS_BUILTINS_ROOT
 
 _BUILTINS: frozenset[str] = frozenset(dir(builtins))
 
+#: Sources whose references read against Python's stdlib, builtins and import roots.
+_PYTHON_SUFFIXES: tuple[str, ...] = (".py",)
+
 
 @dataclass(frozen=True)
 class SymbolIndex:
@@ -163,11 +166,20 @@ class SymbolIndex:
         """
         return fqn in self.nodes
 
-    def classify_fqn(self, fqn: str) -> NodeNamespace:
+    def classify_fqn(self, fqn: str, source_file: str | None = None) -> NodeNamespace:
         """Classify an FQN as STDLIB, INTERNAL, EXTERNAL, or UNKNOWN.
 
         UNKNOWN means the root segment was not found in internal roots,
         stdlib/builtins, or any known import-map external root.
+
+        `source_file` is the file the reference comes from. Python's stdlib and
+        builtin names only mean STDLIB in a Python source: a TypeScript receiver
+        called `list`, `queue` or `this` is a local value, not `import this` (#454).
+        The same holds for `external_roots`, which is built from Python import maps
+        alone — a Python `import json` says nothing about a TS local named `json`.
+        The check names Python rather than excluding TypeScript, so a language
+        added later starts from UNKNOWN instead of inheriting Python's names.
+        Without `source_file` the Python reading applies, as it always has.
         """
         if fqn.startswith("."):
             return NodeNamespace.INTERNAL
@@ -180,7 +192,11 @@ class SymbolIndex:
         root = fqn.split(".", maxsplit=1)[0]
         if root in self.internal_roots:
             return NodeNamespace.INTERNAL
-        if root in sys.stdlib_module_names or root in _BUILTINS or root == JS_BUILTINS_ROOT:
+        if root == JS_BUILTINS_ROOT:
+            return NodeNamespace.STDLIB
+        if source_file is not None and not source_file.endswith(_PYTHON_SUFFIXES):
+            return NodeNamespace.UNKNOWN
+        if root in sys.stdlib_module_names or root in _BUILTINS:
             return NodeNamespace.STDLIB
         if root in self.external_roots:
             return NodeNamespace.EXTERNAL

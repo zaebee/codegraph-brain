@@ -50,7 +50,7 @@ class ResolverEngine:
             if edge.target.startswith(RAW_CLASS_PREFIX):
                 class_edge = self._resolved_class_edge(edge)
                 resolved_edges.append(class_edge)
-                self._ensure_virtual_node(class_edge.target, virtual_nodes)
+                self._ensure_virtual_node(class_edge, virtual_nodes)
             elif edge.target.startswith(RAW_DEP_PREFIX):
                 dep_edge = self._resolved_dep_edge(edge)
                 if dep_edge is not None:
@@ -62,11 +62,11 @@ class ResolverEngine:
                 # no _ensure_virtual_node: target exists on hit, edge dies on miss
             elif not edge.target.startswith("raw_call:"):
                 resolved_edges.append(edge)
-                self._ensure_virtual_node(edge.target, virtual_nodes)
+                self._ensure_virtual_node(edge, virtual_nodes)
             else:
                 call_edge = self._resolved_call_edge(edge)
                 resolved_edges.append(call_edge)
-                self._ensure_virtual_node(call_edge.target, virtual_nodes)
+                self._ensure_virtual_node(call_edge, virtual_nodes)
 
         return resolved_edges, list(virtual_nodes.values())
 
@@ -161,12 +161,26 @@ class ResolverEngine:
             return None
         return edge.model_copy(update={"target": node_fqn, "confidence": 1.0})
 
-    def _ensure_virtual_node(self, target: str, virtual_nodes: dict[str, Node]) -> None:
-        """Create a virtual boundary node for target if it is not already in the graph."""
-        if not self._index.has_node(target) and target not in virtual_nodes:
-            virtual_nodes[target] = self._make_virtual_node(
-                target, self._index.classify_fqn(target)
-            )
+    def _ensure_virtual_node(self, edge: Edge, virtual_nodes: dict[str, Node]) -> None:
+        """Create a virtual boundary node for the edge's target if the graph lacks one.
+
+        Classified in the language of the edge's source file (#454). The node id
+        is shared, so a target string reached from both languages — `json.dumps`
+        from a Python module and from a TS local named `json` — needs one answer.
+        A known namespace beats UNKNOWN, whichever edge comes first: the Python
+        reading is a claim about the symbol, the TS one only says "not known", and
+        file walk order is not sorted, so first-seen would differ across machines.
+        """
+        target = edge.target
+        if self._index.has_node(target):
+            return
+        existing = virtual_nodes.get(target)
+        if existing is not None and existing.namespace != NodeNamespace.UNKNOWN:
+            return
+        source_file = self._index.normalized_file_path(edge.source, edge.file_path)
+        namespace = self._index.classify_fqn(target, source_file)
+        if existing is None or namespace != NodeNamespace.UNKNOWN:
+            virtual_nodes[target] = self._make_virtual_node(target, namespace)
 
     def _make_virtual_node(self, fqn: str, namespace: NodeNamespace) -> Node:
         """Create a placeholder node for an external/stdlib symbol."""

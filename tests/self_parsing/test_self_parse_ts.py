@@ -157,3 +157,23 @@ def test_ts_js_global_calls_resolve_to_js_builtins(
         and root not in shadowed_by_file.get(source.file_path, set())
     )
     assert wrongly_bare == [], f"JS global calls left unresolved: {wrongly_bare}"
+
+
+@_skip_no_ui
+def test_ts_stdlib_targets_are_only_js_builtins(
+    ts_graph_data: tuple[SQLiteStore, list[Node], list[Edge]],
+) -> None:
+    """In a TypeScript graph the only standard library is the JS runtime (#454).
+
+    Python's stdlib and builtin names used to leak in: `this.nodes.map` read as
+    the `this` module and `list.push` as the `list` builtin.
+    """
+    store, _, resolved_edges = ts_graph_data
+    stdlib = [
+        e.target
+        for e in resolved_edges
+        if (node := store.get_node(e.target)) is not None and node.namespace == NodeNamespace.STDLIB
+    ]
+    assert stdlib, "no STDLIB targets at all — the js_builtins check below would be vacuous"
+    leaked = sorted({t for t in stdlib if not t.startswith(f"{JS_BUILTINS_ROOT}.")})
+    assert leaked == [], f"Python stdlib/builtin names classified STDLIB in TS: {leaked}"

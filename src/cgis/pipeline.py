@@ -240,7 +240,7 @@ class IngestionPipeline:
         # mode only changed files' edges are re-resolved, so virtual_nodes is incomplete.
         # Orphaned virtual nodes (no incoming edges) are harmless phantom data.
         if virtual_nodes:
-            store.upsert_nodes(virtual_nodes)
+            store.upsert_virtual_nodes(virtual_nodes)
 
         for file_path in changed_files:
             logger.info("Re-ingested changed file", file_path=file_path)
