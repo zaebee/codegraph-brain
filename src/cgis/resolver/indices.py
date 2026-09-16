@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 
 from cgis.core.models import SELF_PREFIX, Node, NodeNamespace, NodeType
+from cgis.resolver.js_builtins import JS_BUILTINS_ROOT
 
 _BUILTINS: frozenset[str] = frozenset(dir(builtins))
 
@@ -176,7 +177,7 @@ class SymbolIndex:
         root = fqn.split(".", maxsplit=1)[0]
         if root in self.internal_roots:
             return NodeNamespace.INTERNAL
-        if root in sys.stdlib_module_names or root in _BUILTINS:
+        if root in sys.stdlib_module_names or root in _BUILTINS or root == JS_BUILTINS_ROOT:
             return NodeNamespace.STDLIB
         if root in self.external_roots:
             return NodeNamespace.EXTERNAL
