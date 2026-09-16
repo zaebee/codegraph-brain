@@ -9,8 +9,9 @@ from pathlib import Path
 
 import pytest
 
-from cgis.core.models import Edge, Node, NodeType
+from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
 from cgis.extractors.typescript_extractor import file_path_to_module_fqn
+from cgis.resolver.js_builtins import JS_BUILTINS_ROOT, JS_GLOBALS
 from cgis.storage.sqlite_store import SQLiteStore
 
 _TS_SRC = Path(__file__).parent.parent.parent / "ui" / "src"
@@ -120,3 +121,39 @@ def test_ts_no_absolute_file_paths(
         assert not Path(node.file_path).is_absolute(), (
             f"Node {node.id!r} has absolute file_path: {node.file_path}"
         )
+
+
+@_skip_no_ui
+def test_ts_js_global_calls_resolve_to_js_builtins(
+    ts_graph_data: tuple[SQLiteStore, list[Node], list[Edge]],
+) -> None:
+    """Calls on JS runtime globals land in js_builtins.* as STDLIB, none stay bare (#111).
+
+    The positive count guards the invariant below from passing vacuously: ui/src
+    calls Math, document, console and setTimeout, so zero rewrites means the pass
+    did not run.
+    """
+    store, nodes, resolved_edges = ts_graph_data
+    calls = [e for e in resolved_edges if e.type == EdgeType.CALLS]
+    builtin_calls = [e for e in calls if e.target.startswith(f"{JS_BUILTINS_ROOT}.")]
+    assert len(builtin_calls) >= 20, f"only {len(builtin_calls)} js_builtins.* CALLS edges"
+    for edge in builtin_calls:
+        node = store.get_node(edge.target)
+        assert node is not None, edge.target
+        assert node.namespace == NodeNamespace.STDLIB, edge.target
+
+    # A call left bare on a global root is only legitimate when its file rebinds
+    # that name (setupTests.ts declares its own ResizeObserver mock).
+    shadowed_by_file = {
+        n.file_path: set(n.metadata.get("shadowed_globals") or [])
+        for n in nodes
+        if n.type == NodeType.FILE
+    }
+    wrongly_bare = sorted(
+        e.target
+        for e in calls
+        if (root := e.target.split(".", maxsplit=1)[0]) in JS_GLOBALS
+        and (source := store.get_node(e.source)) is not None
+        and root not in shadowed_by_file.get(source.file_path, set())
+    )
+    assert wrongly_bare == [], f"JS global calls left unresolved: {wrongly_bare}"
