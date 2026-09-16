@@ -159,8 +159,8 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
         pipeline_IngestionPipeline_run["run (pipeline.py:53)"]:::methodNode
     end
     subgraph sg_engine["engine.py"]
-        engine_ResolverEngine["ResolverEngine (engine.py:19)"]:::classNode
-        engine_ResolverEngine_resolve["resolve (engine.py:36)"]:::methodNode
+        engine_ResolverEngine["ResolverEngine (engine.py:20)"]:::classNode
+        engine_ResolverEngine_resolve["resolve (engine.py:37)"]:::methodNode
     end
     subgraph sg_uplift["uplift.py"]
         uplift_SemanticUpliftEngine["SemanticUpliftEngine (uplift.py:66)"]:::classNode
@@ -191,8 +191,8 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
 | `_is_noop_incremental` | METHOD | [`pipeline.py:192`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L192) |
 | `_persist_incremental` | METHOD | [`pipeline.py:211`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L211) |
 | `_get_extractor` | METHOD | [`pipeline.py:252`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L252) |
-| `ResolverEngine` | CLASS | [`engine.py:19`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L19) |
-| `resolve` | METHOD | [`engine.py:36`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L36) |
+| `ResolverEngine` | CLASS | [`engine.py:20`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L20) |
+| `resolve` | METHOD | [`engine.py:37`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L37) |
 | `SemanticUpliftEngine` | CLASS | [`uplift.py:66`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/uplift.py#L66) |
 | `execute_uplift` | METHOD | [`uplift.py:91`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/uplift.py#L91) |
 | `SQLiteStore` | CLASS | [`sqlite_store.py:40`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/storage/sqlite_store.py#L40) |
