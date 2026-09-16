@@ -5,6 +5,7 @@ from tree_sitter import Language, Parser
 from tree_sitter import Node as TSNode
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
+from cgis.extractors._typescript_bindings import shadowed_globals
 from cgis.extractors.base import BaseExtractor
 
 _RAW_CALL_PREFIX = "raw_call:"
@@ -126,6 +127,7 @@ class TypeScriptExtractor(BaseExtractor):
             start_line=1,
             end_line=tree.root_node.end_point[0] + 1,
             namespace=NodeNamespace.INTERNAL,
+            metadata={"shadowed_globals": shadowed_globals(tree.root_node)},
         )
         nodes: list[Node] = [file_node]
         edges: list[Edge] = []

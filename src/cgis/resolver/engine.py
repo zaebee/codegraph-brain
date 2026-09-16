@@ -101,9 +101,9 @@ class ResolverEngine:
         if new_target is None:
             # Fallback only: a project symbol named like a global has already won above.
             # Confidence stays at the unresolved 0.8, the value a Python builtin gets.
-            new_target = js_builtin_target(
-                raw_name, self._index.normalized_file_path(edge.source, edge.file_path)
-            )
+            file_path = self._index.normalized_file_path(edge.source, edge.file_path)
+            shadowed = self._index.file_shadowed_globals.get(file_path or "", frozenset())
+            new_target = js_builtin_target(raw_name, file_path, shadowed)
             if new_target is not None:
                 return edge.model_copy(update={"target": new_target, "confidence": 0.8})
         final_target = new_target or raw_name

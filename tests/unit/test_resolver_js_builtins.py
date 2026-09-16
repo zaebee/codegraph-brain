@@ -97,3 +97,97 @@ def test_edge_without_file_path_uses_source_node_file() -> None:
     )
     resolved, _ = ResolverEngine([source], [edge]).resolve()
     assert resolved[0].target == "js_builtins.Math.max"
+
+
+@pytest.mark.parametrize(
+    ("code", "bare_target"),
+    [
+        (
+            "import history from './history';\nexport function f() {\n  history.push('/');\n}\n",
+            "history.push",
+        ),
+        (
+            "import * as crypto from 'node:crypto';\n"
+            "export function f() {\n  crypto.randomUUID();\n}\n",
+            "crypto.randomUUID",
+        ),
+        ("import { fetch } from 'undici';\nexport function f() {\n  fetch('x');\n}\n", "fetch"),
+        (
+            "import { useC as confirm } from './c';\nexport function f() {\n  confirm();\n}\n",
+            "confirm",
+        ),
+        (
+            "export function f() {\n  const history = useHistory();\n  history.push('/');\n}\n",
+            "history.push",
+        ),
+        (
+            "export function f() {\n  const { location } = useRouter();\n  location.reload();\n}\n",
+            "location.reload",
+        ),
+        ("export function f(process: Proc) {\n  process.run();\n}\n", "process.run"),
+        ("export const g = (console: Log) => console.log('x');\n", "console.log"),
+        (
+            "export function f() {\n  try { x(); } catch (Event) { Event.stop(); }\n}\n",
+            "Event.stop",
+        ),
+    ],
+)
+def test_name_bound_in_file_is_not_a_js_global(code: str, bare_target: str) -> None:
+    """An imported, declared or parameter name that matches a global is the file's own binding.
+
+    It stays an honest UNKNOWN rather than becoming a confident, wrong STDLIB edge.
+    """
+    edges, _ = _resolve_ts(code)
+    targets = _call_targets(edges)
+    assert bare_target in targets
+    assert f"js_builtins.{bare_target}" not in targets
+
+
+def test_import_alias_leaves_the_original_global_free() -> None:
+    """`import { fetch as f }` binds `f`, so a bare `fetch()` is still the runtime's."""
+    code = (
+        "import { fetch as f } from 'undici';\nexport function g() {\n  f('a');\n  fetch('b');\n}\n"
+    )
+    edges, _ = _resolve_ts(code)
+    assert "js_builtins.fetch" in _call_targets(edges)
+
+
+def _shadowed(code: str) -> list[str]:
+    """The shadowed_globals the TS extractor records on the FILE node."""
+    nodes, _ = TypeScriptExtractor().parse(code, "src/app/m.ts")
+    file_node = next(n for n in nodes if n.type == NodeType.FILE)
+    shadowed: list[str] = file_node.metadata["shadowed_globals"]
+    return shadowed
+
+
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [
+        ("const [Image, ...Blob] = xs;", ["Blob", "Image"]),
+        ("const { a: { b: [URL] } } = x;", ["URL"]),
+        ("for (const Map of xs) {}", ["Map"]),
+        ("class Worker {}\nfunction Request() {}", ["Request", "Worker"]),
+        ("const h = async Response => 1;", ["Response"]),
+        ("function f({ Headers = 1 }: T, URLSearchParams?: U) {}", ["Headers", "URLSearchParams"]),
+        ("let history; var location;", ["history", "location"]),
+    ],
+)
+def test_shadowed_globals_binding_positions(code: str, expected: list[str]) -> None:
+    """Every binding form records the global it rebinds, sorted."""
+    assert _shadowed(code) == expected
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "const { fetch: f } = api;",  # the key is a property name, `f` is the binding
+        "const { a = fetch } = api;",  # a default value is an expression
+        "function g(a = console) {}",
+        "import { fetch as f } from 'undici';",
+        "const x = Math.max(1, 2);\nfetch('a');",  # plain use is not a binding
+        "const notAGlobal = 1;",
+    ],
+)
+def test_shadowed_globals_ignores_non_bindings(code: str) -> None:
+    """A global that is only read, renamed away, or used as a key stays free."""
+    assert _shadowed(code) == []

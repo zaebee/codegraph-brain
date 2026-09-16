@@ -133,7 +133,7 @@ def test_ts_js_global_calls_resolve_to_js_builtins(
     calls Math, document, console and setTimeout, so zero rewrites means the pass
     did not run.
     """
-    store, _, resolved_edges = ts_graph_data
+    store, nodes, resolved_edges = ts_graph_data
     calls = [e for e in resolved_edges if e.type == EdgeType.CALLS]
     builtin_calls = [e for e in calls if e.target.startswith(f"{JS_BUILTINS_ROOT}.")]
     assert len(builtin_calls) >= 20, f"only {len(builtin_calls)} js_builtins.* CALLS edges"
@@ -142,5 +142,18 @@ def test_ts_js_global_calls_resolve_to_js_builtins(
         assert node is not None, edge.target
         assert node.namespace == NodeNamespace.STDLIB, edge.target
 
-    bare = sorted({e.target for e in calls if e.target.split(".", maxsplit=1)[0] in JS_GLOBALS})
-    assert bare == [], f"JS global calls left unresolved: {bare}"
+    # A call left bare on a global root is only legitimate when its file rebinds
+    # that name (setupTests.ts declares its own ResizeObserver mock).
+    shadowed_by_file = {
+        n.file_path: set(n.metadata.get("shadowed_globals") or [])
+        for n in nodes
+        if n.type == NodeType.FILE
+    }
+    wrongly_bare = sorted(
+        e.target
+        for e in calls
+        if (root := e.target.split(".", maxsplit=1)[0]) in JS_GLOBALS
+        and (source := store.get_node(e.source)) is not None
+        and root not in shadowed_by_file.get(source.file_path, set())
+    )
+    assert wrongly_bare == [], f"JS global calls left unresolved: {wrongly_bare}"
