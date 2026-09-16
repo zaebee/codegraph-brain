@@ -153,9 +153,7 @@ class IngestionPipeline:
             # nothing went stale, the persisted graph is already correct.
             # Re-running the resolver + persistence + uplift would rebuild the
             # whole graph from the DB for zero benefit, so skip them entirely.
-            if store is not None and self._is_noop_incremental(
-                store, changed_files, found_file_paths
-            ):
+            if self._is_noop_incremental(store, changed_files, found_file_paths):
                 logger.info("No changes detected — skipping resolution and persistence.")
                 return all_nodes, all_edges, []
 
@@ -174,26 +172,6 @@ class IngestionPipeline:
 
         if store is None:
             return all_nodes, all_edges, resolved_edges
-        return self._finish_incremental(
-            repo_path,
-            store,
-            (all_nodes, all_edges, resolved_edges),
-            changed_files,
-            found_file_paths,
-            virtual_nodes,
-        )
-
-    def _finish_incremental(
-        self,
-        repo_path: str,
-        store: "SQLiteStore",
-        result: tuple[list[Node], list[Edge], list[Edge]],
-        changed_files: dict[str, str],
-        found_file_paths: set[str],
-        virtual_nodes: list[Node],
-    ) -> tuple[list[Node], list[Edge], list[Edge]]:
-        """Persist an incremental run, or rebuild when unchanged files' edges went stale."""
-        all_nodes, _all_edges, resolved_edges = result
         if self._cross_file_inputs_changed(
             store, all_nodes, resolved_edges, changed_files, found_file_paths
         ):
@@ -210,7 +188,7 @@ class IngestionPipeline:
         logger.info("Running semantic uplift...")
         SemanticUpliftEngine(store, self._domains_config).execute_uplift()
         logger.info("Semantic uplift complete.")
-        return result
+        return all_nodes, all_edges, resolved_edges
 
     def _process_file(
         self,
@@ -304,9 +282,14 @@ class IngestionPipeline:
         return False
 
     def _is_noop_incremental(
-        self, store: "SQLiteStore", changed_files: dict[str, str], found_file_paths: set[str]
+        self,
+        store: "SQLiteStore | None",
+        changed_files: dict[str, str],
+        found_file_paths: set[str],
     ) -> bool:
         """True when an incremental run can be skipped entirely.
+
+        Never without a store: a plain run has nothing persisted to fall back on.
 
         Requires no re-extracted files and no stale files. A configured domains
         ontology also disables the skip: ``domains.yaml`` can change independently
@@ -317,7 +300,7 @@ class IngestionPipeline:
         ``get_all_tracked_files`` DB query so it is only issued when it can
         actually change the outcome.
         """
-        if changed_files or self._domains_config is not None:
+        if store is None or changed_files or self._domains_config is not None:
             return False
         stale_files = store.get_all_tracked_files() - found_file_paths
         return not stale_files
