@@ -265,8 +265,11 @@ class IngestionPipeline:
         nodes table, not `files_state`, which a JSON-less full `cgis ingest -o
         x.db` leaves empty.
         """
-        if rebuild:
-            return False  # nothing unchanged survives a rebuild
+        if rebuild or not found_file_paths:
+            # Nothing unchanged survives a rebuild. And an empty tree has no unchanged
+            # files whose edges could be stale: the ordinary stale path removes the
+            # deleted files, where a rebuild of an empty walk would keep them.
+            return False
         tracked = store.get_tracked_source_files()
         if not tracked:
             return False

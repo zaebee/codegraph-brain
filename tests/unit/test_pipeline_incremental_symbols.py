@@ -307,3 +307,26 @@ def test_rebuild_that_fails_while_writing_keeps_the_old_graph(
         pipeline.run(root, store=store, rebuild=True)
     monkeypatch.undo()
     assert _graph(db) == before
+
+
+def test_incremental_run_over_a_tree_with_every_file_deleted_empties_the_graph(
+    tmp_path: Path,
+) -> None:
+    """Deleting every file is a real change, not an empty rebuild to be refused.
+
+    The stale files trigger the cross-file check; a rebuild of an empty walk would
+    keep the old graph for good, so an empty tree must take the ordinary stale path.
+    """
+    pipeline = IngestionPipeline({".py": PythonExtractor()})
+    work = tmp_path / "work"
+    _write(work, {"pkg/a.py": "def foo():\n    return 1\n", "pkg/b.py": _B_IMPORTS_FOO})
+    db = str(tmp_path / "g.db")
+    _ingest(work, db, pipeline)
+    _write(work, {"pkg/a.py": None, "pkg/b.py": None})
+    _ingest(work, db, pipeline)
+
+    edges, real_nodes = _graph(db)
+    assert edges == set()
+    assert real_nodes == set()
+    with SQLiteStore(db) as store:
+        assert store.get_all_tracked_files() == set()
