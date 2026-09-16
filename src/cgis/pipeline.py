@@ -1,6 +1,7 @@
 """Implements Pipeline to orcestrate code traversal."""
 
 import hashlib
+import json
 import re
 from collections.abc import Mapping
 from pathlib import Path
@@ -11,7 +12,7 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from cgis.core.generated import is_generated_source
-from cgis.core.models import Edge, Node
+from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.core.paths import EXCLUDED_DIRS
 from cgis.extractors.base import BaseExtractor
 from cgis.resolver.engine import ResolverEngine
@@ -21,6 +22,33 @@ if TYPE_CHECKING:
     from cgis.storage.sqlite_store import SQLiteStore
 
 logger = structlog.getLogger(__name__)
+
+#: The node metadata another file's resolution reads, by node type. Everything
+#: else a file carries (`local_types`, `shadowed_globals`, decorators) only
+#: steers the resolution of that file's own edges, which are re-resolved anyway.
+_CROSS_FILE_METADATA: dict[NodeType, tuple[str, ...]] = {
+    NodeType.FILE: ("import_map", "reexports", "star_imports"),
+    NodeType.CLASS: ("self_types",),
+}
+
+
+def _resolution_signature(nodes: list[Node], edges: list[Edge]) -> frozenset[str]:
+    """What other files resolve against in one file's extraction (#38).
+
+    The symbol index is built from node ids, types and names; the import map and
+    re-exports of a FILE; the declared attribute types of a CLASS; and the
+    inheritance tree from EXTENDS. If none of those changed, an unchanged file's
+    stored edges are still what a fresh resolution would produce.
+    """
+    signature: set[str] = set()
+    for node in nodes:
+        keys = _CROSS_FILE_METADATA.get(node.type, ())
+        meta = {key: node.metadata.get(key) for key in keys}
+        signature.add(json.dumps([node.id, node.type.value, node.name, meta], sort_keys=True))
+    signature.update(
+        json.dumps(["EXTENDS", e.source, e.target]) for e in edges if e.type == EdgeType.EXTENDS
+    )
+    return frozenset(signature)
 
 
 class IngestionPipeline:
@@ -125,9 +153,7 @@ class IngestionPipeline:
             # nothing went stale, the persisted graph is already correct.
             # Re-running the resolver + persistence + uplift would rebuild the
             # whole graph from the DB for zero benefit, so skip them entirely.
-            if store is not None and self._is_noop_incremental(
-                store, changed_files, found_file_paths
-            ):
+            if self._is_noop_incremental(store, changed_files, found_file_paths):
                 logger.info("No changes detected — skipping resolution and persistence.")
                 return all_nodes, all_edges, []
 
@@ -144,14 +170,24 @@ class IngestionPipeline:
                 virtual_nodes=len(virtual_nodes),
             )
 
-        if store is not None:
-            self._persist_incremental(
-                store, all_nodes, resolved_edges, changed_files, found_file_paths, virtual_nodes
-            )
-            logger.info("Running semantic uplift...")
-            SemanticUpliftEngine(store, self._domains_config).execute_uplift()
-            logger.info("Semantic uplift complete.")
+        if store is None:
+            return all_nodes, all_edges, resolved_edges
+        if self._cross_file_inputs_changed(
+            store, all_nodes, resolved_edges, changed_files, found_file_paths
+        ):
+            # Unchanged files keep edges resolved against the old symbols, so the
+            # only correct graph is a full one (#38). After clear() the store is
+            # empty, so the re-run cannot take this branch again.
+            logger.info("Symbols other files resolve against changed — rebuilding the graph.")
+            store.clear()
+            return self.run(repo_path, store=store)
 
+        self._persist_incremental(
+            store, all_nodes, resolved_edges, changed_files, found_file_paths, virtual_nodes
+        )
+        logger.info("Running semantic uplift...")
+        SemanticUpliftEngine(store, self._domains_config).execute_uplift()
+        logger.info("Semantic uplift complete.")
         return all_nodes, all_edges, resolved_edges
 
     def _process_file(
@@ -189,10 +225,71 @@ class IngestionPipeline:
         except Exception as e:
             logger.exception("Failed to parse file", full_path=full_path, error=str(e))
 
+    @staticmethod
+    def _cross_file_inputs_changed(
+        store: "SQLiteStore",
+        all_nodes: list[Node],
+        resolved_edges: list[Edge],
+        changed_files: dict[str, str],
+        found_file_paths: set[str],
+    ) -> bool:
+        """True when this run changes what *unchanged* files resolved against.
+
+        Read before persistence, while the store still holds each changed file's
+        previous nodes and edges. Three cases invalidate stored edges elsewhere:
+        a file removed from disk, a file new to a non-empty graph (its names can
+        make a global lookup ambiguous or satisfy one that missed — it shows up as
+        a signature against no stored rows), and a changed file whose resolution
+        signature differs. Tracked files are read from the
+        nodes table, not `files_state`, which a JSON-less full `cgis ingest -o
+        x.db` leaves empty.
+        """
+        tracked = store.get_tracked_source_files()
+        if not tracked:
+            return False
+        if tracked - found_file_paths:
+            return True
+
+        # One pass each, not one per changed file: a lost files_state marks every
+        # file changed, and per-file scans of all nodes and edges went quadratic.
+        # Keyed by id with the last occurrence winning, which is what the store's
+        # INSERT OR REPLACE keeps when a file declares one id twice.
+        new_by_file: dict[str, dict[str, Node]] = {}
+        for node in all_nodes:
+            if node.file_path in changed_files:
+                new_by_file.setdefault(node.file_path, {})[node.id] = node
+        new_extends: dict[str, dict[str, Edge]] = {}
+        for edge in resolved_edges:
+            if edge.type == EdgeType.EXTENDS:
+                new_extends.setdefault(edge.source, {})[edge.id] = edge
+
+        for file_path in changed_files:
+            # No early "no stored rows means a new file": a file whose every id is
+            # held by another file's row (`gen/api.py` beside `gen/api/`) has none,
+            # and is not new. A genuinely new file has ids the store lacks, so its
+            # fresh signature is non-empty against an empty one below.
+            old_nodes = store.get_nodes_by_file(file_path)
+            old_ids = [n.id for n in old_nodes]
+            old = _resolution_signature(old_nodes, store.get_outgoing_edges_batch(old_ids))
+            fresh = new_by_file.get(file_path, {})
+            # An id another file's row holds (`m.py` beside `m/__init__.py`) was
+            # never this file's in the store, so it cannot be in `old` either.
+            owner = {n.id: n.file_path for n in store.get_nodes(list(fresh))}
+            new_nodes = [n for i, n in fresh.items() if owner.get(i, file_path) == file_path]
+            new_edges = [e for n in new_nodes for e in new_extends.get(n.id, {}).values()]
+            if _resolution_signature(new_nodes, new_edges) != old:
+                return True
+        return False
+
     def _is_noop_incremental(
-        self, store: "SQLiteStore", changed_files: dict[str, str], found_file_paths: set[str]
+        self,
+        store: "SQLiteStore | None",
+        changed_files: dict[str, str],
+        found_file_paths: set[str],
     ) -> bool:
         """True when an incremental run can be skipped entirely.
+
+        Never without a store: a plain run has nothing persisted to fall back on.
 
         Requires no re-extracted files and no stale files. A configured domains
         ontology also disables the skip: ``domains.yaml`` can change independently
@@ -203,7 +300,7 @@ class IngestionPipeline:
         ``get_all_tracked_files`` DB query so it is only issued when it can
         actually change the outcome.
         """
-        if changed_files or self._domains_config is not None:
+        if store is None or changed_files or self._domains_config is not None:
             return False
         stale_files = store.get_all_tracked_files() - found_file_paths
         return not stale_files
