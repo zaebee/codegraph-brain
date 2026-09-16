@@ -50,7 +50,7 @@ class ResolverEngine:
             if edge.target.startswith(RAW_CLASS_PREFIX):
                 class_edge = self._resolved_class_edge(edge)
                 resolved_edges.append(class_edge)
-                self._ensure_virtual_node(class_edge.target, virtual_nodes)
+                self._ensure_virtual_node(class_edge, virtual_nodes)
             elif edge.target.startswith(RAW_DEP_PREFIX):
                 dep_edge = self._resolved_dep_edge(edge)
                 if dep_edge is not None:
@@ -62,11 +62,11 @@ class ResolverEngine:
                 # no _ensure_virtual_node: target exists on hit, edge dies on miss
             elif not edge.target.startswith("raw_call:"):
                 resolved_edges.append(edge)
-                self._ensure_virtual_node(edge.target, virtual_nodes)
+                self._ensure_virtual_node(edge, virtual_nodes)
             else:
                 call_edge = self._resolved_call_edge(edge)
                 resolved_edges.append(call_edge)
-                self._ensure_virtual_node(call_edge.target, virtual_nodes)
+                self._ensure_virtual_node(call_edge, virtual_nodes)
 
         return resolved_edges, list(virtual_nodes.values())
 
@@ -161,11 +161,18 @@ class ResolverEngine:
             return None
         return edge.model_copy(update={"target": node_fqn, "confidence": 1.0})
 
-    def _ensure_virtual_node(self, target: str, virtual_nodes: dict[str, Node]) -> None:
-        """Create a virtual boundary node for target if it is not already in the graph."""
+    def _ensure_virtual_node(self, edge: Edge, virtual_nodes: dict[str, Node]) -> None:
+        """Create a virtual boundary node for the edge's target if the graph lacks one.
+
+        Classified in the language of the edge's source file (#454). A target
+        string reached from both a Python and a TypeScript file keeps the
+        classification of the first edge seen; the strings rarely coincide.
+        """
+        target = edge.target
         if not self._index.has_node(target) and target not in virtual_nodes:
+            source_file = self._index.normalized_file_path(edge.source, edge.file_path)
             virtual_nodes[target] = self._make_virtual_node(
-                target, self._index.classify_fqn(target)
+                target, self._index.classify_fqn(target, source_file)
             )
 
     def _make_virtual_node(self, fqn: str, namespace: NodeNamespace) -> Node:

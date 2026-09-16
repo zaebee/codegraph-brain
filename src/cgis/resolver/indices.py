@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 
 from cgis.core.models import SELF_PREFIX, Node, NodeNamespace, NodeType
-from cgis.resolver.js_builtins import JS_BUILTINS_ROOT
+from cgis.resolver.js_builtins import JS_BUILTINS_ROOT, is_js_source
 
 _BUILTINS: frozenset[str] = frozenset(dir(builtins))
 
@@ -163,11 +163,16 @@ class SymbolIndex:
         """
         return fqn in self.nodes
 
-    def classify_fqn(self, fqn: str) -> NodeNamespace:
+    def classify_fqn(self, fqn: str, source_file: str | None = None) -> NodeNamespace:
         """Classify an FQN as STDLIB, INTERNAL, EXTERNAL, or UNKNOWN.
 
         UNKNOWN means the root segment was not found in internal roots,
         stdlib/builtins, or any known import-map external root.
+
+        `source_file` is the file the reference comes from. Python's stdlib and
+        builtin names only mean STDLIB in a Python source: a TypeScript receiver
+        called `list`, `queue` or `this` is a local value, not `import this` (#454).
+        Without it the Python reading applies, as it always has.
         """
         if fqn.startswith("."):
             return NodeNamespace.INTERNAL
@@ -180,7 +185,9 @@ class SymbolIndex:
         root = fqn.split(".", maxsplit=1)[0]
         if root in self.internal_roots:
             return NodeNamespace.INTERNAL
-        if root in sys.stdlib_module_names or root in _BUILTINS or root == JS_BUILTINS_ROOT:
+        if root == JS_BUILTINS_ROOT:
+            return NodeNamespace.STDLIB
+        if not is_js_source(source_file) and (root in sys.stdlib_module_names or root in _BUILTINS):
             return NodeNamespace.STDLIB
         if root in self.external_roots:
             return NodeNamespace.EXTERNAL

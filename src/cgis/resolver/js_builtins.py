@@ -21,6 +21,11 @@ JS_BUILTINS_ROOT = "js_builtins"
 _JS_SUFFIXES: tuple[str, ...] = (".ts", ".tsx")
 
 
+def is_js_source(file_path: str | None) -> bool:
+    """True when `file_path` is a JavaScript/TypeScript source cgis extracts."""
+    return file_path is not None and file_path.endswith(_JS_SUFFIXES)
+
+
 def js_builtin_target(
     raw_name: str, file_path: str | None, shadowed: frozenset[str] = frozenset()
 ) -> str | None:
@@ -31,7 +36,7 @@ def js_builtin_target(
     declares itself — `import history from './history'`, `const confirm = ...`, a
     parameter named `process` — which are the file's own values, not the runtime's.
     """
-    if file_path is None or not file_path.endswith(_JS_SUFFIXES):
+    if not is_js_source(file_path):
         return None
     root = raw_name.split(".", maxsplit=1)[0]
     if root not in JS_GLOBALS or root in shadowed:
