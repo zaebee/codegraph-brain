@@ -134,6 +134,10 @@ def test_edge_without_file_path_uses_source_node_file() -> None:
         ),
         ("export function f(process: Proc) {\n  process.run();\n}\n", "process.run"),
         ("export const g = (console: Log) => console.log('x');\n", "console.log"),
+        # tree-sitter-typescript has no rest_parameter node: `...x` is a
+        # required_parameter whose pattern is a rest_pattern.
+        ("export function f(...console: any[]) {\n  console.log('x');\n}\n", "console.log"),
+        ("export const g = (...process: P[]) => process.run();\n", "process.run"),
         (
             "import crypto = require('crypto');\n"
             "export function g() {\n  crypto.randomUUID();\n}\n",
@@ -183,7 +187,8 @@ def _shadowed(code: str) -> list[str]:
     [
         ("const [Image, ...Blob] = xs;", ["Blob", "Image"]),
         ("const { a: { b: [URL] } } = x;", ["URL"]),
-        ("for (const Map of xs) {}", ["Map"]),
+        ("for (const Map of xs) {}", ["Map"]),  # for-of parses as for_in_statement
+        ("for (const [URL] of xs) {}", ["URL"]),
         ("class Worker {}\nfunction Request() {}", ["Request", "Worker"]),
         ("const h = async Response => 1;", ["Response"]),
         ("function f({ Headers = 1 }: T, URLSearchParams?: U) {}", ["Headers", "URLSearchParams"]),
