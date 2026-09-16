@@ -8,6 +8,7 @@ incremental.
 """
 
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -276,7 +277,7 @@ def test_file_whose_ids_all_collide_is_not_new(tmp_path: Path) -> None:
         owners = {n.file_path for n in store.get_all_nodes() if n.id.startswith("api")}
     assert len(owners) == 1, "fixture no longer collides — the test would pass vacuously"
 
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:  # closing() alone does not commit
         conn.execute("DELETE FROM files_state")
     parsed.clear()
     _ingest(work, db, pipeline)

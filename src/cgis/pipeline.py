@@ -361,21 +361,15 @@ class IngestionPipeline:
         if rebuild and not nodes_by_file:
             logger.warning("Rebuild extracted nothing — keeping the stored graph.")
             return
-        stale_files = set() if rebuild else store.get_all_tracked_files() - found_file_paths
+        stale_files = store.get_all_tracked_files() - found_file_paths
         store.save_incremental_batch(
             nodes_by_file,
             edges_by_file,
             changed_files,
             stale_files,
             replace_all=rebuild,
-            virtual_nodes=virtual_nodes if rebuild else None,
+            virtual_nodes=virtual_nodes,
         )
-
-        # Outside a rebuild, virtual nodes are upserted separately — never deleted —
-        # because only changed files' edges are re-resolved, so virtual_nodes is
-        # incomplete. Orphaned virtual nodes (no incoming edges) are harmless.
-        if virtual_nodes and not rebuild:
-            store.upsert_virtual_nodes(virtual_nodes)
 
         for file_path in changed_files:
             logger.info("Re-ingested changed file", file_path=file_path)

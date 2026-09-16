@@ -5,6 +5,7 @@ import os
 import re
 import sqlite3
 import time
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -2060,7 +2061,7 @@ def test_fractal_warns_about_a_stale_graph_too(tmp_path: Path) -> None:
 
 def _files_state(db: Path) -> dict[str, str]:
     """The incremental cache as stored: file path -> content hash."""
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn:
         return dict(conn.execute("SELECT file_path, hash FROM files_state").fetchall())
 
 
