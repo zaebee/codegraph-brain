@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.21.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.20.0...codegraph-brain-v0.21.0) (2026-09-16)
+
+
+### Features
+
+* **resolver:** resolve JS/TS runtime globals into js_builtins.* ([#111](https://github.com/zaebee/codegraph-brain/issues/111)) ([#453](https://github.com/zaebee/codegraph-brain/issues/453)) ([84e790b](https://github.com/zaebee/codegraph-brain/commit/84e790b404f7a515e048f7a2370b8865b71912ff))
+
+
+### Bug Fixes
+
+* **cli:** a full ingest into a database records file hashes ([#461](https://github.com/zaebee/codegraph-brain/issues/461)) ([e0a4a5e](https://github.com/zaebee/codegraph-brain/commit/e0a4a5ec34f8b0b34220f3f318ce0edc99ed1d9b))
+* **pipeline:** rebuild when a change alters what other files resolve against ([#38](https://github.com/zaebee/codegraph-brain/issues/38)) ([#458](https://github.com/zaebee/codegraph-brain/issues/458)) ([8126fd6](https://github.com/zaebee/codegraph-brain/commit/8126fd6377c82613f9f8a76f33253a8cd9e636f0))
+* **resolver:** Python stdlib names are STDLIB only in Python sources ([#454](https://github.com/zaebee/codegraph-brain/issues/454)) ([#457](https://github.com/zaebee/codegraph-brain/issues/457)) ([15e7ba1](https://github.com/zaebee/codegraph-brain/commit/15e7ba17ae49e2e3c10a2ef9f6cf1f11e663edfb))
+
+
+### Documentation
+
+* auto-sync architecture graph and MCP reference ([#456](https://github.com/zaebee/codegraph-brain/issues/456)) ([ae24054](https://github.com/zaebee/codegraph-brain/commit/ae24054361935dbb1a1f9471eea7b4b949ab8a10))
+* auto-sync architecture graph and MCP reference ([#460](https://github.com/zaebee/codegraph-brain/issues/460)) ([a341063](https://github.com/zaebee/codegraph-brain/commit/a3410631511802bdc9851decadbbbf25b40d8d22))
+
 ## [0.20.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.19.0...codegraph-brain-v0.20.0) (2026-09-11)
 
 
