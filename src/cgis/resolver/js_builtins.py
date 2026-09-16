@@ -12,15 +12,13 @@ map the root to STDLIB without a Python module that happens to call something
 `Map.get` being mistaken for the JavaScript runtime.
 """
 
-from pathlib import PurePosixPath
-
 from cgis.core.js_globals import JS_GLOBALS
 
 JS_BUILTINS_ROOT = "js_builtins"
 
 #: Extensions whose calls are JavaScript at runtime. Matches the extractors
 #: registered in `extractors/registry.py` for `.ts`/`.tsx`.
-_JS_SUFFIXES: frozenset[str] = frozenset({".ts", ".tsx"})
+_JS_SUFFIXES: tuple[str, ...] = (".ts", ".tsx")
 
 
 def js_builtin_target(
@@ -33,7 +31,7 @@ def js_builtin_target(
     declares itself — `import history from './history'`, `const confirm = ...`, a
     parameter named `process` — which are the file's own values, not the runtime's.
     """
-    if file_path is None or PurePosixPath(file_path.replace("\\", "/")).suffix not in _JS_SUFFIXES:
+    if file_path is None or not file_path.endswith(_JS_SUFFIXES):
         return None
     root = raw_name.split(".", maxsplit=1)[0]
     if root not in JS_GLOBALS or root in shadowed:

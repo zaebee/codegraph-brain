@@ -106,6 +106,7 @@ JS_GLOBALS: frozenset[str] = frozenset(
         "Worker",
         "Image",
         # Node globals
+        "global",
         "process",
         "Buffer",
         "require",

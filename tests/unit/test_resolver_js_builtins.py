@@ -33,6 +33,7 @@ def _call_targets(edges: list[Edge]) -> set[str]:
         ("setTimeout(a, 1)", "js_builtins.setTimeout"),
         ("fetch(a)", "js_builtins.fetch"),
         ("String(a)", "js_builtins.String"),
+        ("global.gc(a)", "js_builtins.global.gc"),
     ],
 )
 def test_ts_global_call_resolves_to_js_builtins(call: str, expected: str) -> None:
@@ -76,6 +77,13 @@ def test_python_file_never_gets_js_builtins() -> None:
     nodes, edges = PythonExtractor().parse(code, "app/mod.py")
     resolved, _ = ResolverEngine(nodes, edges).resolve()
     assert not any(t.startswith("js_builtins.") for t in _call_targets(resolved))
+
+
+def test_windows_path_is_still_typescript() -> None:
+    """The suffix check does not depend on the separator style."""
+    code = "export function f() {\n  return Math.max(1, 2);\n}\n"
+    edges, _ = _resolve_ts(code, "src\\app\\util.ts")
+    assert "js_builtins.Math.max" in _call_targets(edges)
 
 
 def test_edge_without_file_path_uses_source_node_file() -> None:

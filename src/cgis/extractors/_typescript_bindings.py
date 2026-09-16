@@ -11,6 +11,8 @@ is where it stood before #111. The opposite error — a confident STDLIB edge fo
 the file's own value — is the one that skews the unresolved ratio.
 """
 
+from collections.abc import Callable
+
 from tree_sitter import Node as TSNode
 
 from cgis.core.js_globals import JS_GLOBALS
@@ -38,8 +40,7 @@ _NAMED_DECLARATIONS: frozenset[str] = frozenset(
     }
 )
 
-#: `import crypto = require('crypto')` and `import history = X.Y`: the local name
-#: is the node's first identifier child.
+#: `import crypto = require('crypto')` and `import history = X.Y`.
 _IMPORT_EQUALS: frozenset[str] = frozenset({"import_require_clause", "import_alias"})
 
 
@@ -52,24 +53,9 @@ def shadowed_globals(root: TSNode) -> list[str]:
 
 def _collect(node: TSNode, bound: set[str]) -> None:
     """Walk the tree, adding every name introduced by a binding position."""
-    if node.type == "import_clause":
-        _collect_import_clause(node, bound)
-    elif node.type in _IMPORT_EQUALS:
-        local = next((c for c in node.children if c.type == "identifier"), None)
-        if local is not None:
-            _add(local, bound)
-    elif node.type in _NAMED_DECLARATIONS:
-        name = node.child_by_field_name("name")
-        if name is not None and name.type in ("identifier", "type_identifier"):
-            _add(name, bound)
-        elif name is not None and name.type == "nested_identifier" and name.text is not None:
-            # namespace history.v2 { } binds `history`
-            bound.add(name.text.decode("utf-8").split(".", maxsplit=1)[0])
-    field = _PATTERN_FIELDS.get(node.type)
-    if field is not None:
-        pattern = node.child_by_field_name(field)
-        if pattern is not None:
-            _collect_pattern(pattern, bound)
+    binder = _BINDERS.get(node.type)
+    if binder is not None:
+        binder(node, bound)
     for child in node.children:
         _collect(child, bound)
 
@@ -80,16 +66,49 @@ def _collect_import_clause(clause: TSNode, bound: set[str]) -> None:
         if child.type == "identifier":
             _add(child, bound)
         elif child.type == "namespace_import":
-            for inner in child.children:
-                if inner.type == "identifier":
-                    _add(inner, bound)
+            _add_first_identifier(child, bound)
         elif child.type == "named_imports":
             for spec in child.children:
-                if spec.type != "import_specifier":
-                    continue
-                local = spec.child_by_field_name("alias") or spec.child_by_field_name("name")
-                if local is not None:
-                    _add(local, bound)
+                _bind_import_specifier(spec, bound)
+
+
+def _bind_import_specifier(spec: TSNode, bound: set[str]) -> None:
+    """`{ fetch }` binds `fetch`; `{ fetch as f }` binds only `f`."""
+    if spec.type != "import_specifier":
+        return
+    local = spec.child_by_field_name("alias") or spec.child_by_field_name("name")
+    if local is not None:
+        _add(local, bound)
+
+
+def _add_first_identifier(node: TSNode, bound: set[str]) -> None:
+    """`* as crypto`, `import crypto = require(...)`: the local name is the first identifier."""
+    local = next((c for c in node.children if c.type == "identifier"), None)
+    if local is not None:
+        _add(local, bound)
+
+
+def _bind_declaration_name(node: TSNode, bound: set[str]) -> None:
+    """A declaration's own name; `namespace history.v2 { }` binds its first segment."""
+    name = node.child_by_field_name("name")
+    if name is None:
+        return
+    if name.type in ("identifier", "type_identifier"):
+        _add(name, bound)
+    elif name.type == "nested_identifier" and name.text is not None:
+        bound.add(name.text.decode("utf-8").split(".", maxsplit=1)[0])
+
+
+def _pattern_binder(field: str) -> Callable[[TSNode, set[str]], None]:
+    """A binder that collects the pattern held in `field`."""
+
+    def bind(node: TSNode, bound: set[str]) -> None:
+        """Collect the names the node's `field` pattern binds."""
+        pattern = node.child_by_field_name(field)
+        if pattern is not None:
+            _collect_pattern(pattern, bound)
+
+    return bind
 
 
 def _collect_pattern(pattern: TSNode, bound: set[str]) -> None:
@@ -117,3 +136,12 @@ def _add(identifier: TSNode, bound: set[str]) -> None:
     """Record one identifier's text."""
     if identifier.text is not None:
         bound.add(identifier.text.decode("utf-8"))
+
+
+#: Node type -> how that node binds names. Built last, from the helpers above.
+_BINDERS: dict[str, Callable[[TSNode, set[str]], None]] = {
+    "import_clause": _collect_import_clause,
+    **dict.fromkeys(_IMPORT_EQUALS, _add_first_identifier),
+    **dict.fromkeys(_NAMED_DECLARATIONS, _bind_declaration_name),
+    **{node_type: _pattern_binder(field) for node_type, field in _PATTERN_FIELDS.items()},
+}
