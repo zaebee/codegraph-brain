@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.22.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.21.0...codegraph-brain-v0.22.0) (2026-09-17)
+
+
+### Features
+
+* **mcp:** publishable to the official MCP Registry ([#464](https://github.com/zaebee/codegraph-brain/issues/464)) ([328ef6e](https://github.com/zaebee/codegraph-brain/commit/328ef6e655fa9324c2dc9940928edc065c28561e))
+
+
+### Documentation
+
+* **readme:** lead with what CGIS does, for whom, and how to try it ([#462](https://github.com/zaebee/codegraph-brain/issues/462)) ([3288c3e](https://github.com/zaebee/codegraph-brain/commit/3288c3ea44cf0099651bb8b9a0224b5c0044b16f))
+
 ## [0.21.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.20.0...codegraph-brain-v0.21.0) (2026-09-16)
 
 
