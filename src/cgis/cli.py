@@ -677,7 +677,7 @@ def _render_overview(report: dict[str, Any]) -> None:
         table.add_column("Prefix", style="cyan")
         table.add_column("Symbols", style="magenta", justify="right")
         for row in rows:
-            table.add_row(str(row["prefix"]), str(row["symbols"]))
+            table.add_row(escape(str(row["prefix"])), str(row["symbols"]))
         console.print(table)
         omitted = report.get(f"{key}_omitted")
         if omitted:

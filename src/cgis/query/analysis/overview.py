@@ -11,9 +11,14 @@ Two rules follow from that:
 **It stays small.** The listing is capped and says how much it cut. A map that
 costs as much as the files it replaces is not a map.
 
-**Every prefix it prints is usable.** Rows carry real FQN prefixes, so the next
-call is `cgis_get_structure(prefix)`, `cgis_find_symbol(fqn_prefix=prefix)` or
-`cgis_metrics(scope=[prefix])` with no guessing in between.
+**Every prefix it prints is usable — by the tools that match on prefixes.**
+`cgis_find_symbol(fqn_prefix=…)` and `cgis_metrics(scope=[…])` take a package
+prefix as it appears here. `cgis_get_structure` does not: it looks a node up by
+id, and a package has a node only when it has an `__init__.py` — and even then
+containment runs file→symbol, so the answer is that one empty file. Measured on
+this repository: of ten printed prefixes, four are not nodes at all and three
+resolve to a single node with no edges. So the route to a module is
+`cgis_find_symbol(fqn_prefix=…)` first, `cgis_get_structure` on what it returns.
 
 Entry points are deliberately absent. "A function nothing calls" is not one: on
 a 512-file FastAPI backend 4,612 of 5,846 functions and methods have no incoming
@@ -49,8 +54,12 @@ def build_overview(
     Production and test packages are listed separately because on a real tree the
     test packages are the largest ones: on a 512-file backend three of the six
     biggest are under `tests.`, which makes an undivided listing point an agent
-    at the tests first.
+    at the tests first. A prefix can appear in both lists when tests live inside
+    the package they cover (`domains/admin/tests/`), and the two lists do not sum
+    to `symbols` once the cap bites.
     """
+    depth = max(depth, 1)
+    limit = max(limit, 1)
     stats = store.get_edge_stats()
     production, tests = store.package_census(depth)
     package_rows, omitted = _package_rows(production, limit)
@@ -64,9 +73,10 @@ def build_overview(
         "packages": package_rows,
         "test_packages": test_rows,
         "next": [
-            "cgis_get_structure(<prefix>) — what a package or class holds",
-            "cgis_find_symbol(<name>, fqn_prefix=<prefix>) — locate a symbol by name",
+            "cgis_find_symbol(<name>, fqn_prefix=<prefix>) — symbols inside a package",
             "cgis_metrics(scope=[<prefix>]) — coupling and God classes in one package",
+            "cgis_get_structure(<fqn>) — members of a module or class, once you have its "
+            "FQN from cgis_find_symbol (a package prefix is not a node)",
             "cgis_validate() — how much of the graph resolved",
         ],
     }

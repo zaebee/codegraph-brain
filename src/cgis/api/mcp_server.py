@@ -739,9 +739,11 @@ def cgis_overview(
     Call this first in an unfamiliar repository — every other tool needs a name,
     and this is the one that hands you some. Returns JSON: symbol counts by type,
     file and edge totals, the unresolved-edge ratio, and the largest packages with
-    production and tests listed separately. Each ``prefix`` is a real FQN prefix,
-    so it can go straight into ``cgis_get_structure``, ``cgis_find_symbol``
-    (``fqn_prefix``) or ``cgis_metrics`` (``scope``).
+    production and tests listed separately. Each ``prefix`` goes straight into
+    ``cgis_find_symbol`` (``fqn_prefix``) or ``cgis_metrics`` (``scope``), which
+    match on prefixes. ``cgis_get_structure`` takes a node id, not a prefix: a
+    package is a node only when it has an ``__init__.py``, and then holds no
+    members of its own — reach a module through ``cgis_find_symbol`` first.
 
     Listings are capped; ``packages_omitted`` appears when rows were cut. Entry
     points are deliberately not reported — "nothing calls it" is not one on a

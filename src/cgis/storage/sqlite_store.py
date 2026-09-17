@@ -40,6 +40,11 @@ class EdgeStats:
     top_unresolved: list[tuple[str, int]] = field(default_factory=list)  # top UNKNOWN targets
 
 
+def _ranked(census: Counter[str]) -> list[tuple[str, int]]:
+    """Largest first, ties broken by prefix — `most_common` alone orders ties by rowid."""
+    return sorted(census.items(), key=lambda row: (-row[1], row[0]))
+
+
 class SQLiteStore:
     """
     Deterministic SQLite Graph Store.
@@ -387,15 +392,22 @@ class SQLiteStore:
         return int(row["n"]) if row else 0
 
     def symbol_census(self) -> dict[str, int]:
-        """Internal declared symbols by node type — CLASS/FUNCTION/METHOD, not FILE."""
+        """Internal declared symbols by node type — CLASS/FUNCTION/METHOD, not FILE.
+
+        Virtual nodes are excluded by file path: `--domains` mints DOMAIN_CONCEPT
+        nodes that are INTERNAL and not FILE, so without this a domain counts as a
+        symbol and shows up as a `domain:` package row, pushing real packages off a
+        capped listing.
+        """
         if not self._conn:
             raise RuntimeError(self._error_message)
         rows = self._conn.execute(
             """
             SELECT type, COUNT(*) FROM nodes
-            WHERE namespace = 'INTERNAL' AND type != 'FILE'
+            WHERE namespace = 'INTERNAL' AND type != 'FILE' AND file_path != ?
             GROUP BY type ORDER BY type
-            """
+            """,
+            (VIRTUAL_FILE_PATH,),
         ).fetchall()
         return {row[0]: row[1] for row in rows}
 
@@ -415,14 +427,19 @@ class SQLiteStore:
         `mod`, not `mod.func`, or the map would list one row per symbol. Grouping
         happens in Python because the cut is per-id — SQL would need a recursive
         expression to find the nth dot, for a pass over ids this already makes.
+
+        Virtual `domain:` nodes are excluded with the same file-path predicate
+        `symbol_census` uses, and ties are broken by prefix so the map is
+        reproducible across re-ingests.
         """
         if not self._conn:
             raise RuntimeError(self._error_message)
         rows = self._conn.execute(
             """
             SELECT id, is_test FROM nodes
-            WHERE namespace = 'INTERNAL' AND type != 'FILE'
-            """
+            WHERE namespace = 'INTERNAL' AND type != 'FILE' AND file_path != ?
+            """,
+            (VIRTUAL_FILE_PATH,),
         ).fetchall()
         production: Counter[str] = Counter()
         tests: Counter[str] = Counter()
@@ -430,7 +447,7 @@ class SQLiteStore:
             parts = node_id.split(".")
             prefix = ".".join(parts[: min(depth, max(len(parts) - 1, 1))])
             (tests if is_test else production)[prefix] += 1
-        return production.most_common(), tests.most_common()
+        return _ranked(production), _ranked(tests)
 
     def get_node(self, node_id: str) -> Node | None:
         """Return a single node by FQN, or None if not found."""

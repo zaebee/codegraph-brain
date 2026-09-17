@@ -6,15 +6,28 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from cgis.api.mcp_server import cgis_get_structure, cgis_ingest, cgis_overview
+from cgis.api.mcp_server import (
+    cgis_find_symbol,
+    cgis_get_structure,
+    cgis_ingest,
+    cgis_overview,
+)
 from cgis.cli import app
 
 runner = CliRunner()
 
+# Both package shapes on purpose: `app.domains` has an __init__.py and so becomes a
+# node, `app.core` has none and becomes no node at all. The flat fixture this file
+# started with could only produce module prefixes — the one shape that always
+# resolves — so the acceptance test below was green on a promise that is false on
+# any real tree (#486 review).
 _REPO = {
     "app/__init__.py": "",
     "app/api.py": "def get_user():\n    return 1\n\n\ndef post_user():\n    return 2\n",
     "app/store.py": "def save():\n    return 3\n",
+    "app/domains/__init__.py": "",
+    "app/domains/admin.py": "def ban():\n    return 4\n",
+    "app/core/settings.py": "def load():\n    return 5\n",
     "tests/__init__.py": "",
     "tests/test_api.py": "def test_get_user():\n    assert True\n",
 }
@@ -42,25 +55,52 @@ def test_overview_tool_reports_sizes_and_packages(repo_db: str) -> None:
     """The first call in an unfamiliar repo answers with something, not a prompt for a name."""
     report = _report(repo_db)
 
-    assert report["files"] == 5
-    assert report["symbols"]["FUNCTION"] == 4
-    assert {row["prefix"] for row in report["packages"]} == {"app.api", "app.store"}
+    assert report["files"] == 8
+    assert report["symbols"]["FUNCTION"] == 6
+    assert {row["prefix"] for row in report["packages"]} == {
+        "app.api",
+        "app.store",
+        "app.domains",
+        "app.core",
+    }
     assert [row["prefix"] for row in report["test_packages"]] == ["tests.test_api"]
     # A fresh graph adds no freshness key — the shape only grows when there is
     # something to say (#175).
     assert "freshness" not in report
 
 
-def test_every_prefix_the_overview_prints_is_one_structure_accepts(repo_db: str) -> None:
-    """The map is only useful if its rows are the next call's argument (#478 acceptance)."""
+def test_every_prefix_the_overview_prints_finds_symbols(repo_db: str) -> None:
+    """The map is only useful if its rows are the next call's argument (#478 acceptance).
+
+    The next call is `cgis_find_symbol(fqn_prefix=…)`, which matches on the prefix
+    string. `cgis_get_structure` is not — see the test below.
+    """
     report = _report(repo_db)
     prefixes = [row["prefix"] for row in report["packages"] + report["test_packages"]]
-    assert prefixes
+    assert {"app.domains", "app.core"} <= set(prefixes)
 
     for prefix in prefixes:
-        answer = cgis_get_structure(prefix, repo_db, output_format="json")
+        answer = cgis_find_symbol("a", repo_db, fqn_prefix=prefix)
         assert not answer.startswith("❌"), f"{prefix}: {answer}"
-        assert json.loads(answer[answer.find("{") :])["root"] == prefix
+        hits = json.loads(answer[answer.find("[") :])
+        assert hits, f"{prefix} scopes a search to nothing"
+        assert all(hit["fqn"].startswith(prefix) for hit in hits)
+
+
+def test_a_package_prefix_is_not_something_structure_can_look_up(repo_db: str) -> None:
+    """Why the docs send an agent through find_symbol first (#486 review).
+
+    `app.core` has no `__init__.py`, so nothing in the graph bears that name;
+    `app.domains` has one, and its node holds no members because containment runs
+    file → symbol. Pinned so a graph model that adds package nodes fails here.
+    """
+    missing = cgis_get_structure("app.core", repo_db, output_format="json")
+    assert missing.startswith("❌")
+
+    empty = cgis_get_structure("app.domains", repo_db, output_format="json")
+    payload = json.loads(empty[empty.find("{") :])
+    assert [node["fqn"] for node in payload["nodes"]] == ["app.domains"]
+    assert payload["edges"] == []
 
 
 def test_overview_tool_reports_a_missing_database(tmp_path: Path) -> None:

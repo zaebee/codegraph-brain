@@ -47,7 +47,7 @@ cgis ingest ./src --output graph.json
 
 ### `cgis overview`
 
-Where to start in a graph you know nothing about: how big it is, how much of it resolved, and the largest packages with production and tests listed separately. Every prefix it prints is one `structure`, `find --prefix` and `metrics --scope` accept. The MCP tool is `cgis_overview`.
+Where to start in a graph you know nothing about: how big it is, how much of it resolved, and the largest packages with production and tests listed separately. Every prefix it prints is one `find --prefix` and `metrics --scope` accept. `structure` takes a node's FQN instead — a package is a node only when it has an `__init__.py` — so reach a module through `find` first. The MCP tool is `cgis_overview`.
 
 ```bash
 cgis overview [OPTIONS]
