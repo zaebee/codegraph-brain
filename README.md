@@ -1,39 +1,112 @@
 # 🧠 CGIS: Code Graph Intelligence System
-### *The Semantic Ground Truth for AI Agents*
+### *A code graph your AI agent can query instead of guess*
 
 [![Continuous Integration](https://github.com/zaebee/codegraph-brain/actions/workflows/ci.yml/badge.svg)](https://github.com/zaebee/codegraph-brain/actions/workflows/ci.yml)
 [![Graph Integrity](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/zaebee/codegraph-brain/main/docs/architecture/health_badge.json)](https://github.com/zaebee/codegraph-brain/actions/workflows/autodoc.yml)
+[![PyPI](https://img.shields.io/pypi/v/codegraph-brain)](https://pypi.org/project/codegraph-brain/)
 
-**LLM coding agents (Claude, Cursor, GPT) are currently "guessing" your architecture based on flat text snippets. CGIS stops the guessing.**
+**Ask "what breaks if I change this?" and get the call chain, not a guess.**
 
-CGIS transforms raw source code into a deterministic, multi-layered semantic graph. It provides AI agents with a high-fidelity architectural model, enabling them to understand not just what the code *says*, but how it *behaves* and *connects*.
+CGIS parses a repository with tree-sitter into a graph of fully qualified symbols and the calls, imports and containment between them, stores it in SQLite, and serves it to AI agents over MCP. An agent that would otherwise grep and read whole files asks the graph instead.
+
+**Languages:** Python · TypeScript / TSX
+**Runs:** locally — no account, no telemetry, your code never leaves the machine
+
+```console
+$ cgis impact cgis.query.engine.QueryEngine.get_flow_graph --depth 2
+🔍 Analyzing transitive upstream callers of: cgis.query.engine.QueryEngine.get_flow_graph
+
+METHOD cgis.query.engine.QueryEngine.get_flow_graph (cgis/query/engine.py:215)
+├── FUNCTION cgis.query.context.context_service._collect_callees (cgis/query/context/context_service.py:44)
+│   └── FUNCTION cgis.query.context.context_service.build_context (cgis/query/context/context_service.py:96)
+└── METHOD cgis.guardian.collector.ContextCollector._graph_sections (cgis/guardian/collector.py:174)
+    ├── METHOD cgis.guardian.collector.ContextCollector.collect_graph_context (cgis/guardian/collector.py:213)
+    └── METHOD cgis.guardian.collector.ContextCollector.collect_for_chunk (cgis/guardian/collector.py:303)
+```
+
+*Real output — CGIS run on its own source.*
 
 ---
 
-## ⚡ The Problem: The "Context Gap"
-Traditional RAG (Retrieval-Augmented Generation) feeds agents chunks of text. This leads to:
-*   **Hallucinations:** Agents assume connections that don't exist.
-*   **Context Bloat:** Passing entire files to explain a single function.
-*   **Structural Blindness:** Agents cannot "see" transitive impacts (e.g., *"If I change this, what breaks 5 layers up?"*).
+## 🚀 Quickstart
 
-## ✨ The Solution: Semantic Intelligence
-CGIS replaces "textual guessing" with **"structural calculation"**:
-*   **Deterministic Resolution:** Full FQN (Fully Qualified Name) resolution via AST-based extraction.
-*   **Multi-Layer Ontology:** Goes beyond calls. It understands `CONTAINS`, `DECLARES`, `IMPORTS`, and semantic domains.
-*   **Agent-Native (MCP):** Exposes the entire graph as a set of high-performance tools for Claude, Cursor, and custom agents.
-*   **Architectural Drift Gates:** Measures how far a change pushes each domain from its *declared* ideal pattern (a motif-basis fingerprint) — a soft, quantitative CI gate for architectural hygiene.
-*   **Graph-Aware Code Review:** A built-in LLM reviewer (**Guardian**) that reads the graph as context and reviews pull requests — runs on **local (Ollama) or cloud** models, no vendor lock-in.
-*   **Self-Documenting:** The documentation is a living artifact, automatically updated with live architecture diagrams.
+### In Claude Code (fastest)
+
+```bash
+/plugin marketplace add zaebee/codegraph-brain
+/plugin install cgis@codegraph-brain
+```
+
+That ships the MCP server, a skill that teaches the agent *when* to query the graph instead of reading files, and `/cgis:ingest` to build the graph on first use. The server is pulled from PyPI on demand via `uvx`, so there is nothing to clone or build.
+
+### Any other MCP client (Cursor, Claude Desktop, …)
+
+```json
+{
+  "mcpServers": {
+    "cgis": { "command": "uvx", "args": ["--from", "codegraph-brain", "cgis-mcp"] }
+  }
+}
+```
+
+### From the terminal
+
+```bash
+# No install needed — uvx fetches it from PyPI
+uvx --from codegraph-brain cgis ingest ./my-project --output graph.db
+
+uvx --from codegraph-brain cgis impact "my_module.core_function" --db graph.db --depth 5   # who calls this
+uvx --from codegraph-brain cgis trace  "my_module.MyClass.run"   --db graph.db --depth 3   # what this calls
+```
+
+Or install it for good: `pip install codegraph-brain` (Python 3.12+), then use `cgis` directly. The full command list is in [CLI_USAGE.md](docs/how-to/CLI_USAGE.md).
 
 ---
 
-## 🏗️ Architecture: The Pipeline
+## 📈 Proof at Real Scale
 
-CGIS operates via a high-speed, three-stage pipeline:
+CGIS runs on a working twelve-repository estate — four languages, 8,146 commits, shipping daily. On its 512-file FastAPI backend it classifies **88.4% of 40,493 edges** definitively, and prints the remaining 11.6% instead of inventing targets for them.
 
-1.  **EXTRACT:** Language-specific AST parsers (Tree-sitter) convert source code into raw nodes and edges.
-2.  **RESOLVE:** The `ResolverEngine` disambiguates raw calls into absolute, deterministic FQNs.
-3.  **STORE:** A high-performance SQLite backend enables complex graph traversals (BFS/DFS) in milliseconds.
+**[Read the case study →](docs/CASE_STUDY.md)** — every figure measured and reproducible, including what CGIS *doesn't* cover.
+
+---
+
+## 🤔 Why a graph, and how this differs
+
+Text retrieval hands an agent chunks that *look* related. It cannot say which of three functions named `save` a call reaches, or what sits five callers up. CGIS resolves every call site to a fully qualified name when the source allows it — and when it does not, the edge stays marked unresolved and is counted, never filled with a plausible guess.
+
+| If you use… | CGIS adds |
+| :--- | :--- |
+| grep / file reads in the agent | Transitive callers and callees in one call, without spending context on whole files |
+| LSP-backed symbol tools (e.g. Serena) | A persisted whole-repo graph for multi-hop impact, coupling, PageRank and drift |
+| A repo map (e.g. aider) | Resolved edges you can traverse and audit, with the resolved/unresolved ratio reported |
+
+---
+
+## 🤖 MCP Tools
+
+| Tool | Answers |
+| :--- | :--- |
+| `cgis_ingest` | Build or incrementally refresh the graph |
+| `cgis_find_symbol` | Partial name → candidate FQNs |
+| `cgis_analyze_impact` | What breaks upstream if this changes? |
+| `cgis_trace_flow` | What does this call, transitively? |
+| `cgis_get_structure` | Class / module hierarchy |
+| `cgis_context` | A compact GraphRAG context package for one symbol |
+| `cgis_metrics` | Coupling, god classes, PageRank, package cohesion |
+| `cgis_audit_reachability` | Authz / IDOR coverage — does every handler reach its guard? |
+| `cgis_drift` | How far each domain has moved from its declared pattern |
+| `cgis_validate` | Graph integrity: resolved vs unresolved edges |
+
+Every tool, with parameters: [MCP_REFERENCE.md](docs/how-to/MCP_REFERENCE.md).
+
+---
+
+## 🏗️ How It Works
+
+1.  **Extract** — tree-sitter parsers turn each file into nodes and raw call edges.
+2.  **Resolve** — the `ResolverEngine` maps raw calls to fully qualified names, or leaves them explicitly unresolved.
+3.  **Store** — SQLite holds the graph; queries are breadth-first traversals over it.
 
 ```mermaid
 graph LR
@@ -46,59 +119,7 @@ graph LR
     F --> G
 ```
 
----
-
-## 🚀 Quickstart
-
-### 1. Installation
-Using `uv` (recommended):
-```bash
-uv pip install -e .
-```
-
-### 2. Ingest a Repository
-Turn any codebase into a semantic knowledge graph:
-```bash
-cgis ingest ./my-awesome-project --output graph.db
-```
-
-### 3. Query the Graph
-Analyze impact or trace execution flow directly from your terminal:
-```bash
-# Trace the execution path of a function
-cgis trace "my_module.MyClass.my_method" --depth 3 --format mermaid
-
-# Analyze the blast radius of a change
-cgis impact "my_module.core_function" --depth 5
-```
-
----
-
-## 🔌 Install as a Claude Code plugin
-
-The fastest path — no config files, no paths to wire up:
-
-```bash
-/plugin marketplace add zaebee/codegraph-brain
-/plugin install cgis@codegraph-brain
-```
-
-That ships the MCP server, a skill that teaches the agent *when* to query the graph instead of reading files, and `/cgis:ingest` to build the graph on first use. The server is pulled from PyPI on demand via `uvx`, so there is nothing to clone or build.
-
----
-
-## 🤖 Agent Integration (MCP)
-
-CGIS is designed to be plugged into your AI workflow via the **Model Context Protocol (MCP)**. Once running, your agent gains "Superpowers":
-
-*   `cgis_ingest`: Build the knowledge base.
-*   `cgis_trace_flow`: Visualize execution paths.
-*   `cgis_analyze_impact`: Predict regressions before they happen.
-*   `cgis_get_structure`: Understand class/module hierarchy.
-*   `cgis_context`: Compile a GraphRAG context package for a symbol.
-*   `cgis_drift`: Measure architectural drift vs each domain's ideal pattern.
-*   `cgis_metrics`: Coupling, god-classes, PageRank, package cohesion.
-*   `cgis_audit_reachability`: Authz/IDOR coverage — does every handler reach its guard?
+The details — and a pipeline graph CGIS regenerates from its own source on every change — are in [HOW_IT_WORKS.md](docs/architecture/HOW_IT_WORKS.md).
 
 ---
 
@@ -123,98 +144,6 @@ No GPU on hand? **[Benchmark it on a notebook GPU →](docs/GUARDIAN_LOCAL_BENCH
 
 ---
 
-## 📈 Proof at Real Scale
-
-CGIS runs on a working twelve-repository estate — four languages, 8,146 commits, shipping daily. On its 512-file FastAPI backend it classifies **88.4% of 40,493 edges** definitively, and prints the remaining 11.6% instead of inventing targets for them.
-
-**[Read the case study →](docs/CASE_STUDY.md)** — every figure measured and reproducible, including what CGIS *doesn't* cover.
-
----
-
-## 📊 Live System Architecture
-*Kept in sync with the codebase — update this diagram when the core pipeline changes.*
-
-<!-- START_CGIS_GRAPH -->
-> *Auto-generated by CGIS parsing its own source — the tool documents itself.*
-
-```mermaid
-graph TD
-classDef classNode fill:#e8f5e9,stroke:#2e7d32,stroke-width:1.5px,color:#1b5e20;
-classDef funcNode fill:#e3f2fd,stroke:#1565c0,stroke-width:1.5px,color:#0d47a1;
-classDef methodNode fill:#f3e5f5,stroke:#7b1fa2,stroke-width:1.5px,color:#4a148c;
-classDef unresolvedNode fill:#fffde7,stroke:#fbc02d,stroke-width:1.5px,stroke-dasharray: 4 4,color:#f57f17;
-classDef defaultNode fill:#fafafa,stroke:#9e9e9e,stroke-width:1.5px,color:#212121;
-classDef stdlibNode fill:#eceff1,stroke:#607d8b,stroke-width:1px,color:#455a64;
-classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dasharray: 3 3,color:#bf360c;
-
-    subgraph sg_models["models.py"]
-        models_Edge["Edge (models.py:142)"]:::classNode
-        models_Node["Node (models.py:85)"]:::classNode
-    end
-    subgraph sg_pipeline["pipeline.py"]
-        pipeline_IngestionPipeline_cross_file_inputs_changed["_cross_file_inputs_changed (pipeline.py:249)"]:::methodNode
-        pipeline_IngestionPipeline_get_extractor["_get_extractor (pipeline.py:384)"]:::methodNode
-        pipeline_IngestionPipeline_is_noop_incremental["_is_noop_incremental (pipeline.py:310)"]:::methodNode
-        pipeline_IngestionPipeline_persist_incremental["_persist_incremental (pipeline.py:334)"]:::methodNode
-        pipeline_IngestionPipeline_process_file["_process_file (pipeline.py:212)"]:::methodNode
-        pipeline_IngestionPipeline_run["run (pipeline.py:99)"]:::methodNode
-        pipeline_IngestionPipeline_workspace_root["workspace_root (pipeline.py:82)"]:::methodNode
-    end
-    subgraph sg_engine["engine.py"]
-        engine_ResolverEngine["ResolverEngine (engine.py:20)"]:::classNode
-        engine_ResolverEngine_resolve["resolve (engine.py:37)"]:::methodNode
-    end
-    subgraph sg_uplift["uplift.py"]
-        uplift_SemanticUpliftEngine["SemanticUpliftEngine (uplift.py:66)"]:::classNode
-        uplift_SemanticUpliftEngine_execute_uplift["execute_uplift (uplift.py:91)"]:::methodNode
-    end
-    subgraph sg_sqlite_store["sqlite_store.py"]
-        sqlite_store_SQLiteStore["SQLiteStore (sqlite_store.py:42)"]:::classNode
-    end
-    pipeline_IngestionPipeline_run -->|REFERENCES| models_Node
-    pipeline_IngestionPipeline_run -->|REFERENCES| models_Edge
-    pipeline_IngestionPipeline_run -->|REFERENCES| sqlite_store_SQLiteStore
-    pipeline_IngestionPipeline_run -->|CALLS| pipeline_IngestionPipeline_workspace_root
-    pipeline_IngestionPipeline_run -->|CALLS| pipeline_IngestionPipeline_get_extractor
-    pipeline_IngestionPipeline_run -->|CALLS| pipeline_IngestionPipeline_process_file
-    pipeline_IngestionPipeline_run -->|CALLS| pipeline_IngestionPipeline_is_noop_incremental
-    pipeline_IngestionPipeline_run -->|CALLS| engine_ResolverEngine
-    pipeline_IngestionPipeline_run -->|CALLS| engine_ResolverEngine_resolve
-    pipeline_IngestionPipeline_run -->|CALLS| pipeline_IngestionPipeline_cross_file_inputs_changed
-    pipeline_IngestionPipeline_run -->|CALLS| pipeline_IngestionPipeline_run
-    pipeline_IngestionPipeline_run -->|CALLS| pipeline_IngestionPipeline_persist_incremental
-    pipeline_IngestionPipeline_run -->|CALLS| uplift_SemanticUpliftEngine_execute_uplift
-    pipeline_IngestionPipeline_run -->|CALLS| uplift_SemanticUpliftEngine
-```
-
-| Symbol | Type | File |
-|--------|------|------|
-| `Node` | CLASS | [`models.py:85`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/core/models.py#L85) |
-| `Edge` | CLASS | [`models.py:142`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/core/models.py#L142) |
-| `workspace_root` | METHOD | [`pipeline.py:82`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L82) |
-| `run` | METHOD | [`pipeline.py:99`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L99) |
-| `_process_file` | METHOD | [`pipeline.py:212`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L212) |
-| `_cross_file_inputs_changed` | METHOD | [`pipeline.py:249`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L249) |
-| `_is_noop_incremental` | METHOD | [`pipeline.py:310`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L310) |
-| `_persist_incremental` | METHOD | [`pipeline.py:334`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L334) |
-| `_get_extractor` | METHOD | [`pipeline.py:384`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L384) |
-| `ResolverEngine` | CLASS | [`engine.py:20`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L20) |
-| `resolve` | METHOD | [`engine.py:37`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L37) |
-| `SemanticUpliftEngine` | CLASS | [`uplift.py:66`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/uplift.py#L66) |
-| `execute_uplift` | METHOD | [`uplift.py:91`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/uplift.py#L91) |
-| `SQLiteStore` | CLASS | [`sqlite_store.py:42`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/storage/sqlite_store.py#L42) |
-<!-- END_CGIS_GRAPH -->
-
----
-
-## 💼 Architecture Audit
-
-CGIS is free and you can run it yourself. If you would rather have the analysis than the tool, I run a fixed-price audit of your codebase's structure — authorisation coverage, blast radius, coupling, architectural drift — delivered in five working days.
-
-**[Read what's included →](docs/AUDIT.md)** — $2,400 fixed, with an explicit list of what the analysis cannot see.
-
----
-
 ## 🔒 Privacy
 
 CGIS collects nothing: no telemetry, no analytics, no account. Your code and the graph built from it stay on your machine. See [PRIVACY.md](PRIVACY.md).
@@ -223,17 +152,18 @@ CGIS collects nothing: no telemetry, no analytics, no account. Your code and the
 
 ## 🛠️ Development
 
-### Requirements
-*   Python 3.12+
-*   `uv` (for dependency management)
+Requires Python 3.12+ and [`uv`](https://docs.astral.sh/uv/).
 
-### Running Tests
 ```bash
+git clone https://github.com/zaebee/codegraph-brain && cd codegraph-brain
+uv sync
 make pytest
 ```
 
-### Contributing
-We are building the future of agentic engineering. Please see `CONTRIBUTING.md` for our standards on type safety (strict MyPy), linting, and ontology compliance.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the standards: strict MyPy, linting, ontology compliance.
 
 ---
-*Built with ❤️ for the future of autonomous software engineering.*
+
+## 💼 Architecture Audit
+
+CGIS is free and you can run it yourself. If you would rather have the analysis than the tool, I run a fixed-price audit of your codebase's structure — authorisation coverage, blast radius, coupling, architectural drift — delivered in five working days, $2,400 fixed. **[Read what's included →](docs/AUDIT.md)**

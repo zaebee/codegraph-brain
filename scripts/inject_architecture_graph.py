@@ -1,8 +1,10 @@
-"""Inject a Mermaid diagram into README.md between CGIS graph comment anchors.
+"""Inject a Mermaid diagram into HOW_IT_WORKS.md between CGIS graph comment anchors.
 
 Reads docs/architecture/diagrams/pipeline_flow.mermaid and replaces the
 content between <!-- START_CGIS_GRAPH --> and <!-- END_CGIS_GRAPH --> in
-README.md. Idempotent — running multiple times produces identical output.
+docs/architecture/HOW_IT_WORKS.md. The live graph used to sit in README.md,
+where it pushed the quickstart off a newcomer's first screen. Idempotent —
+running multiple times produces identical output.
 
 Optional --db argument enables a node reference table with GitHub source links.
 """
@@ -15,7 +17,7 @@ from cgis.core.models import VIRTUAL_FILE_PATH, NodeNamespace
 from cgis.query.engine import BEHAVIORAL_EDGE_TYPES, QueryEngine
 from cgis.storage.sqlite_store import SQLiteStore
 
-_README = Path("README.md")
+_TARGET = Path("docs/architecture/HOW_IT_WORKS.md")
 _DIAGRAM = Path("docs/architecture/diagrams/pipeline_flow.mermaid")
 _START = "<!-- START_CGIS_GRAPH -->"
 _END = "<!-- END_CGIS_GRAPH -->"
@@ -71,8 +73,8 @@ def inject_graph(
     depth: int = 2,
     path_prefix: str = "",
 ) -> None:
-    if not _README.exists():
-        msg = f"README not found at {_README}"
+    if not _TARGET.exists():
+        msg = f"Target doc not found at {_TARGET}"
         raise FileNotFoundError(msg)
     if not _DIAGRAM.exists():
         msg = (
@@ -97,15 +99,15 @@ def inject_graph(
 
     block = f"{_START}\n{''.join(parts)}{_END}"
 
-    content = _README.read_text(encoding="utf-8")
+    content = _TARGET.read_text(encoding="utf-8")
     if _START not in content or _END not in content:
-        msg = f"Anchor tags not found in {_README}. Add {_START!r} and {_END!r}."
+        msg = f"Anchor tags not found in {_TARGET}. Add {_START!r} and {_END!r}."
         raise ValueError(msg)
 
     head, rest = content.split(_START, 1)
     _, tail = rest.split(_END, 1)
-    _README.write_text("".join([head, block, tail]), encoding="utf-8")  # NOSONAR
-    print(f"✅ Injected architecture graph into {_README}")
+    _TARGET.write_text("".join([head, block, tail]), encoding="utf-8")  # NOSONAR
+    print(f"✅ Injected architecture graph into {_TARGET}")
 
 
 if __name__ == "__main__":
