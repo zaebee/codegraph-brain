@@ -68,7 +68,9 @@ Or install it for good: `pip install codegraph-brain` (Python 3.12+), then use `
 
 ## 📈 Proof at Real Scale
 
-CGIS runs on a working twelve-repository estate — four languages, 8,146 commits, shipping daily. On its FastAPI backend it classifies **82.7% of 87,845 edges** definitively, and prints the remaining 17.3% instead of inventing targets for them. The unresolved share *rose* in #459, when a bug that counted calls to missing symbols as resolved was fixed: the figure measures what the tool admits it cannot see, so an honest change can move it the unflattering way.
+CGIS runs on a working twelve-repository estate — four languages, 8,146 commits, shipping daily. On its FastAPI backend it classifies **82.7% of 87,845 edges** definitively and prints the remaining 17.3% rather than inventing targets for them — including the part that is CGIS's own gap.
+
+That share *rose* from 11.4% in #459, which stopped counting calls to missing symbols as resolved. About 4 points of what is left is a known resolver gap, not something undiscoverable: ingesting `app/` strips the `app.` prefix its imports carry, and the import path does not yet reconcile the two — the same backend ingested at its package root reports 13.2%. The number is what the tool admits it cannot place today, and it is allowed to move the unflattering way.
 
 **[Read the case study →](https://github.com/zaebee/codegraph-brain/blob/main/docs/CASE_STUDY.md)** — every figure measured and reproducible, including what CGIS *doesn't* cover.
 

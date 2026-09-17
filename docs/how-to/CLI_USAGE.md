@@ -88,7 +88,7 @@ cgis trace <fqn> [OPTIONS]
 | `--show-structure` | off | Also follow containment (CONTAINS/DECLARES) |
 | `--show-external` | off | Also show stdlib, third-party and unresolved call targets |
 | `--internal-only` | off | Drop those nodes again from `mermaid`/`json` output; a no-op unless `--show-external` is on, and not valid with `text` |
-| `--min-confidence` | none | Hide edges below this confidence. Resolved calls score 1.0 and inferred ones 0.8, so a threshold above 0.8 is what filters anything |
+| `--min-confidence` | none | Hide edges below this confidence. A target the graph placed scores 1.0 and one it could not 0.8, so 0.9 is the threshold that drops the unplaced |
 
 **Examples:**
 
@@ -121,7 +121,7 @@ cgis impact <fqn> [OPTIONS]
 | `--show-structure` | off | Also follow containment (CONTAINS/DECLARES) |
 | `--show-external` | off | Also show stdlib, third-party and unresolved call targets |
 | `--internal-only` | off | Drop those nodes again from `mermaid`/`json` output; a no-op unless `--show-external` is on, and not valid with `text` |
-| `--min-confidence` | none | Hide edges below this confidence. Resolved calls score 1.0 and inferred ones 0.8, so a threshold above 0.8 is what filters anything |
+| `--min-confidence` | none | Hide edges below this confidence. A target the graph placed scores 1.0 and one it could not 0.8, so 0.9 is the threshold that drops the unplaced |
 
 **Examples:**
 

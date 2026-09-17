@@ -106,7 +106,7 @@ def _follows_calls(allowed_edge_types: frozenset[EdgeType] | None) -> bool:
     return allowed_edge_types is None or EdgeType.CALLS in allowed_edge_types
 
 
-def _is_unresolved(target: str, known: dict[str, Node]) -> bool:
+def is_unresolved(target: str, known: dict[str, Node]) -> bool:
     """The `get_edge_stats` definition: a `raw_call:` target, no node, or an UNKNOWN one."""
     if target.startswith(RAW_CALL_PREFIX):
         return True
@@ -298,7 +298,7 @@ class QueryEngine:
         call_targets = [e.target for e in walk.calls.values()]
         known = {n.id: n for n in self.store.get_nodes([*walk.discovered, *call_targets])}
         nodes = [n for n in known.values() if n.id in walk.discovered]
-        unresolved = Counter(t for t in call_targets if _is_unresolved(t, known))
+        unresolved = Counter(t for t in call_targets if is_unresolved(t, known))
         coverage = TraversalCoverage(
             basis="unresolved_calls_made",
             calls_examined=len(call_targets),

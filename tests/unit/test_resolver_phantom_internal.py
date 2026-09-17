@@ -128,3 +128,59 @@ def test_the_missing_call_is_counted_as_unresolved(tmp_path: Path) -> None:
     assert phantom.namespace is NodeNamespace.UNKNOWN
     assert stats.unresolved >= 1
     assert stats.unresolved_ratio > 0.0
+
+
+def test_an_edge_into_an_unresolved_node_is_not_confident() -> None:
+    """Node and edge must say the same thing (#493 review).
+
+    The import map raises confidence to 1.0 whenever it produced a target, so a
+    call to a missing symbol scored 1.0 while its node said UNKNOWN. On one
+    backend that left 1,219 CALLS edges at full confidence, which inverted
+    `--min-confidence`: at 0.9 it dropped the honest 0.8 calls and kept these.
+    """
+    nodes = [
+        _file_node("pkg/a.py", {}),
+        _func("pkg.a.foo2", "pkg/a.py"),
+        _file_node("pkg/b.py", {"foo": "pkg.a.foo"}),
+        _func("pkg.b.bar", "pkg/b.py"),
+    ]
+    edges = [
+        Edge(
+            id="e1",
+            source="pkg.b.bar",
+            target="raw_call:foo",
+            type=EdgeType.CALLS,
+            confidence=0.5,
+            file_path="pkg/b.py",
+        )
+    ]
+
+    resolved, _virtual = ResolverEngine(nodes, edges).resolve()
+
+    assert next(edge for edge in resolved if edge.id == "e1").confidence == 0.8
+
+
+def test_a_resolved_internal_call_keeps_full_confidence() -> None:
+    """The cap applies to unresolved targets only."""
+    nodes = [
+        _file_node("pkg/a.py", {}),
+        _func("pkg.a.foo", "pkg/a.py"),
+        _file_node("pkg/b.py", {"foo": "pkg.a.foo"}),
+        _func("pkg.b.bar", "pkg/b.py"),
+    ]
+    edges = [
+        Edge(
+            id="e1",
+            source="pkg.b.bar",
+            target="raw_call:foo",
+            type=EdgeType.CALLS,
+            confidence=0.5,
+            file_path="pkg/b.py",
+        )
+    ]
+
+    resolved, _virtual = ResolverEngine(nodes, edges).resolve()
+
+    edge = next(edge for edge in resolved if edge.id == "e1")
+    assert edge.target == "pkg.a.foo"
+    assert edge.confidence == 1.0

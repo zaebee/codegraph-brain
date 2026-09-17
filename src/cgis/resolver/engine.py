@@ -17,6 +17,33 @@ RAW_DEP_PREFIX = "raw_dep:"
 RAW_IMPORT_PREFIX = "raw_import:"
 
 
+#: What an edge into an unresolved boundary scores. The same value an extractor
+#: gives a call it could not type, so the two are comparable in one filter.
+_UNRESOLVED_CONFIDENCE = 0.8
+
+
+def _agree_on_confidence(edges: list[Edge], virtual_nodes: dict[str, Node]) -> list[Edge]:
+    """Cap an edge at the unresolved score when its target is an UNKNOWN boundary node.
+
+    The import map raises confidence to 1.0 whenever it produced a target, which
+    left 3,077 IMPORTS and 1,219 CALLS edges on one backend at full confidence
+    pointing at a node the graph itself labels unresolved. `--min-confidence 0.9`
+    then dropped the honest 0.8 calls and kept those — the filter inverted (#493
+    review). Node and edge now say the same thing.
+    """
+    unresolved = {
+        node_id
+        for node_id, node in virtual_nodes.items()
+        if node.namespace is NodeNamespace.UNKNOWN
+    }
+    return [
+        edge.model_copy(update={"confidence": _UNRESOLVED_CONFIDENCE})
+        if edge.target in unresolved and edge.confidence > _UNRESOLVED_CONFIDENCE
+        else edge
+        for edge in edges
+    ]
+
+
 class ResolverEngine:
     """
     The 'Brain' of the CGIS.
@@ -68,7 +95,7 @@ class ResolverEngine:
                 resolved_edges.append(call_edge)
                 self._ensure_virtual_node(call_edge, virtual_nodes)
 
-        return resolved_edges, list(virtual_nodes.values())
+        return _agree_on_confidence(resolved_edges, virtual_nodes), list(virtual_nodes.values())
 
     def _resolved_class_edge(self, edge: Edge) -> Edge:
         """Resolve a raw_class: edge to its final class FQN.
@@ -180,14 +207,21 @@ class ResolverEngine:
         source_file = self._index.normalized_file_path(edge.source, edge.file_path)
         namespace = self._index.classify_fqn(target, source_file)
         if namespace is NodeNamespace.INTERNAL:
-            # An internal FQN with no node is a symbol this project does not have —
-            # `from pkg.a import foo` where `pkg.a` has no `foo`, which the import
-            # map still resolves to `pkg.a.foo` (#459). The graph knows the internal
-            # tree exhaustively, so "internal and absent" means missing, not
-            # elsewhere. Kept as the target, so the name stays visible, but UNKNOWN
-            # so `get_edge_stats` counts it unresolved: classifying it INTERNAL let a
-            # call to a function that does not exist read as a resolved internal one,
-            # the same masking as #414 and #454.
+            # An internal-root FQN with no node is one of four things, measured on
+            # owner-api's 681 such nodes (#459, and the review of #493):
+            #   * a module the graph holds under a different spelling — 59% of the
+            #     edges: ingesting `app/` strips the `app.` the imports carry, so
+            #     `app.models` is in the graph as `models`. The import path does not
+            #     run through `resolve_layout`, which exists for exactly this;
+            #   * an unresolved receiver whose variable name collides with an
+            #     internal package (`storage: OpenSearchClientDep` → `storage.read`);
+            #   * a third-party symbol under a colliding root — `from alembic import
+            #     op`, or SQLAlchemy on a FastAPI instance named `app`;
+            #   * a symbol that is genuinely absent, a rename that half-landed.
+            # None of them is a *resolved internal call*, so UNKNOWN is the honest
+            # floor for all four, and `get_edge_stats` counts them unresolved —
+            # classifying them INTERNAL was the same masking as #414 and #454. The
+            # target is kept, so the name still shows up in `top_unresolved`.
             namespace = NodeNamespace.UNKNOWN
         if existing is None or namespace != NodeNamespace.UNKNOWN:
             virtual_nodes[target] = self._make_virtual_node(target, namespace)

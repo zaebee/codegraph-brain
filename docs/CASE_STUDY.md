@@ -52,10 +52,19 @@ The backend is the hard case: 512 files, a service layer, a CRUD layer, SAQ work
 > project does not have — so a call to a missing function counted as *resolved
 > internal*. Re-ingesting the same backend today, with the fix: **894 files,
 > 17,920 nodes, 87,845 edges — 50.1 % internal, 20.3 % stdlib, 12.2 % external and
-> 17.3 % unresolved**, against the 11.6 % below. 681 phantom nodes disappeared and
-> 5,195 edges moved into the unresolved column. The backend has also grown since
-> June, so the two runs are not the same corpus; what is comparable is the
-> direction. The tables below are left as the record of what 0.5.0 reported.
+> 17.3 % unresolved**, against the 11.6 % below. 681 boundary nodes were
+> *reclassified* — the node count is 17,920 either way, and the names still show
+> up in `top_unresolved` — and 5,195 edges moved into the unresolved column.
+>
+> Two caveats, both measured. The backend has grown since June, so the corpora are
+> not identical: the same tree with the *unfixed* resolver reports 88.6 %, so the
+> fix accounts for 5.9 points and growth for 0.2. And roughly 4 of the remaining
+> 17.3 points are CGIS's own gap rather than an undiscoverable call: ingesting
+> `app/` strips the `app.` its imports carry, so `app.models` is in the graph as
+> `models` and only 31 of 6,293 IMPORTS edges land on a node. Ingested at the
+> package root instead, the same backend reports **13.2 % unresolved** with 3,107
+> of 6,330 imports resolved. The tables below are left as the record of what 0.5.0
+> reported.
 
 ### Where every edge ends up
 

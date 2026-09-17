@@ -14,7 +14,7 @@ enclosing class is recovered separately from the structural layer.
 from cgis.core.models import EdgeType, Node, NodeNamespace, NodeType
 from cgis.query.context.prompt import compile_context
 from cgis.query.context.snippet import extract_snippet, resolve_source_path
-from cgis.query.engine import QueryEngine
+from cgis.query.engine import QueryEngine, is_unresolved
 from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 
 _CALLS: frozenset[EdgeType] = frozenset({EdgeType.CALLS})
@@ -52,12 +52,19 @@ def _collect_callees(
     """
     nodes, edges = engine.get_flow_graph(focus_fqn, max_depth=depth, allowed_edge_types=_CALLS)
     resolved = _sorted_neighbours(nodes, focus_fqn)
+    # Both shapes: a `raw_call:` target, and a target the resolver kept but could
+    # not place, whose node is UNKNOWN. No stored graph holds the first — the
+    # resolver strips the prefix on failure — so reading only that emptied the list
+    # on every real database, and #459 moved 5,195 more edges into the second
+    # (#493 review).
+    known = {node.id: node for node in nodes}
     unresolved = sorted(
         {
-            edge.target[len(RAW_CALL_PREFIX) :]
+            edge.target.removeprefix(RAW_CALL_PREFIX)
             for edge in edges
-            if edge.target.startswith(RAW_CALL_PREFIX)
+            if is_unresolved(edge.target, known)
         }
+        - {focus_fqn}
     )
     return resolved, unresolved
 

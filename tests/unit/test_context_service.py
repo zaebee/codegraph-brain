@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
+from cgis.extractors.python_extractor import PythonExtractor
+from cgis.pipeline import IngestionPipeline
 from cgis.query.context.context_service import build_context
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -292,3 +294,24 @@ def test_transitive_unresolved_surfaces_at_depth_2(tmp_path: Path) -> None:
         deep = build_context(store, "a.f", depth=2)
     assert "deep (unresolved)" not in shallow  # mid's unresolved is 2 hops away
     assert "deep (unresolved)" in deep
+
+
+def test_unresolved_callees_include_targets_the_resolver_kept(tmp_path: Path) -> None:
+    """A stored graph holds no `raw_call:` target, so reading only those emptied the list.
+
+    The resolver strips the prefix when it cannot place a call, leaving the name
+    with an UNKNOWN node. #459 moved 5,195 more edges into that shape on one
+    backend, and the context package reported none of them (#493 review).
+    """
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "__init__.py").write_text("", encoding="utf-8")
+    (tmp_path / "pkg" / "a.py").write_text("def foo2():\n    return 1\n", encoding="utf-8")
+    (tmp_path / "pkg" / "b.py").write_text(
+        "from pkg.a import foo\n\n\ndef bar():\n    return foo()\n", encoding="utf-8"
+    )
+    db = str(tmp_path / "graph.db")
+    with SQLiteStore(db) as store:
+        IngestionPipeline({".py": PythonExtractor()}).run(str(tmp_path), store=store)
+        package = build_context(store, "pkg.b.bar", depth=1)
+
+    assert "pkg.a.foo" in package
