@@ -846,8 +846,8 @@ def structure(
         console.print(f"[dim]→ FQN: {escape(target)}[/dim]")
 
     with SQLiteStore(db) as store:
-        # A package is not a node, so it must not go through FQN resolution — see
-        # `is_package_prefix`. Its root row comes from the synthesized graph instead.
+        # Before resolution, so a prefix cannot suffix-resolve into a different
+        # tree — see `is_package_prefix`.
         if not is_package_prefix(store, target):
             target = _resolve_cli_fqn(store, target, "Node")
         nodes, edges = QueryEngine(store).get_structural_graph(target, max_depth=depth)

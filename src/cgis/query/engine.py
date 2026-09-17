@@ -5,7 +5,7 @@ from collections.abc import Callable
 from typing import NamedTuple
 
 from cgis.core.coverage import TraversalCoverage, rank_unresolved
-from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeNamespace, NodeType
+from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
 from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 
 STRUCTURAL_EDGE_TYPES: frozenset[EdgeType] = frozenset({EdgeType.CONTAINS, EdgeType.DECLARES})
@@ -125,6 +125,35 @@ def _finish(
     if not show_external:
         return _prune_external(start_id, nodes, walk.edges, get_neighbor_id)
     return nodes, list(walk.edges.values())
+
+
+def _direct_children(prefix: str, modules: list[Node]) -> dict[str, list[Node]]:
+    """Group a package's descendant modules under the child one segment down."""
+    children: dict[str, list[Node]] = {}
+    for module in modules:
+        head = module.id[len(prefix) + 1 :].split(".")[0]
+        children.setdefault(f"{prefix}.{head}", []).append(module)
+    return children
+
+
+def _package_node(fqn: str, modules: list[Node]) -> Node:
+    """A row standing for a directory, carrying the directory it stands for.
+
+    Not `VIRTUAL_FILE_PATH`: Mermaid styles an INTERNAL node with that path as
+    *unresolved external*, which is the wrong claim about a package that exists on
+    disk. The path is read off a module the package holds.
+    """
+    depth = fqn.count(".") + 1
+    sample = modules[0].file_path.replace("\\", "/")
+    directory = "/".join(sample.split("/")[:depth]) or fqn.replace(".", "/")
+    return Node(
+        id=fqn,
+        type=NodeType.MODULE,
+        name=fqn.rsplit(".", maxsplit=1)[-1],
+        file_path=directory,
+        start_line=0,
+        end_line=0,
+    )
 
 
 class QueryEngine:
@@ -299,41 +328,53 @@ class QueryEngine:
     def _package_graph(
         self, prefix: str, modules: list[Node], max_depth: int
     ) -> tuple[list[Node], list[Edge]]:
-        """The modules under a package, plus what they hold beyond the first hop.
+        """A package's direct children: its modules and sub-packages.
 
         A package has no node of its own — it exists in the graph only when it has
         an `__init__.py`, and even then containment runs file → symbol, so that node
         holds nothing (#487). Rather than mint PACKAGE nodes into every graph, which
-        would move every node count and god-object baseline, the package row and its
-        CONTAINS edges are synthesized for this answer. The row is marked with
-        `VIRTUAL_FILE_PATH`, the same marker the resolver uses for boundary nodes, so
-        a consumer can tell it from a file that exists.
+        would move every node count and god-object baseline, the rows for a package
+        and its sub-packages are synthesized for this answer. They carry the
+        directory they stand for as `file_path`, so a reader — and the Mermaid
+        renderer, which groups by file path — sees a place that exists.
+
+        **Direct children only.** `files_under` returns the whole subtree, and
+        expanding all of it made `cgis_get_structure("domains")` cost 106k tokens at
+        the default depth, on a tool `cgis_overview` points every prefix at. One hop
+        down is a listing; the subtree is a dump.
+
+        **The prefix may also be a real node**, when a file's FQN is a prefix of
+        other files' — `utils.ts` beside `utils/`, or a package whose `__init__.py`
+        holds code. Its own members are merged in rather than replaced: dropping
+        them lost 51 nodes of `services.adapters` on a real backend.
         """
-        root = Node(
-            id=prefix,
-            type=NodeType.MODULE,
-            name=prefix.rsplit(".", maxsplit=1)[-1],
-            file_path=VIRTUAL_FILE_PATH,
-            start_line=0,
-            end_line=0,
+        own_nodes, own_edges = (
+            self.store.get_structural_subgraph(prefix, max_depth)
+            if self.store.get_node(prefix) is not None
+            else ([], [])
         )
-        nodes: dict[str, Node] = {prefix: root}
-        edges: list[Edge] = []
-        for module in modules:
-            nodes.setdefault(module.id, module)
+        nodes: dict[str, Node] = {node.id: node for node in own_nodes}
+        edges: list[Edge] = list(own_edges)
+        nodes.setdefault(prefix, _package_node(prefix, modules))
+
+        for child_id, held in _direct_children(prefix, modules).items():
+            # A child holding deeper files is a sub-package, and gets a synthesized row
+            # even when its `__init__.py` is a node: that node is named `__init__`, so a
+            # listing of four sub-packages read as four rows called `__init__.py`.
+            is_package = any(module.id != child_id for module in held)
+            child = _package_node(child_id, held) if is_package else held[0]
+            nodes.setdefault(child.id, child)
             edges.append(
                 Edge(
-                    id=f"package:{prefix}->{module.id}",
+                    id=f"package:{prefix}->{child_id}",
                     source=prefix,
-                    target=module.id,
+                    target=child_id,
                     type=EdgeType.CONTAINS,
                     context="synthesized: a package is not a node (#487)",
                 )
             )
-            if max_depth > 1:
-                held_nodes, held_edges = self.store.get_structural_subgraph(
-                    module.id, max_depth - 1
-                )
+            if max_depth > 1 and not is_package:
+                held_nodes, held_edges = self.store.get_structural_subgraph(child.id, max_depth - 1)
                 for node in held_nodes:
                     nodes.setdefault(node.id, node)
                 edges.extend(held_edges)

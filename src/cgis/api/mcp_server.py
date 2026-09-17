@@ -549,8 +549,9 @@ def cgis_get_structure(
         return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
     try:
         with SQLiteStore(db_path) as store:
-            # A package is not a node: resolving it would answer with its empty
-            # `__init__` file, or fail outright when it has none (#487).
+            # Before resolution: a prefix can suffix-resolve to a different tree
+            # (`api.dependencies` → `app.api.dependencies`), answering about a
+            # package the caller did not name (#487).
             if is_package_prefix(store, fqn):
                 resolved, note = fqn, ""
             else:
