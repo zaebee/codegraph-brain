@@ -3,7 +3,19 @@
   "packages": {
     ".": {
       "release-type": "python",
-      "package-name": "codegraph-brain"
+      "package-name": "codegraph-brain",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "server.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "server.json",
+          "jsonpath": "$.packages[0].version"
+        }
+      ]
     }
   }
 }
