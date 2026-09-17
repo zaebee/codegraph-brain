@@ -51,6 +51,52 @@ class ReachabilityAudit:
     gaps: list[NodeRef]
 
 
+class NoAuditSourcesError(ValueError):
+    """The selectors matched no source to audit, so there is no result to report (#467).
+
+    Raised instead of returning empty ``covered``/``gaps``: callers — and CI gates
+    reading ``gaps == []`` — would otherwise take an audit of nothing for a clean one.
+    """
+
+
+_SUGGESTION_LIMIT = 5
+
+
+def _describe_selection(from_type: NodeType | None, from_prefix: str | None) -> str:
+    """Render the selectors the way a caller passed them, for the error message."""
+    parts = []
+    if from_type is not None:
+        parts.append(f"from_type={from_type.value}")
+    if from_prefix is not None:
+        parts.append(f"from_prefix={from_prefix!r}")
+    return " and ".join(parts)
+
+
+def _whole_segment_prefixes(store: SQLiteStore, from_prefix: str) -> list[str]:
+    """Dot-complete prefixes that extend ``from_prefix`` — what a partial segment meant."""
+    completions: set[str] = set()
+    for node in store.get_all_nodes():
+        if node.namespace != NodeNamespace.INTERNAL or not node.id.startswith(from_prefix):
+            continue
+        next_dot = node.id.find(".", len(from_prefix))
+        completions.add(node.id if next_dot == -1 else node.id[:next_dot])
+    return sorted(completions)[:_SUGGESTION_LIMIT]
+
+
+def _no_sources_error(
+    store: SQLiteStore, from_type: NodeType | None, from_prefix: str | None
+) -> NoAuditSourcesError:
+    """Build the error for an empty selection, naming prefixes that would have matched."""
+    msg = f"No sources matched {_describe_selection(from_type, from_prefix)} — nothing was audited."
+    if from_prefix is not None:
+        suggestions = _whole_segment_prefixes(store, from_prefix)
+        if suggestions:
+            msg += (
+                " Prefixes match whole dot-segments; did you mean: " + ", ".join(suggestions) + "?"
+            )
+    return NoAuditSourcesError(msg)
+
+
 def _prefix_matches(fqn: str, prefix: str) -> bool:
     """Dot-boundary prefix match — ``app.routes`` matches ``app.routes.x``, not ``app.routesX``."""
     return fqn == prefix or fqn.startswith(f"{prefix}.")
@@ -112,6 +158,10 @@ def audit_reachability(
     already-injected instance — so a dependency-injected collaborator looks like
     a gap. Target the specific method (or the constructor) when auditing "does X
     use this collaborator".
+
+    Raises:
+        NoAuditSourcesError: The selectors match no source other than the checkpoint
+            itself. An empty ``covered``/``gaps`` pair would read as a passing audit.
     """
     from_prefix = from_prefix.strip() or None if from_prefix is not None else None
     if from_type is None and from_prefix is None:
@@ -124,11 +174,12 @@ def audit_reachability(
     upstream_nodes, _ = engine.get_impact_graph(
         target_fqn, max_depth=max_depth, allowed_edge_types=edge_types
     )
+    sources = [s for s in _select_sources(store, from_type, from_prefix) if s.id != target_fqn]
+    if not sources:
+        raise _no_sources_error(store, from_type, from_prefix)
     reaching = {node.id for node in upstream_nodes}
     covered: list[NodeRef] = []
     gaps: list[NodeRef] = []
-    for source in sorted(_select_sources(store, from_type, from_prefix), key=lambda n: n.id):
-        if source.id == target_fqn:
-            continue
+    for source in sorted(sources, key=lambda n: n.id):
         (covered if source.id in reaching else gaps).append(_ref(source))
     return ReachabilityAudit(target=target_fqn, covered=covered, gaps=gaps)

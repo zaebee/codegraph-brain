@@ -829,6 +829,15 @@ def test_cgis_audit_whitespace_prefix_is_rejected(tmp_path: Path) -> None:
     assert "from_type or from_prefix" in result
 
 
+def test_cgis_audit_selecting_no_sources_is_an_error_not_an_empty_audit(tmp_path: Path) -> None:
+    """A partial prefix must not come back as JSON with empty covered/gaps (#467)."""
+    db = _audit_graph_db(tmp_path)
+    result = cgis_audit_reachability("app.guard", db, from_prefix="ap")
+    assert result.startswith("❌")
+    assert "nothing was audited" in result
+    assert '"gaps"' not in result
+
+
 def test_cgis_audit_none_params_do_not_crash(tmp_path: Path) -> None:
     """JSON null for from_type/from_prefix must not crash on .strip() (#236)."""
     db = _audit_graph_db(tmp_path)

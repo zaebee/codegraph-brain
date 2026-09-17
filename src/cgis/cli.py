@@ -42,7 +42,7 @@ from cgis.query.analysis.analyzer import AnalyzerEngine
 from cgis.query.analysis.anomaly import AnomalyType, ArchitecturalAnomaly
 from cgis.query.analysis.health import HealthScorer
 from cgis.query.analysis.suggest_service import SuggestReport, report_to_dict, suggest_packages
-from cgis.query.context.audit import ReachabilityAudit, audit_reachability
+from cgis.query.context.audit import NoAuditSourcesError, ReachabilityAudit, audit_reachability
 from cgis.query.context.context_service import build_context
 from cgis.query.context.orphans import OrphanReport, find_orphan_classes
 from cgis.query.drift.drift import DriftReport, FitQuality
@@ -1445,7 +1445,7 @@ def audit(
         help="Only audit nodes of this type (e.g. ROUTE_HANDLER, API_ENDPOINT).",
     ),
     from_prefix: str | None = typer.Option(
-        None, "--from-prefix", help="Only audit nodes whose FQN starts with this prefix."
+        None, "--from-prefix", help="Only audit nodes under this FQN prefix (whole dot-segments)."
     ),
     db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
     depth: int = typer.Option(
@@ -1487,13 +1487,18 @@ def audit(
 
     with SQLiteStore(db) as store:
         resolved = _resolve_checkpoint(store, target)
-        result = audit_reachability(
-            store,
-            target_fqn=resolved,
-            from_type=from_type,
-            from_prefix=from_prefix,
-            max_depth=depth,
-        )
+        try:
+            result = audit_reachability(
+                store,
+                target_fqn=resolved,
+                from_type=from_type,
+                from_prefix=from_prefix,
+                max_depth=depth,
+            )
+        except NoAuditSourcesError as exc:
+            # Exit 2 like a bad selector: exit 0 here let a typo'd prefix pass a CI gate (#467).
+            console.print(f"[bold red]❌ {escape(str(exc))}[/bold red]")
+            raise typer.Exit(code=2) from exc
 
     if output_format == OutputFormat.JSON:
         typer.echo(_json.dumps(dataclasses.asdict(result), indent=2))

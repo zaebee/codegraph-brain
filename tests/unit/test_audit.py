@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
-from cgis.query.context.audit import audit_reachability
+from cgis.query.context.audit import NoAuditSourcesError, audit_reachability
 from cgis.storage.sqlite_store import SQLiteStore
 
 
@@ -103,6 +103,44 @@ def test_audit_from_prefix_selects_sources(tmp_path: Path) -> None:
     with SQLiteStore(db) as store:
         result = audit_reachability(store, target_fqn="app.verify_owner", from_prefix="app.routes")
     assert {r.fqn for r in result.gaps} == {"app.routes.h3"}
+
+
+@pytest.mark.parametrize(
+    ("selector", "named"),
+    [
+        ({"from_prefix": "app.rou"}, "from_prefix='app.rou'"),  # partial dot-segment
+        ({"from_prefix": "nope"}, "from_prefix='nope'"),
+        ({"from_type": NodeType.API_ENDPOINT}, "from_type=API_ENDPOINT"),
+        ({"from_type": NodeType.ROUTE_HANDLER, "from_prefix": "app.svc"}, "from_prefix='app.svc'"),
+    ],
+)
+def test_audit_selecting_no_sources_raises_instead_of_an_empty_result(
+    tmp_path: Path, selector: dict[str, object], named: str
+) -> None:
+    """Zero audited sources is not a clean audit — `gaps == []` would pass a CI gate (#467)."""
+    db = _store(tmp_path, *_graph())
+    with SQLiteStore(db) as store, pytest.raises(NoAuditSourcesError) as excinfo:
+        audit_reachability(store, target_fqn="app.verify_owner", **selector)  # type: ignore[arg-type]
+    message = str(excinfo.value)
+    assert "nothing was audited" in message
+    assert named in message
+
+
+def test_audit_no_sources_error_suggests_whole_segment_prefixes(tmp_path: Path) -> None:
+    """A partial last segment names the dot-complete prefixes that would have matched."""
+    db = _store(tmp_path, *_graph())
+    with (
+        SQLiteStore(db) as store,
+        pytest.raises(NoAuditSourcesError, match=r"did you mean: app\.routes\?"),
+    ):
+        audit_reachability(store, target_fqn="app.verify_owner", from_prefix="app.rou")
+
+
+def test_audit_selecting_only_the_target_raises(tmp_path: Path) -> None:
+    """The checkpoint is never its own source, so a selection of just it audits nothing."""
+    db = _store(tmp_path, *_graph())
+    with SQLiteStore(db) as store, pytest.raises(NoAuditSourcesError):
+        audit_reachability(store, target_fqn="app.verify_owner", from_prefix="app.verify_owner")
 
 
 def test_audit_empty_prefix_is_treated_as_unset(tmp_path: Path) -> None:
