@@ -48,13 +48,12 @@ def test_server_announces_the_package_version() -> None:
     assert mcp.version
 
 
-def _descriptions() -> dict[str, str]:
-    return {tool.name: tool.description or "" for tool in asyncio.run(mcp.list_tools())}
+_DESCRIPTIONS = {tool.name: tool.description or "" for tool in asyncio.run(mcp.list_tools())}
 
 
 def test_tool_summaries_carry_no_issue_numbers() -> None:
     """The first paragraph is what an agent weighs when choosing; `(#19)` tells it nothing."""
-    for name, description in _descriptions().items():
+    for name, description in _DESCRIPTIONS.items():
         summary = description.strip().split("\n\n")[0]
         assert not re.search(r"\(#\d+\)", summary), f"{name}: {summary!r}"
 
@@ -70,6 +69,6 @@ def test_tool_summaries_carry_no_issue_numbers() -> None:
 )
 def test_overlapping_graph_tools_say_when_to_use_a_sibling(tool: str, siblings: set[str]) -> None:
     """All four return a subgraph around one FQN; each names the ones it could be taken for."""
-    description = _descriptions()[tool]
+    description = _DESCRIPTIONS[tool]
     missing = {sibling for sibling in siblings if sibling not in description}
     assert not missing, f"{tool} never mentions {sorted(missing)}"
