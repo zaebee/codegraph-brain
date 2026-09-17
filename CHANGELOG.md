@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.22.0...codegraph-brain-v0.23.0) (2026-09-17)
+
+
+### Features
+
+* **mcp:** describe every tool parameter and announce the server version ([#466](https://github.com/zaebee/codegraph-brain/issues/466)) ([1863a11](https://github.com/zaebee/codegraph-brain/commit/1863a111a752d01303de482b88cee46322184b16))
+
 ## [0.22.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.21.0...codegraph-brain-v0.22.0) (2026-09-17)
 
 
