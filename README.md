@@ -68,7 +68,7 @@ Or install it for good: `pip install codegraph-brain` (Python 3.12+), then use `
 
 ## 📈 Proof at Real Scale
 
-CGIS runs on a working twelve-repository estate — four languages, 8,146 commits, shipping daily. On its 512-file FastAPI backend it classifies **88.4% of 40,493 edges** definitively, and prints the remaining 11.6% instead of inventing targets for them.
+CGIS runs on a working twelve-repository estate — four languages, 8,146 commits, shipping daily. On its FastAPI backend it classifies **82.7% of 87,845 edges** definitively, and prints the remaining 17.3% instead of inventing targets for them. The unresolved share *rose* in #459, when a bug that counted calls to missing symbols as resolved was fixed: the figure measures what the tool admits it cannot see, so an honest change can move it the unflattering way.
 
 **[Read the case study →](https://github.com/zaebee/codegraph-brain/blob/main/docs/CASE_STUDY.md)** — every figure measured and reproducible, including what CGIS *doesn't* cover.
 

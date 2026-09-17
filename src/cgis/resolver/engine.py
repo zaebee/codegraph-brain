@@ -179,6 +179,16 @@ class ResolverEngine:
             return
         source_file = self._index.normalized_file_path(edge.source, edge.file_path)
         namespace = self._index.classify_fqn(target, source_file)
+        if namespace is NodeNamespace.INTERNAL:
+            # An internal FQN with no node is a symbol this project does not have —
+            # `from pkg.a import foo` where `pkg.a` has no `foo`, which the import
+            # map still resolves to `pkg.a.foo` (#459). The graph knows the internal
+            # tree exhaustively, so "internal and absent" means missing, not
+            # elsewhere. Kept as the target, so the name stays visible, but UNKNOWN
+            # so `get_edge_stats` counts it unresolved: classifying it INTERNAL let a
+            # call to a function that does not exist read as a resolved internal one,
+            # the same masking as #414 and #454.
+            namespace = NodeNamespace.UNKNOWN
         if existing is None or namespace != NodeNamespace.UNKNOWN:
             virtual_nodes[target] = self._make_virtual_node(target, namespace)
 

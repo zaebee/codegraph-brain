@@ -47,6 +47,16 @@ The backend is the hard case: 512 files, a service layer, a CRUD layer, SAQ work
 | Edges | 40 493 |
 | Edges definitively classified | **88.4 %** |
 
+> **Correction, 2026-09-17 (#459).** The figures on this page were measured with
+> cgis 0.5.0, which minted an INTERNAL boundary node for an imported symbol the
+> project does not have — so a call to a missing function counted as *resolved
+> internal*. Re-ingesting the same backend today, with the fix: **894 files,
+> 17,920 nodes, 87,845 edges — 50.1 % internal, 20.3 % stdlib, 12.2 % external and
+> 17.3 % unresolved**, against the 11.6 % below. 681 phantom nodes disappeared and
+> 5,195 edges moved into the unresolved column. The backend has also grown since
+> June, so the two runs are not the same corpus; what is comparable is the
+> direction. The tables below are left as the record of what 0.5.0 reported.
+
 ### Where every edge ends up
 
 ```
