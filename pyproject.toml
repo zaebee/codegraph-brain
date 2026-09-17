@@ -93,6 +93,9 @@ dev = [
 [project.scripts]
 cgis = "cgis.cli:app"
 cgis-mcp = "cgis.api.mcp_server:mcp.run"
+# Same server under the package name, so `uvx codegraph-brain` starts it — what the
+# MCP Registry entry (server.json, runtimeHint uvx) runs.
+codegraph-brain = "cgis.api.mcp_server:mcp.run"
 
 [tool.ruff]
 # Target Python 3.12+

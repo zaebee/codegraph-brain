@@ -1,4 +1,5 @@
 # 🧠 CGIS: Code Graph Intelligence System
+<!-- mcp-name: io.github.zaebee/codegraph-brain -->
 ### *A code graph your AI agent can query instead of guess*
 
 [![Continuous Integration](https://github.com/zaebee/codegraph-brain/actions/workflows/ci.yml/badge.svg)](https://github.com/zaebee/codegraph-brain/actions/workflows/ci.yml)
