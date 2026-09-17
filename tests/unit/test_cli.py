@@ -280,6 +280,19 @@ def test_trace_shows_unresolved_external_call(tmp_path: Path) -> None:
     assert "print" in result.output
 
 
+def test_trace_hides_external_calls_by_default(tmp_path: Path) -> None:
+    """Without --show-external the stdlib callee is filtered out of the tree."""
+    (tmp_path / "mod.py").write_text("def greet(): print('hi')\n", encoding="utf-8")
+    db_file = tmp_path / "graph.db"
+    runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
+
+    result = runner.invoke(app, ["trace", "mod.greet", "--db", str(db_file)])
+
+    assert result.exit_code == 0
+    assert "Tracing execution flow" in result.output
+    assert "print" not in result.output
+
+
 def test_trace_min_confidence_hides_low_conf_calls(tmp_path: Path) -> None:
     """--min-confidence hides low-confidence (unresolved/raw_call) edges from the tree (#112)."""
     (tmp_path / "mod.py").write_text("def greet(): print('hi')\n", encoding="utf-8")
