@@ -5,7 +5,8 @@
   "description": "Code graph for AI agents: impact analysis and call tracing for Python and TypeScript.",
   "repository": {
     "url": "https://github.com/zaebee/codegraph-brain",
-    "source": "github"
+    "source": "github",
+    "id": "1260843154"
   },
   "version": "0.21.0",
   "packages": [
