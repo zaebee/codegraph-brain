@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.23.4](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.23.3...codegraph-brain-v0.23.4) (2026-09-17)
+
+
+### Bug Fixes
+
+* **mcp:** trace_flow/analyze_impact default to the CLI's view ([#482](https://github.com/zaebee/codegraph-brain/issues/482)) ([8877051](https://github.com/zaebee/codegraph-brain/commit/8877051d9b6f90e6df2a25480c3f608cdacb5f58))
+
+
+### Documentation
+
+* auto-sync architecture graph and MCP reference ([#484](https://github.com/zaebee/codegraph-brain/issues/484)) ([2f507b0](https://github.com/zaebee/codegraph-brain/commit/2f507b004c232dae3d90577f73d763f4d27be357))
+
 ## [0.23.3](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.23.2...codegraph-brain-v0.23.3) (2026-09-17)
 
 
