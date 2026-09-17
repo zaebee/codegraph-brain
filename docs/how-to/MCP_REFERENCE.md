@@ -330,6 +330,31 @@ Whole-graph architectural metrics — coupling bottlenecks, God classes, PageRan
 
 ---
 
+## `cgis_overview`
+
+Where to start in a graph you know nothing about: sizes and a package map.
+
+    Call this first in an unfamiliar repository — every other tool needs a name,
+    and this is the one that hands you some. Returns JSON: symbol counts by type,
+    file and edge totals, the unresolved-edge ratio, and the largest packages with
+    production and tests listed separately. Each ``prefix`` goes straight into
+    ``cgis_find_symbol`` (``fqn_prefix``) or ``cgis_metrics`` (``scope``), which
+    match on prefixes. ``cgis_get_structure`` takes a node id, not a prefix: a
+    package is a node only when it has an ``__init__.py``, and then holds no
+    members of its own — reach a module through ``cgis_find_symbol`` first.
+
+    Listings are capped; ``packages_omitted`` appears when rows were cut. Entry
+    points are deliberately not reported — "nothing calls it" is not one on a
+    framework codebase, where most handlers have no incoming call edge.
+
+| Argument | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `db_path` | `string` |  | SQLite graph built by cgis_ingest. A relative path resolves against the MCP server's working directory, not the agent's — prefer an absolute path. |
+| `depth` | `integer` |  | FQN segments per package prefix; 1 is the top level. |
+| `limit` | `integer` |  | Maximum packages listed per section. |
+
+---
+
 ## `cgis_suggest_packages`
 
 Suggest sub-package boundaries for a package from its dependency communities.
