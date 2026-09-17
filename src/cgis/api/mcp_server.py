@@ -364,16 +364,18 @@ def cgis_trace_flow(
         int,
         Field(
             description="Maximum edge hops downstream. Every edge type counts as a hop — "
-            "CALLS, but also IMPORTS, CONTAINS and REFERENCES — so from a module the first "
-            "hops are mostly imports and structure."
+            "calls, imports, inheritance, DI dependencies, references and containment — so "
+            "from a module or class the first hop is mostly its own members and imports."
         ),
     ] = 3,
     output_format: OutputFormat = "mermaid",
 ) -> str:
     """Downstream subgraph of one FQN: everything it reaches within ``depth`` hops.
 
-    Every edge type counts — calls, imports, containment, references — so this
-    answers "what does X depend on?". For what depends on X use
+    Every edge type counts — calls, imports, inheritance, DI dependencies,
+    references, and containment (so from a module or class the first hop includes
+    its own members) — so this answers "what does X depend on?". For what depends
+    on X use
     ``cgis_analyze_impact``; for only the members of a module or class,
     ``cgis_get_structure``; for a source-included brief to read before editing
     one symbol, ``cgis_context``.
@@ -423,21 +425,22 @@ def cgis_analyze_impact(
         int,
         Field(
             description="Maximum edge hops upstream. Every edge type counts as a hop — "
-            "CALLS, but also IMPORTS, CONTAINS and REFERENCES — so modules importing the "
-            "target and the file containing it appear alongside its callers."
+            "callers, importers, subclasses, type references, DI dependents and the "
+            "enclosing class or file all appear alongside each other."
         ),
     ] = 3,
     output_format: OutputFormat = "mermaid",
 ) -> str:
     """Upstream subgraph of one FQN: everything that reaches it within ``depth`` hops.
 
-    Every edge type counts — callers, but also importers and the containing file —
-    so this answers "what breaks if I change X?". For what X depends on use
+    Every edge type counts — callers, but also importers, subclasses, type
+    references, DI dependents and the enclosing class or file — so this answers
+    "what breaks if I change X?". For what X depends on use
     ``cgis_trace_flow``; for only the members of a module or class,
     ``cgis_get_structure``; for a source-included brief to read before editing
     one symbol, ``cgis_context``.
 
-    Answers "what breaks if I change X?". ``output_format="mermaid"`` (default)
+    ``output_format="mermaid"`` (default)
     returns a diagram; ``"json"`` returns a joinable ``{root, nodes, edges,
     coverage}`` payload with real FQNs — letting an agent compute set
     differences (e.g. "which route handlers never reach ``verify_ownership``?")
@@ -489,8 +492,7 @@ def cgis_get_structure(
     For how the code connects use ``cgis_trace_flow`` (what it depends on) or
     ``cgis_analyze_impact`` (what depends on it).
 
-    Traverses only containment edges — no call-graph noise — matching the CLI
-    ``structure`` command. ``output_format="mermaid"`` (default) returns a
+    Matches the CLI ``structure`` command. ``output_format="mermaid"`` (default) returns a
     diagram of the hierarchy rooted at the given FQN; ``"json"`` returns the
     joinable ``{root, nodes, edges}`` payload with real FQNs.
     """
@@ -801,10 +803,12 @@ def cgis_context(
         ),
     ] = "",
 ) -> str:
-    """Prompt-ready brief on one FQN: source, enclosing class, domain, direct callers, callees.
+    """Prompt-ready brief on one FQN: its source, class, direct callers and callees.
 
     Call this before editing a symbol, instead of reading its files. It follows
-    calls only, one hop by default, and includes source. For a multi-hop subgraph
+    calls only, one hop by default. Source is included when the file is found
+    (see ``source_root``), and the domain when the graph was tagged with one.
+    For a multi-hop subgraph
     over every edge type without source, use ``cgis_trace_flow`` (downstream) or
     ``cgis_analyze_impact`` (upstream).
 
