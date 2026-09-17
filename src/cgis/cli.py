@@ -339,8 +339,14 @@ def build_trace_tree(
     if min_confidence is not None:
         outgoing = [e for e in outgoing if e.confidence >= min_confidence]
     nodes_map = {n.id: n for n in store.get_nodes([e.target for e in outgoing])}
+    # One row per callee: two call sites are separate edges but the same neighbour,
+    # and a tree row shows neither line nor edge type to tell them apart (#463).
+    shown: set[str] = set()
     for edge in outgoing:
         target_id = edge.target
+        if target_id in shown:
+            continue
+        shown.add(target_id)
         target_node = nodes_map.get(target_id)
 
         if not show_external and (
@@ -476,8 +482,14 @@ def build_impact_tree(
     if min_confidence is not None:
         incoming = [e for e in incoming if e.confidence >= min_confidence]
     nodes_map = {n.id: n for n in store.get_nodes([e.source for e in incoming])}
+    # One row per caller: two call sites are separate edges but the same neighbour,
+    # and a tree row shows neither line nor edge type to tell them apart (#463).
+    shown: set[str] = set()
     for edge in incoming:
         source_id = edge.source
+        if source_id in shown:
+            continue
+        shown.add(source_id)
         source_node = nodes_map.get(source_id)
 
         if not show_external and (

@@ -89,3 +89,18 @@ def test_graph_to_json_omits_coverage_when_none() -> None:
     payload = graph_to_json("pkg.a", [_make_node("pkg.a")], [])
 
     assert "coverage" not in payload
+
+
+def test_graph_to_json_collapses_edges_with_the_same_endpoints_and_type() -> None:
+    """Two call sites are indistinguishable in the payload — emit one edge, highest confidence."""
+    nodes = [_make_node("pkg.a"), _make_node("pkg.b")]
+    first = _make_edge("pkg.a", "pkg.b", confidence=0.4)
+    second = first.model_copy(update={"id": "pkg.a->pkg.b@2", "confidence": 0.9})
+    other_type = _make_edge("pkg.a", "pkg.b", EdgeType.REFERENCES).model_copy(
+        update={"id": "pkg.a->pkg.b@ref"}
+    )
+    payload = graph_to_json("pkg.a", nodes, [first, second, other_type])
+    assert payload["edges"] == [
+        {"src": "pkg.a", "dst": "pkg.b", "type": "CALLS", "confidence": 0.9},
+        {"src": "pkg.a", "dst": "pkg.b", "type": "REFERENCES", "confidence": 1.0},
+    ]
