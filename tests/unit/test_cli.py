@@ -1402,7 +1402,8 @@ def test_audit_selecting_no_sources_fails_the_gate(tmp_path: Path, output_format
         ["audit", "verify_owner", "--from-prefix", "app.h", "--db", db, "--format", output_format],
     )
     assert result.exit_code == 2
-    assert "nothing was audited" in result.output
+    assert "nothing was audited" in result.stderr
+    assert "nothing was audited" not in result.stdout  # keeps --format json stdout clean
 
 
 # --- suggest-packages command tests ---

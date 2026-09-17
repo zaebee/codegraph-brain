@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from cgis.core.models import Edge, EdgeType, Node, NodeType
+from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
 from cgis.query.context.audit import NoAuditSourcesError, audit_reachability
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -134,6 +134,64 @@ def test_audit_no_sources_error_suggests_whole_segment_prefixes(tmp_path: Path) 
         pytest.raises(NoAuditSourcesError, match=r"did you mean: app\.routes\?"),
     ):
         audit_reachability(store, target_fqn="app.verify_owner", from_prefix="app.rou")
+
+
+@pytest.mark.parametrize(
+    ("selector", "hint"),
+    [
+        # Whole segment, wrong type: the fix is the type, not the prefix.
+        (
+            {"from_type": NodeType.ROUTE_HANDLER, "from_prefix": "app.svc"},
+            "none of type ROUTE_HANDLER",
+        ),
+        # Whole segment naming the checkpoint: nothing else lives there.
+        ({"from_prefix": "app.verify_owner"}, "Only the checkpoint itself"),
+    ],
+)
+def test_audit_no_sources_error_never_suggests_the_prefix_back(
+    tmp_path: Path, selector: dict[str, object], hint: str
+) -> None:
+    """A suggestion equal to the input is noise; say why the whole segment selected nothing."""
+    db = _store(tmp_path, *_graph())
+    with SQLiteStore(db) as store, pytest.raises(NoAuditSourcesError) as excinfo:
+        audit_reachability(store, target_fqn="app.verify_owner", **selector)  # type: ignore[arg-type]
+    message = str(excinfo.value)
+    assert "did you mean" not in message
+    assert hint in message
+
+
+def test_audit_no_sources_suggestions_respect_type_and_namespace(tmp_path: Path) -> None:
+    """Suggest only prefixes that would select sources: same type, INTERNAL only."""
+    nodes, edges = _graph()
+    nodes.append(
+        Node(
+            id="app.roulette.spin",
+            type=NodeType.ROUTE_HANDLER,
+            name="spin",
+            file_path="<stdlib>",
+            start_line=0,
+            end_line=0,
+            namespace=NodeNamespace.STDLIB,
+        )
+    )
+    nodes.append(_node("app.robots.index", NodeType.FUNCTION, 80))
+    db = _store(tmp_path, nodes, edges)
+    with SQLiteStore(db) as store, pytest.raises(NoAuditSourcesError) as excinfo:
+        audit_reachability(
+            store,
+            target_fqn="app.verify_owner",
+            from_type=NodeType.ROUTE_HANDLER,
+            from_prefix="app.ro",
+        )
+    assert "did you mean: app.routes?" in str(excinfo.value)
+
+
+def test_audit_trailing_dot_suggests_the_prefix_without_it(tmp_path: Path) -> None:
+    """`app.routes.` meant `app.routes`, not a list of its children."""
+    db = _store(tmp_path, *_graph())
+    with SQLiteStore(db) as store, pytest.raises(NoAuditSourcesError) as excinfo:
+        audit_reachability(store, target_fqn="app.verify_owner", from_prefix="app.routes.")
+    assert "did you mean: app.routes?" in str(excinfo.value)
 
 
 def test_audit_selecting_only_the_target_raises(tmp_path: Path) -> None:

@@ -1497,7 +1497,8 @@ def audit(
             )
         except NoAuditSourcesError as exc:
             # Exit 2 like a bad selector: exit 0 here let a typo'd prefix pass a CI gate (#467).
-            console.print(f"[bold red]❌ {escape(str(exc))}[/bold red]")
+            # stderr, like _resolve_checkpoint: `--format json` stdout stays a clean payload.
+            err_console.print(f"[bold red]❌ {escape(str(exc))}[/bold red]")
             raise typer.Exit(code=2) from exc
 
     if output_format == OutputFormat.JSON:

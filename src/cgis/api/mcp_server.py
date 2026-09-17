@@ -987,6 +987,9 @@ def cgis_audit_reachability(
     one is required. Returns JSON ``{target, covered, gaps}`` where each gap carries
     ``fqn``/``file``/``line``. Generalizes to validators, event tracking, or
     service-layer-boundary rules by pointing ``target`` at the required node.
+
+    A selection that matches no source returns a ❌ message, not an empty
+    ``{covered: [], gaps: []}`` that would read as a passing audit (#467).
     """
     if blank := _blank_fqn_error(target):
         return blank
