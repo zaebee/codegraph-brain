@@ -20,10 +20,10 @@ Analyse transitive upstream callers of a specific FQN.
 
 | Argument | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
-| `fqn` | `string` | ✓ |  |
-| `db_path` | `string` |  |  |
-| `depth` | `integer` |  |  |
-| `output_format` | `string` |  |  |
+| `fqn` | `string` | ✓ | Fully qualified name, e.g. pkg.module.Class.method. A unique dot-boundary suffix also resolves; an ambiguous one returns candidates. Use cgis_find_symbol to look a name up. |
+| `db_path` | `string` |  | SQLite graph built by cgis_ingest. A relative path resolves against the MCP server's working directory, not the agent's — prefer an absolute path. |
+| `depth` | `integer` |  | Maximum edge hops upstream. Every edge type counts as a hop — CALLS, but also IMPORTS, CONTAINS and REFERENCES — so modules importing the target and the file containing it appear alongside its callers. |
+| `output_format` | `string` |  | "mermaid" for a diagram, or "json" for a payload with real FQNs (case-insensitive). Any other value returns an error. |
 
 ---
 
@@ -43,11 +43,11 @@ Reachability/authorization audit — which sources never reach a checkpoint (#17
 
 | Argument | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
-| `target` | `string` | ✓ |  |
-| `db_path` | `string` |  |  |
-| `from_type` | `any` |  |  |
-| `from_prefix` | `any` |  |  |
-| `depth` | `integer` |  |  |
+| `target` | `string` | ✓ | FQN of the checkpoint every source must reach, e.g. an ownership check. A unique dot-boundary suffix also resolves. |
+| `db_path` | `string` |  | SQLite graph built by cgis_ingest. A relative path resolves against the MCP server's working directory, not the agent's — prefer an absolute path. |
+| `from_type` | `any` |  | NodeType of the sources to audit, e.g. ROUTE_HANDLER, API_ENDPOINT or FUNCTION (any case). Give this, from_prefix, or both. |
+| `from_prefix` | `any` |  | Only audit sources at or under this FQN prefix, matched on whole dot-segments — a partial segment selects nothing and returns an empty audit, not a clean one. Combined with from_type when both are given. |
+| `depth` | `integer` |  | Maximum reachability depth; a longer path is reported as a gap. |
 
 ---
 
@@ -70,10 +70,10 @@ Compile an agent-facing GraphRAG context package for a focal FQN (#19).
 
 | Argument | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
-| `fqn` | `string` | ✓ |  |
-| `db_path` | `string` |  |  |
-| `depth` | `integer` |  |  |
-| `source_root` | `string` |  |  |
+| `fqn` | `string` | ✓ | Fully qualified name, e.g. pkg.module.Class.method. A unique dot-boundary suffix also resolves; an ambiguous one returns candidates. Use cgis_find_symbol to look a name up. |
+| `db_path` | `string` |  | SQLite graph built by cgis_ingest. A relative path resolves against the MCP server's working directory, not the agent's — prefer an absolute path. |
+| `depth` | `integer` |  | Call hops around the focal node; 1 means direct callers and callees. |
+| `source_root` | `string` |  | Directory the graph's stored file paths are relative to — normally the project_path given to cgis_ingest; prefer an absolute path. Empty means the server's working directory, so source shows as unavailable when the server runs elsewhere. |
 
 ---
 
@@ -102,11 +102,11 @@ Report per-domain architectural drift against declared ideal patterns.
 
 | Argument | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
-| `db_path` | `string` |  |  |
-| `patterns_path` | `string` |  |  |
-| `max_drift` | `number` |  |  |
-| `profile` | `any` |  |  |
-| `max_residual` | `number` |  |  |
+| `db_path` | `string` |  | SQLite graph built by cgis_ingest. A relative path resolves against the MCP server's working directory, not the agent's — prefer an absolute path. |
+| `patterns_path` | `string` |  | patterns.yaml (.yaml or .yml) declaring each domain's expected pattern and tolerance, relative to the server's working directory. cgis_init_ontology proposes one. |
+| `max_drift` | `number` |  | Drift tolerance for domains that declare no drift_tolerance of their own. |
+| `profile` | `any` |  | Score only domains with this profile, plus profile-less ones — e.g. one language when patterns.yaml mixes several. |
+| `max_residual` | `number` |  | Distance to the nearest template beyond which a domain's fit band is "none" (no template fits). |
 
 ---
 
@@ -150,10 +150,10 @@ Classes nothing in production builds, extends or names — dead-code candidates 
 
 | Argument | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
-| `db_path` | `string` |  |  |
-| `prefix` | `any` |  |  |
-| `include_tests` | `boolean` |  |  |
-| `include_generated` | `boolean` |  |  |
+| `db_path` | `string` |  | SQLite graph built by cgis_ingest. A relative path resolves against the MCP server's working directory, not the agent's — prefer an absolute path. |
+| `prefix` | `any` |  | Only consider classes under this FQN prefix, cut on a dot boundary. |
+| `include_tests` | `boolean` |  | Count test code as a user, so the report means "unreachable from anywhere". |
+| `include_generated` | `boolean` |  | Include machine-generated classes, which are hidden by default. |
 
 ---
 
@@ -170,11 +170,11 @@ Resolve a partial symbol name to candidate FQNs (substring match, ranked).
 
 | Argument | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
-| `query` | `string` | ✓ |  |
-| `db_path` | `string` |  |  |
-| `kind` | `any` |  |  |
-| `fqn_prefix` | `any` |  |  |
-| `limit` | `integer` |  |  |
+| `query` | `string` | ✓ | Leaf symbol name to search for, without dots (e.g. get_flow_result) — not an FQN. Case-insensitive substring match, ranked exact > prefix > substring. |
+| `db_path` | `string` |  | SQLite graph built by cgis_ingest. A relative path resolves against the MCP server's working directory, not the agent's — prefer an absolute path. |
+| `kind` | `any` |  | Only return this node type, e.g. FUNCTION, METHOD or CLASS (any case). An unknown type matches nothing rather than raising an error. |
+| `fqn_prefix` | `any` |  | Only return symbols at or under this FQN prefix, matched on whole dot-segments: app.svc does not match app.svc_alt, and a partial segment matches nothing. |
+| `limit` | `integer` |  | Maximum number of candidates to return. |
 
 ---
 
@@ -200,7 +200,7 @@ Report the motif census across the repository's structural tiers.
 
 | Argument | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
-| `db_path` | `string` |  |  |
+| `db_path` | `string` |  | SQLite graph built by cgis_ingest. A relative path resolves against the MCP server's working directory, not the agent's — prefer an absolute path. |
 
 ---
 
@@ -215,10 +215,10 @@ Show the structural layout (CONTAINS/DECLARES) of a module or class.
 
 | Argument | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
-| `fqn` | `string` | ✓ |  |
-| `db_path` | `string` |  |  |
-| `depth` | `integer` |  |  |
-| `output_format` | `string` |  |  |
+| `fqn` | `string` | ✓ | Fully qualified name, e.g. pkg.module.Class.method. A unique dot-boundary suffix also resolves; an ambiguous one returns candidates. Use cgis_find_symbol to look a name up. |
+| `db_path` | `string` |  | SQLite graph built by cgis_ingest. A relative path resolves against the MCP server's working directory, not the agent's — prefer an absolute path. |
+| `depth` | `integer` |  | Maximum containment levels to descend (module → class → method). |
+| `output_format` | `string` |  | "mermaid" for a diagram, or "json" for a payload with real FQNs (case-insensitive). Any other value returns an error. |
 
 ---
 
@@ -245,9 +245,9 @@ Scan a local directory, extract all symbols, resolve links, and build the graph 
 
 | Argument | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
-| `project_path` | `string` | ✓ |  |
-| `db_path` | `string` |  |  |
-| `full_rebuild` | `boolean` |  |  |
+| `project_path` | `string` | ✓ | Root directory of the project to scan. A relative path resolves against the MCP server's working directory. |
+| `db_path` | `string` |  | Where to write the graph: must end in .db, .sqlite or .sqlite3, in a directory that already exists, and must not be an existing non-SQLite file. A relative path resolves against the server's working directory. |
+| `full_rebuild` | `boolean` |  | Re-scan every file from scratch instead of the incremental default. |
 
 ---
 
@@ -263,10 +263,10 @@ Propose a starter patterns.yaml from the measured graph (read-only).
 
 | Argument | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
-| `db_path` | `string` |  |  |
-| `margin` | `number` |  |  |
-| `min_nodes` | `integer` |  |  |
-| `depth` | `any` |  |  |
+| `db_path` | `string` |  | SQLite graph built by cgis_ingest. A relative path resolves against the MCP server's working directory, not the agent's — prefer an absolute path. |
+| `margin` | `number` |  | Headroom added to each measured score to form the proposed tolerance. |
+| `min_nodes` | `integer` |  | Domains with fewer nodes stay hygiene-only instead of getting a label. |
+| `depth` | `any` |  | Fixed FQN segment depth for domain discovery (positive); omit to pick it automatically. |
 
 ---
 
@@ -297,10 +297,10 @@ Whole-graph architectural metrics — coupling bottlenecks + God classes (#16).
 
 | Argument | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
-| `db_path` | `string` |  |  |
-| `limit` | `integer` |  |  |
-| `exclude` | `any` |  |  |
-| `scope` | `any` |  |  |
+| `db_path` | `string` |  | SQLite graph built by cgis_ingest. A relative path resolves against the MCP server's working directory, not the agent's — prefer an absolute path. |
+| `limit` | `integer` |  | Top-N rows returned per section. |
+| `exclude` | `any` |  | Drop nodes whose FQN contains any of these dot-segments, e.g. ["tests"]; they are removed from PageRank propagation too. |
+| `scope` | `any` |  | Keep only nodes under any of these dot-prefixes, e.g. ["domains.billing"]; rank still propagates over the whole graph. |
 
 ---
 
@@ -319,10 +319,10 @@ Suggest sub-package boundaries for a package from its dependency communities.
 
 | Argument | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
-| `db_path` | `string` |  |  |
-| `prefix` | `any` |  |  |
-| `with_calls` | `boolean` |  |  |
-| `min_q` | `number` |  |  |
+| `db_path` | `string` |  | SQLite graph built by cgis_ingest. A relative path resolves against the MCP server's working directory, not the agent's — prefer an absolute path. |
+| `prefix` | `any` |  | FQN prefix of the package to analyse, e.g. cgis.query, matched on whole dot-segments. Needed in practice: without it the verdict is no_signal. |
+| `with_calls` | `boolean` |  | Use the combined import + call graph instead of imports only. |
+| `min_q` | `number` |  | Modularity threshold: at or above it, a package whose layout disagrees with its communities is flagged split (or consolidate, if over-split). |
 
 ---
 
@@ -341,10 +341,10 @@ Trace the execution call-graph starting from a specific FQN downwards.
 
 | Argument | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
-| `fqn` | `string` | ✓ |  |
-| `db_path` | `string` |  |  |
-| `depth` | `integer` |  |  |
-| `output_format` | `string` |  |  |
+| `fqn` | `string` | ✓ | Fully qualified name, e.g. pkg.module.Class.method. A unique dot-boundary suffix also resolves; an ambiguous one returns candidates. Use cgis_find_symbol to look a name up. |
+| `db_path` | `string` |  | SQLite graph built by cgis_ingest. A relative path resolves against the MCP server's working directory, not the agent's — prefer an absolute path. |
+| `depth` | `integer` |  | Maximum edge hops downstream. Every edge type counts as a hop — CALLS, but also IMPORTS, CONTAINS and REFERENCES — so from a module the first hops are mostly imports and structure. |
+| `output_format` | `string` |  | "mermaid" for a diagram, or "json" for a payload with real FQNs (case-insensitive). Any other value returns an error. |
 
 ---
 
@@ -357,7 +357,7 @@ Report graph integrity as JSON: edge resolution stats + health verdict.
 
 | Argument | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
-| `db_path` | `string` |  |  |
-| `threshold` | `number` |  |  |
+| `db_path` | `string` |  | SQLite graph built by cgis_ingest. A relative path resolves against the MCP server's working directory, not the agent's — prefer an absolute path. |
+| `threshold` | `number` |  | Highest unresolved-edge ratio (0-1) still reported as healthy. |
 
 ---
