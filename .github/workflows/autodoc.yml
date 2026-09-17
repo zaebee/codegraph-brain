@@ -46,9 +46,9 @@ jobs:
       - name: Compute graph health badge
         run: uv run --frozen python scripts/generate_health.py --db /tmp/self_graph.db
 
-      - name: Inject graph into README.md
+      - name: Inject graph into HOW_IT_WORKS.md
         run: |
-          uv run --frozen python scripts/inject_readme_graph.py \
+          uv run --frozen python scripts/inject_architecture_graph.py \
             --db /tmp/self_graph.db \
             --fqn "cgis.pipeline.IngestionPipeline.run" \
             --depth 1 \
@@ -74,10 +74,8 @@ jobs:
             Updates:
             - Pipeline flow diagram (`docs/architecture/diagrams/pipeline_flow.mermaid`)
             - Graph health badge (`docs/architecture/health_badge.json`)
-            - Schema docs (`docs/architecture/HOW_IT_WORKS.md`)
+            - Schema docs and pipeline graph (`docs/architecture/HOW_IT_WORKS.md`)
             - MCP reference (`docs/how-to/MCP_REFERENCE.md`)
-            - README diagram injection
           labels: "docs,automated"
           add-paths: |
-            README.md
             docs/
