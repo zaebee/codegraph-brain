@@ -434,6 +434,9 @@ class SQLiteStore:
         """
         if not self._conn:
             raise RuntimeError(self._error_message)
+        # Clamped here too, not only in `build_overview`: depth 0 would key every
+        # row on the empty string, which is not an FQN prefix anything accepts.
+        depth = max(depth, 1)
         rows = self._conn.execute(
             """
             SELECT id, is_test FROM nodes
