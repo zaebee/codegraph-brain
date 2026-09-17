@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.24.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.23.4...codegraph-brain-v0.24.0) (2026-09-17)
+
+
+### Features
+
+* **mcp:** cgis_overview — a starting map when you have no FQN yet ([#486](https://github.com/zaebee/codegraph-brain/issues/486)) ([1580cfe](https://github.com/zaebee/codegraph-brain/commit/1580cfe53325241e149ba3bbb9388c4ddc7718d7))
+
+
+### Documentation
+
+* auto-sync architecture graph and MCP reference ([#488](https://github.com/zaebee/codegraph-brain/issues/488)) ([9f169ce](https://github.com/zaebee/codegraph-brain/commit/9f169ce364f0d778c0c59b4de607a3433b800dbd))
+
 ## [0.23.4](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.23.3...codegraph-brain-v0.23.4) (2026-09-17)
 
 
