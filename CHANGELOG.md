@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.23.3](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.23.2...codegraph-brain-v0.23.3) (2026-09-17)
+
+
+### Documentation
+
+* auto-sync architecture graph and MCP reference ([#480](https://github.com/zaebee/codegraph-brain/issues/480)) ([5379cce](https://github.com/zaebee/codegraph-brain/commit/5379cce927b5fade5e2371503a0cd9e1f8041fc7))
+* **mcp:** say when to use each overlapping graph tool ([#477](https://github.com/zaebee/codegraph-brain/issues/477)) ([f33d764](https://github.com/zaebee/codegraph-brain/commit/f33d764ebdf217359964347aaa1137dc18ced513))
+
 ## [0.23.2](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.23.1...codegraph-brain-v0.23.2) (2026-09-17)
 
 
