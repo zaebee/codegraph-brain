@@ -4,6 +4,7 @@ import json
 import os
 import sqlite3
 import time
+from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -384,6 +385,52 @@ class SQLiteStore:
             raise RuntimeError(self._error_message)
         row = self._conn.execute("SELECT COUNT(*) AS n FROM edges").fetchone()
         return int(row["n"]) if row else 0
+
+    def symbol_census(self) -> dict[str, int]:
+        """Internal declared symbols by node type — CLASS/FUNCTION/METHOD, not FILE."""
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        rows = self._conn.execute(
+            """
+            SELECT type, COUNT(*) FROM nodes
+            WHERE namespace = 'INTERNAL' AND type != 'FILE'
+            GROUP BY type ORDER BY type
+            """
+        ).fetchall()
+        return {row[0]: row[1] for row in rows}
+
+    def file_count(self) -> int:
+        """Internal FILE nodes — the size of the tree the graph was built from."""
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        row = self._conn.execute(
+            "SELECT COUNT(*) FROM nodes WHERE namespace = 'INTERNAL' AND type = 'FILE'"
+        ).fetchone()
+        return int(row[0]) if row else 0
+
+    def package_census(self, depth: int) -> tuple[list[tuple[str, int]], list[tuple[str, int]]]:
+        """Internal symbols grouped by their first `depth` FQN segments, production and test.
+
+        The prefix never swallows the symbol's own name: `mod.func` at depth 2 is
+        `mod`, not `mod.func`, or the map would list one row per symbol. Grouping
+        happens in Python because the cut is per-id — SQL would need a recursive
+        expression to find the nth dot, for a pass over ids this already makes.
+        """
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        rows = self._conn.execute(
+            """
+            SELECT id, is_test FROM nodes
+            WHERE namespace = 'INTERNAL' AND type != 'FILE'
+            """
+        ).fetchall()
+        production: Counter[str] = Counter()
+        tests: Counter[str] = Counter()
+        for node_id, is_test in rows:
+            parts = node_id.split(".")
+            prefix = ".".join(parts[: min(depth, max(len(parts) - 1, 1))])
+            (tests if is_test else production)[prefix] += 1
+        return production.most_common(), tests.most_common()
 
     def get_node(self, node_id: str) -> Node | None:
         """Return a single node by FQN, or None if not found."""

@@ -23,6 +23,7 @@ import json as _json
 from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
+from typing import Any
 
 import typer
 import yaml
@@ -42,6 +43,7 @@ from cgis.pipeline import IngestionPipeline
 from cgis.query.analysis.analyzer import AnalyzerEngine
 from cgis.query.analysis.anomaly import AnomalyType, ArchitecturalAnomaly
 from cgis.query.analysis.health import HealthScorer
+from cgis.query.analysis.overview import DEFAULT_DEPTH, DEFAULT_LIMIT, build_overview
 from cgis.query.analysis.suggest_service import SuggestReport, report_to_dict, suggest_packages
 from cgis.query.context.audit import NoAuditSourcesError, ReachabilityAudit, audit_reachability
 from cgis.query.context.context_service import build_context
@@ -618,6 +620,68 @@ def impact(
                 min_confidence=min_confidence,
             )
             console.print(tree)
+
+
+@app.command()
+def overview(
+    db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
+    depth: int = typer.Option(
+        DEFAULT_DEPTH, "--depth", min=1, help="FQN segments per package prefix."
+    ),
+    limit: int = typer.Option(
+        DEFAULT_LIMIT, "--limit", "-n", min=1, help="Max packages listed per section."
+    ),
+    output_format: OutputFormat = typer.Option(
+        OutputFormat.TEXT, "--format", "-f", help=_TEXT_JSON_FORMAT_HELP
+    ),
+) -> None:
+    """Where to start in a graph you know nothing about: sizes and a package map (#478).
+
+    Every other command needs an FQN. This one hands you some: the largest
+    packages, production and tests apart, as prefixes `structure`, `find` and
+    `metrics --scope` accept directly.
+    """
+    if output_format == OutputFormat.MERMAID:
+        console.print("[bold red]❌ overview supports --format text or json only.[/bold red]")
+        raise typer.Exit(code=2)
+    if not Path(db).is_file():
+        console.print(
+            f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
+        )
+        raise typer.Exit(code=1)
+    _warn_if_not_fresh(db)
+
+    with SQLiteStore(db) as store:
+        report = build_overview(store, depth=depth, limit=limit)
+
+    if output_format == OutputFormat.JSON:
+        typer.echo(_json.dumps(report, indent=2))
+        return
+    _render_overview(report)
+
+
+def _render_overview(report: dict[str, Any]) -> None:
+    """Print the overview as two small tables plus a one-line size summary."""
+    counts = ", ".join(
+        f"{count} {kind.lower()}" for kind, count in sorted(report["symbols"].items())
+    )
+    console.print(
+        f"[bold]{report['files']} files[/bold] · {counts or 'no symbols'} · "
+        f"{report['edges']} edges · {report['unresolved_ratio'] * 100:.1f}% unresolved\n"
+    )
+    for key, title in (("packages", "Packages"), ("test_packages", "Test packages")):
+        rows = report[key]
+        if not rows:
+            continue
+        table = Table(title=title)
+        table.add_column("Prefix", style="cyan")
+        table.add_column("Symbols", style="magenta", justify="right")
+        for row in rows:
+            table.add_row(str(row["prefix"]), str(row["symbols"]))
+        console.print(table)
+        omitted = report.get(f"{key}_omitted")
+        if omitted:
+            console.print(f"[dim]… {omitted} more not shown (raise --limit)[/dim]")
 
 
 @app.command()
