@@ -196,8 +196,8 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
         pipeline_IngestionPipeline_workspace_root["workspace_root (pipeline.py:82)"]:::methodNode
     end
     subgraph sg_engine["engine.py"]
-        engine_ResolverEngine["ResolverEngine (engine.py:20)"]:::classNode
-        engine_ResolverEngine_resolve["resolve (engine.py:37)"]:::methodNode
+        engine_ResolverEngine["ResolverEngine (engine.py:47)"]:::classNode
+        engine_ResolverEngine_resolve["resolve (engine.py:64)"]:::methodNode
     end
     subgraph sg_uplift["uplift.py"]
         uplift_SemanticUpliftEngine["SemanticUpliftEngine (uplift.py:66)"]:::classNode
@@ -233,8 +233,8 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
 | `_is_noop_incremental` | METHOD | [`pipeline.py:310`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L310) |
 | `_persist_incremental` | METHOD | [`pipeline.py:334`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L334) |
 | `_get_extractor` | METHOD | [`pipeline.py:384`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L384) |
-| `ResolverEngine` | CLASS | [`engine.py:20`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L20) |
-| `resolve` | METHOD | [`engine.py:37`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L37) |
+| `ResolverEngine` | CLASS | [`engine.py:47`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L47) |
+| `resolve` | METHOD | [`engine.py:64`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L64) |
 | `SemanticUpliftEngine` | CLASS | [`uplift.py:66`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/uplift.py#L66) |
 | `execute_uplift` | METHOD | [`uplift.py:91`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/uplift.py#L91) |
 | `SQLiteStore` | CLASS | [`sqlite_store.py:48`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/storage/sqlite_store.py#L48) |
