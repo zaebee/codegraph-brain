@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.25.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.24.0...codegraph-brain-v0.25.0) (2026-09-17)
+
+
+### Features
+
+* **query:** get_structure answers a package prefix with its modules ([#490](https://github.com/zaebee/codegraph-brain/issues/490)) ([2c6119d](https://github.com/zaebee/codegraph-brain/commit/2c6119d3528789775bd968b8b25892421d037eae))
+
+
+### Documentation
+
+* auto-sync architecture graph and MCP reference ([#491](https://github.com/zaebee/codegraph-brain/issues/491)) ([0a59947](https://github.com/zaebee/codegraph-brain/commit/0a59947f98c32aba31b9b9ef4c562f82cfd6fbd8))
+
 ## [0.24.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.23.4...codegraph-brain-v0.24.0) (2026-09-17)
 
 
