@@ -1208,7 +1208,10 @@ def layered_db(tmp_path: Path) -> str:
 
 
 def _payload(result: str) -> dict[str, Any]:
-    return json.loads(result[result.index("{") :])
+    """Parse a tool's JSON, past any resolution note — and show the ❌ if there is one."""
+    start = result.find("{")
+    assert start != -1, f"expected a JSON payload, got: {result}"
+    return json.loads(result[start:])
 
 
 def _shape(payload: dict[str, Any]) -> tuple[set[str], set[tuple[str, str, str]]]:
