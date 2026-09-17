@@ -370,7 +370,13 @@ def cgis_trace_flow(
     ] = 3,
     output_format: OutputFormat = "mermaid",
 ) -> str:
-    """Trace the execution call-graph starting from a specific FQN downwards.
+    """Downstream subgraph of one FQN: everything it reaches within ``depth`` hops.
+
+    Every edge type counts — calls, imports, containment, references — so this
+    answers "what does X depend on?". For what depends on X use
+    ``cgis_analyze_impact``; for only the members of a module or class,
+    ``cgis_get_structure``; for a source-included brief to read before editing
+    one symbol, ``cgis_context``.
 
     ``output_format="mermaid"`` (default) returns a human-readable diagram;
     ``"json"`` returns a joinable ``{root, nodes, edges, coverage}`` payload
@@ -423,7 +429,13 @@ def cgis_analyze_impact(
     ] = 3,
     output_format: OutputFormat = "mermaid",
 ) -> str:
-    """Analyse transitive upstream callers of a specific FQN.
+    """Upstream subgraph of one FQN: everything that reaches it within ``depth`` hops.
+
+    Every edge type counts — callers, but also importers and the containing file —
+    so this answers "what breaks if I change X?". For what X depends on use
+    ``cgis_trace_flow``; for only the members of a module or class,
+    ``cgis_get_structure``; for a source-included brief to read before editing
+    one symbol, ``cgis_context``.
 
     Answers "what breaks if I change X?". ``output_format="mermaid"`` (default)
     returns a diagram; ``"json"`` returns a joinable ``{root, nodes, edges,
@@ -471,7 +483,11 @@ def cgis_get_structure(
     ] = 2,
     output_format: OutputFormat = "mermaid",
 ) -> str:
-    """Show the structural layout (CONTAINS/DECLARES) of a module or class.
+    """Members of a module or class: the classes, functions and methods it contains.
+
+    Follows containment (CONTAINS/DECLARES) only, so no call or import appears.
+    For how the code connects use ``cgis_trace_flow`` (what it depends on) or
+    ``cgis_analyze_impact`` (what depends on it).
 
     Traverses only containment edges — no call-graph noise — matching the CLI
     ``structure`` command. ``output_format="mermaid"`` (default) returns a
@@ -785,7 +801,12 @@ def cgis_context(
         ),
     ] = "",
 ) -> str:
-    """Compile an agent-facing GraphRAG context package for a focal FQN (#19).
+    """Prompt-ready brief on one FQN: source, enclosing class, domain, direct callers, callees.
+
+    Call this before editing a symbol, instead of reading its files. It follows
+    calls only, one hop by default, and includes source. For a multi-hop subgraph
+    over every edge type without source, use ``cgis_trace_flow`` (downstream) or
+    ``cgis_analyze_impact`` (upstream).
 
     Returns an XML-tagged prompt — the focal node's source, its enclosing class,
     its architectural domain boundary, direct callers (upstream ripple) and
@@ -836,7 +857,7 @@ def cgis_metrics(
         ),
     ] = None,
 ) -> str:
-    """Whole-graph architectural metrics — coupling bottlenecks + God classes (#16).
+    """Whole-graph architectural metrics — coupling bottlenecks, God classes, PageRank.
 
     Returns JSON ``{bottlenecks, god_classes, critical}`` computed with vectorized
     DuckDB aggregations over the whole graph (fan-in/fan-out coupling,
@@ -894,7 +915,7 @@ def cgis_find_orphans(
         bool, Field(description="Include machine-generated classes, which are hidden by default.")
     ] = False,
 ) -> str:
-    """Classes nothing in production builds, extends or names — dead-code candidates (#415).
+    """Classes nothing in production builds, extends or names — dead-code candidates.
 
     Finds classes that no test, type checker or linter flags, because each is
     still imported somewhere: a package re-export keeps a class importable long
@@ -976,7 +997,7 @@ def cgis_audit_reachability(
         Field(description="Maximum reachability depth; a longer path is reported as a gap."),
     ] = 5,
 ) -> str:
-    """Reachability/authorization audit — which sources never reach a checkpoint (#172).
+    """Reachability/authorization audit — which sources never reach a checkpoint.
 
     The headline use is **IDOR/authz coverage**: list every route handler that does
     NOT transitively reach an ownership check. Reachability follows behavioral edges

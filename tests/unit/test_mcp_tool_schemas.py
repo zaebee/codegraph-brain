@@ -7,6 +7,7 @@ server announced an empty version to every client that connected.
 """
 
 import asyncio
+import re
 
 import pytest
 
@@ -45,3 +46,30 @@ def test_server_announces_the_package_version() -> None:
     """`initialize` reports the installed version, not an empty string."""
     assert mcp.version == __version__
     assert mcp.version
+
+
+def _descriptions() -> dict[str, str]:
+    return {tool.name: tool.description or "" for tool in asyncio.run(mcp.list_tools())}
+
+
+def test_tool_summaries_carry_no_issue_numbers() -> None:
+    """The first paragraph is what an agent weighs when choosing; `(#19)` tells it nothing."""
+    for name, description in _descriptions().items():
+        summary = description.strip().split("\n\n")[0]
+        assert not re.search(r"\(#\d+\)", summary), f"{name}: {summary!r}"
+
+
+@pytest.mark.parametrize(
+    ("tool", "siblings"),
+    [
+        ("cgis_trace_flow", {"cgis_analyze_impact", "cgis_get_structure", "cgis_context"}),
+        ("cgis_analyze_impact", {"cgis_trace_flow", "cgis_get_structure", "cgis_context"}),
+        ("cgis_get_structure", {"cgis_trace_flow", "cgis_analyze_impact"}),
+        ("cgis_context", {"cgis_trace_flow", "cgis_analyze_impact"}),
+    ],
+)
+def test_overlapping_graph_tools_say_when_to_use_a_sibling(tool: str, siblings: set[str]) -> None:
+    """All four return a subgraph around one FQN; each names the ones it could be taken for."""
+    description = _descriptions()[tool]
+    missing = {sibling for sibling in siblings if sibling not in description}
+    assert not missing, f"{tool} never mentions {sorted(missing)}"
