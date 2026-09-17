@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.23.1](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.23.0...codegraph-brain-v0.23.1) (2026-09-17)
+
+
+### Bug Fixes
+
+* **audit:** an audit that selects no sources is an error, not an empty pass ([#472](https://github.com/zaebee/codegraph-brain/issues/472)) ([9f93010](https://github.com/zaebee/codegraph-brain/commit/9f93010c286d0b189f3c3350833a5cf557316d8f))
+
+
+### Documentation
+
+* auto-sync architecture graph and MCP reference ([#468](https://github.com/zaebee/codegraph-brain/issues/468)) ([4c02171](https://github.com/zaebee/codegraph-brain/commit/4c021719776d00ae2f3539409ba847995f79c48e))
+* auto-sync architecture graph and MCP reference ([#473](https://github.com/zaebee/codegraph-brain/issues/473)) ([567b091](https://github.com/zaebee/codegraph-brain/commit/567b09190c61ab5fc2b5b26c0b445bff2cbe5a12))
+
 ## [0.23.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.22.0...codegraph-brain-v0.23.0) (2026-09-17)
 
 
