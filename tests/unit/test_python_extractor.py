@@ -766,6 +766,20 @@ def test_import_used_only_in_a_quoted_annotation_is_not_a_reexport(
     assert _reexports(extractor, code) == {}
 
 
+def test_a_non_ascii_name_in_a_quoted_annotation_is_a_use(
+    extractor: PythonExtractor,
+) -> None:
+    """Python identifiers may be non-ASCII, and a quoted annotation is still a use.
+
+    The scanner reads those strings with a regex; an ASCII-only class silently
+    turned `s: "Café | None"` into "unused", i.e. a re-export that laundered a
+    real dependency.
+    """
+    code = 'from pkg.store import Café\n\ndef go(s: "Café | None") -> None:\n    pass\n'
+
+    assert _reexports(extractor, code) == {}
+
+
 def test_a_name_mentioned_only_in_a_docstring_is_still_a_reexport(
     extractor: PythonExtractor,
 ) -> None:

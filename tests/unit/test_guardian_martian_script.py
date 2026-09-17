@@ -1512,8 +1512,11 @@ class TestArgsContract:
             dry_run=True,
         )
         # dry_run returns before the provider, so this reaches the read itself.
+        # The coroutine is built outside the block: two calls inside one cannot
+        # say which raised (python:S5778).
+        judging = gm.judge(args)
         with pytest.raises(AttributeError, match="concurrency"):
-            asyncio.run(gm.judge(args))
+            asyncio.run(judging)
 
 
 class TestAblationArm:
