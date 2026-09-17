@@ -41,12 +41,15 @@ Reachability/authorization audit — which sources never reach a checkpoint (#17
     ``fqn``/``file``/``line``. Generalizes to validators, event tracking, or
     service-layer-boundary rules by pointing ``target`` at the required node.
 
+    A selection that matches no source returns a ❌ message, not an empty
+    ``{covered: [], gaps: []}`` that would read as a passing audit (#467).
+
 | Argument | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
 | `target` | `string` | ✓ | FQN of the checkpoint every source must reach, e.g. an ownership check. A unique dot-boundary suffix also resolves. |
 | `db_path` | `string` |  | SQLite graph built by cgis_ingest. A relative path resolves against the MCP server's working directory, not the agent's — prefer an absolute path. |
 | `from_type` | `any` |  | NodeType of the sources to audit, e.g. ROUTE_HANDLER, API_ENDPOINT or FUNCTION (any case). Give this, from_prefix, or both. |
-| `from_prefix` | `any` |  | Only audit sources at or under this FQN prefix, matched on whole dot-segments — a partial segment selects nothing and returns an empty audit, not a clean one. Combined with from_type when both are given. |
+| `from_prefix` | `any` |  | Only audit sources at or under this FQN prefix, matched on whole dot-segments. A selection matching no source is an error naming the whole-segment prefixes it may have meant. Combined with from_type when both are given. |
 | `depth` | `integer` |  | Maximum reachability depth; a longer path is reported as a gap. |
 
 ---
