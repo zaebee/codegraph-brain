@@ -67,7 +67,10 @@ Fqn = Annotated[
 ]
 OutputFormat = Annotated[
     str,
-    Field(description='"mermaid" for a diagram, or "json" for a payload with real FQNs.'),
+    Field(
+        description='"mermaid" for a diagram, or "json" for a payload with real FQNs '
+        "(case-insensitive). Any other value returns an error."
+    ),
 ]
 
 
@@ -281,8 +284,9 @@ def cgis_ingest(
     db_path: Annotated[
         str,
         Field(
-            description="Where to write the graph: must end in .db, .sqlite or .sqlite3, "
-            "in a directory that already exists."
+            description="Where to write the graph: must end in .db, .sqlite or .sqlite3, in a "
+            "directory that already exists, and must not be an existing non-SQLite file. "
+            "A relative path resolves against the server's working directory."
         ),
     ] = _DEFAULT_DB,
     full_rebuild: Annotated[
@@ -356,7 +360,14 @@ def cgis_ingest(
 def cgis_trace_flow(
     fqn: Fqn,
     db_path: DbPath = _DEFAULT_DB,
-    depth: Annotated[int, Field(description="Maximum call hops to follow downstream.")] = 3,
+    depth: Annotated[
+        int,
+        Field(
+            description="Maximum edge hops downstream. Every edge type counts as a hop — "
+            "CALLS, but also IMPORTS, CONTAINS and REFERENCES — so from a module the first "
+            "hops are mostly imports and structure."
+        ),
+    ] = 3,
     output_format: OutputFormat = "mermaid",
 ) -> str:
     """Trace the execution call-graph starting from a specific FQN downwards.
@@ -402,7 +413,14 @@ def cgis_trace_flow(
 def cgis_analyze_impact(
     fqn: Fqn,
     db_path: DbPath = _DEFAULT_DB,
-    depth: Annotated[int, Field(description="Maximum caller hops to follow upstream.")] = 3,
+    depth: Annotated[
+        int,
+        Field(
+            description="Maximum edge hops upstream. Every edge type counts as a hop — "
+            "CALLS, but also IMPORTS, CONTAINS and REFERENCES — so modules importing the "
+            "target and the file containing it appear alongside its callers."
+        ),
+    ] = 3,
     output_format: OutputFormat = "mermaid",
 ) -> str:
     """Analyse transitive upstream callers of a specific FQN.
@@ -485,8 +503,9 @@ def cgis_drift(
     patterns_path: Annotated[
         str,
         Field(
-            description="patterns.yaml declaring each domain's expected pattern and tolerance, "
-            "relative to the server's working directory. cgis_init_ontology proposes one."
+            description="patterns.yaml (.yaml or .yml) declaring each domain's expected "
+            "pattern and tolerance, relative to the server's working directory. "
+            "cgis_init_ontology proposes one."
         ),
     ] = "docs/ontology/patterns.yaml",
     max_drift: Annotated[
@@ -571,8 +590,8 @@ def cgis_suggest_packages(
     prefix: Annotated[
         str | None,
         Field(
-            description="FQN prefix of the package to analyse, e.g. cgis.query. Needed in "
-            "practice: without it the report is empty."
+            description="FQN prefix of the package to analyse, e.g. cgis.query, matched on whole "
+            "dot-segments. Needed in practice: without it the verdict is no_signal."
         ),
     ] = None,
     with_calls: Annotated[
@@ -580,7 +599,10 @@ def cgis_suggest_packages(
     ] = False,
     min_q: Annotated[
         float,
-        Field(description="Modularity threshold above which a divergent package is flagged split."),
+        Field(
+            description="Modularity threshold: at or above it, a package whose layout "
+            "disagrees with its communities is flagged split (or consolidate, if over-split)."
+        ),
     ] = 0.35,
 ) -> str:
     """Suggest sub-package boundaries for a package from its dependency communities.
@@ -642,15 +664,26 @@ def cgis_validate(
 def cgis_find_symbol(
     query: Annotated[
         str,
-        Field(description="Full or partial symbol name; ranked exact > prefix > substring."),
+        Field(
+            description="Leaf symbol name to search for, without dots (e.g. get_flow_result) — "
+            "not an FQN. Case-insensitive substring match, ranked exact > prefix > substring."
+        ),
     ],
     db_path: DbPath = _DEFAULT_DB,
     kind: Annotated[
         str | None,
-        Field(description="Only return this node type, e.g. FUNCTION, METHOD or CLASS."),
+        Field(
+            description="Only return this node type, e.g. FUNCTION, METHOD or CLASS (any case). "
+            "An unknown type matches nothing rather than raising an error."
+        ),
     ] = None,
     fqn_prefix: Annotated[
-        str | None, Field(description="Only return symbols whose FQN starts with this prefix.")
+        str | None,
+        Field(
+            description="Only return symbols at or under this FQN prefix, matched on whole "
+            "dot-segments: app.svc does not match app.svc_alt, and a partial segment "
+            "matches nothing."
+        ),
     ] = None,
     limit: Annotated[int, Field(description="Maximum number of candidates to return.")] = 20,
 ) -> str:
@@ -707,8 +740,8 @@ def cgis_init_ontology(
     depth: Annotated[
         int | None,
         Field(
-            description="Fixed FQN segment depth for domain discovery; omit to pick "
-            "it automatically."
+            description="Fixed FQN segment depth for domain discovery (positive); omit to pick it "
+            "automatically."
         ),
     ] = None,
 ) -> str:
@@ -745,8 +778,10 @@ def cgis_context(
     source_root: Annotated[
         str,
         Field(
-            description="Directory that locates source files on disk when the graph was ingested "
-            'from a sub-directory, e.g. "src" after ingesting ./src. Leave empty otherwise.'
+            description="Directory the graph's stored file paths are relative to — normally the "
+            "project_path given to cgis_ingest; prefer an absolute path. Empty means the "
+            "server's working directory, so source shows as unavailable when the server runs "
+            "elsewhere."
         ),
     ] = "",
 ) -> str:
@@ -924,14 +959,15 @@ def cgis_audit_reachability(
         str | None,
         Field(
             description="NodeType of the sources to audit, e.g. ROUTE_HANDLER, API_ENDPOINT or "
-            "FUNCTION. Give this, from_prefix, or both."
+            "FUNCTION (any case). Give this, from_prefix, or both."
         ),
     ] = None,
     from_prefix: Annotated[
         str | None,
         Field(
-            description="Only audit sources whose FQN starts with this prefix. Give this, "
-            "from_type, or both."
+            description="Only audit sources at or under this FQN prefix, matched on whole "
+            "dot-segments — a partial segment selects nothing and returns an empty audit, "
+            "not a clean one. Combined with from_type when both are given."
         ),
     ] = None,
     depth: Annotated[
