@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.25.1](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.25.0...codegraph-brain-v0.25.1) (2026-09-17)
+
+
+### Bug Fixes
+
+* **resolver:** a missing internal symbol is UNKNOWN, not a resolved internal call ([#493](https://github.com/zaebee/codegraph-brain/issues/493)) ([cec7ce3](https://github.com/zaebee/codegraph-brain/commit/cec7ce342b1e3021d3bc29add37f3ef6c6a3965b))
+
+
+### Documentation
+
+* auto-sync architecture graph and MCP reference ([#496](https://github.com/zaebee/codegraph-brain/issues/496)) ([b67642f](https://github.com/zaebee/codegraph-brain/commit/b67642fd88f3a2a0a9ce662514c12229159c64b4))
+
 ## [0.25.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.24.0...codegraph-brain-v0.25.0) (2026-09-17)
 
 
