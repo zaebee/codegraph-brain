@@ -21,7 +21,7 @@ Reading files to answer a structural question is the slow, lossy path: it burns 
 | "Did this change drift the architecture?" | `cgis_drift` | nothing — there is no manual equivalent |
 | "Does every handler reach its authz guard?" | `cgis_audit_reachability` | auditing routes one by one |
 
-A subgraph at depth 2 costs a few hundred tokens. The equivalent in file chunks costs thousands and is less precise.
+A depth-2 trace or impact of a function or method costs a few hundred tokens: median about 300, 90th percentile under 1,300, measured on two real graphs. The equivalent in file chunks costs thousands and is less precise. A module or a heavily used symbol costs more. Containment and stdlib/third-party nodes are off by default; `include_structure` and `include_external` add them when that is the question.
 
 ## First run in a repository
 

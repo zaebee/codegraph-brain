@@ -17,7 +17,7 @@ from pydantic import Field
 from cgis import __version__
 from cgis.core.coverage import TraversalCoverage
 from cgis.core.freshness import Freshness, FreshnessState
-from cgis.core.models import Edge, Node, NodeType
+from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.extractors.python_extractor import PythonExtractor
 from cgis.extractors.typescript_extractor import TypeScriptExtractor
 from cgis.pipeline import IngestionPipeline
@@ -28,7 +28,7 @@ from cgis.query.context.orphans import find_orphan_classes
 from cgis.query.drift.drift_service import analyze_drift
 from cgis.query.drift.fractal import analyze_fractal_db
 from cgis.query.drift.ontology_init import propose_ontology
-from cgis.query.engine import QueryEngine
+from cgis.query.engine import BEHAVIORAL_EDGE_TYPES, QueryEngine
 from cgis.query.fqn import resolve_fqn
 from cgis.query.render.graph_json import graph_to_json
 from cgis.query.render.mermaid import MermaidCompiler
@@ -65,6 +65,30 @@ Fqn = Annotated[
         "to look a name up."
     ),
 ]
+IncludeStructure = Annotated[
+    bool,
+    Field(
+        description="Also follow containment (CONTAINS/DECLARES): a module's or class's own "
+        "members, and the class or file enclosing a symbol. Off by default, as in the CLI; "
+        "cgis_get_structure is the tool for members alone."
+    ),
+]
+IncludeExternal = Annotated[
+    bool,
+    Field(
+        description="Also return stdlib and third-party nodes. Off by default, as in the CLI, "
+        "because they dominate the payload and are rarely the question."
+    ),
+]
+
+
+def _traversal_filters(
+    include_structure: bool, include_external: bool
+) -> tuple[frozenset[EdgeType] | None, bool]:
+    """Edge-type allowlist and external flag for trace/impact — the CLI's defaults (#481)."""
+    return (None if include_structure else BEHAVIORAL_EDGE_TYPES), include_external
+
+
 OutputFormat = Annotated[
     str,
     Field(
@@ -363,19 +387,22 @@ def cgis_trace_flow(
     depth: Annotated[
         int,
         Field(
-            description="Maximum edge hops downstream. Every edge type counts as a hop — "
-            "calls, imports, inheritance, DI dependencies, references and containment — so "
-            "from a module or class the first hop is mostly its own members and imports."
+            description="Maximum edge hops downstream, over calls, imports, inheritance, DI "
+            "dependencies and references (plus containment with include_structure)."
         ),
     ] = 3,
     output_format: OutputFormat = "mermaid",
+    include_structure: IncludeStructure = False,
+    include_external: IncludeExternal = False,
 ) -> str:
     """Downstream subgraph of one FQN: everything it reaches within ``depth`` hops.
 
-    Every edge type counts — calls, imports, inheritance, DI dependencies,
-    references, and containment (so from a module or class the first hop includes
-    its own members) — so this answers "what does X depend on?". For what depends
-    on X use
+    Follows every edge except containment — in practice calls, imports,
+    inheritance, DI dependencies and references — between internal code, so this
+    answers "what does X depend on?". Containment and
+    stdlib/third-party nodes are left out unless ``include_structure`` /
+    ``include_external`` ask for them — the same view as the CLI's ``trace``.
+    For what depends on X use
     ``cgis_analyze_impact``; for only the members of a module or class,
     ``cgis_get_structure``; for a source-included brief to read before editing
     one symbol, ``cgis_context``.
@@ -398,8 +425,13 @@ def cgis_trace_flow(
             res = resolve_fqn(store, fqn)
             if res.resolved is None:
                 return _resolution_error(fqn, res.candidates, res.truncated)
+            allowed, show_external = _traversal_filters(include_structure, include_external)
             result = QueryEngine(store).get_flow_result(
-                res.resolved, max_depth=depth, with_coverage=_wants_json(output_format)
+                res.resolved,
+                max_depth=depth,
+                allowed_edge_types=allowed,
+                show_external=show_external,
+                with_coverage=_wants_json(output_format),
             )
     except Exception as exc:
         return f"❌ {exc}"
@@ -424,18 +456,23 @@ def cgis_analyze_impact(
     depth: Annotated[
         int,
         Field(
-            description="Maximum edge hops upstream. Every edge type counts as a hop — "
-            "callers, importers, subclasses, type references, DI dependents and the "
-            "enclosing class or file all appear alongside each other."
+            description="Maximum edge hops upstream, over callers, importers, subclasses, "
+            "type references and DI dependents (plus the enclosing class or file with "
+            "include_structure)."
         ),
     ] = 3,
     output_format: OutputFormat = "mermaid",
+    include_structure: IncludeStructure = False,
+    include_external: IncludeExternal = False,
 ) -> str:
     """Upstream subgraph of one FQN: everything that reaches it within ``depth`` hops.
 
-    Every edge type counts — callers, but also importers, subclasses, type
-    references, DI dependents and the enclosing class or file — so this answers
-    "what breaks if I change X?". For what X depends on use
+    Follows every edge except containment — in practice callers, importers,
+    subclasses, type references and DI dependents — within internal code, so this
+    answers "what breaks if I change X?". The
+    enclosing class or file and stdlib/third-party nodes are left out unless
+    ``include_structure`` / ``include_external`` ask for them — the same view as
+    the CLI's ``impact``. For what X depends on use
     ``cgis_trace_flow``; for only the members of a module or class,
     ``cgis_get_structure``; for a source-included brief to read before editing
     one symbol, ``cgis_context``.
@@ -458,8 +495,13 @@ def cgis_analyze_impact(
             res = resolve_fqn(store, fqn)
             if res.resolved is None:
                 return _resolution_error(fqn, res.candidates, res.truncated)
+            allowed, show_external = _traversal_filters(include_structure, include_external)
             result = QueryEngine(store).get_impact_result(
-                res.resolved, max_depth=depth, with_coverage=_wants_json(output_format)
+                res.resolved,
+                max_depth=depth,
+                allowed_edge_types=allowed,
+                show_external=show_external,
+                with_coverage=_wants_json(output_format),
             )
     except Exception as exc:
         return f"❌ {exc}"
@@ -809,7 +851,8 @@ def cgis_context(
     calls only, one hop by default. Source is included when the file is found
     (see ``source_root``), and the domain when the graph was tagged with one.
     For a multi-hop subgraph
-    over every edge type without source, use ``cgis_trace_flow`` (downstream) or
+    over calls, imports, inheritance and references without source, use
+    ``cgis_trace_flow`` (downstream) or
     ``cgis_analyze_impact`` (upstream).
 
     Returns an XML-tagged prompt — the focal node's source, its enclosing class,
