@@ -8,11 +8,13 @@ import dataclasses
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 import structlog
 from mcp.server.mcpserver import MCPServer
+from pydantic import Field
 
+from cgis import __version__
 from cgis.core.coverage import TraversalCoverage
 from cgis.core.freshness import Freshness, FreshnessState
 from cgis.core.models import Edge, Node, NodeType
@@ -37,7 +39,7 @@ print("CGIS MCP Server starting…", file=sys.stderr)
 
 logger = structlog.getLogger(__name__)
 
-mcp: MCPServer = MCPServer("cgis-code-graph")
+mcp: MCPServer = MCPServer("cgis-code-graph", version=__version__)
 
 _EXTRACTORS = {
     ".py": PythonExtractor(),
@@ -45,6 +47,28 @@ _EXTRACTORS = {
     ".tsx": TypeScriptExtractor(tsx=True),
 }
 _DEFAULT_DB = "graph.db"
+
+# Agents choose arguments from the JSON schema, and the SDK does not copy
+# docstring prose into it — each parameter's meaning has to be declared here.
+DbPath = Annotated[
+    str,
+    Field(
+        description="SQLite graph built by cgis_ingest. A relative path resolves against the "
+        "MCP server's working directory, not the agent's — prefer an absolute path."
+    ),
+]
+Fqn = Annotated[
+    str,
+    Field(
+        description="Fully qualified name, e.g. pkg.module.Class.method. A unique dot-boundary "
+        "suffix also resolves; an ambiguous one returns candidates. Use cgis_find_symbol "
+        "to look a name up."
+    ),
+]
+OutputFormat = Annotated[
+    str,
+    Field(description='"mermaid" for a diagram, or "json" for a payload with real FQNs.'),
+]
 
 
 def _resolution_error(fqn: str, candidates: list[str], truncated: bool = False) -> str:
@@ -246,7 +270,26 @@ def _with_freshness(db_path: str, payload: dict[str, Any]) -> dict[str, Any]:
 
 
 @mcp.tool()
-def cgis_ingest(project_path: str, db_path: str = _DEFAULT_DB, full_rebuild: bool = False) -> str:
+def cgis_ingest(
+    project_path: Annotated[
+        str,
+        Field(
+            description="Root directory of the project to scan. A relative path resolves "
+            "against the MCP server's working directory."
+        ),
+    ],
+    db_path: Annotated[
+        str,
+        Field(
+            description="Where to write the graph: must end in .db, .sqlite or .sqlite3, "
+            "in a directory that already exists."
+        ),
+    ] = _DEFAULT_DB,
+    full_rebuild: Annotated[
+        bool,
+        Field(description="Re-scan every file from scratch instead of the incremental default."),
+    ] = False,
+) -> str:
     """Scan a local directory, extract all symbols, resolve links, and build the graph DB.
 
     Use this to initialise or refresh the code knowledge graph for a project.
@@ -311,7 +354,10 @@ def cgis_ingest(project_path: str, db_path: str = _DEFAULT_DB, full_rebuild: boo
 
 @mcp.tool()
 def cgis_trace_flow(
-    fqn: str, db_path: str = _DEFAULT_DB, depth: int = 3, output_format: str = "mermaid"
+    fqn: Fqn,
+    db_path: DbPath = _DEFAULT_DB,
+    depth: Annotated[int, Field(description="Maximum call hops to follow downstream.")] = 3,
+    output_format: OutputFormat = "mermaid",
 ) -> str:
     """Trace the execution call-graph starting from a specific FQN downwards.
 
@@ -354,7 +400,10 @@ def cgis_trace_flow(
 
 @mcp.tool()
 def cgis_analyze_impact(
-    fqn: str, db_path: str = _DEFAULT_DB, depth: int = 3, output_format: str = "mermaid"
+    fqn: Fqn,
+    db_path: DbPath = _DEFAULT_DB,
+    depth: Annotated[int, Field(description="Maximum caller hops to follow upstream.")] = 3,
+    output_format: OutputFormat = "mermaid",
 ) -> str:
     """Analyse transitive upstream callers of a specific FQN.
 
@@ -397,7 +446,12 @@ def cgis_analyze_impact(
 
 @mcp.tool()
 def cgis_get_structure(
-    fqn: str, db_path: str = _DEFAULT_DB, depth: int = 2, output_format: str = "mermaid"
+    fqn: Fqn,
+    db_path: DbPath = _DEFAULT_DB,
+    depth: Annotated[
+        int, Field(description="Maximum containment levels to descend (module → class → method).")
+    ] = 2,
+    output_format: OutputFormat = "mermaid",
 ) -> str:
     """Show the structural layout (CONTAINS/DECLARES) of a module or class.
 
@@ -427,11 +481,34 @@ def cgis_get_structure(
 
 @mcp.tool()
 def cgis_drift(
-    db_path: str = _DEFAULT_DB,
-    patterns_path: str = "docs/ontology/patterns.yaml",
-    max_drift: float = 0.50,
-    profile: str | None = None,
-    max_residual: float = 0.45,
+    db_path: DbPath = _DEFAULT_DB,
+    patterns_path: Annotated[
+        str,
+        Field(
+            description="patterns.yaml declaring each domain's expected pattern and tolerance, "
+            "relative to the server's working directory. cgis_init_ontology proposes one."
+        ),
+    ] = "docs/ontology/patterns.yaml",
+    max_drift: Annotated[
+        float,
+        Field(
+            description="Drift tolerance for domains that declare no drift_tolerance of their own."
+        ),
+    ] = 0.50,
+    profile: Annotated[
+        str | None,
+        Field(
+            description="Score only domains with this profile, plus profile-less ones — e.g. one "
+            "language when patterns.yaml mixes several."
+        ),
+    ] = None,
+    max_residual: Annotated[
+        float,
+        Field(
+            description="Distance to the nearest template beyond which a domain's fit band is "
+            '"none" (no template fits).'
+        ),
+    ] = 0.45,
 ) -> str:
     """Report per-domain architectural drift against declared ideal patterns.
 
@@ -490,10 +567,21 @@ def cgis_drift(
 
 @mcp.tool()
 def cgis_suggest_packages(
-    db_path: str = _DEFAULT_DB,
-    prefix: str | None = None,
-    with_calls: bool = False,
-    min_q: float = 0.35,
+    db_path: DbPath = _DEFAULT_DB,
+    prefix: Annotated[
+        str | None,
+        Field(
+            description="FQN prefix of the package to analyse, e.g. cgis.query. Needed in "
+            "practice: without it the report is empty."
+        ),
+    ] = None,
+    with_calls: Annotated[
+        bool, Field(description="Use the combined import + call graph instead of imports only.")
+    ] = False,
+    min_q: Annotated[
+        float,
+        Field(description="Modularity threshold above which a divergent package is flagged split."),
+    ] = 0.35,
 ) -> str:
     """Suggest sub-package boundaries for a package from its dependency communities.
 
@@ -516,7 +604,12 @@ def cgis_suggest_packages(
 
 
 @mcp.tool()
-def cgis_validate(db_path: str = _DEFAULT_DB, threshold: float = 0.30) -> str:
+def cgis_validate(
+    db_path: DbPath = _DEFAULT_DB,
+    threshold: Annotated[
+        float, Field(description="Highest unresolved-edge ratio (0-1) still reported as healthy.")
+    ] = 0.30,
+) -> str:
     """Report graph integrity as JSON: edge resolution stats + health verdict.
 
     Check this before trusting ``cgis_analyze_impact`` output — a high
@@ -547,11 +640,19 @@ def cgis_validate(db_path: str = _DEFAULT_DB, threshold: float = 0.30) -> str:
 
 @mcp.tool()
 def cgis_find_symbol(
-    query: str,
-    db_path: str = _DEFAULT_DB,
-    kind: str | None = None,
-    fqn_prefix: str | None = None,
-    limit: int = 20,
+    query: Annotated[
+        str,
+        Field(description="Full or partial symbol name; ranked exact > prefix > substring."),
+    ],
+    db_path: DbPath = _DEFAULT_DB,
+    kind: Annotated[
+        str | None,
+        Field(description="Only return this node type, e.g. FUNCTION, METHOD or CLASS."),
+    ] = None,
+    fqn_prefix: Annotated[
+        str | None, Field(description="Only return symbols whose FQN starts with this prefix.")
+    ] = None,
+    limit: Annotated[int, Field(description="Maximum number of candidates to return.")] = 20,
 ) -> str:
     """Resolve a partial symbol name to candidate FQNs (substring match, ranked).
 
@@ -594,10 +695,22 @@ def cgis_find_symbol(
 
 @mcp.tool()
 def cgis_init_ontology(
-    db_path: str = _DEFAULT_DB,
-    margin: float = 0.03,
-    min_nodes: int = 10,
-    depth: int | None = None,
+    db_path: DbPath = _DEFAULT_DB,
+    margin: Annotated[
+        float,
+        Field(description="Headroom added to each measured score to form the proposed tolerance."),
+    ] = 0.03,
+    min_nodes: Annotated[
+        int,
+        Field(description="Domains with fewer nodes stay hygiene-only instead of getting a label."),
+    ] = 10,
+    depth: Annotated[
+        int | None,
+        Field(
+            description="Fixed FQN segment depth for domain discovery; omit to pick "
+            "it automatically."
+        ),
+    ] = None,
 ) -> str:
     """Propose a starter patterns.yaml from the measured graph (read-only).
 
@@ -623,7 +736,19 @@ def cgis_init_ontology(
 
 @mcp.tool()
 def cgis_context(
-    fqn: str, db_path: str = _DEFAULT_DB, depth: int = 1, source_root: str = ""
+    fqn: Fqn,
+    db_path: DbPath = _DEFAULT_DB,
+    depth: Annotated[
+        int,
+        Field(description="Call hops around the focal node; 1 means direct callers and callees."),
+    ] = 1,
+    source_root: Annotated[
+        str,
+        Field(
+            description="Directory that locates source files on disk when the graph was ingested "
+            'from a sub-directory, e.g. "src" after ingesting ./src. Leave empty otherwise.'
+        ),
+    ] = "",
 ) -> str:
     """Compile an agent-facing GraphRAG context package for a focal FQN (#19).
 
@@ -659,10 +784,22 @@ def cgis_context(
 
 @mcp.tool()
 def cgis_metrics(
-    db_path: str = _DEFAULT_DB,
-    limit: int = 10,
-    exclude: list[str] | None = None,
-    scope: list[str] | None = None,
+    db_path: DbPath = _DEFAULT_DB,
+    limit: Annotated[int, Field(description="Top-N rows returned per section.")] = 10,
+    exclude: Annotated[
+        list[str] | None,
+        Field(
+            description='Drop nodes whose FQN contains any of these dot-segments, e.g. ["tests"]; '
+            "they are removed from PageRank propagation too."
+        ),
+    ] = None,
+    scope: Annotated[
+        list[str] | None,
+        Field(
+            description="Keep only nodes under any of these dot-prefixes, e.g. "
+            '["domains.billing"]; rank still propagates over the whole graph.'
+        ),
+    ] = None,
 ) -> str:
     """Whole-graph architectural metrics — coupling bottlenecks + God classes (#16).
 
@@ -706,10 +843,21 @@ def cgis_metrics(
 
 @mcp.tool()
 def cgis_find_orphans(
-    db_path: str = _DEFAULT_DB,
-    prefix: str | None = None,
-    include_tests: bool = False,
-    include_generated: bool = False,
+    db_path: DbPath = _DEFAULT_DB,
+    prefix: Annotated[
+        str | None,
+        Field(description="Only consider classes under this FQN prefix, cut on a dot boundary."),
+    ] = None,
+    include_tests: Annotated[
+        bool,
+        Field(
+            description="Count test code as a user, so the report means "
+            '"unreachable from anywhere".'
+        ),
+    ] = False,
+    include_generated: Annotated[
+        bool, Field(description="Include machine-generated classes, which are hidden by default.")
+    ] = False,
 ) -> str:
     """Classes nothing in production builds, extends or names — dead-code candidates (#415).
 
@@ -764,11 +912,32 @@ def cgis_find_orphans(
 
 @mcp.tool()
 def cgis_audit_reachability(
-    target: str,
-    db_path: str = _DEFAULT_DB,
-    from_type: str | None = None,
-    from_prefix: str | None = None,
-    depth: int = 5,
+    target: Annotated[
+        str,
+        Field(
+            description="FQN of the checkpoint every source must reach, e.g. an ownership check. "
+            "A unique dot-boundary suffix also resolves."
+        ),
+    ],
+    db_path: DbPath = _DEFAULT_DB,
+    from_type: Annotated[
+        str | None,
+        Field(
+            description="NodeType of the sources to audit, e.g. ROUTE_HANDLER, API_ENDPOINT or "
+            "FUNCTION. Give this, from_prefix, or both."
+        ),
+    ] = None,
+    from_prefix: Annotated[
+        str | None,
+        Field(
+            description="Only audit sources whose FQN starts with this prefix. Give this, "
+            "from_type, or both."
+        ),
+    ] = None,
+    depth: Annotated[
+        int,
+        Field(description="Maximum reachability depth; a longer path is reported as a gap."),
+    ] = 5,
 ) -> str:
     """Reachability/authorization audit — which sources never reach a checkpoint (#172).
 
@@ -817,7 +986,7 @@ def cgis_audit_reachability(
 
 
 @mcp.tool()
-def cgis_fractal(db_path: str = _DEFAULT_DB) -> str:
+def cgis_fractal(db_path: DbPath = _DEFAULT_DB) -> str:
     """Report the motif census across the repository's structural tiers.
 
     Coarsens the graph along its own structure — symbol, class, module, then
