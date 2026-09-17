@@ -9,9 +9,12 @@
 
 Upstream subgraph of one FQN: everything that reaches it within ``depth`` hops.
 
-    Every edge type counts — callers, but also importers, subclasses, type
-    references, DI dependents and the enclosing class or file — so this answers
-    "what breaks if I change X?". For what X depends on use
+    Follows every edge except containment — in practice callers, importers,
+    subclasses, type references and DI dependents — within internal code, so this
+    answers "what breaks if I change X?". The
+    enclosing class or file and stdlib/third-party nodes are left out unless
+    ``include_structure`` / ``include_external`` ask for them — the same view as
+    the CLI's ``impact``. For what X depends on use
     ``cgis_trace_flow``; for only the members of a module or class,
     ``cgis_get_structure``; for a source-included brief to read before editing
     one symbol, ``cgis_context``.
@@ -29,8 +32,10 @@ Upstream subgraph of one FQN: everything that reaches it within ``depth`` hops.
 | :--- | :--- | :---: | :--- |
 | `fqn` | `string` | ✓ | Fully qualified name, e.g. pkg.module.Class.method. A unique dot-boundary suffix also resolves; an ambiguous one returns candidates. Use cgis_find_symbol to look a name up. |
 | `db_path` | `string` |  | SQLite graph built by cgis_ingest. A relative path resolves against the MCP server's working directory, not the agent's — prefer an absolute path. |
-| `depth` | `integer` |  | Maximum edge hops upstream. Every edge type counts as a hop — callers, importers, subclasses, type references, DI dependents and the enclosing class or file all appear alongside each other. |
+| `depth` | `integer` |  | Maximum edge hops upstream, over callers, importers, subclasses, type references and DI dependents (plus the enclosing class or file with include_structure). |
 | `output_format` | `string` |  | "mermaid" for a diagram, or "json" for a payload with real FQNs (case-insensitive). Any other value returns an error. |
+| `include_structure` | `boolean` |  | Also follow containment (CONTAINS/DECLARES): a module's or class's own members, and the class or file enclosing a symbol. Off by default, as in the CLI; cgis_get_structure is the tool for members alone. |
+| `include_external` | `boolean` |  | Also return stdlib, third-party and unresolved call targets — calls on values whose type is decided at runtime. Off by default, as in the CLI, because they dominate the payload; in json, coverage/top_unresolved still counts what was dropped. |
 
 ---
 
@@ -69,7 +74,8 @@ Prompt-ready brief on one FQN: its source, class, direct callers and callees.
     calls only, one hop by default. Source is included when the file is found
     (see ``source_root``), and the domain when the graph was tagged with one.
     For a multi-hop subgraph
-    over every edge type without source, use ``cgis_trace_flow`` (downstream) or
+    over calls, imports, inheritance and references without source, use
+    ``cgis_trace_flow`` (downstream) or
     ``cgis_analyze_impact`` (upstream).
 
     Returns an XML-tagged prompt — the focal node's source, its enclosing class,
@@ -350,10 +356,13 @@ Suggest sub-package boundaries for a package from its dependency communities.
 
 Downstream subgraph of one FQN: everything it reaches within ``depth`` hops.
 
-    Every edge type counts — calls, imports, inheritance, DI dependencies,
-    references, and containment (so from a module or class the first hop includes
-    its own members) — so this answers "what does X depend on?". For what depends
-    on X use
+    Follows every edge except containment — in practice calls, imports,
+    inheritance, DI dependencies and references — between internal code, so this
+    answers "what does X depend on?". Containment and
+    stdlib/third-party nodes are left out unless ``include_structure`` /
+    ``include_external`` ask for them (external covers stdlib, third-party and
+    unresolved call targets) — the same view as the CLI's ``trace``.
+    For what depends on X use
     ``cgis_analyze_impact``; for only the members of a module or class,
     ``cgis_get_structure``; for a source-included brief to read before editing
     one symbol, ``cgis_context``.
@@ -371,8 +380,10 @@ Downstream subgraph of one FQN: everything it reaches within ``depth`` hops.
 | :--- | :--- | :---: | :--- |
 | `fqn` | `string` | ✓ | Fully qualified name, e.g. pkg.module.Class.method. A unique dot-boundary suffix also resolves; an ambiguous one returns candidates. Use cgis_find_symbol to look a name up. |
 | `db_path` | `string` |  | SQLite graph built by cgis_ingest. A relative path resolves against the MCP server's working directory, not the agent's — prefer an absolute path. |
-| `depth` | `integer` |  | Maximum edge hops downstream. Every edge type counts as a hop — calls, imports, inheritance, DI dependencies, references and containment — so from a module or class the first hop is mostly its own members and imports. |
+| `depth` | `integer` |  | Maximum edge hops downstream, over calls, imports, inheritance, DI dependencies and references (plus containment with include_structure). |
 | `output_format` | `string` |  | "mermaid" for a diagram, or "json" for a payload with real FQNs (case-insensitive). Any other value returns an error. |
+| `include_structure` | `boolean` |  | Also follow containment (CONTAINS/DECLARES): a module's or class's own members, and the class or file enclosing a symbol. Off by default, as in the CLI; cgis_get_structure is the tool for members alone. |
+| `include_external` | `boolean` |  | Also return stdlib, third-party and unresolved call targets — calls on values whose type is decided at runtime. Off by default, as in the CLI, because they dominate the payload; in json, coverage/top_unresolved still counts what was dropped. |
 
 ---
 
