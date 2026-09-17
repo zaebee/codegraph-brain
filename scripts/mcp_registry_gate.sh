@@ -32,9 +32,9 @@ fail() {
 }
 
 read_field() {
-  local value
-  value=$(jq -r "$1 // empty" server.json) || fail "server.json is not valid JSON."
-  [[ -n "$value" ]] || fail "server.json has no $2 ($1)."
+  local filter="$1" label="$2" value
+  value=$(jq -r "${filter} // empty" server.json) || fail "server.json is not valid JSON."
+  [[ -n "$value" ]] || fail "server.json has no ${label} (${filter})."
   printf '%s' "$value"
 }
 
