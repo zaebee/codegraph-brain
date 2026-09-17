@@ -229,9 +229,11 @@ Report the motif census across the repository's structural tiers.
 
 ## `cgis_get_structure`
 
-Members of a module or class: the classes, functions and methods it contains.
+Members of a module or class — or, for a package prefix, the modules it holds.
 
     Follows containment (CONTAINS/DECLARES) only, so no call or import appears.
+    A package is not a node in the graph (#487), so its row and the edges to its
+    modules are synthesized for the answer and marked with a virtual file path.
     For how the code connects use ``cgis_trace_flow`` (what it depends on) or
     ``cgis_analyze_impact`` (what depends on it).
 
@@ -338,10 +340,8 @@ Where to start in a graph you know nothing about: sizes and a package map.
     and this is the one that hands you some. Returns JSON: symbol counts by type,
     file and edge totals, the unresolved-edge ratio, and the largest packages with
     production and tests listed separately. Each ``prefix`` goes straight into
-    ``cgis_find_symbol`` (``fqn_prefix``) or ``cgis_metrics`` (``scope``), which
-    match on prefixes. ``cgis_get_structure`` takes a node id, not a prefix: a
-    package is a node only when it has an ``__init__.py``, and then holds no
-    members of its own — reach a module through ``cgis_find_symbol`` first.
+    ``cgis_get_structure`` (the modules it holds), ``cgis_find_symbol``
+    (``fqn_prefix``) or ``cgis_metrics`` (``scope``).
 
     Listings are capped; ``packages_omitted`` appears when rows were cut. Entry
     points are deliberately not reported — "nothing calls it" is not one on a
