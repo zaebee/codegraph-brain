@@ -84,7 +84,8 @@ _OPT_MIN_CONFIDENCE: float | None = typer.Option(
     "--min-confidence",
     min=0.0,
     max=1.0,
-    help="Hide edges below this confidence (e.g. 0.5 drops unresolved raw_call edges)",
+    help="Hide edges below this confidence. Unresolved targets score 0.8 and resolved "
+    "ones 1.0, so 0.9 is the threshold that drops what the graph could not place.",
 )
 
 
