@@ -7,9 +7,16 @@
 
 ## `cgis_analyze_impact`
 
-Analyse transitive upstream callers of a specific FQN.
+Upstream subgraph of one FQN: everything that reaches it within ``depth`` hops.
 
-    Answers "what breaks if I change X?". ``output_format="mermaid"`` (default)
+    Every edge type counts — callers, but also importers, subclasses, type
+    references, DI dependents and the enclosing class or file — so this answers
+    "what breaks if I change X?". For what X depends on use
+    ``cgis_trace_flow``; for only the members of a module or class,
+    ``cgis_get_structure``; for a source-included brief to read before editing
+    one symbol, ``cgis_context``.
+
+    ``output_format="mermaid"`` (default)
     returns a diagram; ``"json"`` returns a joinable ``{root, nodes, edges,
     coverage}`` payload with real FQNs — letting an agent compute set
     differences (e.g. "which route handlers never reach ``verify_ownership``?")
@@ -22,14 +29,14 @@ Analyse transitive upstream callers of a specific FQN.
 | :--- | :--- | :---: | :--- |
 | `fqn` | `string` | ✓ | Fully qualified name, e.g. pkg.module.Class.method. A unique dot-boundary suffix also resolves; an ambiguous one returns candidates. Use cgis_find_symbol to look a name up. |
 | `db_path` | `string` |  | SQLite graph built by cgis_ingest. A relative path resolves against the MCP server's working directory, not the agent's — prefer an absolute path. |
-| `depth` | `integer` |  | Maximum edge hops upstream. Every edge type counts as a hop — CALLS, but also IMPORTS, CONTAINS and REFERENCES — so modules importing the target and the file containing it appear alongside its callers. |
+| `depth` | `integer` |  | Maximum edge hops upstream. Every edge type counts as a hop — callers, importers, subclasses, type references, DI dependents and the enclosing class or file all appear alongside each other. |
 | `output_format` | `string` |  | "mermaid" for a diagram, or "json" for a payload with real FQNs (case-insensitive). Any other value returns an error. |
 
 ---
 
 ## `cgis_audit_reachability`
 
-Reachability/authorization audit — which sources never reach a checkpoint (#172).
+Reachability/authorization audit — which sources never reach a checkpoint.
 
     The headline use is **IDOR/authz coverage**: list every route handler that does
     NOT transitively reach an ownership check. Reachability follows behavioral edges
@@ -56,7 +63,14 @@ Reachability/authorization audit — which sources never reach a checkpoint (#17
 
 ## `cgis_context`
 
-Compile an agent-facing GraphRAG context package for a focal FQN (#19).
+Prompt-ready brief on one FQN: its source, class, direct callers and callees.
+
+    Call this before editing a symbol, instead of reading its files. It follows
+    calls only, one hop by default. Source is included when the file is found
+    (see ``source_root``), and the domain when the graph was tagged with one.
+    For a multi-hop subgraph
+    over every edge type without source, use ``cgis_trace_flow`` (downstream) or
+    ``cgis_analyze_impact`` (upstream).
 
     Returns an XML-tagged prompt — the focal node's source, its enclosing class,
     its architectural domain boundary, direct callers (upstream ripple) and
@@ -115,7 +129,7 @@ Report per-domain architectural drift against declared ideal patterns.
 
 ## `cgis_find_orphans`
 
-Classes nothing in production builds, extends or names — dead-code candidates (#415).
+Classes nothing in production builds, extends or names — dead-code candidates.
 
     Finds classes that no test, type checker or linter flags, because each is
     still imported somewhere: a package re-export keeps a class importable long
@@ -209,10 +223,13 @@ Report the motif census across the repository's structural tiers.
 
 ## `cgis_get_structure`
 
-Show the structural layout (CONTAINS/DECLARES) of a module or class.
+Members of a module or class: the classes, functions and methods it contains.
 
-    Traverses only containment edges — no call-graph noise — matching the CLI
-    ``structure`` command. ``output_format="mermaid"`` (default) returns a
+    Follows containment (CONTAINS/DECLARES) only, so no call or import appears.
+    For how the code connects use ``cgis_trace_flow`` (what it depends on) or
+    ``cgis_analyze_impact`` (what depends on it).
+
+    Matches the CLI ``structure`` command. ``output_format="mermaid"`` (default) returns a
     diagram of the hierarchy rooted at the given FQN; ``"json"`` returns the
     joinable ``{root, nodes, edges}`` payload with real FQNs.
 
@@ -275,7 +292,7 @@ Propose a starter patterns.yaml from the measured graph (read-only).
 
 ## `cgis_metrics`
 
-Whole-graph architectural metrics — coupling bottlenecks + God classes (#16).
+Whole-graph architectural metrics — coupling bottlenecks, God classes, PageRank.
 
     Returns JSON ``{bottlenecks, god_classes, critical}`` computed with vectorized
     DuckDB aggregations over the whole graph (fan-in/fan-out coupling,
@@ -331,7 +348,15 @@ Suggest sub-package boundaries for a package from its dependency communities.
 
 ## `cgis_trace_flow`
 
-Trace the execution call-graph starting from a specific FQN downwards.
+Downstream subgraph of one FQN: everything it reaches within ``depth`` hops.
+
+    Every edge type counts — calls, imports, inheritance, DI dependencies,
+    references, and containment (so from a module or class the first hop includes
+    its own members) — so this answers "what does X depend on?". For what depends
+    on X use
+    ``cgis_analyze_impact``; for only the members of a module or class,
+    ``cgis_get_structure``; for a source-included brief to read before editing
+    one symbol, ``cgis_context``.
 
     ``output_format="mermaid"`` (default) returns a human-readable diagram;
     ``"json"`` returns a joinable ``{root, nodes, edges, coverage}`` payload
@@ -346,7 +371,7 @@ Trace the execution call-graph starting from a specific FQN downwards.
 | :--- | :--- | :---: | :--- |
 | `fqn` | `string` | ✓ | Fully qualified name, e.g. pkg.module.Class.method. A unique dot-boundary suffix also resolves; an ambiguous one returns candidates. Use cgis_find_symbol to look a name up. |
 | `db_path` | `string` |  | SQLite graph built by cgis_ingest. A relative path resolves against the MCP server's working directory, not the agent's — prefer an absolute path. |
-| `depth` | `integer` |  | Maximum edge hops downstream. Every edge type counts as a hop — CALLS, but also IMPORTS, CONTAINS and REFERENCES — so from a module the first hops are mostly imports and structure. |
+| `depth` | `integer` |  | Maximum edge hops downstream. Every edge type counts as a hop — calls, imports, inheritance, DI dependencies, references and containment — so from a module or class the first hop is mostly its own members and imports. |
 | `output_format` | `string` |  | "mermaid" for a diagram, or "json" for a payload with real FQNs (case-insensitive). Any other value returns an error. |
 
 ---
