@@ -1,0 +1,72 @@
+name: Publish to MCP Registry
+
+# A separate workflow file, not a job in release-please.yml: PyPI trusted
+# publishing is bound to that file, so nothing here can mint a PyPI upload token
+# whatever the publisher's environment restriction is (#471).
+#
+# Runs after every Release Please run and publishes only a tagged version the
+# registry does not list yet (scripts/mcp_registry_gate.sh), so ordinary pushes
+# to main are no-ops.
+on:
+  workflow_run:
+    workflows: ["Release Please"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: mcp-registry
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish server.json
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # OIDC for `mcp-publisher login github-oidc`: no stored registry secret.
+      id-token: write
+    env:
+      # Pinned and checksum-verified: this job holds a registry identity, so it must
+      # not run whatever `releases/latest` happens to be. Bump both together; a
+      # binary too old for the registry fails login with "invalid audience".
+      MCP_PUBLISHER_VERSION: "1.8.1"
+      MCP_PUBLISHER_SHA256: a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc
+    steps:
+      - name: Checkout the released commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+
+      - name: Decide whether to publish
+        id: gate
+        run: bash scripts/mcp_registry_gate.sh check >> "$GITHUB_OUTPUT"
+
+      - name: Wait for the version on PyPI
+        if: steps.gate.outputs.publish == 'true'
+        run: bash scripts/mcp_registry_gate.sh wait-pypi
+
+      - name: Install mcp-publisher
+        if: steps.gate.outputs.publish == 'true'
+        run: |
+          set -euo pipefail
+          url="https://github.com/modelcontextprotocol/registry/releases/download/v${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz"
+          curl -fsSL "$url" -o mcp-publisher.tar.gz
+          echo "${MCP_PUBLISHER_SHA256}  mcp-publisher.tar.gz" | sha256sum --check --strict
+          tar -xzf mcp-publisher.tar.gz mcp-publisher
+
+      - name: Validate server.json
+        if: steps.gate.outputs.publish == 'true'
+        run: ./mcp-publisher validate
+
+      - name: Log in with GitHub OIDC
+        if: steps.gate.outputs.publish == 'true'
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish
+        if: steps.gate.outputs.publish == 'true'
+        run: ./mcp-publisher publish
