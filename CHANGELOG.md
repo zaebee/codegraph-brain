@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.2](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.23.1...codegraph-brain-v0.23.2) (2026-09-17)
+
+
+### Bug Fixes
+
+* **cli:** impact/trace list each neighbour once, JSON each edge once ([#475](https://github.com/zaebee/codegraph-brain/issues/475)) ([9c93b4b](https://github.com/zaebee/codegraph-brain/commit/9c93b4ba5748f99fe2aeb43d698c9d9628e6295a))
+
 ## [0.23.1](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.23.0...codegraph-brain-v0.23.1) (2026-09-17)
 
 
