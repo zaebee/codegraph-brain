@@ -204,7 +204,7 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
         uplift_SemanticUpliftEngine_execute_uplift["execute_uplift (uplift.py:91)"]:::methodNode
     end
     subgraph sg_sqlite_store["sqlite_store.py"]
-        sqlite_store_SQLiteStore["SQLiteStore (sqlite_store.py:42)"]:::classNode
+        sqlite_store_SQLiteStore["SQLiteStore (sqlite_store.py:48)"]:::classNode
     end
     pipeline_IngestionPipeline_run -->|REFERENCES| models_Node
     pipeline_IngestionPipeline_run -->|REFERENCES| models_Edge
@@ -237,5 +237,5 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
 | `resolve` | METHOD | [`engine.py:37`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L37) |
 | `SemanticUpliftEngine` | CLASS | [`uplift.py:66`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/uplift.py#L66) |
 | `execute_uplift` | METHOD | [`uplift.py:91`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/uplift.py#L91) |
-| `SQLiteStore` | CLASS | [`sqlite_store.py:42`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/storage/sqlite_store.py#L42) |
+| `SQLiteStore` | CLASS | [`sqlite_store.py:48`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/storage/sqlite_store.py#L48) |
 <!-- END_CGIS_GRAPH -->
