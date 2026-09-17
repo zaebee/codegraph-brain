@@ -76,7 +76,10 @@ def _identifiers_outside_imports(root: BaseNode, code_bytes: bytes) -> set[str]:
             # strings (parent `type`): scanning every string would let a docstring
             # mentioning a name mask a real re-export.
             text = code_bytes[node.start_byte : node.end_byte].decode("utf8")
-            used.update(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", text))
+            # `\w`, so a non-ASCII identifier in a quoted annotation counts as a
+            # use. Matching more here can only mark an import used, which is the
+            # safe direction for the unused-import sweep this feeds.
+            used.update(re.findall(r"[^\W\d]\w*", text))
         stack.extend(node.children)
     return used
 
@@ -195,6 +198,47 @@ def _collect_local_type(
         functions.collect_param_type(
             node, code_bytes, import_map, current_func_node, local_types_acc, edges
         )
+
+
+def _walk_one_decorator(
+    functions: FunctionHandler,
+    decorator: BaseNode,
+    code_bytes: bytes,
+    file_path: str,
+    edges: list[Edge],
+    owner_fqn: str,
+    name_refs_acc: list[tuple[str, str, int]] | None,
+) -> None:
+    """Record one decorator's calls and names, skipping its own head (#429).
+
+    Everything except the decorator's own head name, which
+    `process_function_node` already records as `raw_call:<name>` from its
+    decorator list — walking that too emitted `router.post` twice under two
+    ids, and its name a third time as a REFERENCES.
+
+    Skipping the *head* rather than "everything but the outermost call's
+    arguments" is what keeps the rarer shapes: `@a.b(X)(Y)`, `@registry[X]`
+    and `@(deco(X))` all name something the narrower rule walked straight past.
+    """
+    head = _decorator_head(decorator)
+    stack = [c for c in decorator.children if c.type not in ("comment", "@")]
+    while stack:
+        current = stack.pop()
+        if head is not None and current.id == head.id:
+            continue
+        if current.type == "call" and _calls_directly(current, head):
+            # `@router.post(...)` — the decorator list already recorded this
+            # exact call as `raw_call:router.post`. Its arguments still need
+            # walking, so recurse without processing it.
+            stack.extend(current.children)
+            continue
+        if current.type == "call":
+            functions.process_call_node(
+                current, code_bytes, file_path, owner_fqn, edges, emit_di=False
+            )
+        elif current.type == "identifier" and name_refs_acc is not None and is_name_load(current):
+            _append_name_candidates(current, code_bytes, owner_fqn, name_refs_acc)
+        stack.extend(current.children)
 
 
 class PythonExtractor(BaseExtractor):
@@ -589,38 +633,9 @@ class PythonExtractor(BaseExtractor):
         else `_walk` would have handled here.
         """
         for decorator in (c for c in node.children if c.type == "decorator"):
-            # Everything except the decorator's own head name, which
-            # `process_function_node` already records as `raw_call:<name>` from
-            # its decorator list — walking that too emitted `router.post` twice
-            # under two ids, and its name a third time as a REFERENCES.
-            #
-            # Skipping the *head* rather than "everything but the outermost
-            # call's arguments" is what keeps the rarer shapes: `@a.b(X)(Y)`,
-            # `@registry[X]` and `@(deco(X))` all name something the narrower
-            # rule walked straight past.
-            head = _decorator_head(decorator)
-            stack = [c for c in decorator.children if c.type not in ("comment", "@")]
-            while stack:
-                current = stack.pop()
-                if head is not None and current.id == head.id:
-                    continue
-                if current.type == "call" and _calls_directly(current, head):
-                    # `@router.post(...)` — the decorator list already recorded
-                    # this exact call as `raw_call:router.post`. Its arguments
-                    # still need walking, so recurse without processing it.
-                    stack.extend(current.children)
-                    continue
-                if current.type == "call":
-                    self._functions.process_call_node(
-                        current, code_bytes, file_path, owner_fqn, edges, emit_di=False
-                    )
-                elif (
-                    current.type == "identifier"
-                    and name_refs_acc is not None
-                    and is_name_load(current)
-                ):
-                    _append_name_candidates(current, code_bytes, owner_fqn, name_refs_acc)
-                stack.extend(current.children)
+            _walk_one_decorator(
+                self._functions, decorator, code_bytes, file_path, edges, owner_fqn, name_refs_acc
+            )
 
     def _handle_decorated_definition(
         self,

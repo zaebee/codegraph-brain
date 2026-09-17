@@ -54,7 +54,6 @@ GRANDFATHERED: frozenset[str] = frozenset(
         "unit/test_drift_service.py::test_analyze_drift_bad_suffix_raises",
         "unit/test_drift_service.py::test_analyze_drift_missing_db_raises",
         "unit/test_drift_service.py::test_analyze_drift_missing_patterns_raises",
-        "unit/test_guardian_martian_script.py::test_a_missing_concurrency_raises_instead_of_defaulting",
         "unit/test_guardian_recording.py::test_a_non_json_path_is_rejected",
         "unit/test_metrics.py::test_missing_database_raises_file_not_found",
         "unit/test_ontology_init.py::test_propose_missing_db_raises",

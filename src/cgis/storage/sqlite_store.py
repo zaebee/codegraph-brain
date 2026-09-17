@@ -779,14 +779,25 @@ class SQLiteStore:
                 reason=f"ingest root {base} no longer exists — {hint}",
             )
 
-        tracked = self.get_tracked_source_files()
+        changed, missing = self._count_stale(base, self.get_tracked_source_files(), ingested_at)
+        if changed or missing:
+            return Freshness(state=FreshnessState.STALE, changed=changed, missing=missing)
+        return Freshness(state=FreshnessState.FRESH)
+
+    def _count_stale(self, base: str, tracked: set[str], ingested_at: float) -> tuple[int, int]:
+        """Files newer than the ingest, and files the graph has that the tree no longer does.
+
+        The two halves are complementary: a file's own mtime catches an edit, and
+        its directory's mtime catches an addition, a deletion or a new subdirectory.
+
+        `os.stat` on joined strings, not pathlib — the PTH rules are suppressed
+        deliberately here. Measured on this repository's own graph: the same 811
+        files cost 3.7 ms this way and 18.8 ms through `Path.stat()`, which is
+        slower than the tree walk this design exists to avoid. Tidying these to
+        `Path` would triple a cost paid on every query.
+        """
         changed = 0
         missing = 0
-        # `os.stat` on joined strings, not pathlib — the PTH rules are suppressed
-        # deliberately here. Measured on this repository's own graph: the same 811
-        # files cost 3.7 ms this way and 18.8 ms through `Path.stat()`, which is
-        # slower than the tree walk this design exists to avoid. Tidying these to
-        # `Path` would triple a cost paid on every query.
         for rel in tracked:
             try:
                 if os.stat(os.path.join(base, rel)).st_mtime > ingested_at:  # noqa: PTH116,PTH118
@@ -803,10 +814,7 @@ class SQLiteStore:
                 # Nothing added: the report says "N missing" of *files*, and every
                 # file under a vanished directory has already been counted above.
                 continue
-
-        if changed or missing:
-            return Freshness(state=FreshnessState.STALE, changed=changed, missing=missing)
-        return Freshness(state=FreshnessState.FRESH)
+        return changed, missing
 
     def _directory_gained_a_source(
         self, path: str, tracked: set[str], base: str, ingested_at: float
