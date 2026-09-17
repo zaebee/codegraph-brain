@@ -87,20 +87,21 @@ def test_every_prefix_the_overview_prints_finds_symbols(repo_db: str) -> None:
         assert all(hit["fqn"].startswith(prefix) for hit in hits)
 
 
-def test_a_package_prefix_is_not_something_structure_can_look_up(repo_db: str) -> None:
-    """Why the docs send an agent through find_symbol first (#486 review).
+@pytest.mark.parametrize("prefix", ["app.core", "app.domains"])
+def test_a_package_prefix_lists_its_modules(repo_db: str, prefix: str) -> None:
+    """Both package shapes answer now (#487): with an `__init__.py` and without one.
 
-    `app.core` has no `__init__.py`, so nothing in the graph bears that name;
-    `app.domains` has one, and its node holds no members because containment runs
-    file → symbol. Pinned so a graph model that adds package nodes fails here.
+    Before #487 `app.core` (no `__init__.py`) was not a node at all and `app.domains`
+    resolved to its empty `__init__` file with no edges.
     """
-    missing = cgis_get_structure("app.core", repo_db, output_format="json")
-    assert missing.startswith("❌")
+    answer = cgis_get_structure(prefix, repo_db, output_format="json")
+    assert not answer.startswith("❌"), answer
 
-    empty = cgis_get_structure("app.domains", repo_db, output_format="json")
-    payload = json.loads(empty[empty.find("{") :])
-    assert [node["fqn"] for node in payload["nodes"]] == ["app.domains"]
-    assert payload["edges"] == []
+    payload = json.loads(answer[answer.find("{") :])
+    assert payload["root"] == prefix
+    modules = [node["fqn"] for node in payload["nodes"] if node["fqn"] != prefix]
+    assert modules, f"{prefix} holds modules"
+    assert all(fqn.startswith(f"{prefix}.") for fqn in modules)
 
 
 def test_overview_tool_reports_a_missing_database(tmp_path: Path) -> None:

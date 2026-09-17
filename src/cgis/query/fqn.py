@@ -33,6 +33,17 @@ class FqnResolution:
     truncated: bool = False
 
 
+def is_package_prefix(store: SQLiteStore, fqn: str) -> bool:
+    """True when `fqn` names a package: FILE nodes live under it (#487).
+
+    Checked before `resolve_fqn`, not after it fails: a package with an
+    `__init__.py` *is* a node, and resolving it would answer with that empty file
+    instead of the modules it holds. A module has symbols under its id but no
+    files, so it is never taken for a package.
+    """
+    return bool(store.files_under(fqn))
+
+
 def resolve_fqn(store: SQLiteStore, fqn: str) -> FqnResolution:
     """Resolve ``fqn`` exactly, or by unique dot-boundary suffix match.
 

@@ -9,6 +9,7 @@ about "the next call" has to be checked here or it checks nothing.
 
 from cgis.core.models import Node
 from cgis.query.analysis.overview import build_overview
+from cgis.query.engine import QueryEngine
 from cgis.query.render.metrics import DuckDBAnalyzer
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -51,24 +52,24 @@ def test_every_prefix_scopes_a_metrics_run(
         assert all(metric.node_id.startswith(prefix) for metric in coupling)
 
 
-def test_the_map_names_packages_that_are_not_nodes(
-    root_graph_data: tuple[SQLiteStore, list, list],
+def test_every_prefix_answers_a_structure_query(
+    root_graph_data: tuple[SQLiteStore, list[Node], list],
 ) -> None:
-    """Why `cgis_get_structure` is *not* offered for a prefix.
+    """The #478 acceptance line, made true by #487.
 
-    A package is a node only when it has an `__init__.py`, and even then holds no
-    members: `CONTAINS`/`DECLARES` run file → symbol, never package → module. This
-    pins the fact the docs now state, so a future graph model that adds package
-    nodes fails here and the wording gets revisited.
+    Both hard shapes are present here: `cgis.query` has no `__init__.py` and so no
+    node of its own, and `cgis.guardian` has one whose containment edges point at
+    nothing. Each must still list the modules it holds.
     """
     store, _nodes, _edges = root_graph_data
     prefixes = _prefixes(store)
+    assert any(store.get_node(prefix) is None for prefix in prefixes), (
+        "expected a package with no node — cgis/query has no __init__.py"
+    )
 
-    missing = [prefix for prefix in prefixes if store.get_node(prefix) is None]
-    childless = [
-        prefix
-        for prefix in prefixes
-        if store.get_node(prefix) is not None and not store.get_outgoing_edges(prefix)
-    ]
-    assert missing, "cgis/query has no __init__.py — expected some prefixes to have no node"
-    assert childless, "a package node holds no members of its own"
+    for prefix in prefixes:
+        nodes, edges = QueryEngine(store).get_structural_graph(prefix, max_depth=1)
+        held = [node.id for node in nodes if node.id != prefix]
+        assert held, f"{prefix} lists nothing"
+        assert all(node_id.startswith(f"{prefix}.") for node_id in held)
+        assert {edge.source for edge in edges} == {prefix}

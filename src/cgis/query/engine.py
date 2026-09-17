@@ -5,7 +5,7 @@ from collections.abc import Callable
 from typing import NamedTuple
 
 from cgis.core.coverage import TraversalCoverage, rank_unresolved
-from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
+from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeNamespace, NodeType
 from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 
 STRUCTURAL_EDGE_TYPES: frozenset[EdgeType] = frozenset({EdgeType.CONTAINS, EdgeType.DECLARES})
@@ -287,8 +287,57 @@ class QueryEngine:
         Structural hierarchy rooted at target_id (FILE → CLASS → METHOD).
         Traverses only CONTAINS and DECLARES edges — no call-graph noise.
         Delegates to a single recursive CTE query in the store.
+
+        A package prefix is answered by `_package_graph` instead: it is not a node
+        (#487), so the CTE has nothing to root on.
         """
+        modules = self.store.files_under(target_id)
+        if modules:
+            return self._package_graph(target_id, modules, max_depth)
         return self.store.get_structural_subgraph(target_id, max_depth)
+
+    def _package_graph(
+        self, prefix: str, modules: list[Node], max_depth: int
+    ) -> tuple[list[Node], list[Edge]]:
+        """The modules under a package, plus what they hold beyond the first hop.
+
+        A package has no node of its own — it exists in the graph only when it has
+        an `__init__.py`, and even then containment runs file → symbol, so that node
+        holds nothing (#487). Rather than mint PACKAGE nodes into every graph, which
+        would move every node count and god-object baseline, the package row and its
+        CONTAINS edges are synthesized for this answer. The row is marked with
+        `VIRTUAL_FILE_PATH`, the same marker the resolver uses for boundary nodes, so
+        a consumer can tell it from a file that exists.
+        """
+        root = Node(
+            id=prefix,
+            type=NodeType.MODULE,
+            name=prefix.rsplit(".", maxsplit=1)[-1],
+            file_path=VIRTUAL_FILE_PATH,
+            start_line=0,
+            end_line=0,
+        )
+        nodes: dict[str, Node] = {prefix: root}
+        edges: list[Edge] = []
+        for module in modules:
+            nodes.setdefault(module.id, module)
+            edges.append(
+                Edge(
+                    id=f"package:{prefix}->{module.id}",
+                    source=prefix,
+                    target=module.id,
+                    type=EdgeType.CONTAINS,
+                    context="synthesized: a package is not a node (#487)",
+                )
+            )
+            if max_depth > 1:
+                held_nodes, held_edges = self.store.get_structural_subgraph(
+                    module.id, max_depth - 1
+                )
+                for node in held_nodes:
+                    nodes.setdefault(node.id, node)
+                edges.extend(held_edges)
+        return list(nodes.values()), edges
 
     def _bfs_traverse(
         self,
