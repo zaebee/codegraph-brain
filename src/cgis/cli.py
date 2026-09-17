@@ -53,7 +53,7 @@ from cgis.query.drift.drift_service import analyze_drift
 from cgis.query.drift.fractal import FractalReport, analyze_fractal_db
 from cgis.query.drift.ontology_init import propose_ontology
 from cgis.query.engine import BEHAVIORAL_EDGE_TYPES, QueryEngine
-from cgis.query.fqn import resolve_fqn
+from cgis.query.fqn import is_package_prefix, resolve_fqn
 from cgis.query.render.graph_json import graph_to_json
 from cgis.query.render.mermaid import MermaidCompiler
 from cgis.query.render.metrics import ArchitectureReport, DuckDBAnalyzer
@@ -846,12 +846,16 @@ def structure(
         console.print(f"[dim]→ FQN: {escape(target)}[/dim]")
 
     with SQLiteStore(db) as store:
-        target = _resolve_cli_fqn(store, target, "Node")
-        target_node = store.get_node(target)
+        # Before resolution, so a prefix cannot suffix-resolve into a different
+        # tree — see `is_package_prefix`.
+        if not is_package_prefix(store, target):
+            target = _resolve_cli_fqn(store, target, "Node")
+        nodes, edges = QueryEngine(store).get_structural_graph(target, max_depth=depth)
+        target_node = store.get_node(target) or next(
+            (node for node in nodes if node.id == target), None
+        )
         if not target_node:  # pragma: no cover — resolved FQNs always exist
             raise typer.Exit(code=1)
-
-        nodes, edges = QueryEngine(store).get_structural_graph(target, max_depth=depth)
 
     if output_format != OutputFormat.TEXT:
         typer.echo(_render_graph(output_format, target, nodes, edges))

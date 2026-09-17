@@ -704,6 +704,27 @@ class SQLiteStore:
         cursor = self._conn.execute("SELECT * FROM nodes WHERE file_path = ?", (file_path,))
         return [self._row_to_node(row) for row in cursor.fetchall()]
 
+    def files_under(self, prefix: str) -> list[Node]:
+        """Internal FILE nodes strictly under `prefix` — the modules a package holds (#487).
+
+        The discriminator for "is this a package?": a module has symbols under its
+        id but no files, so `pkg.mod` is never mistaken for a package. LIKE
+        wildcards in `prefix` are escaped; they are literal characters in an FQN.
+        """
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        esc = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        rows = self._conn.execute(
+            """
+            SELECT * FROM nodes
+            WHERE type = 'FILE' AND namespace = 'INTERNAL'
+              AND id LIKE ? ESCAPE '\\'
+            ORDER BY id
+            """,
+            (f"{esc}.%",),
+        ).fetchall()
+        return [self._row_to_node(row) for row in rows]
+
     def get_structural_subgraph(
         self, target_id: str, max_depth: int = 5
     ) -> tuple[list[Node], list[Edge]]:

@@ -11,14 +11,10 @@ Two rules follow from that:
 **It stays small.** The listing is capped and says how much it cut. A map that
 costs as much as the files it replaces is not a map.
 
-**Every prefix it prints is usable — by the tools that match on prefixes.**
-`cgis_find_symbol(fqn_prefix=…)` and `cgis_metrics(scope=[…])` take a package
-prefix as it appears here. `cgis_get_structure` does not: it looks a node up by
-id, and a package has a node only when it has an `__init__.py` — and even then
-containment runs file→symbol, so the answer is that one empty file. Measured on
-this repository: of ten printed prefixes, four are not nodes at all and three
-resolve to a single node with no edges. So the route to a module is
-`cgis_find_symbol(fqn_prefix=…)` first, `cgis_get_structure` on what it returns.
+**Every prefix it prints is usable.** `cgis_get_structure`, `cgis_find_symbol`
+(`fqn_prefix`) and `cgis_metrics` (`scope`) all take a package prefix as it
+appears here. `get_structure` did not until #487: a package is not a node, so it
+now answers a prefix by listing the modules under it.
 
 Entry points are deliberately absent. "A function nothing calls" is not one: on
 a 512-file FastAPI backend 4,612 of 5,846 functions and methods have no incoming
@@ -73,10 +69,9 @@ def build_overview(
         "packages": package_rows,
         "test_packages": test_rows,
         "next": [
+            "cgis_get_structure(<prefix>) — the modules a package holds, or a module's members",
             "cgis_find_symbol(<name>, fqn_prefix=<prefix>) — symbols inside a package",
             "cgis_metrics(scope=[<prefix>]) — coupling and God classes in one package",
-            "cgis_get_structure(<fqn>) — members of a module or class, once you have its "
-            "FQN from cgis_find_symbol (a package prefix is not a node)",
             "cgis_validate() — how much of the graph resolved",
         ],
     }

@@ -47,7 +47,7 @@ cgis ingest ./src --output graph.json
 
 ### `cgis overview`
 
-Where to start in a graph you know nothing about: how big it is, how much of it resolved, and the largest packages with production and tests listed separately. Every prefix it prints is one `find --prefix` and `metrics --scope` accept. `structure` takes a node's FQN instead — a package is a node only when it has an `__init__.py` — so reach a module through `find` first. The MCP tool is `cgis_overview`.
+Where to start in a graph you know nothing about: how big it is, how much of it resolved, and the largest packages with production and tests listed separately. Every prefix it prints is one `structure`, `find --prefix` and `metrics --scope` accept. The MCP tool is `cgis_overview`.
 
 ```bash
 cgis overview [OPTIONS]
@@ -137,7 +137,7 @@ cgis impact "cgis.core.models.Node" --depth 4 --format mermaid
 
 ### `cgis structure`
 
-Show the internal layout of a module or class.
+Show the internal layout of a module or class — or, given a package prefix, the modules it holds. A package is not a node in the graph, so that listing is synthesized (#487).
 
 ```bash
 cgis structure <fqn> [OPTIONS]

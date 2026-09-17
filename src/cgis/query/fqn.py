@@ -33,6 +33,23 @@ class FqnResolution:
     truncated: bool = False
 
 
+def is_package_prefix(store: SQLiteStore, fqn: str) -> bool:
+    """True when `fqn` names a package: FILE nodes live under it (#487).
+
+    Checked before `resolve_fqn`, not after it fails. Not because resolution would
+    answer with the empty `__init__` file — `get_structural_graph` re-checks on the
+    resolved id, so that case lands right either way — but because a prefix can
+    *suffix-resolve to a different tree*: on one real backend `api.dependencies`
+    resolves to `app.api.dependencies`, answering about a package the caller did
+    not name.
+
+    A module has symbols under its id but no files, so it is never taken for a
+    package; a file whose id is a prefix of other files (`utils.ts` beside
+    `utils/`) keeps its own members, which `_package_graph` merges in.
+    """
+    return bool(store.files_under(fqn))
+
+
 def resolve_fqn(store: SQLiteStore, fqn: str) -> FqnResolution:
     """Resolve ``fqn`` exactly, or by unique dot-boundary suffix match.
 
