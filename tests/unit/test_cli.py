@@ -209,6 +209,41 @@ def test_trace_tree_lists_each_callee_once(tmp_path: Path) -> None:
     assert result.output.count("FUNCTION funcs.leaf ") == 1
 
 
+_DIAMOND = """\
+def leaf(): pass
+
+def a():
+    leaf()
+
+def b():
+    leaf()
+
+def top():
+    a()
+    b()
+"""
+
+
+def test_trees_keep_a_node_reached_through_two_parents(tmp_path: Path) -> None:
+    """Dedup is per parent: leaf under both a and b, top above both (#463 review).
+
+    A dedup set shared across the recursion would print leaf once and silently drop
+    the second path — on cgis's own graph that loses 73 of 133 trace rows.
+    """
+    (tmp_path / "funcs.py").write_text(_DIAMOND, encoding="utf-8")
+    db = str(tmp_path / "graph.db")
+    assert runner.invoke(app, ["ingest", str(tmp_path), "--output", db]).exit_code == 0
+    env = {"COLUMNS": "200"}
+
+    trace = runner.invoke(app, ["trace", "funcs.top", "--db", db, "--depth", "2"], env=env)
+    assert trace.exit_code == 0
+    assert trace.output.count("FUNCTION funcs.leaf ") == 2
+
+    impact = runner.invoke(app, ["impact", "funcs.leaf", "--db", db, "--depth", "2"], env=env)
+    assert impact.exit_code == 0
+    assert impact.output.count("FUNCTION funcs.top ") == 2
+
+
 @pytest.mark.parametrize(
     ("command", "root"), [("impact", "funcs.target"), ("trace", "funcs.caller")]
 )
