@@ -11,6 +11,7 @@ Reading files to answer a structural question is the slow, lossy path: it burns 
 
 | Question | Tool | Instead of |
 | :--- | :--- | :--- |
+| "Where do I even start?" | `cgis_overview` | opening files to find the shape of the repo |
 | "What calls this?" | `cgis_analyze_impact` | grepping the name and hoping |
 | "Is this rename safe?" | `cgis_analyze_impact` | reading every plausible caller |
 | "What does this end up calling?" | `cgis_trace_flow` | following imports by hand |

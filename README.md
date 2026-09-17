@@ -93,6 +93,7 @@ The main tools:
 | Tool | Answers |
 | :--- | :--- |
 | `cgis_ingest` | Build or incrementally refresh the graph |
+| `cgis_overview` | Where to start: sizes and the largest packages, when you have no FQN yet |
 | `cgis_find_symbol` | Partial name → candidate FQNs |
 | `cgis_analyze_impact` | What breaks upstream if this changes? |
 | `cgis_trace_flow` | What does this call, transitively? |

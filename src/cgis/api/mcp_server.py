@@ -21,6 +21,7 @@ from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.extractors.python_extractor import PythonExtractor
 from cgis.extractors.typescript_extractor import TypeScriptExtractor
 from cgis.pipeline import IngestionPipeline
+from cgis.query.analysis.overview import DEFAULT_DEPTH, DEFAULT_LIMIT, build_overview
 from cgis.query.analysis.suggest_service import report_to_dict, suggest_packages
 from cgis.query.context.audit import audit_reachability
 from cgis.query.context.context_service import build_context
@@ -720,6 +721,42 @@ def cgis_validate(
         return json.dumps(_with_freshness(db_path, payload), indent=2)
     except Exception as exc:
         return f"❌ {exc}"
+
+
+@mcp.tool()
+def cgis_overview(
+    db_path: DbPath = _DEFAULT_DB,
+    depth: Annotated[
+        int,
+        Field(description="FQN segments per package prefix; 1 is the top level."),
+    ] = DEFAULT_DEPTH,
+    limit: Annotated[
+        int, Field(description="Maximum packages listed per section.")
+    ] = DEFAULT_LIMIT,
+) -> str:
+    """Where to start in a graph you know nothing about: sizes and a package map.
+
+    Call this first in an unfamiliar repository — every other tool needs a name,
+    and this is the one that hands you some. Returns JSON: symbol counts by type,
+    file and edge totals, the unresolved-edge ratio, and the largest packages with
+    production and tests listed separately. Each ``prefix`` goes straight into
+    ``cgis_find_symbol`` (``fqn_prefix``) or ``cgis_metrics`` (``scope``), which
+    match on prefixes. ``cgis_get_structure`` takes a node id, not a prefix: a
+    package is a node only when it has an ``__init__.py``, and then holds no
+    members of its own — reach a module through ``cgis_find_symbol`` first.
+
+    Listings are capped; ``packages_omitted`` appears when rows were cut. Entry
+    points are deliberately not reported — "nothing calls it" is not one on a
+    framework codebase, where most handlers have no incoming call edge.
+    """
+    if not Path(db_path).exists():
+        return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
+    try:
+        with SQLiteStore(db_path) as store:
+            report = build_overview(store, depth=depth, limit=limit)
+    except Exception as exc:
+        return f"❌ {exc}"
+    return json.dumps(_with_freshness(db_path, report), indent=2)
 
 
 @mcp.tool()

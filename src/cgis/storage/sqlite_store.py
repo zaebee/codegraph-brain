@@ -4,6 +4,7 @@ import json
 import os
 import sqlite3
 import time
+from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -37,6 +38,11 @@ class EdgeStats:
     )
     unresolved_ratio: float  # (unresolved + unknown) / total
     top_unresolved: list[tuple[str, int]] = field(default_factory=list)  # top UNKNOWN targets
+
+
+def _ranked(census: Counter[str]) -> list[tuple[str, int]]:
+    """Largest first, ties broken by prefix — `most_common` alone orders ties by rowid."""
+    return sorted(census.items(), key=lambda row: (-row[1], row[0]))
 
 
 class SQLiteStore:
@@ -384,6 +390,67 @@ class SQLiteStore:
             raise RuntimeError(self._error_message)
         row = self._conn.execute("SELECT COUNT(*) AS n FROM edges").fetchone()
         return int(row["n"]) if row else 0
+
+    def symbol_census(self) -> dict[str, int]:
+        """Internal declared symbols by node type — CLASS/FUNCTION/METHOD, not FILE.
+
+        Virtual nodes are excluded by file path: `--domains` mints DOMAIN_CONCEPT
+        nodes that are INTERNAL and not FILE, so without this a domain counts as a
+        symbol and shows up as a `domain:` package row, pushing real packages off a
+        capped listing.
+        """
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        rows = self._conn.execute(
+            """
+            SELECT type, COUNT(*) FROM nodes
+            WHERE namespace = 'INTERNAL' AND type != 'FILE' AND file_path != ?
+            GROUP BY type ORDER BY type
+            """,
+            (VIRTUAL_FILE_PATH,),
+        ).fetchall()
+        return {row[0]: row[1] for row in rows}
+
+    def file_count(self) -> int:
+        """Internal FILE nodes — the size of the tree the graph was built from."""
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        row = self._conn.execute(
+            "SELECT COUNT(*) FROM nodes WHERE namespace = 'INTERNAL' AND type = 'FILE'"
+        ).fetchone()
+        return int(row[0]) if row else 0
+
+    def package_census(self, depth: int) -> tuple[list[tuple[str, int]], list[tuple[str, int]]]:
+        """Internal symbols grouped by their first `depth` FQN segments, production and test.
+
+        The prefix never swallows the symbol's own name: `mod.func` at depth 2 is
+        `mod`, not `mod.func`, or the map would list one row per symbol. Grouping
+        happens in Python because the cut is per-id — SQL would need a recursive
+        expression to find the nth dot, for a pass over ids this already makes.
+
+        Virtual `domain:` nodes are excluded with the same file-path predicate
+        `symbol_census` uses, and ties are broken by prefix so the map is
+        reproducible across re-ingests.
+        """
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        # Clamped here too, not only in `build_overview`: depth 0 would key every
+        # row on the empty string, which is not an FQN prefix anything accepts.
+        depth = max(depth, 1)
+        rows = self._conn.execute(
+            """
+            SELECT id, is_test FROM nodes
+            WHERE namespace = 'INTERNAL' AND type != 'FILE' AND file_path != ?
+            """,
+            (VIRTUAL_FILE_PATH,),
+        ).fetchall()
+        production: Counter[str] = Counter()
+        tests: Counter[str] = Counter()
+        for node_id, is_test in rows:
+            parts = node_id.split(".")
+            prefix = ".".join(parts[: min(depth, max(len(parts) - 1, 1))])
+            (tests if is_test else production)[prefix] += 1
+        return _ranked(production), _ranked(tests)
 
     def get_node(self, node_id: str) -> Node | None:
         """Return a single node by FQN, or None if not found."""

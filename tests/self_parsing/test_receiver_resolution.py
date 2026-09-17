@@ -32,7 +32,13 @@ _KNOWN_FABRICATED = frozenset(
     }
 )
 
-_EXPECTED_PLACEHOLDERS = 46
+#: Re-measured on a fresh self-ingest, 2026-09-17: 54 on `main`, 57 with the three
+#: `cgis_overview` store methods added here. All three are `self._conn.execute(...)`
+#: on a `sqlite3.Connection`, which rule D1 declines by design — a stdlib receiver
+#: has no node to resolve to. The centre was 46 and had drifted 8 low, so the band
+#: was measuring less each time something was added to a store method rather than
+#: catching a regression.
+_EXPECTED_PLACEHOLDERS = 57
 _TOLERANCE = 10
 
 

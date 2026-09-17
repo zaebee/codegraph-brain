@@ -45,6 +45,33 @@ cgis ingest ./src --output graph.json
 
 ---
 
+### `cgis overview`
+
+Where to start in a graph you know nothing about: how big it is, how much of it resolved, and the largest packages with production and tests listed separately. Every prefix it prints is one `find --prefix` and `metrics --scope` accept. `structure` takes a node's FQN instead — a package is a node only when it has an `__init__.py` — so reach a module through `find` first. The MCP tool is `cgis_overview`.
+
+```bash
+cgis overview [OPTIONS]
+```
+
+| Option | Default | Description |
+| :--- | :--- | :--- |
+| `--db`, `-d` | `graph.db` | Path to the graph database |
+| `--depth` | `2` | FQN segments per package prefix; `1` is the top level |
+| `--limit`, `-n` | `15` | Maximum packages listed per section |
+| `--format`, `-f` | `text` | `text` or `json` |
+
+**Examples:**
+
+```bash
+# First call in an unfamiliar repository
+cgis overview
+
+# Top-level map only, as JSON
+cgis overview --depth 1 --format json
+```
+
+---
+
 ### `cgis trace`
 
 Everything a FQN reaches **downstream**: every edge except containment, which in practice means calls, imports, inheritance, DI dependencies and references between internal code. Containment stays out unless `--show-structure` adds it, and so do stdlib, third-party and unresolved call targets unless `--show-external` does. The MCP tool `cgis_trace_flow` uses the same defaults (`include_structure`, `include_external`).
