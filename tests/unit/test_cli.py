@@ -162,6 +162,101 @@ def test_trace_renders_callees_in_tree(tmp_path: Path) -> None:
     assert "callee" in result.output
 
 
+_REPEATED_CALLS = """\
+def leaf(): pass
+
+def target():
+    leaf()
+    leaf()
+
+def caller():
+    target()
+    target()
+
+def top():
+    caller()
+"""
+
+
+def _repeated_calls_db(tmp_path: Path) -> str:
+    """caller calls target from two lines, target calls leaf from two lines (#463)."""
+    (tmp_path / "funcs.py").write_text(_REPEATED_CALLS, encoding="utf-8")
+    db_file = tmp_path / "graph.db"
+    result = runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
+    assert result.exit_code == 0
+    return str(db_file)
+
+
+def test_impact_tree_lists_each_caller_once(tmp_path: Path) -> None:
+    """Two call sites are one caller: one row, and its own callers expanded once (#463)."""
+    db = _repeated_calls_db(tmp_path)
+    result = runner.invoke(
+        app, ["impact", "funcs.target", "--db", db, "--depth", "2"], env={"COLUMNS": "200"}
+    )
+    assert result.exit_code == 0
+    assert result.output.count("FUNCTION funcs.caller ") == 1
+    assert result.output.count("FUNCTION funcs.top ") == 1
+
+
+def test_trace_tree_lists_each_callee_once(tmp_path: Path) -> None:
+    """Two call sites are one callee: one row, and its own callees expanded once (#463)."""
+    db = _repeated_calls_db(tmp_path)
+    result = runner.invoke(
+        app, ["trace", "funcs.caller", "--db", db, "--depth", "2"], env={"COLUMNS": "200"}
+    )
+    assert result.exit_code == 0
+    assert result.output.count("FUNCTION funcs.target ") == 1
+    assert result.output.count("FUNCTION funcs.leaf ") == 1
+
+
+_DIAMOND = """\
+def leaf(): pass
+
+def a():
+    leaf()
+
+def b():
+    leaf()
+
+def top():
+    a()
+    b()
+"""
+
+
+def test_trees_keep_a_node_reached_through_two_parents(tmp_path: Path) -> None:
+    """Dedup is per parent: leaf under both a and b, top above both (#463 review).
+
+    A dedup set shared across the recursion would print leaf once and silently drop
+    the second path — on cgis's own graph that loses 73 of 133 trace rows.
+    """
+    (tmp_path / "funcs.py").write_text(_DIAMOND, encoding="utf-8")
+    db = str(tmp_path / "graph.db")
+    assert runner.invoke(app, ["ingest", str(tmp_path), "--output", db]).exit_code == 0
+    env = {"COLUMNS": "200"}
+
+    trace = runner.invoke(app, ["trace", "funcs.top", "--db", db, "--depth", "2"], env=env)
+    assert trace.exit_code == 0
+    assert trace.output.count("FUNCTION funcs.leaf ") == 2
+
+    impact = runner.invoke(app, ["impact", "funcs.leaf", "--db", db, "--depth", "2"], env=env)
+    assert impact.exit_code == 0
+    assert impact.output.count("FUNCTION funcs.top ") == 2
+
+
+@pytest.mark.parametrize(
+    ("command", "root"), [("impact", "funcs.target"), ("trace", "funcs.caller")]
+)
+def test_json_traversal_emits_each_edge_once(tmp_path: Path, command: str, root: str) -> None:
+    """Repeated call sites collapse to one (src, type, dst) edge, as in mermaid (#463)."""
+    db = _repeated_calls_db(tmp_path)
+    result = runner.invoke(app, [command, root, "--db", db, "--depth", "2", "--format", "json"])
+    assert result.exit_code == 0
+    edges = [(e["src"], e["type"], e["dst"]) for e in json.loads(result.stdout)["edges"]]
+    assert len(edges) == len(set(edges))
+    assert ("funcs.caller", "CALLS", "funcs.target") in edges
+
+
 def test_trace_shows_unresolved_external_call(tmp_path: Path) -> None:
     """Calls to built-ins not in the graph are labelled as Unresolved."""
     (tmp_path / "mod.py").write_text("def greet(): print('hi')\n", encoding="utf-8")
@@ -183,6 +278,19 @@ def test_trace_shows_unresolved_external_call(tmp_path: Path) -> None:
     assert result.exit_code == 0
     # print() becomes a virtual STDLIB node; check it appears when --show-external is set
     assert "print" in result.output
+
+
+def test_trace_hides_external_calls_by_default(tmp_path: Path) -> None:
+    """Without --show-external the stdlib callee is filtered out of the tree."""
+    (tmp_path / "mod.py").write_text("def greet(): print('hi')\n", encoding="utf-8")
+    db_file = tmp_path / "graph.db"
+    runner.invoke(app, ["ingest", str(tmp_path), "--output", str(db_file)])
+
+    result = runner.invoke(app, ["trace", "mod.greet", "--db", str(db_file)])
+
+    assert result.exit_code == 0
+    assert "Tracing execution flow" in result.output
+    assert "print" not in result.output
 
 
 def test_trace_min_confidence_hides_low_conf_calls(tmp_path: Path) -> None:

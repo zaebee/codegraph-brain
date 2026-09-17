@@ -28,6 +28,10 @@ def graph_to_json(
     ``coverage`` is the traversal's local resolution coverage (#201). A
     structure query follows no calls and passes none, so the key is omitted
     rather than reported as a zero it did not measure.
+
+    Edges are one per distinct ``(src, type, dst)``, as in the Mermaid view: two
+    call sites to the same function are separate graph edges, but without a line
+    number the payload would state the same fact twice (#463).
     """
     payload: dict[str, Any] = {
         "root": root,
@@ -40,16 +44,26 @@ def graph_to_json(
             }
             for node in nodes
         ],
-        "edges": [
-            {
+        "edges": _distinct_edges(edges),
+    }
+    if coverage is not None:
+        payload["coverage"] = coverage.model_dump()
+    return payload
+
+
+def _distinct_edges(edges: list[Edge]) -> list[dict[str, Any]]:
+    """Collapse edges sharing ``(src, type, dst)``, first-seen order, highest confidence kept."""
+    distinct: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for edge in edges:
+        key = (edge.source, edge.type.value, edge.target)
+        seen = distinct.get(key)
+        if seen is None:
+            distinct[key] = {
                 "src": edge.source,
                 "dst": edge.target,
                 "type": edge.type.value,
                 "confidence": edge.confidence,
             }
-            for edge in edges
-        ],
-    }
-    if coverage is not None:
-        payload["coverage"] = coverage.model_dump()
-    return payload
+        elif edge.confidence > seen["confidence"]:
+            seen["confidence"] = edge.confidence
+    return list(distinct.values())

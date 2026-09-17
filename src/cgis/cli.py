@@ -20,6 +20,7 @@ style tags you wrote yourself and pure numbers need no escaping.
 
 import dataclasses
 import json as _json
+from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
 
@@ -318,6 +319,40 @@ def _resolve_cli_fqn(store: SQLiteStore, target: str, kind: str) -> str:
     return resolution.resolved
 
 
+def _tree_neighbours(
+    store: SQLiteStore,
+    edges: list[Edge],
+    neighbour_of: Callable[[Edge], str],
+    *,
+    allowed_edge_types: frozenset[EdgeType] | None,
+    show_external: bool,
+    min_confidence: float | None,
+) -> list[tuple[str, Node | None]]:
+    """The neighbours one tree level shows: filtered, in edge order, each id once.
+
+    One entry per neighbour, not per edge: two call sites are separate edges to the
+    same node, and a tree row shows neither line nor edge type to tell them apart
+    (#463). A neighbour absent from the store (an unresolved target) comes back with
+    ``None``, and is dropped with the non-INTERNAL ones when ``show_external`` is off.
+    """
+    if allowed_edge_types is not None:
+        edges = [e for e in edges if e.type in allowed_edge_types]
+    if min_confidence is not None:
+        edges = [e for e in edges if e.confidence >= min_confidence]
+    ids = list(dict.fromkeys(neighbour_of(e) for e in edges))
+    nodes = {n.id: n for n in store.get_nodes(ids)}
+    return [
+        (node_id, nodes.get(node_id))
+        for node_id in ids
+        if show_external or _is_internal(nodes.get(node_id))
+    ]
+
+
+def _is_internal(node: Node | None) -> bool:
+    """True for a stored node from the ingested repository."""
+    return node is not None and node.namespace == NodeNamespace.INTERNAL
+
+
 def build_trace_tree(
     store: SQLiteStore,
     current_id: str,
@@ -333,21 +368,15 @@ def build_trace_tree(
     if current_depth >= max_depth:
         return
 
-    outgoing = store.get_outgoing_edges(current_id)
-    if allowed_edge_types is not None:
-        outgoing = [e for e in outgoing if e.type in allowed_edge_types]
-    if min_confidence is not None:
-        outgoing = [e for e in outgoing if e.confidence >= min_confidence]
-    nodes_map = {n.id: n for n in store.get_nodes([e.target for e in outgoing])}
-    for edge in outgoing:
-        target_id = edge.target
-        target_node = nodes_map.get(target_id)
-
-        if not show_external and (
-            target_node is None or target_node.namespace != NodeNamespace.INTERNAL
-        ):
-            continue
-
+    callees = _tree_neighbours(
+        store,
+        store.get_outgoing_edges(current_id),
+        lambda edge: edge.target,
+        allowed_edge_types=allowed_edge_types,
+        show_external=show_external,
+        min_confidence=min_confidence,
+    )
+    for target_id, target_node in callees:
         if target_node:
             label = (
                 f"[bold green]{target_node.type.value}[/bold green] "
@@ -470,21 +499,15 @@ def build_impact_tree(
     if current_depth >= max_depth:
         return
 
-    incoming = store.get_incoming_edges(current_id)
-    if allowed_edge_types is not None:
-        incoming = [e for e in incoming if e.type in allowed_edge_types]
-    if min_confidence is not None:
-        incoming = [e for e in incoming if e.confidence >= min_confidence]
-    nodes_map = {n.id: n for n in store.get_nodes([e.source for e in incoming])}
-    for edge in incoming:
-        source_id = edge.source
-        source_node = nodes_map.get(source_id)
-
-        if not show_external and (
-            source_node is None or source_node.namespace != NodeNamespace.INTERNAL
-        ):
-            continue
-
+    callers = _tree_neighbours(
+        store,
+        store.get_incoming_edges(current_id),
+        lambda edge: edge.source,
+        allowed_edge_types=allowed_edge_types,
+        show_external=show_external,
+        min_confidence=min_confidence,
+    )
+    for source_id, source_node in callers:
         if source_node:
             label = (
                 f"[bold magenta]{source_node.type.value}[/bold magenta] "
