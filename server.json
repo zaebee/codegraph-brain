@@ -8,13 +8,13 @@
     "source": "github",
     "id": "1260843154"
   },
-  "version": "0.22.0",
+  "version": "0.23.0",
   "packages": [
     {
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "codegraph-brain",
-      "version": "0.22.0",
+      "version": "0.23.0",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
