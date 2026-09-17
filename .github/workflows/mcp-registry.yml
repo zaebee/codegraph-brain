@@ -7,6 +7,10 @@ name: Publish to MCP Registry
 # Runs after every Release Please run and publishes only a tagged version the
 # registry does not list yet (scripts/mcp_registry_gate.sh), so ordinary pushes
 # to main are no-ops.
+#
+# A failed Release Please run (PyPI publish or relock) skips this workflow: the
+# red run is the signal. Recover with "Re-run failed jobs" there, or dispatch
+# this workflow on main.
 on:
   workflow_run:
     workflows: ["Release Please"]
@@ -23,7 +27,12 @@ concurrency:
 jobs:
   publish:
     name: Publish server.json
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # Dispatch only from main, so an older branch can't publish its own server.json.
+    # The repository check is defence in depth: Release Please never runs for forks.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -55,7 +64,7 @@ jobs:
         run: |
           set -euo pipefail
           url="https://github.com/modelcontextprotocol/registry/releases/download/v${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz"
-          curl -fsSL "$url" -o mcp-publisher.tar.gz
+          curl --proto '=https' --tlsv1.2 -fsSL "$url" -o mcp-publisher.tar.gz
           echo "${MCP_PUBLISHER_SHA256}  mcp-publisher.tar.gz" | sha256sum --check --strict
           tar -xzf mcp-publisher.tar.gz mcp-publisher
 

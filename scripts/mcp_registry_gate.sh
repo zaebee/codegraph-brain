@@ -9,6 +9,11 @@
 # only a tagged release that the registry does not list yet is published, so a
 # docs push to main is a no-op and a re-run never double-publishes.
 #
+# Every lookup fails closed. `publish=false` is printed only on a definite answer
+# (no such tag, version already listed); a network error or an unexpected
+# response exits non-zero, because a silently skipped release is exactly what
+# this automation exists to prevent.
+#
 # `wait-pypi` exists because the registry verifies ownership by fetching
 # pypi.org/pypi/<pkg>/<version>/json and looking for the mcp-name marker, and a
 # fresh upload is not always visible there straight away (0.23.0 and 0.23.1 both
@@ -21,38 +26,65 @@ TAG_PREFIX="${TAG_PREFIX:-codegraph-brain-v}"
 WAIT_SECONDS="${WAIT_SECONDS:-600}"
 POLL_SECONDS="${POLL_SECONDS:-15}"
 
-name=$(jq -er .name server.json)
-version=$(jq -er .version server.json)
-package=$(jq -er '.packages[] | select(.registryType == "pypi") | .identifier' server.json)
+fail() {
+  echo "::error::$*" >&2
+  exit 1
+}
+
+read_field() {
+  local value
+  value=$(jq -r "$1 // empty" server.json) || fail "server.json is not valid JSON."
+  [[ -n "$value" ]] || fail "server.json has no $2 ($1)."
+  printf '%s' "$value"
+}
+
+name=$(read_field .name "server name")
+version=$(read_field .version "version")
+package=$(read_field 'first(.packages[]? | select(.registryType == "pypi") | .identifier)' "PyPI package")
 
 check() {
-  if ! git ls-remote --exit-code --tags origin "refs/tags/${TAG_PREFIX}${version}" >/dev/null; then
-    echo "No tag ${TAG_PREFIX}${version}: not a release, nothing to publish." >&2
-    echo "publish=false"
-    return
-  fi
-  local listed
-  listed=$(curl -fsS --get "${REGISTRY}/v0/servers" \
-    --data-urlencode "search=${name}" --data-urlencode "version=${version}" |
-    jq --arg n "$name" --arg v "$version" \
-      '[.servers[] | select(.server.name == $n and .server.version == $v)] | length')
-  if [ "$listed" -gt 0 ]; then
+  local tag="refs/tags/${TAG_PREFIX}${version}" rc=0
+  git ls-remote --exit-code --tags origin "$tag" >/dev/null || rc=$?
+  case "$rc" in
+    0) ;;
+    2)
+      echo "No tag ${TAG_PREFIX}${version}: not a release, nothing to publish." >&2
+      echo "publish=false"
+      return
+      ;;
+    *) fail "git ls-remote for ${tag} failed (exit ${rc}); cannot tell whether this is a release." ;;
+  esac
+
+  # The status alone is not enough: a moved API also answers 404, and a proxy can
+  # answer 200 with nothing. Each answer must also carry the body that means it.
+  local encoded body status
+  encoded=$(jq -rn --arg n "$name" '$n | @uri')
+  body=$(mktemp)
+  status=$(curl -sS -o "$body" -w '%{http_code}' \
+    "${REGISTRY}/v0/servers/${encoded}/versions/${version}") ||
+    fail "Registry lookup for ${name} ${version} failed."
+  if [[ "$status" == 200 ]] &&
+    jq -e --arg n "$name" --arg v "$version" \
+      '.server.name == $n and .server.version == $v' "$body" >/dev/null 2>&1; then
     echo "${name} ${version} is already in the registry." >&2
     echo "publish=false"
-    return
+  elif [[ "$status" == 404 ]] &&
+    jq -e '.detail == "Server not found"' "$body" >/dev/null 2>&1; then
+    echo "${name} ${version} is released and not in the registry yet." >&2
+    echo "publish=true"
+  else
+    fail "Unexpected registry answer for ${name} ${version}: HTTP ${status}, $(head -c 200 "$body")"
   fi
-  echo "${name} ${version} is released and not in the registry yet." >&2
-  echo "publish=true"
+  rm -f "$body"
 }
 
 wait_pypi() {
   local marker="mcp-name: ${name}" deadline=$((SECONDS + WAIT_SECONDS))
   until curl -fsS "${PYPI}/pypi/${package}/${version}/json" 2>/dev/null |
-    jq -e --arg m "$marker" '.info.description | contains($m)' >/dev/null; do
-    if [ "$SECONDS" -ge "$deadline" ]; then
-      echo "::error::${package} ${version} with '${marker}' not on PyPI after ${WAIT_SECONDS}s." \
-        "Publish manually once it is: mcp-publisher login github && mcp-publisher publish" >&2
-      exit 1
+    jq -e --arg m "$marker" '(.info.description // "") | contains($m)' >/dev/null 2>&1; do
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      fail "${package} ${version} with '${marker}' not on PyPI after ${WAIT_SECONDS}s." \
+        "Publish manually once it is: mcp-publisher login github && mcp-publisher publish"
     fi
     sleep "$POLL_SECONDS"
   done
@@ -62,5 +94,8 @@ wait_pypi() {
 case "${1:-}" in
   check) check ;;
   wait-pypi) wait_pypi ;;
-  *) echo "usage: $0 check|wait-pypi" >&2; exit 2 ;;
+  *)
+    echo "usage: $0 check|wait-pypi" >&2
+    exit 2
+    ;;
 esac
