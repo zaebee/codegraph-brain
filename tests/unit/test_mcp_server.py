@@ -4,11 +4,14 @@ import json
 import os
 import re
 import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
 from conftest import fit_patterns_yaml, make_chain_db
+from typer.testing import CliRunner
 
 from cgis.api.mcp_server import (
     cgis_analyze_impact,
@@ -25,7 +28,10 @@ from cgis.api.mcp_server import (
     cgis_trace_flow,
     cgis_validate,
 )
+from cgis.cli import app
 from cgis.core.models import Edge, EdgeType, Node, NodeType
+from cgis.query.engine import QueryEngine
+from cgis.query.render.graph_json import graph_to_json
 from cgis.storage.sqlite_store import SQLiteStore
 
 
@@ -1171,3 +1177,171 @@ def test_cgis_ingest_full_rebuild_of_an_empty_directory_keeps_the_graph_unstampe
     with SQLiteStore(str(db)) as store:
         assert store.get_node_count() == before
         assert store.get_ingest_state() == state
+
+
+# --- traversal defaults match the CLI (#481) ---------------------------------------
+
+_LAYERED = {
+    "pkg/__init__.py": "",
+    "pkg/util.py": "def shared():\n    return 2\n",
+    "pkg/core.py": (
+        "import os\n"
+        "from pkg.util import shared\n\n"
+        "def helper():\n    return shared()\n\n"
+        "def entry(sink):\n    os.getcwd()\n    sink.write(helper())\n\n"
+        "class Service:\n    def run(self):\n        return entry(None)\n"
+    ),
+}
+_STRUCTURAL = {"CONTAINS", "DECLARES"}
+
+
+@pytest.fixture
+def layered_db(tmp_path: Path) -> str:
+    """A module with members, an internal call chain and one stdlib call."""
+    for rel, text in _LAYERED.items():
+        path = tmp_path / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    db = str(tmp_path / "graph.db")
+    assert "✅" in cgis_ingest(str(tmp_path), db)
+    return db
+
+
+def _payload(result: str) -> dict[str, Any]:
+    """Parse a tool's JSON, past any resolution note — and show the ❌ if there is one."""
+    start = result.find("{")
+    assert start != -1, f"expected a JSON payload, got: {result}"
+    return json.loads(result[start:])
+
+
+def _shape(payload: dict[str, Any]) -> tuple[set[str], set[tuple[str, str, str]]]:
+    nodes = {n["fqn"] for n in payload["nodes"]}
+    edges = {(e["src"], e["type"], e["dst"]) for e in payload["edges"]}
+    return nodes, edges
+
+
+def test_trace_flow_defaults_to_behavioral_internal_edges(layered_db: str) -> None:
+    """From a module, the default answer is what it depends on — not its own members."""
+    nodes, edges = _shape(_payload(cgis_trace_flow("pkg.core", layered_db, 2, "json")))
+    assert not {t for _, t, _ in edges} & _STRUCTURAL
+    assert not any(fqn.startswith("os") for fqn in nodes)
+    # Not vacuous: the module's internal import is a real behavioral edge.
+    assert "pkg.util" in nodes
+
+
+def test_trace_flow_defaults_hide_unresolved_call_targets(layered_db: str) -> None:
+    """`sink.write` resolves to nothing; those targets are most of what include_external adds."""
+    default_nodes, _ = _shape(_payload(cgis_trace_flow("pkg.core.entry", layered_db, 1, "json")))
+    external_nodes, _ = _shape(
+        _payload(cgis_trace_flow("pkg.core.entry", layered_db, 1, "json", include_external=True))
+    )
+    assert not any("write" in fqn for fqn in default_nodes)
+    assert any("write" in fqn for fqn in external_nodes)
+
+
+def test_trace_flow_flags_restore_structure_and_external(layered_db: str) -> None:
+    """Each flag adds back exactly its own kind of result."""
+    structural = _shape(
+        _payload(cgis_trace_flow("pkg.core", layered_db, 2, "json", include_structure=True))
+    )
+    assert ("pkg.core", "CONTAINS", "pkg.core.helper") in structural[1]
+
+    external = _shape(
+        _payload(cgis_trace_flow("pkg.core.entry", layered_db, 1, "json", include_external=True))
+    )
+    assert any(fqn.startswith("os") for fqn in external[0])
+    assert not any(
+        fqn.startswith("os")
+        for fqn in _shape(_payload(cgis_trace_flow("pkg.core.entry", layered_db, 1, "json")))[0]
+    )
+
+
+def test_analyze_impact_defaults_to_behavioral_internal_edges(layered_db: str) -> None:
+    """Upstream of a function: its callers, not the file or class that contains them."""
+    _, edges = _shape(_payload(cgis_analyze_impact("pkg.core.helper", layered_db, 3, "json")))
+    assert ("pkg.core.entry", "CALLS", "pkg.core.helper") in edges
+    assert not {t for _, t, _ in edges} & _STRUCTURAL
+
+    _, with_structure = _shape(
+        _payload(
+            cgis_analyze_impact("pkg.core.helper", layered_db, 3, "json", include_structure=True)
+        )
+    )
+    assert {t for _, t, _ in with_structure} & _STRUCTURAL
+
+
+@pytest.mark.parametrize(
+    ("tool", "command", "fqn"),
+    [
+        (cgis_trace_flow, "trace", "pkg.core"),
+        (cgis_trace_flow, "trace", "pkg.core.Service.run"),
+        (cgis_analyze_impact, "impact", "pkg.core.helper"),
+    ],
+)
+def test_mcp_defaults_match_the_cli(
+    layered_db: str, tool: Callable[..., str], command: str, fqn: str
+) -> None:
+    """Same question, same answer, whichever entry point asked it (#481)."""
+    cli = CliRunner().invoke(app, [command, fqn, "--db", layered_db, "--depth", "3", "-f", "json"])
+    assert cli.exit_code == 0, cli.output
+    assert _shape(_payload(tool(fqn, layered_db, 3, "json"))) == _shape(json.loads(cli.stdout))
+
+
+def test_mcp_keeps_low_confidence_edges_like_the_cli(tmp_path: Path) -> None:
+    """Neither side filters by confidence, so an inferred edge must survive both (#481).
+
+    The ingested fixtures score every edge 0.8 or 1.0, so a hand-built graph is the
+    only way a confidence filter on one side would show up as a divergence.
+    """
+    nodes = [
+        Node(
+            id="a.caller",
+            type=NodeType.FUNCTION,
+            name="caller",
+            file_path="a.py",
+            start_line=1,
+            end_line=2,
+        ),
+        Node(
+            id="a.callee",
+            type=NodeType.FUNCTION,
+            name="callee",
+            file_path="a.py",
+            start_line=4,
+            end_line=5,
+        ),
+    ]
+    edges = [
+        Edge(id="e1", source="a.caller", target="a.callee", type=EdgeType.CALLS, confidence=0.3)
+    ]
+    db = str(tmp_path / "low.db")
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)
+
+    payload = _payload(cgis_trace_flow("a.caller", db, 2, "json"))
+    cli = CliRunner().invoke(app, ["trace", "a.caller", "--db", db, "--depth", "2", "-f", "json"])
+    assert ("a.caller", "CALLS", "a.callee") in _shape(payload)[1]
+    assert _shape(payload) == _shape(json.loads(cli.stdout))
+
+
+@pytest.mark.parametrize(
+    ("tool", "getter", "fqn"),
+    [
+        (cgis_trace_flow, "get_flow_result", "pkg.core"),
+        (cgis_analyze_impact, "get_impact_result", "pkg.core.helper"),
+    ],
+)
+def test_both_flags_reproduce_the_previous_mcp_output(
+    layered_db: str, tool: Callable[..., str], getter: str, fqn: str
+) -> None:
+    """include_structure + include_external is today's unfiltered traversal, unchanged."""
+    with SQLiteStore(layered_db) as store:
+        before = getattr(QueryEngine(store), getter)(fqn, max_depth=3, with_coverage=True)
+    # Round-tripped: graph_to_json holds tuples where the parsed payload has lists.
+    expected = json.loads(
+        json.dumps(graph_to_json(fqn, before.nodes, before.edges, before.coverage))
+    )
+    result = tool(fqn, layered_db, 3, "json", include_structure=True, include_external=True)
+    payload = _payload(result)
+    assert _shape(payload) == _shape(expected)
+    assert payload["coverage"] == expected["coverage"]

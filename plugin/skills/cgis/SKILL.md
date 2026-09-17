@@ -21,7 +21,7 @@ Reading files to answer a structural question is the slow, lossy path: it burns 
 | "Did this change drift the architecture?" | `cgis_drift` | nothing — there is no manual equivalent |
 | "Does every handler reach its authz guard?" | `cgis_audit_reachability` | auditing routes one by one |
 
-A subgraph at depth 2 costs a few hundred tokens. The equivalent in file chunks costs thousands and is less precise.
+A depth-2 trace or impact of a function or method costs a few hundred tokens: median about 300, and 9 in 10 under 1,600. Measured over every function and method of two real graphs (700 and 5,800 symbols), in the default mermaid format and in json. The equivalent in file chunks costs thousands and is less precise. A module or a heavily used symbol costs more — the worst symbol on the larger graph returns 36k tokens, so raise `depth` deliberately and prefer `cgis_context` for a single symbol. Containment, stdlib/third-party nodes and unresolved call targets are off by default; `include_structure` and `include_external` add them when that is the question.
 
 ## First run in a repository
 
