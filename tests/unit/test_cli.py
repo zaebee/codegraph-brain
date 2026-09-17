@@ -1393,6 +1393,19 @@ def test_audit_requires_a_selector(tmp_path: Path) -> None:
     assert "from-type" in result.output
 
 
+@pytest.mark.parametrize("output_format", ["text", "json"])
+def test_audit_selecting_no_sources_fails_the_gate(tmp_path: Path, output_format: str) -> None:
+    """Zero sources exits 2 — before #467 it exited 0, so a typo'd prefix passed CI."""
+    db = _audit_db(tmp_path)
+    result = runner.invoke(
+        app,
+        ["audit", "verify_owner", "--from-prefix", "app.h", "--db", db, "--format", output_format],
+    )
+    assert result.exit_code == 2
+    assert "nothing was audited" in result.stderr
+    assert "nothing was audited" not in result.stdout  # keeps --format json stdout clean
+
+
 # --- suggest-packages command tests ---
 
 

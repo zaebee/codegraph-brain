@@ -966,8 +966,9 @@ def cgis_audit_reachability(
         str | None,
         Field(
             description="Only audit sources at or under this FQN prefix, matched on whole "
-            "dot-segments — a partial segment selects nothing and returns an empty audit, "
-            "not a clean one. Combined with from_type when both are given."
+            "dot-segments. A selection matching no source is an error naming the "
+            "whole-segment prefixes it may have meant. Combined with from_type when both "
+            "are given."
         ),
     ] = None,
     depth: Annotated[
@@ -986,6 +987,9 @@ def cgis_audit_reachability(
     one is required. Returns JSON ``{target, covered, gaps}`` where each gap carries
     ``fqn``/``file``/``line``. Generalizes to validators, event tracking, or
     service-layer-boundary rules by pointing ``target`` at the required node.
+
+    A selection that matches no source returns a ❌ message, not an empty
+    ``{covered: [], gaps: []}`` that would read as a passing audit (#467).
     """
     if blank := _blank_fqn_error(target):
         return blank

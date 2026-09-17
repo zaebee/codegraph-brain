@@ -51,27 +51,98 @@ class ReachabilityAudit:
     gaps: list[NodeRef]
 
 
+class NoAuditSourcesError(ValueError):
+    """The selectors matched no source to audit, so there is no result to report (#467).
+
+    Raised instead of returning empty ``covered``/``gaps``: callers — and CI gates
+    reading ``gaps == []`` — would otherwise take an audit of nothing for a clean one.
+    """
+
+
+_SUGGESTION_LIMIT = 5
+
+
+def _describe_selection(from_type: NodeType | None, from_prefix: str | None) -> str:
+    """Render the selectors the way a caller passed them, for the error message."""
+    parts = []
+    if from_type is not None:
+        parts.append(f"from_type={from_type.value}")
+    if from_prefix is not None:
+        parts.append(f"from_prefix={from_prefix!r}")
+    return " and ".join(parts)
+
+
 def _prefix_matches(fqn: str, prefix: str) -> bool:
     """Dot-boundary prefix match — ``app.routes`` matches ``app.routes.x``, not ``app.routesX``."""
     return fqn == prefix or fqn.startswith(f"{prefix}.")
 
 
+def _is_candidate(node: Node, from_type: NodeType | None, target_fqn: str) -> bool:
+    """An INTERNAL node of the requested type that is not the checkpoint — a possible source."""
+    return (
+        node.namespace == NodeNamespace.INTERNAL
+        and (from_type is None or node.type == from_type)
+        and node.id != target_fqn
+    )
+
+
 def _select_sources(
-    store: SQLiteStore, from_type: NodeType | None, from_prefix: str | None
+    nodes: list[Node], target_fqn: str, from_type: NodeType | None, from_prefix: str | None
 ) -> list[Node]:
     """Select INTERNAL source nodes by node type and/or dot-boundary FQN prefix (AND-combined).
 
     Restricted to INTERNAL nodes so the audit never flags stdlib/third-party
     code, and the prefix is boundary-aware so a name overlap (``app.routesX``)
-    can't sneak into an ``app.routes`` selection.
+    can't sneak into an ``app.routes`` selection. The checkpoint is never its
+    own source.
     """
     return [
         node
-        for node in store.get_all_nodes()
-        if node.namespace == NodeNamespace.INTERNAL
-        and (from_type is None or node.type == from_type)
+        for node in nodes
+        if _is_candidate(node, from_type, target_fqn)
         and (from_prefix is None or _prefix_matches(node.id, from_prefix))
     ]
+
+
+def _empty_selection_hint(
+    nodes: list[Node], target_fqn: str, from_type: NodeType | None, from_prefix: str | None
+) -> str:
+    """Explain an empty selection: the whole-segment prefix meant, or what the prefix does hold.
+
+    Suggestions come from the same candidates ``_select_sources`` would accept, so
+    every suggested prefix selects at least one source. That also means the input
+    is never offered back: a candidate completing to ``from_prefix`` would itself
+    have been selected. A trailing dot is dropped first: ``app.routes.`` meant
+    ``app.routes``.
+    """
+    if from_prefix is None:
+        return ""
+    stem = from_prefix.rstrip(".")
+    suggestions: set[str] = set()
+    for node in nodes:
+        if _is_candidate(node, from_type, target_fqn) and node.id.startswith(stem):
+            next_dot = node.id.find(".", len(stem))
+            suggestions.add(node.id if next_dot == -1 else node.id[:next_dot])
+    if suggestions:
+        listing = ", ".join(sorted(suggestions)[:_SUGGESTION_LIMIT])
+        return f"Prefixes match whole dot-segments; did you mean: {listing}?"
+    under = [
+        n for n in nodes if n.namespace == NodeNamespace.INTERNAL and _prefix_matches(n.id, stem)
+    ]
+    if under and all(n.id == target_fqn for n in under):
+        return "Only the checkpoint itself is under that prefix, and it is never its own source."
+    if under and from_type is not None:
+        return f"There are nodes under that prefix, but none of type {from_type.value}."
+    return ""
+
+
+def _no_sources_error(
+    nodes: list[Node], target_fqn: str, from_type: NodeType | None, from_prefix: str | None
+) -> NoAuditSourcesError:
+    """Build the error for an empty selection, with a hint when one can be given."""
+    msg = f"No sources matched {_describe_selection(from_type, from_prefix)} — nothing was audited."
+    hint = _empty_selection_hint(nodes, target_fqn, from_type, from_prefix)
+    return NoAuditSourcesError(f"{msg} {hint}" if hint else msg)
 
 
 def _ref(node: Node) -> NodeRef:
@@ -112,11 +183,20 @@ def audit_reachability(
     already-injected instance — so a dependency-injected collaborator looks like
     a gap. Target the specific method (or the constructor) when auditing "does X
     use this collaborator".
+
+    Raises:
+        NoAuditSourcesError: The selectors match no source other than the checkpoint
+            itself. An empty ``covered``/``gaps`` pair would read as a passing audit.
     """
     from_prefix = from_prefix.strip() or None if from_prefix is not None else None
     if from_type is None and from_prefix is None:
         msg = "audit_reachability requires from_type or a non-empty from_prefix to select sources."
         raise ValueError(msg)
+    nodes = store.get_all_nodes()
+    # Select before traversing: an empty selection has nothing to prove.
+    sources = _select_sources(nodes, target_fqn, from_type, from_prefix)
+    if not sources:
+        raise _no_sources_error(nodes, target_fqn, from_type, from_prefix)
     engine = QueryEngine(store)
     # `is not None`, not `or`: an explicit empty frozenset (no-traversal, target-only)
     # is a valid intent and must not be overridden by the enforcement default.
@@ -127,8 +207,6 @@ def audit_reachability(
     reaching = {node.id for node in upstream_nodes}
     covered: list[NodeRef] = []
     gaps: list[NodeRef] = []
-    for source in sorted(_select_sources(store, from_type, from_prefix), key=lambda n: n.id):
-        if source.id == target_fqn:
-            continue
+    for source in sorted(sources, key=lambda n: n.id):
         (covered if source.id in reaching else gaps).append(_ref(source))
     return ReachabilityAudit(target=target_fqn, covered=covered, gaps=gaps)
