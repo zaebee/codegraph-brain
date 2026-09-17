@@ -47,7 +47,7 @@ cgis ingest ./src --output graph.json
 
 ### `cgis trace`
 
-Everything a FQN reaches **downstream**: every edge except containment, which in practice means calls, imports, inheritance, DI dependencies and references between internal code. Containment and stdlib/third-party nodes stay out unless `--show-structure` / `--show-external` add them. The MCP tool `cgis_trace_flow` uses the same defaults (`include_structure`, `include_external`).
+Everything a FQN reaches **downstream**: every edge except containment, which in practice means calls, imports, inheritance, DI dependencies and references between internal code. Containment stays out unless `--show-structure` adds it, and so do stdlib, third-party and unresolved call targets unless `--show-external` does. The MCP tool `cgis_trace_flow` uses the same defaults (`include_structure`, `include_external`).
 
 ```bash
 cgis trace <fqn> [OPTIONS]
@@ -59,9 +59,9 @@ cgis trace <fqn> [OPTIONS]
 | `--depth` | `5` | Maximum traversal depth |
 | `--format`, `-f` | `text` | `text`, `mermaid`, or `json` (joinable `{root, nodes, edges, coverage}`) |
 | `--show-structure` | off | Also follow containment (CONTAINS/DECLARES) |
-| `--show-external` | off | Also show stdlib and third-party nodes |
-| `--internal-only` | off | Drop stdlib/external nodes from `mermaid`/`json` output (not valid with `text`) |
-| `--min-confidence` | none | Hide edges below this confidence, e.g. `0.5` drops unresolved calls |
+| `--show-external` | off | Also show stdlib, third-party and unresolved call targets |
+| `--internal-only` | off | Drop those nodes again from `mermaid`/`json` output; a no-op unless `--show-external` is on, and not valid with `text` |
+| `--min-confidence` | none | Hide edges below this confidence. Resolved calls score 1.0 and inferred ones 0.8, so a threshold above 0.8 is what filters anything |
 
 **Examples:**
 
@@ -80,7 +80,7 @@ cgis trace "cgis.query.engine" --format json --show-structure
 
 ### `cgis impact`
 
-Everything that reaches a FQN **upstream**: callers, importers, subclasses, type references and DI dependents. The enclosing class or file and stdlib/third-party nodes stay out unless `--show-structure` / `--show-external` add them. The MCP tool `cgis_analyze_impact` uses the same defaults.
+Everything that reaches a FQN **upstream**: callers, importers, subclasses, type references and DI dependents. The enclosing class or file stays out unless `--show-structure` adds it, and so do stdlib, third-party and unresolved call targets unless `--show-external` does. The MCP tool `cgis_analyze_impact` uses the same defaults.
 
 ```bash
 cgis impact <fqn> [OPTIONS]
@@ -92,9 +92,9 @@ cgis impact <fqn> [OPTIONS]
 | `--depth` | `5` | Maximum traversal depth |
 | `--format`, `-f` | `text` | `text`, `mermaid`, or `json` (joinable `{root, nodes, edges, coverage}`) |
 | `--show-structure` | off | Also follow containment (CONTAINS/DECLARES) |
-| `--show-external` | off | Also show stdlib and third-party nodes |
-| `--internal-only` | off | Drop stdlib/external nodes from `mermaid`/`json` output (not valid with `text`) |
-| `--min-confidence` | none | Hide edges below this confidence, e.g. `0.5` drops unresolved calls |
+| `--show-external` | off | Also show stdlib, third-party and unresolved call targets |
+| `--internal-only` | off | Drop those nodes again from `mermaid`/`json` output; a no-op unless `--show-external` is on, and not valid with `text` |
+| `--min-confidence` | none | Hide edges below this confidence. Resolved calls score 1.0 and inferred ones 0.8, so a threshold above 0.8 is what filters anything |
 
 **Examples:**
 

@@ -76,8 +76,9 @@ IncludeStructure = Annotated[
 IncludeExternal = Annotated[
     bool,
     Field(
-        description="Also return stdlib and third-party nodes. Off by default, as in the CLI, "
-        "because they dominate the payload and are rarely the question."
+        description="Also return stdlib, third-party and unresolved call targets — calls on "
+        "values whose type is decided at runtime. Off by default, as in the CLI, because they "
+        "dominate the payload; in json, coverage/top_unresolved still counts what was dropped."
     ),
 ]
 
@@ -401,7 +402,8 @@ def cgis_trace_flow(
     inheritance, DI dependencies and references — between internal code, so this
     answers "what does X depend on?". Containment and
     stdlib/third-party nodes are left out unless ``include_structure`` /
-    ``include_external`` ask for them — the same view as the CLI's ``trace``.
+    ``include_external`` ask for them (external covers stdlib, third-party and
+    unresolved call targets) — the same view as the CLI's ``trace``.
     For what depends on X use
     ``cgis_analyze_impact``; for only the members of a module or class,
     ``cgis_get_structure``; for a source-included brief to read before editing

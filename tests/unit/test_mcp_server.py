@@ -1183,11 +1183,13 @@ def test_cgis_ingest_full_rebuild_of_an_empty_directory_keeps_the_graph_unstampe
 
 _LAYERED = {
     "pkg/__init__.py": "",
+    "pkg/util.py": "def shared():\n    return 2\n",
     "pkg/core.py": (
-        "import os\n\n"
-        "def helper():\n    return 1\n\n"
-        "def entry():\n    os.getcwd()\n    return helper()\n\n"
-        "class Service:\n    def run(self):\n        return entry()\n"
+        "import os\n"
+        "from pkg.util import shared\n\n"
+        "def helper():\n    return shared()\n\n"
+        "def entry(sink):\n    os.getcwd()\n    sink.write(helper())\n\n"
+        "class Service:\n    def run(self):\n        return entry(None)\n"
     ),
 }
 _STRUCTURAL = {"CONTAINS", "DECLARES"}
@@ -1220,6 +1222,18 @@ def test_trace_flow_defaults_to_behavioral_internal_edges(layered_db: str) -> No
     nodes, edges = _shape(_payload(cgis_trace_flow("pkg.core", layered_db, 2, "json")))
     assert not {t for _, t, _ in edges} & _STRUCTURAL
     assert not any(fqn.startswith("os") for fqn in nodes)
+    # Not vacuous: the module's internal import is a real behavioral edge.
+    assert "pkg.util" in nodes
+
+
+def test_trace_flow_defaults_hide_unresolved_call_targets(layered_db: str) -> None:
+    """`sink.write` resolves to nothing; those targets are most of what include_external adds."""
+    default_nodes, _ = _shape(_payload(cgis_trace_flow("pkg.core.entry", layered_db, 1, "json")))
+    external_nodes, _ = _shape(
+        _payload(cgis_trace_flow("pkg.core.entry", layered_db, 1, "json", include_external=True))
+    )
+    assert not any("write" in fqn for fqn in default_nodes)
+    assert any("write" in fqn for fqn in external_nodes)
 
 
 def test_trace_flow_flags_restore_structure_and_external(layered_db: str) -> None:
@@ -1270,6 +1284,43 @@ def test_mcp_defaults_match_the_cli(
     assert _shape(_payload(tool(fqn, layered_db, 3, "json"))) == _shape(json.loads(cli.stdout))
 
 
+def test_mcp_keeps_low_confidence_edges_like_the_cli(tmp_path: Path) -> None:
+    """Neither side filters by confidence, so an inferred edge must survive both (#481).
+
+    The ingested fixtures score every edge 0.8 or 1.0, so a hand-built graph is the
+    only way a confidence filter on one side would show up as a divergence.
+    """
+    nodes = [
+        Node(
+            id="a.caller",
+            type=NodeType.FUNCTION,
+            name="caller",
+            file_path="a.py",
+            start_line=1,
+            end_line=2,
+        ),
+        Node(
+            id="a.callee",
+            type=NodeType.FUNCTION,
+            name="callee",
+            file_path="a.py",
+            start_line=4,
+            end_line=5,
+        ),
+    ]
+    edges = [
+        Edge(id="e1", source="a.caller", target="a.callee", type=EdgeType.CALLS, confidence=0.3)
+    ]
+    db = str(tmp_path / "low.db")
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)
+
+    payload = _payload(cgis_trace_flow("a.caller", db, 2, "json"))
+    cli = CliRunner().invoke(app, ["trace", "a.caller", "--db", db, "--depth", "2", "-f", "json"])
+    assert ("a.caller", "CALLS", "a.callee") in _shape(payload)[1]
+    assert _shape(payload) == _shape(json.loads(cli.stdout))
+
+
 @pytest.mark.parametrize(
     ("tool", "getter", "fqn"),
     [
@@ -1283,7 +1334,10 @@ def test_both_flags_reproduce_the_previous_mcp_output(
     """include_structure + include_external is today's unfiltered traversal, unchanged."""
     with SQLiteStore(layered_db) as store:
         before = getattr(QueryEngine(store), getter)(fqn, max_depth=3, with_coverage=True)
-    expected = graph_to_json(fqn, before.nodes, before.edges, before.coverage)
+    # Round-tripped: graph_to_json holds tuples where the parsed payload has lists.
+    expected = json.loads(
+        json.dumps(graph_to_json(fqn, before.nodes, before.edges, before.coverage))
+    )
     result = tool(fqn, layered_db, 3, "json", include_structure=True, include_external=True)
     payload = _payload(result)
     assert _shape(payload) == _shape(expected)
