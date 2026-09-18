@@ -88,14 +88,28 @@ class ResolverEngine:
                     resolved_edges.append(import_edge)
                 # no _ensure_virtual_node: target exists on hit, edge dies on miss
             elif not edge.target.startswith("raw_call:"):
-                resolved_edges.append(edge)
-                self._ensure_virtual_node(edge, virtual_nodes)
+                final_edge = self._reconciled_layout_edge(edge)
+                resolved_edges.append(final_edge)
+                self._ensure_virtual_node(final_edge, virtual_nodes)
             else:
                 call_edge = self._resolved_call_edge(edge)
                 resolved_edges.append(call_edge)
                 self._ensure_virtual_node(call_edge, virtual_nodes)
 
         return _agree_on_confidence(resolved_edges, virtual_nodes), list(virtual_nodes.values())
+
+    def _reconciled_layout_edge(self, edge: Edge) -> Edge:
+        """Point an already-final target at the node it names, prefix differences aside.
+
+        Call targets go through `SymbolResolver`, which reconciles layout; a module
+        import never did, so `from app.models import X` pointed at `app.models`
+        while the graph held `models` (#494). Confidence is untouched: this is the
+        same name, spelled the way the node ids spell it.
+        """
+        resolved = self._index.resolve_import_target(edge.target)
+        if resolved is None or resolved == edge.target:
+            return edge
+        return edge.model_copy(update={"target": resolved})
 
     def _resolved_class_edge(self, edge: Edge) -> Edge:
         """Resolve a raw_class: edge to its final class FQN.

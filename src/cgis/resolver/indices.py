@@ -61,6 +61,35 @@ class SymbolIndex:
     internal_roots: frozenset[str]
     # root segments of absolute imports (anything else is UNKNOWN)
     external_roots: frozenset[str]
+    # prefixes the sources write but the node ids do not carry, because the ingest
+    # root was inside the package: `app.` when `cgis ingest app/`. Learned from the
+    # import maps, never guessed — kept apart from `internal_roots` so a target can
+    # be reconciled by stripping *these* and nothing else (#494).
+    layout_prefixes: frozenset[str] = frozenset()
+
+    def resolve_import_target(self, fqn: str) -> str | None:
+        """Reconcile a module import against the node ids, or None to leave it alone.
+
+        `from app.models import User` in a graph ingested at `app/` produces an
+        edge to `app.models`, which nothing bears — 6,262 of owner-api's 6,293
+        IMPORTS edges were that shape, all of them minted as boundary nodes and,
+        since #459, counted unresolved.
+
+        Only a known layout prefix is stripped. Dropping arbitrary leading
+        segments would resolve `pydantic.config` into a project that happens to
+        have a `config` module, which is the collision `_strips_to_a_node` keeps
+        out of root classification for the same reason.
+        """
+        if fqn in self.nodes:
+            return fqn
+        parts = fqn.split(".")
+        for index, part in enumerate(parts[:-1]):
+            if part not in self.layout_prefixes:
+                return None
+            candidate = ".".join(parts[index + 1 :])
+            if candidate in self.nodes:
+                return candidate
+        return None
 
     def map_to_node_fqn(self, imported_fqn: str) -> str | None:
         """Resolve an imported FQN to an actual node in the graph.
@@ -303,6 +332,7 @@ class IndexBuilder:
             suffix_map=MappingProxyType(suffix_map),
             internal_roots=frozenset(internal_roots | first_party),
             external_roots=frozenset(external_roots),
+            layout_prefixes=frozenset(first_party - internal_roots),
         )
 
     @staticmethod
