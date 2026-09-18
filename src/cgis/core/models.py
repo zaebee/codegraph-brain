@@ -163,3 +163,8 @@ class Edge(BaseModel):
     context: str | None = None
     file_path: str | None = None
     line_number: int | None = None
+    #: True when the import runs only for a type checker (`if TYPE_CHECKING:`).
+    #: Kept as an edge — "what does this module depend on at type level" is a real
+    #: question — but not a runtime dependency, so the cycle query skips it: the
+    #: standard way to *break* an import cycle was being reported as one (#499).
+    type_only: bool = False
