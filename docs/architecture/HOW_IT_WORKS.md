@@ -99,7 +99,8 @@ CREATE TABLE IF NOT EXISTS nodes (
             confidence REAL NOT NULL,
             context TEXT,
             file_path TEXT,
-            line_number INTEGER
+            line_number INTEGER,
+            type_only INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS files_state (
@@ -204,7 +205,7 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
         uplift_SemanticUpliftEngine_execute_uplift["execute_uplift (uplift.py:91)"]:::methodNode
     end
     subgraph sg_sqlite_store["sqlite_store.py"]
-        sqlite_store_SQLiteStore["SQLiteStore (sqlite_store.py:48)"]:::classNode
+        sqlite_store_SQLiteStore["SQLiteStore (sqlite_store.py:53)"]:::classNode
     end
     pipeline_IngestionPipeline_run -->|REFERENCES| models_Node
     pipeline_IngestionPipeline_run -->|REFERENCES| models_Edge
@@ -237,5 +238,5 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
 | `resolve` | METHOD | [`engine.py:64`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L64) |
 | `SemanticUpliftEngine` | CLASS | [`uplift.py:66`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/uplift.py#L66) |
 | `execute_uplift` | METHOD | [`uplift.py:91`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/uplift.py#L91) |
-| `SQLiteStore` | CLASS | [`sqlite_store.py:48`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/storage/sqlite_store.py#L48) |
+| `SQLiteStore` | CLASS | [`sqlite_store.py:53`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/storage/sqlite_store.py#L53) |
 <!-- END_CGIS_GRAPH -->
