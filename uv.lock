@@ -261,7 +261,7 @@ wheels = [
 
 [[package]]
 name = "codegraph-brain"
-version = "0.25.2"
+version = "0.25.3"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
