@@ -104,9 +104,11 @@ class ResolverEngine:
         Call targets go through `SymbolResolver`, which reconciles layout; a module
         import never did, so `from app.models import X` pointed at `app.models`
         while the graph held `models` (#494). Confidence is untouched: this is the
-        same name, spelled the way the node ids spell it.
+        same name, spelled the way the node ids spell it, and only in the language
+        whose imports taught the prefix.
         """
-        resolved = self._index.resolve_import_target(edge.target)
+        source_file = self._index.normalized_file_path(edge.source, edge.file_path)
+        resolved = self._index.resolve_import_target(edge.target, source_file)
         if resolved is None or resolved == edge.target:
             return edge
         return edge.model_copy(update={"target": resolved})
