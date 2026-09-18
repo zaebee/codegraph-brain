@@ -85,7 +85,7 @@ class AnalyzerEngine:
         self._edges: list[Edge] = store.get_all_edges()
 
     def detect_cycles(self) -> list[ArchitecturalAnomaly]:
-        """Find circular dependencies using Tarjan's SCC on IMPORTS edges.
+        """Find circular dependencies using Tarjan's SCC on runtime IMPORTS edges.
 
         Returns one anomaly per cycle, containing the full cycle as a list
         in metrics["cycle_members"].
@@ -95,6 +95,8 @@ class AnalyzerEngine:
             for n in self._nodes
             if n.namespace == NodeNamespace.INTERNAL and n.type in (NodeType.FILE, NodeType.MODULE)
         }
+        # `build_adjacency` drops type-only imports: they are how a cycle gets
+        # broken, not how one forms (#499).
         adj = build_adjacency(self._edges, frozenset({EdgeType.IMPORTS}))
         adj = {
             k: [v for v in vs if v in internal_fqns] for k, vs in adj.items() if k in internal_fqns

@@ -45,6 +45,11 @@ def _ranked(census: Counter[str]) -> list[tuple[str, int]]:
     return sorted(census.items(), key=lambda row: (-row[1], row[0]))
 
 
+#: DDL for a boolean flag added to an existing table: SQLite has no bool, and a
+#: NOT NULL default is what lets `ALTER TABLE` run against rows already there.
+_BOOL_COLUMN = "INTEGER NOT NULL DEFAULT 0"
+
+
 class SQLiteStore:
     """
     Deterministic SQLite Graph Store.
@@ -113,7 +118,8 @@ class SQLiteStore:
             confidence REAL NOT NULL,
             context TEXT,
             file_path TEXT,
-            line_number INTEGER
+            line_number INTEGER,
+            type_only INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS files_state (
@@ -142,11 +148,27 @@ class SQLiteStore:
         if not self._conn:
             return
         cols = {row["name"] for row in self._conn.execute("PRAGMA table_info(nodes)").fetchall()}
+        edge_cols = {
+            row["name"] for row in self._conn.execute("PRAGMA table_info(edges)").fetchall()
+        }
+        if edge_cols and "type_only" not in edge_cols:
+            # No backfill: whether an import sat inside `if TYPE_CHECKING:` is in the
+            # source, which this table does not keep, so an older graph reads every
+            # import as a runtime one — the reading it recorded (#499).
+            self._add_column_if_missing("type_only", _BOOL_COLUMN, table="edges")
+            # And the hashes are blanked, exactly as the `is_generated` migration
+            # below does and for the same reason: `_process_file` skips a file whose
+            # hash still matches, so an incremental ingest over an upgraded graph
+            # re-parses nothing, leaves every flag false, and keeps reporting the
+            # false cycle this column exists to remove. "Re-ingest to fix it" has to
+            # be advice that can be followed (#501 review).
+            self._conn.execute("UPDATE files_state SET hash = ''")
+            self._conn.commit()
         if "namespace" not in cols:
             self._add_column_if_missing("namespace", "TEXT NOT NULL DEFAULT 'INTERNAL'")
             self._conn.commit()
         if "is_test" not in cols:
-            self._add_column_if_missing("is_test", "INTEGER NOT NULL DEFAULT 0")
+            self._add_column_if_missing("is_test", _BOOL_COLUMN)
             self._backfill_is_test()
             self._conn.commit()
         if "is_generated" not in cols:
@@ -154,7 +176,7 @@ class SQLiteStore:
             # this database does not keep, so it cannot be re-derived from stored
             # rows. An older graph reports zero generated nodes until re-ingest —
             # `OrphanReport.generated_excluded` is what makes that visible (#432).
-            self._add_column_if_missing("is_generated", "INTEGER NOT NULL DEFAULT 0")
+            self._add_column_if_missing("is_generated", _BOOL_COLUMN)
             # And the hashes are invalidated, or "re-ingest" is advice that cannot
             # be followed: `_process_file` skips any file whose content hash still
             # matches and reuses its stored nodes, so an incremental run over an
@@ -178,8 +200,8 @@ class SQLiteStore:
             self._conn.execute("UPDATE files_state SET hash = ''")
             self._conn.commit()
 
-    def _add_column_if_missing(self, name: str, ddl: str) -> None:
-        """Add a column to `nodes`, tolerating another process having just added it.
+    def _add_column_if_missing(self, name: str, ddl: str, table: str = "nodes") -> None:
+        """Add a column, tolerating another process having just added it.
 
         `_migrate` reads `PRAGMA table_info` and then issues `ALTER TABLE`, and two
         cgis processes opening the same old graph — the MCP server and a CLI run,
@@ -192,7 +214,7 @@ class SQLiteStore:
         if not self._conn:
             return
         try:
-            self._conn.execute(f"ALTER TABLE nodes ADD COLUMN {name} {ddl}")
+            self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
         except sqlite3.OperationalError as exc:
             if "duplicate column name" not in str(exc).lower():
                 raise
@@ -239,8 +261,8 @@ class SQLiteStore:
     _EDGE_INSERT = """
         INSERT OR REPLACE INTO edges (
             id, source, target, type, weight, confidence,
-            context, file_path, line_number
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            context, file_path, line_number, type_only
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
 
     def _node_to_row(
@@ -266,7 +288,7 @@ class SQLiteStore:
 
     def _edge_to_row(
         self, e: Edge
-    ) -> tuple[str, str, str, str, float, float, str | None, str | None, int | None]:
+    ) -> tuple[str, str, str, str, float, float, str | None, str | None, int | None, int]:
         """Serialise an Edge into a tuple matching the edges table column order."""
         return (
             e.id,
@@ -278,6 +300,7 @@ class SQLiteStore:
             e.context,
             e.file_path,
             e.line_number,
+            int(e.type_only),
         )
 
     def upsert_nodes(self, nodes: list[Node]) -> None:
@@ -1087,4 +1110,7 @@ class SQLiteStore:
             context=row["context"],
             file_path=row["file_path"],
             line_number=row["line_number"],
+            # The column is added on open for an older graph, defaulting to 0 —
+            # the reading it recorded, since it did not know about the guard (#499).
+            type_only=bool(row["type_only"]),
         )
