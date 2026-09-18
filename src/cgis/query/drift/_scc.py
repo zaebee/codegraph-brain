@@ -4,10 +4,17 @@ from cgis.core.models import Edge, EdgeType
 
 
 def build_adjacency(edges: list[Edge], allowed_types: frozenset[EdgeType]) -> dict[str, list[str]]:
-    """Build a directed adjacency list from edges matching allowed_types."""
+    """Build a directed adjacency list from edges matching allowed_types.
+
+    Type-only edges are left out. Every caller of this asks a cycle question, and
+    `if TYPE_CHECKING:` is how a cycle gets broken — counting it reported the fix
+    as the problem (#499). Filtering here rather than in one caller is what keeps
+    the three cycle computations (`detect_cycles`, `HealthScorer._compute_cycles`,
+    drift's `cycle_ratio`) from disagreeing about the same graph (#501 review).
+    """
     adj: dict[str, list[str]] = {}
     for edge in edges:
-        if edge.type not in allowed_types:
+        if edge.type not in allowed_types or edge.type_only:
             continue
         if edge.target.startswith(("raw_call:", "raw_import:")):
             continue

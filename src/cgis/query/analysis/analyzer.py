@@ -95,11 +95,9 @@ class AnalyzerEngine:
             for n in self._nodes
             if n.namespace == NodeNamespace.INTERNAL and n.type in (NodeType.FILE, NodeType.MODULE)
         }
-        # Type-only imports are excluded: `if TYPE_CHECKING:` is how a cycle gets
-        # broken, and counting it reported the fix as the problem (#499). The edges
-        # stay in the graph; only this query skips them.
-        runtime_imports = [edge for edge in self._edges if not edge.type_only]
-        adj = build_adjacency(runtime_imports, frozenset({EdgeType.IMPORTS}))
+        # `build_adjacency` drops type-only imports: they are how a cycle gets
+        # broken, not how one forms (#499).
+        adj = build_adjacency(self._edges, frozenset({EdgeType.IMPORTS}))
         adj = {
             k: [v for v in vs if v in internal_fqns] for k, vs in adj.items() if k in internal_fqns
         }

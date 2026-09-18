@@ -148,10 +148,16 @@ class SQLiteStore:
         }
         if edge_cols and "type_only" not in edge_cols:
             # No backfill: whether an import sat inside `if TYPE_CHECKING:` is in the
-            # source, which this table does not keep. An older graph reports every
-            # import as a runtime one until re-ingest — the same reading it had when
-            # it was written, so no verdict changes under a caller's feet (#499).
+            # source, which this table does not keep, so an older graph reads every
+            # import as a runtime one — the reading it recorded (#499).
             self._add_column_if_missing("type_only", "INTEGER NOT NULL DEFAULT 0", table="edges")
+            # And the hashes are blanked, exactly as the `is_generated` migration
+            # below does and for the same reason: `_process_file` skips a file whose
+            # hash still matches, so an incremental ingest over an upgraded graph
+            # re-parses nothing, leaves every flag false, and keeps reporting the
+            # false cycle this column exists to remove. "Re-ingest to fix it" has to
+            # be advice that can be followed (#501 review).
+            self._conn.execute("UPDATE files_state SET hash = ''")
             self._conn.commit()
         if "namespace" not in cols:
             self._add_column_if_missing("namespace", "TEXT NOT NULL DEFAULT 'INTERNAL'")
