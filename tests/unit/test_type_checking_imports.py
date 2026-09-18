@@ -314,3 +314,16 @@ def test_the_health_scorer_agrees_with_analyze(tmp_path: Path) -> None:
         nodes = store.get_all_nodes()
 
     assert not [node.id for node in nodes if node.metadata.get("in_cycle")]
+
+
+def test_the_guard_written_as_an_elif_counts() -> None:
+    """`elif TYPE_CHECKING:` is the same guard, in a clause of its own (#501 review)."""
+    code = (
+        "import sys\nfrom typing import TYPE_CHECKING\n\n"
+        "if sys.version_info >= (3, 12):\n    import tomllib\n"
+        "elif TYPE_CHECKING:\n    from pkg.types import T\n"
+    )
+    by_target = {edge.target: edge.type_only for edge in _imports(code)}
+
+    assert by_target["pkg.types"] is True
+    assert by_target["tomllib"] is False

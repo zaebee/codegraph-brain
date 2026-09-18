@@ -18,6 +18,11 @@ def _has_wildcard(node: BaseNode) -> bool:
 #: What a `TYPE_CHECKING` guard is spelled as: the bare name, or through the module.
 _TYPE_CHECKING_NAMES = frozenset({"TYPE_CHECKING", "typing.TYPE_CHECKING"})
 
+#: Nodes that carry a `condition` and a `consequence`. `elif TYPE_CHECKING:` is a
+#: guard too, and an `elif_clause` holds its own pair rather than reusing the
+#: `if_statement`'s — so checking only the statement missed it (#501 review).
+_BRANCHING_NODES = frozenset({"if_statement", "elif_clause"})
+
 
 def _inside_type_checking(node: BaseNode, code_bytes: bytes) -> bool:
     """True when this statement sits inside the body of an `if TYPE_CHECKING:` block.
@@ -37,7 +42,9 @@ def _inside_type_checking(node: BaseNode, code_bytes: bytes) -> bool:
     child = node
     current = node.parent
     while current is not None:
-        if current.type == "if_statement" and _is_type_checking_branch(current, child, code_bytes):
+        if current.type in _BRANCHING_NODES and _is_type_checking_branch(
+            current, child, code_bytes
+        ):
             return True
         child = current
         current = current.parent
@@ -45,7 +52,7 @@ def _inside_type_checking(node: BaseNode, code_bytes: bytes) -> bool:
 
 
 def _is_type_checking_branch(statement: BaseNode, child: BaseNode, code_bytes: bytes) -> bool:
-    """True when `child` is the consequence of a TYPE_CHECKING `if`."""
+    """True when `child` is the consequence of a TYPE_CHECKING `if` or `elif`."""
     condition = statement.child_by_field_name("condition")
     consequence = statement.child_by_field_name("consequence")
     if condition is None or consequence is None or consequence.id != child.id:
