@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.25.2](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.25.1...codegraph-brain-v0.25.2) (2026-09-18)
+
+
+### Bug Fixes
+
+* **resolver:** module imports reconcile the layout prefix ([#498](https://github.com/zaebee/codegraph-brain/issues/498)) ([25b7f82](https://github.com/zaebee/codegraph-brain/commit/25b7f82e5011c654de9e4cf9a196995426d4e266))
+
 ## [0.25.1](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.25.0...codegraph-brain-v0.25.1) (2026-09-17)
 
 
