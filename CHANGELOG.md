@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.25.3](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.25.2...codegraph-brain-v0.25.3) (2026-09-18)
+
+
+### Bug Fixes
+
+* **analyze:** TYPE_CHECKING imports are not a runtime dependency ([#501](https://github.com/zaebee/codegraph-brain/issues/501)) ([a6d09fe](https://github.com/zaebee/codegraph-brain/commit/a6d09fe21c5fa4dd7611ade50aea239dccde6960))
+
+
+### Documentation
+
+* auto-sync architecture graph and MCP reference ([#502](https://github.com/zaebee/codegraph-brain/issues/502)) ([a1156ec](https://github.com/zaebee/codegraph-brain/commit/a1156ec4b8cd4a4d8adfdc610dc2a31c434e11d7))
+
 ## [0.25.2](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.25.1...codegraph-brain-v0.25.2) (2026-09-18)
 
 
