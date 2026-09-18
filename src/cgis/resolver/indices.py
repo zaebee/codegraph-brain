@@ -61,6 +61,47 @@ class SymbolIndex:
     internal_roots: frozenset[str]
     # root segments of absolute imports (anything else is UNKNOWN)
     external_roots: frozenset[str]
+    # prefixes the sources write but the node ids do not carry, because the ingest
+    # root was inside the package: `app.` when `cgis ingest app/`. Learned from the
+    # import maps, never guessed — kept apart from `internal_roots` so a target can
+    # be reconciled by stripping *these* and nothing else (#494).
+    layout_prefixes: frozenset[str] = frozenset()
+
+    def resolve_import_target(self, fqn: str, source_file: str | None = None) -> str | None:
+        """Reconcile a module import against the node ids, or None to leave it alone.
+
+        `from app.models import User` in a graph ingested at `app/` produces an
+        edge to `app.models`, which nothing bears — 6,262 of owner-api's 6,293
+        IMPORTS edges were that shape, all of them minted as boundary nodes and,
+        since #459, counted unresolved.
+
+        Only a known layout prefix is stripped. Dropping arbitrary leading
+        segments would resolve `pydantic.config` into a project that happens to
+        have a `config` module, which is the collision `_strips_to_a_node` keeps
+        out of root classification for the same reason.
+
+        `source_file` scopes the rule to the language that taught it: the prefixes
+        come from Python import maps, so a TypeScript path alias `import … from
+        "app/models"` must not be wired into a Python package of the same name
+        (#454 is the same lesson for `classify_fqn`).
+
+        Only a *root* segment is ever a layout prefix today, so a two-level one
+        (`src.app.`) reconciles the symbol edge and not the module edge. Left as
+        is: `_build_external_roots` groups by root, and widening it needs the
+        collision guard below to be stronger first (#495).
+        """
+        if fqn in self.nodes:
+            return fqn
+        if source_file is not None and not source_file.endswith(_PYTHON_SUFFIXES):
+            return None
+        parts = fqn.split(".")
+        for index, part in enumerate(parts[:-1]):
+            if part not in self.layout_prefixes:
+                return None
+            candidate = ".".join(parts[index + 1 :])
+            if candidate in self.nodes:
+                return candidate
+        return None
 
     def map_to_node_fqn(self, imported_fqn: str) -> str | None:
         """Resolve an imported FQN to an actual node in the graph.
@@ -215,6 +256,16 @@ class SymbolIndex:
         return os.path.normpath(edge_file_path) if edge_file_path else None
 
 
+#: How many of a root's imports must reach a node before it may be stripped off a
+#: target (#498 review). One is not evidence: a third-party module that happens to
+#: share a path with ours — `from boto3.utils.helpers import x` against our own
+#: `utils/helpers.py` — made `boto3` first-party, and stripping it wired
+#: `import boto3.config` into this project's `config.py` at full confidence.
+#: Classification itself still accepts one, because there the cost of a wrong call
+#: is a namespace label rather than a fabricated internal edge.
+_LAYOUT_PREFIX_EVIDENCE = 2
+
+
 def _strips_to_a_node(imported_fqn: str, node_ids: set[str]) -> bool:
     """True when dropping leading segments of `imported_fqn` reaches a real node.
 
@@ -284,7 +335,9 @@ class IndexBuilder:
             # "src.cgis.pipeline.X" → suffix "cgis.pipeline.X" also points to the node
             self._add_node_to_suffix_map(node.id, suffix_map, internal_roots)
 
-        external_roots, first_party = self._build_external_roots(file_imports, set(nodes_by_id))
+        external_roots, first_party, corroborated = self._build_external_roots(
+            file_imports, set(nodes_by_id)
+        )
         self._expand_star_imports(star_imports, reexports, set(nodes_by_id))
 
         # Read-only views, not copies: MappingProxyType wraps in O(1), so this
@@ -303,6 +356,7 @@ class IndexBuilder:
             suffix_map=MappingProxyType(suffix_map),
             internal_roots=frozenset(internal_roots | first_party),
             external_roots=frozenset(external_roots),
+            layout_prefixes=frozenset(corroborated - internal_roots),
         )
 
     @staticmethod
@@ -452,10 +506,12 @@ class IndexBuilder:
 
     def _build_external_roots(
         self, file_imports: dict[str, dict[str, str]], node_ids: set[str]
-    ) -> tuple[set[str], set[str]]:
+    ) -> tuple[set[str], set[str], set[str]]:
         """Split import roots into genuinely external ones and first-party prefixes.
 
-        Returns (external_roots, first_party_prefixes).
+        Returns (external_roots, first_party_prefixes, corroborated_prefixes) —
+        the third being those with enough evidence to strip off a target, not only
+        to classify (see `_LAYOUT_PREFIX_EVIDENCE`).
 
         A root is a *first-party prefix* when some import under it reaches a real
         node once its head is stripped. That happens whenever a project is
@@ -481,7 +537,10 @@ class IndexBuilder:
 
         external: set[str] = set()
         first_party: set[str] = set()
+        corroborated: set[str] = set()
         for root, values in imports_by_root.items():
-            resolves = any(_strips_to_a_node(v, node_ids) for v in values)
-            (first_party if resolves else external).add(root)
-        return external, first_party
+            resolving = sum(1 for v in values if _strips_to_a_node(v, node_ids))
+            (first_party if resolving else external).add(root)
+            if resolving >= _LAYOUT_PREFIX_EVIDENCE:
+                corroborated.add(root)
+        return external, first_party, corroborated
