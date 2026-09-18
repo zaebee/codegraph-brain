@@ -45,6 +45,11 @@ def _ranked(census: Counter[str]) -> list[tuple[str, int]]:
     return sorted(census.items(), key=lambda row: (-row[1], row[0]))
 
 
+#: DDL for a boolean flag added to an existing table: SQLite has no bool, and a
+#: NOT NULL default is what lets `ALTER TABLE` run against rows already there.
+_BOOL_COLUMN = "INTEGER NOT NULL DEFAULT 0"
+
+
 class SQLiteStore:
     """
     Deterministic SQLite Graph Store.
@@ -150,7 +155,7 @@ class SQLiteStore:
             # No backfill: whether an import sat inside `if TYPE_CHECKING:` is in the
             # source, which this table does not keep, so an older graph reads every
             # import as a runtime one — the reading it recorded (#499).
-            self._add_column_if_missing("type_only", "INTEGER NOT NULL DEFAULT 0", table="edges")
+            self._add_column_if_missing("type_only", _BOOL_COLUMN, table="edges")
             # And the hashes are blanked, exactly as the `is_generated` migration
             # below does and for the same reason: `_process_file` skips a file whose
             # hash still matches, so an incremental ingest over an upgraded graph
@@ -163,7 +168,7 @@ class SQLiteStore:
             self._add_column_if_missing("namespace", "TEXT NOT NULL DEFAULT 'INTERNAL'")
             self._conn.commit()
         if "is_test" not in cols:
-            self._add_column_if_missing("is_test", "INTEGER NOT NULL DEFAULT 0")
+            self._add_column_if_missing("is_test", _BOOL_COLUMN)
             self._backfill_is_test()
             self._conn.commit()
         if "is_generated" not in cols:
@@ -171,7 +176,7 @@ class SQLiteStore:
             # this database does not keep, so it cannot be re-derived from stored
             # rows. An older graph reports zero generated nodes until re-ingest —
             # `OrphanReport.generated_excluded` is what makes that visible (#432).
-            self._add_column_if_missing("is_generated", "INTEGER NOT NULL DEFAULT 0")
+            self._add_column_if_missing("is_generated", _BOOL_COLUMN)
             # And the hashes are invalidated, or "re-ingest" is advice that cannot
             # be followed: `_process_file` skips any file whose content hash still
             # matches and reuses its stored nodes, so an incremental run over an
