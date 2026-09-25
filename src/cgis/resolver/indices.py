@@ -16,6 +16,8 @@ _BUILTINS: frozenset[str] = frozenset(dir(builtins))
 _PYTHON_SUFFIXES: tuple[str, ...] = (".py",)
 #: The suffixes the TypeScript extractor handles; `.js`/`.jsx` are not ingested (registry.py).
 _TYPESCRIPT_SUFFIXES = (".ts", ".tsx")
+#: What a declaration file's module FQN ends in: `Calendar.d.ts` -> `Calendar.d` (#507).
+_DECLARATION_SUFFIX = ".d"
 
 
 @dataclass(frozen=True)
@@ -101,7 +103,7 @@ class SymbolIndex:
         if fqn in self.nodes:
             return fqn
         if source_file is not None and source_file.endswith(_TYPESCRIPT_SUFFIXES):
-            return self._resolve_workspace_import(fqn)
+            return _resolve_typescript_import(fqn, self.nodes, self.workspace_packages)
         if source_file is not None and not source_file.endswith(_PYTHON_SUFFIXES):
             return None
         parts = fqn.split(".")
@@ -111,30 +113,6 @@ class SymbolIndex:
             candidate = ".".join(parts[index + 1 :])
             if candidate in self.nodes:
                 return candidate
-        return None
-
-    def _resolve_workspace_import(self, fqn: str) -> str | None:
-        """Map a TypeScript import of a workspace package onto the module it names.
-
-        `@calcom.lib.hooks.useLocale` becomes `packages.lib.hooks.useLocale` when the
-        pipeline found a `package.json` named `@calcom/lib` in `packages/lib`. The
-        package root is tried before `src/`, a common layout for a package's sources.
-
-        The name must match on a segment boundary, so `@x/a` never claims
-        `@x/a-b`. The first — longest — package that matches decides: falling back
-        to a shorter one would read `a.b.util` as package `a` when package `a.b`
-        was meant. And the rewrite happens only onto a node that exists; otherwise
-        None, leaving the edge visibly unresolved rather than on a plausible name.
-        """
-        for name, directory in self.workspace_packages.items():
-            if fqn != name and not fqn.startswith(name + "."):
-                continue
-            subpath = fqn[len(name) + 1 :]
-            for base in (directory, f"{directory}.src"):
-                candidate = f"{base}.{subpath}" if subpath else base
-                if candidate in self.nodes:
-                    return candidate
-            return None
         return None
 
     def map_to_node_fqn(self, imported_fqn: str) -> str | None:
@@ -317,6 +295,51 @@ def _strips_to_a_node(imported_fqn: str, node_ids: set[str]) -> bool:
     """
     parts = imported_fqn.split(".")
     return any(".".join(parts[i:]) in node_ids for i in range(1, len(parts) - 1))
+
+
+def _resolve_typescript_import(
+    fqn: str, nodes: Mapping[str, Node], packages: Mapping[str, str]
+) -> str | None:
+    """Reconcile a TypeScript import against the node ids, or None to leave it alone.
+
+    Each candidate is tried as written and then as a declaration file:
+    `packages/types/Calendar.d.ts` is the module `packages.types.Calendar.d`,
+    while code imports it with no `.d` (#507). That is the order TypeScript
+    resolves in, so an implementation beside its declaration wins. The node ids
+    are not changed instead: that would rename every declaration node in
+    existing graphs and give `foo.ts` and `foo.d.ts` one id.
+
+    The candidates are the target itself — a relative import, already made
+    absolute by the extractor — and then, for a workspace package, the module
+    it names (#504).
+    """
+    for candidate in (fqn, *_workspace_candidates(fqn, packages)):
+        for spelled in (candidate, f"{candidate}{_DECLARATION_SUFFIX}"):
+            if spelled in nodes:
+                return spelled
+    return None
+
+
+def _workspace_candidates(fqn: str, packages: Mapping[str, str]) -> tuple[str, ...]:
+    """The module FQNs a TypeScript import of a workspace package may name.
+
+    `@calcom.lib.hooks.useLocale` becomes `packages.lib.hooks.useLocale` when the
+    pipeline found a `package.json` named `@calcom/lib` in `packages/lib`; the
+    package root is tried before `src/`, a common layout for a package's sources.
+
+    The name must match on a segment boundary, so `@x/a` never claims
+    `@x/a-b`. The first — longest — package that matches decides: falling back
+    to a shorter one would read `a.b.util` as package `a` when package `a.b`
+    was meant. No candidates for a name the map does not hold.
+    """
+    for name, directory in packages.items():
+        if fqn != name and not fqn.startswith(name + "."):
+            continue
+        subpath = fqn[len(name) + 1 :]
+        return tuple(
+            f"{base}.{subpath}" if subpath else base for base in (directory, f"{directory}.src")
+        )
+    return ()
 
 
 class IndexBuilder:
