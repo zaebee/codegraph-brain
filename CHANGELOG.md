@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.25.4](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.25.3...codegraph-brain-v0.25.4) (2026-09-25)
+
+
+### Bug Fixes
+
+* **resolver:** resolve TypeScript imports of declaration files ([#511](https://github.com/zaebee/codegraph-brain/issues/511)) ([db8c578](https://github.com/zaebee/codegraph-brain/commit/db8c578272671c0f06f454c4402ae2f60b05a93d)), closes [#507](https://github.com/zaebee/codegraph-brain/issues/507)
+* **resolver:** resolve TypeScript imports of workspace packages ([#506](https://github.com/zaebee/codegraph-brain/issues/506)) ([50c353f](https://github.com/zaebee/codegraph-brain/commit/50c353fea6382b60aa0356fe0cb5205a1054d859))
+
+
+### Documentation
+
+* auto-sync architecture graph and MCP reference ([#509](https://github.com/zaebee/codegraph-brain/issues/509)) ([8429fd4](https://github.com/zaebee/codegraph-brain/commit/8429fd41fc3b0f46d73286a5ce530d11fcd0df7f))
+
 ## [0.25.3](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.25.2...codegraph-brain-v0.25.3) (2026-09-18)
 
 
