@@ -1,8 +1,24 @@
 """Base Extractor Interface"""
 
 from abc import ABC, abstractmethod
+from typing import Protocol, runtime_checkable
 
 from cgis.core.models import Edge, Node
+
+
+@runtime_checkable
+class ModuleNamer(Protocol):
+    """An extractor that can say which module FQN it gives a file path.
+
+    Structural rather than a base-class method: only some extractors can answer,
+    and a caller that needs one — the workspace-package map naming a package's
+    directory (#504) — can then ask for it without importing any language's
+    extractor, which would load that language's grammar for every run (#506).
+    """
+
+    def module_fqn(self, file_path: str) -> str:
+        """The module FQN this extractor gives `file_path`."""
+        ...
 
 
 class BaseExtractor(ABC):

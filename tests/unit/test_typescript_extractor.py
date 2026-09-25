@@ -335,3 +335,14 @@ def test_typescript_extractor_source_roots_unmatched_root() -> None:
     nodes, _ = ext.parse(code, "src/api/handler.ts")
     fqns = [n.id for n in nodes]
     assert any(fqn.startswith("src.api.") for fqn in fqns)
+
+
+def test_module_fqn_is_the_fqn_parse_gives_the_file() -> None:
+    """The workspace-package map names directories with this (#504).
+
+    So it must be the rule `parse` itself uses, not a copy of it.
+    """
+    extractor = TypeScriptExtractor(source_roots=["src"])
+    nodes, _ = extractor.parse("export const x = 1;\n", "src/pkg/index.ts")
+    (file_node,) = (n for n in nodes if n.type == NodeType.FILE)
+    assert extractor.module_fqn("src/pkg/index.ts") == file_node.id == "pkg"

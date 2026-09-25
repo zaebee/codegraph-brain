@@ -1,5 +1,7 @@
 """Symbol resolution strategies over a SymbolIndex."""
 
+from collections.abc import Mapping
+
 from cgis.core.models import RAW_CLASS_PREFIX, Edge, EdgeType, Node, NodeNamespace
 from cgis.resolver.indices import IndexBuilder, SymbolIndex
 
@@ -78,9 +80,14 @@ class SymbolResolver:
     without building it themselves.
     """
 
-    def __init__(self, nodes: list[Node], edges: list[Edge]) -> None:
+    def __init__(
+        self,
+        nodes: list[Node],
+        edges: list[Edge],
+        workspace_packages: Mapping[str, str] | None = None,
+    ) -> None:
         """Build the symbol index from nodes, then the inheritance tree from EXTENDS edges."""
-        self.index: SymbolIndex = IndexBuilder().build(nodes)
+        self.index: SymbolIndex = IndexBuilder().build(nodes, workspace_packages)
         # class_fqn -> [resolved parent FQNs] built from EXTENDS edges
         self._inheritance_tree: dict[str, list[str]] = {}
         for edge in edges:
