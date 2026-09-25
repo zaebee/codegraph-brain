@@ -5,7 +5,7 @@ import os
 import sqlite3
 import time
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -19,6 +19,9 @@ from cgis.core.models import (
     NodeType,
 )
 from cgis.core.paths import is_excluded_dir, is_test_path
+
+#: `ingest_state` key for the workspace packages imports were resolved against (#504).
+_WORKSPACE_PACKAGES_KEY = "workspace_packages"
 
 RAW_CALL_PREFIX = "raw_call:"
 _DELETE_ALL_NODES = "DELETE FROM nodes"
@@ -1064,6 +1067,37 @@ class SQLiteStore:
         if not {"root", "ingested_at"} <= rows.keys():
             return None
         return rows["root"], float(rows["ingested_at"])
+
+    def record_workspace_packages(self, packages: Mapping[str, str]) -> None:
+        """Record the workspace packages TypeScript imports were resolved against (#504).
+
+        Stored as sorted JSON in `ingest_state`, so an unchanged mapping reads back
+        equal on the next run and only a real change triggers a rebuild.
+        """
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        self._conn.execute(
+            "INSERT OR REPLACE INTO ingest_state (key, value) VALUES (?, ?)",
+            (_WORKSPACE_PACKAGES_KEY, json.dumps(dict(sorted(packages.items())))),
+        )
+        self._conn.commit()
+
+    def get_workspace_packages(self) -> dict[str, str] | None:
+        """The recorded workspace packages, or None on a graph that predates recording them.
+
+        None rather than an empty mapping: a graph built before #504 resolved no
+        workspace imports at all, and reading its silence as "no packages" would
+        leave those edges unresolved on a repository that does have them.
+        """
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        row = self._conn.execute(
+            "SELECT value FROM ingest_state WHERE key = ?", (_WORKSPACE_PACKAGES_KEY,)
+        ).fetchone()
+        if row is None:
+            return None
+        loaded = json.loads(row["value"])
+        return {str(k): str(v) for k, v in loaded.items()} if isinstance(loaded, dict) else None
 
     def get_all_tracked_files(self) -> set[str]:
         """Return the set of all file paths currently tracked in files_state."""

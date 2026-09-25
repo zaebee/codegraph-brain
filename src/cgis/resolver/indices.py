@@ -14,6 +14,8 @@ _BUILTINS: frozenset[str] = frozenset(dir(builtins))
 
 #: Sources whose references read against Python's stdlib, builtins and import roots.
 _PYTHON_SUFFIXES: tuple[str, ...] = (".py",)
+#: The suffixes the TypeScript extractor handles; `.js`/`.jsx` are not ingested (registry.py).
+_TYPESCRIPT_SUFFIXES = (".ts", ".tsx")
 
 
 @dataclass(frozen=True)
@@ -66,6 +68,12 @@ class SymbolIndex:
     # import maps, never guessed — kept apart from `internal_roots` so a target can
     # be reconciled by stripping *these* and nothing else (#494).
     layout_prefixes: frozenset[str] = frozenset()
+    # dotted workspace package name -> the directory FQN it lives at, longest name
+    # first: `@calcom.lib` -> `packages.lib`. Read from the `package.json` files the
+    # pipeline walked, never guessed, and consulted only for TypeScript sources
+    # (#504). Longest first because npm names may contain dots, so once `/` is
+    # dotted `a.b` is both "package a, subpath b" and "package a.b".
+    workspace_packages: Mapping[str, str] = MappingProxyType({})
 
     def resolve_import_target(self, fqn: str, source_file: str | None = None) -> str | None:
         """Reconcile a module import against the node ids, or None to leave it alone.
@@ -92,6 +100,8 @@ class SymbolIndex:
         """
         if fqn in self.nodes:
             return fqn
+        if source_file is not None and source_file.endswith(_TYPESCRIPT_SUFFIXES):
+            return self._resolve_workspace_import(fqn)
         if source_file is not None and not source_file.endswith(_PYTHON_SUFFIXES):
             return None
         parts = fqn.split(".")
@@ -101,6 +111,30 @@ class SymbolIndex:
             candidate = ".".join(parts[index + 1 :])
             if candidate in self.nodes:
                 return candidate
+        return None
+
+    def _resolve_workspace_import(self, fqn: str) -> str | None:
+        """Map a TypeScript import of a workspace package onto the module it names.
+
+        `@calcom.lib.hooks.useLocale` becomes `packages.lib.hooks.useLocale` when the
+        pipeline found a `package.json` named `@calcom/lib` in `packages/lib`. The
+        package root is tried before `src/`, a common layout for a package's sources.
+
+        The name must match on a segment boundary, so `@x/a` never claims
+        `@x/a-b`. The first — longest — package that matches decides: falling back
+        to a shorter one would read `a.b.util` as package `a` when package `a.b`
+        was meant. And the rewrite happens only onto a node that exists; otherwise
+        None, leaving the edge visibly unresolved rather than on a plausible name.
+        """
+        for name, directory in self.workspace_packages.items():
+            if fqn != name and not fqn.startswith(name + "."):
+                continue
+            subpath = fqn[len(name) + 1 :]
+            for base in (directory, f"{directory}.src"):
+                candidate = f"{base}.{subpath}" if subpath else base
+                if candidate in self.nodes:
+                    return candidate
+            return None
         return None
 
     def map_to_node_fqn(self, imported_fqn: str) -> str | None:
@@ -293,8 +327,14 @@ class IndexBuilder:
     so it belongs to SymbolResolver (spec §2.4).
     """
 
-    def build(self, nodes: list[Node]) -> SymbolIndex:
-        """Index all nodes for fast resolution and return the frozen index."""
+    def build(
+        self, nodes: list[Node], workspace_packages: Mapping[str, str] | None = None
+    ) -> SymbolIndex:
+        """Index all nodes for fast resolution and return the frozen index.
+
+        `workspace_packages` maps dotted package names to directory FQNs (#504); it
+        is stored longest name first, the order `_resolve_workspace_import` relies on.
+        """
         nodes_by_id = {n.id: n for n in nodes}
         global_symbols: dict[str, list[str]] = {}
         file_global_symbols: dict[tuple[str, str], list[str]] = {}
@@ -357,6 +397,9 @@ class IndexBuilder:
             internal_roots=frozenset(internal_roots | first_party),
             external_roots=frozenset(external_roots),
             layout_prefixes=frozenset(corroborated - internal_roots),
+            workspace_packages=MappingProxyType(
+                dict(sorted((workspace_packages or {}).items(), key=lambda item: -len(item[0])))
+            ),
         )
 
     @staticmethod

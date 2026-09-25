@@ -17,6 +17,7 @@ from cgis.core.paths import EXCLUDED_DIRS
 from cgis.extractors.base import BaseExtractor
 from cgis.resolver.engine import ResolverEngine
 from cgis.resolver.uplift import SemanticUpliftEngine
+from cgis.workspaces import PACKAGE_MANIFEST, WorkspacePackages
 
 if TYPE_CHECKING:
     from cgis.storage.sqlite_store import SQLiteStore
@@ -122,8 +123,8 @@ class IngestionPipeline:
         # file_path -> new hash, only for files that were re-extracted
         changed_files: dict[str, str] = {}
         found_file_paths: set[str] = set()
-
         workspace_root = self.workspace_root(repo_path)
+        packages = WorkspacePackages(workspace_root, self._extractors)
 
         with Progress(
             SpinnerColumn(),
@@ -137,6 +138,8 @@ class IngestionPipeline:
             for root, dirs, files in workspace_root.walk():
                 dirs[:] = [d for d in dirs if not d.startswith(".") and d not in self._excluded]
                 for file in files:
+                    if file == PACKAGE_MANIFEST:
+                        packages.note(root / file)
                     extractor = self._get_extractor(file)
                     if not extractor:
                         continue
@@ -168,14 +171,24 @@ class IngestionPipeline:
             # nothing went stale, the persisted graph is already correct.
             # Re-running the resolver + persistence + uplift would rebuild the
             # whole graph from the DB for zero benefit, so skip them entirely.
-            if self._is_noop_incremental(store, changed_files, found_file_paths):
+            workspace_packages = packages.unambiguous()
+            # A renamed or moved package changes what unchanged files' imports mean,
+            # and an incremental run re-resolves only changed files (#504).
+            packages_changed = (
+                store is not None
+                and not rebuild
+                and (store.get_workspace_packages() or {}) != workspace_packages
+            )
+            if not packages_changed and self._is_noop_incremental(
+                store, changed_files, found_file_paths
+            ):
                 logger.info("No changes detected — skipping resolution and persistence.")
                 return all_nodes, all_edges, []
 
             # Task 2: Resolution
             resolve_task = progress.add_task(description="Resolving semantic links...", total=None)
             logger.info("Starting resolution phase...")
-            resolver = ResolverEngine(all_nodes, all_edges)
+            resolver = ResolverEngine(all_nodes, all_edges, workspace_packages=workspace_packages)
             resolved_edges, virtual_nodes = resolver.resolve()
             all_nodes.extend(virtual_nodes)
             progress.update(resolve_task, advance=1)
@@ -187,6 +200,9 @@ class IngestionPipeline:
 
         if store is None:
             return all_nodes, all_edges, resolved_edges
+        if packages_changed:
+            logger.info("Workspace packages changed — rebuilding the graph.")
+            return self.run(repo_path, store=store, rebuild=True)
         if self._cross_file_inputs_changed(
             store, all_nodes, resolved_edges, changed_files, found_file_paths, rebuild
         ):
@@ -204,6 +220,7 @@ class IngestionPipeline:
             virtual_nodes,
             rebuild,
         )
+        store.record_workspace_packages(workspace_packages)
         logger.info("Running semantic uplift...")
         SemanticUpliftEngine(store, self._domains_config).execute_uplift()
         logger.info("Semantic uplift complete.")

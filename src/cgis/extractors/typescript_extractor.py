@@ -113,11 +113,20 @@ class TypeScriptExtractor(BaseExtractor):
         lang = tsts.language_tsx() if tsx else tsts.language_typescript()
         self._parser = Parser(Language(lang))
 
+    def module_fqn(self, file_path: str) -> str:
+        """The module FQN this extractor gives `file_path`, with its source root applied.
+
+        `parse` names every file with this, so a caller that needs to spell a path
+        the way the graph's node ids spell it — the workspace-package map naming a
+        package's directory (#504) — gets the same rule rather than a copy of it.
+        """
+        return file_path_to_module_fqn(file_path, self._pick_source_root(file_path))
+
     def parse(self, code: str, file_path: str) -> tuple[list[Node], list[Edge]]:
         """Extract nodes and edges from TypeScript source code."""
         code_bytes = code.encode("utf-8")
         tree = self._parser.parse(code_bytes)
-        module_fqn = file_path_to_module_fqn(file_path, self._pick_source_root(file_path))
+        module_fqn = self.module_fqn(file_path)
 
         file_node = Node(
             id=module_fqn,

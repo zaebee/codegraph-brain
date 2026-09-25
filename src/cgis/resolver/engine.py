@@ -1,5 +1,7 @@
 """Implements ResolverEngine class."""
 
+from collections.abc import Mapping
+
 from cgis.core.models import (
     RAW_CLASS_PREFIX,
     SELF_PREFIX,
@@ -55,10 +57,21 @@ class ResolverEngine:
     creation (spec §2.5).
     """
 
-    def __init__(self, nodes: list[Node], edges: list[Edge]) -> None:
-        """Build the symbol resolver (which builds the index) from the extracted graph."""
+    def __init__(
+        self,
+        nodes: list[Node],
+        edges: list[Edge],
+        *,
+        workspace_packages: Mapping[str, str] | None = None,
+    ) -> None:
+        """Build the symbol resolver (which builds the index) from the extracted graph.
+
+        `workspace_packages` maps dotted package names to directory FQNs, from the
+        `package.json` files the pipeline walked, so TypeScript imports of a
+        workspace package resolve to its modules (#504).
+        """
         self.edges = edges
-        self._resolver = SymbolResolver(nodes, edges)
+        self._resolver = SymbolResolver(nodes, edges, workspace_packages)
         self._index = self._resolver.index
 
     def resolve(self) -> tuple[list[Edge], list[Node]]:
