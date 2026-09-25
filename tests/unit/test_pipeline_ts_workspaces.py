@@ -10,6 +10,8 @@ package that no longer carries that name.
 
 import json
 import sqlite3
+import subprocess
+import sys
 from pathlib import Path
 
 from cgis.core.models import EdgeType
@@ -116,3 +118,16 @@ def test_renaming_a_package_rebuilds_so_an_unchanged_importer_follows(tmp_path: 
         )
     ]
     assert targets == ["@x.lib.util"]
+
+
+def test_importing_the_pipeline_does_not_load_a_language_grammar() -> None:
+    """The pipeline is language-agnostic; workspace support must not change that (#506 review).
+
+    Run in a fresh interpreter: in this one, other tests have already imported the
+    TypeScript extractor, so `sys.modules` would say nothing about the pipeline.
+    """
+    probe = "import sys, cgis.pipeline; print('tree_sitter_typescript' in sys.modules)"
+    result = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, text=True, check=True
+    )
+    assert result.stdout.strip() == "False"

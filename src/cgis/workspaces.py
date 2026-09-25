@@ -12,8 +12,7 @@ from pathlib import Path
 
 import structlog
 
-from cgis.extractors.base import BaseExtractor
-from cgis.extractors.typescript_extractor import TypeScriptExtractor
+from cgis.extractors.base import BaseExtractor, ModuleNamer
 
 logger = structlog.getLogger(__name__)
 
@@ -27,13 +26,13 @@ class WorkspacePackages:
     def __init__(self, workspace_root: Path, extractors: Mapping[str, BaseExtractor]) -> None:
         """Collect for `workspace_root`, naming directories with the TypeScript extractor's rule.
 
-        With no TypeScript extractor configured there is nothing to resolve, and
-        every manifest is ignored.
+        The extractor is the one registered for `.ts`, chosen by extension rather
+        than by class, so this module imports no language's extractor (#506). With
+        none configured, or one that cannot name modules, every manifest is ignored.
         """
         self._root = workspace_root
-        self._extractor = next(
-            (e for e in extractors.values() if isinstance(e, TypeScriptExtractor)), None
-        )
+        extractor = extractors.get(".ts") or extractors.get(".tsx")
+        self._extractor = extractor if isinstance(extractor, ModuleNamer) else None
         # dotted package name -> every directory FQN that claims it
         self._claims: dict[str, set[str]] = {}
 
