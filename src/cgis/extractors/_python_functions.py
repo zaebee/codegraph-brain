@@ -411,6 +411,37 @@ class FunctionHandler:
 _NO_RECEIVER_DECORATORS = frozenset({"staticmethod"})
 
 
+def _receiver_name(node: BaseNode, code_bytes: bytes, decorators: list[str] | None) -> str | None:
+    """The name a method's first parameter binds the receiver to, or None if it has none.
+
+    None for a staticmethod, whose first parameter is an ordinary argument, and
+    for a method declared with no parameters at all.
+    """
+    if decorators and any(d.rsplit(".", 1)[-1] in _NO_RECEIVER_DECORATORS for d in decorators):
+        return None
+    params = node.child_by_field_name("parameters")
+    first = params.named_children[0] if params is not None and params.named_children else None
+    if first is None:
+        return None
+    ident = first if first.type == "identifier" else first.child_by_field_name("name")
+    if ident is None and first.named_children:
+        ident = first.named_children[0]
+    if ident is None or ident.type != "identifier":
+        return None
+    return get_identifier(ident, code_bytes)
+
+
+def _receiver_attribute(node: BaseNode, code_bytes: bytes, receiver: str) -> str | None:
+    """The attribute name when `node` is `<receiver>.<attribute>`, else None."""
+    if node.type != "attribute":
+        return None
+    obj = node.child_by_field_name("object")
+    attr = node.child_by_field_name("attribute")
+    if obj is None or attr is None or obj.type != "identifier":
+        return None
+    return get_identifier(attr, code_bytes) if get_identifier(obj, code_bytes) == receiver else None
+
+
 def receiver_attribute_names(
     node: BaseNode, code_bytes: bytes, decorators: list[str] | None = None
 ) -> list[str]:
@@ -424,17 +455,7 @@ def receiver_attribute_names(
     A nested class is not walked: its own methods' `self` is another object. A
     nested function is, because a closure over `self` uses the same state.
     """
-    if decorators and any(d.rsplit(".", 1)[-1] in _NO_RECEIVER_DECORATORS for d in decorators):
-        return []
-    params = node.child_by_field_name("parameters")
-    receiver = None
-    for param in params.named_children if params is not None else []:
-        ident = param if param.type == "identifier" else param.child_by_field_name("name")
-        if ident is None and param.named_children:
-            ident = param.named_children[0]
-        if ident is not None and ident.type == "identifier":
-            receiver = get_identifier(ident, code_bytes)
-        break
+    receiver = _receiver_name(node, code_bytes, decorators)
     body = node.child_by_field_name("body")
     if receiver is None or body is None:
         return []
@@ -444,16 +465,9 @@ def receiver_attribute_names(
         current = stack.pop()
         if current.type == "class_definition":
             continue
-        if current.type == "attribute":
-            obj = current.child_by_field_name("object")
-            attr = current.child_by_field_name("attribute")
-            if (
-                obj is not None
-                and attr is not None
-                and obj.type == "identifier"
-                and get_identifier(obj, code_bytes) == receiver
-            ):
-                names.add(get_identifier(attr, code_bytes))
+        name = _receiver_attribute(current, code_bytes, receiver)
+        if name is not None:
+            names.add(name)
         stack.extend(current.children)
     return sorted(names)
 
