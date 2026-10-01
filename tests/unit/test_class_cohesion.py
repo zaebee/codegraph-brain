@@ -81,6 +81,20 @@ def test_a_closure_counts_and_a_nested_class_does_not() -> None:
     assert attrs["m"] == ["other"]  # B.m's own receiver, recorded on B.m
 
 
+def test_a_nested_scope_rebinding_the_receiver_is_not_walked() -> None:
+    """Inside `def helper(self)` or `lambda self: ...`, `self` is that scope's own argument."""
+    code = (
+        "class A:\n"
+        "    def outer(self):\n"
+        "        def helper(self):\n"
+        "            return self.theirs\n"
+        "        pick = lambda self: self.also_theirs\n"
+        "        keep = lambda other: self.mine\n"
+        "        return helper, pick, keep\n"
+    )
+    assert _attrs(code)["outer"] == ["mine"]
+
+
 def test_a_function_outside_a_class_has_no_record() -> None:
     nodes, _ = PythonExtractor().parse("def f(self):\n    return self.x\n", "m.py")
     (func,) = (n for n in nodes if n.type == NodeType.FUNCTION)

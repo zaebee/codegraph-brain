@@ -419,16 +419,29 @@ def _receiver_name(node: BaseNode, code_bytes: bytes, decorators: list[str] | No
     """
     if decorators and any(d.rsplit(".", 1)[-1] in _NO_RECEIVER_DECORATORS for d in decorators):
         return None
+    names = _parameter_names(node, code_bytes)
+    return names[0] if names else None
+
+
+def _parameter_names(node: BaseNode, code_bytes: bytes) -> list[str]:
+    """The names a function or lambda binds as parameters, in order.
+
+    Covers plain, typed and defaulted parameters (`self`, `self: A`,
+    `n: int = 1`); `*args`/`**kw` splats are skipped, being no receiver.
+    """
     params = node.child_by_field_name("parameters")
-    first = params.named_children[0] if params is not None and params.named_children else None
-    if first is None:
-        return None
-    ident = first if first.type == "identifier" else first.child_by_field_name("name")
-    if ident is None and first.named_children:
-        ident = first.named_children[0]
-    if ident is None or ident.type != "identifier":
-        return None
-    return get_identifier(ident, code_bytes)
+    names: list[str] = []
+    for param in params.named_children if params is not None else []:
+        ident = param if param.type == "identifier" else param.child_by_field_name("name")
+        if ident is None and param.named_children:
+            ident = param.named_children[0]
+        if ident is not None and ident.type == "identifier":
+            names.append(get_identifier(ident, code_bytes))
+    return names
+
+
+#: Scopes whose parameters can rebind the receiver's name inside a method body.
+_REBINDING_SCOPES = frozenset({"function_definition", "lambda"})
 
 
 def _receiver_attribute(node: BaseNode, code_bytes: bytes, receiver: str) -> str | None:
@@ -453,7 +466,9 @@ def receiver_attribute_names(
     classmethod counts too; a staticmethod has none and gives `[]`.
 
     A nested class is not walked: its own methods' `self` is another object. A
-    nested function is, because a closure over `self` uses the same state.
+    nested function or lambda is, because a closure over `self` uses the same
+    state — unless one of its parameters takes the receiver's name, after which
+    that name means something else inside it (#521 review).
     """
     receiver = _receiver_name(node, code_bytes, decorators)
     body = node.child_by_field_name("body")
@@ -463,7 +478,9 @@ def receiver_attribute_names(
     stack = [body]
     while stack:
         current = stack.pop()
-        if current.type == "class_definition":
+        if current.type == "class_definition" or (
+            current.type in _REBINDING_SCOPES and receiver in _parameter_names(current, code_bytes)
+        ):
             continue
         name = _receiver_attribute(current, code_bytes, receiver)
         if name is not None:

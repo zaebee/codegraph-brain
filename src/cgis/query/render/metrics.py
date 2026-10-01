@@ -225,6 +225,16 @@ WHERE e.type = 'DECLARES' AND c.type = 'CLASS' AND m.type = 'METHOD'
   AND c.namespace = 'INTERNAL'{filter_sql}
 """
 
+#: CALLS edges between two methods of one class, joined in DuckDB so only those
+#: leave the database rather than every call in the graph (#521 review).
+_INTRA_CLASS_CALLS_QUERY = """
+SELECT e.source, e.target
+FROM edges e
+JOIN edges ds ON ds.target = e.source AND ds.type = 'DECLARES'
+JOIN edges dt ON dt.target = e.target AND dt.type = 'DECLARES'
+WHERE e.type = 'CALLS' AND ds.source = dt.source
+"""
+
 #: Decorators that take a method out of LCOM4: it does not work on the instance.
 _NOT_INSTANCE_DECORATORS = frozenset({"staticmethod", "classmethod"})
 
@@ -489,9 +499,7 @@ def class_cohesion_metrics(
             by_class.setdefault(str(class_id), {})[str(method_id)] = (str(name), attrs)
     owner = {m: c for c, methods in by_class.items() for m in methods}
     calls: dict[str, set[tuple[str, str]]] = {}
-    for source, target in analyzer.conn.execute(
-        "SELECT source, target FROM edges WHERE type = 'CALLS'"
-    ).fetchall():
+    for source, target in analyzer.conn.execute(_INTRA_CLASS_CALLS_QUERY).fetchall():
         cls = owner.get(str(source))
         if cls is not None and owner.get(str(target)) == cls:
             calls.setdefault(cls, set()).add((str(source), str(target)))
