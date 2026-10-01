@@ -2,10 +2,12 @@
 
 import builtins
 import os
+import posixpath
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
+from typing import NamedTuple
 
 from cgis.core.models import SELF_PREFIX, Node, NodeNamespace, NodeType
 from cgis.resolver.js_builtins import JS_BUILTINS_ROOT
@@ -18,6 +20,19 @@ _PYTHON_SUFFIXES: tuple[str, ...] = (".py",)
 _TYPESCRIPT_SUFFIXES = (".ts", ".tsx")
 #: What a declaration file's module FQN ends in: `Calendar.d.ts` -> `Calendar.d` (#507).
 _DECLARATION_SUFFIX = ".d"
+#: The wildcard of a tsconfig `paths` alias, kept in its dotted spelling (#508).
+_ALIAS_WILDCARD = "*"
+
+
+class PathAlias(NamedTuple):
+    """One tsconfig `paths` entry, dotted: `@lib.*` -> (`apps.web.lib.*`,) (#508)."""
+
+    #: The pattern without its trailing `*`: what a matching import starts with.
+    prefix: str
+    #: Whether the pattern ended in `*`; otherwise it must equal the import.
+    wildcard: bool
+    #: Target FQNs in the order TypeScript tries them; a `*` takes the remainder.
+    targets: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -76,6 +91,10 @@ class SymbolIndex:
     # (#504). Longest first because npm names may contain dots, so once `/` is
     # dotted `a.b` is both "package a, subpath b" and "package a.b".
     workspace_packages: Mapping[str, str] = MappingProxyType({})
+    # project directory -> its tsconfig `paths` aliases, exact patterns first and
+    # then wildcards longest prefix first — the order TypeScript picks one in.
+    # A file uses the nearest project above it (#508).
+    path_aliases: Mapping[str, tuple[PathAlias, ...]] = MappingProxyType({})
 
     def resolve_import_target(self, fqn: str, source_file: str | None = None) -> str | None:
         """Reconcile a module import against the node ids, or None to leave it alone.
@@ -103,7 +122,8 @@ class SymbolIndex:
         if fqn in self.nodes:
             return fqn
         if source_file is not None and source_file.endswith(_TYPESCRIPT_SUFFIXES):
-            return _resolve_typescript_import(fqn, self.nodes, self.workspace_packages)
+            aliased = _alias_candidates(fqn, source_file, self.path_aliases)
+            return _resolve_typescript_import(fqn, self.nodes, self.workspace_packages, aliased)
         if source_file is not None and not source_file.endswith(_PYTHON_SUFFIXES):
             return None
         parts = fqn.split(".")
@@ -298,7 +318,10 @@ def _strips_to_a_node(imported_fqn: str, node_ids: set[str]) -> bool:
 
 
 def _resolve_typescript_import(
-    fqn: str, nodes: Mapping[str, Node], packages: Mapping[str, str]
+    fqn: str,
+    nodes: Mapping[str, Node],
+    packages: Mapping[str, str],
+    aliased: tuple[str, ...] = (),
 ) -> str | None:
     """Reconcile a TypeScript import against the node ids, or None to leave it alone.
 
@@ -310,10 +333,12 @@ def _resolve_typescript_import(
     existing graphs and give `foo.ts` and `foo.d.ts` one id.
 
     The candidates are the target itself — a relative import, already made
-    absolute by the extractor — and then, for a workspace package, the module
-    it names (#504).
+    absolute by the extractor — then what a tsconfig `paths` alias of the
+    importing project rewrites it to (#508), and then, for a workspace package,
+    the module it names (#504). Aliases come before packages because TypeScript
+    consults `paths` before `node_modules`, where a workspace package is linked.
     """
-    for candidate in (fqn, *_workspace_candidates(fqn, packages)):
+    for candidate in (fqn, *aliased, *_workspace_candidates(fqn, packages)):
         for spelled in (candidate, f"{candidate}{_DECLARATION_SUFFIX}"):
             if spelled in nodes:
                 return spelled
@@ -342,6 +367,53 @@ def _workspace_candidates(fqn: str, packages: Mapping[str, str]) -> tuple[str, .
     return ()
 
 
+def _alias_candidates(
+    fqn: str, source_file: str, scopes: Mapping[str, tuple[PathAlias, ...]]
+) -> tuple[str, ...]:
+    """The module FQNs the importing project's tsconfig `paths` rewrite `fqn` to.
+
+    The project is the nearest directory above `source_file` that has a
+    tsconfig; a nearer one without aliases shadows a farther one with them, as
+    it does for the compiler. Within it the first pattern that matches decides,
+    exact before wildcard and longer prefix before shorter — and, as in
+    TypeScript, a pattern whose targets miss does not fall back to another.
+    """
+    if not scopes:
+        return ()
+    directory = posixpath.dirname(source_file.replace(os.sep, "/"))
+    while directory not in scopes:
+        if not directory:
+            return ()
+        directory = posixpath.dirname(directory)
+    for alias in scopes[directory]:
+        if not alias.wildcard:
+            if fqn == alias.prefix:
+                return alias.targets
+            continue
+        if fqn.startswith(alias.prefix):
+            # The remainder may be empty, as in TypeScript (`jquery*` matches
+            # `jquery`): the target is then its directory, so `lib.*` -> `lib`.
+            rest = fqn[len(alias.prefix) :]
+            substituted = (
+                t.replace(_ALIAS_WILDCARD, rest).removesuffix(".") for t in alias.targets
+            )
+            return tuple(candidate for candidate in substituted if candidate)
+    return ()
+
+
+def _ordered_aliases(rules: Mapping[str, list[str]]) -> tuple[PathAlias, ...]:
+    """One project's aliases as `PathAlias`es, in the order TypeScript tries patterns."""
+    aliases = [
+        PathAlias(
+            prefix=pattern.removesuffix(_ALIAS_WILDCARD),
+            wildcard=pattern.endswith(_ALIAS_WILDCARD),
+            targets=tuple(targets),
+        )
+        for pattern, targets in rules.items()
+    ]
+    return tuple(sorted(aliases, key=lambda a: (a.wildcard, -len(a.prefix), a.prefix)))
+
+
 class IndexBuilder:
     """Builds a SymbolIndex from extracted nodes (Phase 1: indexing).
 
@@ -351,12 +423,16 @@ class IndexBuilder:
     """
 
     def build(
-        self, nodes: list[Node], workspace_packages: Mapping[str, str] | None = None
+        self,
+        nodes: list[Node],
+        workspace_packages: Mapping[str, str] | None = None,
+        tsconfig_paths: Mapping[str, Mapping[str, list[str]]] | None = None,
     ) -> SymbolIndex:
         """Index all nodes for fast resolution and return the frozen index.
 
         `workspace_packages` maps dotted package names to directory FQNs (#504); it
         is stored longest name first, the order `_resolve_workspace_import` relies on.
+        `tsconfig_paths` maps a project directory to its dotted aliases (#508).
         """
         nodes_by_id = {n.id: n for n in nodes}
         global_symbols: dict[str, list[str]] = {}
@@ -422,6 +498,9 @@ class IndexBuilder:
             layout_prefixes=frozenset(corroborated - internal_roots),
             workspace_packages=MappingProxyType(
                 dict(sorted((workspace_packages or {}).items(), key=lambda item: -len(item[0])))
+            ),
+            path_aliases=MappingProxyType(
+                {scope: _ordered_aliases(rules) for scope, rules in (tsconfig_paths or {}).items()}
             ),
         )
 

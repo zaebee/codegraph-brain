@@ -85,9 +85,10 @@ class SymbolResolver:
         nodes: list[Node],
         edges: list[Edge],
         workspace_packages: Mapping[str, str] | None = None,
+        tsconfig_paths: Mapping[str, Mapping[str, list[str]]] | None = None,
     ) -> None:
         """Build the symbol index from nodes, then the inheritance tree from EXTENDS edges."""
-        self.index: SymbolIndex = IndexBuilder().build(nodes, workspace_packages)
+        self.index: SymbolIndex = IndexBuilder().build(nodes, workspace_packages, tsconfig_paths)
         # class_fqn -> [resolved parent FQNs] built from EXTENDS edges
         self._inheritance_tree: dict[str, list[str]] = {}
         for edge in edges:

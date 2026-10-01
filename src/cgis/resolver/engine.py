@@ -63,15 +63,18 @@ class ResolverEngine:
         edges: list[Edge],
         *,
         workspace_packages: Mapping[str, str] | None = None,
+        tsconfig_paths: Mapping[str, Mapping[str, list[str]]] | None = None,
     ) -> None:
         """Build the symbol resolver (which builds the index) from the extracted graph.
 
         `workspace_packages` maps dotted package names to directory FQNs, from the
         `package.json` files the pipeline walked, so TypeScript imports of a
-        workspace package resolve to its modules (#504).
+        workspace package resolve to its modules (#504). `tsconfig_paths` maps a
+        project directory to the `compilerOptions.paths` aliases its files import
+        through (#508).
         """
         self.edges = edges
-        self._resolver = SymbolResolver(nodes, edges, workspace_packages)
+        self._resolver = SymbolResolver(nodes, edges, workspace_packages, tsconfig_paths)
         self._index = self._resolver.index
 
     def resolve(self) -> tuple[list[Edge], list[Node]]:

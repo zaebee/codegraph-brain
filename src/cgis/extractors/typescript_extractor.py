@@ -9,6 +9,9 @@ from cgis.extractors._typescript_bindings import shadowed_globals
 from cgis.extractors.base import BaseExtractor
 
 _RAW_CALL_PREFIX = "raw_call:"
+#: `Node.language` for everything this extractor emits, `.ts` and `.tsx` alike;
+#: the field defaults to "python", which every TS node used to be stored as (#504).
+TYPESCRIPT_LANG = "typescript"
 _EXPORT_UNWRAP_TYPES = frozenset(
     {
         "class_declaration",
@@ -78,6 +81,7 @@ def _make_node(fqn: str, name: str, node_type: NodeType, file_path: str, ts_node
         file_path=file_path,
         start_line=ts_node.start_point[0] + 1,
         end_line=ts_node.end_point[0] + 1,
+        language=TYPESCRIPT_LANG,
         namespace=NodeNamespace.INTERNAL,
     )
 
@@ -135,6 +139,7 @@ class TypeScriptExtractor(BaseExtractor):
             file_path=file_path,
             start_line=1,
             end_line=tree.root_node.end_point[0] + 1,
+            language=TYPESCRIPT_LANG,
             namespace=NodeNamespace.INTERNAL,
         )
         shadowed = shadowed_globals(tree.root_node)

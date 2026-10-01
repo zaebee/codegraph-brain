@@ -413,3 +413,13 @@ def test_compile_emits_a_phantom_stub_once_for_repeated_edges() -> None:
     ]
     out = MermaidCompiler().compile([caller], twice)
     assert out.count('["mod.ghost"]') == 1, out
+
+
+def test_node_slug_of_a_typescript_node_peels_its_own_module_prefix() -> None:
+    """A TS node slugs by the TypeScript path rule, not the Python one (#504).
+
+    The Python helper keeps `.tsx` on the path FQN, so no TS node ever matched it
+    and every one fell back to the last-two-segments slug.
+    """
+    node = _make_node_in_file("apps.web.components.Button.render", "apps/web/components/Button.tsx")
+    assert _node_slug(node) == "Button_render"

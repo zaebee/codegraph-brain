@@ -22,6 +22,8 @@ from cgis.core.paths import is_excluded_dir, is_test_path
 
 #: `ingest_state` key for the workspace packages imports were resolved against (#504).
 _WORKSPACE_PACKAGES_KEY = "workspace_packages"
+#: `ingest_state` key for the tsconfig path aliases imports were resolved against (#508).
+_TSCONFIG_PATHS_KEY = "tsconfig_paths"
 
 RAW_CALL_PREFIX = "raw_call:"
 _DELETE_ALL_NODES = "DELETE FROM nodes"
@@ -1074,13 +1076,7 @@ class SQLiteStore:
         Stored as sorted JSON in `ingest_state`, so an unchanged mapping reads back
         equal on the next run and only a real change triggers a rebuild.
         """
-        if not self._conn:
-            raise RuntimeError(self._error_message)
-        self._conn.execute(
-            "INSERT OR REPLACE INTO ingest_state (key, value) VALUES (?, ?)",
-            (_WORKSPACE_PACKAGES_KEY, json.dumps(dict(sorted(packages.items())))),
-        )
-        self._conn.commit()
+        self._record_state_json(_WORKSPACE_PACKAGES_KEY, packages)
 
     def get_workspace_packages(self) -> dict[str, str] | None:
         """The recorded workspace packages, or None on a graph that predates recording them.
@@ -1089,15 +1085,48 @@ class SQLiteStore:
         workspace imports at all, and reading its silence as "no packages" would
         leave those edges unresolved on a repository that does have them.
         """
+        loaded = self._state_json(_WORKSPACE_PACKAGES_KEY)
+        return {str(k): str(v) for k, v in loaded.items()} if isinstance(loaded, dict) else None
+
+    def record_tsconfig_paths(self, aliases: Mapping[str, Mapping[str, list[str]]]) -> None:
+        """Record the tsconfig path aliases TypeScript imports were resolved against (#508).
+
+        Same contract as `record_workspace_packages`: a change rebuilds the graph,
+        because an incremental run re-resolves only the files that changed.
+        """
+        self._record_state_json(_TSCONFIG_PATHS_KEY, aliases)
+
+    def get_tsconfig_paths(self) -> dict[str, dict[str, list[str]]] | None:
+        """The recorded tsconfig path aliases, or None on a graph that predates recording them."""
+        loaded = self._state_json(_TSCONFIG_PATHS_KEY)
+        if not isinstance(loaded, dict):
+            return None
+        return {
+            str(scope): {
+                str(pattern): [str(t) for t in targets]
+                for pattern, targets in rules.items()
+                if isinstance(targets, list)
+            }
+            for scope, rules in loaded.items()
+            if isinstance(rules, dict)
+        }
+
+    def _record_state_json(self, key: str, value: Mapping[str, object]) -> None:
+        """Write `value` to `ingest_state` as key-sorted JSON, so equal values read back equal."""
         if not self._conn:
             raise RuntimeError(self._error_message)
-        row = self._conn.execute(
-            "SELECT value FROM ingest_state WHERE key = ?", (_WORKSPACE_PACKAGES_KEY,)
-        ).fetchone()
-        if row is None:
-            return None
-        loaded = json.loads(row["value"])
-        return {str(k): str(v) for k, v in loaded.items()} if isinstance(loaded, dict) else None
+        self._conn.execute(
+            "INSERT OR REPLACE INTO ingest_state (key, value) VALUES (?, ?)",
+            (key, json.dumps(value, sort_keys=True)),
+        )
+        self._conn.commit()
+
+    def _state_json(self, key: str) -> object:
+        """The JSON value recorded under `key` in `ingest_state`, or None when there is none."""
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        row = self._conn.execute("SELECT value FROM ingest_state WHERE key = ?", (key,)).fetchone()
+        return None if row is None else json.loads(row["value"])
 
     def get_all_tracked_files(self) -> set[str]:
         """Return the set of all file paths currently tracked in files_state."""
