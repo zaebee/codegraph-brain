@@ -20,6 +20,7 @@
     "test:run": "vitest run",
     "preview": "vite preview",
     "lint": "eslint src/",
+    "typecheck": "tsc --noEmit -p .",
     "lint:fix": "eslint src/ --fix",
     "format": "prettier --write src/",
     "format:check": "prettier --check src/",

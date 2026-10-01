@@ -38,8 +38,11 @@ jobs:
 
       - name: Install Dependencies
         # --frozen-lockfile fails when bun.lock is out of step with package.json,
-        # the job's equivalent of `uv lock --check` in ci.yml.
-        run: bun install --frozen-lockfile
+        # the job's equivalent of `uv lock --check` in ci.yml. --ignore-scripts
+        # because no dependency here needs an install hook — verified by running
+        # every step below from a clean install with it — so none gets to run
+        # code on the runner (Sonar githubactions:S6505).
+        run: bun install --frozen-lockfile --ignore-scripts
 
       - name: ESLint
         run: bun run lint
@@ -47,7 +50,9 @@ jobs:
       - name: TypeScript
         # Vite transpiles TypeScript without type-checking it, so `build` below
         # passes a type error. This is the only step that reads the types.
-        run: bunx tsc --noEmit -p .
+        # Through a package script, so it runs the `typescript` pinned in
+        # bun.lock; `bunx tsc` could fetch an unpinned one (Sonar S8543).
+        run: bun run typecheck
 
       - name: Tests
         # vitest, not `bun test`: the native runner has no `vi.mock` hoisting, and
