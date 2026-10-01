@@ -44,7 +44,7 @@ from cgis.guardian.calibrate import (
     judge_score,
 )
 from cgis.guardian.chunked import run_review_routed
-from cgis.guardian.collector import ContextCollector, parse_features
+from cgis.guardian.collector import ContextCollector, features_setting
 from cgis.guardian.martian import (
     DEFAULT_BETA,
     G5_MIN_GAP_PP,
@@ -366,12 +366,15 @@ async def review_one(row: PrPlan, args: argparse.Namespace) -> ReviewRecord:
     skeptic = build_skeptic_provider(os.environ, primary=primary)
     active = resolve_active_providers(primary, skeptic[0].name if skeptic else None)
     fingerprint = compute_fingerprint(disk_reader(REPO_ROOT), active)
+    # One read for the prompt and the record: the row must describe the sections
+    # this review was actually built with (#505).
+    features, features_source = features_setting(os.environ)
     collector = ContextCollector(
         project_root=checkout,
         base_ref=base,
         db_path=db if had_graph else None,
         source_root=SOURCE_ROOT,
-        features=parse_features(os.environ.get("GUARDIAN_FEATURES", "")),
+        features=features,
     )
     started = time.monotonic()
     routed = await run_review_routed(
@@ -392,6 +395,8 @@ async def review_one(row: PrPlan, args: argparse.Namespace) -> ReviewRecord:
         # disagree, which is the failure the pair exists to prevent (#393).
         temperature=sampling,
         temperature_source=sampling_source,
+        features=sorted(features),
+        features_source=features_source,
         findings=routed.result.findings,
         prompt_tokens=provider.cumulative_usage.prompt_tokens,
         completion_tokens=provider.cumulative_usage.completion_tokens,
