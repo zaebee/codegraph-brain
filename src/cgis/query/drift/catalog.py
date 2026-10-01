@@ -83,7 +83,8 @@ def _load_params(d: dict[str, Any]) -> dict[str, float]:
 def _parse_hygiene_baseline(d: dict[str, Any], hygiene_keys: set[str]) -> dict[str, float]:
     """Parse and validate the hygiene_baseline block from a domain binding dict.
 
-    Raises ValueError if any baseline key is not a valid hygiene constraint key.
+    Raises ValueError if any baseline key is not a valid hygiene constraint key,
+    and TypeError if a value is not numeric (int, float, or bool).
     """
     raw = d.get("hygiene_baseline")
     if raw is None:
@@ -98,6 +99,12 @@ def _parse_hygiene_baseline(d: dict[str, Any], hygiene_keys: set[str]) -> dict[s
                 f"names no hygiene constraint; valid keys: {valid}"
             )
             raise ValueError(msg)
+        if not isinstance(val, (int, float)):
+            msg = (
+                f"Domain '{d.get('name', '?')}' hygiene_baseline key '{key}' "
+                f"must be numeric, got {val!r}."
+            )
+            raise TypeError(msg)
         result[key] = float(val)
     return result
 
@@ -195,7 +202,7 @@ class PatternCatalog:
 
     def __init__(self, patterns_config: str) -> None:
         """Load and parse the patterns YAML file at patterns_config path."""
-        content = yaml.safe_load(Path(patterns_config).read_text())
+        content = yaml.safe_load(Path(patterns_config).read_text(encoding="utf-8"))
         raw: dict[str, Any] = content if isinstance(content, dict) else {}
         self._weights: dict[str, float] = raw.get("drift_weights") or {}
         #: Template name -> its declaration, in file order.

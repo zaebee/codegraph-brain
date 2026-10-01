@@ -1310,6 +1310,18 @@ def test_stray_baseline_key_rejected(tmp_path: Path) -> None:
         DriftScorer(str(p)).load_project_domains()
 
 
+def test_non_numeric_baseline_value_rejected(tmp_path: Path) -> None:
+    """A non-numeric hygiene_baseline value fails at load time, naming the key (#524)."""
+    bad_yaml = _YAML.replace(
+        "drift_tolerance: 0.15",
+        "drift_tolerance: 0.15\n    hygiene_baseline:\n      cycle_ratio: lots",
+    )
+    p = tmp_path / "bad.yaml"
+    p.write_text(bad_yaml)
+    with pytest.raises(TypeError, match="hygiene_baseline key 'cycle_ratio' must be numeric"):
+        DriftScorer(str(p)).load_project_domains()
+
+
 # ---------------------------------------------------------------------------
 # _apply_baseline: min and exact operator coverage (#176/#170 task 5e)
 # ---------------------------------------------------------------------------
