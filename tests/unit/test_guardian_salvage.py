@@ -13,6 +13,7 @@ salvaging is a rescue, not a measurement, so a salvaged review is still flagged
 """
 
 import json
+from pathlib import Path
 from typing import ClassVar
 
 import pytest
@@ -209,11 +210,24 @@ class TestSalvagedFindingsAreStillJudged:
         assert skeptic.calls == 0
 
 
+class _StubSource:
+    """Minimal stand-in for SourceCollector: what `evidence_for` reads, and nothing else.
+
+    A real object rather than None, so the test still runs with
+    GUARDIAN_EVIDENCE=1 in the host environment.
+    """
+
+    project_root = Path()
+
+    def get_changed_source_files(self) -> list[str]:
+        """No changed files: evidence has nothing to check."""
+        return []
+
+
 class _StubCollector:
     """Minimal stand-in for ContextCollector."""
 
-    #: Handed to `evidence_for`, which never reads it with the flag off.
-    source = None
+    source = _StubSource()
 
     def collect_all(self) -> dict[str, str]:
         """Return a context with just a diff."""
