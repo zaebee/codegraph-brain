@@ -21,7 +21,7 @@ import random
 import statistics
 
 from cgis.core.models import Edge, EdgeType, Node
-from cgis.query.drift.drift import DomainConfig
+from cgis.query.drift.catalog import DomainConfig
 from cgis.query.drift.ontology_init import discover_domains
 from cgis.query.drift.quotient import QUOTIENT_PREFIX, build_quotient
 from cgis.query.drift.triads import TRIAD_ORDER, normalized_census, triad_census
