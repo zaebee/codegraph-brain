@@ -12,6 +12,7 @@ importing this module is fine without it, but constructing :class:`DuckDBAnalyze
 raises a clear error so the CLI can degrade gracefully.
 """
 
+import json
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -213,6 +214,31 @@ LIMIT ?
 """
 
 
+#: A class's methods with their metadata, by DECLARES — the edge the extractor
+#: emits from a class to each method it defines (#451).
+_CLASS_METHODS_QUERY = """
+SELECT c.id, m.id, m.name, m.metadata
+FROM edges e
+JOIN nodes c ON e.source = c.id
+JOIN nodes m ON e.target = m.id
+WHERE e.type = 'DECLARES' AND c.type = 'CLASS' AND m.type = 'METHOD'
+  AND c.namespace = 'INTERNAL'{filter_sql}
+"""
+
+#: CALLS edges between two methods of one class, joined in DuckDB so only those
+#: leave the database rather than every call in the graph (#521 review).
+_INTRA_CLASS_CALLS_QUERY = """
+SELECT e.source, e.target
+FROM edges e
+JOIN edges ds ON ds.target = e.source AND ds.type = 'DECLARES'
+JOIN edges dt ON dt.target = e.target AND dt.type = 'DECLARES'
+WHERE e.type = 'CALLS' AND ds.source = dt.source
+"""
+
+#: Decorators that take a method out of LCOM4: it does not work on the instance.
+_NOT_INSTANCE_DECORATORS = frozenset({"staticmethod", "classmethod"})
+
+
 def _god_class_query(filter_sql: str) -> str:
     """God-class query with optional exclusion/scope fragments on the class id."""
     return f"""
@@ -305,6 +331,22 @@ class FileCoupling(BaseModel):
     instability: float | None
 
 
+class ClassCohesion(BaseModel):
+    """LCOM4 for one class: how many unrelated groups its methods fall into (#451).
+
+    1 is a cohesive class. 2 or more means the methods split into groups that
+    share no field and call nothing across — candidates to be separate classes.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    class_id: str
+    #: The instance methods counted — dunders, abstract, static and class
+    #: methods are left out (see `class_cohesion_metrics`).
+    methods: int
+    lcom4: int
+
+
 class ArchitectureReport(BaseModel):
     """Whole-graph summary an agent or human can read to spot hotspots."""
 
@@ -314,6 +356,7 @@ class ArchitectureReport(BaseModel):
     god_classes: list[NodeMetric]
     critical: list[NodeMetric] = []
     file_coupling: list[FileCoupling] = []
+    class_cohesion: list[ClassCohesion] = []
     resolution: ResolutionMetric
 
 
@@ -372,6 +415,101 @@ def file_coupling_metrics(
         )
         for module, path, ca, ce in rows
     ]
+
+
+def _counts_for_lcom4(name: str, metadata: dict[str, Any]) -> bool:
+    """Whether a method takes part in LCOM4: an instance method of the class's own behaviour.
+
+    Dunders are out, `__init__` first: it assigns every field, so counting it
+    glues nearly every class into one component and LCOM4 reads 1 regardless.
+    Abstract methods have no body to share a field with, and static and class
+    methods do not work on the instance; each would count as a group of its own.
+    """
+    if name.startswith("__") and name.endswith("__"):
+        return False
+    if metadata.get("is_abstract"):
+        return False
+    decorators = metadata.get("decorators") or []
+    return not any(str(d).rsplit(".", 1)[-1] in _NOT_INSTANCE_DECORATORS for d in decorators)
+
+
+def _lcom4(methods: dict[str, tuple[str, list[str]]], calls: set[tuple[str, str]]) -> int:
+    """Connected components over methods linked by a shared attribute or a call.
+
+    ``methods`` maps method id to (name, attributes it touches through its
+    receiver). A method is also joined to its own name, so `self.flush` used
+    anywhere links to the `flush` method — a reference is as much a link as a
+    call.
+    """
+    parent: dict[str, str] = {}
+
+    def find(key: str) -> str:
+        parent.setdefault(key, key)
+        while parent[key] != key:
+            parent[key] = parent[parent[key]]
+            key = parent[key]
+        return key
+
+    def union(a: str, b: str) -> None:
+        parent[find(a)] = find(b)
+
+    for method_id, (name, attrs) in methods.items():
+        union(method_id, f"attr:{name}")
+        for attr in attrs:
+            union(method_id, f"attr:{attr}")
+    for source, target in calls:
+        union(source, target)
+    return len({find(method_id) for method_id in methods})
+
+
+def class_cohesion_metrics(
+    analyzer: "DuckDBAnalyzer",
+    limit: int = 10,
+    exclude: Sequence[str] = (),
+    scope: Sequence[str] = (),
+) -> list[ClassCohesion]:
+    """Internal classes ranked by LCOM4, least cohesive first (#451).
+
+    Methods are linked when they share an attribute of the receiver or one calls
+    the other; LCOM4 is the number of groups that leaves. Which methods count is
+    `_counts_for_lcom4`. A class with no method left to count has no LCOM4 and
+    is not listed.
+
+    A class whose methods carry no ``self_attrs`` comes from a graph built
+    before the extractor recorded them; it is skipped rather than reported as
+    falling apart, since every method would look like it touched nothing.
+    ``exclude`` and ``scope`` match the class FQN. A module function, like the
+    other per-report metrics, because `DuckDBAnalyzer` is at the god-object
+    baseline.
+    """
+    where, params = _segment_exclusion("c.id", exclude)
+    scope_sql, scope_params = _scope_restriction("c.id", scope)
+    rows = analyzer.conn.execute(
+        _CLASS_METHODS_QUERY.format(filter_sql=where + scope_sql), [*params, *scope_params]
+    ).fetchall()
+    by_class: dict[str, dict[str, tuple[str, list[str]]]] = {}
+    stale: set[str] = set()
+    for class_id, method_id, name, raw in rows:
+        metadata = json.loads(raw) if raw else {}
+        if "self_attrs" not in metadata:
+            stale.add(str(class_id))
+            continue
+        if _counts_for_lcom4(str(name), metadata):
+            attrs = [str(a) for a in metadata["self_attrs"]]
+            by_class.setdefault(str(class_id), {})[str(method_id)] = (str(name), attrs)
+    owner = {m: c for c, methods in by_class.items() for m in methods}
+    calls: dict[str, set[tuple[str, str]]] = {}
+    for source, target in analyzer.conn.execute(_INTRA_CLASS_CALLS_QUERY).fetchall():
+        cls = owner.get(str(source))
+        if cls is not None and owner.get(str(target)) == cls:
+            calls.setdefault(cls, set()).add((str(source), str(target)))
+    report = [
+        ClassCohesion(class_id=c, methods=len(methods), lcom4=_lcom4(methods, calls.get(c, set())))
+        for c, methods in by_class.items()
+        if c not in stale and methods
+    ]
+    report.sort(key=lambda r: (-r.lcom4, -r.methods, r.class_id))
+    return report[:limit]
 
 
 class DuckDBAnalyzer:
@@ -571,10 +709,11 @@ class DuckDBAnalyzer:
         god_limit: int = 5,
         critical_limit: int = 10,
         file_limit: int = 10,
+        cohesion_limit: int = 10,
         exclude: Sequence[str] = (),
         scope: Sequence[str] = (),
     ) -> ArchitectureReport:
-        """Bundle node coupling, God classes, PageRank, file coupling and resolution.
+        """Bundle node coupling, God classes, PageRank, file coupling, LCOM4 and resolution.
 
         ``exclude`` and ``scope`` are threaded into all three sections: ``exclude``
         drops any node whose FQN contains one of the given dot-segments (e.g.
@@ -587,5 +726,6 @@ class DuckDBAnalyzer:
             god_classes=self.get_god_classes(god_limit, exclude, scope),
             critical=self.get_pagerank(critical_limit, exclude, scope),
             file_coupling=file_coupling_metrics(self, file_limit, exclude, scope),
+            class_cohesion=class_cohesion_metrics(self, cohesion_limit, exclude, scope),
             resolution=resolution_metric(self, exclude, scope),
         )

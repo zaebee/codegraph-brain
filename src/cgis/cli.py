@@ -1365,7 +1365,7 @@ def context(
 
 
 def _render_metrics(report: ArchitectureReport) -> None:
-    """Print the architecture report: four Rich tables, then the unresolved share."""
+    """Print the architecture report: five Rich tables, then the unresolved share."""
     bottlenecks = Table(title="🔌 Coupling bottlenecks (top by fan-in + fan-out)")
     bottlenecks.add_column("Node", style="cyan")
     bottlenecks.add_column("Type", style="magenta")
@@ -1416,6 +1416,14 @@ def _render_metrics(report: ArchitectureReport) -> None:
             "—" if f.instability is None else f"{f.instability:.2f}",
         )
     console.print(files)
+
+    cohesion = Table(title="🧩 Class cohesion (top by LCOM4 — groups that share nothing)")
+    cohesion.add_column("Class", style="cyan")
+    cohesion.add_column("LCOM4", justify="right", style="red")
+    cohesion.add_column("Methods", justify="right", style="dim")
+    for c in report.class_cohesion:
+        cohesion.add_row(escape(c.class_id), str(c.lcom4), str(c.methods))
+    console.print(cohesion)
 
     # Under the rankings, because it qualifies them: a module whose calls are
     # mostly unresolved looks uncoupled only because its edges point nowhere (#451).
@@ -1480,6 +1488,7 @@ def metrics(
                 god_limit=limit,
                 critical_limit=limit,
                 file_limit=limit,
+                cohesion_limit=limit,
                 exclude=exclude,
                 scope=scope,
             )

@@ -91,6 +91,11 @@ class FunctionHandler:
             d == "abstractmethod" or d.endswith(".abstractmethod") for d in decorators
         ):
             metadata["is_abstract"] = True
+        if node_type == NodeType.METHOD:
+            # Always written for a method, even empty: its absence then means "a
+            # graph built before this existed", which LCOM4 must skip rather
+            # than read as a method touching no state (#451).
+            metadata["self_attrs"] = receiver_attribute_names(node, code_bytes, decorators)
 
         func_node = Node(
             id=node_id,
@@ -400,6 +405,93 @@ class FunctionHandler:
             )
         if resolved:
             acc.setdefault(class_fqn, {})[attr_name] = resolved
+
+
+#: Decorators after which a method's first parameter is not the instance.
+_NO_RECEIVER_DECORATORS = frozenset({"staticmethod"})
+
+
+def _receiver_name(node: BaseNode, code_bytes: bytes, decorators: list[str] | None) -> str | None:
+    """The name a method's first parameter binds the receiver to, or None if it has none.
+
+    None for a staticmethod, whose first parameter is an ordinary argument, and
+    for a method declared with no parameters at all.
+    """
+    if decorators and any(d.rsplit(".", 1)[-1] in _NO_RECEIVER_DECORATORS for d in decorators):
+        return None
+    names = _parameter_names(node, code_bytes)
+    return names[0] if names else None
+
+
+def _parameter_names(node: BaseNode, code_bytes: bytes) -> list[str]:
+    """The names a function or lambda binds as parameters, in order.
+
+    Covers plain, typed and defaulted parameters (`self`, `self: A`,
+    `n: int = 1`); `*args`/`**kw` splats are skipped, being no receiver.
+    """
+    params = node.child_by_field_name("parameters")
+    names: list[str] = []
+    for param in params.named_children if params is not None else []:
+        if param.type in _SPLAT_PARAMETERS:
+            continue
+        ident = param if param.type == "identifier" else param.child_by_field_name("name")
+        if ident is None and param.named_children:
+            ident = param.named_children[0]
+        if ident is not None and ident.type == "identifier":
+            names.append(get_identifier(ident, code_bytes))
+    return names
+
+
+#: `*args` / `**kw`: they bind a tuple or dict, never the receiver (#521 review).
+_SPLAT_PARAMETERS = frozenset({"list_splat_pattern", "dictionary_splat_pattern"})
+
+#: Scopes whose parameters can rebind the receiver's name inside a method body.
+_REBINDING_SCOPES = frozenset({"function_definition", "lambda"})
+
+
+def _receiver_attribute(node: BaseNode, code_bytes: bytes, receiver: str) -> str | None:
+    """The attribute name when `node` is `<receiver>.<attribute>`, else None."""
+    if node.type != "attribute":
+        return None
+    obj = node.child_by_field_name("object")
+    attr = node.child_by_field_name("attribute")
+    if obj is None or attr is None or obj.type != "identifier":
+        return None
+    return get_identifier(attr, code_bytes) if get_identifier(obj, code_bytes) == receiver else None
+
+
+def receiver_attribute_names(
+    node: BaseNode, code_bytes: bytes, decorators: list[str] | None = None
+) -> list[str]:
+    """The attributes a method reads or writes through its first parameter, sorted (#451).
+
+    `def save(self): self._conn.commit(); self.flush()` gives `["_conn", "flush"]`
+    — fields and methods alike, since LCOM4 links two methods that share either.
+    The receiver is whatever the first parameter is named, so `cls` in a
+    classmethod counts too; a staticmethod has none and gives `[]`.
+
+    A nested class is not walked: its own methods' `self` is another object. A
+    nested function or lambda is, because a closure over `self` uses the same
+    state — unless one of its parameters takes the receiver's name, after which
+    that name means something else inside it (#521 review).
+    """
+    receiver = _receiver_name(node, code_bytes, decorators)
+    body = node.child_by_field_name("body")
+    if receiver is None or body is None:
+        return []
+    names: set[str] = set()
+    stack = [body]
+    while stack:
+        current = stack.pop()
+        if current.type == "class_definition" or (
+            current.type in _REBINDING_SCOPES and receiver in _parameter_names(current, code_bytes)
+        ):
+            continue
+        name = _receiver_attribute(current, code_bytes, receiver)
+        if name is not None:
+            names.add(name)
+        stack.extend(current.children)
+    return sorted(names)
 
 
 def emit_annotation_edges(
