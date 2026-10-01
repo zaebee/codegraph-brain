@@ -121,12 +121,12 @@ async def run_chunked_review(
     result only when EVERY chunk failed; skeptic failure returns the merged
     findings unverified.
     """
-    diff = collector.get_git_diff()
-    if collector.db_path is None:  # routed guard (§4.1) — belt and braces
+    diff = collector.source.get_git_diff()
+    if not collector.graph.has_db():  # routed guard (§4.1) — belt and braces
         _msg = "run_chunked_review requires a graph DB"
         raise RuntimeError(_msg)
-    with SQLiteStore(str(collector.db_path)) as store:
-        chunks = build_chunks(diff, store, source_root=collector.source_root)
+    with SQLiteStore(str(collector.graph.db_path)) as store:
+        chunks = build_chunks(diff, store, source_root=collector.graph.source_root)
     if not chunks:
         if not split_diff_by_file(diff):
             return RoutedReview(
@@ -189,7 +189,7 @@ async def run_chunked_review(
         skeptic_provider,
         merged.findings,
         skeptic_context["diff"],
-        evidence=await evidence_for(collector, os.environ),
+        evidence=await evidence_for(collector.source, os.environ),
     )
     judged = sum(1 for j in judgements if j is not None)
     if judged == 0:
@@ -231,7 +231,7 @@ async def run_review_routed(
         )
 
     chunked = "chunked" in collector.features
-    if chunked and (collector.db_path is None or not collector.db_path.exists()):
+    if chunked and not collector.graph.has_db():
         log.warning("chunked requested but no graph DB; falling back to single pass.")
         chunked = False
     if not chunked:

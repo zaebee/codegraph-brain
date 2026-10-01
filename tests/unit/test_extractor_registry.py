@@ -124,7 +124,7 @@ class TestBuildExtractors:
 class TestModuleFqnRoundTrip:
     """The acceptance test of #344: derive the id the extractor really emitted.
 
-    `_graph_sections` looks a changed file up in `graph.db` by the FQN the
+    `GraphContextCollector.sections` looks a changed file up in `graph.db` by the FQN the
     registry derives. If that string is not byte-identical to the node id the
     extractor wrote, the lookup misses, the collector logs at debug and
     continues, and the review completes with no graph context and no complaint.

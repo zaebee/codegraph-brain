@@ -181,7 +181,6 @@ _KNOWN_GOD_OBJECTS = frozenset(
     {
         "storage.sqlite_store.SQLiteStore",  # data-access layer — many CRUD methods by design
         "extractors.typescript_extractor.TypeScriptExtractor",  # complex AST visitor
-        "guardian.collector.ContextCollector",  # slice-2 chunked: _graph_sections + collect_for_chunk  # noqa: E501
     }
 )
 

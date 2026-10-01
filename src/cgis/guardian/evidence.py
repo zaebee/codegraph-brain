@@ -35,7 +35,7 @@ import structlog
 from pydantic import BaseModel
 
 if TYPE_CHECKING:  # pragma: no cover
-    from cgis.guardian.collector import ContextCollector
+    from cgis.guardian.collector import SourceCollector
 
 log = structlog.getLogger(__name__)
 
@@ -210,7 +210,7 @@ def collect_evidence(project_root: Path, changed_files: tuple[str, ...]) -> Evid
 EVIDENCE_FLAG = "GUARDIAN_EVIDENCE"
 
 
-async def evidence_for(collector: "ContextCollector", env: Mapping[str, str]) -> Evidence | None:
+async def evidence_for(collector: "SourceCollector", env: Mapping[str, str]) -> Evidence | None:
     """Evidence for a review, or None when it is switched off or unavailable.
 
     The single seam every caller uses, so "is the flag on" is decided in one

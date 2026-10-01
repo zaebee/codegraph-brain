@@ -483,7 +483,7 @@ async def run_guardian(
         # verdicts on read, and refuted findings stay in result.findings — so a
         # replay still starts clean, with no second API call to pay for (#279).
         try:
-            save_finder_recording(record_finder, result, collector.get_git_diff())
+            save_finder_recording(record_finder, result, collector.source.get_git_diff())
             log.info("Finder pass recorded.", path=str(record_finder))
         except OSError:
             # OSError only, and the narrowness is the point: an environment
@@ -511,7 +511,7 @@ async def run_guardian(
     posted = False
     if inline_repo is not None and pr is not None:
         try:
-            diff_text = collector.get_git_diff()
+            diff_text = collector.source.get_git_diff()
             content = diff_line_content(diff_text)
             await asyncio.to_thread(  # subprocess `gh api` call — keep the loop responsive
                 post_inline_review,

@@ -138,7 +138,7 @@ class GuardianReviewer:
             result.findings,
             context.get("diff", ""),
             self.concurrency,
-            evidence=await evidence_for(self.context_collector, os.environ),
+            evidence=await evidence_for(self.context_collector.source, os.environ),
         )
         judged = sum(1 for j in judgements if j is not None)
         if judged == 0:

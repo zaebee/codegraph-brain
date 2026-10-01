@@ -121,7 +121,7 @@ def _collector(tmp_path: Path, diff: str, *, with_db: bool = True) -> ContextCol
     collector = ContextCollector(
         project_root=tmp_path, db_path=db if with_db else None, source_root="src"
     )
-    collector._diff_cache = diff  # noqa: SLF001  # bypass git
+    collector.source._diff_cache = diff  # noqa: SLF001  # bypass git
     return collector
 
 
@@ -157,6 +157,17 @@ async def test_chunked_one_finder_call_per_chunk(tmp_path: Path) -> None:
     assert len(provider.prompts) == 2
     assert {f.file for f in routed.result.findings} == {"src/a.py", "src/b.py"}
     assert routed.result.summary.count("- [") == 2
+
+
+@pytest.mark.asyncio
+async def test_chunked_refuses_a_db_path_that_does_not_exist(tmp_path: Path) -> None:
+    """A db_path with no file behind it raises rather than opening a fresh, empty DB."""
+    collector = ContextCollector(project_root=tmp_path, db_path=tmp_path / "missing.db")
+    collector.source._diff_cache = fdiff("src/a.py")  # noqa: SLF001  # bypass git
+    provider = StubProvider([_LGTM])
+    with pytest.raises(RuntimeError, match="requires a graph DB"):
+        await run_chunked_review(provider=provider, collector=collector, skeptic_provider=None)
+    assert not (tmp_path / "missing.db").exists()
 
 
 @pytest.mark.asyncio

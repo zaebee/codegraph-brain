@@ -296,7 +296,7 @@ def test_graph_stats_empty_changed_files(tmp_path: Path) -> None:
     db = tmp_path / "graph.db"
     db.write_bytes(b"")  # db exists but changed files list is empty
     c = ContextCollector(project_root=tmp_path, db_path=db)
-    target = "cgis.guardian.collector.ContextCollector.get_changed_source_files"
+    target = "cgis.guardian.collector.SourceCollector.get_changed_source_files"
     with patch(target, return_value=[]):
         c.collect_graph_context()
     assert c.graph_stats == {"total": 0, "with_graph": 0, "flow_fallback": 0}
@@ -313,7 +313,7 @@ def test_get_git_diff_success(tmp_path: Path) -> None:
     mock_result = MagicMock()
     mock_result.stdout = "diff output"
     with patch("cgis.guardian.collector.subprocess.run", return_value=mock_result):
-        assert c.get_git_diff() == "diff output"
+        assert c.source.get_git_diff() == "diff output"
 
 
 def test_get_git_diff_error(tmp_path: Path) -> None:
@@ -322,7 +322,7 @@ def test_get_git_diff_error(tmp_path: Path) -> None:
     err = subprocess.CalledProcessError(1, "git")
     err.stderr = "fatal: not a repo"
     with patch("cgis.guardian.collector.subprocess.run", side_effect=err):
-        assert "Error getting git diff" in c.get_git_diff()
+        assert "Error getting git diff" in c.source.get_git_diff()
 
 
 def test_get_changed_source_files_keeps_every_language_cgis_can_parse(tmp_path: Path) -> None:
@@ -340,7 +340,7 @@ def test_get_changed_source_files_keeps_every_language_cgis_can_parse(tmp_path: 
         "src/cgis/foo.py\nsrc/app/bar.ts\nsrc/app/Baz.tsx\nsrc/app/old.js\nREADME.md\n"
     )
     with patch("cgis.guardian.collector.subprocess.run", return_value=mock_result):
-        assert c.get_changed_source_files() == [
+        assert c.source.get_changed_source_files() == [
             "src/cgis/foo.py",
             "src/app/bar.ts",
             "src/app/Baz.tsx",
@@ -354,19 +354,21 @@ def test_get_changed_source_files_on_error(tmp_path: Path) -> None:
         "cgis.guardian.collector.subprocess.run",
         side_effect=subprocess.CalledProcessError(1, "git"),
     ):
-        assert c.get_changed_source_files() == []
+        assert c.source.get_changed_source_files() == []
 
 
 def test_read_file_missing(tmp_path: Path) -> None:
     """Returns "" for a missing file so the prompt omits its section."""
-    assert ContextCollector(project_root=tmp_path).read_file("nonexistent.md") == ""
+    assert ContextCollector(project_root=tmp_path).source.read_file("nonexistent.md") == ""
 
 
 def test_read_file_exists(tmp_path: Path) -> None:
     """Returns file contents when file exists."""
     f = tmp_path / "CONTRIBUTING.md"
     f.write_text("hello rules")
-    assert ContextCollector(project_root=tmp_path).read_file("CONTRIBUTING.md") == "hello rules"
+    assert (
+        ContextCollector(project_root=tmp_path).source.read_file("CONTRIBUTING.md") == "hello rules"
+    )
 
 
 # ---------------------------------------------------------------------------

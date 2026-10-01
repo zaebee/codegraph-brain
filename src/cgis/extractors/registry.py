@@ -5,7 +5,7 @@ did not: `cli.py` registered the extractors, `ContextCollector` filtered changed
 files by `.py`, fenced every file as ```python, and derived FQNs with the
 *Python* helper. The last of those is the one that bites — the Python helper
 strips `.py` and collapses `/__init__`, so handing it `src/app/foo.ts` yields
-`src.app.foo.ts`, an id no extractor ever emitted. `_graph_sections` then finds
+`src.app.foo.ts`, an id no extractor ever emitted. `GraphContextCollector.sections` then finds
 nothing, logs at debug, and the review completes looking normal with no graph
 context at all.
 

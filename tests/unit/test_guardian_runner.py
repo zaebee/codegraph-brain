@@ -351,7 +351,7 @@ async def test_run_guardian_posts_inline_and_reports_success(tmp_path: Path) -> 
     with (
         patch.object(collector, "collect_all", return_value={"diff": "d"}),
         patch.object(
-            collector,
+            collector.source,
             "get_git_diff",
             return_value="diff --git a/a.py b/a.py\n+++ b/a.py\n@@ -0,0 +1,1 @@\n+x = 1\n",
         ),
@@ -378,7 +378,7 @@ async def test_run_guardian_inline_failure_falls_back(tmp_path: Path) -> None:
     collector = ContextCollector(project_root=tmp_path)
     with (
         patch.object(collector, "collect_all", return_value={"diff": "d"}),
-        patch.object(collector, "get_git_diff", return_value=""),
+        patch.object(collector.source, "get_git_diff", return_value=""),
         patch(
             "cgis.guardian.runner.post_inline_review",
             side_effect=subprocess.CalledProcessError(1, "gh"),
@@ -434,7 +434,7 @@ async def test_run_guardian_records_the_finder_pass(tmp_path: Path) -> None:
     collector = ContextCollector(project_root=tmp_path)
     with (
         patch.object(collector, "collect_all", return_value={"diff": "d"}),
-        patch.object(collector, "get_git_diff", return_value="the-diff"),
+        patch.object(collector.source, "get_git_diff", return_value="the-diff"),
     ):
         await run_guardian(
             provider=provider,
@@ -457,7 +457,7 @@ async def test_run_guardian_records_nothing_without_the_flag(tmp_path: Path) -> 
     collector = ContextCollector(project_root=tmp_path)
     with (
         patch.object(collector, "collect_all", return_value={"diff": "d"}),
-        patch.object(collector, "get_git_diff", return_value="the-diff"),
+        patch.object(collector.source, "get_git_diff", return_value="the-diff"),
     ):
         await run_guardian(
             provider=provider,
@@ -484,7 +484,7 @@ async def test_refuted_findings_survive_into_the_recording(tmp_path: Path) -> No
     collector = ContextCollector(project_root=tmp_path)
     with (
         patch.object(collector, "collect_all", return_value={"diff": "d"}),
-        patch.object(collector, "get_git_diff", return_value="the-diff"),
+        patch.object(collector.source, "get_git_diff", return_value="the-diff"),
     ):
         await run_guardian(
             provider=provider,
@@ -514,7 +514,7 @@ async def test_a_failed_recording_does_not_lose_the_review(tmp_path: Path) -> No
     collector = ContextCollector(project_root=tmp_path)
     with (
         patch.object(collector, "collect_all", return_value={"diff": "d"}),
-        patch.object(collector, "get_git_diff", return_value="the-diff"),
+        patch.object(collector.source, "get_git_diff", return_value="the-diff"),
         patch(
             "cgis.guardian.runner.save_finder_recording",
             side_effect=OSError("disk full"),
@@ -546,7 +546,7 @@ async def test_a_bad_recording_path_fails_loudly(tmp_path: Path) -> None:
     collector = ContextCollector(project_root=tmp_path)
     with (
         patch.object(collector, "collect_all", return_value={"diff": "d"}),
-        patch.object(collector, "get_git_diff", return_value="the-diff"),
+        patch.object(collector.source, "get_git_diff", return_value="the-diff"),
         pytest.raises(ValueError, match=r"must be a \.json file"),
     ):
         await run_guardian(
