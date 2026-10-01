@@ -53,8 +53,8 @@ def features_setting(env: Mapping[str, str]) -> tuple[frozenset[str], FeaturesSo
     variable twice is how a record comes to describe a prompt it did not have.
     An unknown name still raises, through `parse_features`.
     """
-    raw = env.get("GUARDIAN_FEATURES", "")
-    if not raw.strip():
+    raw = (env.get("GUARDIAN_FEATURES") or "").strip()
+    if not raw:
         return frozenset(), "default"
     return parse_features(raw), "env"
 
