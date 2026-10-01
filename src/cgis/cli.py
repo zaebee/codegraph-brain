@@ -1365,7 +1365,7 @@ def context(
 
 
 def _render_metrics(report: ArchitectureReport) -> None:
-    """Print the architecture report: three Rich tables, then the unresolved share."""
+    """Print the architecture report: four Rich tables, then the unresolved share."""
     bottlenecks = Table(title="🔌 Coupling bottlenecks (top by fan-in + fan-out)")
     bottlenecks.add_column("Node", style="cyan")
     bottlenecks.add_column("Type", style="magenta")
@@ -1401,6 +1401,21 @@ def _render_metrics(report: ArchitectureReport) -> None:
             str(m.out_degree),
         )
     console.print(critical)
+
+    files = Table(title="📄 File coupling (top by Ca + Ce)")
+    files.add_column("Module", style="cyan")
+    files.add_column("Ca", justify="right", style="green")
+    files.add_column("Ce", justify="right", style="yellow")
+    files.add_column("I", justify="right", style="magenta")
+    for f in report.file_coupling:
+        # I is undefined, not zero, for a file linked to no other.
+        files.add_row(
+            escape(f.module),
+            str(f.afferent),
+            str(f.efferent),
+            "—" if f.instability is None else f"{f.instability:.2f}",
+        )
+    console.print(files)
 
     # Under the rankings, because it qualifies them: a module whose calls are
     # mostly unresolved looks uncoupled only because its edges point nowhere (#451).
@@ -1464,6 +1479,7 @@ def metrics(
                 bottleneck_limit=limit,
                 god_limit=limit,
                 critical_limit=limit,
+                file_limit=limit,
                 exclude=exclude,
                 scope=scope,
             )
