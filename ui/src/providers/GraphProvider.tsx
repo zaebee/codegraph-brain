@@ -1,20 +1,19 @@
-import { useEffect, type ReactNode } from 'react'
-import { useGraphStore } from '../store/useGraphStore'
-import { mapNodeToReactFlow } from '../utils/nodeMapper'
-import { mapEdgeToReactFlow } from '../utils/edgeMapper'
-import type { GraphData } from '../types'
+import { useEffect, type ReactNode } from "react";
+import { useGraphStore } from "../store/useGraphStore";
+import { mapNodeToReactFlow } from "../utils/nodeMapper";
+import { mapEdgeToReactFlow } from "../utils/edgeMapper";
+import type { GraphData } from "../types";
 
-const GRAPH_URL =
-  (import.meta.env.VITE_GRAPH_DATA_URL as string | undefined) ?? '/graph.json'
+const GRAPH_URL = (import.meta.env.VITE_GRAPH_DATA_URL as string | undefined) ?? "/graph.json";
 
 export function GraphProvider({ children }: Readonly<{ children: ReactNode }>) {
-  const setGraphData = useGraphStore((s) => s.setGraphData)
+  const setGraphData = useGraphStore((s) => s.setGraphData);
 
   useEffect(() => {
     fetch(GRAPH_URL)
       .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status} loading graph`)
-        return r.json() as Promise<GraphData>
+        if (!r.ok) throw new Error(`HTTP ${r.status} loading graph`);
+        return r.json() as Promise<GraphData>;
       })
       .then((data) =>
         setGraphData(
@@ -24,8 +23,8 @@ export function GraphProvider({ children }: Readonly<{ children: ReactNode }>) {
           data.edges
         )
       )
-      .catch((err) => console.error('GraphProvider: failed to load graph', err))
-  }, [setGraphData])
+      .catch((err) => console.error("GraphProvider: failed to load graph", err));
+  }, [setGraphData]);
 
-  return <>{children}</>
+  return <>{children}</>;
 }

@@ -49,11 +49,11 @@ export const EDGE_LEGEND_ITEMS: LegendItem[] = [
 ];
 
 export const NAMESPACE_COLORS: Record<string, string> = {
-  'owner-api': '#2d6a2d',
-  'owner-web': '#2d2d6a',
-  'ownima-admin': '#5a2d6a',
-  'rider-web': '#1a5a5a',
-  _default: '#546e7a',
+  "owner-api": "#2d6a2d",
+  "owner-web": "#2d2d6a",
+  "ownima-admin": "#5a2d6a",
+  "rider-web": "#1a5a5a",
+  _default: "#546e7a",
 };
 
 // 5-stop color scale: healthy (low fan_out) → sick (high fan_out)
@@ -63,13 +63,13 @@ export const HEATMAP_COLORS: NodeColor[] = [
   { bg: "#3b2a00", border: "#ffb74d", text: "#ffe0b2" }, // 6–9  warning
   { bg: "#3b1500", border: "#ff8a65", text: "#ffccbc" }, // 10–14 danger
   { bg: "#3b0000", border: "#ef9a9a", text: "#ffcdd2" }, // 15+  critical
-]
+];
 
 export function getHeatmapColor(fanOut: number, inCycle: boolean): NodeColor {
-  if (inCycle) return HEATMAP_COLORS[4]
-  if (fanOut <= 2) return HEATMAP_COLORS[0]
-  if (fanOut <= 5) return HEATMAP_COLORS[1]
-  if (fanOut <= 9) return HEATMAP_COLORS[2]
-  if (fanOut <= 14) return HEATMAP_COLORS[3]
-  return HEATMAP_COLORS[4]
+  if (inCycle) return HEATMAP_COLORS[4];
+  if (fanOut <= 2) return HEATMAP_COLORS[0];
+  if (fanOut <= 5) return HEATMAP_COLORS[1];
+  if (fanOut <= 9) return HEATMAP_COLORS[2];
+  if (fanOut <= 14) return HEATMAP_COLORS[3];
+  return HEATMAP_COLORS[4];
 }

@@ -34,28 +34,19 @@ describe("aggregateEdges", () => {
   });
 
   it("sets strokeWidth based on sqrt(count)", () => {
-    const edges = [
-      makeEdge("e1", "a", "b", "CALLS"),
-      makeEdge("e2", "a", "b", "CALLS"),
-    ];
+    const edges = [makeEdge("e1", "a", "b", "CALLS"), makeEdge("e2", "a", "b", "CALLS")];
     const result = aggregateEdges(edges);
     expect(result[0].style?.strokeWidth).toBeCloseTo(Math.sqrt(2) * 1.5);
   });
 
   it("does not aggregate non-CALLS edge types by default", () => {
-    const edges = [
-      makeEdge("e1", "a", "b", "IMPORTS"),
-      makeEdge("e2", "a", "b", "IMPORTS"),
-    ];
+    const edges = [makeEdge("e1", "a", "b", "IMPORTS"), makeEdge("e2", "a", "b", "IMPORTS")];
     const result = aggregateEdges(edges);
     expect(result).toHaveLength(2);
   });
 
   it("aggregates specified types when provided", () => {
-    const edges = [
-      makeEdge("e1", "a", "b", "IMPORTS"),
-      makeEdge("e2", "a", "b", "IMPORTS"),
-    ];
+    const edges = [makeEdge("e1", "a", "b", "IMPORTS"), makeEdge("e2", "a", "b", "IMPORTS")];
     const result = aggregateEdges(edges, ["IMPORTS"]);
     expect(result).toHaveLength(1);
     expect(result[0].label).toBe("×2");

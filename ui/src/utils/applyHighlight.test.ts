@@ -32,10 +32,7 @@ describe("applyContextHighlight", () => {
 
   it("dims non-connected edges", () => {
     const nodes = [makeNode("a"), makeNode("b"), makeNode("c")];
-    const edges = [
-      makeEdge("e1", "a", "b"),
-      makeEdge("e2", "b", "c"),
-    ];
+    const edges = [makeEdge("e1", "a", "b"), makeEdge("e2", "b", "c")];
     const result = applyContextHighlight(nodes, edges, "a");
     // e1 connects a-b
     expect(result.edges[0].style.opacity).toBe(0.8);
@@ -72,8 +69,16 @@ describe("applyContextHighlight", () => {
 
   it("keeps children visible when hovering a fileContainer", () => {
     const container = { id: "file-a", data: { label: "file-a" }, style: { opacity: 1 } };
-    const child1 = { id: "child1", data: { label: "child1", groupId: "file-a" }, style: { opacity: 1 } };
-    const child2 = { id: "child2", data: { label: "child2", groupId: "file-a" }, style: { opacity: 1 } };
+    const child1 = {
+      id: "child1",
+      data: { label: "child1", groupId: "file-a" },
+      style: { opacity: 1 },
+    };
+    const child2 = {
+      id: "child2",
+      data: { label: "child2", groupId: "file-a" },
+      style: { opacity: 1 },
+    };
     const unrelated = makeNode("other");
     const nodes = [container, child1, child2, unrelated];
     const result = applyContextHighlight(nodes, [], "file-a");
@@ -85,8 +90,16 @@ describe("applyContextHighlight", () => {
 
   it("keeps container and siblings visible when hovering a child node", () => {
     const container = { id: "file-a", data: { label: "file-a" }, style: { opacity: 1 } };
-    const child1 = { id: "child1", data: { label: "child1", groupId: "file-a" }, style: { opacity: 1 } };
-    const child2 = { id: "child2", data: { label: "child2", groupId: "file-a" }, style: { opacity: 1 } };
+    const child1 = {
+      id: "child1",
+      data: { label: "child1", groupId: "file-a" },
+      style: { opacity: 1 },
+    };
+    const child2 = {
+      id: "child2",
+      data: { label: "child2", groupId: "file-a" },
+      style: { opacity: 1 },
+    };
     const unrelated = makeNode("other");
     const nodes = [container, child1, child2, unrelated];
     const result = applyContextHighlight(nodes, [], "child1");

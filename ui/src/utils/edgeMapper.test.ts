@@ -1,4 +1,3 @@
-
 import { mapEdgeToReactFlow, mapEdgeToFlowView } from "./edgeMapper";
 import type { GraphEdge } from "../types";
 

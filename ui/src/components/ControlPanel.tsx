@@ -42,7 +42,7 @@ export default function ControlPanel({
   searchQuery: string;
   setSearchQuery: (q: string) => void;
   searchInputRef?: RefObject<HTMLInputElement | null>;
-  colorMode: 'type' | 'health';
+  colorMode: "type" | "health";
   onToggleColorMode: () => void;
 }) {
   const { fitView } = useReactFlow();
@@ -88,15 +88,28 @@ export default function ControlPanel({
         <div className={panelStyles["compact-row"]}>
           {viewMode === "flow" ? (
             <>
-              <button className={sharedStyles.btn + " " + sharedStyles["btn-sm"]} onClick={onBack} aria-label="Back to full graph">
+              <button
+                className={sharedStyles.btn + " " + sharedStyles["btn-sm"]}
+                onClick={onBack}
+                aria-label="Back to full graph"
+              >
                 ← Back
               </button>
               {flowRootId && (
-                <button className={sharedStyles.btn + " " + sharedStyles["btn-sm"]} onClick={() => onBackToRoot?.()} aria-label="Back to root node">
+                <button
+                  className={sharedStyles.btn + " " + sharedStyles["btn-sm"]}
+                  onClick={() => onBackToRoot?.()}
+                  aria-label="Back to root node"
+                >
                   ↑ Root
                 </button>
               )}
-              <button className={sharedStyles.btn + " " + sharedStyles["btn-sm"]} onClick={handleFit} aria-label="Zoom to fit" title="Fit">
+              <button
+                className={sharedStyles.btn + " " + sharedStyles["btn-sm"]}
+                onClick={handleFit}
+                aria-label="Zoom to fit"
+                title="Fit"
+              >
                 ⊞ Fit
               </button>
             </>
@@ -120,21 +133,36 @@ export default function ControlPanel({
                 {showExternal ? "●Ext" : "○Ext"}
               </button>
               <button
-                className={`${sharedStyles.btn} ${sharedStyles["btn-sm"]} ${colorMode === 'health' ? sharedStyles.active : ""}`}
+                className={`${sharedStyles.btn} ${sharedStyles["btn-sm"]} ${colorMode === "health" ? sharedStyles.active : ""}`}
                 onClick={onToggleColorMode}
                 aria-label="Toggle heatmap coloring"
-                aria-pressed={colorMode === 'health'}
+                aria-pressed={colorMode === "health"}
                 title="Health heatmap (fan-out)"
               >
-                {colorMode === 'health' ? '🌡On' : '🌡Off'}
+                {colorMode === "health" ? "🌡On" : "🌡Off"}
               </button>
-              <button className={sharedStyles.btn + " " + sharedStyles["btn-sm"]} onClick={handleFit} aria-label="Zoom to fit" title="Fit">
+              <button
+                className={sharedStyles.btn + " " + sharedStyles["btn-sm"]}
+                onClick={handleFit}
+                aria-label="Zoom to fit"
+                title="Fit"
+              >
                 ⊞
               </button>
-              <button className={sharedStyles.btn + " " + sharedStyles["btn-sm"]} onClick={onExportPng} aria-label="Export as PNG" title="Export PNG">
+              <button
+                className={sharedStyles.btn + " " + sharedStyles["btn-sm"]}
+                onClick={onExportPng}
+                aria-label="Export as PNG"
+                title="Export PNG"
+              >
                 ⬇PNG
               </button>
-              <button className={sharedStyles.btn + " " + sharedStyles["btn-sm"]} onClick={onExportSvg} aria-label="Export as SVG" title="Export SVG">
+              <button
+                className={sharedStyles.btn + " " + sharedStyles["btn-sm"]}
+                onClick={onExportSvg}
+                aria-label="Export as SVG"
+                title="Export SVG"
+              >
                 ⬇SVG
               </button>
             </>

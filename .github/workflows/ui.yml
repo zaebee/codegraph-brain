@@ -47,6 +47,11 @@ jobs:
       - name: ESLint
         run: bun run lint
 
+      - name: Prettier
+        # eslint-config-prettier turns ESLint's style rules off, so formatting is
+        # checked here or nowhere; 31 files had drifted before this step existed.
+        run: bun run format:check
+
       - name: TypeScript
         # Vite transpiles TypeScript without type-checking it, so `build` below
         # passes a type error. This is the only step that reads the types.

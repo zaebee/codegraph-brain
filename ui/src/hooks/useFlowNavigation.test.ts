@@ -13,9 +13,12 @@ vi.mock("@xyflow/react", () => ({
 
 vi.mock("../layout/IslandLayoutEngine", () => ({
   IslandLayoutEngine: class {
-    constructor(public nodes: unknown[], public edges: unknown[]) {}
+    constructor(
+      public nodes: unknown[],
+      public edges: unknown[]
+    ) {}
     run(_expandedFiles: Set<string>) {
-      return { nodes: this.nodes, edges: this.edges }
+      return { nodes: this.nodes, edges: this.edges };
     }
   },
 }));
@@ -29,14 +32,51 @@ vi.mock("../utils/nodeMapper", () => ({
 }));
 
 const rawNodes = [
-  { id: "a", type: "FUNCTION", name: "funcA", file_path: "a.py", start_line: 1, end_line: 10, language: "py", namespace: "INTERNAL", ontology_class: null, domains: [], confidence_score: 1, metadata: {} },
-  { id: "b", type: "FUNCTION", name: "funcB", file_path: "b.py", start_line: 1, end_line: 5, language: "py", namespace: "INTERNAL", ontology_class: null, domains: [], confidence_score: 1, metadata: {} },
-  { id: "g1", type: "CLASS", name: "GroupNode", file_path: "g.py", start_line: 1, end_line: 20, language: "py", namespace: "INTERNAL", ontology_class: null, domains: [], confidence_score: 1, metadata: {} },
+  {
+    id: "a",
+    type: "FUNCTION",
+    name: "funcA",
+    file_path: "a.py",
+    start_line: 1,
+    end_line: 10,
+    language: "py",
+    namespace: "INTERNAL",
+    ontology_class: null,
+    domains: [],
+    confidence_score: 1,
+    metadata: {},
+  },
+  {
+    id: "b",
+    type: "FUNCTION",
+    name: "funcB",
+    file_path: "b.py",
+    start_line: 1,
+    end_line: 5,
+    language: "py",
+    namespace: "INTERNAL",
+    ontology_class: null,
+    domains: [],
+    confidence_score: 1,
+    metadata: {},
+  },
+  {
+    id: "g1",
+    type: "CLASS",
+    name: "GroupNode",
+    file_path: "g.py",
+    start_line: 1,
+    end_line: 20,
+    language: "py",
+    namespace: "INTERNAL",
+    ontology_class: null,
+    domains: [],
+    confidence_score: 1,
+    metadata: {},
+  },
 ];
 
-const rawEdges = [
-  { id: "e1", source: "a", target: "b", type: "CALLS" },
-];
+const rawEdges = [{ id: "e1", source: "a", target: "b", type: "CALLS" }];
 
 vi.mock("../store/useGraphStore", () => ({
   useGraphStore: (selector: (s: any) => any) =>

@@ -2,7 +2,8 @@ import { MarkerType, type Edge } from "@xyflow/react";
 import type { GraphEdge } from "../types";
 import { EDGE_COLORS } from "../theme";
 
-const FULL_EDGE_STYLES: Record<string, { stroke: string; strokeWidth: number; opacity: number }> = {};
+const FULL_EDGE_STYLES: Record<string, { stroke: string; strokeWidth: number; opacity: number }> =
+  {};
 for (const [type, stroke] of Object.entries(EDGE_COLORS)) {
   FULL_EDGE_STYLES[type] = { stroke, strokeWidth: 1.5, opacity: 0.8 };
 }
@@ -12,9 +13,9 @@ FULL_EDGE_STYLES.DECLARES = { stroke: EDGE_COLORS.DECLARES, strokeWidth: 1, opac
 // confidence=0.8 → resolved to external/builtin (medium)
 // confidence<0.5 → unresolved raw_call (thin)
 function confidenceToWidth(confidence: number | undefined): number {
-  if (confidence == null || confidence >= 0.9) return 2.2
-  if (confidence >= 0.7) return 1.2
-  return 0.6
+  if (confidence == null || confidence >= 0.9) return 2.2;
+  if (confidence >= 0.7) return 1.2;
+  return 0.6;
 }
 
 function stableEdgeId(source: string, target: string, type: string): string {
