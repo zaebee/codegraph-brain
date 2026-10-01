@@ -44,7 +44,9 @@ export function useFlowNavigation(allowedEdgeTypes: string[] = DEFAULT_ALLOWED) 
 
       setFlow(layoutedNodes, flowEdges);
       setViewMode("flow");
-      fitView({ padding: 0.15, duration: 250 });
+      // After the frame that renders the new nodes: called synchronously, fitView
+      // measures the previous view and zooms to the 2x cap on the clicked node.
+      requestAnimationFrame(() => void fitView({ padding: 0.15, duration: 250 }));
     },
     [rawNodes, rawEdges, graphVersion, allowedEdgeTypes, setFlow, setViewMode, fitView]
   );
