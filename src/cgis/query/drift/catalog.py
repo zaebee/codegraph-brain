@@ -63,7 +63,8 @@ def _params_mapping(container: dict[str, Any], owner: str) -> dict[str, Any]:
 
     Raises TypeError if params is present but not a mapping (e.g. a list).
     """
-    return _validate_mapping(container.get("params") or {}, f"{owner} params")
+    params = container.get("params")
+    return _validate_mapping({} if params is None else params, f"{owner} params")
 
 
 def _load_params(d: dict[str, Any]) -> dict[str, float]:
@@ -278,8 +279,9 @@ class PatternCatalog:
     def triad_weights_for(self, profile_name: str) -> tuple[float, ...]:
         """Per-triad w_i for a profile; unlisted triads default to 1.0 (spec §3.3)."""
         profile = self._profiles.get(profile_name) or {}
+        raw = profile.get("triad_weights")
         declared: dict[str, Any] = _validate_mapping(
-            profile.get("triad_weights") or {}, f"Profile '{profile_name}' triad_weights"
+            {} if raw is None else raw, f"Profile '{profile_name}' triad_weights"
         )
         unknown = set(declared) - set(TRIAD_ORDER)
         if unknown:

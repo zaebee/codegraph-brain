@@ -362,6 +362,17 @@ def test_load_params_rejects_non_mapping_domain_params(tmp_path: Path) -> None:
         DriftScorer(str(p)).load_project_domains()
 
 
+def test_load_params_rejects_empty_list_domain_params(tmp_path: Path) -> None:
+    """An empty-list params block is not a mapping either: it is not read as no params."""
+    yaml_bad = _YAML_EXTENDED.replace("params: {min_depth: 2}", "params: []")
+    assert yaml_bad != _YAML_EXTENDED
+    p = tmp_path / "patterns.yaml"
+    p.write_text(yaml_bad)
+    scorer = DriftScorer(str(p))
+    with pytest.raises(TypeError, match="params must be a mapping"):
+        scorer.load_project_domains()
+
+
 def test_merge_params_rejects_non_mapping_template_params(tmp_path: Path) -> None:
     """A template whose params block is a list raises TypeError at score() time."""
     yaml_bad = _YAML_EXTENDED.replace("params:\n      min_depth: 3", "params: [3]")
@@ -889,6 +900,17 @@ def test_triad_weights_not_a_mapping_raises_type_error(tmp_path: Path) -> None:
     p.write_text(bad)
     with pytest.raises(TypeError, match="mapping"):
         DriftScorer(str(p)).triad_weights_for("python")
+
+
+def test_triad_weights_empty_list_raises_type_error(tmp_path: Path) -> None:
+    """An empty-list triad_weights block raises too, rather than reading as all 1.0."""
+    bad = _YAML_V2.replace('triad_weights:\n      "030C": 0.5', "triad_weights: []")
+    assert bad != _YAML_V2
+    p = tmp_path / "patterns.yaml"
+    p.write_text(bad)
+    scorer = DriftScorer(str(p))
+    with pytest.raises(TypeError, match="triad_weights must be a mapping"):
+        scorer.triad_weights_for("python")
 
 
 def test_triad_weights_must_be_non_negative(tmp_path: Path) -> None:
