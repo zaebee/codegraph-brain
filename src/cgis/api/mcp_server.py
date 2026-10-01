@@ -952,12 +952,17 @@ def cgis_metrics(
 ) -> str:
     """Whole-graph architectural metrics — coupling bottlenecks, God classes, PageRank.
 
-    Returns JSON ``{bottlenecks, god_classes, critical}`` computed with vectorized
-    DuckDB aggregations over the whole graph (fan-in/fan-out coupling,
+    Returns JSON ``{bottlenecks, god_classes, critical, resolution}`` computed with
+    vectorized DuckDB aggregations over the whole graph (fan-in/fan-out coupling,
     declared-member counts, PageRank) — the global "what are the hotspots?" view
     that complements the node-local trace/impact/context tools. Requires the
     optional ``duckdb`` extra; an unavailable dependency is reported as a normal
     ❌ message.
+
+    ``resolution`` is the share of edges the resolver could not place, by the
+    same rule as ``cgis validate``. Read the rankings through it: a node whose
+    calls are mostly unresolved looks uncoupled because its edges point nowhere.
+    Under ``scope``/``exclude`` it counts the edges the selected code *emits*.
 
     ``exclude`` drops any node whose FQN contains one of the given dot-segments
     (e.g. ``["tests"]`` removes both ``tests.*`` and ``domains.*.tests.*``) so
