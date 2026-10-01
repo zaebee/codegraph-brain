@@ -952,12 +952,17 @@ def cgis_metrics(
 ) -> str:
     """Whole-graph architectural metrics — coupling bottlenecks, God classes, PageRank.
 
-    Returns JSON ``{bottlenecks, god_classes, critical, resolution}`` computed with
-    vectorized DuckDB aggregations over the whole graph (fan-in/fan-out coupling,
-    declared-member counts, PageRank) — the global "what are the hotspots?" view
-    that complements the node-local trace/impact/context tools. Requires the
-    optional ``duckdb`` extra; an unavailable dependency is reported as a normal
-    ❌ message.
+    Returns JSON ``{bottlenecks, god_classes, critical, file_coupling, resolution}``
+    computed with vectorized DuckDB aggregations over the whole graph (fan-in/fan-out
+    coupling, declared-member counts, PageRank, per-file Ca/Ce/instability) — the
+    global "what are the hotspots?" view that complements the node-local
+    trace/impact/context tools. Requires the optional ``duckdb`` extra; an
+    unavailable dependency is reported as a normal ❌ message.
+
+    ``file_coupling`` counts *files*, not calls: Ca is how many other files
+    depend on a file (by IMPORTS or CALLS), Ce how many it depends on, and
+    instability ``I = Ce / (Ca + Ce)`` runs from 0 (stable, expensive to change)
+    to 1 (volatile); it is null for a file linked to no other.
 
     ``resolution`` is the share of edges the resolver could not place, by the
     same rule as ``cgis validate``. Read the rankings through it: a node whose
@@ -986,6 +991,7 @@ def cgis_metrics(
                 bottleneck_limit=limit,
                 god_limit=limit,
                 critical_limit=limit,
+                file_limit=limit,
                 exclude=exclude or [],
                 scope=scope or [],
             )

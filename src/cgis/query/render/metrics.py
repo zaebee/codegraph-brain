@@ -165,6 +165,54 @@ WHERE TRUE{filter_sql}
 """
 
 
+def _file_coupling_query(filter_sql: str) -> str:
+    """Per-file afferent/efferent coupling, ranked; fragments filter the ranked files only.
+
+    A dependency is an IMPORTS or CALLS edge between internal nodes of two
+    different files — the same rule `build_file_graph` uses for the package
+    cohesion graph (#242), so the two views agree on what links two files. Each
+    pair of files counts once however many edges join them: Ca and Ce count
+    *files*, as Martin's metrics count packages, not calls.
+
+    As with node coupling, the ``filter_sql`` fragments restrict which files are
+    ranked while the ``dep`` CTE stays whole-graph, so a scoped file still counts
+    dependents from outside the scope (#239).
+
+    One row per file comes from ranking FILE nodes only — an extractor emits
+    exactly one per file, its id derived from the path. A MODULE node stands for
+    a directory or a domain (`query/engine.py`, `quotient.py`), not a file, so
+    listing it here would both mislabel it and, sharing a `file_path` with a
+    FILE node, repeat that file (#520 review).
+    """
+    return f"""
+WITH dep AS (
+    SELECT DISTINCT s.file_path AS src_file, t.file_path AS dst_file
+    FROM edges e
+    JOIN nodes s ON e.source = s.id
+    JOIN nodes t ON e.target = t.id
+    WHERE e.type IN ('IMPORTS', 'CALLS')
+      AND s.namespace = 'INTERNAL' AND t.namespace = 'INTERNAL'
+      AND s.file_path != '{VIRTUAL_FILE_PATH}' AND t.file_path != '{VIRTUAL_FILE_PATH}'
+      AND s.file_path != t.file_path
+),
+ca AS (SELECT dst_file AS file_path, COUNT(*) AS n FROM dep GROUP BY dst_file),
+ce AS (SELECT src_file AS file_path, COUNT(*) AS n FROM dep GROUP BY src_file)
+SELECT
+    f.id,
+    f.file_path,
+    COALESCE(ca.n, 0) AS afferent,
+    COALESCE(ce.n, 0) AS efferent
+FROM nodes f
+LEFT JOIN ca ON f.file_path = ca.file_path
+LEFT JOIN ce ON f.file_path = ce.file_path
+WHERE f.type = 'FILE'
+  AND f.namespace = 'INTERNAL'
+  AND f.file_path != '{VIRTUAL_FILE_PATH}'{filter_sql}
+ORDER BY (COALESCE(ca.n, 0) + COALESCE(ce.n, 0)) DESC, f.id
+LIMIT ?
+"""
+
+
 def _god_class_query(filter_sql: str) -> str:
     """God-class query with optional exclusion/scope fragments on the class id."""
     return f"""
@@ -235,6 +283,28 @@ class ResolutionMetric(BaseModel):
     unresolved_ratio: float
 
 
+class FileCoupling(BaseModel):
+    """Martin's coupling for one file: who depends on it, what it depends on (#451).
+
+    Node-level coupling ranks functions; this is the unit a refactor moves. A
+    file with high Ca and low Ce is depended on and depends on little — stable,
+    expensive to change; the reverse is volatile and cheap to change.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    #: The file's module FQN, as `--scope` and `--exclude` match it.
+    module: str
+    file_path: str
+    #: Ca: how many other files depend on this one.
+    afferent: int
+    #: Ce: how many other files this one depends on.
+    efferent: int
+    #: I = Ce / (Ca + Ce), from 0 (stable) to 1 (unstable); None for a file
+    #: that links to no other, where the ratio is undefined rather than zero.
+    instability: float | None
+
+
 class ArchitectureReport(BaseModel):
     """Whole-graph summary an agent or human can read to spot hotspots."""
 
@@ -243,6 +313,7 @@ class ArchitectureReport(BaseModel):
     bottlenecks: list[NodeMetric]
     god_classes: list[NodeMetric]
     critical: list[NodeMetric] = []
+    file_coupling: list[FileCoupling] = []
     resolution: ResolutionMetric
 
 
@@ -271,6 +342,36 @@ def resolution_metric(
         unresolved_edges=unresolved,
         unresolved_ratio=unresolved / total if total else 0.0,
     )
+
+
+def file_coupling_metrics(
+    analyzer: "DuckDBAnalyzer",
+    limit: int = 10,
+    exclude: Sequence[str] = (),
+    scope: Sequence[str] = (),
+) -> list[FileCoupling]:
+    """Top internal files by Ca + Ce, with their instability (#451).
+
+    ``exclude`` and ``scope`` match the file's module FQN and restrict the
+    ranking only; Ca and Ce still count every file in the graph. A module
+    function for the same reason as `resolution_metric`: `DuckDBAnalyzer` is at
+    the god-object baseline.
+    """
+    where, params = _segment_exclusion("f.id", exclude)
+    scope_sql, scope_params = _scope_restriction("f.id", scope)
+    rows = analyzer.conn.execute(
+        _file_coupling_query(where + scope_sql), [*params, *scope_params, limit]
+    ).fetchall()
+    return [
+        FileCoupling(
+            module=str(module),
+            file_path=str(path),
+            afferent=int(ca),
+            efferent=int(ce),
+            instability=int(ce) / (int(ca) + int(ce)) if int(ca) + int(ce) else None,
+        )
+        for module, path, ca, ce in rows
+    ]
 
 
 class DuckDBAnalyzer:
@@ -469,10 +570,11 @@ class DuckDBAnalyzer:
         bottleneck_limit: int = 10,
         god_limit: int = 5,
         critical_limit: int = 10,
+        file_limit: int = 10,
         exclude: Sequence[str] = (),
         scope: Sequence[str] = (),
     ) -> ArchitectureReport:
-        """Bundle the coupling bottlenecks, God classes, PageRank-critical nodes, resolution.
+        """Bundle node coupling, God classes, PageRank, file coupling and resolution.
 
         ``exclude`` and ``scope`` are threaded into all three sections: ``exclude``
         drops any node whose FQN contains one of the given dot-segments (e.g.
@@ -484,5 +586,6 @@ class DuckDBAnalyzer:
             bottlenecks=self.get_coupling_metrics(bottleneck_limit, exclude, scope),
             god_classes=self.get_god_classes(god_limit, exclude, scope),
             critical=self.get_pagerank(critical_limit, exclude, scope),
+            file_coupling=file_coupling_metrics(self, file_limit, exclude, scope),
             resolution=resolution_metric(self, exclude, scope),
         )
