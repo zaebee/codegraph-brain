@@ -365,7 +365,8 @@ def score_v2(
         tv_cal, contribs = tv_distance(actual.t_calls, ideal[1], triad_w)
         violations.extend(_triad_violations("T_calls", actual.t_calls, ideal[1], contribs))
 
-    gate_drift, raw_gate_violations = 0.0, list[str]()
+    gate_drift = 0.0
+    raw_gate_violations: list[str] = []
     if gates:
         gate_drift, raw_gate_violations, _ = _weighted_constraint_drift(
             actual, gates, weights, discount=discount
