@@ -15,7 +15,7 @@ project_domains:
   resolution: 0.40
   pipeline: 0.25
   storage: 0.20
-  query: 0.20
+  query: 0.21
   guardian: 0.26
   cli: 0.03
   api: 0.03

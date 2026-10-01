@@ -91,6 +91,11 @@ class FunctionHandler:
             d == "abstractmethod" or d.endswith(".abstractmethod") for d in decorators
         ):
             metadata["is_abstract"] = True
+        if node_type == NodeType.METHOD:
+            # Always written for a method, even empty: its absence then means "a
+            # graph built before this existed", which LCOM4 must skip rather
+            # than read as a method touching no state (#451).
+            metadata["self_attrs"] = receiver_attribute_names(node, code_bytes, decorators)
 
         func_node = Node(
             id=node_id,
@@ -400,6 +405,57 @@ class FunctionHandler:
             )
         if resolved:
             acc.setdefault(class_fqn, {})[attr_name] = resolved
+
+
+#: Decorators after which a method's first parameter is not the instance.
+_NO_RECEIVER_DECORATORS = frozenset({"staticmethod"})
+
+
+def receiver_attribute_names(
+    node: BaseNode, code_bytes: bytes, decorators: list[str] | None = None
+) -> list[str]:
+    """The attributes a method reads or writes through its first parameter, sorted (#451).
+
+    `def save(self): self._conn.commit(); self.flush()` gives `["_conn", "flush"]`
+    — fields and methods alike, since LCOM4 links two methods that share either.
+    The receiver is whatever the first parameter is named, so `cls` in a
+    classmethod counts too; a staticmethod has none and gives `[]`.
+
+    A nested class is not walked: its own methods' `self` is another object. A
+    nested function is, because a closure over `self` uses the same state.
+    """
+    if decorators and any(d.rsplit(".", 1)[-1] in _NO_RECEIVER_DECORATORS for d in decorators):
+        return []
+    params = node.child_by_field_name("parameters")
+    receiver = None
+    for param in params.named_children if params is not None else []:
+        ident = param if param.type == "identifier" else param.child_by_field_name("name")
+        if ident is None and param.named_children:
+            ident = param.named_children[0]
+        if ident is not None and ident.type == "identifier":
+            receiver = get_identifier(ident, code_bytes)
+        break
+    body = node.child_by_field_name("body")
+    if receiver is None or body is None:
+        return []
+    names: set[str] = set()
+    stack = [body]
+    while stack:
+        current = stack.pop()
+        if current.type == "class_definition":
+            continue
+        if current.type == "attribute":
+            obj = current.child_by_field_name("object")
+            attr = current.child_by_field_name("attribute")
+            if (
+                obj is not None
+                and attr is not None
+                and obj.type == "identifier"
+                and get_identifier(obj, code_bytes) == receiver
+            ):
+                names.add(get_identifier(attr, code_bytes))
+        stack.extend(current.children)
+    return sorted(names)
 
 
 def emit_annotation_edges(
