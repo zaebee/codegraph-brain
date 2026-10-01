@@ -1,7 +1,9 @@
 """Gathers git diff and project files needed for Guardian review context."""
 
 import subprocess
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Literal
 
 import structlog
 
@@ -34,6 +36,27 @@ def parse_features(raw: str) -> frozenset[str]:
         _msg = f"Unknown GUARDIAN_FEATURES: {sorted(unknown)}; valid: {sorted(VALID_FEATURES)}"
         raise ValueError(_msg)
     return frozenset(items)
+
+
+#: How a review's feature set came to be (#505). "env" — GUARDIAN_FEATURES was
+#: set, possibly to nothing; "default" — it was unset or blank, so the review ran
+#: with no optional section. Recorded beside the set rather than inferred from
+#: it: an empty set is what both an unset variable and `GUARDIAN_FEATURES=,`
+#: produce, and only one of them was a choice.
+FeaturesSource = Literal["env", "default"]
+
+
+def features_setting(env: Mapping[str, str]) -> tuple[frozenset[str], FeaturesSource]:
+    """The context sections a review gets, and how that came to be, from one read (#505).
+
+    One call for both halves, like `temperature_setting` (#393): reading the
+    variable twice is how a record comes to describe a prompt it did not have.
+    An unknown name still raises, through `parse_features`.
+    """
+    raw = env.get("GUARDIAN_FEATURES", "")
+    if not raw.strip():
+        return frozenset(), "default"
+    return parse_features(raw), "env"
 
 
 class ContextCollector:

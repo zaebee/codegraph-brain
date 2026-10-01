@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from cgis.extractors.registry import is_supported
 from cgis.guardian.calibrate import JudgePair, assign_from_grid
+from cgis.guardian.collector import FeaturesSource
 from cgis.guardian.findings import Finding
 from cgis.guardian.runner import TemperatureSource
 
@@ -376,6 +377,24 @@ class ReviewRecord(BaseModel, frozen=True):
     #: because 70 of the 115 committed rows predate the field and must stay
     #: loadable. The consistency of the pair is enforced below instead.
     temperature_source: TemperatureSource | None = None
+    #: The GUARDIAN_FEATURES sections this review's prompt was built with,
+    #: sorted (#505). They decide, among other things, whether the full changed
+    #: files are included and whether a module with no impact graph falls back
+    #: to its flow graph — so two rows with equal fingerprints, models and
+    #: temperature could still have read very different prompts, and a
+    #: graph-vs-ablated comparison could not say what its graph arm added.
+    #:
+    #: None — legacy, written before #505: *unknown*, never "no features". An
+    #: empty list is the claim that the review ran with no optional section, and
+    #: the two serialise differently (`null` vs `[]`), so they stay apart.
+    #:
+    #: Not part of `review_fingerprint`, which digests code: features are
+    #: runtime configuration, recorded here the way temperature is.
+    features: list[str] | None = None
+    #: "env" — GUARDIAN_FEATURES was set; "default" — it was not. None — legacy.
+    #: `test_a_new_record_always_states_its_features_source` makes new records
+    #: state it; the pair's consistency is enforced below.
+    features_source: FeaturesSource | None = None
     findings: list[Finding]
     prompt_tokens: int
     completion_tokens: int
@@ -435,6 +454,35 @@ class ReviewRecord(BaseModel, frozen=True):
                 f"temperature_source='provider_default' requires temperature=None; got "
                 f"{self.temperature!r}. The provider's own choice is not observable, so a "
                 f"value here can only have come from us — which makes it 'explicit'."
+            )
+            raise ValueError(_msg)
+        return self
+
+    @model_validator(mode="after")
+    def _features_agree_with_their_source(self) -> "ReviewRecord":
+        """Refuse a record whose feature fields contradict each other (#505).
+
+        Both or neither: a set with no source and a source with no set each
+        claim half of a fact. "default" with sections listed states a prompt
+        the unset variable could not have produced. And the list must be
+        sorted and duplicate-free, so equal configurations are equal rows —
+        a corpus grouped by this field must not split one arm in two.
+        """
+        if (self.features is None) != (self.features_source is None):
+            _msg = (
+                "features and features_source are recorded together or not at all; got "
+                f"features={self.features!r}, features_source={self.features_source!r}."
+            )
+            raise ValueError(_msg)
+        if self.features is None:
+            return self
+        if self.features != sorted(set(self.features)):
+            _msg = f"features must be sorted and unique; got {self.features!r}."
+            raise ValueError(_msg)
+        if self.features_source == "default" and self.features:
+            _msg = (
+                f"features_source='default' means GUARDIAN_FEATURES was unset, which "
+                f"enables no section; got {self.features!r}."
             )
             raise ValueError(_msg)
         return self
