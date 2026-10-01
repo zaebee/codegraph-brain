@@ -1318,8 +1318,9 @@ def test_non_numeric_baseline_value_rejected(tmp_path: Path) -> None:
     )
     p = tmp_path / "bad.yaml"
     p.write_text(bad_yaml)
+    scorer = DriftScorer(str(p))
     with pytest.raises(TypeError, match="hygiene_baseline key 'cycle_ratio' must be numeric"):
-        DriftScorer(str(p)).load_project_domains()
+        scorer.load_project_domains()
 
 
 # ---------------------------------------------------------------------------
