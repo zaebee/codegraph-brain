@@ -149,15 +149,7 @@ def _options(reader: _Reader, config: Path, depth: int) -> _Options | None:
     if not isinstance(data, dict):
         return None
     options = _Options()
-    extends = data.get("extends")
-    # A string or an array of them (TypeScript 5.0); anything else is malformed and
-    # ignored rather than iterated — a dict would otherwise yield its keys.
-    parents = (
-        [extends] if isinstance(extends, str) else extends if isinstance(extends, list) else []
-    )
-    for parent_ref in parents:
-        if not isinstance(parent_ref, str):
-            continue
+    for parent_ref in _extends_refs(data.get("extends")):
         parent = _locate(reader, parent_ref, config.parent)
         inherited = _options(reader, parent, depth + 1) if parent is not None else None
         if inherited is not None:
@@ -171,6 +163,19 @@ def _options(reader: _Reader, config: Path, depth: int) -> _Options | None:
     if isinstance(compiler.get("baseUrl"), str):
         own = replace(own, base_url=config.parent / compiler["baseUrl"])
     return options.overlaid(own)
+
+
+def _extends_refs(extends: object) -> list[str]:
+    """The configs an `extends` value names: a string, or an array of them (TypeScript 5.0).
+
+    Anything else is malformed and yields nothing, rather than being iterated —
+    a dict would otherwise yield its keys as if they were configs.
+    """
+    if isinstance(extends, str):
+        return [extends]
+    if isinstance(extends, list):
+        return [ref for ref in extends if isinstance(ref, str)]
+    return []
 
 
 def _locate(reader: _Reader, reference: str, directory: Path) -> Path | None:
