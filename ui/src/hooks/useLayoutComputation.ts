@@ -88,7 +88,8 @@ export function useLayoutComputation(): void {
       if (generationRef.current !== gen) return; // stale async, discard
 
       setLayout(layoutedNodes, layoutedEdges);
-      fitView({ padding: 0.15, duration: 250 });
+      // After the frame that renders the new layout, not against the old one.
+      requestAnimationFrame(() => void fitView({ padding: 0.15, duration: 250 }));
     })();
   }, [
     rawNodes,

@@ -129,13 +129,22 @@ describe("useFlowNavigation", () => {
   });
 
   it("onNodeClick calls setFlow, setViewMode('flow'), and fitView", async () => {
+    const frames: FrameRequestCallback[] = [];
+    const raf = vi
+      .spyOn(globalThis, "requestAnimationFrame")
+      .mockImplementation((cb: FrameRequestCallback) => frames.push(cb));
     const { result } = setup();
     await act(async () => {
       await result.current.onNodeClick({} as any, { id: "a", type: "FUNCTION" } as any);
     });
     expect(mockSetFlow).toHaveBeenCalled();
     expect(mockSetViewMode).toHaveBeenCalledWith("flow");
+    // Not in the same tick: React Flow has not rendered the new nodes yet, and a
+    // synchronous fitView measured the old view, zooming to the 2x cap.
+    expect(mockFitView).not.toHaveBeenCalled();
+    frames.forEach((cb) => cb(0));
     expect(mockFitView).toHaveBeenCalledWith({ padding: 0.15, duration: 250 });
+    raf.mockRestore();
   });
 
   it("cache is keyed by graphVersion — same node, same version uses cache", async () => {
