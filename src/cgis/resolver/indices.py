@@ -126,9 +126,28 @@ class SymbolIndex:
             return _resolve_typescript_import(fqn, self.nodes, self.workspace_packages, aliased)
         if source_file is not None and not source_file.endswith(_PYTHON_SUFFIXES):
             return None
+        return self._strip_layout_prefixes(fqn)
+
+    def _strip_layout_prefixes(self, fqn: str) -> str | None:
+        """The node `fqn` names once known layout prefixes are dropped from its head.
+
+        Strips one leading segment at a time, and only while each is a corroborated
+        layout prefix — `app.crud.X` against a graph ingested at `app/` becomes
+        `crud.X`. Any other head stops the walk: a suffix that happens to exist
+        cannot tell "the import had an extra package prefix" from "this is a
+        different package", and matching it anyway is how `pkg_a.utils.helper`
+        landed on an unrelated `utils.helper`, and `a.b.c.thing` on a bare top-level
+        `thing`, at full confidence (#319).
+
+        A leading `__init__` is stripped too. It is what a relative import in the
+        ingest root's own `__init__.py` is anchored to — `from .core import
+        Command` there reads `__init__.core.Command` when a package is ingested
+        at its own directory — and no package can be named `__init__`, so it
+        never stands for a different one.
+        """
         parts = fqn.split(".")
         for index, part in enumerate(parts[:-1]):
-            if part not in self.layout_prefixes:
+            if part not in self.layout_prefixes and not (index == 0 and part == _ROOT_PACKAGE):
                 return None
             candidate = ".".join(parts[index + 1 :])
             if candidate in self.nodes:
@@ -184,7 +203,8 @@ class SymbolIndex:
         Three shapes, most precise first: the id verbatim; a node whose id has an
         extra layout prefix (`cgis.pipeline.X` against `src.cgis.pipeline.X`);
         and an FQN carrying a prefix the ids do not (`app.crud.X` against
-        `crud.X`, when the project was ingested at app/).
+        `crud.X`, when the project was ingested at app/) — stripped only when the
+        import maps corroborate it as a layout prefix (#319).
 
         Separate from `map_to_node_fqn` because the re-export walk needs exactly
         this and must not recurse back into the re-export step.
@@ -196,12 +216,7 @@ class SymbolIndex:
             return candidates[0]
         if self.classify_fqn(fqn) in (NodeNamespace.EXTERNAL, NodeNamespace.STDLIB):
             return None
-        parts = fqn.split(".")
-        for i in range(1, len(parts)):
-            candidate = ".".join(parts[i:])
-            if candidate in self.nodes:
-                return candidate
-        return None
+        return self._strip_layout_prefixes(fqn)
 
     def follow_reexport(self, fqn: str) -> str | None:
         """Resolve `module.name` through every forwarding hop, or None if not forwarded.
@@ -296,6 +311,9 @@ class SymbolIndex:
 #: Classification itself still accepts one, because there the cost of a wrong call
 #: is a namespace label rather than a fabricated internal edge.
 _LAYOUT_PREFIX_EVIDENCE = 2
+
+#: The head a relative import in the ingest root's own `__init__.py` carries (#319).
+_ROOT_PACKAGE = "__init__"
 
 
 def _strips_to_a_node(imported_fqn: str, node_ids: set[str]) -> bool:

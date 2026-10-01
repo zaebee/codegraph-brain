@@ -81,10 +81,47 @@ def test_map_to_node_fqn_suffix() -> None:
     assert index.map_to_node_fqn("cgis.mod.f") == "src.cgis.mod.f"
 
 
+def _importing(*values: str) -> Node:
+    """A FILE node whose import map holds `values` — the evidence prefixes are read from."""
+    return _node(
+        "consumer",
+        NodeType.FILE,
+        "consumer.py",
+        metadata={"import_map": {v.rsplit(".", 1)[-1]: v for v in values}},
+    )
+
+
 def test_map_to_node_fqn_strips_import_prefix() -> None:
-    """An import with an extra package prefix resolves by stripping segments."""
-    index = IndexBuilder().build([_node("mod.f")])
+    """A corroborated layout prefix is stripped: the project was ingested below it."""
+    nodes = [_node("mod.f"), _node("mod.g"), _importing("extra.mod.f", "extra.mod.g")]
+    index = IndexBuilder().build(nodes)
     assert index.map_to_node_fqn("extra.mod.f") == "mod.f"
+
+
+def test_map_to_node_fqn_does_not_strip_an_unknown_package() -> None:
+    """`pkg_a.utils.helper` is not our `utils.helper` just because the tail matches (#319).
+
+    A suffix cannot tell an extra package prefix from a different package, so
+    only a head the import maps corroborate as a layout prefix is dropped.
+    """
+    index = IndexBuilder().build([_node("utils.helper", file_path="utils.py")])
+    assert index.map_to_node_fqn("pkg_a.utils.helper") is None
+
+
+def test_map_to_node_fqn_does_not_collapse_to_a_bare_leaf() -> None:
+    """A four-segment import must not land on a top-level name that merely shares its leaf."""
+    index = IndexBuilder().build([_node("thing", file_path="thing.py")])
+    assert index.map_to_node_fqn("a.b.c.thing") is None
+
+
+def test_map_to_node_fqn_strips_the_root_package_head() -> None:
+    """A relative import in the ingest root's `__init__.py` reads `__init__.core.X` (#319).
+
+    Ingesting a package at its own directory anchors `from .core import X` in
+    its `__init__.py` to `__init__`, a head no real package can have.
+    """
+    index = IndexBuilder().build([_node("core.Command", file_path="core.py")])
+    assert index.map_to_node_fqn("__init__.core.Command") == "core.Command"
 
 
 def test_map_to_node_fqn_ambiguous_suffix_is_none() -> None:
