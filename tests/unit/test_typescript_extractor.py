@@ -346,3 +346,15 @@ def test_module_fqn_is_the_fqn_parse_gives_the_file() -> None:
     nodes, _ = extractor.parse("export const x = 1;\n", "src/pkg/index.ts")
     (file_node,) = (n for n in nodes if n.type == NodeType.FILE)
     assert extractor.module_fqn("src/pkg/index.ts") == file_node.id == "pkg"
+
+
+def test_every_node_is_stored_as_typescript() -> None:
+    """`Node.language` defaults to "python"; the extractor must say what it parsed (#504)."""
+    code = "export class Auth { login() {} }\nexport function helper() {}\nconst f = () => 1;\n"
+    for extractor, path in (
+        (TypeScriptExtractor(), "src/auth.ts"),
+        (TypeScriptExtractor(tsx=True), "src/auth.tsx"),
+    ):
+        nodes, _ = extractor.parse(code, path)
+        assert len(nodes) > 3
+        assert {n.language for n in nodes} == {"typescript"}

@@ -15,9 +15,9 @@ from cgis.core.generated import is_generated_source
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.core.paths import EXCLUDED_DIRS
 from cgis.extractors.base import BaseExtractor
+from cgis.import_names import ImportNameCollector
 from cgis.resolver.engine import ResolverEngine
 from cgis.resolver.uplift import SemanticUpliftEngine
-from cgis.workspaces import PACKAGE_MANIFEST, WorkspacePackages
 
 if TYPE_CHECKING:
     from cgis.storage.sqlite_store import SQLiteStore
@@ -124,7 +124,7 @@ class IngestionPipeline:
         changed_files: dict[str, str] = {}
         found_file_paths: set[str] = set()
         workspace_root = self.workspace_root(repo_path)
-        packages = WorkspacePackages(workspace_root, self._extractors)
+        import_configs = ImportNameCollector(workspace_root, self._extractors)
 
         with Progress(
             SpinnerColumn(),
@@ -138,8 +138,7 @@ class IngestionPipeline:
             for root, dirs, files in workspace_root.walk():
                 dirs[:] = [d for d in dirs if not d.startswith(".") and d not in self._excluded]
                 for file in files:
-                    if file == PACKAGE_MANIFEST:
-                        packages.note(root / file)
+                    import_configs.note(root / file)
                     extractor = self._get_extractor(file)
                     if not extractor:
                         continue
@@ -171,15 +170,11 @@ class IngestionPipeline:
             # nothing went stale, the persisted graph is already correct.
             # Re-running the resolver + persistence + uplift would rebuild the
             # whole graph from the DB for zero benefit, so skip them entirely.
-            workspace_packages = packages.unambiguous()
-            # A renamed or moved package changes what unchanged files' imports mean,
-            # and an incremental run re-resolves only changed files (#504).
-            packages_changed = (
-                store is not None
-                and not rebuild
-                and (store.get_workspace_packages() or {}) != workspace_packages
+            import_names = import_configs.collect()
+            import_names_changed = (
+                store is not None and not rebuild and import_names.differ_from(store)
             )
-            if not packages_changed and self._is_noop_incremental(
+            if not import_names_changed and self._is_noop_incremental(
                 store, changed_files, found_file_paths
             ):
                 logger.info("No changes detected — skipping resolution and persistence.")
@@ -188,7 +183,12 @@ class IngestionPipeline:
             # Task 2: Resolution
             resolve_task = progress.add_task(description="Resolving semantic links...", total=None)
             logger.info("Starting resolution phase...")
-            resolver = ResolverEngine(all_nodes, all_edges, workspace_packages=workspace_packages)
+            resolver = ResolverEngine(
+                all_nodes,
+                all_edges,
+                workspace_packages=import_names.workspace_packages,
+                tsconfig_paths=import_names.path_aliases,
+            )
             resolved_edges, virtual_nodes = resolver.resolve()
             all_nodes.extend(virtual_nodes)
             progress.update(resolve_task, advance=1)
@@ -200,8 +200,8 @@ class IngestionPipeline:
 
         if store is None:
             return all_nodes, all_edges, resolved_edges
-        if packages_changed:
-            logger.info("Workspace packages changed — rebuilding the graph.")
+        if import_names_changed:
+            logger.info("Workspace packages or tsconfig aliases changed — rebuilding the graph.")
             return self.run(repo_path, store=store, rebuild=True)
         if self._cross_file_inputs_changed(
             store, all_nodes, resolved_edges, changed_files, found_file_paths, rebuild
@@ -220,7 +220,7 @@ class IngestionPipeline:
             virtual_nodes,
             rebuild,
         )
-        store.record_workspace_packages(workspace_packages)
+        import_names.record(store)
         logger.info("Running semantic uplift...")
         SemanticUpliftEngine(store, self._domains_config).execute_uplift()
         logger.info("Semantic uplift complete.")

@@ -33,25 +33,25 @@ class WorkspacePackages:
         self._root = workspace_root
         extractor = extractors.get(".ts") or extractors.get(".tsx")
         self._extractor = extractor if isinstance(extractor, ModuleNamer) else None
-        # dotted package name -> every directory FQN that claims it
-        self._claims: dict[str, set[str]] = {}
+        # package name as written -> every directory that claims it
+        self._claims: dict[str, set[Path]] = {}
 
     def note(self, manifest: Path) -> None:
         """Record which directory a `package.json` names.
 
         Never the repository root: its manifest names the monorepo itself, and
         mapping it would send an import of that name to the empty directory FQN.
-        The directory FQN comes from the extractor's own `module_fqn`, so it is
-        spelled exactly as that package's node ids are. An unreadable or nameless
-        manifest is skipped: one bad file must not stop the ingest.
+        An unreadable or nameless manifest is skipped: one bad file must not stop
+        the ingest.
         """
         if self._extractor is None:
             return
+        directory = manifest.resolve().parent
         try:
-            directory = manifest.resolve().parent.relative_to(self._root).as_posix()
+            relative = directory.relative_to(self._root).as_posix()
         except ValueError:
             return
-        if directory in ("", "."):
+        if relative in ("", "."):
             return
         try:
             data = json.loads(manifest.read_text(encoding="utf-8"))
@@ -61,17 +61,38 @@ class WorkspacePackages:
         name = data.get("name") if isinstance(data, dict) else None
         if not isinstance(name, str) or not name.strip():
             return
-        directory_fqn = self._extractor.module_fqn(f"{directory}/index.ts")
-        self._claims.setdefault(name.replace("/", "."), set()).add(directory_fqn)
+        self._claims.setdefault(name, set()).add(directory)
+
+    def directories(self) -> dict[str, Path]:
+        """Package names as written, claimed by exactly one directory, to that directory.
+
+        What a tsconfig `extends` of a shared config package needs (#508): a
+        monorepo checkout without `node_modules` still has the package itself.
+        """
+        return {
+            name: next(iter(found))
+            for name, found in sorted(self._claims.items())
+            if len(found) == 1
+        }
 
     def unambiguous(self) -> dict[str, str]:
         """Dotted package names claimed by exactly one directory; a name claimed twice is dropped.
 
         Two manifests with one name cannot both be what an import means, and
-        choosing one would wire every importer to a package it may not use.
+        choosing one would wire every importer to a package it may not use. The
+        directory FQN comes from the extractor's own `module_fqn`, so it is spelled
+        exactly as that package's node ids are.
         """
+        if self._extractor is None:
+            return {}
+        claims: dict[str, set[str]] = {}
+        for name, found in sorted(self._claims.items()):
+            for directory in found:
+                relative = directory.relative_to(self._root).as_posix()
+                fqn = self._extractor.module_fqn(f"{relative}/index.ts")
+                claims.setdefault(name.replace("/", "."), set()).add(fqn)
         packages: dict[str, str] = {}
-        for name, directories in sorted(self._claims.items()):
+        for name, directories in sorted(claims.items()):
             if len(directories) == 1:
                 packages[name] = next(iter(directories))
             else:
