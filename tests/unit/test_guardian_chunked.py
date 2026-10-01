@@ -121,7 +121,7 @@ def _collector(tmp_path: Path, diff: str, *, with_db: bool = True) -> ContextCol
     collector = ContextCollector(
         project_root=tmp_path, db_path=db if with_db else None, source_root="src"
     )
-    collector._diff_cache = diff  # noqa: SLF001  # bypass git
+    collector.source._diff_cache = diff  # noqa: SLF001  # bypass git
     return collector
 
 

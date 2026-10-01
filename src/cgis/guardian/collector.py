@@ -1,4 +1,10 @@
-"""Gathers git diff and project files needed for Guardian review context."""
+"""Gathers git diff and project files needed for Guardian review context.
+
+Three classes, split along their dependencies (#215): `SourceCollector` reads git
+and the working tree, `GraphContextCollector` reads graph.db and the ontology, and
+`ContextCollector` composes the two into a review's context sections. The first
+two know nothing of features or of each other.
+"""
 
 import subprocess
 from collections.abc import Mapping
@@ -59,42 +65,19 @@ def features_setting(env: Mapping[str, str]) -> tuple[frozenset[str], FeaturesSo
     return parse_features(raw), "env"
 
 
-class ContextCollector:
-    """Gathers all necessary context for the review."""
+class SourceCollector:
+    """What the PR changed and what its files say: git and the working tree."""
 
     def __init__(
-        self,
-        project_root: Path,
-        base_branch: str = "main",
-        db_path: Path | None = None,
-        base_ref: str | None = None,
-        source_root: str = "src",
-        features: frozenset[str] = frozenset(),
-        include_graph: bool = True,
+        self, project_root: Path, base_branch: str = "main", base_ref: str | None = None
     ) -> None:
-        """Set project root, diff base (branch or explicit ref), and optional graph DB.
+        """Set project root and diff base (an explicit ref, else origin/<base_branch>).
 
-        base_ref, when given, is used verbatim (e.g. a SHA for benchmark
-        replays); otherwise the diff base is origin/<base_branch>.
-
-        source_root must match the ingest root used to build the graph DB
-        (CI runs `cgis ingest ./src`): node FQNs are relative to that root,
-        so changed-file paths are stripped of it before lookup.
-
-        features gates the optional context sections (spec §4): "full_files", "flow", "drift".
-
-        include_graph=False drops the impact-graph Mermaid section — a "diff-only"
-        prompt that fits a smaller context window (e.g. a local Ollama model whose
-        window is exceeded once the graph is appended).
+        base_ref, when given, is used verbatim (e.g. a SHA for benchmark replays).
         """
         self.project_root = project_root
         self.base_branch = base_branch
-        self.db_path = db_path
         self.base_ref = base_ref
-        self.source_root = source_root
-        self.features = features
-        self.include_graph = include_graph
-        self.graph_stats: dict[str, int] = {"total": 0, "with_graph": 0, "flow_fallback": 0}
         self._diff_cache: str | None = None
 
     def _diff_range(self) -> str:
@@ -194,16 +177,33 @@ class ContextCollector:
             sections.append(f"#### `{rel_path}`\n```{fence}\n{text}\n```")
         return "\n\n".join(sections + omitted)
 
-    def _graph_sections(
-        self, changed_files: list[str], *, flow: bool
-    ) -> tuple[list[str], dict[str, int]]:
-        """Impact-graph Mermaid sections + local stats for the given files.
 
-        Pure with respect to self.graph_stats — callers decide whether to
-        overwrite (global path) or accumulate (per-chunk path).
+class GraphContextCollector:
+    """What graph.db says about the changed files: impact graphs and drift."""
+
+    def __init__(self, project_root: Path, db_path: Path | None, source_root: str = "src") -> None:
+        """Set the graph DB, the ingest root its FQNs are relative to, and the project root.
+
+        source_root must match the ingest root used to build the graph DB (CI
+        runs `cgis ingest ./src`): changed-file paths are stripped of it before
+        lookup. project_root locates docs/ontology/patterns.yaml for drift.
+        """
+        self.project_root = project_root
+        self.db_path = db_path
+        self.source_root = source_root
+
+    def has_db(self) -> bool:
+        """Whether a graph DB was given and exists on disk."""
+        return self.db_path is not None and self.db_path.exists()
+
+    def sections(self, changed_files: list[str], *, flow: bool) -> tuple[list[str], dict[str, int]]:
+        """Impact-graph Mermaid sections + their stats for the given files.
+
+        Holds no stats of its own — the caller decides whether to overwrite
+        (global path) or accumulate (per-chunk path).
         """
         stats = {"total": 0, "with_graph": 0, "flow_fallback": 0}
-        if self.db_path is None or not self.db_path.exists() or not changed_files:
+        if not self.has_db() or not changed_files:
             return [], stats
         stats["total"] = len(changed_files)
         compiler = MermaidCompiler()
@@ -233,32 +233,13 @@ class ContextCollector:
         stats["with_graph"] = len(sections)
         return sections, stats
 
-    def collect_graph_context(self) -> str:
-        """Query graph.db for impact graphs of changed files; return Mermaid blocks."""
-        if not self.include_graph:
-            return ""  # diff-only prompt (fits a smaller context window)
-        if self.db_path is None or not self.db_path.exists():
-            return ""
-        changed_files = self.get_changed_source_files()
-        if not changed_files:
-            return ""
-        sections, stats = self._graph_sections(changed_files, flow="flow" in self.features)
-        self.graph_stats = stats
-        if stats["total"] > 0 and stats["with_graph"] == 0:
-            log.warning(
-                "No graph context found for any changed file.",
-                changed_files=stats["total"],
-                project_root=str(self.project_root),
-            )
-        return "\n\n".join(sections)
-
     def collect_drift(self) -> str:
         """Compact per-domain drift table + quotient k=1 lines (spec §4.3).
 
         First real consumer of drift v2 outside tests — the soft enforcement
         channel deferred in #146/#151. Any failure degrades to an empty section.
         """
-        if self.db_path is None or not self.db_path.exists():
+        if not self.has_db():
             return ""
         patterns = self.project_root / "docs" / "ontology" / "patterns.yaml"
         if not patterns.exists():
@@ -303,22 +284,72 @@ class ContextCollector:
             table + "\n".join(rows) + ("\n" + "\n".join(quotient_lines) if quotient_lines else "")
         )
 
+
+class ContextCollector:
+    """Composes a review's context sections from its source and graph collaborators."""
+
+    def __init__(
+        self,
+        project_root: Path,
+        base_branch: str = "main",
+        db_path: Path | None = None,
+        base_ref: str | None = None,
+        source_root: str = "src",
+        features: frozenset[str] = frozenset(),
+        include_graph: bool = True,
+    ) -> None:
+        """Build the source and graph collaborators and set what the review asks for.
+
+        project_root, base_branch and base_ref go to `source`; db_path and
+        source_root to `graph` (see each for their meaning).
+
+        features gates the optional context sections (spec §4): "full_files", "flow", "drift".
+
+        include_graph=False drops the impact-graph Mermaid section — a "diff-only"
+        prompt that fits a smaller context window (e.g. a local Ollama model whose
+        window is exceeded once the graph is appended).
+        """
+        self.source = SourceCollector(project_root, base_branch, base_ref)
+        self.graph = GraphContextCollector(project_root, db_path, source_root)
+        self.features = features
+        self.include_graph = include_graph
+        self.graph_stats: dict[str, int] = {"total": 0, "with_graph": 0, "flow_fallback": 0}
+
+    def collect_graph_context(self) -> str:
+        """Impact graphs of the changed files as Mermaid blocks; records graph_stats."""
+        if not self.include_graph:
+            return ""  # diff-only prompt (fits a smaller context window)
+        if not self.graph.has_db():
+            return ""
+        changed_files = self.source.get_changed_source_files()
+        if not changed_files:
+            return ""
+        sections, stats = self.graph.sections(changed_files, flow="flow" in self.features)
+        self.graph_stats = stats
+        if stats["total"] > 0 and stats["with_graph"] == 0:
+            log.warning(
+                "No graph context found for any changed file.",
+                changed_files=stats["total"],
+                project_root=str(self.source.project_root),
+            )
+        return "\n\n".join(sections)
+
     def collect_all(self) -> dict[str, str]:
         """Collects all relevant files, git diff, and optional graph context."""
         context: dict[str, str] = {
-            "diff": self.get_git_diff(),
-            "contributing": self.read_file("CONTRIBUTING.md"),
-            "ontology": self.read_file("docs/ontology/core.yaml"),
+            "diff": self.source.get_git_diff(),
+            "contributing": self.source.read_file("CONTRIBUTING.md"),
+            "ontology": self.source.read_file("docs/ontology/core.yaml"),
         }
         graph_context = self.collect_graph_context()
         if graph_context:
             context["graph_context"] = graph_context
         if "full_files" in self.features:
-            full_files = self.collect_full_files()
+            full_files = self.source.collect_full_files()
             if full_files:
                 context["full_files"] = full_files
         if "drift" in self.features:
-            drift = self.collect_drift()
+            drift = self.graph.collect_drift()
             if drift:
                 context["drift"] = drift
         return context
@@ -333,15 +364,15 @@ class ContextCollector:
         source_files = [f for f in chunk.files if is_supported(f)]
         context: dict[str, str] = {
             "diff": chunk.diff,
-            "contributing": self.read_file("CONTRIBUTING.md"),
-            "ontology": self.read_file("docs/ontology/core.yaml"),
+            "contributing": self.source.read_file("CONTRIBUTING.md"),
+            "ontology": self.source.read_file("docs/ontology/core.yaml"),
         }
-        sections, stats = self._graph_sections(source_files, flow=True)
+        sections, stats = self.graph.sections(source_files, flow=True)
         for key, value in stats.items():
             self.graph_stats[key] = self.graph_stats.get(key, 0) + value
         if sections:
             context["graph_context"] = "\n\n".join(sections)
-        full_files = self.collect_full_files(source_files)
+        full_files = self.source.collect_full_files(source_files)
         if full_files:
             context["full_files"] = full_files
         return context

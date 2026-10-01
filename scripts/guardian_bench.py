@@ -168,7 +168,7 @@ async def _run_one(
             )
             result = routed.result
             if record_finder is not None:
-                save_finder_recording(record_finder, result, collector.get_git_diff())
+                save_finder_recording(record_finder, result, collector.source.get_git_diff())
                 log.info("Finder pass recorded.", path=str(record_finder), pr=truth.pr)
         finally:
             _git("worktree", "remove", "--force", str(worktree))

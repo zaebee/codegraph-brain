@@ -274,7 +274,7 @@ def graph_alignment(db_path: Path, changed_files: Sequence[str]) -> tuple[int, i
 
     This exists because the failure it catches is invisible. The collector looks
     a changed file up by the FQN it derives from the path; if that string is not
-    byte-identical to the id the extractor stored, `_graph_sections` finds
+    byte-identical to the id the extractor stored, `GraphContextCollector.sections` finds
     nothing, logs at `debug`, and returns a review with no graph context that
     looks completely normal.
 

@@ -212,6 +212,9 @@ class TestSalvagedFindingsAreStillJudged:
 class _StubCollector:
     """Minimal stand-in for ContextCollector."""
 
+    #: Handed to `evidence_for`, which never reads it with the flag off.
+    source = None
+
     def collect_all(self) -> dict[str, str]:
         """Return a context with just a diff."""
         return {"diff": "d"}
