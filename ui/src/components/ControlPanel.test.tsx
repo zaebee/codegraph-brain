@@ -26,6 +26,8 @@ function renderControlPanel(props: Partial<Parameters<typeof ControlPanel>[0]> =
     onBackToRoot: vi.fn(),
     searchQuery: "",
     setSearchQuery: vi.fn(),
+    colorMode: "type" as const,
+    onToggleColorMode: vi.fn(),
   };
   return render(<ControlPanel {...defaults} {...props} />);
 }
