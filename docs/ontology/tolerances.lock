@@ -15,16 +15,16 @@ project_domains:
   resolution: 0.40
   pipeline: 0.25
   storage: 0.20
-  query: 0.21
+  query: 0.23
   guardian: 0.26
   cli: 0.03
   api: 0.03
-  components: 0.20
+  components: 0.24
   layout: 0.50
-  hooks: 0.15
+  hooks: 0.22
   store: 0.15
-  providers: 0.15
-  utils: 0.15
+  providers: 0.17
+  utils: 0.20
 
 project_level:
   cgis-project: 0.15

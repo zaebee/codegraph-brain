@@ -228,6 +228,39 @@ def test_unresolved_ratio_zero_when_no_calls() -> None:
     assert fp.unresolved_ratio == pytest.approx(0.0)
 
 
+def _placed(fqn: str, namespace: NodeNamespace) -> Node:
+    """A call target the resolver minted a node for, in the given namespace."""
+    return _node(fqn).model_copy(update={"namespace": namespace})
+
+
+def test_unresolved_ratio_counts_unknown_targets_not_stdlib() -> None:
+    """An UNKNOWN target is unresolved; a STDLIB one is resolved (#149).
+
+    UNKNOWN is the shape an unresolved call is saved in: the resolver mints a
+    node for what it cannot place, so no `raw_call:` target survives into a
+    stored graph. Counting only `raw_call:` read 0 on every real graph.
+    """
+    nodes = [
+        _node("dom.fn"),
+        _placed("console.print", NodeNamespace.UNKNOWN),
+        _placed("json.dumps", NodeNamespace.STDLIB),
+    ]
+    edges = [_edge("dom.fn", "console.print"), _edge("dom.fn", "json.dumps")]
+    with _store(nodes, edges) as store:
+        fp = FingerprintExtractor(store).extract("dom")
+    assert fp.unresolved_ratio == pytest.approx(0.5)
+
+
+def test_unresolved_ratio_is_measured_on_an_ingested_graph(tmp_path: Path) -> None:
+    """End to end: a call the resolver cannot place reaches the fingerprint (#149)."""
+    (tmp_path / "dom").mkdir()
+    (tmp_path / "dom" / "a.py").write_text("def f(x):\n    x.frobnicate()\n")
+    with SQLiteStore(str(tmp_path / "g.db")) as store:
+        IngestionPipeline({".py": PythonExtractor()}).run(str(tmp_path), store=store)
+        fp = FingerprintExtractor(store).extract("dom")
+    assert fp.unresolved_ratio == pytest.approx(1.0)
+
+
 # ── chain_len ──────────────────────────────────────────────────────────────────
 
 

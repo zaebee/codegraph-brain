@@ -1,15 +1,19 @@
 """PatternFingerprint dataclass and FingerprintExtractor."""
 
 from collections import Counter, defaultdict
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.query.analysis.health import HealthScorer
 from cgis.query.drift._scc import build_adjacency, tarjan_scc
 from cgis.query.drift.triads import ZERO_TRIADS, normalized_census, tangle_mass, triad_census
+from cgis.query.engine import is_unresolved
 from cgis.storage.sqlite_store import SQLiteStore
 
-RAW_CALL_PREFIX = "raw_call:"
+#: Per-node (unresolved calls, all calls) a coarsened graph carries over from the
+#: graph it was built from, keyed by node id — see `FingerprintExtractor.from_graph`.
+CallTally = Mapping[str, tuple[int, int]]
 
 _HUB_FAN_IN_THRESHOLD = 2
 _STAR_FAN_OUT_THRESHOLD = 3
@@ -258,17 +262,28 @@ class FingerprintExtractor:
         """Accept an open SQLiteStore, or None when built via from_graph()."""
         self._store = store
         self._cache: tuple[list[Node], list[Edge]] | None = None
+        self._known: dict[str, Node] | None = None
+        self._call_tally: CallTally | None = None
 
     @classmethod
-    def from_graph(cls, nodes: list[Node], edges: list[Edge]) -> "FingerprintExtractor":
+    def from_graph(
+        cls, nodes: list[Node], edges: list[Edge], call_tally: CallTally | None = None
+    ) -> "FingerprintExtractor":
         """Build an extractor over an in-memory graph — no SQLiteStore involved.
 
         The inputs are copied defensively, so later mutation of the caller's
         lists cannot change what extract() measures (matches the store path,
         which returns fresh lists on every fetch).
+
+        call_tally is for a coarsened graph (the domain quotient, #149), whose
+        edges keep only what was resolved across domains: the calls it was
+        built from are gone, so their unresolved share cannot be read off the
+        edges. When given, unresolved_ratio is summed from it over the nodes a
+        prefix selects instead.
         """
         inst = cls(None)
         inst._cache = (HealthScorer(nodes, edges).enrich(), list(edges))
+        inst._call_tally = call_tally
         return inst
 
     def _loaded(self) -> tuple[list[Node], list[Edge]]:
@@ -281,6 +296,25 @@ class FingerprintExtractor:
             all_edges = self._store.get_all_edges()
             self._cache = (HealthScorer(all_nodes, all_edges).enrich(), all_edges)
         return self._cache
+
+    def _unresolved_ratio(self, domain_ids: set[str], calls_edges: list[Edge]) -> float:
+        """Share of the domain's outgoing calls that resolved to nothing we can place.
+
+        The `get_edge_stats` definition (`is_unresolved`): a `raw_call:` target,
+        a target with no node, or an UNKNOWN one. Counting `raw_call:` alone read
+        0 on every stored graph, because the resolver turns what it cannot
+        place into UNKNOWN nodes before anything is saved (#149).
+        """
+        if self._call_tally is not None:
+            tallies = [self._call_tally[i] for i in domain_ids if i in self._call_tally]
+            total = sum(t for _, t in tallies)
+            return sum(u for u, _ in tallies) / total if total else 0.0
+        if not calls_edges:
+            return 0.0
+        if self._known is None:
+            self._known = {n.id: n for n in self._loaded()[0]}
+        known = self._known
+        return sum(1 for e in calls_edges if is_unresolved(e.target, known)) / len(calls_edges)
 
     def extract(self, fqn_prefix: str) -> PatternFingerprint:
         """Return the structural fingerprint for all nodes under fqn_prefix."""
@@ -324,8 +358,7 @@ class FingerprintExtractor:
         cycle_ratio = self._intra_domain_cycle_ratio(domain_nodes, all_edges)
 
         calls_edges = [e for e in domain_outgoing if e.type == EdgeType.CALLS]
-        raw_calls = [e for e in calls_edges if e.target.startswith(RAW_CALL_PREFIX)]
-        unresolved_ratio = len(raw_calls) / len(calls_edges) if calls_edges else 0.0
+        unresolved_ratio = self._unresolved_ratio(domain_ids, calls_edges)
 
         imports_edges = _reattributed_imports(domain_nodes, domain_ids, internal_edges, all_edges)
         t_imports = normalized_census(triad_census(domain_ids, imports_edges, EdgeType.IMPORTS))
