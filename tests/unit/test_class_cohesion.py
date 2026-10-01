@@ -60,6 +60,20 @@ def test_the_receiver_is_the_first_parameter_whatever_its_name() -> None:
     assert attrs["odd"] == ["a"]
 
 
+def test_a_splat_parameter_is_never_the_receiver() -> None:
+    """`def m(*args)` binds a tuple, not the instance; `**kw` binds a dict."""
+    code = (
+        "class A:\n"
+        "    def splat(*args):\n"
+        "        return args.count\n"
+        "    def kw(self, *rest, **opts):\n"
+        "        return self.x, opts.y\n"
+    )
+    attrs = _attrs(code)
+    assert attrs["splat"] == []
+    assert attrs["kw"] == ["x"]
+
+
 def test_a_staticmethod_has_no_receiver() -> None:
     code = "class A:\n    @staticmethod\n    def util(x):\n        return x.y\n"
     assert _attrs(code)["util"] == []

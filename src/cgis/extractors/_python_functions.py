@@ -432,6 +432,8 @@ def _parameter_names(node: BaseNode, code_bytes: bytes) -> list[str]:
     params = node.child_by_field_name("parameters")
     names: list[str] = []
     for param in params.named_children if params is not None else []:
+        if param.type in _SPLAT_PARAMETERS:
+            continue
         ident = param if param.type == "identifier" else param.child_by_field_name("name")
         if ident is None and param.named_children:
             ident = param.named_children[0]
@@ -439,6 +441,9 @@ def _parameter_names(node: BaseNode, code_bytes: bytes) -> list[str]:
             names.append(get_identifier(ident, code_bytes))
     return names
 
+
+#: `*args` / `**kw`: they bind a tuple or dict, never the receiver (#521 review).
+_SPLAT_PARAMETERS = frozenset({"list_splat_pattern", "dictionary_splat_pattern"})
 
 #: Scopes whose parameters can rebind the receiver's name inside a method body.
 _REBINDING_SCOPES = frozenset({"function_definition", "lambda"})
