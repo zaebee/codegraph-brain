@@ -177,6 +177,12 @@ def _file_coupling_query(filter_sql: str) -> str:
     As with node coupling, the ``filter_sql`` fragments restrict which files are
     ranked while the ``dep`` CTE stays whole-graph, so a scoped file still counts
     dependents from outside the scope (#239).
+
+    One row per file comes from ranking FILE nodes only — an extractor emits
+    exactly one per file, its id derived from the path. A MODULE node stands for
+    a directory or a domain (`query/engine.py`, `quotient.py`), not a file, so
+    listing it here would both mislabel it and, sharing a `file_path` with a
+    FILE node, repeat that file (#520 review).
     """
     return f"""
 WITH dep AS (
@@ -199,7 +205,7 @@ SELECT
 FROM nodes f
 LEFT JOIN ca ON f.file_path = ca.file_path
 LEFT JOIN ce ON f.file_path = ce.file_path
-WHERE f.type IN ('FILE', 'MODULE')
+WHERE f.type = 'FILE'
   AND f.namespace = 'INTERNAL'
   AND f.file_path != '{VIRTUAL_FILE_PATH}'{filter_sql}
 ORDER BY (COALESCE(ca.n, 0) + COALESCE(ce.n, 0)) DESC, f.id

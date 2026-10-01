@@ -113,6 +113,31 @@ def test_a_file_linked_to_nothing_has_no_instability(db: str) -> None:
     assert rows["pkg.lone"] == (0, 0, None)
 
 
+def test_one_row_per_file_even_beside_a_module_node(tmp_path: Path) -> None:
+    """A MODULE node sharing a file's path is a directory or domain row, not a second file."""
+    nodes = [
+        _file("pkg.core"),
+        _func("pkg.core.load", "pkg.core"),
+        _file("pkg.api"),
+        _func("pkg.api.handler", "pkg.api"),
+        Node(
+            id="pkg.core_package",
+            type=NodeType.MODULE,
+            name="core_package",
+            file_path="pkg/core.py",
+            start_line=0,
+            end_line=0,
+        ),
+    ]
+    path = str(tmp_path / "graph.db")
+    with SQLiteStore(path) as store:
+        store.save_graph(nodes, [_edge("pkg.api.handler", "pkg.core.load")])
+    with DuckDBAnalyzer(path) as analyzer:
+        rows = file_coupling_metrics(analyzer, limit=20)
+    assert sorted(r.module for r in rows) == ["pkg.api", "pkg.core"]
+    assert [r.file_path for r in rows].count("pkg/core.py") == 1
+
+
 def test_ranked_by_ca_plus_ce_then_module(db: str) -> None:
     with DuckDBAnalyzer(db) as analyzer:
         rows = file_coupling_metrics(analyzer, limit=3)
