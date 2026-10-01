@@ -390,9 +390,14 @@ def _alias_candidates(
             if fqn == alias.prefix:
                 return alias.targets
             continue
-        if len(fqn) > len(alias.prefix) and fqn.startswith(alias.prefix):
+        if fqn.startswith(alias.prefix):
+            # The remainder may be empty, as in TypeScript (`jquery*` matches
+            # `jquery`): the target is then its directory, so `lib.*` -> `lib`.
             rest = fqn[len(alias.prefix) :]
-            return tuple(target.replace(_ALIAS_WILDCARD, rest) for target in alias.targets)
+            substituted = (
+                t.replace(_ALIAS_WILDCARD, rest).removesuffix(".") for t in alias.targets
+            )
+            return tuple(candidate for candidate in substituted if candidate)
     return ()
 
 

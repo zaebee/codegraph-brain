@@ -333,3 +333,48 @@ def test_an_unchanged_alias_map_keeps_the_incremental_no_op(tmp_path: Path) -> N
     with SQLiteStore(db) as store:
         _, _, resolved = _pipeline().run(str(work), store=store)
     assert resolved == []
+
+
+# --- review follow-ups (#513) -------------------------------------------------------
+
+
+def test_a_wildcard_matches_an_empty_remainder_as_its_directory(tmp_path: Path) -> None:
+    # TypeScript matches `@ui*` against `@ui` with an empty remainder; the target
+    # `ui/*` then names the directory, i.e. its index module.
+    _write(
+        tmp_path,
+        {
+            "tsconfig.json": _tsconfig({"paths": {"@ui*": ["ui/*"]}}),
+            "ui/index.ts": BUTTON,
+            "page.ts": _importer("@ui"),
+        },
+    )
+    assert _import_target(tmp_path, "page") == "ui"
+
+
+def test_an_absolute_target_is_dropped_not_read_as_a_repository_path(tmp_path: Path) -> None:
+    # Joined onto the base, `/opt/lib/*` stays absolute; spelled as an FQN it would
+    # lose its `/` and claim the repository's own `opt/lib`.
+    _write(
+        tmp_path,
+        {
+            "tsconfig.json": _tsconfig({"paths": {"@lib/*": ["/opt/lib/*"]}}),
+            "opt/lib/util.ts": BUTTON,
+            "page.ts": _importer("@lib/util"),
+        },
+    )
+    assert _import_target(tmp_path, "page") == "@lib.util"
+
+
+def test_a_malformed_object_extends_is_ignored_not_iterated(tmp_path: Path) -> None:
+    # Iterating a dict would try its keys as configs: here `./base.json`, which exists.
+    _write(
+        tmp_path,
+        {
+            "base.json": _tsconfig({"paths": {"@ui/*": ["ui/*"]}}),
+            "tsconfig.json": _tsconfig(extends={"./base.json": True}),
+        },
+    )
+    collector = TsconfigPaths(tmp_path, {".ts": TypeScriptExtractor()})
+    collector.note(tmp_path / "tsconfig.json")
+    assert collector.aliases() == {"": {}}

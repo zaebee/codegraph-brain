@@ -150,7 +150,12 @@ def _options(reader: _Reader, config: Path, depth: int) -> _Options | None:
         return None
     options = _Options()
     extends = data.get("extends")
-    for parent_ref in [extends] if isinstance(extends, str) else extends or []:
+    # A string or an array of them (TypeScript 5.0); anything else is malformed and
+    # ignored rather than iterated — a dict would otherwise yield its keys.
+    parents = (
+        [extends] if isinstance(extends, str) else extends if isinstance(extends, list) else []
+    )
+    for parent_ref in parents:
         if not isinstance(parent_ref, str):
             continue
         parent = _locate(reader, parent_ref, config.parent)
@@ -236,7 +241,9 @@ def _target_fqn(reader: _Reader, base: Path, target: str, wildcard: bool) -> str
     except ValueError:
         return None
     path = posixpath.normpath(posixpath.join(relative, target.removesuffix(_WILDCARD)))
-    if path == ".." or path.startswith("../"):
+    # An absolute target replaces the base in the join, and the FQN helper would
+    # then strip its leading `/` — `/opt/lib/*` into an in-repo `opt.lib.*`.
+    if path == ".." or path.startswith(("../", "/")):
         return None
     if not wildcard:
         return None if path == "." else reader.namer.module_fqn(path)
