@@ -122,7 +122,7 @@ async def run_chunked_review(
     findings unverified.
     """
     diff = collector.source.get_git_diff()
-    if collector.graph.db_path is None:  # routed guard (§4.1) — belt and braces
+    if not collector.graph.has_db():  # routed guard (§4.1) — belt and braces
         _msg = "run_chunked_review requires a graph DB"
         raise RuntimeError(_msg)
     with SQLiteStore(str(collector.graph.db_path)) as store:

@@ -160,6 +160,17 @@ async def test_chunked_one_finder_call_per_chunk(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_chunked_refuses_a_db_path_that_does_not_exist(tmp_path: Path) -> None:
+    """A db_path with no file behind it raises rather than opening a fresh, empty DB."""
+    collector = ContextCollector(project_root=tmp_path, db_path=tmp_path / "missing.db")
+    collector.source._diff_cache = fdiff("src/a.py")  # noqa: SLF001  # bypass git
+    provider = StubProvider([_LGTM])
+    with pytest.raises(RuntimeError, match="requires a graph DB"):
+        await run_chunked_review(provider=provider, collector=collector, skeptic_provider=None)
+    assert not (tmp_path / "missing.db").exists()
+
+
+@pytest.mark.asyncio
 async def test_chunked_empty_diff_no_llm_calls(tmp_path: Path) -> None:
     """Empty diff -> zero chunks, zero API calls, clean LGTM-ish result."""
     provider = StubProvider([])
