@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { Node, Edge } from '@xyflow/react'
-import type { GraphNode, GraphEdge } from '../types'
+import type { GraphNode, GraphEdge, NodeNamespace } from '../types'
 
 type EdgeTypeName = 'CALLS' | 'IMPORTS' | 'EXTENDS' | 'CONTAINS' | 'DECLARES'
 type ViewMode = 'full' | 'flow' | 'ego'
@@ -67,7 +67,7 @@ export const useGraphStore = create<GraphStore>((set) => ({
       ...new Set(
         graphNodes
           .map((n) => n.namespace)
-          .filter((ns): ns is string => typeof ns === 'string' && ns.length > 0)
+          .filter((ns): ns is NodeNamespace => typeof ns === 'string' && ns.length > 0)
       ),
     ]
     set((state) => ({
