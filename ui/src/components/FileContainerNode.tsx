@@ -14,8 +14,16 @@ function FileContainerNode({ data }: NodeProps) {
         <span className={styles.indicator}>{indicator}</span>
         <span className={styles.title}>{cleanLabel}</span>
       </div>
-      <Handle type="target" position={Position.Top} style={isExpanded ? { opacity: 0, pointerEvents: 'none' } : undefined} />
-      <Handle type="source" position={Position.Bottom} style={isExpanded ? { opacity: 0, pointerEvents: 'none' } : undefined} />
+      <Handle
+        type="target"
+        position={Position.Top}
+        style={isExpanded ? { opacity: 0, pointerEvents: "none" } : undefined}
+      />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        style={isExpanded ? { opacity: 0, pointerEvents: "none" } : undefined}
+      />
     </div>
   );
 }

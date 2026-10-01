@@ -14,7 +14,7 @@ function renderNode(props: any = {}) {
   return render(
     <ReactFlowProvider>
       <FileContainerNode {...defaultProps} />
-    </ReactFlowProvider>,
+    </ReactFlowProvider>
   );
 }
 

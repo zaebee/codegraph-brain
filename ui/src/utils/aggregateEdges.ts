@@ -1,9 +1,6 @@
 import type { Edge } from "@xyflow/react";
 
-export function aggregateEdges(
-  edges: Edge[],
-  aggregateTypes: string[] = ["CALLS"]
-): Edge[] {
+export function aggregateEdges(edges: Edge[], aggregateTypes: string[] = ["CALLS"]): Edge[] {
   const singles: Edge[] = [];
   const groups = new Map<string, Edge[]>();
 

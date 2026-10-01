@@ -1,9 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-function collectAllDescendants(
-  id: string,
-  parentChildren: Map<string, string[]>
-): string[] {
+function collectAllDescendants(id: string, parentChildren: Map<string, string[]>): string[] {
   const result: string[] = [];
   const direct = parentChildren.get(id) || [];
   for (const c of direct) {
