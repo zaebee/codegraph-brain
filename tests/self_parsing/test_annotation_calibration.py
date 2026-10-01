@@ -38,8 +38,14 @@ _GraphData = tuple[SQLiteStore, list[Node], list[Edge]]
 # origin/main 15e7ba1 held 641 annotation / 196 name references — the name band
 # had drifted to 172+24 through ordinary growth — and #38 adds 5 / 2 (NodeType,
 # EdgeType named in pipeline.py). Both re-centred on the branch measurement.
-_EXPECTED_ANNOTATION_REFERENCES = 646
-_EXPECTED_NAME_REFERENCES = 198
+#
+# Re-measured 2026-10-01 on the #451 branch (fresh ingest of src/): origin/main
+# 86dbf38 held 705 annotation / 214 name references — the annotation band had
+# drifted to 646+59 through ordinary growth, one short of its edge — and #451
+# adds 3 annotation references (ResolutionMetric and the analyzer it reads).
+# Both re-centred on the branch measurement.
+_EXPECTED_ANNOTATION_REFERENCES = 708
+_EXPECTED_NAME_REFERENCES = 214
 _TOLERANCE = 60  # ~10% of the annotation band: ordinary code churn, not a lost source
 _NAME_REF_TOLERANCE = 25  # the name-reference band is smaller, so its band is too
 

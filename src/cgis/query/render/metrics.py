@@ -149,6 +149,22 @@ LIMIT ?
 """
 
 
+#: What `cgis validate` counts as unresolved, in DuckDB: a target with no node, an
+#: UNKNOWN one, or a surviving `raw_call:`. Kept to the same three cases as
+#: `SQLiteStore.get_edge_stats` so the two commands can never report different
+#: numbers for one graph (#451). `starts_with` rather than LIKE, whose `_` in
+#: `raw_call:` would be a wildcard.
+_RESOLUTION_QUERY = """
+SELECT
+    COUNT(*) AS total,
+    COUNT(CASE WHEN n.namespace IS NULL OR n.namespace = 'UNKNOWN'
+               OR starts_with(e.target, 'raw_call:') THEN 1 END) AS unresolved
+FROM edges e
+LEFT JOIN nodes n ON e.target = n.id
+WHERE TRUE{filter_sql}
+"""
+
+
 def _god_class_query(filter_sql: str) -> str:
     """God-class query with optional exclusion/scope fragments on the class id."""
     return f"""
@@ -205,6 +221,20 @@ class NodeMetric(BaseModel):
     page_rank: float = 0.0
 
 
+class ResolutionMetric(BaseModel):
+    """How many edges the resolver could not place, beside the rankings (#451).
+
+    The rankings above it are only as good as the edges under them: a module whose
+    calls are mostly unresolved looks uncoupled because its edges point nowhere.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    total_edges: int
+    unresolved_edges: int
+    unresolved_ratio: float
+
+
 class ArchitectureReport(BaseModel):
     """Whole-graph summary an agent or human can read to spot hotspots."""
 
@@ -213,6 +243,34 @@ class ArchitectureReport(BaseModel):
     bottlenecks: list[NodeMetric]
     god_classes: list[NodeMetric]
     critical: list[NodeMetric] = []
+    resolution: ResolutionMetric
+
+
+def resolution_metric(
+    analyzer: "DuckDBAnalyzer", exclude: Sequence[str] = (), scope: Sequence[str] = ()
+) -> ResolutionMetric:
+    """The share of edges the resolver left unplaced, by `cgis validate`'s rule (#451).
+
+    Unfiltered it is the same number `cgis validate` reports. ``exclude`` and
+    ``scope`` filter by the edge's *source*: a scoped run answers "of the edges
+    this subtree's code emits, how many point nowhere", which is the caveat its
+    own rankings carry. Filtering by target instead would drop exactly the
+    unresolved edges, whose targets have no FQN in the subtree.
+
+    A function over the connection rather than a `DuckDBAnalyzer` method: the
+    class is at the size the god-object baseline allows.
+    """
+    where, params = _segment_exclusion("e.source", exclude)
+    scope_sql, scope_params = _scope_restriction("e.source", scope)
+    row = analyzer.conn.execute(
+        _RESOLUTION_QUERY.format(filter_sql=where + scope_sql), [*params, *scope_params]
+    ).fetchone()
+    total, unresolved = (int(row[0]), int(row[1])) if row else (0, 0)
+    return ResolutionMetric(
+        total_edges=total,
+        unresolved_edges=unresolved,
+        unresolved_ratio=unresolved / total if total else 0.0,
+    )
 
 
 class DuckDBAnalyzer:
@@ -414,7 +472,7 @@ class DuckDBAnalyzer:
         exclude: Sequence[str] = (),
         scope: Sequence[str] = (),
     ) -> ArchitectureReport:
-        """Bundle the coupling bottlenecks, God classes, and PageRank-critical nodes.
+        """Bundle the coupling bottlenecks, God classes, PageRank-critical nodes, resolution.
 
         ``exclude`` and ``scope`` are threaded into all three sections: ``exclude``
         drops any node whose FQN contains one of the given dot-segments (e.g.
@@ -426,4 +484,5 @@ class DuckDBAnalyzer:
             bottlenecks=self.get_coupling_metrics(bottleneck_limit, exclude, scope),
             god_classes=self.get_god_classes(god_limit, exclude, scope),
             critical=self.get_pagerank(critical_limit, exclude, scope),
+            resolution=resolution_metric(self, exclude, scope),
         )

@@ -1365,7 +1365,7 @@ def context(
 
 
 def _render_metrics(report: ArchitectureReport) -> None:
-    """Print the architecture report as two Rich tables (bottlenecks + God classes)."""
+    """Print the architecture report: three Rich tables, then the unresolved share."""
     bottlenecks = Table(title="🔌 Coupling bottlenecks (top by fan-in + fan-out)")
     bottlenecks.add_column("Node", style="cyan")
     bottlenecks.add_column("Type", style="magenta")
@@ -1401,6 +1401,14 @@ def _render_metrics(report: ArchitectureReport) -> None:
             str(m.out_degree),
         )
     console.print(critical)
+
+    # Under the rankings, because it qualifies them: a module whose calls are
+    # mostly unresolved looks uncoupled only because its edges point nowhere (#451).
+    res = report.resolution
+    console.print(
+        f"🧩 Unresolved edges: {res.unresolved_edges} of {res.total_edges} "
+        f"({res.unresolved_ratio * 100:.1f}%) — `cgis validate` lists them"
+    )
 
 
 @app.command()
