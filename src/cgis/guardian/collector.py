@@ -17,7 +17,7 @@ from cgis.extractors.registry import is_supported, language_for
 from cgis.guardian.chunker import Chunk
 from cgis.query.drift.drift import DriftScorer
 from cgis.query.drift.fingerprint import FingerprintExtractor
-from cgis.query.drift.quotient import build_quotient
+from cgis.query.drift.quotient import build_quotient, quotient_call_tally
 from cgis.query.engine import QueryEngine
 from cgis.query.render.mermaid import MermaidCompiler
 from cgis.storage.sqlite_store import SQLiteStore
@@ -255,10 +255,11 @@ class GraphContextCollector:
                 reports = [scorer.score(extractor.extract(d.fqn_prefix), d) for d in domains]
                 level = scorer.load_project_level()
                 if level:
-                    qnodes, qedges = build_quotient(
-                        store.get_all_nodes(), store.get_all_edges(), domains
+                    all_nodes, all_edges = store.get_all_nodes(), store.get_all_edges()
+                    qnodes, qedges = build_quotient(all_nodes, all_edges, domains)
+                    q_extractor = FingerprintExtractor.from_graph(
+                        qnodes, qedges, quotient_call_tally(all_nodes, all_edges, domains)
                     )
-                    q_extractor = FingerprintExtractor.from_graph(qnodes, qedges)
                     quotient_lines = [
                         f"Quotient k=1 [{b.name}] vs {qr.expected_pattern}: "
                         f"drift={qr.drift_score:.2f} (observe-only)"

@@ -10,7 +10,7 @@ consciously re-negotiated in the YAML, with a comment).
 from cgis.core.models import Edge, Node
 from cgis.query.drift.drift import DomainConfig, DriftScorer
 from cgis.query.drift.fingerprint import FingerprintExtractor
-from cgis.query.drift.quotient import build_quotient
+from cgis.query.drift.quotient import build_quotient, quotient_call_tally
 from cgis.storage.sqlite_store import SQLiteStore
 
 from .conftest import ONTOLOGY_DIR, skip_if_no_ui
@@ -135,9 +135,8 @@ def test_py_quotient_drift_observed_not_enforced(
 
     enforce is false for the burn-in milestone: the assertion here is only
     that the machinery runs end-to-end and the binding stays observe-only.
-    Known gap, recorded: quotient unresolved_ratio is 0 by construction
-    (raw_call targets belong to no domain), so the k=1 CALLS layer is
-    undiscounted until enforcement flips.
+    The k=1 CALLS layer is discounted by the members' unresolved share, carried
+    over through quotient_call_tally (#149) — the precondition for enforcing.
     """
     store, _, _ = root_graph_data
     scorer = DriftScorer(_PATTERNS)
@@ -145,8 +144,11 @@ def test_py_quotient_drift_observed_not_enforced(
     assert bindings, "project_level binding missing from patterns.yaml"
 
     domains = _selected_domains(scorer, graph="python")
-    qnodes, qedges = build_quotient(store.get_all_nodes(), store.get_all_edges(), domains)
-    extractor = FingerprintExtractor.from_graph(qnodes, qedges)
+    nodes, edges = store.get_all_nodes(), store.get_all_edges()
+    qnodes, qedges = build_quotient(nodes, edges, domains)
+    extractor = FingerprintExtractor.from_graph(
+        qnodes, qedges, quotient_call_tally(nodes, edges, domains)
+    )
 
     for binding in bindings:
         assert binding.enforce is False, (

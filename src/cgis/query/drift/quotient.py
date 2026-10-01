@@ -9,6 +9,8 @@ from collections import Counter
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.query.drift.drift import DomainConfig
+from cgis.query.drift.fingerprint import CallTally
+from cgis.query.engine import is_unresolved
 
 #: FQN prefix of quotient nodes; the project_level binding matches it.
 QUOTIENT_PREFIX = "quotient"
@@ -24,19 +26,11 @@ def build_quotient(
     One MODULE node per domain (id = quotient.<name>); cross-domain IMPORTS
     and CALLS edges aggregate per (source domain, target domain, type) with
     weight = aggregated edge count. Intra-domain edges and edges touching
-    nodes outside every domain are dropped (raw_call targets land here, so
-    the quotient's unresolved_ratio is 0 for the observe-only milestone —
-    recorded in tests/self_parsing/test_drift.py).
+    nodes outside every domain are dropped — unresolved call targets among
+    them, so the unresolved share the CALLS layer is discounted by is
+    carried over separately: see `quotient_call_tally`.
     """
-    # Longest-prefix match: if one domain's prefix nests inside another's,
-    # the most specific binding wins regardless of declaration order.
-    by_specificity = sorted(domains, key=lambda d: len(d.fqn_prefix), reverse=True)
-    domain_of: dict[str, str] = {}
-    for n in nodes:
-        for d in by_specificity:
-            if n.id == d.fqn_prefix or n.id.startswith(d.fqn_prefix + "."):
-                domain_of[n.id] = d.name
-                break
+    domain_of = _domain_of(nodes, domains)
 
     qnodes = [
         Node(
@@ -73,3 +67,45 @@ def build_quotient(
         )
     ]
     return qnodes, qedges
+
+
+def quotient_call_tally(
+    nodes: list[Node], edges: list[Edge], domains: list[DomainConfig]
+) -> CallTally:
+    """Quotient node id -> (unresolved calls, all calls) out of its domain's members (#149).
+
+    What `FingerprintExtractor.from_graph` needs to give the quotient the same
+    unresolved_ratio its members have: summed over a prefix, it is the
+    call-weighted mean of the member domains' ratios, the quantity each of
+    them is discounted by at k=0. Without it the ratio read 0 by construction —
+    `build_quotient` keeps no unresolved edge — and the k=1 CALLS layer went
+    undiscounted however poorly the code under it resolved.
+    """
+    domain_of = _domain_of(nodes, domains)
+    known = {n.id: n for n in nodes}
+    unresolved: Counter[str] = Counter()
+    total: Counter[str] = Counter()
+    for e in edges:
+        if e.type is not EdgeType.CALLS or e.source not in domain_of:
+            continue
+        qid = f"{QUOTIENT_PREFIX}.{domain_of[e.source]}"
+        total[qid] += 1
+        if is_unresolved(e.target, known):
+            unresolved[qid] += 1
+    return {qid: (unresolved[qid], count) for qid, count in total.items()}
+
+
+def _domain_of(nodes: list[Node], domains: list[DomainConfig]) -> dict[str, str]:
+    """Node id -> the name of the domain it belongs to, for nodes inside any domain.
+
+    Longest-prefix match: if one domain's prefix nests inside another's, the
+    most specific binding wins regardless of declaration order.
+    """
+    by_specificity = sorted(domains, key=lambda d: len(d.fqn_prefix), reverse=True)
+    domain_of: dict[str, str] = {}
+    for n in nodes:
+        for d in by_specificity:
+            if n.id == d.fqn_prefix or n.id.startswith(d.fqn_prefix + "."):
+                domain_of[n.id] = d.name
+                break
+    return domain_of

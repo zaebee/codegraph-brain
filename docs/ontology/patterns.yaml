@@ -128,18 +128,24 @@ project_domains:
     # deflating this domain's drift; 0.37 is the honest census of the real structure (no real
     # edges lost — verified by edge-diff). Correctness-driven re-baseline, not ratchet loosening.
     drift_tolerance: 0.40
+    hygiene_baseline:
+      unresolved_ratio: 0.37 # measured 0.3604 when the gate came alive (#149)
 
   - name: "resolution"
     fqn_prefix: "cgis.resolver"
     expected_pattern: pipeline_stage
     profile: python
     drift_tolerance: 0.40 # v2 measured ≈0.25 post-#115 split (tv_imp 0.00 — real 021C chain engine→symbols→indices; residual is tv_calls)
+    hygiene_baseline:
+      unresolved_ratio: 0.45 # measured 0.4451 when the gate came alive (#149)
 
   - name: "pipeline"
     fqn_prefix: "cgis.pipeline"
     expected_pattern: orchestrator
     profile: python
     drift_tolerance: 0.25 # v2 measured ≈0.20 (tv_calls .36)
+    hygiene_baseline:
+      unresolved_ratio: 0.43 # measured 0.4220 when the gate came alive (#149)
 
   - name: "storage"
     fqn_prefix: "cgis.storage"
@@ -155,7 +161,13 @@ project_domains:
     # rounding step under the line; the class-cohesion metric's reuse of the shared
     # scope/exclusion helpers adds fan-in calls (T_calls 021U 0.128 -> 0.133) and
     # scores 0.2006. History: v2 ≈0.19 after ontology_init joined (#174), was ≈0.14/0.18.
-    drift_tolerance: 0.21
+    # Re-baselined 0.21 -> 0.23 in #149: unresolved_ratio read 0 on every stored graph
+    # (only `raw_call:` targets were counted, and the resolver turns those into UNKNOWN
+    # nodes before saving). Measured honestly it is 0.2787: the acknowledged debt still
+    # scores, and discounts the CALLS layer — 0.2026 -> 0.2212. Correctness-driven, like #183.
+    drift_tolerance: 0.23
+    hygiene_baseline:
+      unresolved_ratio: 0.28 # measured 0.2787 when the gate came alive (#149)
 
   # Bound in #182: these three were production code with no architectural gate at
   # all — 207 of 618 internal nodes (33%) sat outside every domain, guardian alone
@@ -168,6 +180,8 @@ project_domains:
     profile: python
     drift_tolerance: 0.26 # v2 measured 0.2282; dag_depth 5 clears the template's min 3
                           # (runner-up dispatcher 0.34 — a clear win, not a coin flip)
+    hygiene_baseline:
+      unresolved_ratio: 0.28 # measured 0.2778 when the gate came alive (#149)
 
   # cli and api are hygiene-only by rule, not by taste: neither has ANY
   # intra-domain IMPORTS edge (cli is one file, api is two), so there is no
@@ -180,7 +194,9 @@ project_domains:
   - name: "cli"
     fqn_prefix: "cgis.cli"
     profile: python
-    drift_tolerance: 0.03 # hygiene-only; measured 0.00 (no cycles, nothing unresolved)
+    drift_tolerance: 0.03 # hygiene-only; measured 0.00 (no cycles)
+    hygiene_baseline:
+      unresolved_ratio: 0.24 # measured 0.2309 when the gate came alive (#149)
 
   - name: "api"
     fqn_prefix: "cgis.api"
@@ -193,19 +209,29 @@ project_domains:
     expected_pattern: layered_dag
     profile: typescript
     params: {min_depth: 2} # JSX component trees are legitimately shallower
-    drift_tolerance: 0.20 # v2 measured ≈0.17 (tv_imp .28; CALLS layer empty → excluded)
+    # Re-baselined 0.20 -> 0.24 in #149: unresolved_ratio now counts UNKNOWN targets
+    # (0.9036 — the TS resolver places few calls), 0.1667 -> 0.2370. See query.
+    drift_tolerance: 0.24
+    hygiene_baseline:
+      unresolved_ratio: 0.91 # measured 0.9036 when the gate came alive (#149)
 
   - name: "layout"
     fqn_prefix: "layout"
     expected_pattern: pure_utility
     profile: typescript
     drift_tolerance: 0.50 # v2 measured ≈0.46 — 4 CALLS triples (small-N, spec §3.6.1); revisit with TS resolver
+    hygiene_baseline:
+      unresolved_ratio: 0.66 # measured 0.6522 when the gate came alive (#149)
 
   # Hygiene-only domains (no expected_pattern → v1 gate path): acyclic + resolved.
+  # hooks, providers and utils: re-baselined in #149 from 0.15. Their whole score is
+  # the acknowledged unresolved_ratio debt now that it is measured (see query).
   - name: "hooks"
     fqn_prefix: "hooks"
     profile: typescript
-    drift_tolerance: 0.15 # measured 0.00
+    drift_tolerance: 0.22 # measured 0.2117
+    hygiene_baseline:
+      unresolved_ratio: 0.84 # measured 0.8351 when the gate came alive (#149)
 
   - name: "store"
     fqn_prefix: "store"
@@ -215,12 +241,16 @@ project_domains:
   - name: "providers"
     fqn_prefix: "providers"
     profile: typescript
-    drift_tolerance: 0.15 # measured 0.00
+    drift_tolerance: 0.17 # measured 0.1641
+    hygiene_baseline:
+      unresolved_ratio: 0.70 # measured 0.6923 when the gate came alive (#149)
 
   - name: "utils"
     fqn_prefix: "utils"
     profile: typescript
-    drift_tolerance: 0.15 # measured 0.00
+    drift_tolerance: 0.20 # measured 0.1952
+    hygiene_baseline:
+      unresolved_ratio: 0.79 # measured 0.7857 when the gate came alive (#149)
 
 # ── Project-level quotient binding (spec §3.4) — OBSERVE-ONLY burn-in ────────
 # Measured quotient IMPORTS census {021D .4, 021U .4, 030T .2}: the domain

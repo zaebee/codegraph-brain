@@ -9,7 +9,7 @@ from cgis.core.models import Node
 from cgis.query.drift.drift import DomainConfig, DriftReport, DriftScorer
 from cgis.query.drift.fingerprint import FingerprintExtractor
 from cgis.query.drift.ontology_init import discover_domains
-from cgis.query.drift.quotient import build_quotient
+from cgis.query.drift.quotient import build_quotient, quotient_call_tally
 from cgis.query.drift.scoring import FitQuality
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -191,8 +191,11 @@ def analyze_drift(
                 b for b in level_bindings if b.profile is None or b.profile == profile
             ]
         if level_bindings:
-            qnodes, qedges = build_quotient(all_nodes, store.get_all_edges(), domains)
-            q_extractor = FingerprintExtractor.from_graph(qnodes, qedges)
+            all_edges = store.get_all_edges()
+            qnodes, qedges = build_quotient(all_nodes, all_edges, domains)
+            q_extractor = FingerprintExtractor.from_graph(
+                qnodes, qedges, quotient_call_tally(all_nodes, all_edges, domains)
+            )
             quotient = [
                 (b, scorer.score(q_extractor.extract(b.fqn_prefix), b, default_tolerance=max_drift))
                 for b in level_bindings
