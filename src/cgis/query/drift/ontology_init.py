@@ -16,7 +16,8 @@ from typing import Any
 import yaml
 
 from cgis.core.models import VIRTUAL_FILE_PATH, Node
-from cgis.query.drift.drift import DomainConfig, DriftScorer
+from cgis.query.drift.catalog import DomainConfig
+from cgis.query.drift.drift import DriftScorer
 from cgis.query.drift.fingerprint import FingerprintExtractor, PatternFingerprint
 from cgis.storage.sqlite_store import SQLiteStore
 

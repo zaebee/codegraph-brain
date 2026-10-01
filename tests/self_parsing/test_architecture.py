@@ -181,7 +181,6 @@ _KNOWN_GOD_OBJECTS = frozenset(
     {
         "storage.sqlite_store.SQLiteStore",  # data-access layer — many CRUD methods by design
         "extractors.typescript_extractor.TypeScriptExtractor",  # complex AST visitor
-        "query.drift.drift.DriftScorer",  # drift scoring — many ops; #242 slice-2 query/drift/ subpkg  # noqa: E501
         "guardian.collector.ContextCollector",  # slice-2 chunked: _graph_sections + collect_for_chunk  # noqa: E501
     }
 )
