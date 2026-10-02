@@ -1821,14 +1821,14 @@ def _render_suggest(report: SuggestReport) -> None:
         f"[bold]{_VERDICT_LABEL.get(report.verdict, report.verdict)}[/bold]  "
         f"{escape(report.package)}  "
         f"[dim]Q={report.modularity_q:.3f}  divergence={report.divergence:.3f}  "
-        f"direction={report.direction}  ({report.layer})[/dim]"
+        f"direction={report.direction}  ({report.layer}, {report.level})[/dim]"
     )
     if report.note:
         console.print(f"  [dim]{escape(report.note)}[/dim]")
         return
     comm_table = Table(title="Communities")
     comm_table.add_column("#", justify="right", style="cyan")
-    comm_table.add_column("Files", style="white")
+    comm_table.add_column("Children" if report.level == "children" else "Files", style="white")
     for c in report.communities:
         comm_table.add_row(str(c.id), escape(", ".join(c.files)))
     console.print(comm_table)
@@ -1861,13 +1861,22 @@ def suggest_packages_cmd(
         max=1.0,
         help="Modularity threshold above which a divergent package is flagged 'split'.",
     ),
+    all_descendants: bool = typer.Option(
+        False,
+        "--all-descendants",
+        help="Cluster every file below the package and compare with its sub-directories, "
+        "instead of treating each sub-package as one node.",
+    ),
 ) -> None:
     """Suggest sub-package boundaries from a package's dependency communities.
 
-    Detects communities (greedy modularity Q) over the intra-package import
-    graph, measures how far the directory layout diverges (1-NMI), and reports a
-    verdict (split / consolidate / aligned / leave / borderline). Advisory —
-    always exits 0 on success. Run `ingest` first.
+    Detects communities (greedy modularity Q) over the import graph of the
+    package's direct children, each sub-package counted as one node, and
+    reports whether they should be regrouped (split / borderline / leave).
+    With --all-descendants it clusters every file below the package instead,
+    measures how far the directory layout diverges (1-NMI), and can also report
+    consolidate or aligned. Advisory — always exits 0 on success. Run `ingest`
+    first.
     """
     if not Path(db).is_file():
         console.print(
@@ -1876,7 +1885,9 @@ def suggest_packages_cmd(
         raise typer.Exit(code=1)
     _warn_if_not_fresh(db)
     try:
-        report = suggest_packages(db, prefix, with_calls=with_calls, min_q=min_q)
+        report = suggest_packages(
+            db, prefix, with_calls=with_calls, min_q=min_q, all_descendants=all_descendants
+        )
     except Exception as e:
         console.print(f"[bold red]❌ Error during suggest-packages:[/bold red] {escape(str(e))}")
         raise typer.Exit(code=1) from e

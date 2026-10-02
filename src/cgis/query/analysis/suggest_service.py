@@ -10,11 +10,14 @@ from cgis.core.models import EdgeType
 
 if TYPE_CHECKING:
     from cgis.core.models import Edge, Node
+    from cgis.query.analysis.cohesion import FileGraph
 
 from cgis.query.analysis.cohesion import (
     THRESHOLDS,
     build_file_graph,
+    children_graph,
     classify_verdict,
+    direct_child,
     greedy_modularity,
     layout_direction,
     partition_divergence,
@@ -26,11 +29,13 @@ _ROOT_GROUP = "<root>"
 
 @dataclass(frozen=True)
 class Community:
-    """One detected community: an id and its member files.
+    """One detected community: an id and its members.
 
-    A member is named by its path under the analysed package — `analysis.analyzer`
-    — or by its full FQN where that would be ambiguous. See `_member_names`; the
-    values are not bare module names, and were not since #446.
+    By default the members are the package's direct children — `analysis`, a
+    sub-package, or `engine`, a module. With `all_descendants` they are files,
+    named by their path under the analysed package — `analysis.analyzer`. Either
+    way a name is the full FQN where the relative one would be ambiguous; see
+    `_member_names`.
     """
 
     id: int
@@ -70,6 +75,9 @@ class SuggestReport:
     # sparse-graph artifact (most files are independent). 0.0 for no_signal.
     connected_fraction: float = 0.0
     note: str | None = None
+    # What the members are: "children" (the package's direct children, each
+    # sub-package one node — the default) or "files" (every file below it).
+    level: str = "children"
 
 
 def _member_names(file_ids: tuple[str, ...], prefix: str) -> dict[str, str]:
@@ -105,21 +113,25 @@ def _member_names(file_ids: tuple[str, ...], prefix: str) -> dict[str, str]:
     return relative if len(set(relative.values())) == len(relative) else absolute
 
 
-def _dir_group(fqn: str, prefix: str) -> str:
-    """Return the file's directory group relative to the package root.
+def _dir_groups(file_ids: tuple[str, ...], prefix: str) -> dict[str, str]:
+    """Map every file under ``prefix`` to its directory group relative to the root.
 
-    A single remaining segment after the prefix maps to the shared ``"<root>"``
-    group; two or more map to the first remaining segment (a real sub-directory).
-    The package node itself (``fqn == prefix``, e.g. an ``__init__``) is ``<root>``.
+    A file two or more segments below the prefix belongs to the sub-package that
+    holds it, named by its FQN. A sub-package's own node (``p.sub`` for ``p/sub/__init__``)
+    is one segment below, but it is that directory's file, not a root module, so it
+    joins the sub-package's group too (#446) — otherwise every ``__init__`` sat in
+    ``<root>`` and inflated the divergence of a package whose directories already
+    matched its communities. The package node itself (``fqn == prefix``) and plain
+    root modules are ``<root>``.
     """
-    if fqn == prefix:
-        return _ROOT_GROUP
-    remainder = fqn[len(prefix) + 1 :] if fqn.startswith(prefix + ".") else fqn
-    parts = remainder.split(".")
-    return _ROOT_GROUP if len(parts) <= 1 else parts[0]
+    children = [(fid, direct_child(fid, prefix)) for fid in file_ids]
+    sub_dirs = {child for fid, child in children if child != fid}
+    return {fid: child if child in sub_dirs else _ROOT_GROUP for fid, child in children}
 
 
-def _empty_report(package: str, layer: str, note: str, file_count: int = 0) -> SuggestReport:
+def _empty_report(
+    package: str, layer: str, note: str, file_count: int = 0, level: str = "children"
+) -> SuggestReport:
     """Return a no_signal report carrying a diagnostic note (never a silent green).
 
     ``file_count`` is passed through for the mis-rooted / flat-leaf-bag cases —
@@ -139,13 +151,62 @@ def _empty_report(package: str, layer: str, note: str, file_count: int = 0) -> S
         bridges=[],
         thresholds=dict(THRESHOLDS),
         note=note,
+        level=level,
     )
 
 
+def _unscorable_note(
+    package: str, graph: FileGraph, file_graph: FileGraph, edges: list[Edge]
+) -> str | None:
+    """Return why ``graph`` cannot be scored, or None when it can.
+
+    ``graph`` is what gets clustered — the children graph by default, the file
+    graph with ``all_descendants`` — and ``file_graph`` is the file graph it came
+    from, which tells "the children are unlinked" apart from "nothing is linked".
+    """
+    if len(graph.files) < 2:
+        return (
+            f"'{package}' has a single child, {graph.files[0]} — analyse that, or pass "
+            "all_descendants (--all-descendants) to cluster every file below the package"
+        )
+    if graph.adj:
+        return None
+    if file_graph.adj:
+        return (
+            f"{package}: every intra-package import stays inside a sub-package, so nothing "
+            "links the children — analyse a sub-package, or pass all_descendants "
+            "(--all-descendants)"
+        )
+    had_import_attempts = any(
+        e.source.startswith(package + ".") or e.source == package
+        for e in edges
+        if e.type == EdgeType.IMPORTS
+    )
+    if had_import_attempts:
+        return (
+            f"{package}: files found but no import resolves inside the package — the "
+            "graph looks mis-rooted or imports are unresolved; try ingesting the "
+            "package's parent directory"
+        )
+    return f"{package}: no intra-package imports (a flat leaf bag)"
+
+
 def suggest_packages(
-    db_path: str, prefix: str | None, with_calls: bool = False, min_q: float = 0.35
+    db_path: str,
+    prefix: str | None,
+    with_calls: bool = False,
+    min_q: float = 0.35,
+    all_descendants: bool = False,
 ) -> SuggestReport:
     """Detect a package's communities and score layout divergence (#242).
+
+    By default the members are the package's **direct children**: each
+    sub-package is one node carrying the sum of its files' edges, so the verdict
+    answers "should these children be regrouped" (#446). Their layout is flat
+    by construction, so on a package with sub-packages the result is ``split``,
+    ``borderline`` or ``leave``. ``all_descendants`` puts every file below the
+    package into the graph instead and compares the communities with the
+    sub-directories, which answers "how do all these files cluster".
 
     ``prefix`` is normalized once here: a ``None`` or blank value (a CLI/MCP
     client may send either) collapses to a ``no_signal`` report rather than a
@@ -167,9 +228,10 @@ def suggest_packages(
         nodes: list[Node] = store.get_all_nodes()
         edges: list[Edge] = store.get_all_edges()
 
+    level = "files" if all_descendants else "children"
     graph = build_file_graph(nodes, edges, package, with_calls)
     if not graph.files:
-        return _empty_report(package, layer, f"fqn_prefix '{package}' matched 0 nodes")
+        return _empty_report(package, layer, f"fqn_prefix '{package}' matched 0 nodes", level=level)
 
     if len(graph.files) < 2:
         # A single matched file is a module (or a one-file package), not something
@@ -181,27 +243,20 @@ def suggest_packages(
             layer,
             f"'{package}' matched a single module, not a multi-file package — nothing to split",
             file_count=len(graph.files),
+            level=level,
         )
 
+    file_graph = graph
+    if not all_descendants:
+        graph = children_graph(file_graph, package)
+    note = _unscorable_note(package, graph, file_graph, edges)
+    if note is not None:
+        return _empty_report(package, layer, note, file_count=len(graph.files), level=level)
     internal_edges = sum(len(v) for v in graph.adj.values()) // 2
-    if internal_edges == 0:
-        had_import_attempts = any(
-            e.source.startswith(package + ".") or e.source == package
-            for e in edges
-            if e.type == EdgeType.IMPORTS
-        )
-        note = (
-            f"{package}: files found but no import resolves inside the package — the "
-            "graph looks mis-rooted or imports are unresolved; try ingesting the "
-            "package's parent directory"
-            if had_import_attempts
-            else f"{package}: no intra-package imports (a flat leaf bag)"
-        )
-        return _empty_report(package, layer, note, file_count=len(graph.files))
 
     communities, q = greedy_modularity(graph)
     comm_of = {f: i for i, c in enumerate(communities) for f in c}
-    dir_of = {f: _dir_group(f, package) for f in graph.files}
+    dir_of = _dir_groups(graph.files, package)
     # Clamp to [0, 1]: NMI is mathematically in range, but float error can leak
     # a tiny negative / >1 value that looks odd in JSON.
     divergence = max(0.0, min(1.0, partition_divergence(comm_of, dir_of)))
@@ -251,6 +306,7 @@ def suggest_packages(
         thresholds=thresholds,
         connected_fraction=round(connected_fraction, 4),
         note=sparse_note,
+        level=level,
     )
 
 

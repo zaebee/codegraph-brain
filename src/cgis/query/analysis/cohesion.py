@@ -103,6 +103,41 @@ def build_file_graph(
     return FileGraph(files=tuple(file_ids), adj=adj)
 
 
+def direct_child(fqn: str, prefix: str) -> str:
+    """Return the direct child of ``prefix`` that contains ``fqn``.
+
+    ``p.sub.deep.mod`` under ``p`` is ``p.sub``; a root module ``p.mod`` is
+    itself, and so is the package's own node ``p``.
+    """
+    if not fqn.startswith(prefix + "."):
+        return fqn
+    return f"{prefix}.{fqn[len(prefix) + 1 :].split('.', 1)[0]}"
+
+
+def children_graph(graph: FileGraph, prefix: str) -> FileGraph:
+    """Collapse a package's file graph onto its direct children (#446).
+
+    Each sub-package becomes one node whose edges are the sum of its files'
+    edges to the package's other children; edges inside a sub-package vanish,
+    because they say nothing about how the children relate. Root modules and
+    the package's own node pass through unchanged, so a package with no
+    sub-packages gets back the graph it gave.
+
+    A sub-package's node id is its FQN (``p.sub``) whether or not a file node
+    exists for it — a namespace package has none.
+    """
+    files = tuple(sorted({direct_child(f, prefix) for f in graph.files}))
+    adj: dict[str, dict[str, float]] = {}
+    for a, neighbours in graph.adj.items():
+        ca = direct_child(a, prefix)
+        for b, w in neighbours.items():
+            cb = direct_child(b, prefix)
+            if ca != cb:
+                row = adj.setdefault(ca, {})
+                row[cb] = row.get(cb, 0.0) + w
+    return FileGraph(files=files, adj=adj)
+
+
 _MIN_GAIN = 1e-12  # ignore non-positive / floating-noise merges
 
 
