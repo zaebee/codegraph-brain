@@ -1,0 +1,20 @@
+id: cgis-control-sqlite-pragmas
+repo: cgis
+sha: 715cd9a2ecee47949651344757edb4c7d09f64d7
+src_root: src
+type: control
+question: |
+  Which SQLite journal mode and busy timeout does `SQLiteStore` configure when it
+  opens a database, and in which method?
+gold:
+  symbols:
+    - SQLiteStore.__init__
+  files:
+    - src/cgis/storage/sqlite_store.py
+  facts:
+    - WAL
+    - "5000"
+notes: |
+  Negative control: one file, one method, no cross-file structure. A graph should
+  not help here; this measures what cgis costs when it is not needed.
+  sqlite_store.py:83-84.
