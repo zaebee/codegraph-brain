@@ -16,6 +16,9 @@ pinned commit, so no run sees another's files or a graph it did not build.
              agent to try cgis first. The pilot's `cgis` arm made no cgis call
              in 12 of 12 sessions; this arm stands in for #542's server
              instructions until they ship.
+- `cgis-forced`: `cgis-instructed`, and the guard refuses Read, Grep, Glob and
+             Bash until the session has made one cgis call. Measures what the
+             graph adds once used, separately from whether the agent picks it.
 
 All arms run under the same PreToolUse hook (`cgis.bench.guard`), the same
 allowed tools (Read, Grep, Glob, Bash; no edits, no web, no sub-agents) and a
@@ -48,8 +51,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from guardian_replay_skeptic import worktree_at
 
-Arm = Literal["control", "cgis", "cgis-instructed"]
-ARMS: tuple[Arm, ...] = ("control", "cgis", "cgis-instructed")
+Arm = Literal["control", "cgis", "cgis-instructed", "cgis-forced"]
+ARMS: tuple[Arm, ...] = ("control", "cgis", "cgis-instructed", "cgis-forced")
+_INSTRUCTED: tuple[Arm, ...] = ("cgis-instructed", "cgis-forced")
 
 #: Appended to the system prompt in the `cgis-instructed` arm only.
 CGIS_INSTRUCTION = (
@@ -116,9 +120,14 @@ def mcp_config(arm: Arm) -> dict[str, object]:
     return {"mcpServers": {"cgis": {"command": bin_path("cgis-mcp"), "args": []}}}
 
 
-def hook_settings() -> dict[str, object]:
-    """The `--settings` document installing the guard hook on every tool call."""
+def hook_settings(cgis_first: Path | None = None) -> dict[str, object]:
+    """The `--settings` document installing the guard hook on every tool call.
+
+    `cgis_first` is the marker file that switches the guard to `--cgis-first`.
+    """
     command = f"{shlex.quote(sys.executable)} -m cgis.bench.guard"
+    if cgis_first is not None:
+        command += f" --cgis-first {shlex.quote(str(cgis_first))}"
     return {
         "hooks": {
             "PreToolUse": [{"matcher": ".*", "hooks": [{"type": "command", "command": command}]}]
@@ -150,7 +159,8 @@ def build_command(
     mcp_path = config_dir / "mcp.json"
     settings_path = config_dir / "settings.json"
     mcp_path.write_text(json.dumps(mcp_config(arm)), encoding="utf-8")
-    settings_path.write_text(json.dumps(hook_settings()), encoding="utf-8")
+    cgis_first = config_dir / "cgis_used" if arm == "cgis-forced" else None
+    settings_path.write_text(json.dumps(hook_settings(cgis_first)), encoding="utf-8")
     cmd = [
         claude,
         "-p",
@@ -181,7 +191,7 @@ def build_command(
         cmd += ["--effort", effort]
     if arm != "control":
         cmd += ["--plugin-dir", str(stage_plugin(config_dir / "plugin"))]
-    if arm == "cgis-instructed":
+    if arm in _INSTRUCTED:
         cmd += ["--append-system-prompt", CGIS_INSTRUCTION]
     return cmd
 

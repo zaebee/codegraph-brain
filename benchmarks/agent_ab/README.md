@@ -41,10 +41,13 @@ resolver gets wrong. Each task's `notes` say how it was checked.
 | `control` | none (`--strict-mcp-config`, empty config) | no | all deleted | no |
 | `cgis` | this checkout's `cgis-mcp` | yes (the plugin minus its `.mcp.json`) | `graph.db` built before the clock starts | no |
 | `cgis-instructed` | as `cgis` | as `cgis` | as `cgis` | one line: query cgis first |
+| `cgis-forced` | as `cgis` | as `cgis` | as `cgis` | as `cgis-instructed`, and the guard refuses Read/Grep/Glob/Bash until one cgis call |
 
 `cgis-instructed` exists because the first pilot's `cgis` arm made no cgis call in
 12 of 12 sessions: with the server connected and the skill loaded, Sonnet still
-went straight to Grep. It stands in for #542's MCP server instructions.
+went straight to Grep. It stands in for #542's MCP server instructions. It barely moved the agent (2 cgis
+calls in 18 sessions), so `cgis-forced` makes the first graph query mandatory: it
+measures what the graph adds once used, apart from whether the agent picks it.
 
 All arms run under `cgis.bench.guard` as a PreToolUse hook, which refuses the
 cgis CLI, uv, sqlite3 and any read of `graph.db`/`graph.json` through Bash or

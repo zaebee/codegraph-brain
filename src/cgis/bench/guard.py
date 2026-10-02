@@ -9,12 +9,18 @@ Run as `python -m cgis.bench.guard`; Claude Code passes the pending tool call as
 JSON on stdin, and exit code 2 refuses it with stderr shown to the agent. The
 same predicate is applied to finished transcripts to flag contaminated runs, so
 "blocked" and "counted as contamination" cannot drift apart.
+
+With `--cgis-first MARKER` (the `cgis-forced` arm) the hook also refuses source
+access until the session has made one cgis MCP call, recorded by creating MARKER.
+That arm measures what the graph adds once it is used, not whether the agent
+chooses to use it.
 """
 
 import json
 import re
 import sys
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from pathlib import Path
 
 #: A cgis-adjacent executable in command position: start of the command, or after
 #: a separator, a subshell or a pipe, optionally with a directory in front.
@@ -25,6 +31,14 @@ _PYTHON_IMPORT = re.compile(r"-m\s+cgis\b|\b(?:import|from)\s+cgis\b")
 _GRAPH_FILE = re.compile(r"\bgraph\.(?:db|json)\b")
 
 _PATH_KEYS = ("file_path", "path", "pattern", "notebook_path")
+
+#: Tools that reach source without the graph; held back in `--cgis-first` mode.
+_SOURCE_TOOLS = frozenset({"Read", "Grep", "Glob", "Bash"})
+_CGIS_PREFIX = "mcp__cgis__"
+CGIS_FIRST_REASON = (
+    "Query the code graph first: call one of the mcp__cgis__ tools before reading "
+    "or searching source."
+)
 
 
 def blocked_reason(tool_name: str, tool_input: Mapping[str, object]) -> str | None:
@@ -42,18 +56,37 @@ def blocked_reason(tool_name: str, tool_input: Mapping[str, object]) -> str | No
     return None
 
 
-def main() -> int:
+def cgis_first_reason(tool_name: str, marker: Path) -> str | None:
+    """Gate source tools behind one cgis call; a cgis call creates `marker`."""
+    if tool_name.startswith(_CGIS_PREFIX):
+        marker.touch()
+        return None
+    if tool_name in _SOURCE_TOOLS and not marker.exists():
+        return CGIS_FIRST_REASON
+    return None
+
+
+def _marker(argv: Sequence[str]) -> Path | None:
+    """The `--cgis-first MARKER` path, when given."""
+    if len(argv) >= 2 and argv[0] == "--cgis-first":
+        return Path(argv[1])
+    return None
+
+
+def main(argv: Sequence[str] | None = None) -> int:
     """Hook entry point: exit 2 with a reason to refuse the call, 0 to allow it."""
+    marker = _marker(sys.argv[1:] if argv is None else argv)
     try:
         event = json.load(sys.stdin)
     except json.JSONDecodeError:
         return 0
     if not isinstance(event, dict):
         return 0
+    tool_name = str(event.get("tool_name", ""))
     tool_input = event.get("tool_input")
-    reason = blocked_reason(
-        str(event.get("tool_name", "")), tool_input if isinstance(tool_input, dict) else {}
-    )
+    reason = blocked_reason(tool_name, tool_input if isinstance(tool_input, dict) else {})
+    if reason is None and marker is not None:
+        reason = cgis_first_reason(tool_name, marker)
     if reason is None:
         return 0
     print(reason, file=sys.stderr)
