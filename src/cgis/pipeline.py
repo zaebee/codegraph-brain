@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 import re
 from collections.abc import Mapping
 from pathlib import Path
@@ -52,11 +53,24 @@ def _resolution_signature(nodes: list[Node], edges: list[Edge]) -> frozenset[str
     return frozenset(signature)
 
 
+def _observe(observed: dict[str, float], directory: Path, workspace_root: Path) -> None:
+    """Note a directory's mtime ahead of its listing; one gone already is skipped."""
+    try:
+        mtime = os.stat(directory).st_mtime  # noqa: PTH116
+    except OSError:
+        return
+    observed[directory.relative_to(workspace_root).as_posix()] = mtime
+
+
 class IngestionPipeline:
     """Orchestrates the full Extract → Resolve → Store pipeline over a source tree."""
 
     _extractors: Mapping[str, BaseExtractor]
     _domains_config: str | None
+    #: The mtime of every source file and walked directory, taken *before* the
+    #: run read it, keyed relative to the workspace root ("" for the root). Hand
+    #: it to `SQLiteStore.record_ingest` so a write landing mid-run reads STALE.
+    observed_mtimes: dict[str, float]
 
     def __init__(
         self,
@@ -73,6 +87,7 @@ class IngestionPipeline:
         self._extractors = extractors
         self._domains_config = domains_config
         self._excluded = EXCLUDED_DIRS
+        self.observed_mtimes = {}
 
     @staticmethod
     def _compute_hash(content: str) -> str:
@@ -125,6 +140,9 @@ class IngestionPipeline:
         found_file_paths: set[str] = set()
         workspace_root = self.workspace_root(repo_path)
         import_configs = ImportNameCollector(workspace_root, self._extractors)
+        # Each directory is statted before it is listed: the root here, every
+        # subdirectory when its parent's walk keeps it, ahead of its own listing.
+        self.observed_mtimes = {"": workspace_root.stat().st_mtime}
 
         with Progress(
             SpinnerColumn(),
@@ -137,6 +155,8 @@ class IngestionPipeline:
 
             for root, dirs, files in workspace_root.walk():
                 dirs[:] = [d for d in dirs if not d.startswith(".") and d not in self._excluded]
+                for d in dirs:
+                    _observe(self.observed_mtimes, root / d, workspace_root)
                 for file in files:
                     import_configs.note(root / file)
                     extractor = self._get_extractor(file)
@@ -242,6 +262,9 @@ class IngestionPipeline:
     ) -> None:
         """Extract nodes/edges from one file, applying hash-based skip when store is provided."""
         try:
+            # Before the read, so a write landing after it moves the mtime away
+            # from what was observed and the recorded ingest reads STALE (#175).
+            self.observed_mtimes[full_path_str] = os.stat(full_path).st_mtime  # noqa: PTH116
             with full_path.open(encoding="utf-8") as f:
                 code = f.read()
 

@@ -3,13 +3,16 @@
 import os
 import shutil
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import IO, Any
 
 import pytest
 
 from cgis.core.freshness import Freshness, FreshnessState
-from cgis.core.models import Node, NodeType
+from cgis.core.models import Edge, Node, NodeType
+from cgis.extractors.python_extractor import PythonExtractor
+from cgis.pipeline import IngestionPipeline
 from cgis.storage.sqlite_store import SQLiteStore
 
 
@@ -338,3 +341,91 @@ def test_a_deleted_directory_is_counted_once_per_file(tmp_path: Path) -> None:
         result = store.freshness()
 
     assert result.missing == 2
+
+
+class _EditsDuringIngest(PythonExtractor):
+    """A Python extractor that changes the tree right after reading `a.py`.
+
+    Stands in for an editor or agent writing while an ingest runs: the graph then
+    holds `a.py` as it was read, and the tree no longer matches it.
+    """
+
+    def __init__(self, edit: Callable[[], None]) -> None:
+        super().__init__()
+        self._edit = edit
+
+    def parse(self, code: str, file_path: str) -> tuple[list[Node], list[Edge]]:
+        """Parse as usual, then make the edit once, after `a.py` was read."""
+        if file_path == "a.py":
+            self._edit()
+        return super().parse(code, file_path)
+
+
+def _ingest_while(tmp_path: Path, edit: Callable[[Path, float], None]) -> str:
+    """Ingest a two-file repo whose `edit` lands after `a.py` was read.
+
+    Every mtime is set explicitly, so the race is reproduced without depending on
+    how the filesystem quantises timestamps.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    before = time.time() - 100
+    for name in ("a.py", "b.py"):
+        (repo / name).write_text("x = 1\n", encoding="utf-8")
+        os.utime(repo / name, (before, before))
+    os.utime(repo, (before, before))
+    db = str(tmp_path / "g.db")
+    pipeline = IngestionPipeline({".py": _EditsDuringIngest(lambda: edit(repo, before + 10))})
+    with SQLiteStore(db) as store:
+        pipeline.run(str(repo), store=store, rebuild=True)
+        store.record_ingest(str(repo), pipeline.observed_mtimes)
+    return db
+
+
+def test_an_edit_during_ingest_is_stale(tmp_path: Path) -> None:
+    """A file written after the pipeline read it is not what the graph holds.
+
+    The mark used to be the newest mtime found *after* the run, which is the
+    edit's own mtime, so the probe read FRESH for a graph built from the old text.
+    """
+
+    def edit(repo: Path, when: float) -> None:
+        (repo / "a.py").write_text("x = 2\n", encoding="utf-8")
+        os.utime(repo / "a.py", (when, when))
+
+    db = _ingest_while(tmp_path, edit)
+    with SQLiteStore(db) as store:
+        result = store.freshness()
+    assert result.state is FreshnessState.STALE
+    assert result.changed == 1
+
+
+def test_a_file_added_during_ingest_is_stale(tmp_path: Path) -> None:
+    """A file created after its directory was listed is missing from the graph."""
+
+    def edit(repo: Path, when: float) -> None:
+        (repo / "c.py").write_text("z = 3\n", encoding="utf-8")
+        os.utime(repo / "c.py", (when, when))
+        os.utime(repo, (when, when))
+
+    db = _ingest_while(tmp_path, edit)
+    with SQLiteStore(db) as store:
+        assert store.freshness().state is FreshnessState.STALE
+
+
+def test_a_quiet_ingest_through_the_pipeline_is_fresh(tmp_path: Path) -> None:
+    """With nothing written during the run, the observed mtimes change nothing.
+
+    The database lives inside the tree, as `cgis ingest . -o graph.db` puts it:
+    its own writes must not read as an edit made during the ingest.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "a.py").write_text("x = 1\n", encoding="utf-8")
+    pipeline = IngestionPipeline({".py": PythonExtractor()})
+    db = str(repo / "graph.db")
+    with SQLiteStore(db) as store:
+        pipeline.run(str(repo), store=store, rebuild=True)
+        store.record_ingest(str(repo), pipeline.observed_mtimes)
+    with SQLiteStore(db) as store:
+        assert store.freshness().state is FreshnessState.FRESH

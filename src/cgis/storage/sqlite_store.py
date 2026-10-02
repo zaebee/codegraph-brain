@@ -1,6 +1,8 @@
 """Implements Sqlite store for code graph."""
 
+import itertools
 import json
+import math
 import os
 import sqlite3
 import time
@@ -999,7 +1001,7 @@ class SQLiteStore:
         )
         return {row["file_path"] for row in cursor.fetchall()}
 
-    def record_ingest(self, root: str) -> None:
+    def record_ingest(self, root: str, observed: Mapping[str, float] | None = None) -> None:
         """Record what this graph was built from, for the freshness probe (#175).
 
         `root` is stored absolute: a relative path is meaningless to a later
@@ -1014,6 +1016,14 @@ class SQLiteStore:
         margin would instead leave a permanent false `STALE`. Taking the maximum
         puts both sides of the later comparison on the same clock, from the same
         source, so the skew cancels.
+
+        That maximum alone also counts a write that landed *after* the pipeline
+        read the file: the edit's own mtime became the mark, and the probe read
+        FRESH for a graph built from the old text. `observed` — the mtimes the
+        pipeline saw before reading each file and listing each directory
+        (`IngestionPipeline.observed_mtimes`) — closes that: anything that moved
+        since pulls the mark to just below its new mtime, so it reads STALE. A
+        quiet ingest moves nothing and the mark is the maximum, as before.
         """
         if not self._conn:
             raise RuntimeError(self._error_message)
@@ -1021,32 +1031,35 @@ class SQLiteStore:
             "INSERT OR REPLACE INTO ingest_state (key, value) VALUES (?, ?)",
             [
                 ("root", str(Path(root).resolve())),
-                ("ingested_at", str(self._max_source_mtime(root))),
+                ("ingested_at", str(self._max_source_mtime(root, observed or {}))),
             ],
         )
         self._conn.commit()
 
-    def _max_source_mtime(self, root: str) -> float:
+    def _max_source_mtime(self, root: str, observed: Mapping[str, float]) -> float:
         """The newest mtime among the files this graph was built from, and their dirs.
 
-        Falls back to the wall clock for a graph with no source files, where
-        there is nothing to take a maximum over.
+        Capped below the earliest mtime that differs from `observed`, so a file
+        or directory written mid-ingest stays newer than the mark. Falls back to
+        the wall clock for a graph with no source files, where there is nothing
+        to take a maximum over.
         """
         now = time.time()
         newest = 0.0
+        moved = math.inf
         tracked = self.get_tracked_source_files()
         # Files and directories separately, so each directory is statted once
         # rather than once per file it holds — 814 stats against 102 on owner-api.
-        for rel in tracked:
+        for rel in itertools.chain(tracked, {os.path.dirname(rel) for rel in tracked}):  # noqa: PTH120
             try:
-                newest = max(newest, os.stat(os.path.join(root, rel)).st_mtime)  # noqa: PTH116,PTH118
+                mtime = os.stat(os.path.join(root, rel)).st_mtime  # noqa: PTH116,PTH118
             except OSError:
                 continue
-        for rel_dir in {os.path.dirname(rel) for rel in tracked}:  # noqa: PTH120
-            try:
-                newest = max(newest, os.stat(os.path.join(root, rel_dir)).st_mtime)  # noqa: PTH116,PTH118
-            except OSError:
-                continue
+            newest = max(newest, mtime)
+            if observed.get(rel, mtime) != mtime:
+                moved = min(moved, mtime)
+        if moved != math.inf:
+            newest = math.nextafter(moved, 0.0)
         # Clamped to now. An unclamped maximum let one future-dated file — a tar
         # extraction preserving timestamps, clock skew, a generator calling
         # `os.utime` — push the mark hours ahead and report every real edit as

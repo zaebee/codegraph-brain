@@ -237,7 +237,7 @@ def ingest(
                     path, store=store, rebuild=not incremental
                 )
                 if nodes:
-                    store.record_ingest(path)
+                    store.record_ingest(path, pipeline.observed_mtimes)
         else:
             nodes, raw_edges, resolved_edges = pipeline.run(path)
 
