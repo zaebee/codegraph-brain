@@ -1777,6 +1777,32 @@ def test_orphans_include_tests_drops_the_test_only_class(tmp_path: Path) -> None
     assert [o["fqn"] for o in json.loads(result.stdout)["orphans"]] == ["app.c.Dead"]
 
 
+def test_orphans_hides_nested_classes_unless_asked(tmp_path: Path) -> None:
+    """A nested class is out of scope by default, and the report says how many (#432)."""
+    db = str(tmp_path / "nested.db")
+    nodes = [
+        Node(
+            id=i, type=t, name=i.rsplit(".", 1)[-1], file_path="app/s.py", start_line=1, end_line=2
+        )
+        for i, t in (
+            ("app.s.Model", NodeType.CLASS),
+            ("app.s.Model.Config", NodeType.CLASS),
+            ("app.s.run", NodeType.FUNCTION),
+        )
+    ]
+    edges = [Edge(id="e1", source="app.s.run", target="app.s.Model", type=EdgeType.CALLS)]
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, edges)
+
+    default = runner.invoke(app, ["orphans", "--db", db])
+    assert default.exit_code == 0
+    assert "1 nested class not considered" in default.output
+
+    widened = runner.invoke(app, ["orphans", "--db", db, "--include-nested", "--format", "json"])
+    assert widened.exit_code == 1
+    assert [o["fqn"] for o in json.loads(widened.stdout)["orphans"]] == ["app.s.Model.Config"]
+
+
 def test_orphans_rejects_mermaid(tmp_path: Path) -> None:
     """A list of locations is not a diagram."""
     db = _orphan_graph(tmp_path)

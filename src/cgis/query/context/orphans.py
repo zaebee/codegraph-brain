@@ -34,10 +34,14 @@ interested in:
   `include_generated=True` puts them back. On owner-api at `b7d02fe6` that takes
   the report from 6 to 1 and the population from 699 classes to 488.
 * **Alive by metaclass** — a pydantic inner `class Config`, consumed by the
-  model's metaclass and never named by anything. Still reported, and on that
-  repository it is now the *only* row: the question of whether nested classes
-  belong in this report at all is a scope decision rather than a filter, and is
-  still open in #432.
+  model's metaclass and never named by anything. **Now out of scope by
+  default** (#432): only module-level classes are considered, the same scope as
+  the `ast.parse(...).body` sweep this query replaces, and
+  `include_nested=True` widens it. Measured across eight repositories, the 46
+  nested rows the wider scope reported held no dead class: 32 were a
+  metaclass-read `Meta` / `Config`, and 14 were live classes built through
+  `self.InputSerializer(...)`, an attribute call the resolver does not follow
+  into a nested class.
 * **Alive by registration** — a `SQLModel` with `table=True` is a table
   definition; the import is the point. Not reported on the current ref, so it
   needs a repository where it recurs before it can be measured.
@@ -90,12 +94,18 @@ class OrphanReport:
     the same `prefix`, whether or not anything references it — so it answers "was
     this graph stamped, and did this prefix match generated code", not "how many
     findings were hidden". `--include-generated` is how you see the findings.
+
+    `nested_excluded` is the same count for classes defined inside another class
+    or a function, left out because the report answers for module-level classes
+    only. Generated classes are filtered first, so a nested generated class is
+    counted once, under `generated_excluded`.
     """
 
     orphans: list[OrphanClass]
     considered: int
     test_sources: int
     generated_excluded: int = 0
+    nested_excluded: int = 0
 
 
 def _is_candidate(node: Node, prefix: str | None) -> bool:
@@ -105,12 +115,25 @@ def _is_candidate(node: Node, prefix: str | None) -> bool:
     return prefix is None or node.id == prefix or node.id.startswith(f"{prefix}.")
 
 
+def _is_nested(node: Node, enclosing_scopes: set[str]) -> bool:
+    """Whether the class is defined inside another class or a function, not at module level.
+
+    The parent is read off the FQN, which the extractor builds by appending the
+    class name to its enclosing scope's id, and checked against the scopes a
+    class can be nested in — so a module-level class, whose parent is a FILE or
+    MODULE id, is never nested.
+    """
+    parent, sep, _ = node.id.rpartition(".")
+    return bool(sep) and parent in enclosing_scopes
+
+
 def find_orphan_classes(
     store: SQLiteStore,
     *,
     prefix: str | None = None,
     include_tests: bool = False,
     include_generated: bool = False,
+    include_nested: bool = False,
 ) -> OrphanReport:
     """Report internal classes that no production code builds, extends or names.
 
@@ -126,6 +149,12 @@ def find_orphan_classes(
     hand-deletes one either. Measured on owner-api at b7d02fe6, five of the six
     reported orphans were generated entities and the sixth was a nested pydantic
     `Config`, so the default report there had no actionable row left (#432).
+
+    `include_nested` widens the report from module-level classes to classes
+    defined inside a class or function. Narrow by default because, across eight
+    measured repositories, none of the 46 nested rows was dead: most were a
+    `Meta` / `Config` a metaclass reads, and the rest were live classes reached
+    as `self.Nested(...)`, which the resolver does not follow (#432).
 
     An orphan is a *candidate* for deletion, not a proof. The two blind spots in
     the module docstring both under-report, so a class listed here has no
@@ -150,6 +179,14 @@ def find_orphan_classes(
         candidates = [n for n in candidates if not n.is_generated]
     else:
         generated_excluded = 0
+    nested_excluded = 0
+    if not include_nested:
+        enclosing_scopes = {
+            n.id for n in nodes if n.type in (NodeType.CLASS, NodeType.FUNCTION, NodeType.METHOD)
+        }
+        kept = [n for n in candidates if not _is_nested(n, enclosing_scopes)]
+        nested_excluded = len(candidates) - len(kept)
+        candidates = kept
     orphans = [
         OrphanClass(fqn=node.id, file=node.file_path, line=node.start_line)
         for node in sorted(candidates, key=lambda n: n.id)
@@ -160,4 +197,5 @@ def find_orphan_classes(
         considered=len(candidates),
         test_sources=test_sources,
         generated_excluded=generated_excluded,
+        nested_excluded=nested_excluded,
     )

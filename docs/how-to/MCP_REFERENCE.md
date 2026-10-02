@@ -160,7 +160,14 @@ Classes nothing in production builds, extends or names — dead-code candidates.
     reported orphans were generated entities and the sixth a nested pydantic
     ``Config``: the unfiltered report had no actionable row in it (#432).
 
-    Returns JSON ``{orphans, considered, test_sources, generated_excluded}``;
+    Only **module-level** classes are considered by default; ``include_nested``
+    adds classes defined inside a class or function. Across eight measured
+    repositories none of the 46 nested rows was dead: most were a ``Meta`` /
+    ``Config`` a metaclass reads, the rest live classes reached as
+    ``self.Nested(...)``, which the resolver does not follow (#432).
+
+    Returns JSON ``{orphans, considered, test_sources, generated_excluded,
+    nested_excluded}``;
     each orphan carries ``fqn``/``file``/``line``. **A listing is a candidate for
     deletion, not a proof** — a class named only inside a decorator (#429) or
     arriving through a star import is invisible here, so the sweep errs towards
@@ -177,6 +184,7 @@ Classes nothing in production builds, extends or names — dead-code candidates.
 | `prefix` | `any` |  | Only consider classes under this FQN prefix, cut on a dot boundary. |
 | `include_tests` | `boolean` |  | Count test code as a user, so the report means "unreachable from anywhere". |
 | `include_generated` | `boolean` |  | Include machine-generated classes, which are hidden by default. |
+| `include_nested` | `boolean` |  | Include classes nested in a class or function, which are hidden by default. |
 
 ---
 

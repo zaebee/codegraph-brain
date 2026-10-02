@@ -1692,6 +1692,12 @@ def _render_orphans(report: OrphanReport) -> None:
             f"{'class' if report.generated_excluded == 1 else 'classes'} not considered "
             "(--include-generated to include them).[/dim]"
         )
+    if report.nested_excluded:
+        console.print(
+            f"  [dim]· {report.nested_excluded} nested "
+            f"{'class' if report.nested_excluded == 1 else 'classes'} not considered "
+            "(--include-nested to include them).[/dim]"
+        )
     for orphan in report.orphans:
         console.print(
             f"  [bold red]✗ {escape(orphan.fqn)}[/bold red] "
@@ -1719,6 +1725,12 @@ def orphans(
         False,
         "--include-generated",
         help="Report machine-generated classes too. Hidden by default: nobody deletes them.",
+    ),
+    include_nested: bool = typer.Option(
+        False,
+        "--include-nested",
+        help="Report classes nested in a class or function too. Hidden by default: "
+        "they are almost always a Meta / Config a metaclass reads.",
     ),
     output_format: OutputFormat = typer.Option(
         OutputFormat.TEXT, "--format", "-f", help=_TEXT_JSON_FORMAT_HELP
@@ -1758,16 +1770,23 @@ def orphans(
             prefix=prefix,
             include_tests=include_tests,
             include_generated=include_generated,
+            include_nested=include_nested,
         )
 
-    if prefix and report.considered == 0 and not report.generated_excluded:
+    if (
+        prefix
+        and report.considered == 0
+        and not report.generated_excluded
+        and not report.nested_excluded
+    ):
         # A typo'd or wrongly-rooted prefix would otherwise print "0 of 0" and
         # exit 0 — a CI gate that passes because it examined nothing. The
         # commonest cause is the ingest root: a graph built from `app/` has FQNs
         # like `domains.x`, so `--prefix app.domains` matches nothing at all.
         #
-        # `considered` is counted after the generated filter, so a subtree that is
-        # entirely generated also reaches zero. That prefix matched fine, and
+        # `considered` is counted after the generated and nested filters, so a
+        # subtree that is entirely generated (or a prefix naming one class whose
+        # body holds only nested ones) also reaches zero. That prefix matched fine, and
         # calling it a typo would be a false diagnosis — and would exit before the
         # line that explains where its classes went (#441 review).
         console.print(

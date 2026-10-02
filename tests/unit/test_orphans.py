@@ -325,3 +325,80 @@ def test_generated_excluded_is_scoped_by_prefix(store: SQLiteStore) -> None:
 
     assert find_orphan_classes(store, prefix="gen").generated_excluded == 1
     assert find_orphan_classes(store, prefix="app").generated_excluded == 0
+
+
+def test_nested_classes_are_out_of_scope_by_default(store: SQLiteStore) -> None:
+    """Only module-level classes are considered, the scope of the sweep this replaces (#432).
+
+    On owner-api the one row left after the generated filter was a pydantic
+    `RatingResponse.Config`, and across eight repositories none of the 46 nested
+    rows was dead — a metaclass-read `Meta` / `Config`, or a class reached as
+    `self.Nested(...)`, which the resolver does not follow.
+    """
+    _save(
+        store,
+        [
+            _node("app.schemas.RatingResponse"),
+            _node("app.schemas.RatingResponse.Config"),
+            _node("app.views.make", NodeType.FUNCTION),
+            _node("app.views.make.Local"),
+            _node("app.adapters.Dead"),
+        ],
+        [_edge("app.views.make", "app.schemas.RatingResponse", EdgeType.CALLS)],
+    )
+
+    report = find_orphan_classes(store)
+
+    assert [o.fqn for o in report.orphans] == ["app.adapters.Dead"]
+    assert report.considered == 2
+    assert report.nested_excluded == 2
+
+
+def test_include_nested_puts_them_back(store: SQLiteStore) -> None:
+    """The opt-in restores the wider scope, and counts nothing as excluded."""
+    _save(
+        store,
+        [
+            _node("app.schemas.RatingResponse"),
+            _node("app.schemas.RatingResponse.Config"),
+            _node("app.views.make", NodeType.FUNCTION),
+        ],
+        [_edge("app.views.make", "app.schemas.RatingResponse", EdgeType.CALLS)],
+    )
+
+    report = find_orphan_classes(store, include_nested=True)
+
+    assert [o.fqn for o in report.orphans] == ["app.schemas.RatingResponse.Config"]
+    assert report.nested_excluded == 0
+
+
+def test_a_class_in_a_package_init_is_not_nested(store: SQLiteStore) -> None:
+    """A parent that is a FILE id is module level, however the module is named.
+
+    `pkg/__init__.py` strips to `pkg`, so its classes have a FILE node as their
+    FQN parent — the same shape as any other module, and never nested.
+    """
+    _save(
+        store,
+        [_node("pkg", NodeType.FILE, file_path="pkg/__init__.py"), _node("pkg.Dead")],
+        [],
+    )
+
+    report = find_orphan_classes(store)
+
+    assert [o.fqn for o in report.orphans] == ["pkg.Dead"]
+    assert report.nested_excluded == 0
+
+
+def test_a_nested_generated_class_is_counted_once(store: SQLiteStore) -> None:
+    """The generated filter runs first, so the two counters never overlap."""
+    _save(
+        store,
+        [_generated("gen.entities.Vehicle"), _generated("gen.entities.Vehicle.Kind")],
+        [],
+    )
+
+    report = find_orphan_classes(store)
+
+    assert report.generated_excluded == 2
+    assert report.nested_excluded == 0
