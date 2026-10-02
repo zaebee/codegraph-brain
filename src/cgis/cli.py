@@ -238,6 +238,7 @@ def ingest(
                 )
                 if nodes:
                     store.record_ingest(path, pipeline.observed_mtimes)
+                    store.record_ingest_options(roots, domains)
         else:
             nodes, raw_edges, resolved_edges = pipeline.run(path)
 
