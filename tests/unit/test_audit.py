@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
+from cgis.extractors.python_extractor import PythonExtractor
+from cgis.pipeline import IngestionPipeline
 from cgis.query.context.audit import NoAuditSourcesError, audit_reachability
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -240,3 +242,45 @@ def test_audit_empty_edge_types_disables_traversal(tmp_path: Path) -> None:
     # No edge types → no traversal → no handler reaches the guard.
     assert result.covered == []
     assert len(result.gaps) == 4
+
+
+_DECORATOR_GUARD_DEPS = """
+def get_current_active_superuser():
+    pass
+"""
+
+_DECORATOR_GUARD_ROUTES = """
+from fastapi import APIRouter, Depends
+from deps import get_current_active_superuser
+
+router = APIRouter()
+
+
+@router.post("/showcase/reset", dependencies=[Depends(get_current_active_superuser)])
+async def trigger_showcase_reset():
+    pass
+
+
+@router.post("/showcase/open")
+async def open_showcase():
+    pass
+"""
+
+
+def test_audit_counts_a_guard_declared_in_the_route_decorator(tmp_path: Path) -> None:
+    """A route guarded by `dependencies=[Depends(guard)]` is covered, not a gap (#429).
+
+    The owner-api case the issue was filed from: the guard is declared at the
+    decorator rather than in the signature. The unguarded sibling stays a gap.
+    """
+    (tmp_path / "deps.py").write_text(_DECORATOR_GUARD_DEPS, encoding="utf-8")
+    (tmp_path / "routes.py").write_text(_DECORATOR_GUARD_ROUTES, encoding="utf-8")
+    nodes, _raw, resolved = IngestionPipeline({".py": PythonExtractor()}).run(str(tmp_path))
+    db = str(tmp_path / "g.db")
+    with SQLiteStore(db) as store:
+        store.save_graph(nodes, resolved)
+        result = audit_reachability(
+            store, target_fqn="deps.get_current_active_superuser", from_prefix="routes"
+        )
+    assert "routes.trigger_showcase_reset" in {r.fqn for r in result.covered}
+    assert "routes.open_showcase" in {r.fqn for r in result.gaps}
