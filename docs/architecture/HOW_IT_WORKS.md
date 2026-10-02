@@ -193,13 +193,14 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
         import_names_ImportNameCollector_note["note (import_names.py:67)"]:::methodNode
     end
     subgraph sg_pipeline["pipeline.py"]
-        pipeline_IngestionPipeline_cross_file_inputs_changed["_cross_file_inputs_changed (pipeline.py:269)"]:::methodNode
-        pipeline_IngestionPipeline_get_extractor["_get_extractor (pipeline.py:404)"]:::methodNode
-        pipeline_IngestionPipeline_is_noop_incremental["_is_noop_incremental (pipeline.py:330)"]:::methodNode
-        pipeline_IngestionPipeline_persist_incremental["_persist_incremental (pipeline.py:354)"]:::methodNode
-        pipeline_IngestionPipeline_process_file["_process_file (pipeline.py:232)"]:::methodNode
-        pipeline_IngestionPipeline_run["run (pipeline.py:100)"]:::methodNode
-        pipeline_IngestionPipeline_workspace_root["workspace_root (pipeline.py:83)"]:::methodNode
+        pipeline_IngestionPipeline_cross_file_inputs_changed["_cross_file_inputs_changed (pipeline.py:292)"]:::methodNode
+        pipeline_IngestionPipeline_get_extractor["_get_extractor (pipeline.py:427)"]:::methodNode
+        pipeline_IngestionPipeline_is_noop_incremental["_is_noop_incremental (pipeline.py:353)"]:::methodNode
+        pipeline_IngestionPipeline_persist_incremental["_persist_incremental (pipeline.py:377)"]:::methodNode
+        pipeline_IngestionPipeline_process_file["_process_file (pipeline.py:252)"]:::methodNode
+        pipeline_IngestionPipeline_run["run (pipeline.py:115)"]:::methodNode
+        pipeline_IngestionPipeline_workspace_root["workspace_root (pipeline.py:98)"]:::methodNode
+        pipeline_observe["_observe (pipeline.py:56)"]:::funcNode
     end
     subgraph sg_engine["engine.py"]
         engine_ResolverEngine["ResolverEngine (engine.py:49)"]:::classNode
@@ -210,13 +211,14 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
         uplift_SemanticUpliftEngine_execute_uplift["execute_uplift (uplift.py:91)"]:::methodNode
     end
     subgraph sg_sqlite_store["sqlite_store.py"]
-        sqlite_store_SQLiteStore["SQLiteStore (sqlite_store.py:59)"]:::classNode
+        sqlite_store_SQLiteStore["SQLiteStore (sqlite_store.py:63)"]:::classNode
     end
     pipeline_IngestionPipeline_run -->|REFERENCES| models_Node
     pipeline_IngestionPipeline_run -->|REFERENCES| models_Edge
     pipeline_IngestionPipeline_run -->|REFERENCES| sqlite_store_SQLiteStore
     pipeline_IngestionPipeline_run -->|CALLS| pipeline_IngestionPipeline_workspace_root
     pipeline_IngestionPipeline_run -->|CALLS| import_names_ImportNameCollector
+    pipeline_IngestionPipeline_run -->|CALLS| pipeline_observe
     pipeline_IngestionPipeline_run -->|CALLS| import_names_ImportNameCollector_note
     pipeline_IngestionPipeline_run -->|CALLS| pipeline_IngestionPipeline_get_extractor
     pipeline_IngestionPipeline_run -->|CALLS| pipeline_IngestionPipeline_process_file
@@ -238,16 +240,17 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
 | `ImportNameCollector` | CLASS | [`import_names.py:58`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/import_names.py#L58) |
 | `note` | METHOD | [`import_names.py:67`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/import_names.py#L67) |
 | `collect` | METHOD | [`import_names.py:74`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/import_names.py#L74) |
-| `workspace_root` | METHOD | [`pipeline.py:83`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L83) |
-| `run` | METHOD | [`pipeline.py:100`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L100) |
-| `_process_file` | METHOD | [`pipeline.py:232`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L232) |
-| `_cross_file_inputs_changed` | METHOD | [`pipeline.py:269`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L269) |
-| `_is_noop_incremental` | METHOD | [`pipeline.py:330`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L330) |
-| `_persist_incremental` | METHOD | [`pipeline.py:354`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L354) |
-| `_get_extractor` | METHOD | [`pipeline.py:404`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L404) |
+| `_observe` | FUNCTION | [`pipeline.py:56`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L56) |
+| `workspace_root` | METHOD | [`pipeline.py:98`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L98) |
+| `run` | METHOD | [`pipeline.py:115`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L115) |
+| `_process_file` | METHOD | [`pipeline.py:252`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L252) |
+| `_cross_file_inputs_changed` | METHOD | [`pipeline.py:292`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L292) |
+| `_is_noop_incremental` | METHOD | [`pipeline.py:353`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L353) |
+| `_persist_incremental` | METHOD | [`pipeline.py:377`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L377) |
+| `_get_extractor` | METHOD | [`pipeline.py:427`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L427) |
 | `ResolverEngine` | CLASS | [`engine.py:49`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L49) |
 | `resolve` | METHOD | [`engine.py:85`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L85) |
 | `SemanticUpliftEngine` | CLASS | [`uplift.py:66`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/uplift.py#L66) |
 | `execute_uplift` | METHOD | [`uplift.py:91`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/uplift.py#L91) |
-| `SQLiteStore` | CLASS | [`sqlite_store.py:59`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/storage/sqlite_store.py#L59) |
+| `SQLiteStore` | CLASS | [`sqlite_store.py:63`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/storage/sqlite_store.py#L63) |
 <!-- END_CGIS_GRAPH -->

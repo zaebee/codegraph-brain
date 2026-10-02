@@ -385,9 +385,13 @@ Suggest sub-package boundaries for a package from its dependency communities.
 
     Returns JSON: modularity_q, divergence, direction (under/over/matched),
     verdict (split/consolidate/aligned/leave/borderline/no_signal), the detected
-    communities (id + member files), the cross-community bridge edges (cost of
+    communities (id + members), the cross-community bridge edges (cost of
     splitting), and the thresholds used. Default layer is IMPORTS; set
     ``with_calls`` for the combined import+call graph. Run ``cgis_ingest`` first.
+
+    Members are the package's direct children by default, each sub-package one
+    node, so the verdict says whether to regroup them; ``level`` in the result
+    says which. ``all_descendants`` clusters every file below the package.
 
     A mis-rooted graph (import targets resolve to no internal file) returns
     ``no_signal`` with a diagnostic note rather than a silent clean verdict.
@@ -398,6 +402,7 @@ Suggest sub-package boundaries for a package from its dependency communities.
 | `prefix` | `any` |  | FQN prefix of the package to analyse, e.g. cgis.query, matched on whole dot-segments. Needed in practice: without it the verdict is no_signal. |
 | `with_calls` | `boolean` |  | Use the combined import + call graph instead of imports only. |
 | `min_q` | `number` |  | Modularity threshold: at or above it, a package whose layout disagrees with its communities is flagged split (or consolidate, if over-split). |
+| `all_descendants` | `boolean` |  | Cluster every file below the package and compare with its sub-directories, instead of treating each sub-package as one node. |
 
 ---
 

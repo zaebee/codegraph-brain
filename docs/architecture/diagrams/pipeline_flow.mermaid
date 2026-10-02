@@ -17,13 +17,14 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
         import_names_ImportNameCollector_note["note (import_names.py:67)"]:::methodNode
     end
     subgraph sg_pipeline["pipeline.py"]
-        pipeline_IngestionPipeline_cross_file_inputs_changed["_cross_file_inputs_changed (pipeline.py:269)"]:::methodNode
-        pipeline_IngestionPipeline_get_extractor["_get_extractor (pipeline.py:404)"]:::methodNode
-        pipeline_IngestionPipeline_is_noop_incremental["_is_noop_incremental (pipeline.py:330)"]:::methodNode
-        pipeline_IngestionPipeline_persist_incremental["_persist_incremental (pipeline.py:354)"]:::methodNode
-        pipeline_IngestionPipeline_process_file["_process_file (pipeline.py:232)"]:::methodNode
-        pipeline_IngestionPipeline_run["run (pipeline.py:100)"]:::methodNode
-        pipeline_IngestionPipeline_workspace_root["workspace_root (pipeline.py:83)"]:::methodNode
+        pipeline_IngestionPipeline_cross_file_inputs_changed["_cross_file_inputs_changed (pipeline.py:292)"]:::methodNode
+        pipeline_IngestionPipeline_get_extractor["_get_extractor (pipeline.py:427)"]:::methodNode
+        pipeline_IngestionPipeline_is_noop_incremental["_is_noop_incremental (pipeline.py:353)"]:::methodNode
+        pipeline_IngestionPipeline_persist_incremental["_persist_incremental (pipeline.py:377)"]:::methodNode
+        pipeline_IngestionPipeline_process_file["_process_file (pipeline.py:252)"]:::methodNode
+        pipeline_IngestionPipeline_run["run (pipeline.py:115)"]:::methodNode
+        pipeline_IngestionPipeline_workspace_root["workspace_root (pipeline.py:98)"]:::methodNode
+        pipeline_observe["_observe (pipeline.py:56)"]:::funcNode
     end
     subgraph sg_engine["engine.py"]
         engine_ResolverEngine["ResolverEngine (engine.py:49)"]:::classNode
@@ -34,13 +35,14 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
         uplift_SemanticUpliftEngine_execute_uplift["execute_uplift (uplift.py:91)"]:::methodNode
     end
     subgraph sg_sqlite_store["sqlite_store.py"]
-        sqlite_store_SQLiteStore["SQLiteStore (sqlite_store.py:59)"]:::classNode
+        sqlite_store_SQLiteStore["SQLiteStore (sqlite_store.py:63)"]:::classNode
     end
     pipeline_IngestionPipeline_run -->|REFERENCES| models_Node
     pipeline_IngestionPipeline_run -->|REFERENCES| models_Edge
     pipeline_IngestionPipeline_run -->|REFERENCES| sqlite_store_SQLiteStore
     pipeline_IngestionPipeline_run -->|CALLS| pipeline_IngestionPipeline_workspace_root
     pipeline_IngestionPipeline_run -->|CALLS| import_names_ImportNameCollector
+    pipeline_IngestionPipeline_run -->|CALLS| pipeline_observe
     pipeline_IngestionPipeline_run -->|CALLS| import_names_ImportNameCollector_note
     pipeline_IngestionPipeline_run -->|CALLS| pipeline_IngestionPipeline_get_extractor
     pipeline_IngestionPipeline_run -->|CALLS| pipeline_IngestionPipeline_process_file
