@@ -15,6 +15,7 @@ from mcp.server.mcpserver import MCPServer
 from pydantic import Field
 
 from cgis import __version__
+from cgis.api.auto_refresh import refreshes_graph
 from cgis.core.coverage import TraversalCoverage
 from cgis.core.freshness import Freshness, FreshnessState
 from cgis.core.models import Edge, EdgeType, Node, NodeType
@@ -353,6 +354,7 @@ def cgis_ingest(
             nodes, _raw, resolved = pipeline.run(project_path, store=store, rebuild=full_rebuild)
             if nodes:
                 store.record_ingest(project_path, pipeline.observed_mtimes)
+                store.record_ingest_options([], None)
             total_nodes = store.get_node_count()
             total_edges = store.get_edge_count()
     except Exception as exc:
@@ -383,6 +385,7 @@ def cgis_ingest(
 
 
 @mcp.tool()
+@refreshes_graph
 def cgis_trace_flow(
     fqn: Fqn,
     db_path: DbPath = _DEFAULT_DB,
@@ -453,6 +456,7 @@ def cgis_trace_flow(
 
 
 @mcp.tool()
+@refreshes_graph
 def cgis_analyze_impact(
     fqn: Fqn,
     db_path: DbPath = _DEFAULT_DB,
@@ -523,6 +527,7 @@ def cgis_analyze_impact(
 
 
 @mcp.tool()
+@refreshes_graph
 def cgis_get_structure(
     fqn: Fqn,
     db_path: DbPath = _DEFAULT_DB,
@@ -570,6 +575,7 @@ def cgis_get_structure(
 
 
 @mcp.tool()
+@refreshes_graph
 def cgis_drift(
     db_path: DbPath = _DEFAULT_DB,
     patterns_path: Annotated[
@@ -657,6 +663,7 @@ def cgis_drift(
 
 
 @mcp.tool()
+@refreshes_graph
 def cgis_suggest_packages(
     db_path: DbPath = _DEFAULT_DB,
     prefix: Annotated[
@@ -711,6 +718,7 @@ def cgis_suggest_packages(
 
 
 @mcp.tool()
+@refreshes_graph
 def cgis_validate(
     db_path: DbPath = _DEFAULT_DB,
     threshold: Annotated[
@@ -746,6 +754,7 @@ def cgis_validate(
 
 
 @mcp.tool()
+@refreshes_graph
 def cgis_overview(
     db_path: DbPath = _DEFAULT_DB,
     depth: Annotated[
@@ -780,6 +789,7 @@ def cgis_overview(
 
 
 @mcp.tool()
+@refreshes_graph
 def cgis_find_symbol(
     query: Annotated[
         str,
@@ -846,6 +856,7 @@ def cgis_find_symbol(
 
 
 @mcp.tool()
+@refreshes_graph
 def cgis_init_ontology(
     db_path: DbPath = _DEFAULT_DB,
     margin: Annotated[
@@ -887,6 +898,7 @@ def cgis_init_ontology(
 
 
 @mcp.tool()
+@refreshes_graph
 def cgis_context(
     fqn: Fqn,
     db_path: DbPath = _DEFAULT_DB,
@@ -945,6 +957,7 @@ def cgis_context(
 
 
 @mcp.tool()
+@refreshes_graph
 def cgis_metrics(
     db_path: DbPath = _DEFAULT_DB,
     limit: Annotated[int, Field(description="Top-N rows returned per section.")] = 10,
@@ -1022,6 +1035,7 @@ def cgis_metrics(
 
 
 @mcp.tool()
+@refreshes_graph
 def cgis_find_orphans(
     db_path: DbPath = _DEFAULT_DB,
     prefix: Annotated[
@@ -1106,6 +1120,7 @@ def cgis_find_orphans(
 
 
 @mcp.tool()
+@refreshes_graph
 def cgis_audit_reachability(
     target: Annotated[
         str,
@@ -1186,6 +1201,7 @@ def cgis_audit_reachability(
 
 
 @mcp.tool()
+@refreshes_graph
 def cgis_fractal(db_path: DbPath = _DEFAULT_DB) -> str:
     """Report the motif census across the repository's structural tiers.
 

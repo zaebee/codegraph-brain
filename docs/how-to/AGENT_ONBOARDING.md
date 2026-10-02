@@ -55,6 +55,18 @@ Point `--output` at a `.db` file. For large repos, add `--incremental` to skip u
 }
 ```
 
+### Keeping the graph current (opt-in)
+
+Set `"CGIS_AUTO_REFRESH": "1"` in the server's `env` and every graph-reading
+tool first checks whether the files behind the graph changed since the last
+ingest; if they did, it runs an incremental `cgis_ingest` from the recorded
+root with the recorded `--source-root`/`--domains` options before answering.
+A fresh graph costs a few milliseconds of `stat` calls. A stale one costs an
+incremental ingest: under a second for a body edit, a full rebuild when a
+symbol was added, renamed or removed. It never creates a missing database,
+and a graph ingested before this option existed is only reported stale, not
+refreshed, until it is ingested once more.
+
 ---
 
 ## Step 3: Available MCP tools
