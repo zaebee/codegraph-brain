@@ -67,6 +67,48 @@ symbol was added, renamed or removed. It never creates a missing database,
 and a graph ingested before this option existed is only reported stale, not
 refreshed, until it is ingested once more.
 
+### Refreshing outside the MCP server: hooks, not a watcher
+
+cgis has no watch mode, on purpose (#175). A watcher re-ingests on every save,
+and an agent's multi-file edit is a burst of saves, each of which can cost a
+full rebuild; the graph only needs to be current when something reads it. If
+you query from the CLI, or want the graph current before the agent's next
+turn, hang an incremental ingest on an event that ends a burst instead. Use the
+same path and `--source-root`/`--domains` the graph was built with (`./src`
+as in Step 1); a different path renames every node.
+
+**Claude Code** — once per finished turn, not once per edit
+(`.claude/settings.json`):
+
+```json
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && cgis ingest ./src -o graph.db -i >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**git** — after a checkout, pull or rebase swaps many files at once
+(`.git/hooks/post-checkout`, and the same body in `post-merge` and
+`post-rewrite`; make each executable):
+
+```sh
+#!/bin/sh
+cgis ingest ./src -o graph.db -i >/dev/null 2>&1 || true
+```
+
+`|| true` keeps a failed ingest from failing the hook; the read commands will
+still say the graph is stale.
+
 ---
 
 ## Step 3: Available MCP tools
