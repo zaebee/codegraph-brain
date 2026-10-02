@@ -4,7 +4,7 @@ import builtins
 import os
 import posixpath
 import sys
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import NamedTuple
@@ -95,6 +95,13 @@ class SymbolIndex:
     # then wildcards longest prefix first — the order TypeScript picks one in.
     # A file uses the nearest project above it (#508).
     path_aliases: Mapping[str, tuple[PathAlias, ...]] = MappingProxyType({})
+    # import roots of the dependencies the project's manifests declare, kept only
+    # where they collide with an internal root: `alembic` when `app/alembic/`
+    # exists and `alembic` is in pyproject.toml (#495).
+    dependency_roots: frozenset[str] = frozenset()
+    # `root.second` heads our own nodes have under those roots: `alembic.env`,
+    # `alembic.versions`. What tells our package apart from the library's.
+    dependency_heads: frozenset[str] = frozenset()
 
     def resolve_import_target(self, fqn: str, source_file: str | None = None) -> str | None:
         """Reconcile a module import against the node ids, or None to leave it alone.
@@ -279,6 +286,8 @@ class SymbolIndex:
             return NodeNamespace.UNKNOWN
         root = fqn.split(".", maxsplit=1)[0]
         if root in self.internal_roots:
+            if _is_declared_dependency(self, fqn, root, source_file):
+                return NodeNamespace.EXTERNAL
             return NodeNamespace.INTERNAL
         if root == JS_BUILTINS_ROOT:
             return NodeNamespace.STDLIB
@@ -301,6 +310,29 @@ class SymbolIndex:
         if source_node:
             return os.path.normpath(source_node.file_path)
         return os.path.normpath(edge_file_path) if edge_file_path else None
+
+
+def _is_declared_dependency(
+    index: SymbolIndex, fqn: str, root: str, source_file: str | None
+) -> bool:
+    """True when an internal-root `fqn` names a declared dependency, not our package.
+
+    The root alone cannot say: `app/alembic/` makes `alembic` internal, while
+    `from alembic import op` is the library (#495). Our package is what it
+    holds, so `alembic.env.run_migrations` stays internal and
+    `alembic.op.add_column` — `op` being nothing of ours — is the dependency.
+
+    The manifest is what licenses the second reading, never the graph alone:
+    a graph-only rule declared `scripts.ci.openapi_snapshot` third-party
+    because that module lives outside the ingest root, though it is ours and
+    `scripts` is no dependency. The roots come from Python manifests, so only
+    a Python source (or an unscoped call) reads them, as in #454.
+    """
+    if root not in index.dependency_roots or fqn in index.nodes:
+        return False
+    if source_file is not None and not source_file.endswith(_PYTHON_SUFFIXES):
+        return False
+    return ".".join(fqn.split(".", maxsplit=2)[:2]) not in index.dependency_heads
 
 
 #: How many of a root's imports must reach a node before it may be stripped off a
@@ -333,6 +365,23 @@ def _strips_to_a_node(imported_fqn: str, node_ids: set[str]) -> bool:
     """
     parts = imported_fqn.split(".")
     return any(".".join(parts[i:]) in node_ids for i in range(1, len(parts) - 1))
+
+
+def _heads_under(roots: set[str], node_ids: Iterable[str]) -> frozenset[str]:
+    """The `root.second` heads of node ids under `roots`, read past a `src`/`lib` layout.
+
+    The same two spellings `_add_node_to_suffix_map` makes a root internal by.
+    """
+    if not roots:
+        return frozenset()
+    heads: set[str] = set()
+    for node_id in node_ids:
+        parts = node_id.split(".")
+        start = 1 if len(parts) > 2 and parts[0] in {"src", "lib"} else 0
+        for offset in {0, start}:
+            if len(parts) > offset + 1 and parts[offset] in roots:
+                heads.add(f"{parts[offset]}.{parts[offset + 1]}")
+    return frozenset(heads)
 
 
 def _resolve_typescript_import(
@@ -445,12 +494,14 @@ class IndexBuilder:
         nodes: list[Node],
         workspace_packages: Mapping[str, str] | None = None,
         tsconfig_paths: Mapping[str, Mapping[str, list[str]]] | None = None,
+        dependency_roots: Iterable[str] = (),
     ) -> SymbolIndex:
         """Index all nodes for fast resolution and return the frozen index.
 
         `workspace_packages` maps dotted package names to directory FQNs (#504); it
         is stored longest name first, the order `_resolve_workspace_import` relies on.
         `tsconfig_paths` maps a project directory to its dotted aliases (#508).
+        `dependency_roots` are the import roots the project's manifests declare (#495).
         """
         nodes_by_id = {n.id: n for n in nodes}
         global_symbols: dict[str, list[str]] = {}
@@ -492,6 +543,7 @@ class IndexBuilder:
             # "src.cgis.pipeline.X" → suffix "cgis.pipeline.X" also points to the node
             self._add_node_to_suffix_map(node.id, suffix_map, internal_roots)
 
+        colliding = internal_roots.intersection(dependency_roots)
         external_roots, first_party, corroborated = self._build_external_roots(
             file_imports, set(nodes_by_id)
         )
@@ -520,6 +572,8 @@ class IndexBuilder:
             path_aliases=MappingProxyType(
                 {scope: _ordered_aliases(rules) for scope, rules in (tsconfig_paths or {}).items()}
             ),
+            dependency_roots=frozenset(colliding),
+            dependency_heads=_heads_under(colliding, nodes_by_id),
         )
 
     @staticmethod

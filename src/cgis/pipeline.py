@@ -188,6 +188,7 @@ class IngestionPipeline:
                 all_edges,
                 workspace_packages=import_names.workspace_packages,
                 tsconfig_paths=import_names.path_aliases,
+                dependency_roots=import_names.python_dependencies,
             )
             resolved_edges, virtual_nodes = resolver.resolve()
             all_nodes.extend(virtual_nodes)
@@ -201,7 +202,9 @@ class IngestionPipeline:
         if store is None:
             return all_nodes, all_edges, resolved_edges
         if import_names_changed:
-            logger.info("Workspace packages or tsconfig aliases changed — rebuilding the graph.")
+            logger.info(
+                "Workspace packages, tsconfig aliases or dependencies changed — rebuilding."
+            )
             return self.run(repo_path, store=store, rebuild=True)
         if self._cross_file_inputs_changed(
             store, all_nodes, resolved_edges, changed_files, found_file_paths, rebuild
