@@ -230,3 +230,9 @@ def test_a_fence_with_another_language_is_ignored() -> None:
 def test_normalize_symbol_strips_js_extensions() -> None:
     assert normalize_symbol("web/app.jsx::render") == "web.app.render"
     assert normalize_symbol("web/util.js::f") == "web.util.f"
+
+
+def test_the_fence_language_is_case_insensitive() -> None:
+    answer = extract_answer('```JSON\n{"symbols": ["a"]}\n```')
+    assert answer is not None
+    assert answer.symbols == ["a"]

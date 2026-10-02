@@ -275,3 +275,11 @@ def test_a_timed_out_session_keeps_its_partial_transcript(
     assert code == -1
     expected = partial.decode() if isinstance(partial, bytes) else (partial or "")
     assert stdout == expected
+
+
+def test_the_hook_quotes_an_interpreter_path_with_spaces(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(ab.sys, "executable", "/opt/my env/bin/python")
+    hook = ab.hook_settings()["hooks"]["PreToolUse"][0]["hooks"][0]  # type: ignore[index]
+    assert hook["command"] == "'/opt/my env/bin/python' -m cgis.bench.guard"

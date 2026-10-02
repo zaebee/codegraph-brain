@@ -145,7 +145,7 @@ def _json_blocks(text: str) -> list[str]:
     blocks = []
     for fenced in text.split("```")[1::2]:
         info, _, body = fenced.partition("\n")
-        if info.strip() == "json":
+        if info.strip().lower() == "json":
             blocks.append(body)
     return blocks
 

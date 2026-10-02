@@ -24,6 +24,7 @@ transcripts/`, which is git-ignored.
 import argparse
 import json
 import os
+import shlex
 import shutil
 import statistics
 import subprocess
@@ -106,7 +107,7 @@ def mcp_config(arm: Arm) -> dict[str, object]:
 
 def hook_settings() -> dict[str, object]:
     """The `--settings` document installing the guard hook on every tool call."""
-    command = f"{sys.executable} -m cgis.bench.guard"
+    command = f"{shlex.quote(sys.executable)} -m cgis.bench.guard"
     return {
         "hooks": {
             "PreToolUse": [{"matcher": ".*", "hooks": [{"type": "command", "command": command}]}]
