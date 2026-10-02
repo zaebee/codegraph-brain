@@ -131,7 +131,7 @@ def _requirements_file(path: Path) -> Iterator[str]:
         # `-r other.txt`, `-e .`, `--index-url …`, and bare paths or URLs name no package;
         # `pkg @ https://…` does, so only the leading token is checked for a path.
         token = _REQUIREMENT_TOKEN_END.split(requirement, maxsplit=1)[0]
-        if token and not token.startswith(("-", ".")) and not _PATH_CHARACTERS & set(token):
+        if token and not token.startswith(("-", ".")) and _PATH_CHARACTERS.isdisjoint(token):
             yield from _requirement_names([requirement])
 
 
