@@ -10,6 +10,7 @@ from cgis.core.models import EdgeType
 
 if TYPE_CHECKING:
     from cgis.core.models import Edge, Node
+    from cgis.query.analysis.cohesion import FileGraph
 
 from cgis.query.analysis.cohesion import (
     THRESHOLDS,
@@ -154,6 +155,42 @@ def _empty_report(
     )
 
 
+def _unscorable_note(
+    package: str, graph: FileGraph, file_graph: FileGraph, edges: list[Edge]
+) -> str | None:
+    """Return why ``graph`` cannot be scored, or None when it can.
+
+    ``graph`` is what gets clustered — the children graph by default, the file
+    graph with ``all_descendants`` — and ``file_graph`` is the file graph it came
+    from, which tells "the children are unlinked" apart from "nothing is linked".
+    """
+    if len(graph.files) < 2:
+        return (
+            f"'{package}' has a single child, {graph.files[0]} — analyse that, or pass "
+            "all_descendants (--all-descendants) to cluster every file below the package"
+        )
+    if graph.adj:
+        return None
+    if file_graph.adj:
+        return (
+            f"{package}: every intra-package import stays inside a sub-package, so nothing "
+            "links the children — analyse a sub-package, or pass all_descendants "
+            "(--all-descendants)"
+        )
+    had_import_attempts = any(
+        e.source.startswith(package + ".") or e.source == package
+        for e in edges
+        if e.type == EdgeType.IMPORTS
+    )
+    if had_import_attempts:
+        return (
+            f"{package}: files found but no import resolves inside the package — the "
+            "graph looks mis-rooted or imports are unresolved; try ingesting the "
+            "package's parent directory"
+        )
+    return f"{package}: no intra-package imports (a flat leaf bag)"
+
+
 def suggest_packages(
     db_path: str,
     prefix: str | None,
@@ -212,41 +249,10 @@ def suggest_packages(
     file_graph = graph
     if not all_descendants:
         graph = children_graph(file_graph, package)
-        if len(graph.files) < 2:
-            return _empty_report(
-                package,
-                layer,
-                f"'{package}' has a single child, {graph.files[0]} — analyse that, or pass "
-                "all_descendants (--all-descendants) to cluster every file below the package",
-                file_count=len(graph.files),
-                level=level,
-            )
-
-    internal_edges = sum(len(v) for v in graph.adj.values()) // 2
-    if internal_edges == 0 and file_graph.adj:
-        return _empty_report(
-            package,
-            layer,
-            f"{package}: every intra-package import stays inside a sub-package, so nothing "
-            "links the children — analyse a sub-package, or pass all_descendants "
-            "(--all-descendants)",
-            file_count=len(graph.files),
-            level=level,
-        )
-    if internal_edges == 0:
-        had_import_attempts = any(
-            e.source.startswith(package + ".") or e.source == package
-            for e in edges
-            if e.type == EdgeType.IMPORTS
-        )
-        note = (
-            f"{package}: files found but no import resolves inside the package — the "
-            "graph looks mis-rooted or imports are unresolved; try ingesting the "
-            "package's parent directory"
-            if had_import_attempts
-            else f"{package}: no intra-package imports (a flat leaf bag)"
-        )
+    note = _unscorable_note(package, graph, file_graph, edges)
+    if note is not None:
         return _empty_report(package, layer, note, file_count=len(graph.files), level=level)
+    internal_edges = sum(len(v) for v in graph.adj.values()) // 2
 
     communities, q = greedy_modularity(graph)
     comm_of = {f: i for i, c in enumerate(communities) for f in c}
