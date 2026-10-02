@@ -8,6 +8,7 @@ from cgis.query.analysis.cohesion import (
     THRESHOLDS,
     FileGraph,
     build_file_graph,
+    children_graph,
     classify_verdict,
     greedy_modularity,
     layout_direction,
@@ -172,3 +173,23 @@ def test_verdict_min_q_override() -> None:
     strict = {**t, "split": 0.50}
     result = classify_verdict(q=0.43, d=1.0, direction="under_split", thresholds=strict)
     assert result == "borderline"
+
+
+def test_children_graph_collapses_sub_packages_and_sums_their_edges() -> None:
+    """Each sub-package becomes one node; edges inside it vanish, edges out of it add (#446)."""
+    graph = FileGraph(
+        files=("p", "p.main", "p.sub.a", "p.sub.b"),
+        adj={
+            "p.main": {"p.sub.a": 1.0, "p.sub.b": 2.0},
+            "p.sub.a": {"p.main": 1.0, "p.sub.b": 5.0},
+            "p.sub.b": {"p.main": 2.0, "p.sub.a": 5.0},
+        },
+    )
+    children = children_graph(graph, "p")
+    assert children.files == ("p", "p.main", "p.sub")
+    assert children.adj == {"p.main": {"p.sub": 3.0}, "p.sub": {"p.main": 3.0}}
+
+
+def test_children_graph_leaves_a_flat_package_unchanged() -> None:
+    graph = FileGraph(files=("p.a", "p.b", "p.c"), adj={"p.a": {"p.b": 1.0}, "p.b": {"p.a": 1.0}})
+    assert children_graph(graph, "p") == graph

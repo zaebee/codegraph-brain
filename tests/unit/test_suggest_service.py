@@ -144,7 +144,30 @@ def test_suggest_aligned_nested_is_aligned(tmp_path: Path) -> None:
     case does not (guardian lands 'borderline' on low Q, not on low D).
     """
     db = _store_with(tmp_path, *_two_clusters_nested())
-    report = suggest_packages(db, prefix="p")
+    report = suggest_packages(db, prefix="p", all_descendants=True)
+    assert report.divergence == pytest.approx(0.0)
+    assert report.direction == "matched"
+    assert report.verdict == "aligned"
+
+
+def test_sub_package_node_belongs_to_its_own_directory(tmp_path: Path) -> None:
+    """A sub-package's own node (`p/core/__init__`) is in `core/`, not the root (#446).
+
+    The same aligned layout as above, plus the `__init__` of each sub-package
+    importing its own files. Grouped under `<root>`, the two `__init__` nodes made
+    the layout look like three groups against two communities, and the package
+    read as a mismatch. On sqlalchemy.dialects this turned `aligned` into `split`.
+    """
+    files, edges = _two_clusters_nested()
+    groups = {"core": ("a", "b", "c"), "io": ("x", "y", "z")}
+    files += [make_file_node(f"p.{sub}") for sub in groups]
+    edges += [
+        make_import_edge(f"p.{sub}", f"p.{sub}.{n}") for sub, ns in groups.items() for n in ns
+    ]
+    db = _store_with(tmp_path, files, edges)
+
+    report = suggest_packages(db, prefix="p", all_descendants=True)
+
     assert report.divergence == pytest.approx(0.0)
     assert report.direction == "matched"
     assert report.verdict == "aligned"
@@ -209,7 +232,7 @@ def test_two_files_never_render_under_the_same_name(tmp_path: Path) -> None:
     a reader told to split the package could not tell which one belonged where.
     """
     db = _store_with(tmp_path, *_nested_name_collision())
-    report = suggest_packages(db, prefix="p", with_calls=False)
+    report = suggest_packages(db, prefix="p", with_calls=False, all_descendants=True)
 
     rendered = [f for community in report.communities for f in community.files]
     assert len(rendered) == len(set(rendered)), rendered
@@ -225,7 +248,7 @@ def test_bridge_endpoints_are_named_like_members(tmp_path: Path) -> None:
     which one the bridge crosses (#446).
     """
     db = _store_with(tmp_path, *_nested_name_collision())
-    report = suggest_packages(db, prefix="p", with_calls=False)
+    report = suggest_packages(db, prefix="p", with_calls=False, all_descendants=True)
 
     assert report.bridges, "fixture must produce at least one bridge to test"
 
@@ -277,8 +300,67 @@ def test_every_member_name_resolves_back_to_a_node_id(tmp_path: Path) -> None:
     edges = [make_import_edge(s, t) for s in ids for t in ids if s != t]
     db = _store_with(tmp_path, files, edges)
 
-    report = suggest_packages(db, prefix="q", with_calls=False)
+    report = suggest_packages(db, prefix="q", with_calls=False, all_descendants=True)
 
     rendered = [f for community in report.communities for f in community.files]
     resolved = {name if name in ids else f"q.{name}" for name in rendered}
     assert resolved == set(ids), resolved.symmetric_difference(ids)
+
+
+def test_default_members_are_the_direct_children(tmp_path: Path) -> None:
+    """By default a sub-package is one member, not a peer of its own files (#446)."""
+    files, edges = _two_clusters_nested()
+    files.append(make_file_node("p.main"))
+    edges += [make_import_edge("p.main", "p.core.a"), make_import_edge("p.main", "p.io.x")]
+    db = _store_with(tmp_path, files, edges)
+
+    report = suggest_packages(db, prefix="p")
+
+    assert report.level == "children"
+    assert report.file_count == 3
+    assert sorted(f for c in report.communities for f in c.files) == ["core", "io", "main"]
+
+
+def test_children_that_cluster_are_flagged_for_regrouping(tmp_path: Path) -> None:
+    """Two tight groups of children, one holding a sub-package, read as a split."""
+    files = [make_file_node(f"p.{n}") for n in ("a", "b", "x", "y", "z", "sub.s1", "sub.s2")]
+    groups = (("a", "b", "sub.s1", "sub.s2"), ("x", "y", "z"))
+    edges = [
+        make_import_edge(f"p.{s}", f"p.{t}") for grp in groups for s in grp for t in grp if s != t
+    ]
+    db = _store_with(tmp_path, files, edges)
+
+    report = suggest_packages(db, prefix="p")
+
+    assert report.verdict == "split"
+    assert sorted(sorted(c.files) for c in report.communities) == [
+        ["a", "b", "sub"],
+        ["x", "y", "z"],
+    ]
+
+
+def test_imports_only_inside_sub_packages_say_so(tmp_path: Path) -> None:
+    """Nothing links the children: say where the edges are, not 'flat leaf bag'."""
+    db = _store_with(tmp_path, *_two_clusters_nested())
+    report = suggest_packages(db, prefix="p")
+    assert report.verdict == "no_signal"
+    assert report.note is not None
+    assert "inside a sub-package" in report.note
+
+
+def test_a_package_with_one_child_points_at_it(tmp_path: Path) -> None:
+    files = [make_file_node("p.only.a"), make_file_node("p.only.b")]
+    db = _store_with(tmp_path, files, [make_import_edge("p.only.a", "p.only.b")])
+    report = suggest_packages(db, prefix="p")
+    assert report.verdict == "no_signal"
+    assert report.note is not None
+    assert "single child, p.only" in report.note
+
+
+def test_flat_package_reads_the_same_at_either_level(tmp_path: Path) -> None:
+    """With no sub-packages the children are the files, so nothing changes."""
+    db = _store_with(tmp_path, *_two_clusters())
+    children = suggest_packages(db, prefix="p")
+    files = suggest_packages(db, prefix="p", all_descendants=True)
+    assert (children.verdict, children.modularity_q) == (files.verdict, files.modularity_q)
+    assert (children.level, files.level) == ("children", "files")

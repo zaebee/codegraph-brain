@@ -18,7 +18,9 @@ def test_cgis_query_divergence_dropped_after_restructure(
     granularity — but the divergence drop is the measurable win the restructure
     bought."""
     store, _, _ = root_graph_data
-    report = suggest_packages(store.db_path, prefix="cgis.query", with_calls=False)
+    report = suggest_packages(
+        store.db_path, prefix="cgis.query", with_calls=False, all_descendants=True
+    )
     assert report.divergence < 0.5  # was 1.0 when flat; the restructure aligned the layout
     assert report.direction == "under_split"
 
@@ -59,7 +61,28 @@ def test_cgis_guardian_nested_reads_below_flat(
     metric that actually tracks the layout got BETTER: divergence 0.7224 → 0.6705.
     The load-bearing claim, D < 1.0, holds and strengthened.)"""
     store, _, _ = root_graph_data
-    report = suggest_packages(store.db_path, prefix="cgis.guardian", with_calls=False)
+    report = suggest_packages(
+        store.db_path, prefix="cgis.guardian", with_calls=False, all_descendants=True
+    )
     assert report.verdict == "borderline"
     assert report.modularity_q < 0.35  # under the split threshold → why it's 'borderline'
     assert report.divergence < 1.0  # nested → below the flat-package degenerate 1.0
+
+
+def test_cgis_query_children_need_no_regrouping(
+    root_graph_data: tuple[SQLiteStore, list[Node], list[Edge]],
+) -> None:
+    """At the level of its own children, cgis.query reads 'leave' (#446).
+
+    Clustering every file, the tool says 'split' — but it says it about a package
+    that is already four sub-packages and two modules, with each sub-package's
+    `__init__` sitting beside its own files. Asked the question the verdict is
+    about, whether those six children should be regrouped, the answer is no:
+    measured Q ~0.20, under the 0.25 'leave' threshold.
+    """
+    store, _, _ = root_graph_data
+    report = suggest_packages(store.db_path, prefix="cgis.query", with_calls=False)
+    assert report.level == "children"
+    members = sorted(f for c in report.communities for f in c.files)
+    assert members == ["analysis", "context", "drift", "engine", "fqn", "render"]
+    assert report.verdict == "leave"

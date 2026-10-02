@@ -676,14 +676,25 @@ def cgis_suggest_packages(
             "disagrees with its communities is flagged split (or consolidate, if over-split)."
         ),
     ] = 0.35,
+    all_descendants: Annotated[
+        bool,
+        Field(
+            description="Cluster every file below the package and compare with its "
+            "sub-directories, instead of treating each sub-package as one node."
+        ),
+    ] = False,
 ) -> str:
     """Suggest sub-package boundaries for a package from its dependency communities.
 
     Returns JSON: modularity_q, divergence, direction (under/over/matched),
     verdict (split/consolidate/aligned/leave/borderline/no_signal), the detected
-    communities (id + member files), the cross-community bridge edges (cost of
+    communities (id + members), the cross-community bridge edges (cost of
     splitting), and the thresholds used. Default layer is IMPORTS; set
     ``with_calls`` for the combined import+call graph. Run ``cgis_ingest`` first.
+
+    Members are the package's direct children by default, each sub-package one
+    node, so the verdict says whether to regroup them; ``level`` in the result
+    says which. ``all_descendants`` clusters every file below the package.
 
     A mis-rooted graph (import targets resolve to no internal file) returns
     ``no_signal`` with a diagnostic note rather than a silent clean verdict.
@@ -691,7 +702,9 @@ def cgis_suggest_packages(
     if not Path(db_path).exists():
         return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
     try:
-        report = suggest_packages(db_path, prefix, with_calls=with_calls, min_q=min_q)
+        report = suggest_packages(
+            db_path, prefix, with_calls=with_calls, min_q=min_q, all_descendants=all_descendants
+        )
     except Exception as exc:
         return f"❌ Error during suggest-packages: {exc}"
     return json.dumps(_with_freshness(db_path, report_to_dict(report)), indent=2)
