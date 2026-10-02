@@ -217,3 +217,11 @@ def test_missing_tasks_directory_fails_loudly(tmp_path: Path) -> None:
     missing = tmp_path / "nope"
     with pytest.raises(FileNotFoundError, match="tasks directory not found"):
         load_tasks(missing)
+
+
+def test_an_unclosed_fence_is_not_an_answer() -> None:
+    assert extract_answer('```json\n{"symbols": ["a"]}\n' + "x" * 50_000) is None
+
+
+def test_a_fence_with_another_language_is_ignored() -> None:
+    assert extract_answer('```python\n{"symbols": ["a"]}\n```') is None

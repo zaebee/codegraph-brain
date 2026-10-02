@@ -36,7 +36,10 @@ Sufficiency = Literal[
 ]
 
 _SEARCH_TOOLS = frozenset({"Grep", "Glob", "Bash"})
-_SOURCE_PATH = re.compile(r"[\w.\-/]+\.(?:py|tsx?|jsx?)\b")
+#: Path-like tokens, then filtered by suffix: one character class with no overlapping
+#: suffix group, so matching stays linear (Sonar S8786).
+_PATH_TOKEN = re.compile(r"[\w./-]+")
+_SOURCE_SUFFIXES = (".py", ".ts", ".tsx", ".js", ".jsx")
 
 
 class ToolCall(BaseModel, frozen=True):
@@ -224,7 +227,8 @@ def _relative(path: str, cwd: str) -> str:
 
 def returned_files(call: ToolCall) -> set[str]:
     """Source paths a tool result names."""
-    return set(_SOURCE_PATH.findall(call.result))
+    tokens = (t.rstrip(".") for t in _PATH_TOKEN.findall(call.result))
+    return {t for t in tokens if t.endswith(_SOURCE_SUFFIXES)}
 
 
 def classify_next(returned: set[str], following: ToolCall | None, cwd: str) -> Sufficiency:

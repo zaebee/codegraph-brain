@@ -29,7 +29,6 @@ ANSWER_FORMAT = (
     "Do not modify any files."
 )
 
-_JSON_BLOCK = re.compile(r"```json\s*\n(.*?)```", re.S)
 _CALL_PARENS = re.compile(r"\(.*\)$")
 _LINE_SUFFIX = re.compile(r":\d+(?:-\d+)?$")
 
@@ -137,13 +136,27 @@ def _answer_from_block(block: str) -> AgentAnswer | None:
         return None
 
 
+def _json_blocks(text: str) -> list[str]:
+    """Bodies of the ```json fences in `text`, in order.
+
+    Split on the fence rather than matched with a lazy regex: a `.*?` across the
+    whole answer backtracks super-linearly on an unclosed fence (Sonar S8786).
+    """
+    blocks = []
+    for fenced in text.split("```")[1::2]:
+        info, _, body = fenced.partition("\n")
+        if info.strip() == "json":
+            blocks.append(body)
+    return blocks
+
+
 def extract_answer(text: str) -> AgentAnswer | None:
     """The last fenced JSON block in `text` that is an answer, or None.
 
     Searched from the end, so an example block quoted earlier in the answer, or a
     non-answer block after it, does not hide the real one.
     """
-    for block in reversed(_JSON_BLOCK.findall(text)):
+    for block in reversed(_json_blocks(text)):
         answer = _answer_from_block(block)
         if answer is not None:
             return answer
