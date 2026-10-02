@@ -135,6 +135,31 @@ parameter also matched case (b) (an explicit `Depends` inside its
 `raw_dep:` candidate for the *outer* annotation is still emitted too — it
 will resolve to a CLASS/external and be dropped; no dedup logic needed.
 
+**d) DI in a route decorator (#429, added after slice 1).**
+`@router.post(..., dependencies=[Depends(guard)])` declares a guard at the
+decorator instead of the signature. The `Depends`/`Security` call there is
+handled by the same hook as §3.2b, with one deliberate exception to the rule
+that an edge's source is its lexical owner: the DEPENDS_ON edge is sourced at
+the **decorated function**, not the module the decorator sits in. FastAPI runs
+the dependency before that function, and `cgis audit` reads DEPENDS_ON as the
+evidence a route is guarded, so a module-sourced edge would be accurate about
+location and useless as evidence.
+
+- Only a decorated `function_definition` / `async_function_definition`
+  (including methods) gets the edge. A decorated **class** keeps the
+  CALLS-only treatment: FastAPI never treats a class decorator as a
+  dependant.
+- Name-extraction rules are §3.2b's: first positional argument only; argless
+  and keyword-only (`Depends(dependency=guard)`) calls emit no edge.
+- This is the only place the exception applies. Calls and name references in
+  decorators were already sourced at the decorated definition (#434) — a
+  decorator has no other owner — so the exception is confined to DI, which is
+  the edge kind that carries "this runs before that" semantics.
+
+Population note: on owner-api at `b7d02fe6` one route declared its guard this
+way, against 238 in the signature. The edge is cheap and closes a false
+"unguarded" in a security-facing report; it is not expected to move counts.
+
 ### 3.3 Resolver (`src/cgis/resolver/engine.py`)
 
 - `RAW_DEP_PREFIX = "raw_dep:"` defined here as a module-level constant,
