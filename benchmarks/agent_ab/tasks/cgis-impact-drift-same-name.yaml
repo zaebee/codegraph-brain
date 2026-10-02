@@ -1,0 +1,56 @@
+id: cgis-impact-drift-same-name
+repo: cgis
+sha: 715cd9a2ecee47949651344757edb4c7d09f64d7
+src_root: src
+type: impact
+question: |
+  In this repository, which code under `src/` can end up calling
+  `PatternCatalog.load_project_domains` in `src/cgis/query/drift/catalog.py`, directly
+  or transitively? Follow the chain up to the user-facing entry points (CLI commands
+  and MCP tools, and the Guardian review runner) and name every function or method
+  on the way.
+gold:
+  symbols:
+    - DriftScorer.load_project_domains
+    - drift_service.analyze_drift
+    - GraphContextCollector.collect_drift
+    - ContextCollector.collect_all
+    - cli.drift
+    - mcp_server.cgis_drift
+    - id: guardian
+      any_of: [run_guardian, run_review_routed, GuardianReviewer.run_review, run_axis_review]
+  files:
+    - src/cgis/query/drift/drift.py
+    - src/cgis/query/drift/drift_service.py
+    - src/cgis/guardian/collector.py
+    - src/cgis/cli.py
+    - src/cgis/api/mcp_server.py
+  allowed_symbols:
+    - PatternCatalog
+    - PatternCatalog.load_project_domains
+    - DriftScorer
+    - GraphContextCollector
+    - ContextCollector
+    - GuardianReviewer
+    - run_guardian
+    - run_review_routed
+    - run_axis_review
+    - run_chunked_review
+    - chunked._single_pass
+  allowed_files:
+    - src/cgis/query/drift/catalog.py
+    - src/cgis/guardian/core.py
+    - src/cgis/guardian/axes.py
+    - src/cgis/guardian/chunked.py
+    - src/cgis/guardian/runner.py
+notes: |
+  The first hop shares the target's name: DriftScorer.load_project_domains
+  (drift.py:58) wraps it, so a grep for the name finds both definitions and three
+  call sites that must be told apart. Read 2026-10-02 at the pinned sha:
+  DriftScorer.load_project_domains is called in analyze_drift (drift_service.py:162)
+  and GraphContextCollector.collect_drift (guardian/collector.py:249); analyze_drift
+  in cli.drift (cli.py:1213) and mcp_server.cgis_drift (mcp_server.py:636);
+  collect_drift in ContextCollector.collect_all (collector.py:353), which
+  GuardianReviewer.run_review (core.py:128) and run_axis_review (axes.py:68) call,
+  up through run_review_routed to run_guardian (runner.py:472). Any one Guardian
+  hop counts for the guardian item.

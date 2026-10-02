@@ -111,6 +111,18 @@ def test_cgis_command_uses_this_checkouts_server_and_the_plugin_without_mcp_json
     assert cmd[cmd.index("--effort") + 1] == "high"
 
 
+def test_instructed_arm_is_the_cgis_arm_plus_one_system_prompt_line(tmp_path: Path) -> None:
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    plain = _command(tmp_path / "a", "cgis")
+    instructed = _command(tmp_path / "b", "cgis-instructed")
+    assert "--append-system-prompt" not in plain
+    assert instructed[instructed.index("--append-system-prompt") + 1] == ab.CGIS_INSTRUCTION
+    assert "--plugin-dir" in instructed
+    server = json.loads((tmp_path / "b" / "mcp.json").read_text())["mcpServers"]["cgis"]
+    assert server["command"].endswith("cgis-mcp")
+
+
 def test_repo_paths_parses_name_path_pairs(tmp_path: Path) -> None:
     repos = ab.repo_paths([f"owner-api={tmp_path}"])
     assert repos["owner-api"] == tmp_path.resolve()
