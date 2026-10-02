@@ -12,8 +12,15 @@ pinned commit, so no run sees another's files or a graph it did not build.
 - `control`: no MCP servers; any committed or stray graph file is deleted.
 - `cgis`:    the cgis MCP server from *this* checkout, the plugin's skills, and a
              graph built by this checkout's `cgis ingest` before the clock starts.
+- `cgis-instructed`: `cgis` plus one appended system-prompt line telling the
+             agent to try cgis first. The pilot's `cgis` arm made no cgis call
+             in 12 of 12 sessions; this arm stands in for #542's server
+             instructions until they ship.
+- `cgis-forced`: `cgis-instructed`, and the guard (`--cgis-first`) refuses
+             Read, Grep, Glob and Bash until the session has made one cgis call. Measures what the
+             graph adds once used, separately from whether the agent picks it.
 
-Both arms run under the same PreToolUse hook (`cgis.bench.guard`), the same
+All arms run under the same PreToolUse hook (`cgis.bench.guard`), the same
 allowed tools (Read, Grep, Glob, Bash; no edits, no web, no sub-agents) and a
 PATH with no cgis or uv on it. Costs money: every non-dry run is a real session.
 Results append to `benchmarks/agent_ab/results.jsonl`, one line per
@@ -38,14 +45,23 @@ from pathlib import Path
 from typing import Literal
 
 from cgis.bench.agent_task import AgentTask, extract_answer, load_tasks, score_answer
+from cgis.bench.guard import CGIS_FIRST_FLAG
 from cgis.bench.transcript import parse_transcript, run_metrics
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from guardian_replay_skeptic import worktree_at
 
-Arm = Literal["control", "cgis"]
-ARMS: tuple[Arm, ...] = ("control", "cgis")
+Arm = Literal["control", "cgis", "cgis-instructed", "cgis-forced"]
+ARMS: tuple[Arm, ...] = ("control", "cgis", "cgis-instructed", "cgis-forced")
+_INSTRUCTED: tuple[Arm, ...] = ("cgis-instructed", "cgis-forced")
+
+#: Appended to the system prompt in the `cgis-instructed` arm only.
+CGIS_INSTRUCTION = (
+    "This repository has a code graph available through the cgis MCP tools "
+    "(mcp__cgis__*). For questions about callers, call chains, impact or code "
+    "structure, query cgis first, then read source only to confirm what it returns."
+)
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _BENCH_DIR = _REPO_ROOT / "benchmarks" / "agent_ab"
@@ -105,9 +121,19 @@ def mcp_config(arm: Arm) -> dict[str, object]:
     return {"mcpServers": {"cgis": {"command": bin_path("cgis-mcp"), "args": []}}}
 
 
-def hook_settings() -> dict[str, object]:
-    """The `--settings` document installing the guard hook on every tool call."""
-    command = f"{shlex.quote(sys.executable)} -m cgis.bench.guard"
+def _quote(arg: str) -> str:
+    """One shell word: cmd.exe quoting on Windows, POSIX quoting elsewhere."""
+    return subprocess.list2cmdline([arg]) if sys.platform == "win32" else shlex.quote(arg)
+
+
+def hook_settings(*, cgis_first: bool = False) -> dict[str, object]:
+    """The `--settings` document installing the guard hook on every tool call.
+
+    `cgis_first` runs the guard with `--cgis-first` (the `cgis-forced` arm).
+    """
+    command = f"{_quote(sys.executable)} -m cgis.bench.guard"
+    if cgis_first:
+        command += f" {CGIS_FIRST_FLAG}"
     return {
         "hooks": {
             "PreToolUse": [{"matcher": ".*", "hooks": [{"type": "command", "command": command}]}]
@@ -139,7 +165,8 @@ def build_command(
     mcp_path = config_dir / "mcp.json"
     settings_path = config_dir / "settings.json"
     mcp_path.write_text(json.dumps(mcp_config(arm)), encoding="utf-8")
-    settings_path.write_text(json.dumps(hook_settings()), encoding="utf-8")
+    settings = hook_settings(cgis_first=arm == "cgis-forced")
+    settings_path.write_text(json.dumps(settings), encoding="utf-8")
     cmd = [
         claude,
         "-p",
@@ -168,8 +195,10 @@ def build_command(
     ]
     if effort:
         cmd += ["--effort", effort]
-    if arm == "cgis":
+    if arm != "control":
         cmd += ["--plugin-dir", str(stage_plugin(config_dir / "plugin"))]
+    if arm in _INSTRUCTED:
+        cmd += ["--append-system-prompt", CGIS_INSTRUCTION]
     return cmd
 
 
@@ -272,7 +301,7 @@ def run_one(task: AgentTask, arm: Arm, run: int, repo: Path, args: argparse.Name
     """One session: worktree → (ingest) → claude -p → transcript → results line."""
     with worktree_at(task.sha, repo) as wt, tempfile.TemporaryDirectory(prefix="ab-") as tmp:
         removed = remove_graph_files(wt)
-        ingest_s = ingest(wt, task.src_root) if arm == "cgis" else 0.0
+        ingest_s = ingest(wt, task.src_root) if arm != "control" else 0.0
         cmd = build_command(
             claude=args.claude,
             prompt=task.prompt(),
@@ -390,7 +419,7 @@ def build_parser() -> argparse.ArgumentParser:
     run = sub.add_parser("run", help="run sessions and append results")
     run.add_argument("--tasks", type=Path, default=_BENCH_DIR / "tasks")
     run.add_argument("--task", action="append", default=[], help="task id; repeatable")
-    run.add_argument("--arm", action="append", choices=ARMS, help="repeatable; default both")
+    run.add_argument("--arm", action="append", choices=ARMS, help="repeatable; default all")
     run.add_argument("--runs", type=int, default=3)
     run.add_argument("--repo", action="append", default=[], help="NAME=PATH; repeatable")
     run.add_argument("--model", default=DEFAULT_MODEL)

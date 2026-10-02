@@ -1,0 +1,55 @@
+id: owner-impact-credit-wallet
+repo: owner-api
+sha: 8de22452b5d91242dd742a666ef2cd7b1eb7c1ff
+src_root: ownima-backend/app
+type: impact
+question: |
+  In this repository, the module-level function `credit_wallet` in
+  `ownima-backend/app/domains/finance/service.py` is about to change. Which code under
+  `ownima-backend/app/` (not tests, not scripts) can end up calling it, directly or
+  transitively? Follow every chain up to its entry point (an HTTP route, a worker task,
+  or a function nothing else calls) and name every function or method on the way.
+gold:
+  symbols:
+    - FinanceService.credit_wallet
+    - FinanceService.top_up
+    - TopUpService._credit
+    - TopUpService.fulfill
+    - TopUpService.get_status
+    - TopUpService.handle_webhook_event
+    - finance.routes.get_top_up
+    - finance.routes.stripe_webhook
+    - VehicleBonusCreditor._pay
+    - VehicleBonusCreditor.credit
+    - VehicleBonusWorker.credit
+    - vehicle_bonus.reconcile_vehicle_bonus
+    - VehicleBonusWorker.reconcile
+  files:
+    - ownima-backend/app/domains/finance/service.py
+    - ownima-backend/app/domains/finance/top_up_service.py
+    - ownima-backend/app/domains/finance/routes.py
+    - ownima-backend/app/domains/finance/vehicle_bonus_credit.py
+    - ownima-backend/app/worker/vehicle_bonus.py
+  allowed_symbols:
+    - finance.service.credit_wallet
+    - FinanceService
+    - TopUpService
+    - VehicleBonusCreditor
+    - VehicleBonusWorker
+    - worker.base
+  allowed_files:
+    - ownima-backend/app/worker/base.py
+notes: |
+  Same-name trap plus DI: the module function is wrapped by the method
+  FinanceService.credit_wallet (service.py:332-344), and the top-up path reaches the
+  method through an injected `self._finance` (top_up_service.py:316). Read 2026-10-02
+  at the pinned sha with an AST call index, not with cgis: credit_wallet is called in
+  FinanceService.credit_wallet (service.py:344) and VehicleBonusCreditor._pay
+  (vehicle_bonus_credit.py:202); the method in FinanceService.top_up (:367, no callers
+  of its own) and TopUpService._credit (top_up_service.py:316); _credit in fulfill
+  (:266); fulfill in get_status (:294) and handle_webhook_event (:305); those in the
+  routes get_top_up (routes.py:232) and stripe_webhook (:344). _pay in
+  VehicleBonusCreditor.credit (:142); that in VehicleBonusWorker.credit
+  (worker/vehicle_bonus.py:151) and reconcile_vehicle_bonus (:106); the latter in
+  VehicleBonusWorker.reconcile (:177). Both worker methods are registered as tasks in
+  worker/base.py:198-199. The cgis graph at this sha misses both routes.

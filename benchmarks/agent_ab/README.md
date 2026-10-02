@@ -40,8 +40,16 @@ resolver gets wrong. Each task's `notes` say how it was checked.
 |---|---|---|---|---|
 | `control` | none (`--strict-mcp-config`, empty config) | no | all deleted | no |
 | `cgis` | this checkout's `cgis-mcp` | yes (the plugin minus its `.mcp.json`) | `graph.db` built before the clock starts | no |
+| `cgis-instructed` | as `cgis` | as `cgis` | as `cgis` | one line: query cgis first |
+| `cgis-forced` | as `cgis` | as `cgis` | as `cgis` | as `cgis-instructed`, and the guard refuses Read/Grep/Glob/Bash until one cgis call |
 
-Both arms run under `cgis.bench.guard` as a PreToolUse hook, which refuses the
+`cgis-instructed` exists because the first pilot's `cgis` arm made no cgis call in
+12 of 12 sessions: with the server connected and the skill loaded, Sonnet still
+went straight to Grep. It stands in for #542's MCP server instructions. It barely moved the agent (2 cgis
+calls in 18 sessions), so `cgis-forced` makes the first graph query mandatory: it
+measures what the graph adds once used, apart from whether the agent picks it.
+
+All arms run under `cgis.bench.guard` as a PreToolUse hook, which refuses the
 cgis CLI, uv, sqlite3 and any read of `graph.db`/`graph.json` through Bash or
 the file tools. Without it the control arm is not a control: codegraph's own
 benchmark caught its control agent calling their CLI through Bash in 26 of 28
@@ -49,8 +57,8 @@ runs. The same predicate marks a finished run `contaminated` if a blocked call
 ever returned output; such runs are counted in the report and left out of the
 medians.
 
-Both arms allow `Read`, `Grep`, `Glob` and `Bash` (plus `mcp__cgis` in the
-treatment arm, which has no server in control) and refuse edits, web access and
+All arms allow `Read`, `Grep`, `Glob` and `Bash` (plus `mcp__cgis` in the
+treatment arms, which has no server in control) and refuse edits, web access and
 sub-agents, under `--permission-mode dontAsk`. Each session starts in a fresh
 detached worktree at the task's pinned commit, with `--no-session-persistence`
 and `--setting-sources project`, so user settings and earlier sessions do not

@@ -2,6 +2,7 @@
 
 import io
 import json
+from pathlib import Path
 
 import pytest
 
@@ -66,7 +67,7 @@ def test_file_tools_on_source_are_allowed() -> None:
 
 def _run_main(monkeypatch: pytest.MonkeyPatch, stdin: str) -> int:
     monkeypatch.setattr("sys.stdin", io.StringIO(stdin))
-    return guard.main()
+    return guard.main([])
 
 
 def test_main_refuses_with_exit_2_and_a_reason(
@@ -92,3 +93,38 @@ def test_main_lets_malformed_events_through(monkeypatch: pytest.MonkeyPatch, std
 def test_other_files_ending_in_graph_names_are_allowed(path: str) -> None:
     assert blocked_reason("Read", {"file_path": path}) is None
     assert blocked_reason("Bash", {"command": f"cat {path}"}) is None
+
+
+def test_cgis_first_holds_source_tools_until_a_cgis_call(tmp_path: Path) -> None:
+    marker = tmp_path / "cgis_used"
+    assert guard.cgis_first_reason("Grep", marker) == guard.CGIS_FIRST_REASON
+    assert guard.cgis_first_reason("ToolSearch", marker) is None
+    assert guard.cgis_first_reason("mcp__cgis__cgis_analyze_impact", marker) is None
+    assert marker.exists()
+    assert guard.cgis_first_reason("Read", marker) is None
+
+
+def _event(tool_name: str) -> str:
+    return json.dumps({"tool_name": tool_name, "tool_input": {"file_path": "/w/src/a.py"}})
+
+
+def test_main_applies_cgis_first_only_when_asked(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("sys.stdin", io.StringIO(_event("Read")))
+    assert guard.main([]) == 0
+    monkeypatch.setattr("sys.stdin", io.StringIO(_event("Read")))
+    assert guard.main([guard.CGIS_FIRST_FLAG]) == 2
+
+
+def test_the_cgis_first_marker_lives_in_the_working_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The run's worktree, so a later run never inherits an earlier run's marker."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("sys.stdin", io.StringIO(_event("mcp__cgis__cgis_context")))
+    assert guard.main([guard.CGIS_FIRST_FLAG]) == 0
+    assert (tmp_path / guard.MARKER_NAME).exists()
+    monkeypatch.setattr("sys.stdin", io.StringIO(_event("Read")))
+    assert guard.main([guard.CGIS_FIRST_FLAG]) == 0

@@ -1,0 +1,45 @@
+id: cgis-impact-transitive-tsconfig
+repo: cgis
+sha: 715cd9a2ecee47949651344757edb4c7d09f64d7
+src_root: src
+type: impact
+question: |
+  In this repository, which code under `src/` can end up executing the function
+  `_existing_json` in `src/cgis/tsconfig_paths.py`, directly or transitively? Follow
+  the chain all the way up to the user-facing entry points (CLI commands and MCP
+  tools) and name every function or method on the way.
+gold:
+  symbols:
+    - tsconfig_paths._locate
+    - tsconfig_paths._options
+    - TsconfigPaths.aliases
+    - ImportNameCollector.collect
+    - IngestionPipeline.run
+    - cli.ingest
+    - mcp_server.cgis_ingest
+    - id: auto_refresh
+      any_of: [auto_refresh._refresh, auto_refresh.refresh_if_stale, auto_refresh.refreshes_graph]
+  files:
+    - src/cgis/tsconfig_paths.py
+    - src/cgis/import_names.py
+    - src/cgis/pipeline.py
+    - src/cgis/cli.py
+    - src/cgis/api/mcp_server.py
+    - src/cgis/api/auto_refresh.py
+  allowed_symbols:
+    - tsconfig_paths._existing_json
+    - TsconfigPaths
+    - ImportNameCollector
+    - IngestionPipeline
+    - auto_refresh
+    - api.mcp_server
+notes: |
+  Multi-hop impact, five calls deep before the first entry point. Read 2026-10-02 at
+  the pinned sha: _existing_json is called only in _locate (tsconfig_paths.py:190,
+  :203); _locate only in _options (:153); _options in TsconfigPaths.aliases (:122)
+  and recursively in itself (:154); aliases only in ImportNameCollector.collect
+  (import_names.py:82); collect in IngestionPipeline.run (pipeline.py:193); run in
+  cli.ingest (cli.py:236, :243), mcp_server.cgis_ingest (mcp_server.py:354) and
+  auto_refresh._refresh (auto_refresh.py:82), which refresh_if_stale and the
+  refreshes_graph decorator on most MCP tools reach when CGIS_AUTO_REFRESH=1, so any
+  MCP tool name is allowed. The cgis graph agrees; the key was checked by grep.

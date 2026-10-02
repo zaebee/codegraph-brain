@@ -1,0 +1,30 @@
+id: owner-impact-occupied-window-same-name
+repo: owner-api
+sha: 8de22452b5d91242dd742a666ef2cd7b1eb7c1ff
+src_root: ownima-backend/app
+type: impact
+question: |
+  In this repository, the function `occupied_window` in
+  `ownima-backend/app/services/reservation_conflict_service.py` is about to change its
+  signature. List every function or method under `ownima-backend/app/` (not tests,
+  not scripts) that calls it directly, so each call site can be updated.
+gold:
+  symbols:
+    - ReservationConflictService._check_conflicts_internal
+    - ReservationConflictService._find_conflicting_groups
+    - ReservationConflictService._clusters
+    - ReservationConflictService.get_pending_conflicts_for_reservation
+  files:
+    - ownima-backend/app/services/reservation_conflict_service.py
+  allowed_symbols:
+    - reservation_conflict_service.occupied_window
+    - ReservationConflictService
+notes: |
+  Same-name trap: domains/pricing/handover.py:230 defines another module-level
+  `occupied_window`, and HandoverSchedule.window_for (handover.py:195),
+  ReservationCreation.compute_actual_datetime_range (creation.py:716) and Rule.build
+  (validators.py:164) call that one (creation.py:21-28 and validators.py:18-25 import it
+  from app.domains.pricing.handover). Naming them costs precision. Read 2026-10-02 at
+  the pinned sha with an AST call index: the services function (line 836) is called at
+  reservation_conflict_service.py:241, :552, :661, :678, :736 and :753, inside the four
+  methods above.

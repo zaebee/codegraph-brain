@@ -111,6 +111,26 @@ def test_cgis_command_uses_this_checkouts_server_and_the_plugin_without_mcp_json
     assert cmd[cmd.index("--effort") + 1] == "high"
 
 
+def test_instructed_arm_is_the_cgis_arm_plus_one_system_prompt_line(tmp_path: Path) -> None:
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    plain = _command(tmp_path / "a", "cgis")
+    instructed = _command(tmp_path / "b", "cgis-instructed")
+    assert "--append-system-prompt" not in plain
+    assert instructed[instructed.index("--append-system-prompt") + 1] == ab.CGIS_INSTRUCTION
+    assert "--plugin-dir" in instructed
+    server = json.loads((tmp_path / "b" / "mcp.json").read_text())["mcpServers"]["cgis"]
+    assert server["command"].endswith("cgis-mcp")
+
+
+def test_forced_arm_runs_the_guard_in_cgis_first_mode(tmp_path: Path) -> None:
+    cmd = _command(tmp_path, "cgis-forced")
+    hook = json.loads((tmp_path / "settings.json").read_text())["hooks"]["PreToolUse"][0]
+    assert hook["hooks"][0]["command"].endswith(" -m cgis.bench.guard --cgis-first")
+    assert cmd[cmd.index("--append-system-prompt") + 1] == ab.CGIS_INSTRUCTION
+    assert "--plugin-dir" in cmd
+
+
 def test_repo_paths_parses_name_path_pairs(tmp_path: Path) -> None:
     repos = ab.repo_paths([f"owner-api={tmp_path}"])
     assert repos["owner-api"] == tmp_path.resolve()
@@ -280,6 +300,15 @@ def test_a_timed_out_session_keeps_its_partial_transcript(
 def test_the_hook_quotes_an_interpreter_path_with_spaces(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(ab.sys, "platform", "linux")
     monkeypatch.setattr(ab.sys, "executable", "/opt/my env/bin/python")
     hook = ab.hook_settings()["hooks"]["PreToolUse"][0]["hooks"][0]  # type: ignore[index]
     assert hook["command"] == "'/opt/my env/bin/python' -m cgis.bench.guard"
+
+
+def test_the_hook_uses_cmd_quoting_on_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    """POSIX single quotes mean nothing to cmd.exe."""
+    monkeypatch.setattr(ab.sys, "platform", "win32")
+    monkeypatch.setattr(ab.sys, "executable", r"C:\Program Files\Python\python.exe")
+    hook = ab.hook_settings()["hooks"]["PreToolUse"][0]["hooks"][0]  # type: ignore[index]
+    assert hook["command"] == r'"C:\Program Files\Python\python.exe" -m cgis.bench.guard'
