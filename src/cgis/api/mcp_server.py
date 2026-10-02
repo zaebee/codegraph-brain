@@ -352,7 +352,7 @@ def cgis_ingest(
             # the pipeline, and a failure part-way leaves the old graph intact.
             nodes, _raw, resolved = pipeline.run(project_path, store=store, rebuild=full_rebuild)
             if nodes:
-                store.record_ingest(project_path)
+                store.record_ingest(project_path, pipeline.observed_mtimes)
             total_nodes = store.get_node_count()
             total_edges = store.get_edge_count()
     except Exception as exc:
