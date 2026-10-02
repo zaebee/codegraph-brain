@@ -249,3 +249,29 @@ def test_report_without_results_fails(tmp_path: Path) -> None:
 def test_fmt_renders_missing_values_as_a_dash() -> None:
     assert ab.fmt_cell(None) == "—"
     assert ab.fmt_cell(3) == "3"
+
+
+def test_repo_paths_strips_whitespace(tmp_path: Path) -> None:
+    assert ab.repo_paths([f" owner-api = {tmp_path} "])["owner-api"] == tmp_path.resolve()
+
+
+@pytest.mark.parametrize(("platform", "suffix"), [("linux", ""), ("win32", ".exe")])
+def test_bin_path_adds_exe_on_windows(
+    monkeypatch: pytest.MonkeyPatch, platform: str, suffix: str
+) -> None:
+    monkeypatch.setattr(ab.sys, "platform", platform)
+    assert ab.bin_path("cgis").endswith("cgis" + suffix)
+
+
+@pytest.mark.parametrize("partial", [None, "partial\n", b"bytes\n"])
+def test_a_timed_out_session_keeps_its_partial_transcript(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, partial: str | bytes | None
+) -> None:
+    def timeout(cmd: list[str], **_k: object) -> None:
+        raise subprocess.TimeoutExpired(cmd, 5, output=partial)
+
+    monkeypatch.setattr(ab.subprocess, "run", timeout)
+    stdout, code = ab.run_session(["claude"], tmp_path, 5)
+    assert code == -1
+    expected = partial.decode() if isinstance(partial, bytes) else (partial or "")
+    assert stdout == expected

@@ -254,7 +254,11 @@ def sufficiency(transcript: Transcript) -> Counter[str]:
 
 
 def allocation(transcript: Transcript, answer_files: list[str]) -> float | None:
-    """Share of files named by cgis answers that the final answer relied on, pooled."""
+    """Share of files named by cgis answers that the final answer relied on, pooled.
+
+    Counted per call, not per distinct file: a file returned by two calls was paid
+    for twice, and allocation measures where the returned budget went.
+    """
     named = 0
     used = 0
     for call in transcript.calls:

@@ -111,6 +111,9 @@ def load_task(path: Path) -> AgentTask:
 
 def load_tasks(directory: Path) -> list[AgentTask]:
     """Every `*.yaml` task in a directory, sorted by id; ids must be unique."""
+    if not directory.is_dir():
+        _msg = f"tasks directory not found: {directory}"
+        raise FileNotFoundError(_msg)
     tasks = sorted((load_task(p) for p in directory.glob("*.yaml")), key=lambda t: t.id)
     ids = [t.id for t in tasks]
     duplicates = sorted({i for i in ids if ids.count(i) > 1})
@@ -120,21 +123,31 @@ def load_tasks(directory: Path) -> list[AgentTask]:
     return tasks
 
 
-def extract_answer(text: str) -> AgentAnswer | None:
-    """The last fenced JSON block in `text`, or None when there is none or it is malformed."""
-    blocks = _JSON_BLOCK.findall(text)
-    if not blocks:
-        return None
+def _answer_from_block(block: str) -> AgentAnswer | None:
+    """One fenced block as an AgentAnswer, or None when it is not one."""
     try:
-        data = json.loads(blocks[-1])
+        data = json.loads(block)
     except json.JSONDecodeError:
         return None
-    if not isinstance(data, dict):
+    if not isinstance(data, dict) or not data.keys() & {"symbols", "files"}:
         return None
     try:
         return AgentAnswer.model_validate(data)
     except ValueError:
         return None
+
+
+def extract_answer(text: str) -> AgentAnswer | None:
+    """The last fenced JSON block in `text` that is an answer, or None.
+
+    Searched from the end, so an example block quoted earlier in the answer, or a
+    non-answer block after it, does not hide the real one.
+    """
+    for block in reversed(_JSON_BLOCK.findall(text)):
+        answer = _answer_from_block(block)
+        if answer is not None:
+            return answer
+    return None
 
 
 def normalize_symbol(name: str) -> str:

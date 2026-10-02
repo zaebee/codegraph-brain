@@ -204,3 +204,16 @@ def test_unparseable_answer_is_flagged_and_scores_zero_precision() -> None:
 def test_task_without_required_items_has_full_recall() -> None:
     score = score_answer(_task(), _answer([], []))
     assert score.recall == 1.0
+
+
+def test_extract_answer_skips_a_trailing_block_that_is_not_an_answer() -> None:
+    text = _answer(["real"], ["a/b.py"]) + '\n```json\n{"example": [1]}\n```\n```json\n[1]\n```'
+    answer = extract_answer(text)
+    assert answer is not None
+    assert answer.symbols == ["real"]
+
+
+def test_missing_tasks_directory_fails_loudly(tmp_path: Path) -> None:
+    missing = tmp_path / "nope"
+    with pytest.raises(FileNotFoundError, match="tasks directory not found"):
+        load_tasks(missing)

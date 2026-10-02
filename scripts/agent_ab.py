@@ -50,6 +50,12 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 _BENCH_DIR = _REPO_ROOT / "benchmarks" / "agent_ab"
 _BIN = Path(sys.executable).parent
 
+
+def bin_path(name: str) -> str:
+    """An entry point installed next to this interpreter (`.exe` on Windows)."""
+    return str(_BIN / (f"{name}.exe" if sys.platform == "win32" else name))
+
+
 #: Executables that would let an agent reach the graph without MCP. A PATH entry
 #: holding any of them is dropped; sqlite3 lives in /usr/bin and is left to the hook.
 _HIDDEN_EXECUTABLES = ("cgis", "cgis-mcp", "codegraph-brain", "uv", "uvx")
@@ -95,7 +101,7 @@ def mcp_config(arm: Arm) -> dict[str, object]:
     """The `--mcp-config` document: empty for control, this checkout's server for cgis."""
     if arm == "control":
         return {"mcpServers": {}}
-    return {"mcpServers": {"cgis": {"command": str(_BIN / "cgis-mcp"), "args": []}}}
+    return {"mcpServers": {"cgis": {"command": bin_path("cgis-mcp"), "args": []}}}
 
 
 def hook_settings() -> dict[str, object]:
@@ -171,7 +177,7 @@ def ingest(worktree: Path, src_root: str) -> float:
     start = time.monotonic()
     try:
         subprocess.run(
-            [str(_BIN / "cgis"), "ingest", src_root, "--output", "graph.db"],
+            [bin_path("cgis"), "ingest", src_root, "--output", "graph.db"],
             cwd=worktree,
             check=True,
             capture_output=True,
@@ -229,12 +235,36 @@ def repo_paths(pairs: Sequence[str]) -> dict[str, Path]:
     """`NAME=PATH` arguments as a mapping; this checkout is always `cgis`."""
     repos = {"cgis": _REPO_ROOT}
     for pair in pairs:
-        name, sep, path = pair.partition("=")
+        raw_name, sep, raw_path = pair.partition("=")
+        name, path = raw_name.strip(), raw_path.strip()
         if not sep or not name or not path:
             _msg = f"--repo expects NAME=PATH, got {pair!r}"
             raise ValueError(_msg)
         repos[name] = Path(path).expanduser().resolve()
     return repos
+
+
+def run_session(cmd: list[str], cwd: Path, timeout: int) -> tuple[str, int]:
+    """Run one session; a timeout keeps the partial transcript and returns code -1.
+
+    A raised TimeoutExpired would end the whole batch, losing every run after it.
+    The partial row still lands, with `subtype` empty, so the timeout is visible.
+    """
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=cwd,
+            env=agent_env(dict(os.environ)),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        print(f"session timed out after {timeout}s: {cwd}", file=sys.stderr)
+        partial = exc.stdout or ""
+        return (partial.decode("utf-8", "replace") if isinstance(partial, bytes) else partial), -1
+    return proc.stdout, proc.returncode
 
 
 def run_one(task: AgentTask, arm: Arm, run: int, repo: Path, args: argparse.Namespace) -> None:
@@ -256,31 +286,23 @@ def run_one(task: AgentTask, arm: Arm, run: int, repo: Path, args: argparse.Name
             print("  " + " ".join([*cmd[:2], "<prompt>", *cmd[3:]]))
             return
         start = time.monotonic()
-        proc = subprocess.run(
-            cmd,
-            cwd=wt,
-            env=agent_env(dict(os.environ)),
-            capture_output=True,
-            text=True,
-            timeout=args.timeout,
-            check=False,
-        )
+        stdout, returncode = run_session(cmd, wt, args.timeout)
         wall_s = time.monotonic() - start
     transcript_path = args.transcripts / task.id / f"{arm}-{run}.jsonl"
     transcript_path.parent.mkdir(parents=True, exist_ok=True)
-    transcript_path.write_text(proc.stdout, encoding="utf-8")
+    transcript_path.write_text(stdout, encoding="utf-8")
     meta: dict[str, object] = {
         "model": args.model,
         "effort": args.effort,
         "cgis_sha": _git("rev-parse", "HEAD"),
-        "returncode": proc.returncode,
+        "returncode": returncode,
         "ingest_s": round(ingest_s, 2),
         "wall_s": round(wall_s, 2),
         "transcript": str(transcript_path.relative_to(_REPO_ROOT))
         if transcript_path.is_relative_to(_REPO_ROOT)
         else str(transcript_path),
     }
-    row = results_row(task, arm, run, proc.stdout.splitlines(), meta)
+    row = results_row(task, arm, run, stdout.splitlines(), meta)
     _append_jsonl(args.results, row)
     print(
         f"[{task.id} {arm} #{run}] recall={row['recall']:.2f} cost=${row['cost_usd']:.3f} "
