@@ -1,6 +1,6 @@
 """Implements ResolverEngine class."""
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 
 from cgis.core.models import (
     RAW_CLASS_PREFIX,
@@ -64,6 +64,7 @@ class ResolverEngine:
         *,
         workspace_packages: Mapping[str, str] | None = None,
         tsconfig_paths: Mapping[str, Mapping[str, list[str]]] | None = None,
+        dependency_roots: Iterable[str] = (),
     ) -> None:
         """Build the symbol resolver (which builds the index) from the extracted graph.
 
@@ -71,10 +72,14 @@ class ResolverEngine:
         `package.json` files the pipeline walked, so TypeScript imports of a
         workspace package resolve to its modules (#504). `tsconfig_paths` maps a
         project directory to the `compilerOptions.paths` aliases its files import
-        through (#508).
+        through (#508). `dependency_roots` are the import roots the project's
+        manifests declare, which tell a library apart from a package of ours that
+        shares its name (#495).
         """
         self.edges = edges
-        self._resolver = SymbolResolver(nodes, edges, workspace_packages, tsconfig_paths)
+        self._resolver = SymbolResolver(
+            nodes, edges, workspace_packages, tsconfig_paths, dependency_roots
+        )
         self._index = self._resolver.index
 
     def resolve(self) -> tuple[list[Edge], list[Node]]:

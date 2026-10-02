@@ -3,7 +3,7 @@
 import pytest
 
 from cgis.core.models import Node, NodeNamespace, NodeType
-from cgis.resolver.indices import IndexBuilder
+from cgis.resolver.indices import IndexBuilder, SymbolIndex
 
 
 def _node(
@@ -388,3 +388,88 @@ def test_a_library_submodule_sharing_a_top_level_name_stays_external() -> None:
     )
     assert index.classify_fqn("pydantic.BaseModel") is NodeNamespace.EXTERNAL
     assert "pydantic" not in index.internal_roots
+
+
+# ---------------------------------------------------------------------------
+# Declared dependencies sharing a name with an internal package (#495)
+# ---------------------------------------------------------------------------
+
+
+def _owner_api_index(dependency_roots: tuple[str, ...] = ("alembic", "fastapi")) -> SymbolIndex:
+    """owner-api's shape: `app/alembic/` holds env and versions, `app/scripts/` exists too."""
+    migration = _node(
+        "alembic.versions.0001_add",
+        node_type=NodeType.FILE,
+        file_path="alembic/versions/0001_add.py",
+        metadata={"import_map": {"op": "alembic.op"}},
+    )
+    return IndexBuilder().build(
+        [
+            migration,
+            _node("alembic.versions.0001_add.upgrade", file_path="alembic/versions/0001_add.py"),
+            _node("alembic.env.run_migrations", file_path="alembic/env.py"),
+            _node("scripts.seed.run", file_path="scripts/seed.py"),
+        ],
+        dependency_roots=dependency_roots,
+    )
+
+
+def test_a_declared_dependency_colliding_with_a_package_of_ours_is_external() -> None:
+    """`from alembic import op` is the library, though `app/alembic/` exists.
+
+    The root alone made it internal, and since #459 an internal FQN with no node
+    is counted unresolved: 552 alembic calls on owner-api read as "could not
+    place" while the manifest says exactly what they are.
+    """
+    index = _owner_api_index()
+    assert index.classify_fqn("alembic.op.add_column", "alembic/versions/0001_add.py") is (
+        NodeNamespace.EXTERNAL
+    )
+    assert index.classify_fqn("alembic.context.configure") is NodeNamespace.EXTERNAL
+    assert index.classify_fqn("alembic") is NodeNamespace.EXTERNAL
+
+
+def test_our_own_package_under_a_dependency_name_stays_internal() -> None:
+    """`alembic.env.run_migrations` is ours, and so is anything else under `env`."""
+    index = _owner_api_index()
+    assert index.classify_fqn("alembic.env.run_migrations") is NodeNamespace.INTERNAL
+    assert index.classify_fqn("alembic.versions.0002_missing.upgrade") is NodeNamespace.INTERNAL
+
+
+def test_an_undeclared_root_is_never_made_external() -> None:
+    """`scripts.ci.openapi_snapshot` lives outside the ingest root but is ours.
+
+    A graph-only rule — "the second segment names nothing of ours" — reclassified
+    it third-party on owner-api, lowering `unresolved_ratio` by laundering code
+    that simply was not ingested. Only a declared dependency may flip a root.
+    """
+    index = _owner_api_index()
+    assert index.classify_fqn("scripts.ci.openapi_snapshot.canonical") is NodeNamespace.INTERNAL
+
+
+def test_without_a_manifest_a_colliding_root_stays_internal() -> None:
+    """No declared dependencies, no change: the pre-#495 reading is the fallback."""
+    index = _owner_api_index(dependency_roots=())
+    assert index.classify_fqn("alembic.op.add_column") is NodeNamespace.INTERNAL
+    assert index.dependency_roots == frozenset()
+
+
+def test_only_colliding_dependencies_are_kept() -> None:
+    """A dependency no internal root shares a name with is left to `external_roots`."""
+    assert _owner_api_index().dependency_roots == frozenset({"alembic"})
+
+
+def test_a_typescript_source_does_not_read_python_dependencies() -> None:
+    """The roots come from a Python manifest, so a TS local named `alembic` is not the library."""
+    index = _owner_api_index()
+    assert index.classify_fqn("alembic.op.add_column", "web/alembic.ts") is NodeNamespace.INTERNAL
+
+
+def test_a_src_layout_package_keeps_its_heads() -> None:
+    """`src/alembic/env.py` is `src.alembic.env` — still our `alembic.env`."""
+    index = IndexBuilder().build(
+        [_node("src.alembic.env.run", file_path="src/alembic/env.py")],
+        dependency_roots=("alembic",),
+    )
+    assert index.classify_fqn("alembic.env.run") is NodeNamespace.INTERNAL
+    assert index.classify_fqn("alembic.op.add_column") is NodeNamespace.EXTERNAL

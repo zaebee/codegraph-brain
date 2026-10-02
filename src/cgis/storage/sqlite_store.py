@@ -24,6 +24,7 @@ from cgis.core.paths import is_excluded_dir, is_test_path
 _WORKSPACE_PACKAGES_KEY = "workspace_packages"
 #: `ingest_state` key for the tsconfig path aliases imports were resolved against (#508).
 _TSCONFIG_PATHS_KEY = "tsconfig_paths"
+_PYTHON_DEPENDENCIES_KEY = "python_dependencies"
 
 RAW_CALL_PREFIX = "raw_call:"
 _DELETE_ALL_NODES = "DELETE FROM nodes"
@@ -1111,7 +1112,19 @@ class SQLiteStore:
             if isinstance(rules, dict)
         }
 
-    def _record_state_json(self, key: str, value: Mapping[str, object]) -> None:
+    def record_python_dependencies(self, roots: list[str]) -> None:
+        """Record the declared dependency roots Python references were classified against (#495).
+
+        Same contract as `record_workspace_packages`: a change rebuilds the graph.
+        """
+        self._record_state_json(_PYTHON_DEPENDENCIES_KEY, sorted(roots))
+
+    def get_python_dependencies(self) -> list[str] | None:
+        """The recorded dependency roots, or None on a graph that predates recording them."""
+        loaded = self._state_json(_PYTHON_DEPENDENCIES_KEY)
+        return [str(root) for root in loaded] if isinstance(loaded, list) else None
+
+    def _record_state_json(self, key: str, value: Mapping[str, object] | list[str]) -> None:
         """Write `value` to `ingest_state` as key-sorted JSON, so equal values read back equal."""
         if not self._conn:
             raise RuntimeError(self._error_message)
