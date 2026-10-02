@@ -187,6 +187,11 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
         models_Edge["Edge (models.py:142)"]:::classNode
         models_Node["Node (models.py:85)"]:::classNode
     end
+    subgraph sg_import_names["import_names.py"]
+        import_names_ImportNameCollector["ImportNameCollector (import_names.py:49)"]:::classNode
+        import_names_ImportNameCollector_collect["collect (import_names.py:64)"]:::methodNode
+        import_names_ImportNameCollector_note["note (import_names.py:57)"]:::methodNode
+    end
     subgraph sg_pipeline["pipeline.py"]
         pipeline_IngestionPipeline_cross_file_inputs_changed["_cross_file_inputs_changed (pipeline.py:266)"]:::methodNode
         pipeline_IngestionPipeline_get_extractor["_get_extractor (pipeline.py:401)"]:::methodNode
@@ -198,39 +203,30 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
     end
     subgraph sg_engine["engine.py"]
         engine_ResolverEngine["ResolverEngine (engine.py:49)"]:::classNode
-        engine_ResolverEngine_resolve["resolve (engine.py:77)"]:::methodNode
+        engine_ResolverEngine_resolve["resolve (engine.py:80)"]:::methodNode
     end
     subgraph sg_uplift["uplift.py"]
         uplift_SemanticUpliftEngine["SemanticUpliftEngine (uplift.py:66)"]:::classNode
         uplift_SemanticUpliftEngine_execute_uplift["execute_uplift (uplift.py:91)"]:::methodNode
     end
     subgraph sg_sqlite_store["sqlite_store.py"]
-        sqlite_store_SQLiteStore["SQLiteStore (sqlite_store.py:56)"]:::classNode
-        sqlite_store_SQLiteStore_get_workspace_packages["get_workspace_packages (sqlite_store.py:1085)"]:::methodNode
-        sqlite_store_SQLiteStore_record_workspace_packages["record_workspace_packages (sqlite_store.py:1071)"]:::methodNode
-    end
-    subgraph sg_workspaces["workspaces.py"]
-        workspaces_WorkspacePackages["WorkspacePackages (workspaces.py:23)"]:::classNode
-        workspaces_WorkspacePackages_note["note (workspaces.py:39)"]:::methodNode
-        workspaces_WorkspacePackages_unambiguous["unambiguous (workspaces.py:67)"]:::methodNode
+        sqlite_store_SQLiteStore["SQLiteStore (sqlite_store.py:58)"]:::classNode
     end
     pipeline_IngestionPipeline_run -->|REFERENCES| models_Node
     pipeline_IngestionPipeline_run -->|REFERENCES| models_Edge
     pipeline_IngestionPipeline_run -->|REFERENCES| sqlite_store_SQLiteStore
     pipeline_IngestionPipeline_run -->|CALLS| pipeline_IngestionPipeline_workspace_root
-    pipeline_IngestionPipeline_run -->|CALLS| workspaces_WorkspacePackages
-    pipeline_IngestionPipeline_run -->|CALLS| workspaces_WorkspacePackages_note
+    pipeline_IngestionPipeline_run -->|CALLS| import_names_ImportNameCollector
+    pipeline_IngestionPipeline_run -->|CALLS| import_names_ImportNameCollector_note
     pipeline_IngestionPipeline_run -->|CALLS| pipeline_IngestionPipeline_get_extractor
     pipeline_IngestionPipeline_run -->|CALLS| pipeline_IngestionPipeline_process_file
-    pipeline_IngestionPipeline_run -->|CALLS| workspaces_WorkspacePackages_unambiguous
-    pipeline_IngestionPipeline_run -->|CALLS| sqlite_store_SQLiteStore_get_workspace_packages
+    pipeline_IngestionPipeline_run -->|CALLS| import_names_ImportNameCollector_collect
     pipeline_IngestionPipeline_run -->|CALLS| pipeline_IngestionPipeline_is_noop_incremental
     pipeline_IngestionPipeline_run -->|CALLS| engine_ResolverEngine
     pipeline_IngestionPipeline_run -->|CALLS| engine_ResolverEngine_resolve
     pipeline_IngestionPipeline_run -->|CALLS| pipeline_IngestionPipeline_run
     pipeline_IngestionPipeline_run -->|CALLS| pipeline_IngestionPipeline_cross_file_inputs_changed
     pipeline_IngestionPipeline_run -->|CALLS| pipeline_IngestionPipeline_persist_incremental
-    pipeline_IngestionPipeline_run -->|CALLS| sqlite_store_SQLiteStore_record_workspace_packages
     pipeline_IngestionPipeline_run -->|CALLS| uplift_SemanticUpliftEngine_execute_uplift
     pipeline_IngestionPipeline_run -->|CALLS| uplift_SemanticUpliftEngine
 ```
@@ -239,6 +235,9 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
 |--------|------|------|
 | `Node` | CLASS | [`models.py:85`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/core/models.py#L85) |
 | `Edge` | CLASS | [`models.py:142`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/core/models.py#L142) |
+| `ImportNameCollector` | CLASS | [`import_names.py:49`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/import_names.py#L49) |
+| `note` | METHOD | [`import_names.py:57`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/import_names.py#L57) |
+| `collect` | METHOD | [`import_names.py:64`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/import_names.py#L64) |
 | `workspace_root` | METHOD | [`pipeline.py:83`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L83) |
 | `run` | METHOD | [`pipeline.py:100`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L100) |
 | `_process_file` | METHOD | [`pipeline.py:229`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L229) |
@@ -247,13 +246,8 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
 | `_persist_incremental` | METHOD | [`pipeline.py:351`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L351) |
 | `_get_extractor` | METHOD | [`pipeline.py:401`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L401) |
 | `ResolverEngine` | CLASS | [`engine.py:49`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L49) |
-| `resolve` | METHOD | [`engine.py:77`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L77) |
+| `resolve` | METHOD | [`engine.py:80`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L80) |
 | `SemanticUpliftEngine` | CLASS | [`uplift.py:66`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/uplift.py#L66) |
 | `execute_uplift` | METHOD | [`uplift.py:91`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/uplift.py#L91) |
-| `SQLiteStore` | CLASS | [`sqlite_store.py:56`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/storage/sqlite_store.py#L56) |
-| `record_workspace_packages` | METHOD | [`sqlite_store.py:1071`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/storage/sqlite_store.py#L1071) |
-| `get_workspace_packages` | METHOD | [`sqlite_store.py:1085`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/storage/sqlite_store.py#L1085) |
-| `WorkspacePackages` | CLASS | [`workspaces.py:23`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/workspaces.py#L23) |
-| `note` | METHOD | [`workspaces.py:39`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/workspaces.py#L39) |
-| `unambiguous` | METHOD | [`workspaces.py:67`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/workspaces.py#L67) |
+| `SQLiteStore` | CLASS | [`sqlite_store.py:58`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/storage/sqlite_store.py#L58) |
 <!-- END_CGIS_GRAPH -->
