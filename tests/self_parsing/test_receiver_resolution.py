@@ -38,7 +38,12 @@ _KNOWN_FABRICATED = frozenset(
 #: has no node to resolve to. The centre was 46 and had drifted 8 low, so the band
 #: was measuring less each time something was added to a store method rather than
 #: catching a regression.
-_EXPECTED_PLACEHOLDERS = 57
+#:
+#: Re-measured 2026-10-02: 66 on `main` (715cd9a), 69 with `cgis.bench` (#543). The
+#: three new ones are `self.question.strip`, `self.calls.get` and `self.fields.update`:
+#: `str` and `dict` receivers, declined by D1 like the ones above. `main` alone sat
+#: 9 above the old centre, one short of the edge.
+_EXPECTED_PLACEHOLDERS = 69
 _TOLERANCE = 10
 
 

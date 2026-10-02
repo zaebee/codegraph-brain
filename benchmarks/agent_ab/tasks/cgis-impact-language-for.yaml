@@ -1,0 +1,27 @@
+id: cgis-impact-language-for
+repo: cgis
+sha: 715cd9a2ecee47949651344757edb4c7d09f64d7
+src_root: src
+type: impact
+question: |
+  In this repository, the function `language_for` in `src/cgis/extractors/registry.py`
+  is about to change its signature. List every function or method that calls it
+  directly, so each call site can be updated.
+gold:
+  symbols:
+    - cli.structure
+    - registry.is_supported
+    - SourceCollector.collect_full_files
+    - GraphContextCollector.sections
+    - mermaid._node_slug
+  files:
+    - src/cgis/cli.py
+    - src/cgis/extractors/registry.py
+    - src/cgis/guardian/collector.py
+    - src/cgis/query/render/mermaid.py
+  allowed_symbols:
+    - registry.language_for
+notes: |
+  Checked 2026-10-02 by grep (`language_for(` outside imports) and by reading each
+  enclosing def: cli.py:843, registry.py:88, collector.py:175 and :214,
+  mermaid.py:77. The cgis graph agrees, but the key was not taken from it.

@@ -1,0 +1,3 @@
+# Raw stream-json sessions: large, and they quote repository source verbatim
+# (owner-api is private). results.jsonl keeps the scored line for each.
+transcripts/

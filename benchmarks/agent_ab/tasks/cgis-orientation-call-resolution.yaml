@@ -1,0 +1,36 @@
+id: cgis-orientation-call-resolution
+repo: cgis
+sha: 715cd9a2ecee47949651344757edb4c7d09f64d7
+src_root: src
+type: orientation
+question: |
+  Which files implement turning unresolved call targets (`raw_call:<name>` edges
+  emitted by the extractors) into fully qualified names, and what does each of
+  them contribute?
+gold:
+  symbols:
+    - ResolverEngine
+    - SymbolResolver
+    - id: indices
+      any_of: [IndexBuilder, SymbolIndex]
+  files:
+    - src/cgis/resolver/engine.py
+    - src/cgis/resolver/symbols.py
+    - src/cgis/resolver/indices.py
+  allowed_symbols:
+    - ResolverEngine.resolve
+    - ResolverEngine._resolved_call_edge
+    - js_builtin_target
+    - IngestionPipeline.run
+    - Edge
+  allowed_files:
+    - src/cgis/resolver/js_builtins.py
+    - src/cgis/core/models.py
+    - src/cgis/pipeline.py
+    - src/cgis/extractors/python_extractor.py
+    - src/cgis/extractors/typescript_extractor.py
+    - src/cgis/extractors/base.py
+notes: |
+  Read 2026-10-02: engine.py drives resolution, symbols.py holds the strategies
+  over a SymbolIndex, indices.py builds the indices (module docstrings say so).
+  js_builtins.py and models.py are correct but optional.

@@ -1,0 +1,50 @@
+id: cgis-flow-ingest-to-sqlite
+repo: cgis
+sha: 715cd9a2ecee47949651344757edb4c7d09f64d7
+src_root: src
+type: flow
+question: |
+  Trace what happens when `cgis ingest <path> --output graph.db` runs: starting
+  from the CLI command, list in order the functions and methods on the main path
+  that parse source files, resolve calls, and write nodes and edges to SQLite.
+gold:
+  symbols:
+    - cli.ingest
+    - IngestionPipeline.run
+    - IngestionPipeline._process_file
+    - id: extractor.parse
+      any_of: [BaseExtractor.parse, PythonExtractor.parse, TypeScriptExtractor.parse]
+    - ResolverEngine.resolve
+    - IngestionPipeline._persist_incremental
+    - SQLiteStore.save_incremental_batch
+  files:
+    - src/cgis/cli.py
+    - src/cgis/pipeline.py
+    - src/cgis/resolver/engine.py
+    - src/cgis/storage/sqlite_store.py
+  allowed_symbols:
+    - IngestionPipeline.workspace_root
+    - SQLiteStore.record_ingest
+    - SQLiteStore.record_ingest_options
+    - build_extractors
+    - IngestionPipeline._get_extractor
+    - ImportNameCollector.collect
+    - SemanticUpliftEngine.execute_uplift
+    - SymbolResolver
+    - IndexBuilder.build
+  allowed_files:
+    - src/cgis/extractors/base.py
+    - src/cgis/extractors/python_extractor.py
+    - src/cgis/extractors/typescript_extractor.py
+    - src/cgis/extractors/registry.py
+    - src/cgis/resolver/symbols.py
+    - src/cgis/resolver/indices.py
+    - src/cgis/resolver/uplift.py
+    - src/cgis/import_names.py
+notes: |
+  Read 2026-10-02: cli.ingest (cli.py:174) opens SQLiteStore and calls
+  IngestionPipeline.run(store=..., rebuild=True); run calls _process_file per file,
+  which calls the extractor's parse; then ResolverEngine.resolve (pipeline.py:213);
+  then _persist_incremental (pipeline.py:237), which calls
+  SQLiteStore.save_incremental_batch (pipeline.py:411). Order is not scored, only
+  presence.
