@@ -1025,6 +1025,13 @@ def cgis_find_orphans(
     include_generated: Annotated[
         bool, Field(description="Include machine-generated classes, which are hidden by default.")
     ] = False,
+    include_nested: Annotated[
+        bool,
+        Field(
+            description="Include classes nested in a class or function, which are hidden by "
+            "default."
+        ),
+    ] = False,
 ) -> str:
     """Classes nothing in production builds, extends or names — dead-code candidates.
 
@@ -1051,7 +1058,14 @@ def cgis_find_orphans(
     reported orphans were generated entities and the sixth a nested pydantic
     ``Config``: the unfiltered report had no actionable row in it (#432).
 
-    Returns JSON ``{orphans, considered, test_sources, generated_excluded}``;
+    Only **module-level** classes are considered by default; ``include_nested``
+    adds classes defined inside a class or function. Across eight measured
+    repositories none of the 46 nested rows was dead: most were a ``Meta`` /
+    ``Config`` a metaclass reads, the rest live classes reached as
+    ``self.Nested(...)``, which the resolver does not follow (#432).
+
+    Returns JSON ``{orphans, considered, test_sources, generated_excluded,
+    nested_excluded}``;
     each orphan carries ``fqn``/``file``/``line``. **A listing is a candidate for
     deletion, not a proof** — a class named only inside a decorator (#429) or
     arriving through a star import is invisible here, so the sweep errs towards
@@ -1071,6 +1085,7 @@ def cgis_find_orphans(
                 prefix=(prefix or "").strip() or None,
                 include_tests=include_tests,
                 include_generated=include_generated,
+                include_nested=include_nested,
             )
     except Exception as exc:
         return f"❌ {exc}"
