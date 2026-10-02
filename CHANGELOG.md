@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.26.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.25.4...codegraph-brain-v0.26.0) (2026-10-02)
+
+
+### Features
+
+* **metrics:** LCOM4 class cohesion ([#521](https://github.com/zaebee/codegraph-brain/issues/521)) ([ed46366](https://github.com/zaebee/codegraph-brain/commit/ed46366f57af23e8b4aba66b6346c246d47a1c24))
+* **metrics:** per-file afferent/efferent coupling and instability ([#520](https://github.com/zaebee/codegraph-brain/issues/520)) ([32393e6](https://github.com/zaebee/codegraph-brain/commit/32393e63f4f8dc9a193cfd6ccba4a18a0d52268a))
+* **metrics:** report the unresolved-edge share beside the rankings ([#519](https://github.com/zaebee/codegraph-brain/issues/519)) ([97699f8](https://github.com/zaebee/codegraph-brain/commit/97699f8bd52eb97c6dc32cbf5d6fcc1bfa752d1b)), closes [#451](https://github.com/zaebee/codegraph-brain/issues/451)
+
+
+### Bug Fixes
+
+* **drift:** measure unresolved_ratio on stored graphs, carry it to the quotient ([#149](https://github.com/zaebee/codegraph-brain/issues/149)) ([#526](https://github.com/zaebee/codegraph-brain/issues/526)) ([80c3b5a](https://github.com/zaebee/codegraph-brain/commit/80c3b5a0a41bd45ab37cc24d2f4ae06fe24e752c))
+* **guardian:** record GUARDIAN_FEATURES on each review row ([#516](https://github.com/zaebee/codegraph-brain/issues/516)) ([007408c](https://github.com/zaebee/codegraph-brain/commit/007408c0f96e9b175b389db773e51d6838b0738b))
+* **resolver:** resolve TypeScript imports through tsconfig paths aliases ([#513](https://github.com/zaebee/codegraph-brain/issues/513)) ([94219d7](https://github.com/zaebee/codegraph-brain/commit/94219d7e136195bad4eac69a72e25dfd2b3e621f))
+* **resolver:** strip only corroborated layout prefixes when reconciling an FQN ([#319](https://github.com/zaebee/codegraph-brain/issues/319)) ([#527](https://github.com/zaebee/codegraph-brain/issues/527)) ([5fe77f4](https://github.com/zaebee/codegraph-brain/commit/5fe77f47c0ac251a73c8820f91f1cc1f1bc13020))
+* **ui:** fit the view after React Flow renders the new layout ([#523](https://github.com/zaebee/codegraph-brain/issues/523)) ([7be630f](https://github.com/zaebee/codegraph-brain/commit/7be630f5d3734b3d2b7ff23d032380af4a90f19c))
+
+
+### Documentation
+
+* auto-sync architecture graph and MCP reference ([#514](https://github.com/zaebee/codegraph-brain/issues/514)) ([5abdebd](https://github.com/zaebee/codegraph-brain/commit/5abdebd482071e8e1f24c19559c984fc874d86b6))
+
 ## [0.25.4](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.25.3...codegraph-brain-v0.25.4) (2026-09-25)
 
 
