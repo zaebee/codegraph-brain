@@ -123,3 +123,18 @@ def test_a_blocked_attempt_is_counted_and_one_that_got_output_contaminates() -> 
     assert run_metrics(blocked, []).cli_attempts == 1
     assert run_metrics(blocked, []).contaminated is False
     assert run_metrics(leaked, []).contaminated is True
+
+
+def test_files_read_counts_one_file_however_its_path_is_spelled() -> None:
+    t = parse_transcript(
+        stub.lines(
+            stub.init(cwd="/w"),
+            stub.tool_use("a", "Read", {"file_path": "/w/src/m.py"}),
+            stub.tool_result("a", "x"),
+            stub.tool_use("b", "Read", {"file_path": "./src/m.py"}),
+            stub.tool_result("b", "x"),
+            stub.tool_use("c", "Read", {"file_path": "src/m.py"}),
+            stub.tool_result("c", "x"),
+        )
+    )
+    assert run_metrics(t, []).files_read == 1

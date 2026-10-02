@@ -86,3 +86,9 @@ def test_main_allows_ordinary_calls(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_main_lets_malformed_events_through(monkeypatch: pytest.MonkeyPatch, stdin: str) -> None:
     """Fail open: a malformed event is still caught afterwards as contamination."""
     assert _run_main(monkeypatch, stdin) == 0
+
+
+@pytest.mark.parametrize("path", ["docs/dependency_graph.json", "paragraph.db"])
+def test_other_files_ending_in_graph_names_are_allowed(path: str) -> None:
+    assert blocked_reason("Read", {"file_path": path}) is None
+    assert blocked_reason("Bash", {"command": f"cat {path}"}) is None

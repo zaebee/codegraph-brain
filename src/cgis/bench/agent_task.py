@@ -172,7 +172,8 @@ def normalize_symbol(name: str) -> str:
     s = name.strip().strip("`").strip()
     s = _CALL_PARENS.sub("", s)
     s = s.replace("::", ".").replace(":", ".").replace("/", ".").replace("\\", ".")
-    s = s.replace(".py.", ".").replace(".ts.", ".").replace(".tsx.", ".")
+    for ext in (".py.", ".tsx.", ".ts.", ".jsx.", ".js."):
+        s = s.replace(ext, ".")
     return s.strip(".")
 
 

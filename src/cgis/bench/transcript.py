@@ -26,7 +26,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from cgis.bench.agent_task import file_matches
+from cgis.bench.agent_task import file_matches, normalize_file
 from cgis.bench.guard import blocked_reason
 
 CGIS_TOOL_PREFIX = "mcp__cgis__"
@@ -283,7 +283,12 @@ def run_metrics(transcript: Transcript, answer_files: list[str]) -> RunMetrics:
         tool_calls=dict(sorted(counts.items())),
         total_tool_calls=len(transcript.calls),
         cgis_calls=sum(1 for c in transcript.calls if is_cgis_call(c)),
-        files_read=len({str(c.input.get("file_path", "")) for c in reads}),
+        files_read=len(
+            {
+                normalize_file(_relative(str(c.input.get("file_path", "")), transcript.cwd))
+                for c in reads
+            }
+        ),
         bytes_read=sum(len(c.result.encode("utf-8")) for c in reads),
         cli_attempts=len(attempts),
         contaminated=any(not c.is_error for c in attempts),

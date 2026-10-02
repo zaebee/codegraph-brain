@@ -22,7 +22,7 @@ _COMMAND = re.compile(
     r"(?:^|[;&|(`]|\$\()\s*(?:\S*/)?(?:cgis|cgis-mcp|codegraph-brain|uvx|uv|sqlite3)\b(?![./-])"
 )
 _PYTHON_IMPORT = re.compile(r"-m\s+cgis\b|\b(?:import|from)\s+cgis\b")
-_GRAPH_FILE = re.compile(r"graph\.(?:db|json)\b")
+_GRAPH_FILE = re.compile(r"\bgraph\.(?:db|json)\b")
 
 _PATH_KEYS = ("file_path", "path", "pattern", "notebook_path")
 

@@ -225,3 +225,8 @@ def test_an_unclosed_fence_is_not_an_answer() -> None:
 
 def test_a_fence_with_another_language_is_ignored() -> None:
     assert extract_answer('```python\n{"symbols": ["a"]}\n```') is None
+
+
+def test_normalize_symbol_strips_js_extensions() -> None:
+    assert normalize_symbol("web/app.jsx::render") == "web.app.render"
+    assert normalize_symbol("web/util.js::f") == "web.util.f"
