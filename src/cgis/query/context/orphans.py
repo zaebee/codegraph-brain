@@ -184,10 +184,9 @@ def find_orphan_classes(
         enclosing_scopes = {
             n.id for n in nodes if n.type in (NodeType.CLASS, NodeType.FUNCTION, NodeType.METHOD)
         }
-        nested = [n for n in candidates if _is_nested(n, enclosing_scopes)]
-        nested_excluded = len(nested)
-        nested_ids = {n.id for n in nested}
-        candidates = [n for n in candidates if n.id not in nested_ids]
+        kept = [n for n in candidates if not _is_nested(n, enclosing_scopes)]
+        nested_excluded = len(candidates) - len(kept)
+        candidates = kept
     orphans = [
         OrphanClass(fqn=node.id, file=node.file_path, line=node.start_line)
         for node in sorted(candidates, key=lambda n: n.id)
