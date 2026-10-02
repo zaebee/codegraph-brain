@@ -74,7 +74,8 @@ and an agent's multi-file edit is a burst of saves, each of which can cost a
 full rebuild; the graph only needs to be current when something reads it. If
 you query from the CLI, or want the graph current before the agent's next
 turn, hang an incremental ingest on an event that ends a burst instead. Use the
-same `--source-root`/`--domains` the graph was built with.
+same path and `--source-root`/`--domains` the graph was built with (`./src`
+as in Step 1); a different path renames every node.
 
 **Claude Code** — once per finished turn, not once per edit
 (`.claude/settings.json`):
@@ -87,7 +88,7 @@ same `--source-root`/`--domains` the graph was built with.
         "hooks": [
           {
             "type": "command",
-            "command": "cd \"$CLAUDE_PROJECT_DIR\" && cgis ingest . -o graph.db -i >/dev/null 2>&1 || true"
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && cgis ingest ./src -o graph.db -i >/dev/null 2>&1 || true"
           }
         ]
       }
@@ -102,7 +103,7 @@ same `--source-root`/`--domains` the graph was built with.
 
 ```sh
 #!/bin/sh
-cgis ingest . -o graph.db -i >/dev/null 2>&1 || true
+cgis ingest ./src -o graph.db -i >/dev/null 2>&1 || true
 ```
 
 `|| true` keeps a failed ingest from failing the hook; the read commands will
