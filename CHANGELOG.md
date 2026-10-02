@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.27.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.26.0...codegraph-brain-v0.27.0) (2026-10-02)
+
+
+### Features
+
+* **mcp:** opt-in refresh of a stale graph before read tools answer ([#538](https://github.com/zaebee/codegraph-brain/issues/538)) ([b26a2c8](https://github.com/zaebee/codegraph-brain/commit/b26a2c8d335fbb2f19a217fcaced715f16454664))
+* **orphans:** consider module-level classes only by default ([#432](https://github.com/zaebee/codegraph-brain/issues/432)) ([#534](https://github.com/zaebee/codegraph-brain/issues/534)) ([731d93a](https://github.com/zaebee/codegraph-brain/commit/731d93a8b81fd02fe6b5e71892a408341d034239))
+* **suggest-packages:** judge a package by its direct children ([#446](https://github.com/zaebee/codegraph-brain/issues/446)) ([#536](https://github.com/zaebee/codegraph-brain/issues/536)) ([fd6f05b](https://github.com/zaebee/codegraph-brain/commit/fd6f05b003ea006392e6384170a4bead227f5e85))
+
+
+### Bug Fixes
+
+* **freshness:** report a write made during ingest as stale ([#535](https://github.com/zaebee/codegraph-brain/issues/535)) ([4121919](https://github.com/zaebee/codegraph-brain/commit/4121919148affbad202156d43d01fca458beca23))
+* **resolver:** classify declared Python dependencies as external ([#495](https://github.com/zaebee/codegraph-brain/issues/495)) ([#531](https://github.com/zaebee/codegraph-brain/issues/531)) ([ca4c01d](https://github.com/zaebee/codegraph-brain/commit/ca4c01d1ffa8e8c754317af73ffcf06d534a61d7))
+
+
+### Documentation
+
+* auto-sync architecture graph and MCP reference ([#532](https://github.com/zaebee/codegraph-brain/issues/532)) ([13c90fd](https://github.com/zaebee/codegraph-brain/commit/13c90fd3ebcc38271b697f514d292c7033d4f81d))
+* auto-sync architecture graph and MCP reference ([#537](https://github.com/zaebee/codegraph-brain/issues/537)) ([c03f60d](https://github.com/zaebee/codegraph-brain/commit/c03f60d4211e3029d02a624ef9d6b4fa92f184df))
+* **onboarding:** refresh the graph from hooks instead of a watcher ([#541](https://github.com/zaebee/codegraph-brain/issues/541)) ([809169d](https://github.com/zaebee/codegraph-brain/commit/809169d19797e280b0810f049215950b3eedf1df)), closes [#175](https://github.com/zaebee/codegraph-brain/issues/175)
+
 ## [0.26.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.25.4...codegraph-brain-v0.26.0) (2026-10-02)
 
 
