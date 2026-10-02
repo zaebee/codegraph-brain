@@ -8,13 +8,16 @@ question: |
   opens a database, and in which method?
 gold:
   symbols:
-    - SQLiteStore.__init__
+    - SQLiteStore.connect
   files:
     - src/cgis/storage/sqlite_store.py
   facts:
     - WAL
     - "5000"
+  allowed_symbols:
+    - SQLiteStore
 notes: |
   Negative control: one file, one method, no cross-file structure. A graph should
   not help here; this measures what cgis costs when it is not needed.
-  sqlite_store.py:83-84.
+  sqlite_store.py:83-84, inside SQLiteStore.connect (line 75), not __init__:
+  the first pilot session caught a key that said __init__.
