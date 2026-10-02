@@ -101,10 +101,23 @@ def test_reads_requirements_files_and_skips_options(tmp_path: Path) -> None:
         {
             ".git/HEAD": "",
             "requirements.txt": "alembic==1.13  # migrations\n-r requirements-dev.txt\n\n",
-            "requirements-dev.txt": "-e .\n./vendored\nhttps://x/y.whl\nbeautifulsoup4\n",
+            "requirements-dev.txt": (
+                "-e .\n./vendored\nlibs/pkg\nC:\\libs\\pkg\nhttps://x/y.whl\n"
+                "beautifulsoup4\nhttpx @ https://x/httpx.whl\n"
+            ),
         },
     )
-    assert declared_import_roots(tmp_path) == {"alembic", "bs4"}
+    assert declared_import_roots(tmp_path) == {"alembic", "bs4", "httpx"}
+
+
+def test_a_byte_order_mark_does_not_hide_the_first_requirement(tmp_path: Path) -> None:
+    """Editors on Windows save UTF-8 with a BOM; the first line and the TOML must still parse."""
+    _write(tmp_path, {".git/HEAD": ""})
+    (tmp_path / "requirements.txt").write_text("alembic\n", encoding="utf-8-sig")
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\ndependencies = ['fastapi']\n", encoding="utf-8-sig"
+    )
+    assert declared_import_roots(tmp_path) == {"alembic", "fastapi"}
 
 
 def test_finds_the_nearest_manifest_above_the_ingest_root(tmp_path: Path) -> None:

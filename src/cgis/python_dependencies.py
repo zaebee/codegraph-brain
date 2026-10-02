@@ -30,6 +30,10 @@ _REPOSITORY_MARKER = ".git"
 
 #: A PEP 508 requirement's distribution name, at the start of the string.
 _REQUIREMENT_NAME = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
+#: Where a requirement's leading token ends: whitespace, extras, a marker or a specifier.
+_REQUIREMENT_TOKEN_END = re.compile(r"[\s;@\[<>=!~,]")
+#: Characters no distribution name holds, but a path or URL does: `sub/pkg`, `C:\\libs`.
+_PATH_CHARACTERS = frozenset("/\\:")
 #: Runs PEP 503 folds together, spelled with `_` because that is how imports spell them.
 _NAME_SEPARATORS = re.compile(r"[-_.]+")
 
@@ -98,7 +102,7 @@ def _pyproject_requirements(path: Path) -> Iterator[str]:
     the ingest, and without it the classification is what it was before #495.
     """
     try:
-        data = tomllib.loads(path.read_text(encoding="utf-8"))
+        data = tomllib.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
         logger.warning("Skipping unreadable pyproject.toml", path=str(path), error=str(exc))
         return
@@ -118,14 +122,16 @@ def _pyproject_requirements(path: Path) -> Iterator[str]:
 def _requirements_file(path: Path) -> Iterator[str]:
     """Distribution names from a pip requirements file; options and paths are skipped."""
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
+        lines = path.read_text(encoding="utf-8-sig").splitlines()
     except (OSError, UnicodeDecodeError) as exc:
         logger.warning("Skipping unreadable requirements file", path=str(path), error=str(exc))
         return
     for line in lines:
         requirement = line.split("#", maxsplit=1)[0].strip()
-        # `-r other.txt`, `-e .`, `--index-url …`, and bare paths or URLs name no package.
-        if requirement and not requirement.startswith(("-", ".", "/")) and "://" not in requirement:
+        # `-r other.txt`, `-e .`, `--index-url …`, and bare paths or URLs name no package;
+        # `pkg @ https://…` does, so only the leading token is checked for a path.
+        token = _REQUIREMENT_TOKEN_END.split(requirement, maxsplit=1)[0]
+        if token and not token.startswith(("-", ".")) and not _PATH_CHARACTERS & set(token):
             yield from _requirement_names([requirement])
 
 
