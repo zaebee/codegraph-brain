@@ -126,7 +126,7 @@ def test_instructed_arm_is_the_cgis_arm_plus_one_system_prompt_line(tmp_path: Pa
 def test_forced_arm_runs_the_guard_in_cgis_first_mode(tmp_path: Path) -> None:
     cmd = _command(tmp_path, "cgis-forced")
     hook = json.loads((tmp_path / "settings.json").read_text())["hooks"]["PreToolUse"][0]
-    assert hook["hooks"][0]["command"].endswith(f"--cgis-first {tmp_path / 'cgis_used'}")
+    assert hook["hooks"][0]["command"].endswith(" -m cgis.bench.guard --cgis-first")
     assert cmd[cmd.index("--append-system-prompt") + 1] == ab.CGIS_INSTRUCTION
     assert "--plugin-dir" in cmd
 
@@ -300,6 +300,15 @@ def test_a_timed_out_session_keeps_its_partial_transcript(
 def test_the_hook_quotes_an_interpreter_path_with_spaces(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(ab.sys, "platform", "linux")
     monkeypatch.setattr(ab.sys, "executable", "/opt/my env/bin/python")
     hook = ab.hook_settings()["hooks"]["PreToolUse"][0]["hooks"][0]  # type: ignore[index]
     assert hook["command"] == "'/opt/my env/bin/python' -m cgis.bench.guard"
+
+
+def test_the_hook_uses_cmd_quoting_on_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    """POSIX single quotes mean nothing to cmd.exe."""
+    monkeypatch.setattr(ab.sys, "platform", "win32")
+    monkeypatch.setattr(ab.sys, "executable", r"C:\Program Files\Python\python.exe")
+    hook = ab.hook_settings()["hooks"]["PreToolUse"][0]["hooks"][0]  # type: ignore[index]
+    assert hook["command"] == r'"C:\Program Files\Python\python.exe" -m cgis.bench.guard'

@@ -10,8 +10,11 @@ JSON on stdin, and exit code 2 refuses it with stderr shown to the agent. The
 same predicate is applied to finished transcripts to flag contaminated runs, so
 "blocked" and "counted as contamination" cannot drift apart.
 
-With `--cgis-first MARKER` (the `cgis-forced` arm) the hook also refuses source
-access until the session has made one cgis MCP call, recorded by creating MARKER.
+With `--cgis-first` (the `cgis-forced` arm) the hook also refuses source access
+until the session has made one cgis MCP call, recorded as a marker file in the
+hook's working directory: the run's fresh worktree, deleted with it. The path is
+fixed rather than passed in, so nothing the session controls picks what the
+hook writes.
 That arm measures what the graph adds once it is used, not whether the agent
 chooses to use it.
 """
@@ -35,6 +38,9 @@ _PATH_KEYS = ("file_path", "path", "pattern", "notebook_path")
 #: Tools that reach source without the graph; held back in `--cgis-first` mode.
 _SOURCE_TOOLS = frozenset({"Read", "Grep", "Glob", "Bash"})
 _CGIS_PREFIX = "mcp__cgis__"
+CGIS_FIRST_FLAG = "--cgis-first"
+#: Created in the hook's working directory by the session's first cgis call.
+MARKER_NAME = ".cgis-bench-used"
 CGIS_FIRST_REASON = (
     "Query the code graph first: call one of the mcp__cgis__ tools before reading "
     "or searching source."
@@ -66,16 +72,10 @@ def cgis_first_reason(tool_name: str, marker: Path) -> str | None:
     return None
 
 
-def _marker(argv: Sequence[str]) -> Path | None:
-    """The `--cgis-first MARKER` path, when given."""
-    if len(argv) >= 2 and argv[0] == "--cgis-first":
-        return Path(argv[1])
-    return None
-
-
 def main(argv: Sequence[str] | None = None) -> int:
     """Hook entry point: exit 2 with a reason to refuse the call, 0 to allow it."""
-    marker = _marker(sys.argv[1:] if argv is None else argv)
+    args = sys.argv[1:] if argv is None else argv
+    marker = Path.cwd() / MARKER_NAME if CGIS_FIRST_FLAG in args else None
     try:
         event = json.load(sys.stdin)
     except json.JSONDecodeError:

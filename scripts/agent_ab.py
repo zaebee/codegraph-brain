@@ -16,8 +16,8 @@ pinned commit, so no run sees another's files or a graph it did not build.
              agent to try cgis first. The pilot's `cgis` arm made no cgis call
              in 12 of 12 sessions; this arm stands in for #542's server
              instructions until they ship.
-- `cgis-forced`: `cgis-instructed`, and the guard refuses Read, Grep, Glob and
-             Bash until the session has made one cgis call. Measures what the
+- `cgis-forced`: `cgis-instructed`, and the guard (`--cgis-first`) refuses
+             Read, Grep, Glob and Bash until the session has made one cgis call. Measures what the
              graph adds once used, separately from whether the agent picks it.
 
 All arms run under the same PreToolUse hook (`cgis.bench.guard`), the same
@@ -45,6 +45,7 @@ from pathlib import Path
 from typing import Literal
 
 from cgis.bench.agent_task import AgentTask, extract_answer, load_tasks, score_answer
+from cgis.bench.guard import CGIS_FIRST_FLAG
 from cgis.bench.transcript import parse_transcript, run_metrics
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -120,14 +121,19 @@ def mcp_config(arm: Arm) -> dict[str, object]:
     return {"mcpServers": {"cgis": {"command": bin_path("cgis-mcp"), "args": []}}}
 
 
-def hook_settings(cgis_first: Path | None = None) -> dict[str, object]:
+def _quote(arg: str) -> str:
+    """One shell word: cmd.exe quoting on Windows, POSIX quoting elsewhere."""
+    return subprocess.list2cmdline([arg]) if sys.platform == "win32" else shlex.quote(arg)
+
+
+def hook_settings(*, cgis_first: bool = False) -> dict[str, object]:
     """The `--settings` document installing the guard hook on every tool call.
 
-    `cgis_first` is the marker file that switches the guard to `--cgis-first`.
+    `cgis_first` runs the guard with `--cgis-first` (the `cgis-forced` arm).
     """
-    command = f"{shlex.quote(sys.executable)} -m cgis.bench.guard"
-    if cgis_first is not None:
-        command += f" --cgis-first {shlex.quote(str(cgis_first))}"
+    command = f"{_quote(sys.executable)} -m cgis.bench.guard"
+    if cgis_first:
+        command += f" {CGIS_FIRST_FLAG}"
     return {
         "hooks": {
             "PreToolUse": [{"matcher": ".*", "hooks": [{"type": "command", "command": command}]}]
@@ -159,8 +165,8 @@ def build_command(
     mcp_path = config_dir / "mcp.json"
     settings_path = config_dir / "settings.json"
     mcp_path.write_text(json.dumps(mcp_config(arm)), encoding="utf-8")
-    cgis_first = config_dir / "cgis_used" if arm == "cgis-forced" else None
-    settings_path.write_text(json.dumps(hook_settings(cgis_first)), encoding="utf-8")
+    settings = hook_settings(cgis_first=arm == "cgis-forced")
+    settings_path.write_text(json.dumps(settings), encoding="utf-8")
     cmd = [
         claude,
         "-p",

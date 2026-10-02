@@ -104,11 +104,27 @@ def test_cgis_first_holds_source_tools_until_a_cgis_call(tmp_path: Path) -> None
     assert guard.cgis_first_reason("Read", marker) is None
 
 
+def _event(tool_name: str) -> str:
+    return json.dumps({"tool_name": tool_name, "tool_input": {"file_path": "/w/src/a.py"}})
+
+
 def test_main_applies_cgis_first_only_when_asked(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    event = json.dumps({"tool_name": "Read", "tool_input": {"file_path": "/w/src/a.py"}})
-    monkeypatch.setattr("sys.stdin", io.StringIO(event))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("sys.stdin", io.StringIO(_event("Read")))
     assert guard.main([]) == 0
-    monkeypatch.setattr("sys.stdin", io.StringIO(event))
-    assert guard.main(["--cgis-first", str(tmp_path / "m")]) == 2
+    monkeypatch.setattr("sys.stdin", io.StringIO(_event("Read")))
+    assert guard.main([guard.CGIS_FIRST_FLAG]) == 2
+
+
+def test_the_cgis_first_marker_lives_in_the_working_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The run's worktree, so a later run never inherits an earlier run's marker."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("sys.stdin", io.StringIO(_event("mcp__cgis__cgis_context")))
+    assert guard.main([guard.CGIS_FIRST_FLAG]) == 0
+    assert (tmp_path / guard.MARKER_NAME).exists()
+    monkeypatch.setattr("sys.stdin", io.StringIO(_event("Read")))
+    assert guard.main([guard.CGIS_FIRST_FLAG]) == 0
