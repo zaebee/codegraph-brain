@@ -12,29 +12,29 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
         models_Node["Node (models.py:85)"]:::classNode
     end
     subgraph sg_import_names["import_names.py"]
-        import_names_ImportNameCollector["ImportNameCollector (import_names.py:49)"]:::classNode
-        import_names_ImportNameCollector_collect["collect (import_names.py:64)"]:::methodNode
-        import_names_ImportNameCollector_note["note (import_names.py:57)"]:::methodNode
+        import_names_ImportNameCollector["ImportNameCollector (import_names.py:58)"]:::classNode
+        import_names_ImportNameCollector_collect["collect (import_names.py:74)"]:::methodNode
+        import_names_ImportNameCollector_note["note (import_names.py:67)"]:::methodNode
     end
     subgraph sg_pipeline["pipeline.py"]
-        pipeline_IngestionPipeline_cross_file_inputs_changed["_cross_file_inputs_changed (pipeline.py:266)"]:::methodNode
-        pipeline_IngestionPipeline_get_extractor["_get_extractor (pipeline.py:401)"]:::methodNode
-        pipeline_IngestionPipeline_is_noop_incremental["_is_noop_incremental (pipeline.py:327)"]:::methodNode
-        pipeline_IngestionPipeline_persist_incremental["_persist_incremental (pipeline.py:351)"]:::methodNode
-        pipeline_IngestionPipeline_process_file["_process_file (pipeline.py:229)"]:::methodNode
+        pipeline_IngestionPipeline_cross_file_inputs_changed["_cross_file_inputs_changed (pipeline.py:269)"]:::methodNode
+        pipeline_IngestionPipeline_get_extractor["_get_extractor (pipeline.py:404)"]:::methodNode
+        pipeline_IngestionPipeline_is_noop_incremental["_is_noop_incremental (pipeline.py:330)"]:::methodNode
+        pipeline_IngestionPipeline_persist_incremental["_persist_incremental (pipeline.py:354)"]:::methodNode
+        pipeline_IngestionPipeline_process_file["_process_file (pipeline.py:232)"]:::methodNode
         pipeline_IngestionPipeline_run["run (pipeline.py:100)"]:::methodNode
         pipeline_IngestionPipeline_workspace_root["workspace_root (pipeline.py:83)"]:::methodNode
     end
     subgraph sg_engine["engine.py"]
         engine_ResolverEngine["ResolverEngine (engine.py:49)"]:::classNode
-        engine_ResolverEngine_resolve["resolve (engine.py:80)"]:::methodNode
+        engine_ResolverEngine_resolve["resolve (engine.py:85)"]:::methodNode
     end
     subgraph sg_uplift["uplift.py"]
         uplift_SemanticUpliftEngine["SemanticUpliftEngine (uplift.py:66)"]:::classNode
         uplift_SemanticUpliftEngine_execute_uplift["execute_uplift (uplift.py:91)"]:::methodNode
     end
     subgraph sg_sqlite_store["sqlite_store.py"]
-        sqlite_store_SQLiteStore["SQLiteStore (sqlite_store.py:58)"]:::classNode
+        sqlite_store_SQLiteStore["SQLiteStore (sqlite_store.py:59)"]:::classNode
     end
     pipeline_IngestionPipeline_run -->|REFERENCES| models_Node
     pipeline_IngestionPipeline_run -->|REFERENCES| models_Edge
