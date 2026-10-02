@@ -1027,11 +1027,12 @@ class SQLiteStore:
         """
         if not self._conn:
             raise RuntimeError(self._error_message)
+        resolved_root = str(Path(root).resolve())
         self._conn.executemany(
             "INSERT OR REPLACE INTO ingest_state (key, value) VALUES (?, ?)",
             [
-                ("root", str(Path(root).resolve())),
-                ("ingested_at", str(self._max_source_mtime(root, observed or {}))),
+                ("root", resolved_root),
+                ("ingested_at", str(self._max_source_mtime(resolved_root, observed or {}))),
             ],
         )
         self._conn.commit()
