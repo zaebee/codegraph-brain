@@ -5,7 +5,9 @@ from pathlib import Path
 import pytest
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
+from cgis.extractors.python_extractor import PythonExtractor
 from cgis.query.context.audit import NoAuditSourcesError, audit_reachability
+from cgis.resolver.engine import ResolverEngine
 from cgis.storage.sqlite_store import SQLiteStore
 
 
@@ -240,3 +242,40 @@ def test_audit_empty_edge_types_disables_traversal(tmp_path: Path) -> None:
     # No edge types → no traversal → no handler reaches the guard.
     assert result.covered == []
     assert len(result.gaps) == 4
+
+
+def test_audit_counts_a_guard_declared_in_the_route_decorator(tmp_path: Path) -> None:
+    """End to end from source: a decorator-level `Depends(guard)` is coverage (#429).
+
+    owner-api's `trigger_showcase_reset` declares its superuser guard as
+    `@router.post(..., dependencies=[Depends(...)])` and audited as a gap. The
+    signature-guarded route beside it is the control.
+    """
+    guard = "def require_superuser():\n    return 1\n"
+    routes = (
+        "from fastapi import Depends\n"
+        "from app.auth import require_superuser\n\n"
+        "@router.post('/reset', dependencies=[Depends(require_superuser)])\n"
+        "def reset():\n"
+        "    pass\n\n"
+        "@router.get('/me')\n"
+        "def me(user=Depends(require_superuser)):\n"
+        "    pass\n\n"
+        "@router.get('/open')\n"
+        "def open_route():\n"
+        "    pass\n"
+    )
+    extractor = PythonExtractor()
+    nodes_a, edges_a = extractor.parse(guard, "app/auth.py")
+    nodes_b, edges_b = extractor.parse(routes, "app/routes.py")
+    edges, _ = ResolverEngine(nodes_a + nodes_b, edges_a + edges_b).resolve()
+    db = _store(tmp_path, nodes_a + nodes_b, edges)
+    with SQLiteStore(db) as store:
+        result = audit_reachability(
+            store,
+            target_fqn="app.auth.require_superuser",
+            from_type=NodeType.FUNCTION,
+            from_prefix="app.routes",
+        )
+    assert {r.fqn for r in result.covered} == {"app.routes.reset", "app.routes.me"}
+    assert {r.fqn for r in result.gaps} == {"app.routes.open_route"}

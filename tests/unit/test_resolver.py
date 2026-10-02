@@ -1928,25 +1928,79 @@ def test_a_decorated_class_gets_its_decorator_call_edge() -> None:
     assert ("pkg.user.Held", "pkg.r.register") in calls
 
 
-def test_a_decorator_depends_still_emits_no_dependency_edge() -> None:
-    """The DI half of #429 is a spec decision, deliberately not taken here.
-
-    `dependencies=[Depends(guard)]` guards the decorated function, but attributing
-    a DEPENDS_ON edge to it would be the first place an edge's source differs
-    from its lexical owner. Until that is written down, the decorator path emits
-    CALLS and REFERENCES only — this test pins the boundary so the change is a
-    decision rather than a side effect.
-    """
-    guard = "def guard():\n    return 1\n"
-    user = (
+def _decorated_route(decorator_args: str) -> str:
+    return (
         "from pkg.g import guard\n"
-        "from fastapi import Depends\n\n"
-        "@router.post('/x', dependencies=[Depends(guard)])\n"
+        "from fastapi import Depends, Security\n\n"
+        f"@router.post('/x', {decorator_args})\n"
         "def handler():\n"
         "    pass\n"
     )
-    resolved = _resolve_two("pkg/g.py", guard, "pkg/user.py", user)
-    assert not [e for e in resolved if e.type == EdgeType.DEPENDS_ON]
+
+
+_GUARD = "def guard():\n    return 1\n"
+
+
+def _depends_on(resolved: list[Edge]) -> set[tuple[str, str]]:
+    return {(e.source, e.target) for e in resolved if e.type == EdgeType.DEPENDS_ON}
+
+
+def test_a_decorator_depends_guards_the_decorated_function() -> None:
+    """`dependencies=[Depends(guard)]` guards the route it decorates (#429).
+
+    Before this, the decorator path emitted CALLS only, so `cgis audit` read a
+    superuser-only endpoint as unguarded. The edge's source is the decorated
+    function rather than the module the decorator lexically sits in: that is
+    who the guard protects, and who the audit asks about (DI spec §3.2d).
+    """
+    resolved = _resolve_two(
+        "pkg/g.py", _GUARD, "pkg/user.py", _decorated_route("dependencies=[Depends(guard)]")
+    )
+    assert _depends_on(resolved) == {("pkg.user.handler", "pkg.g.guard")}
+
+
+def test_a_decorator_security_guards_the_decorated_function() -> None:
+    """`Security(guard, scopes=[...])` is a DI call too; the scopes are ignored."""
+    resolved = _resolve_two(
+        "pkg/g.py",
+        _GUARD,
+        "pkg/user.py",
+        _decorated_route("dependencies=[Security(guard, scopes=['admin'])]"),
+    )
+    assert _depends_on(resolved) == {("pkg.user.handler", "pkg.g.guard")}
+
+
+def test_a_keyword_only_decorator_depends_emits_no_dependency_edge() -> None:
+    """`Depends(dependency=guard)` follows the signature path: keywords are §6 scope."""
+    resolved = _resolve_two(
+        "pkg/g.py",
+        _GUARD,
+        "pkg/user.py",
+        _decorated_route("dependencies=[Depends(dependency=guard)]"),
+    )
+    assert not _depends_on(resolved)
+
+
+def test_a_decorator_depends_keeps_its_calls_edge() -> None:
+    """The DEPENDS_ON edge is additional signal; the CALLS to Depends stays."""
+    _nodes, edges = PythonExtractor().parse(
+        _decorated_route("dependencies=[Depends(guard)]"), "pkg/user.py"
+    )
+    calls = {(e.source, e.target) for e in edges if e.type == EdgeType.CALLS}
+    assert ("pkg.user.handler", "raw_call:Depends") in calls
+
+
+def test_a_class_decorator_depends_emits_no_dependency_edge() -> None:
+    """No framework reads DI from a class decorator; class-level DI is §6 scope."""
+    user = (
+        "from pkg.g import guard\n"
+        "from fastapi import Depends\n\n"
+        "@register(Depends(guard))\n"
+        "class Held:\n"
+        "    pass\n"
+    )
+    resolved = _resolve_two("pkg/g.py", _GUARD, "pkg/user.py", user)
+    assert not _depends_on(resolved)
 
 
 def test_a_function_body_is_still_walked_under_a_decorator() -> None:

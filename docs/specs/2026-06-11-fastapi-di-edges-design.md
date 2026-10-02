@@ -135,6 +135,22 @@ parameter also matched case (b) (an explicit `Depends` inside its
 `raw_dep:` candidate for the *outer* annotation is still emitted too — it
 will resolve to a CLASS/external and be dropped; no dedup logic needed.
 
+**d) DI in a route decorator (#429, added 2026-10-02).** A guard can be
+declared on the route rather than in the signature:
+`@router.post("/x", dependencies=[Depends(guard)])`. The decorator walk
+(`_walk_decorators`) applies the same §3.2b hook there, and the edge is
+`func —DEPENDS_ON→ raw_call:<first positional arg>` sourced at **the decorated
+function**, not the module the decorator lexically sits in. This is the one
+place an edge's source differs from its lexical owner, and it is decided
+deliberately: a decorator has no owner of its own, the guard protects the
+function it decorates, and `cgis audit` asks about that function. Attributing
+it to the module would be honest about location and useless to every
+consumer. Same name-extraction rules as §3.2a (keyword-only, argless and
+non-name arguments emit no edge); `Security(guard, scopes=[...])` counts.
+Decorated **classes** emit no DEPENDS_ON from their decorators — no framework
+reads DI there, and class-level DI stays out of scope (§6). The CALLS edge to
+`Depends` is still emitted, as in §3.2b.
+
 ### 3.3 Resolver (`src/cgis/resolver/engine.py`)
 
 - `RAW_DEP_PREFIX = "raw_dep:"` defined here as a module-level constant,

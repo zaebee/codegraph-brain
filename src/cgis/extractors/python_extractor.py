@@ -208,6 +208,7 @@ def _walk_one_decorator(
     edges: list[Edge],
     owner_fqn: str,
     name_refs_acc: list[tuple[str, str, int]] | None,
+    emit_di: bool,
 ) -> None:
     """Record one decorator's calls and names, skipping its own head (#429).
 
@@ -234,7 +235,7 @@ def _walk_one_decorator(
             continue
         if current.type == "call":
             functions.process_call_node(
-                current, code_bytes, file_path, owner_fqn, edges, emit_di=False
+                current, code_bytes, file_path, owner_fqn, edges, emit_di=emit_di
             )
         elif current.type == "identifier" and name_refs_acc is not None and is_name_load(current):
             _append_name_candidates(current, code_bytes, owner_fqn, name_refs_acc)
@@ -607,6 +608,7 @@ class PythonExtractor(BaseExtractor):
         edges: list[Edge],
         owner_fqn: str,
         name_refs_acc: list[tuple[str, str, int]] | None,
+        emit_di: bool,
     ) -> None:
         """Record what a decorated definition's decorators call and name (#429).
 
@@ -623,18 +625,30 @@ class PythonExtractor(BaseExtractor):
         function — so this walk covers the arguments only, and a bare `@deco`
         adds nothing.
 
-        A dedicated walk rather than `_walk`, for one reason: `process_call_node`
-        also turns `Depends(x)` into a DEPENDS_ON edge, and whether a decorator's
-        `dependencies=[Depends(guard)]` should be attributed to the function it
-        guards is a spec decision not yet taken — it would be the first place an
-        edge's source differs from its lexical owner. Keeping this path separate
-        makes `emit_di=False` structural rather than a flag someone can flip by
-        accident. A decorator cannot contain a definition, so there is nothing
-        else `_walk` would have handled here.
+        `emit_di` is True for a decorated function only: a route's
+        `dependencies=[Depends(guard)]` guards the function it decorates, so
+        `Depends(x)`/`Security(x)` there becomes a DEPENDS_ON edge sourced at
+        that function, exactly as if the guard were in its signature
+        (2026-06-11-fastapi-di-edges-design.md §3.2d). Without it `cgis audit`
+        read a superuser-only endpoint as unguarded. On a decorated class it
+        stays off — no framework reads DI from a class decorator, and §6 keeps
+        class-level DI out of scope.
+
+        A dedicated walk rather than `_walk`: a decorator cannot contain a
+        definition, so there is nothing else `_walk` would have handled here,
+        and keeping DI explicit per definition kind makes the class case a
+        decision rather than a default.
         """
         for decorator in (c for c in node.children if c.type == "decorator"):
             _walk_one_decorator(
-                self._functions, decorator, code_bytes, file_path, edges, owner_fqn, name_refs_acc
+                self._functions,
+                decorator,
+                code_bytes,
+                file_path,
+                edges,
+                owner_fqn,
+                name_refs_acc,
+                emit_di,
             )
 
     def _handle_decorated_definition(
@@ -664,7 +678,9 @@ class PythonExtractor(BaseExtractor):
                     decorators=raw_decorators,
                 )
                 collect_return_annotation(child, code_bytes, inner, file_path, edges)
-                self._walk_decorators(node, code_bytes, file_path, edges, inner.id, name_refs_acc)
+                self._walk_decorators(
+                    node, code_bytes, file_path, edges, inner.id, name_refs_acc, emit_di=True
+                )
                 for grandchild in child.children:
                     self._walk(
                         grandchild,
@@ -689,7 +705,9 @@ class PythonExtractor(BaseExtractor):
                     module_fqn or "",
                     decorators=raw_decorators,
                 )
-                self._walk_decorators(node, code_bytes, file_path, edges, class_fqn, name_refs_acc)
+                self._walk_decorators(
+                    node, code_bytes, file_path, edges, class_fqn, name_refs_acc, emit_di=False
+                )
                 for grandchild in child.children:
                     self._walk(
                         grandchild,
