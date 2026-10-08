@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.28.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.27.0...codegraph-brain-v0.28.0) (2026-10-02)
+
+
+### Features
+
+* **bench:** agent A/B harness for cgis vs no cgis ([#547](https://github.com/zaebee/codegraph-brain/issues/547)) ([788d67f](https://github.com/zaebee/codegraph-brain/commit/788d67f230f1129379afb08596da5a4ef9e1c302))
+* **bench:** cgis-instructed and cgis-forced arms, four multi-hop impact tasks ([#549](https://github.com/zaebee/codegraph-brain/issues/549)) ([deef289](https://github.com/zaebee/codegraph-brain/commit/deef289fe9a9a302088661acbf3c6f3d33fc50fe))
+
 ## [0.27.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.26.0...codegraph-brain-v0.27.0) (2026-10-02)
 
 
