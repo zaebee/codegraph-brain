@@ -98,3 +98,55 @@ def test_surrounding_whitespace_is_stripped(tmp_path: Path) -> None:
     with SQLiteStore(db) as store:
         assert resolve_fqn(store, " a.b.fn ").resolved == "a.b.fn"
         assert resolve_fqn(store, "\tfn\n").resolved == "a.b.fn"
+
+
+def _ingested_below(tmp_path: Path, ids: list[str], *dirs: str, source: str = "") -> Path:
+    """A graph whose recorded ingest root is ``tmp_path/<dirs...>`` (#568)."""
+    root = tmp_path.joinpath(*dirs)
+    root.mkdir(parents=True)
+    db = _seed_store(tmp_path / "fqn.db", ids)
+    with SQLiteStore(str(db)) as store:
+        store.record_ingest(str(root))
+        if source:
+            store.record_ingest_options([source], None)
+    return db
+
+
+def test_a_directory_above_the_graph_is_dropped(tmp_path: Path) -> None:
+    """The A/B agent's first call: a name built from the path, one segment too long."""
+    db = _ingested_below(tmp_path, ["domains.service.credit_wallet"], "backend", "app")
+    with SQLiteStore(str(db)) as store:
+        one = resolve_fqn(store, "app.domains.service.credit_wallet")
+        two = resolve_fqn(store, "backend.app.domains.service.credit_wallet")
+
+    assert one.resolved == two.resolved == "domains.service.credit_wallet"
+    assert one.via_suffix, "the answer must say what the name resolved to"
+
+
+def test_a_source_root_is_dropped_too(tmp_path: Path) -> None:
+    db = _ingested_below(tmp_path, ["cgis.pipeline.run"], "repo", source="src")
+    with SQLiteStore(str(db)) as store:
+        assert resolve_fqn(store, "src.cgis.pipeline.run").resolved == "cgis.pipeline.run"
+
+
+def test_a_segment_that_is_not_a_directory_above_is_kept(tmp_path: Path) -> None:
+    """Found on owner-api: dropping any segment named an unrelated top-level module."""
+    db = _ingested_below(
+        tmp_path, ["domains.service.credit_wallet", "service.credit_wallet"], "backend", "app"
+    )
+    with SQLiteStore(str(db)) as store:
+        res = resolve_fqn(store, "app.nope.service.credit_wallet")
+
+    assert res.resolved is None
+
+
+def test_dropping_never_leaves_a_bare_name(tmp_path: Path) -> None:
+    db = _ingested_below(tmp_path, ["credit_wallet"], "backend", "app")
+    with SQLiteStore(str(db)) as store:
+        assert resolve_fqn(store, "app.credit_wallet").resolved is None
+
+
+def test_nothing_is_dropped_without_a_recorded_root(tmp_path: Path) -> None:
+    db = _seed_store(tmp_path / "fqn.db", ["domains.service.credit_wallet"])
+    with SQLiteStore(str(db)) as store:
+        assert resolve_fqn(store, "app.domains.service.credit_wallet").resolved is None
