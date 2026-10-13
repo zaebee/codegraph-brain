@@ -140,10 +140,17 @@ def test_a_segment_that_is_not_a_directory_above_is_kept(tmp_path: Path) -> None
     assert res.resolved is None
 
 
-def test_dropping_never_leaves_a_bare_name(tmp_path: Path) -> None:
-    db = _ingested_below(tmp_path, ["credit_wallet"], "backend", "app")
+def test_one_segment_may_remain(tmp_path: Path) -> None:
+    """What remains starts at the graph's top level: `app.domains` is `domains`."""
+    db = _ingested_below(tmp_path, ["domains", "domains.service.fn"], "backend", "app")
     with SQLiteStore(str(db)) as store:
-        assert resolve_fqn(store, "app.credit_wallet").resolved is None
+        assert resolve_fqn(store, "app.domains").resolved == "domains"
+
+
+def test_a_backslash_source_root_is_dropped(tmp_path: Path) -> None:
+    db = _ingested_below(tmp_path, ["cgis.run"], "repo", source="packages\\api\\src")
+    with SQLiteStore(str(db)) as store:
+        assert resolve_fqn(store, "src.cgis.run").resolved == "cgis.run"
 
 
 def test_nothing_is_dropped_without_a_recorded_root(tmp_path: Path) -> None:

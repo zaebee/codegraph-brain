@@ -65,7 +65,9 @@ def _path_prefixes(store: SQLiteStore) -> set[str]:
         return set()
     root = PurePath(state[0])
     options = store.get_ingest_options()
-    bases = [root, *(root / source for source in (options[0] if options else []))]
+    # Backslashes too, as the extractors normalise a source root (`BaseExtractor`).
+    sources = [source.replace("\\", "/") for source in (options[0] if options else [])]
+    bases = [root, *(root / source for source in sources)]
     return {".".join(base.parts[start:]) for base in bases for start in range(1, len(base.parts))}
 
 
@@ -83,12 +85,13 @@ def _without_leading_segments(store: SQLiteStore, fqn: str) -> str | None:
     rest must match exactly. Dropping any leading segment resolved
     ``app.nope.service.credit_wallet`` to an unrelated top-level
     ``service.credit_wallet`` on owner-api — a wrong symbol, answered
-    confidently. A bare name is never left: that is the ambiguous lookup
-    suffix search already made.
+    confidently. With the drop pinned to the root, what remains starts at the
+    graph's own top level, so one segment is safe too: ``app.domains`` is the
+    package ``domains``.
     """
     prefixes = _path_prefixes(store)
     parts = fqn.split(".")
-    for start in range(1, len(parts) - 1):
+    for start in range(1, len(parts)):
         candidate = ".".join(parts[start:])
         if ".".join(parts[:start]) in prefixes and store.get_node(candidate):
             return candidate
