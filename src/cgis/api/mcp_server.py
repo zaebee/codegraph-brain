@@ -8,7 +8,7 @@ import dataclasses
 import json
 import sys
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, NamedTuple
 
 import structlog
 from mcp.server.mcpserver import MCPServer
@@ -30,7 +30,7 @@ from cgis.query.context.orphans import find_orphan_classes
 from cgis.query.drift.drift_service import analyze_drift
 from cgis.query.drift.fractal import analyze_fractal_db
 from cgis.query.drift.ontology_init import propose_ontology
-from cgis.query.engine import BEHAVIORAL_EDGE_TYPES, QueryEngine
+from cgis.query.engine import BEHAVIORAL_EDGE_TYPES, QueryEngine, Truncation, impact_screen
 from cgis.query.fqn import is_package_prefix, resolve_fqn
 from cgis.query.render.graph_json import graph_to_json
 from cgis.query.render.mermaid import MermaidCompiler
@@ -119,6 +119,42 @@ def _blank_fqn_error(fqn: str) -> str | None:
     return None
 
 
+#: Default node budget for `cgis_analyze_impact` (#551). The A/B run's 51k-character
+#: answer was 140 nodes; an agent's client spills a result that size to a file.
+_IMPACT_MAX_NODES = 100
+
+
+class _Omissions(NamedTuple):
+    """What a traversal left out of its answer on purpose, to be said in it (#551)."""
+
+    excluded_tests: int = 0
+    truncation: Truncation | None = None
+    max_nodes: int = 0
+
+
+def _truncation_text(truncation: Truncation, max_nodes: int) -> str:
+    """One line naming where the node budget cut the walk and how to see the rest."""
+    narrower = "lower depth, " if truncation.depth > 1 else ""
+    return (
+        f"Truncated at depth {truncation.depth}: the {max_nodes}-node budget left out "
+        f"{truncation.omitted} node(s) at that depth, and nothing past it was walked. "
+        f"To see more: {narrower}raise max_nodes, or ask about one of the callers shown."
+    )
+
+
+def _omission_keys(omissions: "_Omissions | None") -> dict[str, Any]:
+    """The JSON keys for what was left out — absent when nothing was."""
+    keys: dict[str, Any] = {}
+    if omissions and omissions.excluded_tests:
+        keys["excluded_tests"] = omissions.excluded_tests
+    if omissions and omissions.truncation:
+        keys["truncated"] = {
+            **omissions.truncation._asdict(),
+            "max_nodes": omissions.max_nodes,
+        }
+    return keys
+
+
 def _wants_json(output_format: str) -> bool:
     """True when a traversal will be rendered as JSON — the only shape that carries coverage."""
     return output_format.strip().lower() == "json"
@@ -133,10 +169,21 @@ def _render_subgraph_with_freshness(
     nodes: list[Node],
     edges: list[Edge],
     coverage: TraversalCoverage | None = None,
+    excluded_tests: int = 0,
+    truncation: Truncation | None = None,
+    max_nodes: int = 0,
 ) -> str:
     """`_render_subgraph`, with this database's freshness measured for it (#175)."""
     return _render_subgraph(
-        output_format, root, note, title, nodes, edges, _graph_freshness(db_path), coverage
+        output_format,
+        root,
+        note,
+        title,
+        nodes,
+        edges,
+        _graph_freshness(db_path),
+        coverage,
+        _Omissions(excluded_tests, truncation, max_nodes),
     )
 
 
@@ -149,6 +196,7 @@ def _render_subgraph(
     edges: list[Edge],
     freshness: "Freshness | None" = None,
     coverage: TraversalCoverage | None = None,
+    omissions: "_Omissions | None" = None,
 ) -> str:
     """Render a traversal result as a Mermaid diagram or joinable JSON (#171).
 
@@ -161,11 +209,13 @@ def _render_subgraph(
     a prose note above the diagram. Prefixing the JSON would make it unparseable
     exactly when the graph goes stale, and this renderer is the only place that
     knows which shape it is about to produce (#175). ``coverage`` (#201) rides
-    in the JSON only.
+    in the JSON only. ``omissions`` (#551) become ``excluded_tests`` and
+    ``truncated`` keys in the JSON; the caller says them in ``note`` for the
+    diagram.
     """
     fmt = output_format.strip().lower()
     if fmt == "json":
-        payload = graph_to_json(root, nodes, edges, coverage)
+        payload = {**graph_to_json(root, nodes, edges, coverage), **_omission_keys(omissions)}
         if freshness is not None and freshness.state is not FreshnessState.FRESH:
             payload = {**payload, "freshness": freshness.model_dump()}
         return json.dumps(payload, indent=2)
@@ -471,6 +521,23 @@ def cgis_analyze_impact(
     output_format: OutputFormat = "mermaid",
     include_structure: IncludeStructure = False,
     include_external: IncludeExternal = False,
+    include_tests: Annotated[
+        bool,
+        Field(
+            description="Also return callers in test code. Off by default: a test is not "
+            "production code that breaks, and on a large repo tests outnumber the real "
+            "callers. The answer says how many were left out."
+        ),
+    ] = False,
+    max_nodes: Annotated[
+        int,
+        Field(
+            description="Most nodes to return, nearest levels first. A level that does not "
+            "fit is cut and the walk stops there; the answer says where and how many were "
+            "left out, so a smaller depth or a narrower FQN can follow.",
+            ge=1,
+        ),
+    ] = _IMPACT_MAX_NODES,
 ) -> str:
     """Upstream subgraph of one FQN: everything that reaches it within ``depth`` hops.
 
@@ -479,7 +546,12 @@ def cgis_analyze_impact(
     answers "what breaks if I change X?". The
     enclosing class or file and stdlib/third-party nodes are left out unless
     ``include_structure`` / ``include_external`` ask for them — the same view as
-    the CLI's ``impact``. For what X depends on use
+    the CLI's ``impact``. Test callers are left out unless ``include_tests``
+    asks for them, and counted in ``excluded_tests``. A file that imports a
+    symbol is listed, but the walk does not continue to the files importing
+    that file; a file's own impact still does. At most ``max_nodes`` nodes come
+    back, nearest first, and a cut is reported in ``truncated``. For what X
+    depends on use
     ``cgis_trace_flow``; for only the members of a module or class,
     ``cgis_get_structure``; for a source-included brief to read before editing
     one symbol, ``cgis_context``.
@@ -509,11 +581,17 @@ def cgis_analyze_impact(
                 allowed_edge_types=allowed,
                 show_external=show_external,
                 with_coverage=_wants_json(output_format),
+                screen=impact_screen(store, res.resolved, include_tests),
+                max_nodes=max_nodes,
             )
     except Exception as exc:
         return f"❌ {exc}"
 
     note = f"> Resolved '{fqn}' → '{res.resolved}'\n\n" if res.via_suffix else ""
+    if result.excluded:
+        note += f"> {result.excluded} test caller(s) left out; include_tests=true returns them.\n\n"
+    if result.truncation:
+        note += f"> {_truncation_text(result.truncation, max_nodes)}\n\n"
     return _render_subgraph_with_freshness(
         db_path,
         output_format,
@@ -523,6 +601,9 @@ def cgis_analyze_impact(
         result.nodes,
         result.edges,
         result.coverage,
+        excluded_tests=result.excluded,
+        truncation=result.truncation,
+        max_nodes=max_nodes,
     )
 
 
