@@ -34,7 +34,7 @@ class ImportNames:
     path_aliases: dict[str, dict[str, list[str]]]
     #: Import roots of the declared Python dependencies, sorted.
     python_dependencies: list[str]
-    #: Dotted names of the declared npm packages, sorted.
+    #: Declared npm package names as written, less our workspace packages, sorted.
     npm_dependencies: list[str]
 
     def differ_from(self, store: "SQLiteStore") -> bool:
@@ -90,5 +90,5 @@ class ImportNameCollector:
             workspace_packages=self._packages.unambiguous(),
             path_aliases=self._tsconfigs.aliases(self._packages.directories()),
             python_dependencies=sorted(declared_import_roots(self._root)),
-            npm_dependencies=self._npm.declared(),
+            npm_dependencies=self._npm.declared(excluding=self._packages.names()),
         )

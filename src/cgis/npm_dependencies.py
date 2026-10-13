@@ -11,6 +11,7 @@ itself.
 """
 
 import json
+from collections.abc import Iterable
 from pathlib import Path
 
 import structlog
@@ -57,8 +58,16 @@ class NpmDependencies:
             for name, version in declared.items():
                 if isinstance(version, str) and version.startswith(_LOCAL_PROTOCOLS):
                     continue
-                self._names.add(name.replace("/", "."))
+                self._names.add(name)
 
-    def declared(self) -> list[str]:
-        """Declared package names, dotted the way import targets are, sorted."""
-        return sorted(self._names)
+    def declared(self, excluding: Iterable[str] = ()) -> list[str]:
+        """Declared package names as written, sorted, less `excluding`.
+
+        `excluding` takes the workspace packages: a monorepo also lists its own
+        packages as dependencies, often with a plain version range rather than
+        `workspace:*`, and those are ours.
+
+        Not dotted: `lodash.debounce` is a package of its own, not the `debounce`
+        subpath of `lodash`, and only the written form tells them apart.
+        """
+        return sorted(self._names.difference(excluding))

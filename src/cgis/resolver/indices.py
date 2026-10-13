@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import NamedTuple
 
+from cgis.core.js_globals import specifier_fqn
 from cgis.core.models import SELF_PREFIX, Node, NodeNamespace, NodeType
 from cgis.resolver.js_builtins import JS_BUILTINS_ROOT, NODE_BUILTIN_MODULES, NODE_SCHEME
 
@@ -102,11 +103,11 @@ class SymbolIndex:
     # `root.second` heads our own nodes have under those roots: `alembic.env`,
     # `alembic.versions`. What tells our package apart from the library's.
     dependency_heads: frozenset[str] = frozenset()
-    # dotted npm packages the `package.json` files declare, less the workspace
-    # packages — a monorepo lists its own packages as dependencies too (#556).
+    # npm packages the `package.json` files declare, as written (`@x/a`, not
+    # `@x.a`), less this repository's own workspace packages (#556).
     npm_dependencies: frozenset[str] = frozenset()
     # normalized file_path -> the bare (non-relative) specifiers a TypeScript file
-    # imports, dotted: what licenses reading a name as a package's (#556).
+    # imports, as written: what licenses reading a name as a package's (#556).
     file_bare_imports: Mapping[str, frozenset[str]] = MappingProxyType({})
     # normalized file_path -> {local name: package symbol FQN} for those imports:
     # `useState` -> `react.useState`, a namespace import `Icons` -> `lucide-react`.
@@ -342,19 +343,25 @@ def bare_import_namespace(
 
     A declared package wins over a builtin of the same name: a browser app
     that declares `buffer` bundles that package, not Node's.
+
+    The specifier is matched to a package as written, `/` and all: dotted,
+    `lodash.debounce` (a package of its own) would pass for a subpath of a
+    declared `lodash`. When a target sits under several imported specifiers the
+    longest decides, since it is the one that names the target's module.
     """
-    for specifier in index.file_bare_imports.get(source_file or "", ()):
-        if fqn != specifier and not fqn.startswith(f"{specifier}."):
-            continue
-        if any(
-            specifier == name or specifier.startswith(f"{name}.") for name in index.npm_dependencies
-        ):
-            return NodeNamespace.EXTERNAL
-        if (
-            specifier.startswith(NODE_SCHEME)
-            or specifier.split(".", maxsplit=1)[0] in NODE_BUILTIN_MODULES
-        ):
-            return NodeNamespace.STDLIB
+    imported = index.file_bare_imports.get(source_file or "", frozenset())
+    under = [
+        s for s in imported if fqn == specifier_fqn(s) or fqn.startswith(f"{specifier_fqn(s)}.")
+    ]
+    if not under:
+        return None
+    specifier = max(under, key=len)
+    if any(
+        specifier == name or specifier.startswith(f"{name}/") for name in index.npm_dependencies
+    ):
+        return NodeNamespace.EXTERNAL
+    if specifier.startswith(NODE_SCHEME) or specifier.split("/")[0] in NODE_BUILTIN_MODULES:
+        return NodeNamespace.STDLIB
     return None
 
 
@@ -549,7 +556,7 @@ class IndexBuilder:
         is stored longest name first, the order `_resolve_workspace_import` relies on.
         `tsconfig_paths` maps a project directory to its dotted aliases (#508).
         `dependency_roots` are the import roots the project's manifests declare (#495).
-        `npm_dependencies` are the dotted npm packages they declare (#556).
+        `npm_dependencies` are the npm packages they declare, as written (#556).
         """
         nodes_by_id = {n.id: n for n in nodes}
         global_symbols: dict[str, list[str]] = {}
@@ -628,7 +635,7 @@ class IndexBuilder:
             ),
             dependency_roots=frozenset(colliding),
             dependency_heads=_heads_under(colliding, nodes_by_id),
-            npm_dependencies=frozenset(npm_dependencies) - set(workspace_packages or {}),
+            npm_dependencies=frozenset(npm_dependencies),
             file_bare_imports=MappingProxyType(file_bare_imports),
             file_bare_bindings=MappingProxyType(file_bare_bindings),
         )

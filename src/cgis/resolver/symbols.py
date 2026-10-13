@@ -26,6 +26,11 @@ def _package_call(index: SymbolIndex, name: str, file_path: str) -> str | None:
     Only when the binding lands in a package (#556). A binding into one of our
     own modules through an alias or workspace name is left to the lookups that
     already resolve those, so internal resolution is unchanged.
+
+    Bindings are per file, not per scope: a parameter that shadows an imported
+    name (`function f(map) { map() }` beside `import { map } from "lodash"`) is
+    read as the import. Accepted — shadowing an import is rare, and scope
+    tracking is a separate piece of work.
     """
     bindings = index.file_bare_bindings.get(file_path)
     if not bindings:

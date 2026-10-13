@@ -15,7 +15,7 @@ from collections.abc import Callable
 
 from tree_sitter import Node as TSNode
 
-from cgis.core.js_globals import JS_GLOBALS
+from cgis.core.js_globals import JS_GLOBALS, specifier_fqn
 
 #: Nodes whose field holds a binding pattern, and that field's name.
 _PATTERN_FIELDS: dict[str, str] = {
@@ -51,11 +51,6 @@ def shadowed_globals(root: TSNode) -> list[str]:
     return sorted(bound & JS_GLOBALS)
 
 
-def specifier_fqn(specifier: str) -> str:
-    """A bare module specifier dotted the way import targets are: `@x/a/b` -> `@x.a.b`."""
-    return specifier.replace("/", ".")
-
-
 def bare_imports(root: TSNode) -> tuple[list[str], dict[str, str]]:
     """The file's bare (non-relative) import specifiers, and what each local name binds.
 
@@ -64,6 +59,9 @@ def bare_imports(root: TSNode) -> tuple[list[str], dict[str, str]]:
     the module itself. The original name is kept, not the alias, because that is
     the package's own symbol. Relative imports are left out: their targets are
     modules of ours, which the resolver already reaches by name (#556).
+
+    Specifiers are kept as written, bindings dotted like every other target: only
+    the written form tells the package `lodash.debounce` from `lodash/debounce`.
 
     Only top-level statements: that is where an ES import can stand.
     """
@@ -76,8 +74,8 @@ def bare_imports(root: TSNode) -> tuple[list[str], dict[str, str]]:
         raw = source.text.decode("utf-8").strip("'\"") if source and source.text else ""
         if not raw or raw.startswith("."):
             continue
+        specifiers.add(raw)
         module = specifier_fqn(raw)
-        specifiers.add(module)
         clause = next((c for c in statement.children if c.type == "import_clause"), None)
         if clause is not None:
             _bind_clause(clause, module, bindings)

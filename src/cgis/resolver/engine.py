@@ -75,8 +75,8 @@ class ResolverEngine:
         project directory to the `compilerOptions.paths` aliases its files import
         through (#508). `dependency_roots` are the import roots the project's
         manifests declare, which tell a library apart from a package of ours that
-        shares its name (#495). `npm_dependencies` are the dotted npm packages the
-        `package.json` files declare, which make a TypeScript import EXTERNAL (#556).
+        shares its name (#495). `npm_dependencies` are the npm packages the
+        `package.json` files declare, as written, which make a TypeScript import EXTERNAL (#556).
         """
         self.edges = edges
         self._resolver = SymbolResolver(

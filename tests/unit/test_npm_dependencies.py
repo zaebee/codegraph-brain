@@ -93,12 +93,12 @@ def test_the_extractor_records_bare_imports_and_their_bindings() -> None:
     nodes, _ = TypeScriptExtractor(tsx=True).parse(APP, "src/App.tsx")
     meta = next(n for n in nodes if n.id == "src.App").metadata
     assert meta["bare_imports"] == [
-        "@tanstack.react-query",
+        "@tanstack/react-query",
         "lucide-react",
         "node:fs",
         "path",
         "react",
-        "react-toastify.dist.ReactToastify.css",
+        "react-toastify/dist/ReactToastify.css",
     ]
     assert meta["bare_bindings"] == {
         "Icons": "lucide-react",
@@ -121,7 +121,7 @@ def test_a_relative_import_is_not_a_bare_import() -> None:
 # --- what the manifests declare --------------------------------------------------
 
 
-def test_every_dependency_kind_is_read_and_dotted(tmp_path: Path) -> None:
+def test_every_dependency_kind_is_read_as_written(tmp_path: Path) -> None:
     manifest = tmp_path / "package.json"
     manifest.write_text(
         json.dumps(
@@ -136,7 +136,7 @@ def test_every_dependency_kind_is_read_and_dotted(tmp_path: Path) -> None:
     )
     deps = NpmDependencies()
     deps.note(manifest)
-    assert deps.declared() == ["@tanstack.react-query", "chart.js", "react", "react-dom", "vitest"]
+    assert deps.declared() == ["@tanstack/react-query", "chart.js", "react", "react-dom", "vitest"]
 
 
 def test_a_local_protocol_dependency_is_not_a_package(tmp_path: Path) -> None:
@@ -280,3 +280,42 @@ def test_a_changed_dependency_rebuilds_the_graph(tmp_path: Path) -> None:
         node = store.get_node("@tanstack.react-query")
     assert node is not None
     assert node.namespace is NodeNamespace.EXTERNAL
+
+
+def test_an_ambiguous_workspace_name_is_still_ours(tmp_path: Path) -> None:
+    # Two manifests claim `@acme/ui`, so it maps to no directory — but it is a
+    # package of this repository, and a plain `"*"` range (npm/yarn-classic style,
+    # no `workspace:` protocol) must not turn it into a library (#557 review).
+    _write(
+        tmp_path,
+        {
+            "packages/ui/package.json": json.dumps({"name": "@acme/ui"}),
+            "packages/ui/src/Button.ts": "export function Button() {\n  return 1;\n}\n",
+            "examples/ui-copy/package.json": json.dumps({"name": "@acme/ui"}),
+            "apps/web/package.json": json.dumps(
+                {"name": "web", "dependencies": {"@acme/ui": "*", "react": "^19"}}
+            ),
+            "apps/web/page.ts": (
+                'import { Button } from "@acme/ui";\n'
+                "export function Page() {\n  return Button();\n}\n"
+            ),
+        },
+    )
+    nodes, edges = _graph(tmp_path)
+    assert "packages.ui.src.Button.Button" in _call_targets(edges, "apps.web.page.Page")
+    assert _namespace(nodes, "@acme.ui") is NodeNamespace.UNKNOWN
+
+
+def test_a_dotted_package_is_not_a_subpath_of_a_declared_one(tmp_path: Path) -> None:
+    # `lodash.debounce` is its own npm package. Dotted, it reads exactly like the
+    # `debounce` subpath of `lodash`; only the written specifier tells them apart.
+    app = (
+        'import debounce from "lodash.debounce";\n'
+        'import { map } from "lodash";\n'
+        "export function App() {\n  debounce();\n  map();\n}\n"
+    )
+    _app(tmp_path, manifest={"name": "app", "dependencies": {"lodash": "^4"}}, app=app)
+    nodes, edges = _graph(tmp_path)
+    assert _namespace(nodes, "lodash.debounce") is NodeNamespace.UNKNOWN
+    assert {"debounce", "lodash.map"} <= _call_targets(edges)
+    assert _namespace(nodes, "lodash.map") is NodeNamespace.EXTERNAL

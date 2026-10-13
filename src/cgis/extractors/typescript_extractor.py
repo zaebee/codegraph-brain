@@ -4,8 +4,9 @@ import tree_sitter_typescript as tsts
 from tree_sitter import Language, Parser
 from tree_sitter import Node as TSNode
 
+from cgis.core.js_globals import specifier_fqn
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
-from cgis.extractors._typescript_bindings import bare_imports, shadowed_globals, specifier_fqn
+from cgis.extractors._typescript_bindings import bare_imports, shadowed_globals
 from cgis.extractors.base import BaseExtractor
 
 _RAW_CALL_PREFIX = "raw_call:"
