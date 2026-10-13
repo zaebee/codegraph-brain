@@ -157,3 +157,10 @@ def test_nothing_is_dropped_without_a_recorded_root(tmp_path: Path) -> None:
     db = _seed_store(tmp_path / "fqn.db", ["domains.service.credit_wallet"])
     with SQLiteStore(str(db)) as store:
         assert resolve_fqn(store, "app.domains.service.credit_wallet").resolved is None
+
+
+def test_a_root_recorded_on_windows_is_split_on_backslashes(tmp_path: Path) -> None:
+    db = _seed_store(tmp_path / "fqn.db", ["domains.fn"])
+    with SQLiteStore(str(db)) as store:
+        store.record_ingest("C:\\work\\backend\\app")
+        assert resolve_fqn(store, "backend.app.domains.fn").resolved == "domains.fn"

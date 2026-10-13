@@ -7,7 +7,7 @@ ambiguity surfaces the candidates instead of a bare "not found".
 """
 
 from dataclasses import dataclass, field
-from pathlib import PurePath
+from pathlib import PurePosixPath
 
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -63,9 +63,10 @@ def _path_prefixes(store: SQLiteStore) -> set[str]:
     state = store.get_ingest_state()
     if state is None:
         return set()
-    root = PurePath(state[0])
+    # Backslashes as separators, in the root as in a source root (`BaseExtractor`):
+    # a graph ingested on Windows and read elsewhere would otherwise strip nothing.
+    root = PurePosixPath(state[0].replace("\\", "/"))
     options = store.get_ingest_options()
-    # Backslashes too, as the extractors normalise a source root (`BaseExtractor`).
     sources = [source.replace("\\", "/") for source in (options[0] if options else [])]
     bases = [root, *(root / source for source in sources)]
     return {".".join(base.parts[start:]) for base in bases for start in range(1, len(base.parts))}
