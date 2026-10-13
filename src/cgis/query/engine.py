@@ -60,6 +60,32 @@ class _Verdict(NamedTuple):
     leaves: frozenset[str] = frozenset()
 
 
+def _no_screen(_ids: list[str]) -> _Verdict:
+    """The screen of a walk that keeps everything it reaches."""
+    return _Verdict()
+
+
+def _admit(
+    reached: list[str], verdict: _Verdict, held: int, max_nodes: int | None, depth: int
+) -> tuple[list[str], list[str], Truncation | None]:
+    """What of one level's new ids enters the answer, and what of that is expanded next.
+
+    The screen's dropped ids enter neither; its leaves enter the answer only.
+    A level that does not fit the node budget is cut to the room left, leaves
+    last: a file that imports X is a dead end whose callables are usually
+    listed beside it, and sorting by id alone put `pkg.svc` ahead of
+    `pkg.svc.use` — on owner-api 29 of 99 slots went to files (found in
+    review). Within each group the order is by id, so the cut is deterministic.
+    """
+    admitted = [n for n in reached if n not in verdict.dropped]
+    truncation = None
+    room = len(admitted) if max_nodes is None else max(max_nodes - held, 0)
+    if len(admitted) > room:
+        truncation = Truncation(depth, len(admitted) - room)
+        admitted = sorted(admitted, key=lambda n: (n in verdict.leaves, n))[:room]
+    return admitted, [n for n in admitted if n not in verdict.leaves], truncation
+
+
 #: Decides, one batch per BFS level, which newly reached ids leave the answer
 #: (``dropped``) and which stay in it without being expanded (``leaves``).
 Screen = Callable[[list[str]], _Verdict]
@@ -75,10 +101,13 @@ def impact_screen(store: SQLiteStore, root_id: str, include_tests: bool) -> Scre
     FILE → IMPORTS → FILE upstream walks the whole import closure (conftest →
     main → every test module), 115 of 140 nodes on owner-api at depth 8. A
     file's own impact still follows its importers, so the rule applies only
-    when the root is not a file.
+    when the root is not a file; and a root that is itself a test keeps its
+    test callers.
     """
     root = store.get_node(root_id)
     files_are_leaves = root is None or root.type != NodeType.FILE
+    # A test's callers are tests: dropping them would answer about a test with nothing.
+    include_tests = include_tests or (root is not None and root.is_test)
 
     def screen(ids: list[str]) -> _Verdict:
         nodes = store.get_nodes(ids)
@@ -251,7 +280,7 @@ class QueryEngine:
         show_external: bool = True,
         min_confidence: float | None = None,
         with_coverage: bool = True,
-        screen: Screen | None = None,
+        screen: Screen = _no_screen,
         max_nodes: int | None = None,
     ) -> TraversalResult:
         """`get_impact_graph`, plus how many callers the graph may be failing to show (#201).
@@ -446,12 +475,13 @@ class QueryEngine:
         max_depth: int,
         allowed_edge_types: frozenset[EdgeType] | None = None,
         min_confidence: float | None = None,
-        screen: Screen | None = None,
+        screen: Screen = _no_screen,
         max_nodes: int | None = None,
     ) -> _Walk:
         """
         Level-by-level BFS. Fetches edges for the entire frontier in one
-        batch query per level — O(depth) DB roundtrips instead of O(nodes).
+        batch query per level — O(depth) DB roundtrips instead of O(nodes);
+        a ``screen`` may add one node lookup per level.
 
         ``min_confidence`` prunes edges below the given confidence (e.g.
         unresolved ``raw_call:`` edges at 0.1) so the traversal never crosses
@@ -462,6 +492,12 @@ class QueryEngine:
         confidence floor. A floor hides an edge from the answer, not from the
         count of what the answer is missing. Nodes at the depth horizon are not
         expanded, so what lies past it is truncation, not a resolution gap.
+
+        ``screen`` sees each level's newly reached ids before they are accepted:
+        the ids it drops leave with their edges, the ids it calls leaves are kept
+        but not expanded (see ``impact_screen``). ``max_nodes`` caps the answer,
+        nearest levels first: a level that does not fit is cut to the room left
+        (see ``_admit``) and the walk stops there.
         """
         discovered_ids: set[str] = {start_id}
         visited_edges: dict[str, Edge] = {}
@@ -473,7 +509,7 @@ class QueryEngine:
         current_frontier = [start_id]
         depth = 0
 
-        while current_frontier and depth < max_depth:
+        while current_frontier and depth < max_depth and truncation is None:
             expanded.update(current_frontier)
             level: list[Edge] = []
             for edge in get_edges_batch(current_frontier):
@@ -481,21 +517,14 @@ class QueryEngine:
                     calls[edge.id] = edge
                 if _edge_accepted(edge, allowed_edge_types, min_confidence):
                     level.append(edge)
-            reached = [
-                n for n in dict.fromkeys(map(get_neighbor_id, level)) if n not in discovered_ids
-            ]
-            verdict = screen(reached) if screen and reached else _Verdict()
+            reached = sorted(set(map(get_neighbor_id, level)) - discovered_ids)
+            verdict = screen(reached)
             dropped |= verdict.dropped
             depth += 1
-            admitted = [n for n in reached if n not in verdict.dropped]
-            room = len(admitted) if max_nodes is None else max(max_nodes - len(discovered_ids), 0)
-            if len(admitted) > room:
-                truncation = Truncation(depth, len(admitted) - room)
-                admitted = sorted(admitted)[:room]
+            admitted, current_frontier, truncation = _admit(
+                reached, verdict, len(discovered_ids), max_nodes, depth
+            )
             discovered_ids.update(admitted)
             visited_edges.update((e.id, e) for e in level if get_neighbor_id(e) in discovered_ids)
-            if truncation:
-                break
-            current_frontier = [n for n in admitted if n not in verdict.leaves]
 
         return _Walk(discovered_ids, visited_edges, expanded, calls, frozenset(dropped), truncation)

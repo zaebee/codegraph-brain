@@ -21,10 +21,17 @@ _SOURCES = {
     "pkg/svc.py": (
         "from pkg.core import target\n\ndef use():\n    target()\n\ndef other():\n    target()\n"
     ),
-    "pkg/api.py": "from pkg.svc import use\n\ndef route():\n    use()\n",
+    "pkg/api.py": (
+        "from pkg.svc import other, use\n\ndef route():\n    use()\n\ndef later():\n    other()\n"
+    ),
     # Imports the file that imports `use`: one step further up the import closure.
     "pkg/main.py": "import pkg.api\n",
-    "tests/test_core.py": "from pkg.core import target\n\ndef test_target():\n    target()\n",
+    "tests/test_core.py": (
+        "from pkg.core import target\n"
+        "from tests.helpers import helper\n\n"
+        "def test_target():\n    target()\n    helper()\n"
+    ),
+    "tests/helpers.py": "def helper():\n    pass\n",
 }
 
 
@@ -98,23 +105,53 @@ def test_a_files_own_impact_still_follows_its_importers(db: str) -> None:
 
 
 def test_the_budget_cuts_the_level_that_does_not_fit(db: str) -> None:
-    """Root plus three callers at depth 1 against a budget of 2: one fits, in id order."""
+    """Root plus three callers at depth 1 against a budget of 2: one fits.
+
+    Callables go first: by id alone the file `pkg.svc` would take the slot. And
+    the walk stops at the cut, though `pkg.svc.other` has a caller of its own.
+    """
     payload = _impact(db, "pkg.core.target", max_nodes=2)
 
-    assert _fqns(payload) == {"pkg.core.target", "pkg.svc"}
+    assert _fqns(payload) == {"pkg.core.target", "pkg.svc.other"}
     assert payload["truncated"] == {"depth": 1, "omitted": 2, "max_nodes": 2}
     assert {(edge["src"], edge["dst"]) for edge in payload["edges"]} == {
-        ("pkg.svc", "pkg.core.target")
+        ("pkg.svc.other", "pkg.core.target")
     }
 
 
 def test_the_budget_keeps_whole_levels_that_fit(db: str) -> None:
-    """Depth 1 is root + three callers; `pkg.api.route` and `pkg.api` are depth 2."""
+    """Depth 1 is root + three; depth 2 brings `pkg.api` and two of its functions."""
     payload = _impact(db, "pkg.core.target", max_nodes=5)
 
-    assert {"pkg.svc", "pkg.svc.use", "pkg.svc.other"} <= _fqns(payload)
+    assert {"pkg.svc", "pkg.svc.use", "pkg.svc.other", "pkg.api.later"} <= _fqns(payload)
+    assert "pkg.api" not in _fqns(payload), "a file is cut before a callable"
     assert payload["truncated"]["depth"] == 2
-    assert payload["truncated"]["omitted"] == 1
+    assert payload["truncated"]["omitted"] == 2
+
+
+def test_no_edge_names_a_node_the_budget_cut(db: str) -> None:
+    """External pruning would hide a leaked edge; with externals kept, nothing does."""
+    payload: dict[str, Any] = json.loads(
+        cgis_analyze_impact(
+            "pkg.core.target",
+            db,
+            depth=5,
+            output_format="json",
+            include_external=True,
+            max_nodes=2,
+        )
+    )
+
+    fqns = _fqns(payload)
+    assert all(edge["src"] in fqns and edge["dst"] in fqns for edge in payload["edges"])
+
+
+def test_a_root_in_test_code_keeps_its_test_callers(db: str) -> None:
+    """Every caller of a test helper is a test; dropping them would answer with nothing."""
+    payload = _impact(db, "tests.helpers.helper")
+
+    assert "tests.test_core.test_target" in _fqns(payload)
+    assert "excluded_tests" not in payload
 
 
 def test_an_answer_within_budget_says_nothing_about_truncation(db: str) -> None:

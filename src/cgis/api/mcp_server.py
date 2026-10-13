@@ -526,7 +526,9 @@ def cgis_analyze_impact(
         Field(
             description="Also return callers in test code. Off by default: a test is not "
             "production code that breaks, and on a large repo tests outnumber the real "
-            "callers. The answer says how many were left out."
+            "callers. The answer says how many were left out — a floor when it is also "
+            "truncated, since levels past the cut are not walked. A root that is itself a "
+            "test keeps its test callers."
         ),
     ] = False,
     max_nodes: Annotated[
