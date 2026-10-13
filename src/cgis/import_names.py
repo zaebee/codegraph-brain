@@ -9,7 +9,7 @@ Kept out of `IngestionPipeline`, which only says which files it walked past and
 when the result must be stored.
 """
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -20,7 +20,7 @@ from cgis.extractors.base import BaseExtractor
 from cgis.npm_dependencies import NpmDependencies
 from cgis.python_dependencies import declared_import_roots
 from cgis.tsconfig_paths import TSCONFIG, TsconfigPaths
-from cgis.workspaces import PACKAGE_MANIFEST, WorkspacePackages
+from cgis.workspaces import PACKAGE_MANIFEST, WorkspacePackages, workspace_member_names
 
 if TYPE_CHECKING:
     from cgis.storage.sqlite_store import SQLiteStore
@@ -69,18 +69,22 @@ class ImportNames:
         store.record_npm_dependencies(self.npm_dependencies)
 
 
-def _enclosing_directories(root: Path) -> Iterator[Path]:
-    """The directories above `root`, nearest first, up to the one holding the repository.
+def _enclosing_directories(root: Path) -> tuple[list[Path], bool]:
+    """The directories above `root`, nearest first, and whether a repository bounds them.
 
-    None when `root` is itself a repository's top: a checkout nested in another
-    must not read its parent's configs.
+    Up to and including the one that holds the repository; none when `root` is
+    itself a repository's top, since a checkout nested in another must not read
+    its parent's configs. With no repository anywhere the list runs to `/`, and
+    the flag says so, for the caller to trust only the nearest find.
     """
     if (root / _REPOSITORY_MARKER).exists():
-        return
+        return [], True
+    directories: list[Path] = []
     for directory in root.parents:
-        yield directory
+        directories.append(directory)
         if (directory / _REPOSITORY_MARKER).exists():
-            return
+            return directories, True
+    return directories, False
 
 
 class ImportNameCollector:
@@ -92,6 +96,8 @@ class ImportNameCollector:
         self._packages = WorkspacePackages(workspace_root, extractors)
         self._tsconfigs = TsconfigPaths(workspace_root, extractors)
         self._npm = NpmDependencies()
+        # Workspace packages named by a manifest above the root, outside the walk.
+        self._siblings: set[str] = set()
         self._note_configs_above()
 
     def _note_configs_above(self) -> None:
@@ -101,19 +107,23 @@ class ImportNameCollector:
         `app/package.json`, yet the compiler gives each file the nearest tsconfig
         above it and Node finds packages in every `node_modules` up the tree. So
         the nearest tsconfig above counts — unless the root has its own, which is
-        nearer — and every package.json above declares dependencies. The search
-        stops at the repository boundary, as `python_dependencies` does (#495).
+        nearer — and every package.json above declares dependencies, less the
+        workspace packages a monorepo manifest there names. The search stops at
+        the repository boundary, as `python_dependencies` does (#495).
         """
-        found_tsconfig = (self._root / TSCONFIG).is_file()
-        for directory in _enclosing_directories(self._root):
-            manifest = directory / PACKAGE_MANIFEST
-            if manifest.is_file():
-                self._npm.note(manifest)
-            config = directory / TSCONFIG
-            if not found_tsconfig and config.is_file():
-                logger.info("Reading tsconfig.json above the ingest root", path=str(config))
-                self._tsconfigs.note(config)
-                found_tsconfig = True
+        directories, bounded = _enclosing_directories(self._root)
+        manifests = [d / PACKAGE_MANIFEST for d in directories if (d / PACKAGE_MANIFEST).is_file()]
+        # Without a repository the walk up reaches `$HOME` or `/`: a stray manifest
+        # there would add packages, so only the nearest is trusted (#560 review).
+        for manifest in manifests if bounded else manifests[:1]:
+            self._npm.note(manifest)
+            self._siblings |= workspace_member_names(manifest)
+        if (self._root / TSCONFIG).is_file():
+            return
+        config = next((d / TSCONFIG for d in directories if (d / TSCONFIG).is_file()), None)
+        if config is not None:
+            logger.info("Reading tsconfig.json above the ingest root", path=str(config))
+            self._tsconfigs.note(config)
 
     def note(self, path: Path) -> None:
         """Hand a file the walk passed to whichever reader takes it; any other is ignored."""
@@ -133,5 +143,5 @@ class ImportNameCollector:
             workspace_packages=self._packages.unambiguous(),
             path_aliases=self._tsconfigs.aliases(self._packages.directories()),
             python_dependencies=sorted(declared_import_roots(self._root)),
-            npm_dependencies=self._npm.declared(excluding=self._packages.names()),
+            npm_dependencies=self._npm.declared(excluding=self._packages.names() | self._siblings),
         )

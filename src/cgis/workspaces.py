@@ -20,6 +20,42 @@ logger = structlog.getLogger(__name__)
 PACKAGE_MANIFEST = "package.json"
 
 
+def workspace_member_names(manifest: Path) -> set[str]:
+    """The package names a monorepo manifest's `workspaces` globs reach, as written.
+
+    For a manifest above the ingest root (#555): its workspace packages lie
+    outside the walk, so `WorkspacePackages` never sees them, yet an app inside
+    the walk may depend on one with a plain version range. They are ours, and
+    must not read as npm packages (#560 review). Both spellings are read — a list,
+    or Yarn's `{"packages": [...]}`; a `!` exclusion is skipped. Unreadable
+    manifests contribute nothing.
+    """
+    data = _read_manifest(manifest)
+    workspaces = data.get("workspaces") if data else None
+    if isinstance(workspaces, dict):
+        workspaces = workspaces.get("packages")
+    if not isinstance(workspaces, list):
+        return set()
+    names: set[str] = set()
+    for pattern in workspaces:
+        if not isinstance(pattern, str) or pattern.startswith("!"):
+            continue
+        for member in manifest.parent.glob(f"{pattern.rstrip('/')}/{PACKAGE_MANIFEST}"):
+            name = (_read_manifest(member) or {}).get("name")
+            if isinstance(name, str) and name.strip():
+                names.add(name)
+    return names
+
+
+def _read_manifest(manifest: Path) -> dict[str, object] | None:
+    """A `package.json` as a dict, or None when it cannot be read as one."""
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
 class WorkspacePackages:
     """Collects package names during a walk and hands the resolver the unambiguous ones."""
 

@@ -115,11 +115,61 @@ def test_an_alias_target_outside_the_root_is_dropped(tmp_path: Path) -> None:
     # `@shared/*` points beside `src/`, outside what was ingested: there is no
     # node to land on, so the import stays as written rather than guessed.
     src = _project(tmp_path, _tsconfig({"@/*": ["./src/*"], "@shared/*": ["./shared/*"]}))
+    # A decoy inside the root with the same tail: an alias that leaked past the
+    # root boundary (`../shared/*` read as `shared.*`) would land on it.
     _write(tmp_path, {"shared/x.ts": "export const x = 1;\n"})
+    _write(src, {"shared/x.ts": "export const x = 2;\n"})
     _write(src, {"App.tsx": 'import { x } from "@shared/x";\n' + APP})
     imports = _imports(src)
     assert "@shared.x" in imports
+    assert "shared.x" not in imports
     assert "lib.utils" in imports
+
+
+def test_a_workspace_sibling_above_the_root_is_not_external(tmp_path: Path) -> None:
+    # Ingesting `apps/web/src` of a monorepo: the app depends on `@x/lib` with a
+    # plain `"*"` range, and `@x/lib` is a workspace package outside the walk.
+    # It is this repository's own code — unresolved here, never a library (#560 review).
+    (tmp_path / ".git").mkdir()
+    _write(
+        tmp_path,
+        {
+            "package.json": json.dumps({"name": "mono", "workspaces": ["packages/*", "apps/*"]}),
+            "packages/lib/package.json": json.dumps({"name": "@x/lib"}),
+            "packages/lib/index.ts": "export function libFn() {\n  return 1;\n}\n",
+            "apps/web/package.json": json.dumps(
+                {"name": "web", "dependencies": {"@x/lib": "*", "react": "^19"}}
+            ),
+            "apps/web/src/main.ts": (
+                'import { libFn } from "@x/lib";\nimport { useState } from "react";\n'
+                "export function main() {\n  useState(0);\n  return libFn();\n}\n"
+            ),
+        },
+    )
+    nodes, _, _ = _pipeline().run(str(tmp_path / "apps/web/src"))
+    by_id = {n.id: n for n in nodes}
+    assert by_id["@x.lib"].namespace is NodeNamespace.UNKNOWN
+    assert by_id["react"].namespace is NodeNamespace.EXTERNAL
+
+
+def test_without_a_repository_only_the_nearest_manifest_counts(tmp_path: Path) -> None:
+    # No `.git` anywhere — a ZIP download, a container's `/app`. The search would
+    # reach `$HOME` or `/`, and a stray manifest there must not add packages.
+    _write(
+        tmp_path,
+        {
+            "package.json": json.dumps({"dependencies": {"stray-pkg": "1"}}),
+            "proj/package.json": json.dumps({"dependencies": {"react": "^19"}}),
+            "proj/src/main.ts": (
+                'import { a } from "stray-pkg";\nimport { useState } from "react";\n'
+                "export function main() {\n  useState(0);\n  return a();\n}\n"
+            ),
+        },
+    )
+    nodes, _, _ = _pipeline().run(str(tmp_path / "proj/src"))
+    by_id = {n.id: n for n in nodes}
+    assert by_id["react"].namespace is NodeNamespace.EXTERNAL
+    assert by_id["stray-pkg"].namespace is NodeNamespace.UNKNOWN
 
 
 def test_the_repository_root_ingest_is_unchanged(tmp_path: Path) -> None:
