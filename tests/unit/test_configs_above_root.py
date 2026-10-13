@@ -15,8 +15,11 @@ in another never reads its parent's.
 import json
 from pathlib import Path
 
+import pytest
+
 from cgis.core.models import EdgeType, NodeNamespace
 from cgis.extractors.typescript_extractor import TypeScriptExtractor
+from cgis.import_names import ImportNameCollector
 from cgis.pipeline import IngestionPipeline
 
 APP = """\
@@ -170,6 +173,17 @@ def test_without_a_repository_only_the_nearest_manifest_counts(tmp_path: Path) -
     by_id = {n.id: n for n in nodes}
     assert by_id["react"].namespace is NodeNamespace.EXTERNAL
     assert by_id["stray-pkg"].namespace is NodeNamespace.UNKNOWN
+
+
+def test_a_relative_root_still_reaches_the_configs_above(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The pipeline hands the collector a resolved root, but a direct caller may
+    # not: `Path("src").parents` is just `.`, and would never reach the project.
+    _project(tmp_path)
+    monkeypatch.chdir(tmp_path / "src")
+    names = ImportNameCollector(Path(), {".ts": TypeScriptExtractor()}).collect()
+    assert names.npm_dependencies == ["react"]
 
 
 def test_the_repository_root_ingest_is_unchanged(tmp_path: Path) -> None:

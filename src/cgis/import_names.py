@@ -91,10 +91,15 @@ class ImportNameCollector:
     """Takes the `package.json` and `tsconfig.json` files a walk passes."""
 
     def __init__(self, workspace_root: Path, extractors: Mapping[str, BaseExtractor]) -> None:
-        """Collect for `workspace_root`, naming modules with the TypeScript extractor's rule."""
-        self._root = workspace_root
-        self._packages = WorkspacePackages(workspace_root, extractors)
-        self._tsconfigs = TsconfigPaths(workspace_root, extractors)
+        """Collect for `workspace_root`, naming modules with the TypeScript extractor's rule.
+
+        The root is resolved first: the search above it walks `parents`, which a
+        relative path does not have past `.` (#560 review). The pipeline already
+        passes a resolved root, so for it nothing changes.
+        """
+        self._root = workspace_root.resolve()
+        self._packages = WorkspacePackages(self._root, extractors)
+        self._tsconfigs = TsconfigPaths(self._root, extractors)
         self._npm = NpmDependencies()
         # Workspace packages named by a manifest above the root, outside the walk.
         self._siblings: set[str] = set()
