@@ -67,6 +67,25 @@ symbol was added, renamed or removed. It never creates a missing database,
 and a graph ingested before this option existed is only reported stale, not
 refreshed, until it is ingested once more.
 
+### What the server tells the agent, and which tools it lists
+
+The server sends usage instructions in its `initialize` response: when the
+graph beats grep, how to read `freshness` and `coverage`, and which languages
+it covers. Any MCP host gets them, not only the Claude plugin with its skill.
+
+Every listed tool's schema costs context in every session. To list fewer, set
+`"CGIS_MCP_TOOLS"` in the server's `env` to a comma-separated allowlist; the
+`cgis_` prefix may be left off:
+
+```json
+"env": { "CGIS_MCP_TOOLS": "overview,find_symbol,analyze_impact,trace_flow,context,ingest" }
+```
+
+Unset or blank lists all tools. A tool left out is not listed, and calling it
+by name returns a message saying it is disabled rather than "unknown tool". A
+name that matches no tool is logged; an allowlist that matches none keeps
+every tool listed.
+
 ### Refreshing outside the MCP server: hooks, not a watcher
 
 cgis has no watch mode, on purpose (#175). A watcher re-ingests on every save,

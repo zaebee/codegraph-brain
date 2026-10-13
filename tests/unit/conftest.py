@@ -9,9 +9,15 @@ do::
 pytest under its conftest name rather than imported explicitly.
 """
 
+import os
 from pathlib import Path
 
 import pytest
+
+# The MCP server applies CGIS_MCP_TOOLS when it is imported, and tests that list
+# or call its tools assume all of them (#542). Cleared before any test module
+# imports it; tests of the allowlist build their own server.
+os.environ.pop("CGIS_MCP_TOOLS", None)
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.guardian.martian import ReviewRecord
