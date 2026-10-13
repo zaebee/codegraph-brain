@@ -356,9 +356,10 @@ def bare_import_namespace(
     if not under:
         return None
     specifier = max(under, key=len)
-    if any(
-        specifier == name or specifier.startswith(f"{name}/") for name in index.npm_dependencies
-    ):
+    # Each `/`-prefix of the specifier is a candidate package name: `@x/a/b/c`
+    # tries `@x`, `@x/a`, … — a set lookup each, never a scan of the manifests.
+    parts = specifier.split("/")
+    if any("/".join(parts[:i]) in index.npm_dependencies for i in range(1, len(parts) + 1)):
         return NodeNamespace.EXTERNAL
     if specifier.startswith(NODE_SCHEME) or specifier.split("/")[0] in NODE_BUILTIN_MODULES:
         return NodeNamespace.STDLIB
@@ -576,15 +577,19 @@ class IndexBuilder:
 
         for node in nodes_by_id.values():
             # Maps the extractor attached to FILE and CLASS nodes.
-            self._index_metadata(node, file_imports, self_types, reexports, star_imports)
+            self._index_metadata(
+                node,
+                file_imports,
+                self_types,
+                reexports,
+                star_imports,
+                file_bare_imports,
+                file_bare_bindings,
+            )
             if node.type == NodeType.FILE and node.metadata.get("shadowed_globals"):
                 file_shadowed_globals[os.path.normpath(node.file_path)] = frozenset(
                     node.metadata["shadowed_globals"]
                 )
-            if node.type == NodeType.FILE and node.metadata.get("bare_imports"):
-                path = os.path.normpath(node.file_path)
-                file_bare_imports[path] = frozenset(node.metadata["bare_imports"])
-                file_bare_bindings[path] = dict(node.metadata.get("bare_bindings") or {})
 
             # Index global functions/symbols
             if node.type in (NodeType.FUNCTION, NodeType.CLASS):
@@ -737,15 +742,23 @@ class IndexBuilder:
         self_types: dict[str, dict[str, str]],
         reexports: dict[str, dict[str, str]],
         star_imports: dict[str, list[str]],
+        bare_imports: dict[str, frozenset[str]],
+        bare_bindings: dict[str, dict[str, str]],
     ) -> None:
         """Read the maps the extractor attached to a FILE or CLASS node.
 
-        A FILE carries its import map; a CLASS carries the attribute types
-        recorded from annotations (spec D1). Both are extractor output the
-        resolver consumes rather than anything derived here.
+        A FILE carries its import map, and a TypeScript one its bare imports and
+        their bindings (#556); a CLASS carries the attribute types recorded from
+        annotations (spec D1). All are extractor output the resolver consumes
+        rather than anything derived here.
         """
         if node.type == NodeType.FILE:
-            file_imports[os.path.normpath(node.file_path)] = node.metadata.get("import_map") or {}
+            path = os.path.normpath(node.file_path)
+            file_imports[path] = node.metadata.get("import_map") or {}
+            specifiers = node.metadata.get("bare_imports")
+            if specifiers:
+                bare_imports[path] = frozenset(specifiers)
+                bare_bindings[path] = dict(node.metadata.get("bare_bindings") or {})
             forwarded = node.metadata.get("reexports")
             if forwarded:
                 reexports[node.id] = dict(forwarded)

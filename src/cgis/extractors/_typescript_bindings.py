@@ -85,20 +85,23 @@ def bare_imports(root: TSNode) -> tuple[list[str], dict[str, str]]:
 def _bind_clause(clause: TSNode, module: str, bindings: dict[str, str]) -> None:
     """Map each local name an import clause introduces to the symbol it names."""
     for child in clause.children:
-        if child.type == "identifier" and child.text is not None:
-            bindings[child.text.decode("utf-8")] = module
+        if child.type == "named_imports":
+            for spec in (c for c in child.children if c.type == "import_specifier"):
+                name = _text(spec.child_by_field_name("name"))
+                local = _text(spec.child_by_field_name("alias")) or name
+                bindings[local] = f"{module}.{name}"
         elif child.type == "namespace_import":
-            local = next((c for c in child.children if c.type == "identifier"), None)
-            if local is not None and local.text is not None:
-                bindings[local.text.decode("utf-8")] = module
-        elif child.type == "named_imports":
-            for spec in child.children:
-                if spec.type != "import_specifier":
-                    continue
-                name = spec.child_by_field_name("name")
-                local = spec.child_by_field_name("alias") or name
-                if name is not None and name.text and local is not None and local.text:
-                    bindings[local.text.decode("utf-8")] = f"{module}.{name.text.decode('utf-8')}"
+            local_node = next((c for c in child.children if c.type == "identifier"), None)
+            bindings[_text(local_node)] = module
+        elif child.type == "identifier":
+            bindings[_text(child)] = module
+    # A node without text yields "", which binds nothing.
+    bindings.pop("", None)
+
+
+def _text(node: TSNode | None) -> str:
+    """A node's source text, or "" when there is no node or no text."""
+    return node.text.decode("utf-8") if node is not None and node.text else ""
 
 
 def _collect(node: TSNode, bound: set[str]) -> None:
