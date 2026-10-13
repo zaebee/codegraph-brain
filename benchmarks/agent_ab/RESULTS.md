@@ -1,7 +1,7 @@
 # Agent A/B results
 
 One section per run, newest first. The raw lines are in `results.jsonl`; the
-transcripts they point at are git-ignored and were not kept.
+transcripts they point at are git-ignored and stay on the machine that ran them.
 
 ## 2026-10-13: `owner-impact-credit-wallet`, after #563 and #565
 
