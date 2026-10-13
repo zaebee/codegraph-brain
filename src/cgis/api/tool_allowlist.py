@@ -10,16 +10,19 @@ A tool left out is not listed, but it is not unknown either: calling it by name
 returns a message saying it is disabled and how to enable it, rather than the
 SDK's bare "Unknown tool" — an agent that learned the name elsewhere (a skill, a
 previous session) should be told why, not left to guess.
+
+Mistakes in the variable are printed to stderr, not logged: this runs at import,
+before the stdio transport owns stdout, and structlog's default logger writes
+to stdout — a warning there is a line of non-JSON-RPC on the protocol channel
+(found in review).
 """
 
+import sys
 from collections.abc import Iterable
 from typing import Any
 
-import structlog
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.types import CallToolResult, InputRequiredResult, TextContent
-
-logger = structlog.getLogger(__name__)
 
 TOOLS_ENV = "CGIS_MCP_TOOLS"
 _PREFIX = "cgis_"
@@ -52,16 +55,18 @@ class CgisServer(MCPServer[Any]):
         """Unlist every tool `raw` does not allow; call once all tools are registered.
 
         An allowlist that matches no tool at all is a typo, not a request for an
-        empty server: every tool stays listed and the mistake is logged.
+        empty server: every tool stays listed and the mistake is reported. With
+        a narrower list, the instructions sent in `initialize` say which tools
+        this server lists, since they name tools it may have left out.
         """
         names = [tool.name for tool in self._tool_manager.list_tools()]
         allowed, unknown = parse_allowlist(raw, names)
         if unknown:
-            logger.warning("CGIS_MCP_TOOLS names no such tool", unknown=unknown, known=names)
+            print(f"{TOOLS_ENV}: no such tool: {', '.join(unknown)}", file=sys.stderr)
         if allowed is None:
             return
         if not allowed:
-            logger.error("CGIS_MCP_TOOLS allows no tool; listing all of them", value=raw)
+            print(f"{TOOLS_ENV}={raw} allows no tool; listing all of them", file=sys.stderr)
             return
         for name in names:
             if name not in allowed:
@@ -70,6 +75,11 @@ class CgisServer(MCPServer[Any]):
                     f"❌ {name} is disabled on this server: {TOOLS_ENV}={raw} leaves it out. "
                     f"Add it to {TOOLS_ENV} in the server's environment to enable it."
                 )
+        listed = ", ".join(sorted(allowed))
+        self._lowlevel_server.instructions = (
+            f"{self.instructions or ''}\n\nThis server lists only: {listed}. "
+            f"Any other tool named above is disabled by {TOOLS_ENV}."
+        ).lstrip()
 
     async def call_tool(
         self,

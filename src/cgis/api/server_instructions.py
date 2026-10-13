@@ -30,9 +30,10 @@ resolves against the server's working directory, not yours.
 
 Trust the answer for what it covers; do not re-grep to confirm a resolved edge. Read \
 it honestly:
-- freshness: when files changed since the last ingest, answers carry a freshness \
-note. A stale graph answers confidently and wrongly — re-run cgis_ingest (incremental) \
-before relying on it.
+- freshness: when files changed since the last ingest, a graph answer says so — a \
+freshness key in json, a note above a diagram (cgis_find_symbol carries none). A stale \
+graph answers confidently and wrongly — re-run cgis_ingest (incremental) before \
+relying on it.
 - coverage / top_unresolved (json): calls on values whose type is decided at runtime \
 (an injected client, logger.info) resolve to nothing. An empty impact result means \
 "no static callers found", not "safe to delete": dispatch through a registry, a \

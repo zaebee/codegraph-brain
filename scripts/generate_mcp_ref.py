@@ -6,12 +6,14 @@ Output is deterministic and suitable for committing back to the repository via C
 """
 
 import asyncio
+import os
 from pathlib import Path
 from typing import Any
 
 from mcp.types import Tool
 
 from cgis.api.mcp_server import mcp  # registers tools as a side-effect
+from cgis.api.tool_allowlist import TOOLS_ENV
 
 _OUTPUT = Path("docs/how-to/MCP_REFERENCE.md")
 
@@ -43,7 +45,14 @@ def _format_tool(tool: Tool) -> str:
 
 
 def generate_reference() -> None:
-    """Write MCP_REFERENCE.md from all registered MCP tool schemas."""
+    """Write MCP_REFERENCE.md from all registered MCP tool schemas.
+
+    Refuses when CGIS_MCP_TOOLS is set: the server has already unlisted the
+    tools it leaves out, and the reference would silently lose them (#542).
+    """
+    if os.environ.get(TOOLS_ENV, "").strip():
+        _msg = f"{TOOLS_ENV} is set; unset it to document every tool."
+        raise SystemExit(_msg)
     _OUTPUT.parent.mkdir(parents=True, exist_ok=True)
 
     tools: list[Tool] = sorted(asyncio.run(mcp.list_tools()), key=lambda t: t.name)

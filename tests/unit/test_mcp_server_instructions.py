@@ -43,7 +43,7 @@ def _call(server: CgisServer, name: str) -> CallToolResult:
 
 def _toy_server(allowlist: str | None) -> CgisServer:
     """Two tools, then the allowlist — the order `mcp_server` registers in."""
-    server = CgisServer("toy")
+    server = CgisServer("toy", instructions="Use cgis_alpha, then cgis_beta.")
 
     @server.tool()
     def cgis_alpha() -> str:
@@ -122,6 +122,41 @@ def test_an_allowed_tool_still_runs() -> None:
 def test_an_allowlist_matching_nothing_keeps_every_tool() -> None:
     """A typo is not a request for an empty server."""
     assert sorted(_listed(_toy_server("alhpa"))) == ["cgis_alpha", "cgis_beta"]
+
+
+def _instructions(server: CgisServer) -> str | None:
+    """The instructions a client receives in `initialize`."""
+
+    async def run() -> str | None:
+        async with Client(server) as client:
+            return client.instructions
+
+    return asyncio.run(run())
+
+
+def test_a_narrowed_server_says_which_tools_it_lists() -> None:
+    """The instructions name tools by name; an agent must not chase a hidden one."""
+    text = _instructions(_toy_server("alpha"))
+
+    assert text is not None
+    assert text.startswith("Use cgis_alpha, then cgis_beta.")
+    assert "lists only: cgis_alpha." in text
+
+
+def test_without_an_allowlist_the_instructions_are_untouched() -> None:
+    assert _instructions(_toy_server(None)) == "Use cgis_alpha, then cgis_beta."
+
+
+def test_a_mistake_in_the_variable_never_reaches_stdout() -> None:
+    """stdout is the JSON-RPC channel; the import-time warning once landed on it."""
+    script = "import cgis.api.mcp_server\n"
+    env = {**os.environ, TOOLS_ENV: "analyze_impact,bogus"}
+    out = subprocess.run(
+        [sys.executable, "-c", script], env=env, capture_output=True, text=True, check=True
+    )
+
+    assert out.stdout == ""
+    assert "no such tool: cgis_bogus" in out.stderr
 
 
 def test_the_server_reads_the_variable_at_startup() -> None:
