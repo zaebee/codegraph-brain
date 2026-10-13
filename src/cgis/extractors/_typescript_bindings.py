@@ -1,4 +1,4 @@
-"""Which JavaScript runtime globals a TypeScript file rebinds (#111).
+"""What a TypeScript file binds: the runtime globals it rebinds (#111), its bare imports (#556).
 
 The resolver rewrites a call on `history` or `fetch` to the runtime's
 `js_builtins.*` — unless the file has its own `history`: an import, a `const`,
@@ -15,7 +15,7 @@ from collections.abc import Callable
 
 from tree_sitter import Node as TSNode
 
-from cgis.core.js_globals import JS_GLOBALS
+from cgis.core.js_globals import JS_GLOBALS, specifier_fqn
 
 #: Nodes whose field holds a binding pattern, and that field's name.
 _PATTERN_FIELDS: dict[str, str] = {
@@ -49,6 +49,59 @@ def shadowed_globals(root: TSNode) -> list[str]:
     bound: set[str] = set()
     _collect(root, bound)
     return sorted(bound & JS_GLOBALS)
+
+
+def bare_imports(root: TSNode) -> tuple[list[str], dict[str, str]]:
+    """The file's bare (non-relative) import specifiers, and what each local name binds.
+
+    `import React, { useState as s } from "react"` gives the specifier `react` and
+    the bindings `React -> react`, `s -> react.useState`; a namespace import binds
+    the module itself. The original name is kept, not the alias, because that is
+    the package's own symbol. Relative imports are left out: their targets are
+    modules of ours, which the resolver already reaches by name (#556).
+
+    Specifiers are kept as written, bindings dotted like every other target: only
+    the written form tells the package `lodash.debounce` from `lodash/debounce`.
+
+    Only top-level statements: that is where an ES import can stand.
+    """
+    specifiers: set[str] = set()
+    bindings: dict[str, str] = {}
+    for statement in root.children:
+        if statement.type != "import_statement":
+            continue
+        source = statement.child_by_field_name("source")
+        raw = source.text.decode("utf-8").strip("'\"") if source and source.text else ""
+        if not raw or raw.startswith("."):
+            continue
+        specifiers.add(raw)
+        module = specifier_fqn(raw)
+        clause = next((c for c in statement.children if c.type == "import_clause"), None)
+        if clause is not None:
+            _bind_clause(clause, module, bindings)
+    return sorted(specifiers), dict(sorted(bindings.items()))
+
+
+def _bind_clause(clause: TSNode, module: str, bindings: dict[str, str]) -> None:
+    """Map each local name an import clause introduces to the symbol it names."""
+    for child in clause.children:
+        if child.type == "named_imports":
+            for spec in (c for c in child.children if c.type == "import_specifier"):
+                name = _text(spec.child_by_field_name("name"))
+                local = _text(spec.child_by_field_name("alias")) or name
+                bindings[local] = f"{module}.{name}"
+        elif child.type == "namespace_import":
+            local_node = next((c for c in child.children if c.type == "identifier"), None)
+            bindings[_text(local_node)] = module
+        elif child.type == "identifier":
+            bindings[_text(child)] = module
+    # A node without text yields "", which binds nothing.
+    bindings.pop("", None)
+
+
+def _text(node: TSNode | None) -> str:
+    """A node's source text, or "" when there is no node or no text."""
+    return node.text.decode("utf-8") if node is not None and node.text else ""
 
 
 def _collect(node: TSNode, bound: set[str]) -> None:

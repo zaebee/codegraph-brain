@@ -1,9 +1,10 @@
 """The names imports resolve through, collected from the configs around a walk.
 
-Three sources, read the same way and handed to the resolver together: workspace
-packages from `package.json` (#504) and `compilerOptions.paths` aliases from
-`tsconfig.json` (#508), which the walk passes, and the dependencies a Python
-project declares (#495), read from the manifests at or above the ingest root.
+Four sources, read the same way and handed to the resolver together: workspace
+packages and declared npm dependencies from `package.json` (#504, #556) and
+`compilerOptions.paths` aliases from `tsconfig.json` (#508), which the walk passes,
+and the dependencies a Python project declares (#495), read from the manifests at
+or above the ingest root.
 Kept out of `IngestionPipeline`, which only says which files it walked past and
 when the result must be stored.
 """
@@ -14,6 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from cgis.extractors.base import BaseExtractor
+from cgis.npm_dependencies import NpmDependencies
 from cgis.python_dependencies import declared_import_roots
 from cgis.tsconfig_paths import TSCONFIG, TsconfigPaths
 from cgis.workspaces import PACKAGE_MANIFEST, WorkspacePackages
@@ -32,6 +34,8 @@ class ImportNames:
     path_aliases: dict[str, dict[str, list[str]]]
     #: Import roots of the declared Python dependencies, sorted.
     python_dependencies: list[str]
+    #: Declared npm package names as written, less our workspace packages, sorted.
+    npm_dependencies: list[str]
 
     def differ_from(self, store: "SQLiteStore") -> bool:
         """Whether the stored graph was resolved against different names.
@@ -39,13 +43,15 @@ class ImportNames:
         A renamed or moved package, or an edited alias, changes what unchanged
         files' imports mean, and an incremental run re-resolves only the files
         that changed — so a difference calls for a rebuild (#504, #508). An added
-        or dropped dependency likewise changes what a colliding root means (#495).
+        or dropped dependency likewise changes what a colliding root means (#495),
+        or whether a TypeScript import names a library (#556).
         A graph that predates recording any of them reads as having had none.
         """
         return (
             (store.get_workspace_packages() or {}) != self.workspace_packages
             or (store.get_tsconfig_paths() or {}) != self.path_aliases
             or (store.get_python_dependencies() or []) != self.python_dependencies
+            or (store.get_npm_dependencies() or []) != self.npm_dependencies
         )
 
     def record(self, store: "SQLiteStore") -> None:
@@ -53,6 +59,7 @@ class ImportNames:
         store.record_workspace_packages(self.workspace_packages)
         store.record_tsconfig_paths(self.path_aliases)
         store.record_python_dependencies(self.python_dependencies)
+        store.record_npm_dependencies(self.npm_dependencies)
 
 
 class ImportNameCollector:
@@ -63,11 +70,13 @@ class ImportNameCollector:
         self._root = workspace_root
         self._packages = WorkspacePackages(workspace_root, extractors)
         self._tsconfigs = TsconfigPaths(workspace_root, extractors)
+        self._npm = NpmDependencies()
 
     def note(self, path: Path) -> None:
         """Hand a file the walk passed to whichever reader takes it; any other is ignored."""
         if path.name == PACKAGE_MANIFEST:
             self._packages.note(path)
+            self._npm.note(path)
         elif path.name == TSCONFIG:
             self._tsconfigs.note(path)
 
@@ -81,4 +90,5 @@ class ImportNameCollector:
             workspace_packages=self._packages.unambiguous(),
             path_aliases=self._tsconfigs.aliases(self._packages.directories()),
             python_dependencies=sorted(declared_import_roots(self._root)),
+            npm_dependencies=self._npm.declared(excluding=self._packages.names()),
         )

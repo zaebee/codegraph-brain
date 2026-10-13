@@ -9,8 +9,9 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import NamedTuple
 
+from cgis.core.js_globals import specifier_fqn
 from cgis.core.models import SELF_PREFIX, Node, NodeNamespace, NodeType
-from cgis.resolver.js_builtins import JS_BUILTINS_ROOT
+from cgis.resolver.js_builtins import JS_BUILTINS_ROOT, NODE_BUILTIN_MODULES, NODE_SCHEME
 
 _BUILTINS: frozenset[str] = frozenset(dir(builtins))
 
@@ -102,6 +103,15 @@ class SymbolIndex:
     # `root.second` heads our own nodes have under those roots: `alembic.env`,
     # `alembic.versions`. What tells our package apart from the library's.
     dependency_heads: frozenset[str] = frozenset()
+    # npm packages the `package.json` files declare, as written (`@x/a`, not
+    # `@x.a`), less this repository's own workspace packages (#556).
+    npm_dependencies: frozenset[str] = frozenset()
+    # normalized file_path -> the bare (non-relative) specifiers a TypeScript file
+    # imports, as written: what licenses reading a name as a package's (#556).
+    file_bare_imports: Mapping[str, frozenset[str]] = MappingProxyType({})
+    # normalized file_path -> {local name: package symbol FQN} for those imports:
+    # `useState` -> `react.useState`, a namespace import `Icons` -> `lucide-react`.
+    file_bare_bindings: Mapping[str, dict[str, str]] = MappingProxyType({})
 
     def resolve_import_target(self, fqn: str, source_file: str | None = None) -> str | None:
         """Reconcile a module import against the node ids, or None to leave it alone.
@@ -284,6 +294,9 @@ class SymbolIndex:
             # let unresolved_ratio *improve* as a codebase adopted more dependency
             # injection, so a green `validate` said nothing about the gap (#414).
             return NodeNamespace.UNKNOWN
+        package = bare_import_namespace(self, fqn, source_file)
+        if package is not None:
+            return package
         root = fqn.split(".", maxsplit=1)[0]
         if root in self.internal_roots:
             if _is_declared_dependency(self, fqn, root, source_file):
@@ -310,6 +323,47 @@ class SymbolIndex:
         if source_node:
             return os.path.normpath(source_node.file_path)
         return os.path.normpath(edge_file_path) if edge_file_path else None
+
+
+def bare_import_namespace(
+    index: SymbolIndex, fqn: str, source_file: str | None
+) -> NodeNamespace | None:
+    """EXTERNAL or STDLIB when `fqn` lies under a package `source_file` imports, else None.
+
+    Only TypeScript files record bare imports, so any other source — or none —
+    is None without a language check here. Two things must hold (#556).
+
+    The file imports a bare specifier `fqn` sits under — so `react.render` on a
+    parameter named `react` in a file that never imports React stays
+    unresolved, the mistake #454 fixed for Python names.
+    And that specifier names a package: one a `package.json` declares, which
+    is EXTERNAL, or a Node builtin, which is STDLIB. An import of anything else
+    — an undeclared package, a broken alias — keeps its UNKNOWN, because that
+    is a lost edge `top_unresolved` should show.
+
+    A declared package wins over a builtin of the same name: a browser app
+    that declares `buffer` bundles that package, not Node's.
+
+    The specifier is matched to a package as written, `/` and all: dotted,
+    `lodash.debounce` (a package of its own) would pass for a subpath of a
+    declared `lodash`. When a target sits under several imported specifiers the
+    longest decides, since it is the one that names the target's module.
+    """
+    imported = index.file_bare_imports.get(source_file or "", frozenset())
+    under = [
+        s for s in imported if fqn == specifier_fqn(s) or fqn.startswith(f"{specifier_fqn(s)}.")
+    ]
+    if not under:
+        return None
+    specifier = max(under, key=len)
+    # Each `/`-prefix of the specifier is a candidate package name: `@x/a/b/c`
+    # tries `@x`, `@x/a`, … — a set lookup each, never a scan of the manifests.
+    parts = specifier.split("/")
+    if any("/".join(parts[:i]) in index.npm_dependencies for i in range(1, len(parts) + 1)):
+        return NodeNamespace.EXTERNAL
+    if specifier.startswith(NODE_SCHEME) or specifier.split("/")[0] in NODE_BUILTIN_MODULES:
+        return NodeNamespace.STDLIB
+    return None
 
 
 def _is_declared_dependency(
@@ -495,6 +549,7 @@ class IndexBuilder:
         workspace_packages: Mapping[str, str] | None = None,
         tsconfig_paths: Mapping[str, Mapping[str, list[str]]] | None = None,
         dependency_roots: Iterable[str] = (),
+        npm_dependencies: Iterable[str] = (),
     ) -> SymbolIndex:
         """Index all nodes for fast resolution and return the frozen index.
 
@@ -502,6 +557,7 @@ class IndexBuilder:
         is stored longest name first, the order `_resolve_workspace_import` relies on.
         `tsconfig_paths` maps a project directory to its dotted aliases (#508).
         `dependency_roots` are the import roots the project's manifests declare (#495).
+        `npm_dependencies` are the npm packages they declare, as written (#556).
         """
         nodes_by_id = {n.id: n for n in nodes}
         global_symbols: dict[str, list[str]] = {}
@@ -512,6 +568,8 @@ class IndexBuilder:
         file_variable_symbols: dict[tuple[str, str], list[str]] = {}
         file_imports: dict[str, dict[str, str]] = {}
         file_shadowed_globals: dict[str, frozenset[str]] = {}
+        file_bare_imports: dict[str, frozenset[str]] = {}
+        file_bare_bindings: dict[str, dict[str, str]] = {}
         reexports: dict[str, dict[str, str]] = {}
         star_imports: dict[str, list[str]] = {}
         suffix_map: dict[str, list[str]] = {}
@@ -519,7 +577,15 @@ class IndexBuilder:
 
         for node in nodes_by_id.values():
             # Maps the extractor attached to FILE and CLASS nodes.
-            self._index_metadata(node, file_imports, self_types, reexports, star_imports)
+            self._index_metadata(
+                node,
+                file_imports,
+                self_types,
+                reexports,
+                star_imports,
+                file_bare_imports,
+                file_bare_bindings,
+            )
             if node.type == NodeType.FILE and node.metadata.get("shadowed_globals"):
                 file_shadowed_globals[os.path.normpath(node.file_path)] = frozenset(
                     node.metadata["shadowed_globals"]
@@ -574,6 +640,9 @@ class IndexBuilder:
             ),
             dependency_roots=frozenset(colliding),
             dependency_heads=_heads_under(colliding, nodes_by_id),
+            npm_dependencies=frozenset(npm_dependencies),
+            file_bare_imports=MappingProxyType(file_bare_imports),
+            file_bare_bindings=MappingProxyType(file_bare_bindings),
         )
 
     @staticmethod
@@ -673,15 +742,23 @@ class IndexBuilder:
         self_types: dict[str, dict[str, str]],
         reexports: dict[str, dict[str, str]],
         star_imports: dict[str, list[str]],
+        bare_imports: dict[str, frozenset[str]],
+        bare_bindings: dict[str, dict[str, str]],
     ) -> None:
         """Read the maps the extractor attached to a FILE or CLASS node.
 
-        A FILE carries its import map; a CLASS carries the attribute types
-        recorded from annotations (spec D1). Both are extractor output the
-        resolver consumes rather than anything derived here.
+        A FILE carries its import map, and a TypeScript one its bare imports and
+        their bindings (#556); a CLASS carries the attribute types recorded from
+        annotations (spec D1). All are extractor output the resolver consumes
+        rather than anything derived here.
         """
         if node.type == NodeType.FILE:
-            file_imports[os.path.normpath(node.file_path)] = node.metadata.get("import_map") or {}
+            path = os.path.normpath(node.file_path)
+            file_imports[path] = node.metadata.get("import_map") or {}
+            specifiers = node.metadata.get("bare_imports")
+            if specifiers:
+                bare_imports[path] = frozenset(specifiers)
+                bare_bindings[path] = dict(node.metadata.get("bare_bindings") or {})
             forwarded = node.metadata.get("reexports")
             if forwarded:
                 reexports[node.id] = dict(forwarded)

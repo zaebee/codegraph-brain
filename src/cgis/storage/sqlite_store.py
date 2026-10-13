@@ -27,6 +27,8 @@ _WORKSPACE_PACKAGES_KEY = "workspace_packages"
 #: `ingest_state` key for the tsconfig path aliases imports were resolved against (#508).
 _TSCONFIG_PATHS_KEY = "tsconfig_paths"
 _PYTHON_DEPENDENCIES_KEY = "python_dependencies"
+#: `ingest_state` key for the npm packages TypeScript imports were classified against (#556).
+_NPM_DEPENDENCIES_KEY = "npm_dependencies"
 #: `ingest_state` key for the options a graph was ingested with (#175).
 _INGEST_OPTIONS_KEY = "ingest_options"
 
@@ -1167,6 +1169,18 @@ class SQLiteStore:
         """The recorded dependency roots, or None on a graph that predates recording them."""
         loaded = self._state_json(_PYTHON_DEPENDENCIES_KEY)
         return [str(root) for root in loaded] if isinstance(loaded, list) else None
+
+    def record_npm_dependencies(self, names: list[str]) -> None:
+        """Record the declared npm packages TypeScript imports were classified against (#556).
+
+        Same contract as `record_python_dependencies`: a change rebuilds the graph.
+        """
+        self._record_state_json(_NPM_DEPENDENCIES_KEY, sorted(names))
+
+    def get_npm_dependencies(self) -> list[str] | None:
+        """The recorded npm packages, or None on a graph that predates recording them."""
+        loaded = self._state_json(_NPM_DEPENDENCIES_KEY)
+        return [str(name) for name in loaded] if isinstance(loaded, list) else None
 
     def _record_state_json(self, key: str, value: Mapping[str, object] | list[str]) -> None:
         """Write `value` to `ingest_state` as key-sorted JSON, so equal values read back equal."""

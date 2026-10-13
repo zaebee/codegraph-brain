@@ -2,7 +2,8 @@
 
 Plain data in `core` because two layers read it: the TypeScript extractor, to
 record which of these names a file rebinds, and the resolver, to rewrite calls
-on the ones it does not.
+on the ones it does not. `specifier_fqn` is here for the same reason: the
+extractor spells import targets with it and the resolver matches against them.
 """
 
 #: ECMAScript standard globals plus the browser and Node host objects a UI or
@@ -114,3 +115,8 @@ JS_GLOBALS: frozenset[str] = frozenset(
         "clearImmediate",
     }
 )
+
+
+def specifier_fqn(specifier: str) -> str:
+    """A bare module specifier dotted the way import targets are: `@x/a/b` -> `@x.a.b`."""
+    return specifier.replace("/", ".")

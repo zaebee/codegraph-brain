@@ -63,6 +63,14 @@ class WorkspacePackages:
             return
         self._claims.setdefault(name, set()).add(directory)
 
+    def names(self) -> set[str]:
+        """Every package name a manifest claims, as written — ambiguous ones included.
+
+        A name claimed twice is not resolved, but it is still ours: an import of it
+        must never read as a third-party package (#556 review).
+        """
+        return set(self._claims)
+
     def directories(self) -> dict[str, Path]:
         """Package names as written, claimed by exactly one directory, to that directory.
 
