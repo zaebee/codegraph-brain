@@ -6,16 +6,18 @@ All logging goes to stderr via structlog.
 
 import dataclasses
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Annotated, Any, NamedTuple
 
 import structlog
-from mcp.server.mcpserver import MCPServer
 from pydantic import Field
 
 from cgis import __version__
 from cgis.api.auto_refresh import refreshes_graph
+from cgis.api.server_instructions import SERVER_INSTRUCTIONS
+from cgis.api.tool_allowlist import TOOLS_ENV, CgisServer
 from cgis.core.coverage import TraversalCoverage
 from cgis.core.freshness import Freshness, FreshnessState
 from cgis.core.models import Edge, EdgeType, Node, NodeType
@@ -41,7 +43,7 @@ print("CGIS MCP Server starting…", file=sys.stderr)
 
 logger = structlog.getLogger(__name__)
 
-mcp: MCPServer = MCPServer("cgis-code-graph", version=__version__)
+mcp = CgisServer("cgis-code-graph", instructions=SERVER_INSTRUCTIONS, version=__version__)
 
 _EXTRACTORS = {
     ".py": PythonExtractor(),
@@ -1312,3 +1314,7 @@ def cgis_fractal(db_path: DbPath = _DEFAULT_DB) -> str:
         return json.dumps(_with_freshness(db_path, payload), indent=2)
     except Exception as exc:
         return f"❌ {exc}"
+
+
+# Last, once every tool above is registered (#542).
+mcp.restrict_tools(os.environ.get(TOOLS_ENV))
