@@ -14,6 +14,17 @@ BEHAVIORAL_EDGE_TYPES: frozenset[EdgeType] = frozenset(
 )
 
 
+class Truncation(NamedTuple):
+    """Where a node budget stopped a walk (#551): the level cut, and what it left out.
+
+    ``omitted`` counts the nodes reached at ``depth`` that did not fit. What lies
+    beyond them was never walked, so it is not counted — the number is a floor.
+    """
+
+    depth: int
+    omitted: int
+
+
 class TraversalResult(NamedTuple):
     """A traversal's subgraph together with the coverage of the calls around it (#201).
 
@@ -25,6 +36,10 @@ class TraversalResult(NamedTuple):
     nodes: list[Node]
     edges: list[Edge]
     coverage: TraversalCoverage | None
+    #: Nodes a screen dropped from the answer — test callers, for `impact_screen`.
+    excluded: int = 0
+    #: Set when ``max_nodes`` stopped the walk early.
+    truncation: Truncation | None = None
 
 
 class _Walk(NamedTuple):
@@ -34,6 +49,74 @@ class _Walk(NamedTuple):
     edges: dict[str, Edge]
     expanded: set[str]
     calls: dict[str, Edge]
+    dropped: frozenset[str] = frozenset()
+    truncation: Truncation | None = None
+
+
+class _Verdict(NamedTuple):
+    """What a screen decided about the nodes one BFS level reached for the first time."""
+
+    dropped: frozenset[str] = frozenset()
+    leaves: frozenset[str] = frozenset()
+
+
+def _no_screen(_ids: list[str]) -> _Verdict:
+    """The screen of a walk that keeps everything it reaches."""
+    return _Verdict()
+
+
+def _admit(
+    reached: list[str], verdict: _Verdict, held: int, max_nodes: int | None, depth: int
+) -> tuple[list[str], list[str], Truncation | None]:
+    """What of one level's new ids enters the answer, and what of that is expanded next.
+
+    The screen's dropped ids enter neither; its leaves enter the answer only.
+    A level that does not fit the node budget is cut to the room left, leaves
+    last: a file that imports X is a dead end whose callables are usually
+    listed beside it, and sorting by id alone put `pkg.svc` ahead of
+    `pkg.svc.use` — on owner-api 29 of 99 slots went to files (found in
+    review). Within each group the order is by id, so the cut is deterministic.
+    """
+    admitted = [n for n in reached if n not in verdict.dropped]
+    truncation = None
+    room = len(admitted) if max_nodes is None else max(max_nodes - held, 0)
+    if len(admitted) > room:
+        truncation = Truncation(depth, len(admitted) - room)
+        admitted = sorted(admitted, key=lambda n: (n in verdict.leaves, n))[:room]
+    return admitted, [n for n in admitted if n not in verdict.leaves], truncation
+
+
+#: Decides, one batch per BFS level, which newly reached ids leave the answer
+#: (``dropped``) and which stay in it without being expanded (``leaves``).
+Screen = Callable[[list[str]], _Verdict]
+
+
+def impact_screen(store: SQLiteStore, root_id: str, include_tests: bool) -> Screen:
+    """The agent-sized impact view (#551): no test callers, and files as dead ends.
+
+    A test that calls X is not something that breaks in production when X
+    changes, and its own callers are tests too — so a test node is dropped with
+    the edges into it, and counted, rather than expanded. A file that imports X
+    stays in the answer, but the files that import *it* do not: following
+    FILE → IMPORTS → FILE upstream walks the whole import closure (conftest →
+    main → every test module), 115 of 140 nodes on owner-api at depth 8. A
+    file's own impact still follows its importers, so the rule applies only
+    when the root is not a file; and a root that is itself a test keeps its
+    test callers.
+    """
+    root = store.get_node(root_id)
+    files_are_leaves = root is None or root.type != NodeType.FILE
+    # A test's callers are tests: dropping them would answer about a test with nothing.
+    include_tests = include_tests or (root is not None and root.is_test)
+
+    def screen(ids: list[str]) -> _Verdict:
+        nodes = store.get_nodes(ids)
+        return _Verdict(
+            dropped=frozenset(n.id for n in nodes if n.is_test and not include_tests),
+            leaves=frozenset(n.id for n in nodes if files_are_leaves and n.type == NodeType.FILE),
+        )
+
+    return screen
 
 
 def _source(edge: Edge) -> str:
@@ -197,6 +280,8 @@ class QueryEngine:
         show_external: bool = True,
         min_confidence: float | None = None,
         with_coverage: bool = True,
+        screen: Screen = _no_screen,
+        max_nodes: int | None = None,
     ) -> TraversalResult:
         """`get_impact_graph`, plus how many callers the graph may be failing to show (#201).
 
@@ -207,7 +292,7 @@ class QueryEngine:
         upper bound — see ``CoverageBasis`` — and it is labelled as one.
 
         ``with_coverage=False`` skips the count and its query, for a caller that
-        will not render it.
+        will not render it. ``screen`` and ``max_nodes`` are passed to the walk.
         """
         walk = self._bfs_traverse(
             target_node_id,
@@ -216,11 +301,13 @@ class QueryEngine:
             max_depth,
             allowed_edge_types,
             min_confidence,
+            screen,
+            max_nodes,
         )
         nodes = self.store.get_nodes(list(walk.discovered))
         subgraph = _finish(target_node_id, nodes, walk, _source, show_external)
         if not (with_coverage and _follows_calls(allowed_edge_types)):
-            return TraversalResult(*subgraph, None)
+            return TraversalResult(*subgraph, None, len(walk.dropped), walk.truncation)
         # Our own callables only. An UNKNOWN root is itself an unresolved target,
         # its callers already on the path — matching its name found the same
         # edge twice (found in review).
@@ -239,7 +326,7 @@ class QueryEngine:
             calls_unresolved=total_hidden,
             top_unresolved=rank_unresolved(hidden),
         )
-        return TraversalResult(*subgraph, coverage)
+        return TraversalResult(*subgraph, coverage, len(walk.dropped), walk.truncation)
 
     def get_flow_graph(
         self,
@@ -388,10 +475,13 @@ class QueryEngine:
         max_depth: int,
         allowed_edge_types: frozenset[EdgeType] | None = None,
         min_confidence: float | None = None,
+        screen: Screen = _no_screen,
+        max_nodes: int | None = None,
     ) -> _Walk:
         """
         Level-by-level BFS. Fetches edges for the entire frontier in one
-        batch query per level — O(depth) DB roundtrips instead of O(nodes).
+        batch query per level — O(depth) DB roundtrips instead of O(nodes);
+        a ``screen`` may add one node lookup per level.
 
         ``min_confidence`` prunes edges below the given confidence (e.g.
         unresolved ``raw_call:`` edges at 0.1) so the traversal never crosses
@@ -402,29 +492,39 @@ class QueryEngine:
         confidence floor. A floor hides an edge from the answer, not from the
         count of what the answer is missing. Nodes at the depth horizon are not
         expanded, so what lies past it is truncation, not a resolution gap.
+
+        ``screen`` sees each level's newly reached ids before they are accepted:
+        the ids it drops leave with their edges, the ids it calls leaves are kept
+        but not expanded (see ``impact_screen``). ``max_nodes`` caps the answer,
+        nearest levels first: a level that does not fit is cut to the room left
+        (see ``_admit``) and the walk stops there.
         """
         discovered_ids: set[str] = {start_id}
         visited_edges: dict[str, Edge] = {}
         expanded: set[str] = set()
         calls: dict[str, Edge] = {}
         count_calls = _follows_calls(allowed_edge_types)
+        dropped: set[str] = set()
+        truncation: Truncation | None = None
         current_frontier = [start_id]
         depth = 0
 
-        while current_frontier and depth < max_depth:
+        while current_frontier and depth < max_depth and truncation is None:
             expanded.update(current_frontier)
-            next_frontier: list[str] = []
+            level: list[Edge] = []
             for edge in get_edges_batch(current_frontier):
                 if count_calls and edge.type == EdgeType.CALLS:
                     calls[edge.id] = edge
-                if not _edge_accepted(edge, allowed_edge_types, min_confidence):
-                    continue
-                visited_edges[edge.id] = edge
-                neighbor_id = get_neighbor_id(edge)
-                if neighbor_id not in discovered_ids:
-                    discovered_ids.add(neighbor_id)
-                    next_frontier.append(neighbor_id)
-            current_frontier = next_frontier
+                if _edge_accepted(edge, allowed_edge_types, min_confidence):
+                    level.append(edge)
+            reached = sorted(set(map(get_neighbor_id, level)) - discovered_ids)
+            verdict = screen(reached)
+            dropped |= verdict.dropped
             depth += 1
+            admitted, current_frontier, truncation = _admit(
+                reached, verdict, len(discovered_ids), max_nodes, depth
+            )
+            discovered_ids.update(admitted)
+            visited_edges.update((e.id, e) for e in level if get_neighbor_id(e) in discovered_ids)
 
-        return _Walk(discovered_ids, visited_edges, expanded, calls)
+        return _Walk(discovered_ids, visited_edges, expanded, calls, frozenset(dropped), truncation)
