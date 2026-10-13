@@ -115,15 +115,30 @@ class TsconfigPaths:
         reader = _Reader(self._root, self._namer, dict(package_directories or {}))
         scopes: dict[str, dict[str, list[str]]] = {}
         for config in sorted(self._configs):
-            try:
-                directory = config.resolve().parent.relative_to(self._root).as_posix()
-            except ValueError:
+            scope = self._scope(config)
+            if scope is None:
                 continue
             options = _options(reader, config, depth=0)
             if options is None:
                 continue
-            scopes["" if directory == "." else directory] = _dotted(reader, options)
+            scopes[scope] = _dotted(reader, options)
         return scopes
+
+    def _scope(self, config: Path) -> str | None:
+        """The directory, relative to the root, whose files `config` governs; None for none.
+
+        A config above the root governs the whole walk, so its scope is the root
+        itself, `""` (#555). One beside the root, governing none of its files, has no
+        scope at all.
+        """
+        directory = config.resolve().parent
+        if directory in self._root.parents:
+            return ""
+        try:
+            relative = directory.relative_to(self._root).as_posix()
+        except ValueError:
+            return None
+        return "" if relative == "." else relative
 
 
 @dataclass(frozen=True)
@@ -235,20 +250,22 @@ def _target_fqn(reader: _Reader, base: Path, target: str, wildcard: bool) -> str
 
     A wildcard target must end in `/*` (or be `*`): `lib/*.ts` would put the
     matched remainder before an extension, which a dotted FQN cannot express. A
-    target that leaves the repository has no node to land on.
+    target outside the ingest root has no node to land on.
+
+    The base may lie above the root — a config read from above it (#555) — so the
+    target is joined to the base first and only then made relative to the root:
+    `owner-admin` + `./src/*` against a root of `owner-admin/src` is the root itself.
     """
     if wildcard != target.endswith(_WILDCARD) or target.count(_WILDCARD) > 1:
         return None
     if wildcard and target != _WILDCARD and not target.endswith("/" + _WILDCARD):
         return None
+    # An absolute target replaces the base in the join and lands outside the root,
+    # rather than having its leading `/` stripped into an in-repo `opt.lib.*`.
+    joined = (base.resolve() / target.removesuffix(_WILDCARD)).resolve()
     try:
-        relative = base.resolve().relative_to(reader.root).as_posix()
+        path = joined.relative_to(reader.root).as_posix()
     except ValueError:
-        return None
-    path = posixpath.normpath(posixpath.join(relative, target.removesuffix(_WILDCARD)))
-    # An absolute target replaces the base in the join, and the FQN helper would
-    # then strip its leading `/` — `/opt/lib/*` into an in-repo `opt.lib.*`.
-    if path == ".." or path.startswith(("../", "/")):
         return None
     if not wildcard:
         return None if path == "." else reader.namer.module_fqn(path)
