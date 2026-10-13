@@ -114,11 +114,6 @@ def test_edge_without_file_path_uses_source_node_file() -> None:
             "import history from './history';\nexport function f() {\n  history.push('/');\n}\n",
             "history.push",
         ),
-        (
-            "import * as crypto from 'node:crypto';\n"
-            "export function f() {\n  crypto.randomUUID();\n}\n",
-            "crypto.randomUUID",
-        ),
         ("import { fetch } from 'undici';\nexport function f() {\n  fetch('x');\n}\n", "fetch"),
         (
             "import { useC as confirm } from './c';\nexport function f() {\n  confirm();\n}\n",
@@ -163,6 +158,21 @@ def test_name_bound_in_file_is_not_a_js_global(code: str, bare_target: str) -> N
     targets = _call_targets(edges)
     assert bare_target in targets
     assert f"js_builtins.{bare_target}" not in targets
+
+
+def test_a_global_imported_from_a_node_builtin_is_that_module() -> None:
+    """`import * as crypto from 'node:crypto'` is the module, not the runtime global (#556).
+
+    Before #556 it stayed a bare UNKNOWN `crypto.randomUUID`; now the import says
+    exactly which module it is, so the call lands there as STDLIB.
+    """
+    code = (
+        "import * as crypto from 'node:crypto';\nexport function f() {\n  crypto.randomUUID();\n}\n"
+    )
+    edges, _ = _resolve_ts(code)
+    targets = _call_targets(edges)
+    assert "node:crypto.randomUUID" in targets
+    assert "js_builtins.crypto.randomUUID" not in targets
 
 
 def test_import_alias_leaves_the_original_global_free() -> None:

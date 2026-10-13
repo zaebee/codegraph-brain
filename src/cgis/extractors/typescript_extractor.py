@@ -5,7 +5,7 @@ from tree_sitter import Language, Parser
 from tree_sitter import Node as TSNode
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
-from cgis.extractors._typescript_bindings import shadowed_globals
+from cgis.extractors._typescript_bindings import bare_imports, shadowed_globals, specifier_fqn
 from cgis.extractors.base import BaseExtractor
 
 _RAW_CALL_PREFIX = "raw_call:"
@@ -142,9 +142,17 @@ class TypeScriptExtractor(BaseExtractor):
             language=TYPESCRIPT_LANG,
             namespace=NodeNamespace.INTERNAL,
         )
+        metadata: dict[str, object] = {}
         shadowed = shadowed_globals(tree.root_node)
         if shadowed:
-            file_node = file_node.model_copy(update={"metadata": {"shadowed_globals": shadowed}})
+            metadata["shadowed_globals"] = shadowed
+        specifiers, bindings = bare_imports(tree.root_node)
+        if specifiers:
+            metadata["bare_imports"] = specifiers
+        if bindings:
+            metadata["bare_bindings"] = bindings
+        if metadata:
+            file_node = file_node.model_copy(update={"metadata": metadata})
         nodes: list[Node] = [file_node]
         edges: list[Edge] = []
 
@@ -290,7 +298,7 @@ class TypeScriptExtractor(BaseExtractor):
         if raw_source.startswith("."):
             target_fqn = _resolve_relative_import(namespace, raw_source)
         else:
-            target_fqn = raw_source.replace("/", ".")
+            target_fqn = specifier_fqn(raw_source)
         edges.append(
             Edge(
                 id=f"{file_id}->import:{target_fqn}",

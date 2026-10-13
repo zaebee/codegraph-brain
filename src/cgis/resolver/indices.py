@@ -10,7 +10,7 @@ from types import MappingProxyType
 from typing import NamedTuple
 
 from cgis.core.models import SELF_PREFIX, Node, NodeNamespace, NodeType
-from cgis.resolver.js_builtins import JS_BUILTINS_ROOT
+from cgis.resolver.js_builtins import JS_BUILTINS_ROOT, NODE_BUILTIN_MODULES, NODE_SCHEME
 
 _BUILTINS: frozenset[str] = frozenset(dir(builtins))
 
@@ -102,6 +102,15 @@ class SymbolIndex:
     # `root.second` heads our own nodes have under those roots: `alembic.env`,
     # `alembic.versions`. What tells our package apart from the library's.
     dependency_heads: frozenset[str] = frozenset()
+    # dotted npm packages the `package.json` files declare, less the workspace
+    # packages — a monorepo lists its own packages as dependencies too (#556).
+    npm_dependencies: frozenset[str] = frozenset()
+    # normalized file_path -> the bare (non-relative) specifiers a TypeScript file
+    # imports, dotted: what licenses reading a name as a package's (#556).
+    file_bare_imports: Mapping[str, frozenset[str]] = MappingProxyType({})
+    # normalized file_path -> {local name: package symbol FQN} for those imports:
+    # `useState` -> `react.useState`, a namespace import `Icons` -> `lucide-react`.
+    file_bare_bindings: Mapping[str, dict[str, str]] = MappingProxyType({})
 
     def resolve_import_target(self, fqn: str, source_file: str | None = None) -> str | None:
         """Reconcile a module import against the node ids, or None to leave it alone.
@@ -284,6 +293,9 @@ class SymbolIndex:
             # let unresolved_ratio *improve* as a codebase adopted more dependency
             # injection, so a green `validate` said nothing about the gap (#414).
             return NodeNamespace.UNKNOWN
+        package = bare_import_namespace(self, fqn, source_file)
+        if package is not None:
+            return package
         root = fqn.split(".", maxsplit=1)[0]
         if root in self.internal_roots:
             if _is_declared_dependency(self, fqn, root, source_file):
@@ -310,6 +322,40 @@ class SymbolIndex:
         if source_node:
             return os.path.normpath(source_node.file_path)
         return os.path.normpath(edge_file_path) if edge_file_path else None
+
+
+def bare_import_namespace(
+    index: SymbolIndex, fqn: str, source_file: str | None
+) -> NodeNamespace | None:
+    """EXTERNAL or STDLIB when `fqn` lies under a package `source_file` imports, else None.
+
+    Only TypeScript files record bare imports, so any other source — or none —
+    is None without a language check here. Two things must hold (#556).
+
+    The file imports a bare specifier `fqn` sits under — so `react.render` on a
+    parameter named `react` in a file that never imports React stays
+    unresolved, the mistake #454 fixed for Python names.
+    And that specifier names a package: one a `package.json` declares, which
+    is EXTERNAL, or a Node builtin, which is STDLIB. An import of anything else
+    — an undeclared package, a broken alias — keeps its UNKNOWN, because that
+    is a lost edge `top_unresolved` should show.
+
+    A declared package wins over a builtin of the same name: a browser app
+    that declares `buffer` bundles that package, not Node's.
+    """
+    for specifier in index.file_bare_imports.get(source_file or "", ()):
+        if fqn != specifier and not fqn.startswith(f"{specifier}."):
+            continue
+        if any(
+            specifier == name or specifier.startswith(f"{name}.") for name in index.npm_dependencies
+        ):
+            return NodeNamespace.EXTERNAL
+        if (
+            specifier.startswith(NODE_SCHEME)
+            or specifier.split(".", maxsplit=1)[0] in NODE_BUILTIN_MODULES
+        ):
+            return NodeNamespace.STDLIB
+    return None
 
 
 def _is_declared_dependency(
@@ -495,6 +541,7 @@ class IndexBuilder:
         workspace_packages: Mapping[str, str] | None = None,
         tsconfig_paths: Mapping[str, Mapping[str, list[str]]] | None = None,
         dependency_roots: Iterable[str] = (),
+        npm_dependencies: Iterable[str] = (),
     ) -> SymbolIndex:
         """Index all nodes for fast resolution and return the frozen index.
 
@@ -502,6 +549,7 @@ class IndexBuilder:
         is stored longest name first, the order `_resolve_workspace_import` relies on.
         `tsconfig_paths` maps a project directory to its dotted aliases (#508).
         `dependency_roots` are the import roots the project's manifests declare (#495).
+        `npm_dependencies` are the dotted npm packages they declare (#556).
         """
         nodes_by_id = {n.id: n for n in nodes}
         global_symbols: dict[str, list[str]] = {}
@@ -512,6 +560,8 @@ class IndexBuilder:
         file_variable_symbols: dict[tuple[str, str], list[str]] = {}
         file_imports: dict[str, dict[str, str]] = {}
         file_shadowed_globals: dict[str, frozenset[str]] = {}
+        file_bare_imports: dict[str, frozenset[str]] = {}
+        file_bare_bindings: dict[str, dict[str, str]] = {}
         reexports: dict[str, dict[str, str]] = {}
         star_imports: dict[str, list[str]] = {}
         suffix_map: dict[str, list[str]] = {}
@@ -524,6 +574,10 @@ class IndexBuilder:
                 file_shadowed_globals[os.path.normpath(node.file_path)] = frozenset(
                     node.metadata["shadowed_globals"]
                 )
+            if node.type == NodeType.FILE and node.metadata.get("bare_imports"):
+                path = os.path.normpath(node.file_path)
+                file_bare_imports[path] = frozenset(node.metadata["bare_imports"])
+                file_bare_bindings[path] = dict(node.metadata.get("bare_bindings") or {})
 
             # Index global functions/symbols
             if node.type in (NodeType.FUNCTION, NodeType.CLASS):
@@ -574,6 +628,9 @@ class IndexBuilder:
             ),
             dependency_roots=frozenset(colliding),
             dependency_heads=_heads_under(colliding, nodes_by_id),
+            npm_dependencies=frozenset(npm_dependencies) - set(workspace_packages or {}),
+            file_bare_imports=MappingProxyType(file_bare_imports),
+            file_bare_bindings=MappingProxyType(file_bare_bindings),
         )
 
     @staticmethod

@@ -3,7 +3,7 @@
 from collections.abc import Iterable, Mapping
 
 from cgis.core.models import RAW_CLASS_PREFIX, Edge, EdgeType, Node, NodeNamespace
-from cgis.resolver.indices import IndexBuilder, SymbolIndex
+from cgis.resolver.indices import IndexBuilder, SymbolIndex, bare_import_namespace
 
 
 def _owning_class(index: SymbolIndex, source_fqn: str) -> str | None:
@@ -18,6 +18,26 @@ def _owning_class(index: SymbolIndex, source_fqn: str) -> str | None:
         if candidate in index.class_methods:
             return candidate
     return None
+
+
+def _package_call(index: SymbolIndex, name: str, file_path: str) -> str | None:
+    """A TypeScript call on a name imported from a package: `useState` -> `react.useState`.
+
+    Only when the binding lands in a package (#556). A binding into one of our
+    own modules through an alias or workspace name is left to the lookups that
+    already resolve those, so internal resolution is unchanged.
+    """
+    bindings = index.file_bare_bindings.get(file_path)
+    if not bindings:
+        return None
+    head, _, rest = name.partition(".")
+    bound = bindings.get(head)
+    if bound is None:
+        return None
+    candidate = f"{bound}.{rest}" if rest else bound
+    if bare_import_namespace(index, candidate, file_path) is None:
+        return None
+    return candidate
 
 
 def receiver_type_fqn(index: SymbolIndex, owner_fqn: str, attr: str) -> str | None:
@@ -87,10 +107,11 @@ class SymbolResolver:
         workspace_packages: Mapping[str, str] | None = None,
         tsconfig_paths: Mapping[str, Mapping[str, list[str]]] | None = None,
         dependency_roots: Iterable[str] = (),
+        npm_dependencies: Iterable[str] = (),
     ) -> None:
         """Build the symbol index from nodes, then the inheritance tree from EXTENDS edges."""
         self.index: SymbolIndex = IndexBuilder().build(
-            nodes, workspace_packages, tsconfig_paths, dependency_roots
+            nodes, workspace_packages, tsconfig_paths, dependency_roots, npm_dependencies
         )
         # class_fqn -> [resolved parent FQNs] built from EXTENDS edges
         self._inheritance_tree: dict[str, list[str]] = {}
@@ -173,7 +194,9 @@ class SymbolResolver:
                 return result
 
         if file_path:
-            result = self._resolve_via_import_map(name, file_path)
+            result = self._resolve_via_import_map(name, file_path) or _package_call(
+                self.index, name, file_path
+            )
             if result:
                 return result
 
