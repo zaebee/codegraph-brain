@@ -14,7 +14,12 @@ Upstream subgraph of one FQN: everything that reaches it within ``depth`` hops.
     answers "what breaks if I change X?". The
     enclosing class or file and stdlib/third-party nodes are left out unless
     ``include_structure`` / ``include_external`` ask for them — the same view as
-    the CLI's ``impact``. For what X depends on use
+    the CLI's ``impact``. Test callers are left out unless ``include_tests``
+    asks for them, and counted in ``excluded_tests``. A file that imports a
+    symbol is listed, but the walk does not continue to the files importing
+    that file; a file's own impact still does. At most ``max_nodes`` nodes come
+    back, nearest first, and a cut is reported in ``truncated``. For what X
+    depends on use
     ``cgis_trace_flow``; for only the members of a module or class,
     ``cgis_get_structure``; for a source-included brief to read before editing
     one symbol, ``cgis_context``.
@@ -36,6 +41,8 @@ Upstream subgraph of one FQN: everything that reaches it within ``depth`` hops.
 | `output_format` | `string` |  | "mermaid" for a diagram, or "json" for a payload with real FQNs (case-insensitive). Any other value returns an error. |
 | `include_structure` | `boolean` |  | Also follow containment (CONTAINS/DECLARES): a module's or class's own members, and the class or file enclosing a symbol. Off by default, as in the CLI; cgis_get_structure is the tool for members alone. |
 | `include_external` | `boolean` |  | Also return stdlib, third-party and unresolved call targets — calls on values whose type is decided at runtime. Off by default, as in the CLI, because they dominate the payload; in json, coverage/top_unresolved still counts what was dropped. |
+| `include_tests` | `boolean` |  | Also return callers in test code. Off by default: a test is not production code that breaks, and on a large repo tests outnumber the real callers. The answer says how many were left out — a floor when it is also truncated, since levels past the cut are not walked. A root that is itself a test keeps its test callers. |
+| `max_nodes` | `integer` |  | Most nodes to return, nearest levels first. A level that does not fit is cut and the walk stops there; the answer says where and how many were left out, so a smaller depth or a narrower FQN can follow. |
 
 ---
 
