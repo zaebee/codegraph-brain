@@ -120,3 +120,22 @@ def test_normalise_reaches_a_root_escaped_inside_json_text() -> None:
     text = json.dumps({"p": "C:\\x\\f.py"})
     normalised = gi._normalise(text, "C:\\x")  # noqa: SLF001
     assert normalised == {"p": "<ROOT>\\f.py"}
+
+
+def test_dump_closes_its_connection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`with sqlite3.connect(...)` only commits; the file stays open (and locked on Windows)."""
+    root = _repo(tmp_path)
+    _ingest(root, tmp_path / "g.db")
+    opened: list[sqlite3.Connection] = []
+    real_connect = sqlite3.connect
+
+    def recording_connect(path: Path) -> sqlite3.Connection:
+        conn = real_connect(path)
+        opened.append(conn)
+        return conn
+
+    monkeypatch.setattr(gi.sqlite3, "connect", recording_connect)
+    gi.dump(tmp_path / "g.db", root)
+    assert len(opened) == 1
+    with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+        opened[0].execute("SELECT 1")

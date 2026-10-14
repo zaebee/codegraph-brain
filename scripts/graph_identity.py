@@ -14,6 +14,7 @@ import sqlite3
 import sys
 import tempfile
 from collections.abc import Mapping
+from contextlib import closing
 from pathlib import Path
 from typing import cast
 
@@ -80,7 +81,7 @@ def dump(db_path: Path, root: Path) -> dict[str, object]:
         msg = f"no graph database at {db_path}"
         raise FileNotFoundError(msg)
     prefix = str(root.resolve())
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn:  # `with conn` alone never closes
         state = {
             key: _normalise(value, prefix)
             for key, value in conn.execute("SELECT key, value FROM ingest_state ORDER BY key")
