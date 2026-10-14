@@ -71,9 +71,12 @@ def _member_names(base: Path, patterns: Iterable[object]) -> set[str]:
     included: set[Path] = set()
     excluded: set[Path] = set()
     for pattern in patterns:
-        if isinstance(pattern, str):
-            target = excluded if pattern.startswith("!") else included
-            target |= _manifests(base, pattern.removeprefix("!"))
+        if not isinstance(pattern, str):
+            continue
+        if pattern.startswith("!"):
+            excluded |= _manifests(base, pattern.removeprefix("!"))
+        else:
+            included |= _manifests(base, pattern)
     names: set[str] = set()
     for member in sorted(included - excluded):
         name = (_read_manifest(member) or {}).get("name")
