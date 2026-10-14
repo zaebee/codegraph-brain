@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.29.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.28.0...codegraph-brain-v0.29.0) (2026-10-14)
+
+
+### Features
+
+* **bench:** cgis-narrow arm — the cgis arm with three tools listed ([#586](https://github.com/zaebee/codegraph-brain/issues/586)) ([5a5c836](https://github.com/zaebee/codegraph-brain/commit/5a5c836e2fda1f41e6420e0d1160a56a0859ef94))
+* **mcp:** agent-sized cgis_analyze_impact — no test callers, files as dead ends, node budget ([#563](https://github.com/zaebee/codegraph-brain/issues/563)) ([d173d57](https://github.com/zaebee/codegraph-brain/commit/d173d5791e30983b58e7cbe7fb91cac8c7059154))
+* **mcp:** output_format="text" for traversals; trace_flow gets impact's node budget and test screen ([#581](https://github.com/zaebee/codegraph-brain/issues/581)) ([a1dd2b8](https://github.com/zaebee/codegraph-brain/commit/a1dd2b871d34c22e29f25103b9ee349a004ea28a))
+* **mcp:** server instructions in initialize, CGIS_MCP_TOOLS allowlist ([#565](https://github.com/zaebee/codegraph-brain/issues/565)) ([3c37874](https://github.com/zaebee/codegraph-brain/commit/3c37874f78e4a3d439be153641afe1fc19a32f03))
+* **query:** resolve an FQN given with the directories above the graph ([#571](https://github.com/zaebee/codegraph-brain/issues/571)) ([ea43ba9](https://github.com/zaebee/codegraph-brain/commit/ea43ba9f5451e0ee55575570eb8a5341eb906115))
+* **resolver:** DISPATCHES edges from a base-class method to each override ([#575](https://github.com/zaebee/codegraph-brain/issues/575)) ([827143e](https://github.com/zaebee/codegraph-brain/commit/827143ee2a13866602daaea84f1142106c69d49d))
+* **resolver:** type a parameter annotated with an Annotated[T, Depends(...)] alias as T ([#572](https://github.com/zaebee/codegraph-brain/issues/572)) ([fc33b20](https://github.com/zaebee/codegraph-brain/commit/fc33b202b607aecda9d3b317edc1d16f2ba350c6))
+* **workspaces:** read pnpm-workspace.yaml above the ingest root ([#591](https://github.com/zaebee/codegraph-brain/issues/591)) ([b0d67f8](https://github.com/zaebee/codegraph-brain/commit/b0d67f8124da3c414b852f045f6127ab2eec5c3e))
+
+
+### Bug Fixes
+
+* **bench:** agent A/B runner survives a failed session and continues run numbers ([#578](https://github.com/zaebee/codegraph-brain/issues/578)) ([bc303eb](https://github.com/zaebee/codegraph-brain/commit/bc303eb82e3ef25c01093452c2d68e8c3a53d1d9))
+* **bench:** guard — no false refusal on a grep for an import, no bypass through env/newline/prefix ([#590](https://github.com/zaebee/codegraph-brain/issues/590)) ([73ee4e2](https://github.com/zaebee/codegraph-brain/commit/73ee4e260cf3a65a31630f4cc6a46b618872ce7f))
+* **ingest:** read the tsconfig.json and package.json above a sub-directory ingest root ([#560](https://github.com/zaebee/codegraph-brain/issues/560)) ([9722f8c](https://github.com/zaebee/codegraph-brain/commit/9722f8c18da97cba20400cbd109fd8fea684a5e3))
+* **query:** one effective_prefix rule for every FQN-prefix entry point ([#585](https://github.com/zaebee/codegraph-brain/issues/585)) ([b5f10b3](https://github.com/zaebee/codegraph-brain/commit/b5f10b360ab021ba2dcd8dd9a211b222c989e183))
+* **resolver:** TypeScript imports of declared npm packages are EXTERNAL ([#557](https://github.com/zaebee/codegraph-brain/issues/557)) ([73d380a](https://github.com/zaebee/codegraph-brain/commit/73d380acb915671e9597fc01eaf509ba29e78a8b))
+
+
+### Documentation
+
+* auto-sync architecture graph and MCP reference ([#558](https://github.com/zaebee/codegraph-brain/issues/558)) ([ee275a4](https://github.com/zaebee/codegraph-brain/commit/ee275a412b9af8b2d900e16b84335a343f68a7fa))
+* auto-sync architecture graph and MCP reference ([#564](https://github.com/zaebee/codegraph-brain/issues/564)) ([50637b3](https://github.com/zaebee/codegraph-brain/commit/50637b3b8d01cb4be01cbae3710f21a1cb5f1b02))
+* auto-sync architecture graph and MCP reference ([#573](https://github.com/zaebee/codegraph-brain/issues/573)) ([225499d](https://github.com/zaebee/codegraph-brain/commit/225499dd1a17163160e270b9dbeb73a7ad376b7d))
+* **bench:** agent A/B after [#568](https://github.com/zaebee/codegraph-brain/issues/568) and [#550](https://github.com/zaebee/codegraph-brain/issues/550) — cgis-forced at $0.184 against control $0.298 ([#574](https://github.com/zaebee/codegraph-brain/issues/574)) ([8e0ef37](https://github.com/zaebee/codegraph-brain/commit/8e0ef37b76fffc01e32338c67325535f8cb501f4))
+* **bench:** agent A/B on a task no fix was tuned on (occupied_window) ([#576](https://github.com/zaebee/codegraph-brain/issues/576)) ([a6eb679](https://github.com/zaebee/codegraph-brain/commit/a6eb679b51ae7fd3f52c73eb2da005857f2e6126))
+* **bench:** agent A/B on three deep-chain cgis tasks — impact pays, trace_flow's 32k answer does not ([#579](https://github.com/zaebee/codegraph-brain/issues/579)) ([eb7e951](https://github.com/zaebee/codegraph-brain/commit/eb7e9516a8e952fdbd2266c43accfee1a16109e7))
+* **bench:** agent A/B results for owner-impact-credit-wallet after [#563](https://github.com/zaebee/codegraph-brain/issues/563) and [#565](https://github.com/zaebee/codegraph-brain/issues/565) ([#570](https://github.com/zaebee/codegraph-brain/issues/570)) ([ae84feb](https://github.com/zaebee/codegraph-brain/commit/ae84febcc2621a92d00233e81e994171b6b14cd8))
+* **bench:** flow A/B after [#581](https://github.com/zaebee/codegraph-brain/issues/581) — text cut the answer 4x and the cost by a third; precision unchanged ([#583](https://github.com/zaebee/codegraph-brain/issues/583)) ([e36c850](https://github.com/zaebee/codegraph-brain/commit/e36c85099a85300f46a9b6fa28d375fa68f67227))
+* **bench:** unprompted agents do not call cgis — a short menu changes nothing, one instruction line 2 of 6 ([#587](https://github.com/zaebee/codegraph-brain/issues/587)) ([6534f74](https://github.com/zaebee/codegraph-brain/commit/6534f74f23fcd3d1193bda2201bbf598959cac8e))
+
 ## [0.28.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.27.0...codegraph-brain-v0.28.0) (2026-10-02)
 
 
