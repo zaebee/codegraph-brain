@@ -20,7 +20,13 @@ from cgis.extractors.base import BaseExtractor
 from cgis.npm_dependencies import NpmDependencies
 from cgis.python_dependencies import declared_import_roots
 from cgis.tsconfig_paths import TSCONFIG, TsconfigPaths
-from cgis.workspaces import PACKAGE_MANIFEST, WorkspacePackages, workspace_member_names
+from cgis.workspaces import (
+    PACKAGE_MANIFEST,
+    PNPM_WORKSPACE,
+    WorkspacePackages,
+    pnpm_member_names,
+    workspace_member_names,
+)
 
 if TYPE_CHECKING:
     from cgis.storage.sqlite_store import SQLiteStore
@@ -123,6 +129,10 @@ class ImportNameCollector:
         for manifest in manifests if bounded else manifests[:1]:
             self._npm.note(manifest)
             self._siblings |= workspace_member_names(manifest)
+        # pnpm names its workspace in its own file, beside the root manifest (#562).
+        pnpm = [d / PNPM_WORKSPACE for d in directories if (d / PNPM_WORKSPACE).is_file()]
+        for workspace_file in pnpm if bounded else pnpm[:1]:
+            self._siblings |= pnpm_member_names(workspace_file)
         if (self._root / TSCONFIG).is_file():
             return
         config = next((d / TSCONFIG for d in directories if (d / TSCONFIG).is_file()), None)

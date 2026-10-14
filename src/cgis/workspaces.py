@@ -7,10 +7,11 @@ from the manifests the pipeline walks past.
 """
 
 import json
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 import structlog
+import yaml
 
 from cgis.extractors.base import BaseExtractor, ModuleNamer
 
@@ -18,6 +19,8 @@ logger = structlog.getLogger(__name__)
 
 #: The manifest a workspace package is named in.
 PACKAGE_MANIFEST = "package.json"
+#: Where pnpm declares its workspace packages; it ignores `workspaces` in package.json.
+PNPM_WORKSPACE = "pnpm-workspace.yaml"
 
 
 def workspace_member_names(manifest: Path) -> set[str]:
@@ -36,15 +39,61 @@ def workspace_member_names(manifest: Path) -> set[str]:
         workspaces = workspaces.get("packages")
     if not isinstance(workspaces, list):
         return set()
-    names: set[str] = set()
-    for pattern in workspaces:
-        if not isinstance(pattern, str) or pattern.startswith("!"):
+    return _member_names(manifest.parent, workspaces)
+
+
+def pnpm_member_names(config: Path) -> set[str]:
+    """The package names a `pnpm-workspace.yaml`'s `packages` globs reach (#562).
+
+    pnpm reads its workspace from this file, not from `workspaces` in
+    package.json, so in a pnpm monorepo `workspace_member_names` finds nothing
+    and a sibling depended on with a plain version range read as EXTERNAL.
+    Unreadable or malformed files contribute nothing.
+    """
+    try:
+        data = yaml.safe_load(config.read_text(encoding="utf-8"))
+    # Not UTF-8 is a ValueError, a deeply nested file a RecursionError: either
+    # crashed the whole ingest (#591 review).
+    except (OSError, ValueError, yaml.YAMLError, RecursionError):
+        return set()
+    packages = data.get("packages") if isinstance(data, dict) else None
+    return _member_names(config.parent, packages) if isinstance(packages, list) else set()
+
+
+def _member_names(base: Path, patterns: Iterable[object]) -> set[str]:
+    """Names of the packages whose directories `patterns` match under `base`.
+
+    A `!` pattern subtracts what it matches, and nothing under `node_modules`
+    is a member — as pnpm and npm read their workspaces (#591 review): with
+    `packages/**` an installed copy of a dependency read as a sibling, and a
+    real library then read as our own unresolved code.
+    """
+    included: set[Path] = set()
+    excluded: set[Path] = set()
+    for pattern in patterns:
+        if not isinstance(pattern, str):
             continue
-        for member in manifest.parent.glob(f"{pattern.rstrip('/')}/{PACKAGE_MANIFEST}"):
-            name = (_read_manifest(member) or {}).get("name")
-            if isinstance(name, str) and name.strip():
-                names.add(name)
+        if pattern.startswith("!"):
+            excluded |= _manifests(base, pattern.removeprefix("!"))
+        else:
+            included |= _manifests(base, pattern)
+    names: set[str] = set()
+    for member in sorted(included - excluded):
+        name = (_read_manifest(member) or {}).get("name")
+        if isinstance(name, str) and name.strip():
+            names.add(name)
     return names
+
+
+def _manifests(base: Path, pattern: str) -> set[Path]:
+    """The package.json files a workspace glob reaches under `base`, none in node_modules."""
+    try:
+        found = base.glob(f"{pattern.rstrip('/')}/{PACKAGE_MANIFEST}")
+        return {m for m in found if "node_modules" not in m.relative_to(base).parts}
+    # An absolute or otherwise unglobbable pattern names nothing, rather than
+    # stopping the ingest (#591 review).
+    except (NotImplementedError, ValueError):
+        return set()
 
 
 def _read_manifest(manifest: Path) -> dict[str, object] | None:
