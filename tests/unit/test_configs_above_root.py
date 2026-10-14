@@ -21,6 +21,7 @@ from cgis.core.models import EdgeType, NodeNamespace
 from cgis.extractors.typescript_extractor import TypeScriptExtractor
 from cgis.import_names import ImportNameCollector
 from cgis.pipeline import IngestionPipeline
+from cgis.workspaces import pnpm_member_names
 
 APP = """\
 import { cn } from "@/lib/utils";
@@ -153,6 +154,36 @@ def test_a_workspace_sibling_above_the_root_is_not_external(tmp_path: Path) -> N
     by_id = {n.id: n for n in nodes}
     assert by_id["@x.lib"].namespace is NodeNamespace.UNKNOWN
     assert by_id["react"].namespace is NodeNamespace.EXTERNAL
+
+
+def test_a_pnpm_workspace_sibling_above_the_root_is_not_external(tmp_path: Path) -> None:
+    """pnpm names its workspace in pnpm-workspace.yaml, not package.json (#562)."""
+    (tmp_path / ".git").mkdir()
+    _write(
+        tmp_path,
+        {
+            "package.json": json.dumps({"name": "mono"}),
+            "pnpm-workspace.yaml": 'packages:\n  - "packages/*"\n  - "apps/*"\n  - "!**/test"\n',
+            "packages/lib/package.json": json.dumps({"name": "@x/lib"}),
+            "packages/lib/index.ts": "export function libFn() {\n  return 1;\n}\n",
+            "apps/web/package.json": json.dumps(
+                {"name": "web", "dependencies": {"@x/lib": "^1.0.0", "react": "^19"}}
+            ),
+            "apps/web/src/main.ts": (
+                'import { libFn } from "@x/lib";\nimport { useState } from "react";\n'
+                "export function main() {\n  useState(0);\n  return libFn();\n}\n"
+            ),
+        },
+    )
+    nodes, _, _ = _pipeline().run(str(tmp_path / "apps/web/src"))
+    by_id = {n.id: n for n in nodes}
+    assert by_id["@x.lib"].namespace is NodeNamespace.UNKNOWN
+    assert by_id["react"].namespace is NodeNamespace.EXTERNAL
+
+
+def test_a_malformed_pnpm_workspace_file_names_nothing(tmp_path: Path) -> None:
+    (tmp_path / "pnpm-workspace.yaml").write_text("packages: [unclosed", encoding="utf-8")
+    assert pnpm_member_names(tmp_path / "pnpm-workspace.yaml") == set()
 
 
 def test_without_a_repository_only_the_nearest_manifest_counts(tmp_path: Path) -> None:
