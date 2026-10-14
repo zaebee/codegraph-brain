@@ -97,6 +97,20 @@ Two planes over a shared core:
   the result, then runs the post-write passes: semantic uplift and
   `refresh_dispatch`. Both move here from `resolver/` (step 5). They read and
   write the store, which is what the resolver must not do.
+
+  > **Implementation note (step 5):** `pipeline.py` became `pipeline/__init__.py`,
+  > so `cgis.pipeline.IngestionPipeline` and every importer are unchanged (no
+  > re-export); `resolver/uplift.py` became `pipeline/uplift.py`, and with it the
+  > `resolver-storage` allowlist is empty. `refresh_dispatch` was already the
+  > pipeline's; its pure half, `dispatch_edges(methods, inheritance)`, stays in the
+  > resolver — it never touches a store. Measured: `pipeline` drift 0.106,
+  > `resolution` 0.179; `resolution`'s hygiene baseline went 0.45 → 0.46 because
+  > uplift left with a lower unresolved share (0.40) than the domain's (0.44) — no
+  > unresolved edge was added. Left for a measured follow-up, since removing them
+  > changes behaviour: the Python `__init__` root rule in `strip_layout_prefixes`,
+  > the JS-builtins root in `classify_fqn`'s generic tail, `_is_dunder` in
+  > DISPATCHES, and the language-named project state threaded through
+  > `IndexBuilder.build`.
 - **Read plane.** `storage → query → surfaces`.
 - **Core.** Model types and FQN utilities. It imports nothing else from cgis.
 
