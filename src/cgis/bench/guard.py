@@ -39,7 +39,12 @@ _COMMAND = re.compile(
     + r"(?:\S*/)?(?:cgis|cgis-mcp|codegraph-brain|uvx|uv|sqlite3)\b(?![./-])",
     re.MULTILINE,
 )
-_PYTHON_IMPORT = re.compile(r"-m\s+cgis\b|\b(?:import|from)\s+cgis\b")
+#: cgis imported the ways Python allows: `-m cgis`, `from cgis…`, `import cgis`,
+#: `import os, cgis` (Gemini on #590), `__import__("cgis")`, `import_module("cgis")`.
+_PYTHON_IMPORT = re.compile(
+    r"-m\s+cgis\b|\bfrom\s+cgis\b|\bimport\s+(?:[\w.]+\s*,\s*)*cgis\b"
+    r"|(?:__import__|import_module)\(\s*[\"']cgis\b"
+)
 #: A Python interpreter named anywhere in the command. An import of cgis only runs
 #: cgis when Python reads it: the same text in a grep pattern searched for it in
 #: this repository's own source, and was refused (#589). Anywhere, not in command
