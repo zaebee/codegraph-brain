@@ -50,8 +50,16 @@ _GraphData = tuple[SQLiteStore, list[Node], list[Edge]]
 # had drifted to 708+55 through ordinary growth — and #545 adds 12 / 4 (the
 # DISPATCHES pass's and the store's new signatures: Node, Edge, EdgeType, NodeType,
 # Mapping, SQLiteStore). Both re-centred on the branch measurement.
-_EXPECTED_ANNOTATION_REFERENCES = 775
-_EXPECTED_NAME_REFERENCES = 238
+#
+# Re-measured 2026-10-14 on the language-packs step-3 branch (fresh `cgis ingest src
+# --source-root src`): origin/main 804a398 held 814 annotation / 252 name references —
+# steps 1-2 (#597, #599) grew the annotation band to 775+39 through new pack modules —
+# and step 3 adds 27 / 6, every one in a signature it adds or moves: the two packs'
+# index modules (+6 each), their __init__s (+4 each), core/extractor.py (+4), the
+# registry (+3), core/index.py (+2), less resolver/indices.py (-2). Both re-centred on
+# the branch measurement.
+_EXPECTED_ANNOTATION_REFERENCES = 841
+_EXPECTED_NAME_REFERENCES = 258
 _TOLERANCE = 60  # ~10% of the annotation band: ordinary code churn, not a lost source
 _NAME_REF_TOLERANCE = 25  # the name-reference band is smaller, so its band is too
 

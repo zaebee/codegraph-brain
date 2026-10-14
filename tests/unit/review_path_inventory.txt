@@ -2,6 +2,7 @@ src/cgis/__init__.py
 src/cgis/core/coverage.py
 src/cgis/core/extractor.py
 src/cgis/core/freshness.py
+src/cgis/core/index.py
 src/cgis/core/js_globals.py
 src/cgis/core/models.py
 src/cgis/core/paths.py
@@ -37,10 +38,12 @@ src/cgis/languages/python/_syntax.py
 src/cgis/languages/python/_types.py
 src/cgis/languages/python/dependencies.py
 src/cgis/languages/python/extractor.py
+src/cgis/languages/python/index.py
 src/cgis/languages/python/project.py
 src/cgis/languages/typescript/__init__.py
 src/cgis/languages/typescript/_bindings.py
 src/cgis/languages/typescript/extractor.py
+src/cgis/languages/typescript/index.py
 src/cgis/languages/typescript/naming.py
 src/cgis/languages/typescript/npm.py
 src/cgis/languages/typescript/project.py

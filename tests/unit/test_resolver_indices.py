@@ -1,5 +1,7 @@
 """Unit tests for SymbolIndex and IndexBuilder."""
 
+import dataclasses
+
 import pytest
 
 from cgis.core.models import Node, NodeNamespace, NodeType
@@ -61,7 +63,7 @@ def test_build_indexes_file_import_map() -> None:
     )
     index = IndexBuilder().build([file_node])
     assert index.file_imports["mod.py"] == {"Dep": "other.Dep"}
-    assert index.external_roots == {"other"}
+    assert index.facts["python"].external_roots == {"other"}
 
 
 # ---------------------------------------------------------------------------
@@ -210,7 +212,7 @@ def test_index_root_sets_are_frozen() -> None:
     index = IndexBuilder().build([_node("mod.fn")])
 
     assert isinstance(index.internal_roots, frozenset)
-    assert isinstance(index.external_roots, frozenset)
+    assert isinstance(index.facts["python"].external_roots, frozenset)
 
 
 def test_index_still_reads_normally_through_the_views() -> None:
@@ -451,12 +453,12 @@ def test_without_a_manifest_a_colliding_root_stays_internal() -> None:
     """No declared dependencies, no change: the pre-#495 reading is the fallback."""
     index = _owner_api_index(dependency_roots=())
     assert index.classify_fqn("alembic.op.add_column") is NodeNamespace.INTERNAL
-    assert index.dependency_roots == frozenset()
+    assert index.facts["python"].dependency_roots == frozenset()
 
 
 def test_only_colliding_dependencies_are_kept() -> None:
     """A dependency no internal root shares a name with is left to `external_roots`."""
-    assert _owner_api_index().dependency_roots == frozenset({"alembic"})
+    assert _owner_api_index().facts["python"].dependency_roots == frozenset({"alembic"})
 
 
 def test_a_typescript_source_does_not_read_python_dependencies() -> None:
@@ -473,3 +475,14 @@ def test_a_src_layout_package_keeps_its_heads() -> None:
     )
     assert index.classify_fqn("alembic.env.run") is NodeNamespace.INTERNAL
     assert index.classify_fqn("alembic.op.add_column") is NodeNamespace.EXTERNAL
+
+
+def test_an_index_cannot_be_built_without_its_packs_facts() -> None:
+    """Classification reads `facts[pack]`: an index lacking them must fail where it is made.
+
+    With an empty default the first classification would raise a KeyError far
+    from the cause — or, guarded, silently fall back and misread a Python name.
+    """
+    facts = next(f for f in dataclasses.fields(SymbolIndex) if f.name == "facts")
+    assert facts.default is dataclasses.MISSING
+    assert facts.default_factory is dataclasses.MISSING

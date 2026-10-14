@@ -3,7 +3,8 @@
 from collections.abc import Iterable, Mapping
 
 from cgis.core.models import RAW_CLASS_PREFIX, Edge, EdgeType, Node, NodeNamespace
-from cgis.resolver.indices import IndexBuilder, SymbolIndex, bare_import_namespace
+from cgis.languages.typescript.index import TypeScriptIndexFacts, package_namespace
+from cgis.resolver.indices import IndexBuilder, SymbolIndex
 
 
 def _owning_class(index: SymbolIndex, source_fqn: str) -> str | None:
@@ -40,7 +41,11 @@ def _package_call(index: SymbolIndex, name: str, file_path: str) -> str | None:
     if bound is None:
         return None
     candidate = f"{bound}.{rest}" if rest else bound
-    if bare_import_namespace(index, candidate, file_path) is None:
+    # A TypeScript rule inside the engine until step 4 makes it the TS pack's step (C5).
+    facts = index.facts.get("typescript")
+    if not isinstance(facts, TypeScriptIndexFacts):
+        return None
+    if package_namespace(candidate, file_path, facts) is None:
         return None
     return candidate
 

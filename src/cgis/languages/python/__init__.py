@@ -5,8 +5,11 @@ from pathlib import Path
 from typing import override
 
 from cgis.core.extractor import BaseExtractor, LanguagePack
+from cgis.core.index import ClassifyContext, IndexFacts
+from cgis.core.models import Node, NodeNamespace
 from cgis.core.paths import is_test_path
 from cgis.core.project import ProjectReader
+from cgis.languages.python import index
 from cgis.languages.python._syntax import PYTHON_LANG, file_path_to_module_fqn
 from cgis.languages.python.project import PythonProjectReader
 
@@ -43,6 +46,16 @@ class PythonPack(LanguagePack):
     def project_reader(self, root: Path, extractors: Mapping[str, BaseExtractor]) -> ProjectReader:
         """This pack's config reader for the project at `root`."""
         return PythonProjectReader(root)
+
+    @override
+    def index_facts(self, nodes: Mapping[str, Node], state: Mapping[str, object]) -> IndexFacts:
+        """See `cgis.languages.python.index.index_facts`."""
+        return index.index_facts(nodes, state)
+
+    @override
+    def classify(self, fqn: str, ctx: ClassifyContext) -> NodeNamespace:
+        """See `cgis.languages.python.index.classify`."""
+        return index.classify(fqn, ctx)
 
 
 PACK = PythonPack()

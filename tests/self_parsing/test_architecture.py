@@ -242,6 +242,8 @@ RULES: tuple[_Rule, ...] = (
     _Rule("pack-isolation", ("cgis.languages",),
           ("cgis.storage", "cgis.query", "cgis.api", "cgis.guardian", "cgis.pipeline")),
     _Rule("resolver-storage", ("cgis.resolver",), ("cgis.storage",)),
+    _Rule("engine-packs", ("cgis.resolver",), ("cgis.languages",),
+          exempt_modules=frozenset({"cgis.languages"})),
     _Rule("surface-packs", ("cgis.query", "cgis.guardian", "cgis.cli", "cgis.api"),
           ("cgis.languages",), exempt_modules=frozenset({"cgis.languages"})),
     _Rule("surface-storage", ("cgis.cli", "cgis.api", "cgis.guardian"), ("cgis.storage",)),

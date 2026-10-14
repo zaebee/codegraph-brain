@@ -20,10 +20,11 @@ node — the silent miss #344 removed. `TestCaseSensitivity` pins the agreement.
 import re
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
-from functools import cache
+from functools import cache, lru_cache
 from pathlib import Path, PurePosixPath
 
 from cgis.core.extractor import BaseExtractor, LanguagePack
+from cgis.core.index import IndexFacts
 from cgis.core.models import Node
 from cgis.core.project import ProjectReader
 
@@ -116,6 +117,23 @@ def scope_of(path: str, source_root: str | None) -> str:
 def project_readers(root: Path, extractors: Mapping[str, BaseExtractor]) -> list[ProjectReader]:
     """Every pack's project reader, in manifest order — imports each pack, loads no grammar."""
     return [_load(m.name).project_reader(root, extractors) for m in MANIFESTS]
+
+
+def index_facts(nodes: Mapping[str, Node], state: Mapping[str, object]) -> dict[str, IndexFacts]:
+    """Every pack's index facts, by pack name."""
+    return {m.name: _load(m.name).index_facts(nodes, state) for m in MANIFESTS}
+
+
+@lru_cache(maxsize=4096)
+def classifying_pack(source_file: str | None) -> LanguagePack | None:
+    """The pack that classifies a reference from `source_file`; None when no pack reads it.
+
+    No source means the Python pack: `classify_fqn(fqn)` has always applied the
+    Python reading, and removing that is a separate, measured change (spec,
+    Index and classification). Cached: classification is on the resolver's hot
+    path, and a path's suffix never changes.
+    """
+    return _load("python") if source_file is None else pack_for_path(source_file)
 
 
 def skips(filename: str) -> bool:

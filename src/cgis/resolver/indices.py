@@ -1,19 +1,17 @@
 """Symbol indices for FQN resolution: built once by IndexBuilder, read-only after."""
 
-import builtins
 import os
 import posixpath
-import sys
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import NamedTuple
 
-from cgis.core.js_globals import specifier_fqn
+from cgis.core.index import ClassifyContext, IndexFacts
+from cgis.core.js_globals import JS_BUILTINS_ROOT
 from cgis.core.models import SELF_PREFIX, Node, NodeNamespace, NodeType
-from cgis.resolver.js_builtins import JS_BUILTINS_ROOT, NODE_BUILTIN_MODULES, NODE_SCHEME
-
-_BUILTINS: frozenset[str] = frozenset(dir(builtins))
+from cgis.languages import classifying_pack
+from cgis.languages import index_facts as pack_index_facts
 
 #: Sources whose references read against Python's stdlib, builtins and import roots.
 _PYTHON_SUFFIXES: tuple[str, ...] = (".py",)
@@ -79,8 +77,10 @@ class SymbolIndex:
     suffix_map: Mapping[str, list[str]]
     # top-level root segments of all internal nodes (for classify)
     internal_roots: frozenset[str]
-    # root segments of absolute imports (anything else is UNKNOWN)
-    external_roots: frozenset[str]
+    # pack name -> that pack's index facts (language-packs step 3): Python's
+    # external and dependency roots, TypeScript's npm packages and bare imports.
+    # Required: classification reads it, so an index without it fails where made.
+    facts: Mapping[str, IndexFacts]
     # prefixes the sources write but the node ids do not carry, because the ingest
     # root was inside the package: `app.` when `cgis ingest app/`. Learned from the
     # import maps, never guessed — kept apart from `internal_roots` so a target can
@@ -96,20 +96,7 @@ class SymbolIndex:
     # then wildcards longest prefix first — the order TypeScript picks one in.
     # A file uses the nearest project above it (#508).
     path_aliases: Mapping[str, tuple[PathAlias, ...]] = MappingProxyType({})
-    # import roots of the dependencies the project's manifests declare, kept only
-    # where they collide with an internal root: `alembic` when `app/alembic/`
-    # exists and `alembic` is in pyproject.toml (#495).
-    dependency_roots: frozenset[str] = frozenset()
-    # `root.second` heads our own nodes have under those roots: `alembic.env`,
-    # `alembic.versions`. What tells our package apart from the library's.
-    dependency_heads: frozenset[str] = frozenset()
-    # npm packages the `package.json` files declare, as written (`@x/a`, not
-    # `@x.a`), less this repository's own workspace packages (#556).
-    npm_dependencies: frozenset[str] = frozenset()
-    # normalized file_path -> the bare (non-relative) specifiers a TypeScript file
-    # imports, as written: what licenses reading a name as a package's (#556).
-    file_bare_imports: Mapping[str, frozenset[str]] = MappingProxyType({})
-    # normalized file_path -> {local name: package symbol FQN} for those imports:
+    # normalized file_path -> {local name: package symbol FQN} for a TS file's imports:
     # `useState` -> `react.useState`, a namespace import `Icons` -> `lucide-react`.
     file_bare_bindings: Mapping[str, dict[str, str]] = MappingProxyType({})
 
@@ -123,8 +110,8 @@ class SymbolIndex:
 
         Only a known layout prefix is stripped. Dropping arbitrary leading
         segments would resolve `pydantic.config` into a project that happens to
-        have a `config` module, which is the collision `_strips_to_a_node` keeps
-        out of root classification for the same reason.
+        have a `config` module, which is the collision the Python pack's
+        `_strips_to_a_node` keeps out of root classification for the same reason.
 
         `source_file` scopes the rule to the language that taught it: the prefixes
         come from Python import maps, so a TypeScript path alias `import … from
@@ -133,8 +120,8 @@ class SymbolIndex:
 
         Only a *root* segment is ever a layout prefix today, so a two-level one
         (`src.app.`) reconciles the symbol edge and not the module edge. Left as
-        is: `_build_external_roots` groups by root, and widening it needs the
-        collision guard below to be stronger first (#495).
+        is: the Python pack's `_split_import_roots` groups by root, and widening it
+        needs the collision guard below to be stronger first (#495).
         """
         if fqn in self.nodes:
             return fqn
@@ -285,6 +272,8 @@ class SymbolIndex:
         The check names Python rather than excluding TypeScript, so a language
         added later starts from UNKNOWN instead of inheriting Python's names.
         Without `source_file` the Python reading applies, as it always has.
+
+        The language rules are the source's pack's (language-packs step 3).
         """
         if fqn.startswith("."):
             return NodeNamespace.INTERNAL
@@ -294,23 +283,20 @@ class SymbolIndex:
             # let unresolved_ratio *improve* as a codebase adopted more dependency
             # injection, so a green `validate` said nothing about the gap (#414).
             return NodeNamespace.UNKNOWN
-        package = bare_import_namespace(self, fqn, source_file)
-        if package is not None:
-            return package
-        root = fqn.split(".", maxsplit=1)[0]
-        if root in self.internal_roots:
-            if _is_declared_dependency(self, fqn, root, source_file):
-                return NodeNamespace.EXTERNAL
-            return NodeNamespace.INTERNAL
-        if root == JS_BUILTINS_ROOT:
-            return NodeNamespace.STDLIB
-        if source_file is not None and not source_file.endswith(_PYTHON_SUFFIXES):
-            return NodeNamespace.UNKNOWN
-        if root in sys.stdlib_module_names or root in _BUILTINS:
-            return NodeNamespace.STDLIB
-        if root in self.external_roots:
-            return NodeNamespace.EXTERNAL
-        return NodeNamespace.UNKNOWN
+        pack = classifying_pack(source_file)
+        if pack is None:
+            # A source no pack reads: the rules every language shared before step 3.
+            root = fqn.split(".", maxsplit=1)[0]
+            if root in self.internal_roots:
+                return NodeNamespace.INTERNAL
+            return NodeNamespace.STDLIB if root == JS_BUILTINS_ROOT else NodeNamespace.UNKNOWN
+        context = ClassifyContext(
+            source_file=source_file,
+            internal_roots=self.internal_roots,
+            nodes=self.nodes,
+            facts=self.facts[pack.name],
+        )
+        return pack.classify(fqn, context)
 
     def is_variable_node(self, fqn: str) -> bool:
         """Return True when fqn names an existing VARIABLE node in the graph."""
@@ -325,117 +311,8 @@ class SymbolIndex:
         return os.path.normpath(edge_file_path) if edge_file_path else None
 
 
-def bare_import_namespace(
-    index: SymbolIndex, fqn: str, source_file: str | None
-) -> NodeNamespace | None:
-    """EXTERNAL or STDLIB when `fqn` lies under a package `source_file` imports, else None.
-
-    Only TypeScript files record bare imports, so any other source — or none —
-    is None without a language check here. Two things must hold (#556).
-
-    The file imports a bare specifier `fqn` sits under — so `react.render` on a
-    parameter named `react` in a file that never imports React stays
-    unresolved, the mistake #454 fixed for Python names.
-    And that specifier names a package: one a `package.json` declares, which
-    is EXTERNAL, or a Node builtin, which is STDLIB. An import of anything else
-    — an undeclared package, a broken alias — keeps its UNKNOWN, because that
-    is a lost edge `top_unresolved` should show.
-
-    A declared package wins over a builtin of the same name: a browser app
-    that declares `buffer` bundles that package, not Node's.
-
-    The specifier is matched to a package as written, `/` and all: dotted,
-    `lodash.debounce` (a package of its own) would pass for a subpath of a
-    declared `lodash`. When a target sits under several imported specifiers the
-    longest decides, since it is the one that names the target's module.
-    """
-    imported = index.file_bare_imports.get(source_file or "", frozenset())
-    under = [
-        s for s in imported if fqn == specifier_fqn(s) or fqn.startswith(f"{specifier_fqn(s)}.")
-    ]
-    if not under:
-        return None
-    specifier = max(under, key=len)
-    # Each `/`-prefix of the specifier is a candidate package name: `@x/a/b/c`
-    # tries `@x`, `@x/a`, … — a set lookup each, never a scan of the manifests.
-    parts = specifier.split("/")
-    if any("/".join(parts[:i]) in index.npm_dependencies for i in range(1, len(parts) + 1)):
-        return NodeNamespace.EXTERNAL
-    if specifier.startswith(NODE_SCHEME) or specifier.split("/")[0] in NODE_BUILTIN_MODULES:
-        return NodeNamespace.STDLIB
-    return None
-
-
-def _is_declared_dependency(
-    index: SymbolIndex, fqn: str, root: str, source_file: str | None
-) -> bool:
-    """True when an internal-root `fqn` names a declared dependency, not our package.
-
-    The root alone cannot say: `app/alembic/` makes `alembic` internal, while
-    `from alembic import op` is the library (#495). Our package is what it
-    holds, so `alembic.env.run_migrations` stays internal and
-    `alembic.op.add_column` — `op` being nothing of ours — is the dependency.
-
-    The manifest is what licenses the second reading, never the graph alone:
-    a graph-only rule declared `scripts.ci.openapi_snapshot` third-party
-    because that module lives outside the ingest root, though it is ours and
-    `scripts` is no dependency. The roots come from Python manifests, so only
-    a Python source (or an unscoped call) reads them, as in #454.
-    """
-    if root not in index.dependency_roots or fqn in index.nodes:
-        return False
-    if source_file is not None and not source_file.endswith(_PYTHON_SUFFIXES):
-        return False
-    return ".".join(fqn.split(".", maxsplit=2)[:2]) not in index.dependency_heads
-
-
-#: How many of a root's imports must reach a node before it may be stripped off a
-#: target (#498 review). One is not evidence: a third-party module that happens to
-#: share a path with ours — `from boto3.utils.helpers import x` against our own
-#: `utils/helpers.py` — made `boto3` first-party, and stripping it wired
-#: `import boto3.config` into this project's `config.py` at full confidence.
-#: Classification itself still accepts one, because there the cost of a wrong call
-#: is a namespace label rather than a fabricated internal edge.
-_LAYOUT_PREFIX_EVIDENCE = 2
-
 #: The head a relative import in the ingest root's own `__init__.py` carries (#319).
 _ROOT_PACKAGE = "__init__"
-
-
-def _strips_to_a_node(imported_fqn: str, node_ids: set[str]) -> bool:
-    """True when dropping leading segments of `imported_fqn` reaches a real node.
-
-    `app.domains.models.Thing` against a graph rooted at `domains` strips to
-    `domains.models.Thing`, which exists — so `app` is this project's own name,
-    not a package it depends on.
-
-    The remainder must keep at least two segments. Stripping to a single one
-    matches any library whose submodule shares a name with a top-level module of
-    ours — `from pydantic import config` against a project that has `config.py`
-    strips to `config`, and the whole of pydantic would then classify INTERNAL,
-    breaking resolution for every symbol in it. Two segments cannot collide by
-    accident, and a genuine first-party prefix always has deeper imports than
-    that: on owner-api 3346 values resolve, none of them needing this.
-    """
-    parts = imported_fqn.split(".")
-    return any(".".join(parts[i:]) in node_ids for i in range(1, len(parts) - 1))
-
-
-def _heads_under(roots: set[str], node_ids: Iterable[str]) -> frozenset[str]:
-    """The `root.second` heads of node ids under `roots`, read past a `src`/`lib` layout.
-
-    The same two spellings `_add_node_to_suffix_map` makes a root internal by.
-    """
-    if not roots:
-        return frozenset()
-    heads: set[str] = set()
-    for node_id in node_ids:
-        parts = node_id.split(".")
-        start = 1 if len(parts) > 2 and parts[0] in {"src", "lib"} else 0
-        for offset in {0, start}:
-            if len(parts) > offset + 1 and parts[offset] in roots:
-                heads.add(f"{parts[offset]}.{parts[offset + 1]}")
-    return frozenset(heads)
 
 
 def _resolve_typescript_import(
@@ -568,7 +445,6 @@ class IndexBuilder:
         file_variable_symbols: dict[tuple[str, str], list[str]] = {}
         file_imports: dict[str, dict[str, str]] = {}
         file_shadowed_globals: dict[str, frozenset[str]] = {}
-        file_bare_imports: dict[str, frozenset[str]] = {}
         file_bare_bindings: dict[str, dict[str, str]] = {}
         reexports: dict[str, dict[str, str]] = {}
         star_imports: dict[str, list[str]] = {}
@@ -583,7 +459,6 @@ class IndexBuilder:
                 self_types,
                 reexports,
                 star_imports,
-                file_bare_imports,
                 file_bare_bindings,
             )
             if node.type == NodeType.FILE and node.metadata.get("shadowed_globals"):
@@ -609,10 +484,13 @@ class IndexBuilder:
             # "src.cgis.pipeline.X" → suffix "cgis.pipeline.X" also points to the node
             self._add_node_to_suffix_map(node.id, suffix_map, internal_roots)
 
-        colliding = internal_roots.intersection(dependency_roots)
-        external_roots, first_party, corroborated = self._build_external_roots(
-            file_imports, set(nodes_by_id)
-        )
+        state = {
+            "python_dependencies": list(dependency_roots),
+            "npm_dependencies": list(npm_dependencies),
+        }
+        facts = pack_index_facts(MappingProxyType(nodes_by_id), state)
+        roots = frozenset(internal_roots.union(*(f.internal_roots for f in facts.values())))
+        prefixes = frozenset[str]().union(*(f.layout_prefixes for f in facts.values()))
         self._expand_star_imports(star_imports, reexports, set(nodes_by_id))
 
         # Read-only views, not copies: MappingProxyType wraps in O(1), so this
@@ -629,19 +507,15 @@ class IndexBuilder:
             file_shadowed_globals=MappingProxyType(file_shadowed_globals),
             reexports=MappingProxyType(reexports),
             suffix_map=MappingProxyType(suffix_map),
-            internal_roots=frozenset(internal_roots | first_party),
-            external_roots=frozenset(external_roots),
-            layout_prefixes=frozenset(corroborated - internal_roots),
+            internal_roots=roots,
+            layout_prefixes=prefixes,
+            facts=MappingProxyType(facts),
             workspace_packages=MappingProxyType(
                 dict(sorted((workspace_packages or {}).items(), key=lambda item: -len(item[0])))
             ),
             path_aliases=MappingProxyType(
                 {scope: _ordered_aliases(rules) for scope, rules in (tsconfig_paths or {}).items()}
             ),
-            dependency_roots=frozenset(colliding),
-            dependency_heads=_heads_under(colliding, nodes_by_id),
-            npm_dependencies=frozenset(npm_dependencies),
-            file_bare_imports=MappingProxyType(file_bare_imports),
             file_bare_bindings=MappingProxyType(file_bare_bindings),
         )
 
@@ -742,7 +616,6 @@ class IndexBuilder:
         self_types: dict[str, dict[str, str]],
         reexports: dict[str, dict[str, str]],
         star_imports: dict[str, list[str]],
-        bare_imports: dict[str, frozenset[str]],
         bare_bindings: dict[str, dict[str, str]],
     ) -> None:
         """Read the maps the extractor attached to a FILE or CLASS node.
@@ -757,7 +630,6 @@ class IndexBuilder:
             file_imports[path] = node.metadata.get("import_map") or {}
             specifiers = node.metadata.get("bare_imports")
             if specifiers:
-                bare_imports[path] = frozenset(specifiers)
                 bare_bindings[path] = dict(node.metadata.get("bare_bindings") or {})
             forwarded = node.metadata.get("reexports")
             if forwarded:
@@ -791,50 +663,7 @@ class IndexBuilder:
     ) -> None:
         """Add node to suffix map and internal roots based on its ID."""
         parts = node_id.split(".")
-        internal_roots.add(parts[0])
-        if len(parts) > 1 and parts[0] in {"src", "lib"}:
-            internal_roots.add(parts[1])
+        internal_roots.add(parts[0])  # `src`/`lib` second segments are the Python pack's
         for i in range(1, len(parts)):
             suffix = ".".join(parts[i:])
             suffix_map.setdefault(suffix, []).append(node_id)
-
-    def _build_external_roots(
-        self, file_imports: dict[str, dict[str, str]], node_ids: set[str]
-    ) -> tuple[set[str], set[str], set[str]]:
-        """Split import roots into genuinely external ones and first-party prefixes.
-
-        Returns (external_roots, first_party_prefixes, corroborated_prefixes) —
-        the third being those with enough evidence to strip off a target, not only
-        to classify (see `_LAYOUT_PREFIX_EVIDENCE`).
-
-        A root is a *first-party prefix* when some import under it reaches a real
-        node once its head is stripped. That happens whenever a project is
-        ingested at a subdirectory: `cgis ingest ownima-backend/app` roots its
-        nodes at `domains`, `api`, … while the code imports `from app.models
-        import X`, so `app` looks like a third-party package. Every `app.*` FQN
-        without a node then classified EXTERNAL, and the resolver minted a
-        boundary node for a class of ours that does not exist — 2 461 confident
-        edges to nothing on that codebase (#424).
-
-        The discriminator is unambiguous in practice: measured there, `app` had
-        3 346 of 4 885 import values reach a node while pydantic, sqlalchemy,
-        grpc, fastapi and httpx had zero each. It asks whether the *import value*
-        resolves, not whether some node's id ends with the root's name — the
-        latter would match the library `grpc` against a project's own
-        `api/dependencies/grpc/` package.
-        """
-        imports_by_root: dict[str, set[str]] = {}
-        for import_map in file_imports.values():
-            for val in import_map.values():
-                if val and not val.startswith("."):
-                    imports_by_root.setdefault(val.split(".", maxsplit=1)[0], set()).add(val)
-
-        external: set[str] = set()
-        first_party: set[str] = set()
-        corroborated: set[str] = set()
-        for root, values in imports_by_root.items():
-            resolving = sum(1 for v in values if _strips_to_a_node(v, node_ids))
-            (first_party if resolving else external).add(root)
-            if resolving >= _LAYOUT_PREFIX_EVIDENCE:
-                corroborated.add(root)
-        return external, first_party, corroborated
