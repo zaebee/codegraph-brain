@@ -72,6 +72,54 @@ def _path_prefixes(store: SQLiteStore) -> set[str]:
     return {".".join(base.parts[start:]) for base in bases for start in range(1, len(base.parts))}
 
 
+def effective_prefix(store: SQLiteStore, prefix: str) -> str:
+    """The FQN prefix a scoped query should use: `prefix`, or it without a directory above.
+
+    Every entry point that takes an FQN prefix goes through this — find_symbol,
+    orphans, audit's `from_prefix`, suggest-packages, metrics' `scope`, and their
+    CLI twins (#584). Fixed one entry at a time, the rule kept missing the next:
+    #568 for FQNs, then `find_symbol`, then the four found in its review.
+
+    `prefix` is kept whenever internal code lies under it, so a real package
+    named like the root's last directory (`proj/proj`) is never re-read as a
+    sibling tree. Only a prefix covering no internal node — empty, or only the
+    phantom EXTERNAL nodes absolute imports mint — is replaced, and only by a
+    shorter prefix that does cover some.
+    """
+    if store.covers_internal(prefix):
+        return prefix
+    for shorter in _path_prefix_drops(store, prefix):
+        if store.covers_internal(shorter):
+            return shorter
+    return prefix
+
+
+def effective_prefixes(db_path: str, prefixes: list[str]) -> list[str]:
+    """`effective_prefix` for each of `prefixes`, for a caller holding a path, not a store."""
+    if not prefixes:
+        return prefixes
+    with SQLiteStore(db_path) as store:
+        return [effective_prefix(store, prefix) for prefix in prefixes]
+
+
+def _path_prefix_drops(store: SQLiteStore, prefix: str) -> list[str]:
+    """`prefix` with each leading directory above the graph dropped, longest drop first.
+
+    The remainder need not be a node — a prefix scopes a search — but something
+    must remain: dropping the whole prefix would widen the search to the entire
+    graph. Every drop is offered, not only the first, because roots nest: a
+    graph of `/w/src` with `--source-root pkg` has both `src` and `src.pkg`
+    above it, and `src.pkg.mod` is `mod` (Gemini on #585).
+    """
+    prefixes = _path_prefixes(store)
+    parts = prefix.split(".")
+    return [
+        ".".join(parts[start:])
+        for start in range(len(parts) - 1, 0, -1)
+        if ".".join(parts[:start]) in prefixes
+    ]
+
+
 def _without_leading_segments(store: SQLiteStore, fqn: str) -> str | None:
     """The node ``fqn`` names once a path prefix above the graph is dropped (#568).
 

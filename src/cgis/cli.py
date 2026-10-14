@@ -53,7 +53,7 @@ from cgis.query.drift.drift_service import analyze_drift
 from cgis.query.drift.fractal import FractalReport, analyze_fractal_db
 from cgis.query.drift.ontology_init import propose_ontology
 from cgis.query.engine import BEHAVIORAL_EDGE_TYPES, QueryEngine
-from cgis.query.fqn import is_package_prefix, resolve_fqn
+from cgis.query.fqn import effective_prefix, effective_prefixes, is_package_prefix, resolve_fqn
 from cgis.query.render.graph_json import graph_to_json
 from cgis.query.render.mermaid import MermaidCompiler
 from cgis.query.render.metrics import ArchitectureReport, DuckDBAnalyzer
@@ -791,7 +791,8 @@ def find(
 
     kinds = (kind.strip().upper(),) if kind and kind.strip() else ()
     with SQLiteStore(db) as store:
-        matches = store.search_nodes(query, kinds=kinds, fqn_prefix=prefix, limit=limit)
+        scope = effective_prefix(store, prefix) if prefix else prefix
+        matches = store.search_nodes(query, kinds=kinds, fqn_prefix=scope, limit=limit)
 
     if not matches:
         console.print(f"[yellow]No symbols matching '{escape(query)}'[/yellow]")
@@ -1491,7 +1492,7 @@ def metrics(
                 file_limit=limit,
                 cohesion_limit=limit,
                 exclude=exclude,
-                scope=scope,
+                scope=effective_prefixes(db, scope),
             )
     except Exception as e:  # duckdb missing, extension fetch, or a non-SQLite file
         console.print(f"[bold red]❌ {escape(str(e))}[/bold red]")
