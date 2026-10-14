@@ -414,7 +414,7 @@ class PythonExtractor(BaseExtractor):
             # in a class body (get_fqn_prefix). Class-body DI aliases are out
             # of scope (2026-06-11-fastapi-di-edges-design.md §6).
             self._functions.process_module_assignment(
-                node, code_bytes, file_path, nodes, edges, module_fqn
+                node, code_bytes, file_path, nodes, edges, module_fqn, import_map
             )
 
     def _walk(
