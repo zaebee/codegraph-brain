@@ -61,6 +61,9 @@ class _Verdict(NamedTuple):
     #: Left out without being counted: boundary nodes a walk not showing externals
     #: would prune afterwards anyway, so they must not spend the node budget.
     hidden: frozenset[str] = frozenset()
+    #: Kept, but cut before internal code when a level does not fit the budget:
+    #: stdlib and third-party targets when the walk shows them (#581 review).
+    boundary: frozenset[str] = frozenset()
 
 
 def _no_screen(_ids: list[str]) -> _Verdict:
@@ -75,17 +78,21 @@ def _admit(
 
     The screen's dropped ids enter neither; its leaves enter the answer only.
     A level that does not fit the node budget is cut to the room left, leaves
-    last: a file that imports X is a dead end whose callables are usually
-    listed beside it, and sorting by id alone put `pkg.svc` ahead of
-    `pkg.svc.use` — on owner-api 29 of 99 slots went to files (found in
-    review). Within each group the order is by id, so the cut is deterministic.
+    last, and boundary nodes after them: a file that imports X is a dead end
+    whose callables are usually listed beside it, and with externals shown a
+    trace's `console.print` took slots from 22 of its 70 internal nodes (#581
+    review). Sorting by id alone put `pkg.svc` ahead of `pkg.svc.use` — on
+    owner-api 29 of 99 slots went to files (found in review). Within each group
+    the order is by id, so the cut is deterministic.
     """
     admitted = [n for n in reached if n not in verdict.dropped and n not in verdict.hidden]
     truncation = None
     room = len(admitted) if max_nodes is None else max(max_nodes - held, 0)
     if len(admitted) > room:
         truncation = Truncation(depth, len(admitted) - room)
-        admitted = sorted(admitted, key=lambda n: (n in verdict.leaves, n))[:room]
+        admitted = sorted(admitted, key=lambda n: (n in verdict.boundary, n in verdict.leaves, n))[
+            :room
+        ]
     return admitted, [n for n in admitted if n not in verdict.leaves], truncation
 
 
@@ -126,6 +133,7 @@ def agent_screen(
             dropped=frozenset(n.id for n in nodes if n.is_test and not include_tests),
             leaves=frozenset(n.id for n in nodes if files_are_leaves and n.type == NodeType.FILE),
             hidden=frozenset() if show_external else frozenset(ids) - internal,
+            boundary=frozenset(ids) - internal if show_external else frozenset(),
         )
 
     return screen

@@ -167,7 +167,7 @@ def _truncation_text(truncation: Truncation, max_nodes: int) -> str:
     return (
         f"Truncated at depth {truncation.depth}: the {max_nodes}-node budget left out "
         f"{truncation.omitted} node(s) at that depth, and nothing past it was walked. "
-        f"To see more: {narrower}raise max_nodes, or ask about one of the callers shown."
+        f"To see more: {narrower}raise max_nodes, or ask about one of the nodes shown."
     )
 
 
@@ -689,8 +689,9 @@ def cgis_get_structure(
     For how the code connects use ``cgis_trace_flow`` (what it depends on) or
     ``cgis_analyze_impact`` (what depends on it).
 
-    Matches the CLI ``structure`` command. ``output_format="mermaid"`` (default) returns a
-    diagram of the hierarchy rooted at the given FQN; ``"json"`` returns the
+    Matches the CLI ``structure`` command. ``output_format="text"`` returns the
+    hierarchy as an indented tree, one line per member; ``"mermaid"`` (default) a
+    diagram of the hierarchy rooted at the given FQN; ``"json"`` the
     joinable ``{root, nodes, edges}`` payload with real FQNs.
     """
     if blank := _blank_fqn_error(fqn):
