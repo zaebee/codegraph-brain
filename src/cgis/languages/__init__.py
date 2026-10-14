@@ -8,7 +8,8 @@ module, never `cgis.languages.<pack>` (the `surface-packs` gate).
 Adding a language is a manifest here plus a package beside this file that
 exposes `PACK`. Each manifest loads its pack with a static import inside a
 function — lazy, yet visible to the review-fingerprint walk, which cannot follow
-`importlib` (`test_no_dynamic_imports_in_the_review_path`).
+`importlib` (`test_no_dynamic_imports_in_the_review_path`). A pack's own module
+imports no grammar; its `extractor()` does (step 2, ruling S2).
 
 Case-sensitive on purpose: `IngestionPipeline._get_extractor` matches
 `filename.endswith(ext)` against these lowercase extensions, so `Foo.TS` is

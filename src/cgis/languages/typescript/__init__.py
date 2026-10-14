@@ -4,11 +4,7 @@ from typing import override
 
 from cgis.core.extractor import BaseExtractor, LanguagePack
 from cgis.core.paths import is_test_path
-from cgis.languages.typescript.extractor import (
-    TYPESCRIPT_LANG,
-    TypeScriptExtractor,
-    file_path_to_module_fqn,
-)
+from cgis.languages.typescript.naming import TYPESCRIPT_LANG, file_path_to_module_fqn
 
 
 class TypeScriptPack(LanguagePack):
@@ -34,7 +30,9 @@ class TypeScriptPack(LanguagePack):
 
     @override
     def extractor(self, extension: str, source_roots: list[str]) -> BaseExtractor:
-        """The TSX grammar for `.tsx`, the TypeScript one otherwise."""
+        """The TSX grammar for `.tsx`, the TypeScript one otherwise — loaded here, on first use."""
+        from cgis.languages.typescript.extractor import TypeScriptExtractor  # noqa: PLC0415
+
         return TypeScriptExtractor(tsx=extension == ".tsx", source_roots=source_roots)
 
 
