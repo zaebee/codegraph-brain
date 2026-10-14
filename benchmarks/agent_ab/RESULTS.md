@@ -3,6 +3,33 @@
 One section per run, newest first. The raw lines are in `results.jsonl`; the
 transcripts they point at are git-ignored and stay on the machine that ran them.
 
+## 2026-10-14: does a short tool menu get an unprompted agent to call cgis? (#542 item 3)
+
+cgis at dbf3de9 (the `cgis-narrow` arm of #586), Sonnet 5.5, 3 runs per arm, 0 failed,
+0 contaminated, about $1.6. One probe session confirmed the narrowing reached the
+client: the `init` event listed exactly `mcp__cgis__cgis_analyze_impact`,
+`…find_symbol`, `…trace_flow`.
+
+| task | arm | cgis calls | recall | precision | median $ |
+|---|---|---|---|---|---|
+| `cgis-impact-drift-same-name` | cgis (15 tools) | 0, 0, 0 | 1.00 | 1.00 | 0.126 |
+| | cgis-narrow (3 tools) | 0, 0, 0 | 1.00 | 1.00 | 0.125 |
+| `cgis-impact-transitive-tsconfig` | cgis | 0, 0, 0 | 1.00 | 1.00 | 0.138 |
+| | cgis-narrow | 0, 0, 0 | 1.00 | 1.00 | 0.154 |
+
+- **Refuted.** Three tools instead of fifteen changed nothing: no unprompted
+  session called the graph, here or in any of the six `cgis` sessions before it —
+  0 of 18 today, across four tasks. The server instructions (#542 item 1) did not
+  move it either. Item 3's smaller default set has no evidence behind it.
+- These are the two tasks where `cgis-forced` was about 30% cheaper than control
+  (#579), so the graph would have paid; the agent never looked.
+- A likely reason sits in the client: Claude Code defers MCP tools, listing names
+  only, so a first call needs a ToolSearch to load the schema — every forced
+  session made one. An agent holding Grep and Bash, with a task grep finishes in
+  7–13 calls, does not take that step unasked.
+- Confound, as the README notes: the instructions and the plugin skill still name
+  all fifteen tools beside the three offered.
+
 ## 2026-10-14: `cgis-flow-ingest-to-sqlite` after #581 (text format, trace budget)
 
 cgis at a1dd2b8, Sonnet 5.5, 3 runs per arm, 0 failed, 0 contaminated, about $0.6.
