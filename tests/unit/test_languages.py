@@ -131,7 +131,11 @@ class TestPacks:
             assert pack.is_test(path) is is_test_path(path)
 
     def test_every_node_names_the_pack_that_reads_its_file(self, tmp_path: Path) -> None:
-        """`mermaid.py` finds the pack by `Node.language`; that must agree with the path."""
+        """`pack_for_node` (by `Node.language`) and `pack_for_path` agree on extracted nodes.
+
+        Synthesized rows do not carry a language (the "python" default), which is why
+        `mermaid.py` asks by path — `test_a_package_row_keeps_its_full_slug`.
+        """
         files = {"pkg/mod.py": PY_SOURCE, "app/h.ts": TS_SOURCE, "app/W.tsx": TSX_SOURCE}
         nodes = _ingest(tmp_path, files)
         extracted = [n for n in nodes if n.file_path in files]

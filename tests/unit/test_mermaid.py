@@ -423,3 +423,25 @@ def test_node_slug_of_a_typescript_node_peels_its_own_module_prefix() -> None:
     """
     node = _make_node_in_file("apps.web.components.Button.render", "apps/web/components/Button.tsx")
     assert _node_slug(node) == "Button_render"
+
+
+def test_a_package_row_keeps_its_full_slug() -> None:
+    """A directory row (`cgis structure`) has no file a pack reads: no path slug (step 1).
+
+    It carries `Node.language`'s default, "python"; resolving its pack from that
+    peeled the id down to the bare stem and renamed every package id in the diagram.
+    """
+    node = Node(
+        id="cgis.query", type=NodeType.MODULE, name="query", file_path="cgis/query",
+        start_line=0, end_line=0,
+    )  # fmt: skip
+    assert _node_slug(node) == "cgis_query"
+
+
+def test_a_tsx_node_from_an_old_database_still_slugs_by_its_path() -> None:
+    """Before #513 the TS extractor left `language` at its "python" default."""
+    node = Node(
+        id="components.Button", type=NodeType.FUNCTION, name="Button",
+        file_path="components/Button.tsx", start_line=1, end_line=2,
+    )  # fmt: skip
+    assert _node_slug(node) == "Button"
