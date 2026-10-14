@@ -298,3 +298,9 @@ def test_importing_the_packs_loads_no_grammar() -> None:
     )
     assert out.returncode == 0, out.stderr
     assert json.loads(out.stdout.strip().splitlines()[-1]) == []
+
+
+def test_a_typescript_only_ingest_never_loads_the_python_grammar(tmp_path: Path) -> None:
+    """Every pack's reader exists from the first file now; the Python grammar must still wait."""
+    files = {"app/h.ts": TS_SOURCE, "README.md": "# demo\n"}
+    assert _cli_ingest_loads(tmp_path, files) == ["tree_sitter_typescript"]

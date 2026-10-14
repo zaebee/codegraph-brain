@@ -21,10 +21,11 @@ import re
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from functools import cache
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 from cgis.core.extractor import BaseExtractor, LanguagePack
 from cgis.core.models import Node
+from cgis.core.project import ProjectReader
 
 
 @dataclass(frozen=True)
@@ -110,6 +111,11 @@ def scope_of(path: str, source_root: str | None) -> str:
     """
     pack = pack_for_path(path) or _load("python")
     return pack.scope_of(path, source_root)
+
+
+def project_readers(root: Path, extractors: Mapping[str, BaseExtractor]) -> list[ProjectReader]:
+    """Every pack's project reader, in manifest order — imports each pack, loads no grammar."""
+    return [_load(m.name).project_reader(root, extractors) for m in MANIFESTS]
 
 
 def skips(filename: str) -> bool:

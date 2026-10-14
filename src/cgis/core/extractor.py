@@ -5,9 +5,12 @@ subclasses the protocol, so the protocol living in the registry would be a cycle
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from cgis.core.models import Edge, Node
+from cgis.core.project import ProjectReader
 
 
 @runtime_checkable
@@ -82,4 +85,8 @@ class LanguagePack(Protocol):
 
     def extractor(self, extension: str, source_roots: list[str]) -> BaseExtractor:
         """A new extractor for files of `extension`."""
+        ...
+
+    def project_reader(self, root: Path, extractors: Mapping[str, BaseExtractor]) -> ProjectReader:
+        """A reader for this pack's configs around `root` (`extractors`: the walk's own)."""
         ...
