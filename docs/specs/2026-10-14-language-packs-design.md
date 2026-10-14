@@ -102,14 +102,22 @@ Two planes over a shared core:
 
 ### Registry
 
-`cgis/languages/__init__.py` maps a pack name to its module path and imports
-a pack only on first use. Loading every grammar eagerly would undo #506. It
-answers:
+`cgis/languages/__init__.py` holds one lightweight **manifest** per pack: its
+name, module path, extensions and `cross_file_metadata` keys. Everything the
+pipeline needs before it meets a file is declared there, so nothing imports a
+pack until a file of that language turns up. Loading every grammar eagerly
+would undo #506 (Gemini on #593). It answers:
 
-- `pack_for_path(path) -> LanguagePack | None`, by extension;
+- `pack_for_path(path) -> LanguagePack | None`, by extension; this imports
+  that one pack on first use;
 - `pack_for_node(node) -> LanguagePack | None`, by `Node.language`, never by
   re-sniffing a suffix;
-- `extractors(source_roots)`, the mapping `IngestionPipeline` takes.
+- `extractor_for(path, source_roots) -> BaseExtractor | None`, which
+  `IngestionPipeline` calls per file instead of taking a ready mapping of
+  every extractor; each pack's extractor is built once, when its first file
+  is met;
+- `cross_file_metadata()`, the union of the manifests' keys, without
+  importing any pack.
 
 The CLI, MCP server, health script and reviewer all use the registry; none
 names an extractor class. Surfaces and `query` may import
@@ -218,8 +226,10 @@ The generic chain, with today's positions of language logic:
 (indices.py:141–146). Step 4 of the migration extracts these one at a time.
 
 **Incremental ingest.** `cross_file_metadata` lists, per node type, the
-metadata keys other files resolve against. The pipeline's
-`_CROSS_FILE_METADATA` (pipeline.py:32) becomes the union over packs:
+metadata keys other files resolve against. It is declared in the pack's
+registry manifest, not read from the pack module, so collecting it imports
+nothing. The pipeline's `_CROSS_FILE_METADATA` (pipeline.py:32) becomes the
+union over the manifests:
 `import_map`, `reexports`, `star_imports`, `self_types` and `annotated_type`
 for Python, and so on per pack.
 
@@ -296,8 +306,10 @@ cgis reading refactored source.
   - the `ingest_state` keys.
 
   It runs twice, under two `PYTHONHASHSEED` values, so set-iteration order
-  cannot pass by luck. The snapshot is regenerated only by a step meant to
-  change behaviour (step 7).
+  cannot pass by luck. It is an ordinary unit test, so CI runs it on every PR
+  from step 0 on. **The Python/TS snapshot never changes, step 7 included.**
+  Go gets a corpus and snapshot of its own, so the pilot cannot quietly move
+  the existing languages.
 - `scripts/graph_identity.py <corpus> <db-before> <db-after>` diffs two
   ingests. Every PR in steps 1–5 reports it in its description, for cgis
   `src/` at 715cd9a and owner-api @ 8de2245, with `main`'s cgis and the
@@ -317,7 +329,9 @@ cgis reading refactored source.
 Each step is one PR with the full gate, the independent reviewer and the
 identity report. Steps 1–5 are mergeable one at a time. Each step re-measures
 the god-object and self-drift baselines. A tolerance may only go down, or be
-set for a new domain with the measurement in the commit message.
+set for a new domain with the measurement in the commit message. This is
+already enforced: `docs/ontology/tolerances.lock` and
+`test_tolerances_never_exceed_the_lock` (#151).
 
 ### Go pilot (step 7)
 
@@ -334,6 +348,10 @@ set for a new domain with the measurement in the commit message.
   1. check the own module path first (`module myapp` has no dot either);
   2. then the pseudo-package `C` (cgo);
   3. then "no dot in the first path segment" means standard library.
+- **Ontology:** the Go extractor follows the same conventions as the others.
+  Unresolved calls are emitted as `raw_call:<name>` for the resolver. Node
+  and edge types come from the existing enums, with no new `NodeType`. The
+  existing ontology-compliance tests run on the Go corpus.
 - **Resolution:**
   - a receiver normalizer (`*Server` → `Server`);
   - package-qualified calls (`pkg.Run`) through the import map;
