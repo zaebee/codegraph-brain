@@ -297,7 +297,9 @@ def run_session(cmd: list[str], cwd: Path, timeout: int) -> tuple[str, int]:
     return proc.stdout, proc.returncode
 
 
-def run_one(task: AgentTask, arm: Arm, run: int, repo: Path, args: argparse.Namespace) -> None:
+def run_one(
+    task: AgentTask, arm: Arm, run: int, repo: Path, args: argparse.Namespace, cgis_sha: str
+) -> None:
     """One session: worktree → (ingest) → claude -p → transcript → results line."""
     with worktree_at(task.sha, repo) as wt, tempfile.TemporaryDirectory(prefix="ab-") as tmp:
         removed = remove_graph_files(wt)
@@ -318,13 +320,14 @@ def run_one(task: AgentTask, arm: Arm, run: int, repo: Path, args: argparse.Name
         start = time.monotonic()
         stdout, returncode = run_session(cmd, wt, args.timeout)
         wall_s = time.monotonic() - start
-    transcript_path = args.transcripts / task.id / f"{arm}-{run}.jsonl"
+    # The sha keeps a later cgis's run 0 from overwriting an earlier one's (#577).
+    transcript_path = args.transcripts / task.id / f"{arm}-{cgis_sha[:7]}-{run}.jsonl"
     transcript_path.parent.mkdir(parents=True, exist_ok=True)
     transcript_path.write_text(stdout, encoding="utf-8")
     meta: dict[str, object] = {
         "model": args.model,
         "effort": args.effort,
-        "cgis_sha": _git("rev-parse", "HEAD"),
+        "cgis_sha": cgis_sha,
         "returncode": returncode,
         "ingest_s": round(ingest_s, 2),
         "wall_s": round(wall_s, 2),
@@ -356,26 +359,98 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"no --repo NAME=PATH for: {missing}", file=sys.stderr)
         return 2
     arms: list[Arm] = args.arm or list(ARMS)
+    cgis_sha = "dry-run" if args.dry_run else _git("rev-parse", "HEAD")
+    failed = 0
     for task in tasks:
-        for run in range(args.runs):
+        first = {arm: next_run(args.results, task.id, arm, cgis_sha) for arm in arms}
+        for offset in range(args.runs):
             for arm in arms:
-                run_one(task, arm, run, repos[task.repo], args)
-    return 0
+                session = (task, arm, first[arm] + offset, repos[task.repo])
+                failed += not _run_or_record(*session, args, cgis_sha)
+    if failed:
+        print(f"{failed} session(s) failed; see `failed` in {args.results}", file=sys.stderr)
+    return 1 if failed else 0
+
+
+def next_run(results: Path, task_id: str, arm: str, cgis_sha: str) -> int:
+    """The first run number not yet in `results` for this task, arm and cgis (#577).
+
+    Counting from 0 on every invocation made a second one, finishing an aborted
+    batch, collide with the first one's rows and overwrite its transcripts.
+    """
+    if not results.exists():
+        return 0
+    taken = [
+        int(row["run"])
+        for row in map(json.loads, filter(str.strip, results.read_text("utf-8").splitlines()))
+        if (row.get("task"), row.get("arm"), row.get("cgis_sha")) == (task_id, arm, cgis_sha)
+    ]
+    return max(taken, default=-1) + 1
+
+
+def _run_or_record(
+    task: AgentTask,
+    arm: Arm,
+    run: int,
+    repo: Path,
+    args: argparse.Namespace,
+    cgis_sha: str,
+) -> bool:
+    """Run one session; on failure, write a `failed` row and report False instead of raising.
+
+    One failed ingest — earlyoom's SIGTERM on a loaded host — used to end the
+    whole batch, losing every session after it (#577).
+    """
+    try:
+        run_one(task, arm, run, repo, args, cgis_sha)
+    except Exception as exc:  # any failure is one lost session, not the batch
+        print(f"[{task.id} {arm} #{run}] FAILED: {exc}", file=sys.stderr)
+        _append_jsonl(args.results, failure_row(task, arm, run, args, cgis_sha, exc))
+        return False
+    return True
+
+
+def failure_row(
+    task: AgentTask,
+    arm: Arm,
+    run: int,
+    args: argparse.Namespace,
+    cgis_sha: str,
+    exc: Exception,
+) -> dict[str, object]:
+    """A results line for a session that never produced a transcript."""
+    return {
+        "timestamp": datetime.now(UTC).isoformat(),
+        "task": task.id,
+        "type": task.type,
+        "repo": task.repo,
+        "repo_sha": task.sha,
+        "arm": arm,
+        "run": run,
+        "model": args.model,
+        "effort": args.effort,
+        "cgis_sha": cgis_sha,
+        "is_error": True,
+        "contaminated": False,
+        "failed": str(exc)[:500],
+    }
 
 
 def summarize(rows: Sequence[dict[str, object]]) -> list[dict[str, object]]:
-    """Median per (task, arm) over clean runs; contaminated runs are counted, not scored."""
+    """Median per (task, arm) over clean runs; failed and contaminated ones are counted only."""
     groups: dict[tuple[str, str], list[dict[str, object]]] = defaultdict(list)
     for row in rows:
         groups[(str(row["task"]), str(row["arm"]))].append(row)
     summary: list[dict[str, object]] = []
     for (task, arm), group in sorted(groups.items()):
-        clean = [r for r in group if not r.get("contaminated")]
+        finished = [r for r in group if not r.get("failed")]
+        clean = [r for r in finished if not r.get("contaminated")]
         entry: dict[str, object] = {
             "task": task,
             "arm": arm,
-            "runs": len(group),
-            "contaminated": len(group) - len(clean),
+            "runs": len(finished),
+            "failed": len(group) - len(finished),
+            "contaminated": len(finished) - len(clean),
         }
         for key in ("recall", "precision", "cost_usd", "total_tool_calls", "files_read", "turns"):
             values = [float(str(r[key])) for r in clean if r.get(key) is not None]
@@ -401,7 +476,7 @@ def cmd_report(args: argparse.Namespace) -> int:
     lines = args.results.read_text(encoding="utf-8").splitlines()
     rows = [json.loads(line) for line in lines if line.strip()]
     columns = [
-        "task", "arm", "runs", "contaminated", "recall", "precision",
+        "task", "arm", "runs", "failed", "contaminated", "recall", "precision",
         "cost_usd", "total_tool_calls", "files_read", "turns",
     ]  # fmt: skip
     print("| " + " | ".join(columns) + " |")
