@@ -224,6 +224,21 @@ aliases. `import_names.py` becomes the collector that asks each pack.
     and 294, and indices.py:234). The registry keeps that: with no source, the
     Python pack classifies. Removing the quirk is a separate, measured change.
 
+  > **Implementation note (step 3):** `classify` returns a `NodeNamespace`, never
+  > `None`: today's order interleaves the languages (TS bare imports, internal
+  > roots with Python's declared-dependency rule, the JS root, Python stdlib and
+  > external roots), so each pack runs its whole chain (ruling C1). A source no
+  > pack reads gets the old generic tail in `SymbolIndex.classify_fqn`.
+  > `index_facts` takes the merged project state keyed by `ingest_state` key, not
+  > the pack's `ProjectFacts` object, since the resolver receives facts as values
+  > (C2). Resolution-only facts — `layout_prefixes`, star-import expansion,
+  > workspace packages, path aliases, bare bindings — stay on `SymbolIndex` until
+  > step 4 moves their consumers (C3). The outline's "`resolve_layout` gated by
+  > pack" was dropped: both run for every language today, and gating them changes
+  > TypeScript resolution (C4). One engine-to-pack edge remains, `_package_call`
+  > → the TS pack's `package_namespace`, allowlisted under the `engine-packs`
+  > rule for step 4 to empty (C5). The owner-api ingest moved +1.5% (median of three).
+
 **Resolution.** The engine runs named steps in a fixed order. A pack
 contributes to them; it does not get free hook points:
 
