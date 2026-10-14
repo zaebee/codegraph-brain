@@ -11,6 +11,7 @@ from typing import cast
 
 from cgis.core.models import Node
 from cgis.core.resolution import AFTER_IMPORT_MAP, ResolutionRules, ResolutionView
+from cgis.languages.typescript.builtins import js_builtin_target
 from cgis.languages.typescript.index import (
     _ALIAS_WILDCARD,
     PathAlias,
@@ -139,7 +140,21 @@ def package_call(name: str, file_path: str, view: ResolutionView) -> str | None:
     return candidate
 
 
+#: What a call rewritten to the JS runtime scores: the unresolved value a Python
+#: builtin gets, not the 1.0 of a resolved call (#111).
+_FALLBACK_CONFIDENCE = 0.8
+
+
+def fallback(name: str, file_path: str, view: ResolutionView) -> tuple[str, float] | None:
+    """A call on a JS runtime global the file does not shadow: `js_builtins.<name>` (#111)."""
+    facts = cast("TypeScriptIndexFacts", view.facts["typescript"])
+    shadowed = facts.file_shadowed_globals.get(file_path, frozenset())
+    target = js_builtin_target(name, shadowed)
+    return None if target is None else (target, _FALLBACK_CONFIDENCE)
+
+
 RULES = ResolutionRules(
     steps=((AFTER_IMPORT_MAP, package_call),),
+    fallback=fallback,
     reconcile_import=reconcile_import,
 )

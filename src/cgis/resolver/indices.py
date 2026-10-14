@@ -47,9 +47,6 @@ class SymbolIndex:
     file_variable_symbols: Mapping[tuple[str, str], list[str]]
     # normalized file_path -> {local_alias: target_fqn}  (from FILE node import_map)
     file_imports: Mapping[str, dict[str, str]]
-    # normalized file_path -> JS globals the file imports or declares itself
-    # (from TypeScript FILE node metadata; read by the js_builtins fallback, #111).
-    file_shadowed_globals: Mapping[str, frozenset[str]]
     # module_fqn -> {name: definer_fqn}: names a module forwards rather than defines,
     # from explicit re-exports and expanded star imports (#417).
     reexports: Mapping[str, dict[str, str]]
@@ -312,7 +309,6 @@ class IndexBuilder:
         variable_symbols: dict[str, list[str]] = {}
         file_variable_symbols: dict[tuple[str, str], list[str]] = {}
         file_imports: dict[str, dict[str, str]] = {}
-        file_shadowed_globals: dict[str, frozenset[str]] = {}
         reexports: dict[str, dict[str, str]] = {}
         star_imports: dict[str, list[str]] = {}
         suffix_map: dict[str, list[str]] = {}
@@ -327,10 +323,6 @@ class IndexBuilder:
                 reexports,
                 star_imports,
             )
-            if node.type == NodeType.FILE and node.metadata.get("shadowed_globals"):
-                file_shadowed_globals[os.path.normpath(node.file_path)] = frozenset(
-                    node.metadata["shadowed_globals"]
-                )
 
             # Index global functions/symbols
             if node.type in (NodeType.FUNCTION, NodeType.CLASS):
@@ -372,7 +364,6 @@ class IndexBuilder:
             variable_symbols=MappingProxyType(variable_symbols),
             file_variable_symbols=MappingProxyType(file_variable_symbols),
             file_imports=MappingProxyType(file_imports),
-            file_shadowed_globals=MappingProxyType(file_shadowed_globals),
             reexports=MappingProxyType(reexports),
             suffix_map=MappingProxyType(suffix_map),
             internal_roots=roots,

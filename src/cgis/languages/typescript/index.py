@@ -51,6 +51,8 @@ class TypeScriptIndexFacts:
     #: normalized file_path -> {local name: package symbol FQN} for that file's bare
     #: imports: `useState` -> `react.useState`, a namespace import `Icons` -> `lucide-react`.
     file_bare_bindings: Mapping[str, dict[str, str]]
+    #: normalized file_path -> JS globals the file imports or declares itself (#111).
+    file_shadowed_globals: Mapping[str, frozenset[str]]
     #: project directory -> its tsconfig `paths` aliases, exact patterns first and then
     #: wildcards longest prefix first — the order TypeScript picks one in (#508).
     path_aliases: Mapping[str, tuple[PathAlias, ...]]
@@ -70,6 +72,13 @@ def index_facts(nodes: Mapping[str, Node], state: Mapping[str, object]) -> TypeS
         layout_prefixes=frozenset(),
         npm_dependencies=frozenset(cast("list[str]", state.get("npm_dependencies", []))),
         file_bare_imports=MappingProxyType(bare),
+        file_shadowed_globals=MappingProxyType(
+            {
+                os.path.normpath(n.file_path): frozenset(n.metadata["shadowed_globals"])
+                for n in nodes.values()
+                if n.type == NodeType.FILE and n.metadata.get("shadowed_globals")
+            }
+        ),
         file_bare_bindings=MappingProxyType(
             {
                 os.path.normpath(n.file_path): dict(n.metadata.get("bare_bindings") or {})

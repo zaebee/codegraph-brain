@@ -70,3 +70,14 @@ def test_package_call_is_the_typescript_packs_step() -> None:
     rules = rules_for("app/x.ts")
     assert rules is not None
     assert [position for position, _ in rules.steps] == [AFTER_IMPORT_MAP]
+
+
+def test_js_builtins_are_the_typescript_packs_fallback() -> None:
+    """Spec: the fallback carries its confidence — 0.8 for a JS runtime global, not 1.0."""
+    ts, py = rules_for("app/x.ts"), rules_for("app/x.py")
+    assert ts is not None
+    assert ts.fallback is not None
+    assert py is not None
+    assert py.fallback is None
+    view = IndexBuilder().build([])
+    assert ts.fallback("Math.max", "app/x.ts", view) == ("js_builtins.Math.max", 0.8)
