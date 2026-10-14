@@ -21,33 +21,9 @@ from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from functools import cache
 from pathlib import PurePosixPath
-from typing import Protocol
 
-from cgis.core.extractor import BaseExtractor
+from cgis.core.extractor import BaseExtractor, LanguagePack
 from cgis.core.models import Node
-
-
-class LanguagePack(Protocol):
-    """What one language contributes (spec: The `LanguagePack` contract; step 1 of it)."""
-
-    name: str
-    extensions: tuple[str, ...]
-
-    def code_fence(self, path: str) -> str:
-        """Markdown fence label for this file's full-text context."""
-        ...
-
-    def is_test(self, path: str) -> bool:
-        """Whether this file is test code (the `Node.is_test` flag, not the walk's skip)."""
-        ...
-
-    def scope_of(self, path: str, source_root: str | None) -> str:
-        """The namespace unit this file's definitions live in — its module FQN for py/ts."""
-        ...
-
-    def extractor(self, extension: str, source_roots: list[str]) -> BaseExtractor:
-        """A new extractor for files of `extension`."""
-        ...
 
 
 @dataclass(frozen=True)

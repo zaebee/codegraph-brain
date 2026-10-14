@@ -1,4 +1,8 @@
-"""Base Extractor Interface"""
+"""The extractor contract: `BaseExtractor`, `ModuleNamer`, and the `LanguagePack` a pack exposes.
+
+In core, not beside the packs: the registry imports each pack and each pack
+subclasses the protocol, so the protocol living in the registry would be a cycle.
+"""
 
 from abc import ABC, abstractmethod
 from typing import Protocol, runtime_checkable
@@ -56,3 +60,26 @@ class BaseExtractor(ABC):
         Returns:
             A tuple containing (list_of_nodes, list_of_edges).
         """
+
+
+class LanguagePack(Protocol):
+    """What one language contributes (spec: The `LanguagePack` contract; step 1 of it)."""
+
+    name: str
+    extensions: tuple[str, ...]
+
+    def code_fence(self, path: str) -> str:
+        """Markdown fence label for this file's full-text context."""
+        ...
+
+    def is_test(self, path: str) -> bool:
+        """Whether this file is test code (the `Node.is_test` flag, not the walk's skip)."""
+        ...
+
+    def scope_of(self, path: str, source_root: str | None) -> str:
+        """The namespace unit this file's definitions live in — its module FQN for py/ts."""
+        ...
+
+    def extractor(self, extension: str, source_roots: list[str]) -> BaseExtractor:
+        """A new extractor for files of `extension`."""
+        ...
