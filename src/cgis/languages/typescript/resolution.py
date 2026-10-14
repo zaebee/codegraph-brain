@@ -10,8 +10,13 @@ from collections.abc import Mapping
 from typing import cast
 
 from cgis.core.models import Node
-from cgis.core.resolution import ResolutionRules, ResolutionView
-from cgis.languages.typescript.index import _ALIAS_WILDCARD, PathAlias, TypeScriptIndexFacts
+from cgis.core.resolution import AFTER_IMPORT_MAP, ResolutionRules, ResolutionView
+from cgis.languages.typescript.index import (
+    _ALIAS_WILDCARD,
+    PathAlias,
+    TypeScriptIndexFacts,
+    package_namespace,
+)
 
 #: What a declaration file's module FQN ends in: `Calendar.d.ts` -> `Calendar.d` (#507).
 _DECLARATION_SUFFIX = ".d"
@@ -108,4 +113,33 @@ def reconcile_import(fqn: str, source_file: str | None, view: ResolutionView) ->
     return _resolve_typescript_import(fqn, view.nodes, facts.workspace_packages, aliased)
 
 
-RULES = ResolutionRules(reconcile_import=reconcile_import)
+def package_call(name: str, file_path: str, view: ResolutionView) -> str | None:
+    """A TypeScript call on a name imported from a package: `useState` -> `react.useState`.
+
+    Only when the binding lands in a package (#556). A binding into one of our
+    own modules through an alias or workspace name is left to the lookups that
+    already resolve those, so internal resolution is unchanged.
+
+    Bindings are per file, not per scope: a parameter that shadows an imported
+    name (`function f(map) { map() }` beside `import { map } from "lodash"`) is
+    read as the import. Accepted — shadowing an import is rare, and scope
+    tracking is a separate piece of work.
+    """
+    facts = cast("TypeScriptIndexFacts", view.facts["typescript"])
+    bindings = facts.file_bare_bindings.get(file_path)
+    if not bindings:
+        return None
+    head, _, rest = name.partition(".")
+    bound = bindings.get(head)
+    if bound is None:
+        return None
+    candidate = f"{bound}.{rest}" if rest else bound
+    if package_namespace(candidate, file_path, facts) is None:
+        return None
+    return candidate
+
+
+RULES = ResolutionRules(
+    steps=((AFTER_IMPORT_MAP, package_call),),
+    reconcile_import=reconcile_import,
+)

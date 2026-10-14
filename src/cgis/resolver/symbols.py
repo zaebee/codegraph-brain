@@ -3,7 +3,8 @@
 from collections.abc import Iterable, Mapping
 
 from cgis.core.models import RAW_CLASS_PREFIX, Edge, EdgeType, Node, NodeNamespace
-from cgis.languages.typescript.index import TypeScriptIndexFacts, package_namespace
+from cgis.core.resolution import AFTER_IMPORT_MAP
+from cgis.languages import rules_for
 from cgis.resolver.indices import IndexBuilder, SymbolIndex
 
 
@@ -21,33 +22,17 @@ def _owning_class(index: SymbolIndex, source_fqn: str) -> str | None:
     return None
 
 
-def _package_call(index: SymbolIndex, name: str, file_path: str) -> str | None:
-    """A TypeScript call on a name imported from a package: `useState` -> `react.useState`.
-
-    Only when the binding lands in a package (#556). A binding into one of our
-    own modules through an alias or workspace name is left to the lookups that
-    already resolve those, so internal resolution is unchanged.
-
-    Bindings are per file, not per scope: a parameter that shadows an imported
-    name (`function f(map) { map() }` beside `import { map } from "lodash"`) is
-    read as the import. Accepted — shadowing an import is rare, and scope
-    tracking is a separate piece of work.
-    """
-    bindings = index.file_bare_bindings.get(file_path)
-    if not bindings:
+def _positioned(index: SymbolIndex, position: str, name: str, file_path: str) -> str | None:
+    """The first hit among the source pack's steps at `position` (spec: Resolution)."""
+    rules = rules_for(file_path)
+    if rules is None:
         return None
-    head, _, rest = name.partition(".")
-    bound = bindings.get(head)
-    if bound is None:
-        return None
-    candidate = f"{bound}.{rest}" if rest else bound
-    # A TypeScript rule inside the engine until step 4 makes it the TS pack's step (C5).
-    facts = index.facts.get("typescript")
-    if not isinstance(facts, TypeScriptIndexFacts):
-        return None
-    if package_namespace(candidate, file_path, facts) is None:
-        return None
-    return candidate
+    for step_position, step in rules.steps:
+        if step_position == position:
+            found = step(name, file_path, index)
+            if found:
+                return found
+    return None
 
 
 def receiver_type_fqn(index: SymbolIndex, owner_fqn: str, attr: str) -> str | None:
@@ -207,8 +192,8 @@ class SymbolResolver:
                 return result
 
         if file_path:
-            result = self._resolve_via_import_map(name, file_path) or _package_call(
-                self.index, name, file_path
+            result = self._resolve_via_import_map(name, file_path) or _positioned(
+                self.index, AFTER_IMPORT_MAP, name, file_path
             )
             if result:
                 return result

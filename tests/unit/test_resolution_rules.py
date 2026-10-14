@@ -64,3 +64,9 @@ def test_python_reconciles_by_layout_prefixes() -> None:
     rules = rules_for("app/x.py")
     assert rules is not None
     assert rules.reconcile_import is not None
+
+
+def test_package_call_is_the_typescript_packs_step() -> None:
+    rules = rules_for("app/x.ts")
+    assert rules is not None
+    assert [position for position, _ in rules.steps] == [AFTER_IMPORT_MAP]

@@ -66,9 +66,6 @@ class SymbolIndex:
     # import maps, never guessed — kept apart from `internal_roots` so a target can
     # be reconciled by stripping *these* and nothing else (#494).
     layout_prefixes: frozenset[str] = frozenset()
-    # normalized file_path -> {local name: package symbol FQN} for a TS file's imports:
-    # `useState` -> `react.useState`, a namespace import `Icons` -> `lucide-react`.
-    file_bare_bindings: Mapping[str, dict[str, str]] = MappingProxyType({})
 
     def resolve_import_target(self, fqn: str, source_file: str | None = None) -> str | None:
         """Reconcile a module import against the node ids, or None to leave it alone.
@@ -316,7 +313,6 @@ class IndexBuilder:
         file_variable_symbols: dict[tuple[str, str], list[str]] = {}
         file_imports: dict[str, dict[str, str]] = {}
         file_shadowed_globals: dict[str, frozenset[str]] = {}
-        file_bare_bindings: dict[str, dict[str, str]] = {}
         reexports: dict[str, dict[str, str]] = {}
         star_imports: dict[str, list[str]] = {}
         suffix_map: dict[str, list[str]] = {}
@@ -330,7 +326,6 @@ class IndexBuilder:
                 self_types,
                 reexports,
                 star_imports,
-                file_bare_bindings,
             )
             if node.type == NodeType.FILE and node.metadata.get("shadowed_globals"):
                 file_shadowed_globals[os.path.normpath(node.file_path)] = frozenset(
@@ -383,7 +378,6 @@ class IndexBuilder:
             internal_roots=roots,
             layout_prefixes=prefixes,
             facts=MappingProxyType(facts),
-            file_bare_bindings=MappingProxyType(file_bare_bindings),
         )
 
     @staticmethod
@@ -483,21 +477,17 @@ class IndexBuilder:
         self_types: dict[str, dict[str, str]],
         reexports: dict[str, dict[str, str]],
         star_imports: dict[str, list[str]],
-        bare_bindings: dict[str, dict[str, str]],
     ) -> None:
         """Read the maps the extractor attached to a FILE or CLASS node.
 
-        A FILE carries its import map, and a TypeScript one its bare imports and
-        their bindings (#556); a CLASS carries the attribute types recorded from
-        annotations (spec D1). All are extractor output the resolver consumes
-        rather than anything derived here.
+        A FILE carries its import map, re-exports and star imports; a CLASS the
+        attribute types recorded from annotations (spec D1). A TypeScript FILE's
+        bare imports and bindings are the TypeScript pack's index facts (step 4).
+        All are extractor output the resolver consumes rather than derives.
         """
         if node.type == NodeType.FILE:
             path = os.path.normpath(node.file_path)
             file_imports[path] = node.metadata.get("import_map") or {}
-            specifiers = node.metadata.get("bare_imports")
-            if specifiers:
-                bare_bindings[path] = dict(node.metadata.get("bare_bindings") or {})
             forwarded = node.metadata.get("reexports")
             if forwarded:
                 reexports[node.id] = dict(forwarded)
