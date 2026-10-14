@@ -131,7 +131,10 @@ def test_ts_self_drift_within_tolerance(
 
 
 _PLANES = {
-    "build": (("pipeline", "extraction", "resolution", "storage"), "orchestrator"),
+    "build": (
+        ("pipeline", "languages.python", "languages.typescript", "resolution", "storage"),
+        "orchestrator",
+    ),
     "read": (("storage", "query", "guardian", "cli", "api"), "layered_dag"),
 }
 

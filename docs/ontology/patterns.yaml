@@ -114,24 +114,39 @@ patterns:
 # measurement (see plan: docs/specs/plans/2026-06-10-motif-basis-part-b.md).
 project_domains:
   # Python graph (ingest root: src/ → FQNs carry the cgis. prefix)
-  # Re-pointed in language-packs step 1: the extractors moved into cgis.languages.<pack>;
-  # the contract (BaseExtractor) moved to cgis.core.
-  - name: "extraction"
-    fqn_prefix: "cgis.languages"
+  # Language packs (spec: Drift gates, Domains) — one domain per pack, one shared
+  # bar (ruling G2), so a new pack is measured against it from its first commit;
+  # tests/unit/test_patterns_yaml.py fails for a pack without one.
+  # Was the single "extraction" domain over cgis.extractors / cgis.languages
+  # (#116, #183, steps 1-5). Measured at step 6 (main ca32430): python layered_dag
+  # 0.393 (best fit funnel 0.328), typescript layered_dag 0.184. Shared
+  # tolerance = loosest + headroom.
+  - name: "languages.python"
+    fqn_prefix: "cgis.languages.python"
     expected_pattern: layered_dag
     profile: python
-    # Re-negotiated in #116: PythonExtractor was decomposed from a God Object into a
-    # layered package (orchestrator python_extractor → handlers → _python_ast core),
-    # so the domain is no longer pure_utility. Best-fit is now layered_dag (same
-    # pattern as cgis.query).
-    # Re-baselined in #183 (≈0.32 → 0.37): the resolver stopped fabricating phantom
-    # `module.list.append`-style internal FQNs for builtin-method calls (e.g. `edges.append`
-    # where `edges: list[Edge]`). Those fake intra-domain CALLS edges had been artificially
-    # deflating this domain's drift; 0.37 is the honest census of the real structure (no real
-    # edges lost — verified by edge-diff). Correctness-driven re-baseline, not ratchet loosening.
-    drift_tolerance: 0.40
+    drift_tolerance: 0.42
     hygiene_baseline:
-      unresolved_ratio: 0.37 # measured 0.3604 when the gate came alive (#149)
+      unresolved_ratio: 0.37 # measured 0.356 at step 6 (the old extraction baseline)
+
+  - name: "languages.typescript"
+    fqn_prefix: "cgis.languages.typescript"
+    expected_pattern: layered_dag
+    profile: python
+    drift_tolerance: 0.42
+    hygiene_baseline:
+      unresolved_ratio: 0.31 # measured 0.295 at step 6
+
+  # The pack contract and the model (spec: Core). layered_dag, not the spec's
+  # pure_utility — measured 0.215 vs 0.554 at step 6: since steps 1-4 the contract
+  # is layered (extractor/index/resolution/project -> models) (ruling G1).
+  - name: "core"
+    fqn_prefix: "cgis.core"
+    expected_pattern: layered_dag
+    profile: python
+    drift_tolerance: 0.25
+    hygiene_baseline:
+      unresolved_ratio: 0.21 # measured 0.191 at step 6
 
   - name: "resolution"
     fqn_prefix: "cgis.resolver"

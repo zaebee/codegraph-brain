@@ -4,6 +4,8 @@ from pathlib import Path
 
 import yaml
 
+from cgis.languages import MANIFESTS
+
 PATTERNS_PATH = Path(__file__).parent.parent.parent / "docs" / "ontology" / "patterns.yaml"
 PATTERNS_UI_PATH = PATTERNS_PATH.parent / "patterns_ui.yaml"
 
@@ -285,3 +287,26 @@ def test_tolerances_never_exceed_the_lock() -> None:
         + f"\nIf this is a deliberate re-baseline, update {TOLERANCES_LOCK_PATH.name} "
         "and justify it in the PR description."
     )
+
+
+#: One bar for every language pack (spec: Drift gates, Domains) — set by the
+#: loosest pack at step 6 (ruling G2); a new pack meets it or the suite says so.
+_PACK_PATTERN = "layered_dag"
+
+
+def test_every_pack_has_a_domain_at_the_shared_tolerance() -> None:
+    domains = {d["name"]: d for d in _load()["project_domains"]}
+    packs = {m.name: domains.get(f"languages.{m.name}") for m in MANIFESTS}
+    missing = sorted(name for name, domain in packs.items() if domain is None)
+    assert not missing, f"packs without a drift domain in patterns.yaml: {missing}"
+    tolerances = {name: domain["drift_tolerance"] for name, domain in packs.items()}
+    assert len(set(tolerances.values())) == 1, f"pack tolerances must be shared: {tolerances}"
+    for name, domain in packs.items():
+        assert domain["fqn_prefix"] == f"cgis.languages.{name}"
+        assert domain["expected_pattern"] == _PACK_PATTERN
+        assert domain["profile"] == "python"
+
+
+def test_core_has_a_domain() -> None:
+    domains = {d["name"]: d for d in _load()["project_domains"]}
+    assert domains["core"]["fqn_prefix"] == "cgis.core"
