@@ -9,9 +9,8 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import NamedTuple
 
-from cgis.core.js_globals import specifier_fqn
+from cgis.core.js_globals import JS_BUILTINS_ROOT, NODE_BUILTIN_MODULES, NODE_SCHEME, specifier_fqn
 from cgis.core.models import SELF_PREFIX, Node, NodeNamespace, NodeType
-from cgis.resolver.js_builtins import JS_BUILTINS_ROOT, NODE_BUILTIN_MODULES, NODE_SCHEME
 
 _BUILTINS: frozenset[str] = frozenset(dir(builtins))
 

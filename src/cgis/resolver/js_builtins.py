@@ -12,62 +12,7 @@ map the root to STDLIB without a Python module that happens to call something
 `Map.get` being mistaken for the JavaScript runtime.
 """
 
-from cgis.core.js_globals import JS_GLOBALS
-
-JS_BUILTINS_ROOT = "js_builtins"
-
-#: The `node:` scheme, which names a Node builtin and nothing else (#556).
-NODE_SCHEME = "node:"
-
-#: Node's builtin modules importable without the `node:` scheme — Node's own
-#: `module.builtinModules`, minus internals and the scheme-only ones (`node:test`,
-#: `node:sqlite`). Matched on the specifier's root, so `fs/promises` counts (#556).
-NODE_BUILTIN_MODULES: frozenset[str] = frozenset(
-    {
-        "assert",
-        "async_hooks",
-        "buffer",
-        "child_process",
-        "cluster",
-        "console",
-        "constants",
-        "crypto",
-        "dgram",
-        "diagnostics_channel",
-        "dns",
-        "domain",
-        "events",
-        "fs",
-        "http",
-        "http2",
-        "https",
-        "inspector",
-        "module",
-        "net",
-        "os",
-        "path",
-        "perf_hooks",
-        "process",
-        "punycode",
-        "querystring",
-        "readline",
-        "repl",
-        "stream",
-        "string_decoder",
-        "sys",
-        "timers",
-        "tls",
-        "trace_events",
-        "tty",
-        "url",
-        "util",
-        "v8",
-        "vm",
-        "wasi",
-        "worker_threads",
-        "zlib",
-    }
-)
+from cgis.core.js_globals import JS_BUILTINS_ROOT, JS_GLOBALS
 
 #: Extensions whose calls are JavaScript at runtime. Matches the extractors
 #: registered in `cgis.languages` for `.ts`/`.tsx`.

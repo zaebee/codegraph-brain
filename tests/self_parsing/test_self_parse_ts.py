@@ -9,9 +9,9 @@ from pathlib import Path
 
 import pytest
 
+from cgis.core.js_globals import JS_BUILTINS_ROOT, JS_GLOBALS
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
 from cgis.languages.typescript.naming import file_path_to_module_fqn
-from cgis.resolver.js_builtins import JS_BUILTINS_ROOT, JS_GLOBALS
 from cgis.storage.sqlite_store import SQLiteStore
 
 _TS_SRC = Path(__file__).parent.parent.parent / "ui" / "src"
