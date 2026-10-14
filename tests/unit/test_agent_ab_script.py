@@ -385,6 +385,14 @@ def test_report_prints_a_markdown_table(tmp_path: Path, capsys: pytest.CaptureFi
     assert out[2] == "| t | cgis | 1 | 0 | 0 | 1.00 | 1.00 | 0.30 | 10.00 | 4.00 | 8.00 |"
 
 
+def test_report_skips_a_truncated_line(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    results = tmp_path / "results.jsonl"
+    results.write_text(json.dumps(_row("t", "cgis", 1.0)) + '\n{"task": "t", "ar')
+
+    assert ab.main(["report", "--results", str(results)]) == 0
+    assert "| t | cgis | 1 |" in capsys.readouterr().out
+
+
 def test_report_without_results_fails(tmp_path: Path) -> None:
     assert ab.main(["report", "--results", str(tmp_path / "none.jsonl")]) == 1
 

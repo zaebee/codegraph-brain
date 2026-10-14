@@ -506,8 +506,7 @@ def cmd_report(args: argparse.Namespace) -> int:
     if not args.results.exists():
         print(f"no results at {args.results}", file=sys.stderr)
         return 1
-    lines = args.results.read_text(encoding="utf-8").splitlines()
-    rows = [json.loads(line) for line in lines if line.strip()]
+    rows = load_results(args.results)  # a truncated line is skipped, as in `run` (Gemini)
     columns = [
         "task", "arm", "runs", "failed", "contaminated", "recall", "precision",
         "cost_usd", "total_tool_calls", "files_read", "turns",
