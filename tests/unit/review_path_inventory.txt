@@ -7,6 +7,7 @@ src/cgis/core/js_globals.py
 src/cgis/core/models.py
 src/cgis/core/paths.py
 src/cgis/core/project.py
+src/cgis/core/resolution.py
 src/cgis/guardian/__init__.py
 src/cgis/guardian/axes.py
 src/cgis/guardian/chunked.py
@@ -40,13 +41,16 @@ src/cgis/languages/python/dependencies.py
 src/cgis/languages/python/extractor.py
 src/cgis/languages/python/index.py
 src/cgis/languages/python/project.py
+src/cgis/languages/python/resolution.py
 src/cgis/languages/typescript/__init__.py
 src/cgis/languages/typescript/_bindings.py
+src/cgis/languages/typescript/builtins.py
 src/cgis/languages/typescript/extractor.py
 src/cgis/languages/typescript/index.py
 src/cgis/languages/typescript/naming.py
 src/cgis/languages/typescript/npm.py
 src/cgis/languages/typescript/project.py
+src/cgis/languages/typescript/resolution.py
 src/cgis/languages/typescript/tsconfig.py
 src/cgis/languages/typescript/workspaces.py
 src/cgis/query/analysis/__init__.py
