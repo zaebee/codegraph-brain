@@ -12,7 +12,7 @@ import dataclasses
 from cgis.core.models import Edge, Node
 from cgis.query.drift.drift import DomainConfig, DriftScorer
 from cgis.query.drift.fingerprint import FingerprintExtractor
-from cgis.query.drift.quotient import build_quotient, quotient_call_tally
+from cgis.query.drift.quotient import QUOTIENT_PREFIX, build_quotient, quotient_call_tally
 from cgis.storage.sqlite_store import SQLiteStore
 
 from .conftest import ONTOLOGY_DIR, skip_if_no_ui
@@ -130,43 +130,18 @@ def test_ts_self_drift_within_tolerance(
 # ---------------------------------------------------------------------------
 
 
-def test_py_quotient_drift_observed_not_enforced(
-    root_graph_data: tuple[SQLiteStore, list[Node], list[Edge]],
-) -> None:
-    """Score the domain-quotient graph against project_level; report, never fail.
-
-    enforce is false for the burn-in milestone: the assertion here is only
-    that the machinery runs end-to-end and the binding stays observe-only.
-    The k=1 CALLS layer is discounted by the members' unresolved share, carried
-    over through quotient_call_tally (#149) — the precondition for enforcing.
-    """
-    store, _, _ = root_graph_data
-    scorer = DriftScorer(_PATTERNS)
-    bindings = scorer.load_project_level()
-    assert bindings, "project_level binding missing from patterns.yaml"
-
-    domains = _selected_domains(scorer, graph="python")
-    nodes, edges = store.get_all_nodes(), store.get_all_edges()
-    qnodes, qedges = build_quotient(nodes, edges, domains)
-    extractor = FingerprintExtractor.from_graph(
-        qnodes, qedges, quotient_call_tally(nodes, edges, domains)
-    )
-
-    for binding in bindings:
-        assert binding.enforce is False, (
-            "project_level flipped to enforce: true — this test must become a "
-            "tolerance assertion like _assert_within_tolerance (see spec §3.4)"
-        )
-        report = scorer.score(extractor.extract(binding.fqn_prefix), binding)
-        print(
-            f"\n[quotient observe-only] {binding.name}: drift={report.drift_score:.3f} "
-            f"(tolerance {binding.drift_tolerance:.2f}, tv_imports={report.tv_imports}, "
-            f"tv_calls={report.tv_calls})\n  violations: {report.violations}"
-        )
-
-
 _PLANES = {
-    "build": (("pipeline", "extraction", "resolution", "storage"), "orchestrator"),
+    "build": (
+        (
+            "pipeline",
+            "languages",
+            "languages.python",
+            "languages.typescript",
+            "resolution",
+            "storage",
+        ),
+        "orchestrator",
+    ),
     "read": (("storage", "query", "guardian", "cli", "api"), "layered_dag"),
 }
 
@@ -181,8 +156,19 @@ def test_plane_quotients_observed_not_enforced(
     """
     store, _, _ = root_graph_data
     scorer = DriftScorer(_PATTERNS)
-    binding = scorer.load_project_level()[0]
+    # The plane report owns its binding: the project_level one it borrowed was
+    # retired in step 6 (#146). expected_pattern is set per plane below.
+    binding = DomainConfig(
+        name="plane", fqn_prefix=QUOTIENT_PREFIX, expected_pattern=None, profile="python",
+        drift_tolerance=1.0, enforce=False,
+    )  # fmt: skip
     by_name = {d.name: d for d in _selected_domains(scorer, graph="python")}
+    # The registry module `cgis.languages` is in no drift domain (a domain on its
+    # prefix would take the packs too); for the plane it is a node of its own, the
+    # longest-prefix match leaving it only the registry's nodes.
+    by_name["languages"] = DomainConfig(
+        name="languages", fqn_prefix="cgis.languages", expected_pattern=None
+    )
     nodes, edges = store.get_all_nodes(), store.get_all_edges()
     for plane, (names, template) in _PLANES.items():
         domains = [by_name[n] for n in names]
@@ -192,5 +178,11 @@ def test_plane_quotients_observed_not_enforced(
         )
         fingerprint = extractor.extract(binding.fqn_prefix)
         assert fingerprint.node_count == len(domains), f"{plane}: a domain matched nothing"
+        # A domain with no edge in its plane is a hole, not a better score: step 6
+        # left the packs isolated (their only link, the registry, was in no domain)
+        # and the build plane read 0.016 instead of an honest number.
+        linked = {e.source for e in qedges} | {e.target for e in qedges}
+        isolated = sorted(n.id for n in qnodes if n.id not in linked)
+        assert not isolated, f"{plane}: quotient nodes with no edge: {isolated}"
         report = scorer.score(fingerprint, dataclasses.replace(binding, expected_pattern=template))
         print(f"\n[plane observe-only] {plane} vs {template}: drift={report.drift_score:.3f}")

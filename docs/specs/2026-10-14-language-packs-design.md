@@ -352,6 +352,22 @@ forbidden-edge gate.
 review. `resolution` is re-measured after uplift leaves it. `core` gets
 `pure_utility`. The other domains are unchanged.
 
+> **Implementation note (step 6):** this repository's `project_level` binding is
+> retired (the feature stays for other repositories); the plane report builds
+> its own binding from `QUOTIENT_PREFIX`. The packs share `layered_dag` at
+> **0.42** — the loosest pack plus headroom: measured python 0.393 (its best fit
+> is `funnel`, 0.328), typescript 0.184 — and `tests/unit/test_patterns_yaml.py`
+> fails for a registered pack with no domain or a different tolerance. `core` is
+> `layered_dag` at 0.25, not `pure_utility`: it measured 0.215 against 0.554,
+> because since steps 1–4 it holds the layered pack contract. The registry module
+> `cgis.languages` belongs to no drift domain — a domain on its prefix would take
+> the packs too — so the build-plane report adds it as a plane-local node; without
+> it the packs sat isolated and the plane read a false 0.016. With it the build
+> plane reads 0.351 against `orchestrator` (main 0.236, when `extraction` was one
+> node): pipeline and resolver reach the packs only through the registry, a
+> chain the star template penalises. The report now fails if a plane node has
+> no edge. Observe-only, as before.
+
 ## Migration
 
 **Safety net, written first.** The input must stay fixed while the code

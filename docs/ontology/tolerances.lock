@@ -11,7 +11,9 @@
 # update the lock and justify it in the PR description.
 
 project_domains:
-  extraction: 0.40
+  languages.python: 0.42
+  languages.typescript: 0.42
+  core: 0.25
   resolution: 0.40
   pipeline: 0.25
   storage: 0.20
@@ -25,6 +27,3 @@ project_domains:
   store: 0.15
   providers: 0.17
   utils: 0.20
-
-project_level:
-  cgis-project: 0.15
