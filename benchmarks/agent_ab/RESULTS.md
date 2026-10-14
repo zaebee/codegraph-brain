@@ -31,7 +31,7 @@ a line in a project's CLAUDE.md. Same two impact tasks, 3 runs each, about $0.8.
 cgis at dbf3de9 (the `cgis-narrow` arm of #586), Sonnet 5.5, 3 runs per arm, 0 failed,
 0 contaminated, about $1.6. One probe session confirmed the narrowing reached the
 client: the `init` event listed exactly `mcp__cgis__cgis_analyze_impact`,
-`…find_symbol`, `…trace_flow`.
+`mcp__cgis__cgis_find_symbol`, `mcp__cgis__cgis_trace_flow`.
 
 | task | arm | cgis calls | recall | precision | median $ |
 |---|---|---|---|---|---|
