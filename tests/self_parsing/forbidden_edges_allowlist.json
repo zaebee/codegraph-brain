@@ -1,6 +1,9 @@
 {
  "core-isolation": {},
  "cross-pack": {},
+ "engine-packs": {
+  "cgis.resolver.symbols -> cgis.languages.typescript.index": 4
+ },
  "pack-isolation": {},
  "resolver-storage": {
   "cgis.resolver.uplift -> cgis.storage.sqlite_store": 8

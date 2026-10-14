@@ -22,7 +22,7 @@ class IndexFacts(Protocol):
 
     @property
     def layout_prefixes(self) -> frozenset[str]:
-        """Prefixes sources write that node ids do not carry, before internal roots are removed."""
+        """Prefixes sources write that node ids do not carry (#494): stripped off a target."""
         ...
 
 

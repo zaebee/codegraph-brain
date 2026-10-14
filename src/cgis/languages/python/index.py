@@ -162,7 +162,8 @@ def index_facts(nodes: Mapping[str, Node], state: Mapping[str, object]) -> Pytho
     colliding = (local_roots | layout_roots) & declared
     return PythonIndexFacts(
         internal_roots=frozenset(layout_roots | first_party),
-        layout_prefixes=frozenset(corroborated),
+        # Our own local roots are never stripped off a target, whatever imports say.
+        layout_prefixes=frozenset(corroborated - local_roots - layout_roots),
         external_roots=frozenset(external),
         dependency_roots=frozenset(colliding),
         dependency_heads=_heads_under(colliding, node_ids),

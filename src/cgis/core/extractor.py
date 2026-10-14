@@ -9,7 +9,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from cgis.core.models import Edge, Node
+from cgis.core.index import ClassifyContext, IndexFacts
+from cgis.core.models import Edge, Node, NodeNamespace
 from cgis.core.project import ProjectReader
 
 
@@ -89,4 +90,12 @@ class LanguagePack(Protocol):
 
     def project_reader(self, root: Path, extractors: Mapping[str, BaseExtractor]) -> ProjectReader:
         """A reader for this pack's configs around `root` (`extractors`: the walk's own)."""
+        ...
+
+    def index_facts(self, nodes: Mapping[str, Node], state: Mapping[str, object]) -> IndexFacts:
+        """This pack's facts over every node, given the merged project state (step 3, C2)."""
+        ...
+
+    def classify(self, fqn: str, ctx: ClassifyContext) -> NodeNamespace:
+        """The namespace of `fqn` referenced from one of this pack's files: the whole chain (C1)."""
         ...

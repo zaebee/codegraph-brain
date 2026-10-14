@@ -14,11 +14,12 @@ from pathlib import Path
 
 import pytest
 
-from cgis.core.models import Node, NodeType
+from cgis.core.models import Node, NodeNamespace, NodeType
 from cgis.core.paths import is_test_path
 from cgis.languages import (
     MANIFESTS,
     Manifest,
+    classifying_pack,
     extractors,
     is_supported,
     pack_for_node,
@@ -28,6 +29,7 @@ from cgis.languages import (
     skips,
 )
 from cgis.pipeline import IngestionPipeline
+from cgis.resolver.indices import IndexBuilder
 
 TS_SOURCE = """
 export function helper(value: number): number {
@@ -313,3 +315,26 @@ def test_a_root_package_json_does_not_load_the_typescript_grammar(tmp_path: Path
         "package.json": '{"name": "tooling", "devDependencies": {"prettier": "3"}}',
     }
     assert _cli_ingest_loads(tmp_path, files) == ["tree_sitter_python"]
+
+
+def test_no_source_classifies_as_python() -> None:
+    """Spec quirk, kept in the registry: classify_fqn(fqn) without a source reads it as Python."""
+    pack = classifying_pack(None)
+    assert pack is not None
+    assert pack.name == "python"
+    index = IndexBuilder().build([])
+    assert index.classify_fqn("os.path") is NodeNamespace.STDLIB
+    assert index.classify_fqn("os.path", "app/x.ts") is NodeNamespace.UNKNOWN
+
+
+@pytest.mark.parametrize("source", ["web/a.js", "types/x.pyi", "Foo.PY"])
+def test_a_source_no_pack_reads_gets_the_generic_tail(source: str) -> None:
+    """Internal root → INTERNAL, the JS root → STDLIB, anything else UNKNOWN — as before."""
+    assert classifying_pack(source) is None
+    node = Node(
+        id="app.f", type=NodeType.FUNCTION, name="f", file_path="app/f.py", start_line=1, end_line=1
+    )
+    index = IndexBuilder().build([node])
+    assert index.classify_fqn("app.g", source) is NodeNamespace.INTERNAL
+    assert index.classify_fqn("js_builtins.Math", source) is NodeNamespace.STDLIB
+    assert index.classify_fqn("os.path", source) is NodeNamespace.UNKNOWN
