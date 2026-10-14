@@ -58,7 +58,9 @@ def receiver_type_fqn(index: SymbolIndex, owner_fqn: str, attr: str) -> str | No
     declared = index.self_types.get(owner_fqn, {}).get(attr)
     if declared is None:
         return None
-    return index.map_to_node_fqn(declared) or declared
+    # `self.svc = svc` with `svc: ServiceDep` declares the alias, not the service
+    # behind it — the same gap as a parameter's own calls (#550 review).
+    return _through_annotated_alias(index, index.map_to_node_fqn(declared) or declared)
 
 
 def _declaring_class(
@@ -312,11 +314,16 @@ def _through_annotated_alias(index: SymbolIndex, type_fqn: str) -> str:
     A parameter typed `service: ServiceDep` holds a `Service`, but its recorded
     type is the alias, which has no methods — so `service.run()` stayed
     unresolved and impact stopped short of every FastAPI route injected that way
-    (#550). Module-level, as `_package_call`: `SymbolResolver` is at the
-    god-object threshold.
+    (#550). Read for a parameter's calls and for `self.<attr>` alike.
+    Module-level, as `_package_call`: `SymbolResolver` is at the god-object
+    threshold.
     """
     alias_fqn = index.map_to_node_fqn(type_fqn) or type_fqn
     if not index.is_variable_node(alias_fqn):
         return type_fqn
     annotated: str | None = index.nodes[alias_fqn].metadata.get("annotated_type")
-    return annotated or type_fqn
+    if not annotated:
+        return type_fqn
+    # Recorded through the alias module's import map, so it may carry a layout
+    # prefix (`app.domains.x.T` against a node `domains.x.T`).
+    return index.map_to_node_fqn(annotated) or annotated

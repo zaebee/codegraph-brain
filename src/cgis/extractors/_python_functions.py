@@ -519,8 +519,16 @@ def annotated_alias_type(
     if wrapper.rsplit(".", maxsplit=1)[-1] != "Annotated":
         return None
     raw = code_bytes[right.start_byte : right.end_byte].decode("utf-8")
-    type_name = types.clean_python_type_string(raw)
-    return types.resolve_type_fqn(type_name, import_map, file_path) if type_name else None
+    # A forward reference (`Annotated["T", ...]`) names T too.
+    type_name = types.clean_python_type_string(raw).strip("\"'")
+    if not type_name or type_name in _BUILTIN_CONTAINERS:
+        return None
+    return types.resolve_type_fqn(type_name, import_map, file_path)
+
+
+#: `Annotated[list[T], ...]` cleans to `list`: a builtin, never a class of ours, and
+#: resolved through the import map it would read as `<module>.list`.
+_BUILTIN_CONTAINERS = frozenset({"list", "dict", "set", "frozenset", "tuple", "type"})
 
 
 def emit_annotation_edges(

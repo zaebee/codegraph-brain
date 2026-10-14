@@ -26,6 +26,7 @@ class Other:
 """
 
 _DEPS = """
+import typing
 from typing import Annotated
 from fastapi import Depends
 from service import Other, Service
@@ -47,12 +48,15 @@ def get_user():
 
 ServiceDep = Annotated[Service, Depends(get_service)]
 CurrentUser = Depends(get_user)
+QualifiedDep = typing.Annotated[Service, Depends(get_service)]
+ForwardDep = Annotated["Service", Depends(get_service)]
+ListDep = Annotated[list[Service], Depends(get_service)]
 """
 
 _ROUTES = """
 from typing import Annotated
 from fastapi import Depends
-from deps import ServiceDep, CurrentUser, get_service
+from deps import ForwardDep, QualifiedDep, ServiceDep, CurrentUser, get_service
 from service import Service
 
 
@@ -66,6 +70,22 @@ async def inline(svc: Annotated[Service, Depends(get_service)]):
 
 async def plain_depends(user=CurrentUser):
     user.run()
+
+
+async def qualified(svc: QualifiedDep):
+    svc.run()
+
+
+async def forward(svc: ForwardDep):
+    svc.run()
+
+
+class Holder:
+    def __init__(self, svc: ServiceDep):
+        self.svc = svc
+
+    def go(self):
+        self.svc.run()
 """
 
 
@@ -140,3 +160,56 @@ def test_retyping_the_alias_reresolves_the_route_on_an_incremental_ingest(
     targets = _calls_from(db, "routes.via_alias")
     assert "service.Other.run" in targets
     assert "service.Service.run" not in targets
+
+
+@pytest.mark.parametrize("route", ["routes.qualified", "routes.forward"])
+def test_typing_annotated_and_a_forward_reference_resolve(
+    repo: tuple[Path, str], route: str
+) -> None:
+    _, db = repo
+    assert "service.Service.run" in _calls_from(db, route)
+
+
+def test_a_builtin_container_records_no_type(repo: tuple[Path, str]) -> None:
+    """`Annotated[list[T], ...]` cleans to `list`, which would read as `deps.list`."""
+    _, db = repo
+    with SQLiteStore(db) as store:
+        alias = store.get_node("deps.ListDep")
+    assert alias is not None
+    assert "annotated_type" not in alias.metadata
+
+
+def test_an_attribute_assigned_from_an_alias_typed_parameter_resolves(
+    repo: tuple[Path, str],
+) -> None:
+    """The neighbouring entry: `self.svc = svc` with `svc: ServiceDep` (#550 review)."""
+    _, db = repo
+    assert "service.Service.run" in _calls_from(db, "routes.Holder.go")
+
+
+def test_an_import_path_prefixed_above_the_graph_resolves(tmp_path: Path) -> None:
+    """owner-api's layout: ingested from `app/`, importing `from app.svc...`.
+
+    The alias's recorded type carries the `app.` prefix the node ids lack, and
+    only `map_to_node_fqn` reconciles the two.
+    """
+    root = tmp_path / "app"
+    (root / "svc").mkdir(parents=True)
+    (root / "api").mkdir()
+    (root / "svc" / "service.py").write_text(_SERVICE, encoding="utf-8")
+    (root / "svc" / "deps.py").write_text(
+        "from typing import Annotated\n"
+        "from fastapi import Depends\n"
+        "from app.svc.service import Service\n\n"
+        "def get_service():\n    return Service()\n\n"
+        "ServiceDep = Annotated[Service, Depends(get_service)]\n",
+        encoding="utf-8",
+    )
+    (root / "api" / "routes.py").write_text(
+        "from app.svc.deps import ServiceDep\n\nasync def route(svc: ServiceDep):\n    svc.run()\n",
+        encoding="utf-8",
+    )
+    db = str(tmp_path / "graph.db")
+    cgis_ingest(str(root), db)
+
+    assert "svc.service.Service.run" in _calls_from(db, "api.routes.route")
