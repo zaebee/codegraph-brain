@@ -112,8 +112,11 @@ def test_cgis_command_uses_this_checkouts_server_and_the_plugin_without_mcp_json
 
 
 def test_the_narrow_arm_lists_three_tools_and_is_otherwise_the_cgis_arm(tmp_path: Path) -> None:
-    narrow = ab.mcp_config("cgis-narrow")["mcpServers"]["cgis"]  # type: ignore[index]
-    full = ab.mcp_config("cgis")["mcpServers"]["cgis"]  # type: ignore[index]
+    narrow_servers = ab.mcp_config("cgis-narrow")["mcpServers"]
+    full_servers = ab.mcp_config("cgis")["mcpServers"]
+    assert isinstance(narrow_servers, dict)
+    assert isinstance(full_servers, dict)
+    narrow, full = narrow_servers["cgis"], full_servers["cgis"]
 
     assert narrow["env"] == {"CGIS_MCP_TOOLS": "analyze_impact,find_symbol,trace_flow"}
     assert "env" not in full
