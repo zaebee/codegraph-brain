@@ -22,6 +22,8 @@ from cgis.bench.guard import blocked_reason
         "sqlite3 graph.db 'select 1'",
         "python3 -m cgis overview",
         'python3 -c "from cgis.cli import app"',
+        "cd src && python -c 'import cgis'",
+        "python3 - <<'EOF'\nfrom cgis.storage.sqlite_store import SQLiteStore\nEOF",
         "ls -la graph.db",
         "cat ui/public/graph.json | head",
         "find . | xargs grep x; uv pip list",
@@ -40,6 +42,10 @@ def test_bash_routes_to_the_graph_are_blocked(command: str) -> None:
         "git log --oneline -3",
         "rg 'def ingest' src/cgis/cli.py",
         "python3 -c 'print(1)'",
+        # #589: an import searched for, not run — this repository's source is full of them.
+        'cd src; grep -rn "axes import\\|from cgis.guardian.axes" cgis --include=*.py',
+        "grep -rn 'import cgis' tests",
+        "grep -m 5 cgis README.md",
     ],
 )
 def test_ordinary_exploration_is_allowed(command: str) -> None:
