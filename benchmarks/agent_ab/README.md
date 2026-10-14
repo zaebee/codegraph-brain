@@ -40,6 +40,7 @@ resolver gets wrong. Each task's `notes` say how it was checked.
 |---|---|---|---|---|
 | `control` | none (`--strict-mcp-config`, empty config) | no | all deleted | no |
 | `cgis` | this checkout's `cgis-mcp` | yes (the plugin minus its `.mcp.json`) | `graph.db` built before the clock starts | no |
+| `cgis-narrow` | as `cgis`, listing only `analyze_impact`, `find_symbol`, `trace_flow` (`CGIS_MCP_TOOLS`) | as `cgis` | as `cgis` | no |
 | `cgis-instructed` | as `cgis` | as `cgis` | as `cgis` | one line: query cgis first |
 | `cgis-forced` | as `cgis` | as `cgis` | as `cgis` | as `cgis-instructed`, and the guard refuses Read/Grep/Glob/Bash until one cgis call |
 
