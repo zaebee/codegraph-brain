@@ -23,6 +23,7 @@ import posixpath
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
+from functools import cached_property
 from pathlib import Path
 
 import structlog
@@ -83,12 +84,18 @@ class TsconfigPaths:
 
         The extractor is the one registered for `.ts`, chosen by extension so this
         module imports no language's extractor (#506). With none configured, or one
-        that cannot name modules, every config is ignored.
+        that cannot name modules, every config is ignored. It is looked up on first
+        use, so a repository with no tsconfig.json never builds it.
         """
         self._root = workspace_root
-        extractor = extractors.get(".ts") or extractors.get(".tsx")
-        self._namer = extractor if isinstance(extractor, ModuleNamer) else None
+        self._extractors = extractors
         self._configs: set[Path] = set()
+
+    @cached_property
+    def _namer(self) -> ModuleNamer | None:
+        """The `.ts` extractor if it can name modules — fetched only when a config needs it."""
+        extractor = self._extractors.get(".ts") or self._extractors.get(".tsx")
+        return extractor if isinstance(extractor, ModuleNamer) else None
 
     def note(self, config: Path) -> None:
         """Record a `tsconfig.json` the walk passed; it is read in `aliases`."""
@@ -110,7 +117,7 @@ class TsconfigPaths:
         `"extends": "@x/tsconfig/base.json"` finds a shared config that is not
         installed into `node_modules`.
         """
-        if self._namer is None:
+        if not self._configs or self._namer is None:
             return {}
         reader = _Reader(self._root, self._namer, dict(package_directories or {}))
         scopes: dict[str, dict[str, list[str]]] = {}

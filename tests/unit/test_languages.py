@@ -6,6 +6,8 @@ above all `TestModuleFqnRoundTrip`, which ingests real source and asserts the
 registry derives the ids the extractors actually emitted.
 """
 
+import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -23,6 +25,7 @@ from cgis.languages import (
     pack_for_path,
     pack_named,
     scope_of,
+    skips,
 )
 from cgis.pipeline import IngestionPipeline
 
@@ -213,3 +216,62 @@ class TestModuleFqnRoundTrip:
     def test_a_path_no_pack_reads_gets_the_python_rule(self) -> None:
         """Ruling R5: the CLI's extensionless fallback, kept in one place."""
         assert scope_of("src/cgis/pipeline", None) == "src.cgis.pipeline"
+
+
+# The pipeline's pattern before step 1, copied so `skips` is held to it exactly.
+_OLD_SKIP = re.compile(r"\.(test|spec)\.(py|ts|tsx|js|jsx)$", re.IGNORECASE)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "a.test.py", "a.spec.ts", "a.TEST.tsx", "a.spec.jsx", "a.test.js", "a.test.TS",
+        "a_test.py", "test_a.py", "a.py", "a.ts", "contest.ts", "a.test.pyi", "a.spec.d.ts",
+    ],
+)  # fmt: skip
+def test_skips_is_the_pipeline_pattern_it_replaced(name: str) -> None:
+    assert skips(name) is bool(_OLD_SKIP.search(name))
+
+
+def _cli_ingest_loads(tmp_path: Path, files: dict[str, str]) -> list[str]:
+    """Grammar packages a fresh `cgis ingest` of `files` imported, in a clean interpreter.
+
+    The pipeline logs through structlog, which may write to the real stdout around
+    `CliRunner`; the probe reads only its own last line.
+    """
+    repo = tmp_path / "repo"
+    for relative, source in files.items():
+        (repo / relative).parent.mkdir(parents=True, exist_ok=True)
+        (repo / relative).write_text(source, encoding="utf-8")
+    script = (
+        "import json, sys\n"
+        "from typer.testing import CliRunner\n"
+        "from cgis.cli import app\n"
+        f"argv = ['ingest', {str(repo)!r}, '--output', {str(tmp_path / 'g.db')!r}]\n"
+        "r = CliRunner().invoke(app, argv)\n"
+        "assert r.exit_code == 0, r.output\n"
+        "loaded = {m.split('.')[0] for m in sys.modules if m.startswith('tree_sitter_')}\n"
+        "print(json.dumps(sorted(loaded)))\n"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, check=False
+    )
+    assert out.returncode == 0, out.stderr
+    loaded: list[str] = json.loads(out.stdout.strip().splitlines()[-1])
+    return loaded
+
+
+def test_a_python_only_ingest_never_loads_the_typescript_grammar(tmp_path: Path) -> None:
+    """Spec, Registry: loading every grammar eagerly is what the registry exists to avoid.
+
+    The README matters: a file no pack reads is what makes a value-walking lookup
+    build every extractor on its way to "no match".
+    """
+    files = {"pkg/a.py": PY_SOURCE, "README.md": "# demo\n"}
+    assert _cli_ingest_loads(tmp_path, files) == ["tree_sitter_python"]
+
+
+def test_a_typescript_file_does_load_it(tmp_path: Path) -> None:
+    """The control: without it, the test above would pass on a probe that sees nothing."""
+    loaded = _cli_ingest_loads(tmp_path, {"pkg/a.py": PY_SOURCE, "app/h.ts": TS_SOURCE})
+    assert "tree_sitter_typescript" in loaded

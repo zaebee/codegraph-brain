@@ -8,6 +8,7 @@ from the manifests the pipeline walks past.
 
 import json
 from collections.abc import Iterable, Mapping
+from functools import cached_property
 from pathlib import Path
 
 import structlog
@@ -114,12 +115,19 @@ class WorkspacePackages:
         The extractor is the one registered for `.ts`, chosen by extension rather
         than by class, so this module imports no language's extractor (#506). With
         none configured, or one that cannot name modules, every manifest is ignored.
+        The extractor is looked up on first use, so a repository with no
+        package.json never builds it.
         """
         self._root = workspace_root
-        extractor = extractors.get(".ts") or extractors.get(".tsx")
-        self._extractor = extractor if isinstance(extractor, ModuleNamer) else None
+        self._extractors = extractors
         # package name as written -> every directory that claims it
         self._claims: dict[str, set[Path]] = {}
+
+    @cached_property
+    def _extractor(self) -> ModuleNamer | None:
+        """The `.ts` extractor if it can name modules — fetched only when a manifest needs it."""
+        extractor = self._extractors.get(".ts") or self._extractors.get(".tsx")
+        return extractor if isinstance(extractor, ModuleNamer) else None
 
     def note(self, manifest: Path) -> None:
         """Record which directory a `package.json` names.
@@ -176,7 +184,7 @@ class WorkspacePackages:
         directory FQN comes from the extractor's own `module_fqn`, so it is spelled
         exactly as that package's node ids are.
         """
-        if self._extractor is None:
+        if not self._claims or self._extractor is None:
             return {}
         claims: dict[str, set[str]] = {}
         for name, found in sorted(self._claims.items()):
