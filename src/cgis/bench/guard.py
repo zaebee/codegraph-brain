@@ -25,12 +25,33 @@ import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-#: A cgis-adjacent executable in command position: start of the command, or after
-#: a separator, a subshell or a pipe, optionally with a directory in front.
-_COMMAND = re.compile(
-    r"(?:^|[;&|(`]|\$\()\s*(?:\S*/)?(?:cgis|cgis-mcp|codegraph-brain|uvx|uv|sqlite3)\b(?![./-])"
+#: Words that run the command after them: `env cgis`, `timeout 9 sqlite3`, `VAR=x uv`.
+_PREFIXES = (
+    r"(?:(?:env|exec|nohup|time|timeout\s+\S+|sudo|command|xargs|nice"
+    r"|do|then|else|!|\{|\w+=\S*)\s+)*"
 )
-_PYTHON_IMPORT = re.compile(r"-m\s+cgis\b|\b(?:import|from)\s+cgis\b")
+#: A cgis-adjacent executable in command position: start of a line, or after a
+#: separator, a subshell or a pipe, past any prefix word, optionally with a
+#: directory in front. A newline starts a command too (#590 review).
+_COMMAND = re.compile(
+    r"(?:^|[;&|(`\n]|\$\()\s*"
+    + _PREFIXES
+    + r"(?:\S*/)?(?:cgis|cgis-mcp|codegraph-brain|uvx|uv|sqlite3)\b(?![./-])",
+    re.MULTILINE,
+)
+#: cgis imported the ways Python allows: `-m cgis`, `from cgis…`, `import cgis`,
+#: `import os, cgis` (Gemini on #590), `__import__("cgis")`, `import_module("cgis")`.
+_PYTHON_IMPORT = re.compile(
+    r"-m\s+cgis\b|\bfrom\s+cgis\b|\bimport\s+(?:[\w.]+\s*,\s*)*cgis\b"
+    r"|(?:__import__|import_module)\(\s*[\"']cgis\b"
+)
+#: A Python interpreter named anywhere in the command. An import of cgis only runs
+#: cgis when Python reads it: the same text in a grep pattern searched for it in
+#: this repository's own source, and was refused (#589). Anywhere, not in command
+#: position: `env python3`, `bash -c "python …"`, a newline before `python3` all
+#: run it, and a guard that keeps the control arm honest must err towards refusing
+#: (#590 review) — a grep that also names python is refused, and that is fine.
+_PYTHON = re.compile(r"\b(?:i?python[\d.]*|pypy3?)\b")
 _GRAPH_FILE = re.compile(r"\bgraph\.(?:db|json)\b")
 
 _PATH_KEYS = ("file_path", "path", "pattern", "notebook_path")
@@ -51,7 +72,8 @@ def blocked_reason(tool_name: str, tool_input: Mapping[str, object]) -> str | No
     """Why this tool call must be refused, or None when it may run."""
     if tool_name == "Bash":
         command = str(tool_input.get("command", ""))
-        if _COMMAND.search(command) or _PYTHON_IMPORT.search(command):
+        runs_cgis_in_python = _PYTHON.search(command) and _PYTHON_IMPORT.search(command)
+        if _COMMAND.search(command) or runs_cgis_in_python:
             return "The cgis CLI, uv and sqlite3 are unavailable in this benchmark."
         if _GRAPH_FILE.search(command):
             return "The graph database is unavailable in this benchmark."
