@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from cgis.extractors.python_extractor import PythonExtractor
+from cgis.languages.python.extractor import PythonExtractor
 from cgis.pipeline import IngestionPipeline
 from cgis.query.engine import QueryEngine
 from cgis.storage.sqlite_store import SQLiteStore

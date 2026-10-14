@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
-from cgis.extractors.typescript_extractor import file_path_to_module_fqn
+from cgis.languages.typescript.extractor import file_path_to_module_fqn
 from cgis.resolver.js_builtins import JS_BUILTINS_ROOT, JS_GLOBALS
 from cgis.storage.sqlite_store import SQLiteStore
 

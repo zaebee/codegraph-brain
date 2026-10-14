@@ -6,25 +6,25 @@ import tree_sitter_python as tspython
 from tree_sitter import Language, Parser
 from tree_sitter import Node as BaseNode
 
+from cgis.core.extractor import BaseExtractor
 from cgis.core.models import Edge, Node, NodeType
-from cgis.extractors._python_ast import (
-    enclosing_class_fqn,
-    extract_decorator_names,
-    is_module_level_assignment,
-    is_name_load,
-)
-from cgis.extractors._python_ast import file_path_to_module_fqn as _file_path_to_module_fqn
-from cgis.extractors._python_classes import ClassHandler
-from cgis.extractors._python_functions import (
+from cgis.languages.python._classes import ClassHandler
+from cgis.languages.python._functions import (
     FunctionHandler,
     collect_context_manager_type,
     collect_return_annotation,
     emit_annotation_edges,
     emit_name_reference_edges,
 )
-from cgis.extractors._python_imports import ImportHandler
-from cgis.extractors._python_types import TypeResolver
-from cgis.extractors.base import BaseExtractor
+from cgis.languages.python._imports import ImportHandler
+from cgis.languages.python._syntax import (
+    enclosing_class_fqn,
+    extract_decorator_names,
+    is_module_level_assignment,
+    is_name_load,
+)
+from cgis.languages.python._syntax import file_path_to_module_fqn as _file_path_to_module_fqn
+from cgis.languages.python._types import TypeResolver
 
 
 def file_path_to_module_fqn(file_path: str, source_root: str | None = None) -> str:

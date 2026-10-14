@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 from cgis.core.models import EdgeType
-from cgis.extractors.typescript_extractor import TypeScriptExtractor
+from cgis.languages.typescript.extractor import TypeScriptExtractor
 from cgis.pipeline import IngestionPipeline
 from cgis.storage.sqlite_store import SQLiteStore
 from cgis.tsconfig_paths import TsconfigPaths, load_jsonc

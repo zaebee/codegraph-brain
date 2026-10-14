@@ -20,11 +20,11 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from cgis.extractors.registry import is_supported
 from cgis.guardian.calibrate import JudgePair, assign_from_grid
 from cgis.guardian.collector import FeaturesSource
 from cgis.guardian.findings import Finding
 from cgis.guardian.runner import TemperatureSource
+from cgis.languages import is_supported
 
 #: Severity vocabulary of the upstream corpus. Four values, not three — the
 #: spec's §"Ground truth format" omits `Critical` (12 of the 173 comments).

@@ -43,7 +43,7 @@ def test_closure_reaches_the_graph_and_drift_sections() -> None:
         "src/cgis/query/render/mermaid.py",
         "src/cgis/storage/sqlite_store.py",
         "src/cgis/query/drift/drift.py",
-        "src/cgis/extractors/registry.py",
+        "src/cgis/languages/__init__.py",
     ):
         assert expected in closure
 

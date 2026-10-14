@@ -15,7 +15,7 @@ order TypeScript itself resolves in: an implementation beside its declaration wi
 from pathlib import Path
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
-from cgis.extractors.typescript_extractor import TypeScriptExtractor
+from cgis.languages.typescript.extractor import TypeScriptExtractor
 from cgis.pipeline import IngestionPipeline
 from cgis.resolver.engine import ResolverEngine
 

@@ -4,8 +4,8 @@ import tree_sitter_python as tspython
 from tree_sitter import Language, Parser
 from tree_sitter import Node as BaseNode
 
-from cgis.extractors._python_annotations import collect_type_names
-from cgis.extractors._python_ast import enclosing_class_fqn
+from cgis.languages.python._annotations import collect_type_names
+from cgis.languages.python._syntax import enclosing_class_fqn
 
 _PARSER = Parser(Language(tspython.language()))
 

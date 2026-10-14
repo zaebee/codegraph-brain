@@ -2,7 +2,7 @@
 
 from collections.abc import Callable
 
-from cgis.extractors._python_ast import file_path_to_module_fqn
+from cgis.languages.python._syntax import file_path_to_module_fqn
 
 
 class TypeResolver:

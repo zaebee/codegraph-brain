@@ -7,9 +7,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
-from cgis.extractors.registry import build_extractors
 from cgis.guardian.chunker import Chunk
 from cgis.guardian.collector import ContextCollector, parse_features
+from cgis.languages import extractors
 from cgis.pipeline import IngestionPipeline
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -470,7 +470,7 @@ def _ingest_ts_project(tmp_path: Path) -> Path:
     (tmp_path / "app" / "main.ts").write_text(_TS_MAIN, encoding="utf-8")
     db = tmp_path / "graph.db"
     with SQLiteStore(str(db)) as store:
-        IngestionPipeline(build_extractors([])).run(str(tmp_path), store=store)
+        IngestionPipeline(extractors([])).run(str(tmp_path), store=store)
     return db
 
 

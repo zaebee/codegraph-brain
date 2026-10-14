@@ -22,7 +22,7 @@ from typer.testing import CliRunner
 from cgis.cli import _drift_status_label, app
 from cgis.core.freshness import FreshnessState
 from cgis.core.models import Edge, EdgeType, Node, NodeType
-from cgis.extractors.python_extractor import file_path_to_module_fqn
+from cgis.languages.python.extractor import file_path_to_module_fqn
 from cgis.query.engine import QueryEngine
 from cgis.resolver.engine import ResolverEngine
 from cgis.storage.sqlite_store import SQLiteStore

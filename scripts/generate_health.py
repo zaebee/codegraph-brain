@@ -15,13 +15,12 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from cgis.extractors.python_extractor import PythonExtractor
+from cgis.languages import extractors
 from cgis.pipeline import IngestionPipeline
 from cgis.storage.sqlite_store import SQLiteStore
 
 _SRC = Path("src/cgis")
 _OUTPUT = Path("docs/architecture/health_badge.json")
-_EXTRACTORS = {".py": PythonExtractor()}
 
 
 @dataclass
@@ -77,7 +76,7 @@ def generate_health(db: str | None = None) -> None:
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
             db_path = tmp.name
         try:
-            pipeline = IngestionPipeline(_EXTRACTORS)
+            pipeline = IngestionPipeline(extractors([]))
             with SQLiteStore(db_path) as store:
                 pipeline.run(str(_SRC), store=store)
             result = _compute_health(db_path)

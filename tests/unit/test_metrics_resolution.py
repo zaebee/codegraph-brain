@@ -13,7 +13,7 @@ from typer.testing import CliRunner
 
 from cgis.cli import app
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
-from cgis.extractors.python_extractor import PythonExtractor
+from cgis.languages.python.extractor import PythonExtractor
 from cgis.pipeline import IngestionPipeline
 from cgis.query.render.metrics import DuckDBAnalyzer, resolution_metric
 from cgis.storage.sqlite_store import SQLiteStore

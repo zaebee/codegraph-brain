@@ -18,8 +18,8 @@ from pathlib import Path
 import pytest
 
 from cgis.core.models import EdgeType, NodeNamespace
-from cgis.extractors.typescript_extractor import TypeScriptExtractor
 from cgis.import_names import ImportNameCollector
+from cgis.languages.typescript.extractor import TypeScriptExtractor
 from cgis.pipeline import IngestionPipeline
 from cgis.workspaces import pnpm_member_names
 

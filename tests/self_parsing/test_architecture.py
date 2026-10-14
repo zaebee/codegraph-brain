@@ -1,12 +1,13 @@
 """Architectural guardrails: hexagonal boundary invariants verified via the self-parsed graph.
 
-Six invariants are enforced:
+Seven invariants are enforced:
   1. Pure Domain Isolation  — cgis.core.models never imports other cgis.* subpackages.
-  2. Extractor Boundary     — cgis.extractors.* never imports storage, query, or api layers.
+  2. Extractor Boundary     — cgis.languages.* never imports storage, query, api or pipeline.
   3. Storage Boundary       — cgis.storage.* never imports the api layer.
   4. Model Immutability     — Node and Edge declare frozen=True.
   5. No Circular Dependencies — AnalyzerEngine finds zero cycles in cgis itself.
   6. God Object Baseline    — number of God Objects does not grow beyond known set.
+  7. Forbidden edges        — exact allowlists per rule (language-packs spec).
 """
 
 import json
@@ -22,8 +23,9 @@ from cgis.storage.sqlite_store import SQLiteStore
 # ---------------------------------------------------------------------------
 
 _CGIS = "cgis"
+_EXTRACTION = "languages"
 _FORBIDDEN_API = frozenset({"api"})
-_FORBIDDEN_FROM_CORE = frozenset({"extractors", "storage", "query", "api", "resolver", "pipeline"})
+_FORBIDDEN_FROM_CORE = frozenset({"languages", "storage", "query", "api", "resolver", "pipeline"})
 _FORBIDDEN_FROM_EXTRACTORS = frozenset({"storage", "query", "api", "pipeline"})
 
 _CORE_NOT_FOUND = "ARCHITECTURAL VIOLATION — 'core.models' node not found in the parsed graph"
@@ -80,15 +82,18 @@ def test_extractors_are_database_blind(
 ) -> None:
     """Extractors must only do AST parsing — zero knowledge of storage, query, or api."""
     _, nodes, edges = graph_data
+    assert any(_clean(n.id) == _EXTRACTION for n in nodes), (
+        f"no '{_EXTRACTION}' node in the self-parsed graph — the invariant would examine nothing"
+    )
     violations = set()
     for e in edges:
-        is_imports = _is_imports(_clean(e.source), "extractors", e.type)
+        is_imports = _is_imports(_clean(e.source), _EXTRACTION, e.type)
         is_forbidden = _is_forbidden(e.target, _CGIS, _FORBIDDEN_FROM_EXTRACTORS)
         if is_imports and is_forbidden:
             violations.add(f"{e.source} -> {e.target}")
 
     for n in nodes:
-        if _clean(n.id) == "extractors":
+        if _clean(n.id) == _EXTRACTION:
             import_map = n.metadata.get("import_map") or {}
             for val in import_map.values():
                 if _is_forbidden(val, _CGIS, _FORBIDDEN_FROM_EXTRACTORS):
@@ -184,7 +189,7 @@ def test_analyzer_report_is_deterministic(
 _KNOWN_GOD_OBJECTS = frozenset(
     {
         "storage.sqlite_store.SQLiteStore",  # data-access layer — many CRUD methods by design
-        "extractors.typescript_extractor.TypeScriptExtractor",  # complex AST visitor
+        "languages.typescript.extractor.TypeScriptExtractor",  # complex AST visitor
     }
 )
 
@@ -234,12 +239,11 @@ class _Rule:
 RULES: tuple[_Rule, ...] = (
     _Rule("cross-pack", ("cgis.languages",), ("cgis.languages",),
           exempt_modules=frozenset({"cgis.languages"}), cross_pack=True),
-    _Rule("pack-isolation", ("cgis.languages", "cgis.extractors"),
+    _Rule("pack-isolation", ("cgis.languages",),
           ("cgis.storage", "cgis.query", "cgis.api", "cgis.guardian", "cgis.pipeline")),
     _Rule("resolver-storage", ("cgis.resolver",), ("cgis.storage",)),
     _Rule("surface-packs", ("cgis.query", "cgis.guardian", "cgis.cli", "cgis.api"),
-          ("cgis.languages", "cgis.extractors"),
-          exempt_modules=frozenset({"cgis.languages", "cgis.extractors.registry"})),
+          ("cgis.languages",), exempt_modules=frozenset({"cgis.languages"})),
     _Rule("surface-storage", ("cgis.cli", "cgis.api", "cgis.guardian"), ("cgis.storage",)),
     _Rule("core-isolation", ("cgis.core",), ("cgis",), exempt_prefixes=("cgis.core",)),
 )  # fmt: skip

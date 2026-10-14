@@ -3,7 +3,6 @@
 import hashlib
 import json
 import os
-import re
 from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -12,11 +11,12 @@ import structlog
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
+from cgis.core.extractor import BaseExtractor
 from cgis.core.generated import is_generated_source
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.core.paths import EXCLUDED_DIRS
-from cgis.extractors.base import BaseExtractor
 from cgis.import_names import ImportNameCollector
+from cgis.languages import skips
 from cgis.resolver.engine import ResolverEngine
 from cgis.resolver.symbols import dispatch_edges
 from cgis.resolver.uplift import SemanticUpliftEngine
@@ -444,13 +444,16 @@ class IngestionPipeline:
         for stale_path in stale_files:
             logger.info("Removed stale file from graph", file_path=stale_path)
 
-    _TEST_FILE_PATTERN = re.compile(r"\.(test|spec)\.(py|ts|tsx|js|jsx)$", re.IGNORECASE)
-
     def _get_extractor(self, filename: str) -> BaseExtractor | None:
-        """Return the registered extractor for the given filename, or None."""
-        if self._TEST_FILE_PATTERN.search(filename):
+        """Return the registered extractor for the given filename, or None.
+
+        Matches on keys and fetches only the hit: the registry's mapping builds an
+        extractor, grammar and all, on first lookup, so walking its values would load
+        every language for a repository that has one.
+        """
+        if skips(filename):
             return None
-        for ext, extractor in self._extractors.items():
+        for ext in self._extractors:
             if filename.endswith(ext):
-                return extractor
+                return self._extractors[ext]
         return None

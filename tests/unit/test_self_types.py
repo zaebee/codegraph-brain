@@ -1,6 +1,6 @@
 """The four sources that populate a class's self_types map (spec D1)."""
 
-from cgis.extractors.python_extractor import PythonExtractor
+from cgis.languages.python.extractor import PythonExtractor
 
 
 def _class_self_types(code: str, class_fqn: str) -> dict[str, str]:

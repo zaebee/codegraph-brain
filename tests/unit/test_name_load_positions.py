@@ -12,7 +12,7 @@ before adding an entry to `_NOT_A_LOAD`.
 import pytest
 
 from cgis.core.models import EdgeType
-from cgis.extractors.python_extractor import PythonExtractor
+from cgis.languages.python.extractor import PythonExtractor
 
 # (label, snippet, is Widget a use of the class?)
 _POSITIONS: list[tuple[str, str, bool]] = [

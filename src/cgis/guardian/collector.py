@@ -13,8 +13,8 @@ from typing import Literal
 
 import structlog
 
-from cgis.extractors.registry import is_supported, language_for
 from cgis.guardian.chunker import Chunk
+from cgis.languages import is_supported, pack_for_path
 from cgis.query.drift.drift import DriftScorer
 from cgis.query.drift.fingerprint import FingerprintExtractor
 from cgis.query.drift.quotient import build_quotient, quotient_call_tally
@@ -172,8 +172,8 @@ class SourceCollector:
             used += size
             # Per-language fence: the label was hardcoded "python", so a TS
             # file reached the model announced as Python (#344).
-            language = language_for(rel_path)
-            fence = language.code_fence if language else ""
+            pack = pack_for_path(rel_path)
+            fence = pack.code_fence(rel_path) if pack else ""
             sections.append(f"#### `{rel_path}`\n```{fence}\n{text}\n```")
         return "\n\n".join(sections + omitted)
 
@@ -211,12 +211,12 @@ class GraphContextCollector:
         with SQLiteStore(str(self.db_path)) as store:
             engine = QueryEngine(store)
             for rel_path in changed_files:
-                language = language_for(rel_path)
-                if language is None:
+                pack = pack_for_path(rel_path)
+                if pack is None:
                     # Callers filter, so this means one stopped doing so.
                     log.warning("No extractor for changed file.", path=rel_path)
                     continue
-                module_fqn = language.file_path_to_module_fqn(rel_path, self.source_root)
+                module_fqn = pack.scope_of(rel_path, self.source_root)
                 nodes, edges = engine.get_impact_graph(module_fqn, max_depth=2)
                 title = "Impact graph"
                 if not nodes and flow:

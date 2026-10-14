@@ -4,10 +4,10 @@ import tree_sitter_typescript as tsts
 from tree_sitter import Language, Parser
 from tree_sitter import Node as TSNode
 
+from cgis.core.extractor import BaseExtractor
 from cgis.core.js_globals import specifier_fqn
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
-from cgis.extractors._typescript_bindings import bare_imports, shadowed_globals
-from cgis.extractors.base import BaseExtractor
+from cgis.languages.typescript._bindings import bare_imports, shadowed_globals
 
 _RAW_CALL_PREFIX = "raw_call:"
 #: `Node.language` for everything this extractor emits, `.ts` and `.tsx` alike;

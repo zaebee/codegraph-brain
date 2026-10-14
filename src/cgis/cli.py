@@ -36,9 +36,8 @@ from cgis import __app_name__, __version__
 from cgis.core.coverage import TraversalCoverage
 from cgis.core.freshness import FreshnessState
 from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeNamespace, NodeType
-from cgis.extractors.python_extractor import file_path_to_module_fqn
-from cgis.extractors.registry import build_extractors, is_supported, language_for
 from cgis.guardian.metrics import load_reviews, rate_review
+from cgis.languages import extractors, is_supported, scope_of
 from cgis.pipeline import IngestionPipeline
 from cgis.query.analysis.analyzer import AnalyzerEngine
 from cgis.query.analysis.anomaly import AnomalyType, ArchitecturalAnomaly
@@ -203,9 +202,7 @@ def ingest(
     Scan a repository, extract code structure, and resolve semantic links.
     """
     roots = source_roots or []
-    extractors = build_extractors(roots)
-
-    pipeline = IngestionPipeline(extractors, domains_config=domains)
+    pipeline = IngestionPipeline(extractors(roots), domains_config=domains)
 
     if domains and not Path(domains).is_file():
         console.print(
@@ -836,16 +833,13 @@ def structure(
         raise typer.Exit(code=1)
     _warn_if_not_fresh(db)
 
-    # Normalize file path → FQN. Per-language, because the helpers disagree:
+    # Normalize file path → FQN. Per-language, because the rules disagree:
     # the Python one strips ".py" and collapses "/__init__", so it would turn
     # "src/app/foo.ts" into "src.app.foo.ts" — an id no extractor emits (#344).
+    # A path no pack reads gets the Python slash-to-dot rewrite (`scope_of`).
     if "/" in target or "\\" in target or is_supported(target):
         normalized = target.replace("\\", "/").removeprefix("./")
-        language = language_for(normalized)
-        # An extensionless path ("src/cgis/pipeline") has no language; the
-        # Python helper is then just a slash-to-dot rewrite, which is correct.
-        to_fqn = language.file_path_to_module_fqn if language else file_path_to_module_fqn
-        target = to_fqn(normalized, None)
+        target = scope_of(normalized, None)
         console.print(f"[dim]→ FQN: {escape(target)}[/dim]")
 
     with SQLiteStore(db) as store:

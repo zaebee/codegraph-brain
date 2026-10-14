@@ -14,7 +14,7 @@ real question, and `trace` must still answer it; only the cycle query skips it.
 from pathlib import Path
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
-from cgis.extractors.python_extractor import PythonExtractor
+from cgis.languages.python.extractor import PythonExtractor
 from cgis.pipeline import IngestionPipeline
 from cgis.query.analysis.analyzer import AnalyzerEngine
 from cgis.storage.sqlite_store import SQLiteStore

@@ -70,7 +70,7 @@ NODE_BUILTIN_MODULES: frozenset[str] = frozenset(
 )
 
 #: Extensions whose calls are JavaScript at runtime. Matches the extractors
-#: registered in `extractors/registry.py` for `.ts`/`.tsx`.
+#: registered in `cgis.languages` for `.ts`/`.tsx`.
 _JS_SUFFIXES: tuple[str, ...] = (".ts", ".tsx")
 
 

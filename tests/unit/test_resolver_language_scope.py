@@ -5,9 +5,9 @@ from pathlib import Path
 import pytest
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace
-from cgis.extractors.python_extractor import PythonExtractor
-from cgis.extractors.registry import build_extractors
-from cgis.extractors.typescript_extractor import TypeScriptExtractor
+from cgis.languages import extractors
+from cgis.languages.python.extractor import PythonExtractor
+from cgis.languages.typescript.extractor import TypeScriptExtractor
 from cgis.pipeline import IngestionPipeline
 from cgis.resolver.engine import ResolverEngine
 from cgis.resolver.indices import IndexBuilder
@@ -108,7 +108,7 @@ def test_incremental_ts_change_does_not_downgrade_python_stdlib(tmp_path: Path) 
     (tmp_path / "tt").mkdir()
     (tmp_path / "pp" / "mod.py").write_text(_PY_JSON, encoding="utf-8")
     (tmp_path / "tt" / "util.ts").write_text(_TS_JSON, encoding="utf-8")
-    pipeline = IngestionPipeline(build_extractors([]))
+    pipeline = IngestionPipeline(extractors([]))
     db = str(tmp_path / "g.db")
 
     def namespace() -> NodeNamespace:

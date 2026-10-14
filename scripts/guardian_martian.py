@@ -35,7 +35,6 @@ from typing import TextIO
 
 from pydantic import ValidationError
 
-from cgis.extractors.registry import is_supported, language_for
 from cgis.guardian.calibrate import (
     DEFAULT_JUDGE_CONCURRENCY,
     assign_matches,
@@ -81,6 +80,7 @@ from cgis.guardian.runner import (
     build_skeptic_provider,
     temperature_setting,
 )
+from cgis.languages import is_supported, pack_for_path
 from cgis.storage.sqlite_store import SQLiteStore
 
 CORPUS_DIR = Path("benchmarks/martian")
@@ -298,10 +298,10 @@ def graph_alignment(db_path: Path, changed_files: Sequence[str]) -> tuple[int, i
     with SQLiteStore(str(db_path)) as store:
         found = 0
         for path in supported:
-            language = language_for(path)
-            if language is None:  # pragma: no cover - filtered above
+            pack = pack_for_path(path)
+            if pack is None:  # pragma: no cover - filtered above
                 continue
-            if store.get_node(language.file_path_to_module_fqn(path, SOURCE_ROOT)):
+            if store.get_node(pack.scope_of(path, SOURCE_ROOT)):
                 found += 1
     return found, len(supported)
 
