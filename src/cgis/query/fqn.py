@@ -88,8 +88,10 @@ def effective_prefix(store: SQLiteStore, prefix: str) -> str:
     """
     if store.covers_internal(prefix):
         return prefix
-    shorter = without_path_prefix(store, prefix)
-    return shorter if shorter is not None and store.covers_internal(shorter) else prefix
+    for shorter in _path_prefix_drops(store, prefix):
+        if store.covers_internal(shorter):
+            return shorter
+    return prefix
 
 
 def effective_prefixes(db_path: str, prefixes: list[str]) -> list[str]:
@@ -100,21 +102,22 @@ def effective_prefixes(db_path: str, prefixes: list[str]) -> list[str]:
         return [effective_prefix(store, prefix) for prefix in prefixes]
 
 
-def without_path_prefix(store: SQLiteStore, prefix: str) -> str | None:
-    """`prefix` with a leading directory above the graph dropped, or None (#584).
+def _path_prefix_drops(store: SQLiteStore, prefix: str) -> list[str]:
+    """`prefix` with each leading directory above the graph dropped, longest drop first.
 
-    The `fqn_prefix` of `cgis_find_symbol` scopes a search rather than naming a
-    node, so unlike `_without_leading_segments` the rest need not exist as a
-    node: `src.cgis` on a graph ingested from `src/` is the prefix `cgis`.
-    Something must remain — dropping the whole prefix would widen the search
-    to the entire graph, which is not what was asked.
+    The remainder need not be a node — a prefix scopes a search — but something
+    must remain: dropping the whole prefix would widen the search to the entire
+    graph. Every drop is offered, not only the first, because roots nest: a
+    graph of `/w/src` with `--source-root pkg` has both `src` and `src.pkg`
+    above it, and `src.pkg.mod` is `mod` (Gemini on #585).
     """
     prefixes = _path_prefixes(store)
     parts = prefix.split(".")
-    for start in range(1, len(parts)):
-        if ".".join(parts[:start]) in prefixes:
-            return ".".join(parts[start:])
-    return None
+    return [
+        ".".join(parts[start:])
+        for start in range(len(parts) - 1, 0, -1)
+        if ".".join(parts[:start]) in prefixes
+    ]
 
 
 def _without_leading_segments(store: SQLiteStore, fqn: str) -> str | None:

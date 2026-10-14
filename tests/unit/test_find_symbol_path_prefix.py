@@ -125,3 +125,17 @@ def test_the_cli_find_reads_it_too(tmp_path: Path) -> None:
     result = CliRunner().invoke(app, ["find", "ingest", "--db", db, "--prefix", "src.pkg"])
 
     assert "pkg.mod.ingest" in result.stdout
+
+
+def test_nested_roots_drop_the_longest_directory_that_leaves_code(tmp_path: Path) -> None:
+    """Root `src` with source root `pkg`: both `src` and `src.pkg` lie above `mod` (Gemini)."""
+    root = tmp_path / "src"
+    (root / "pkg").mkdir(parents=True)
+    (root / "pkg" / "mod.py").write_text("def ingest():\n    pass\n", encoding="utf-8")
+    db = str(tmp_path / "nested.db")
+    result = CliRunner().invoke(app, ["ingest", str(root), "-o", db, "--source-root", "pkg"])
+    assert result.exit_code == 0, result.output
+
+    assert json.loads(cgis_find_symbol("ingest", db, fqn_prefix="src.pkg.mod"))[0]["fqn"] == (
+        "mod.ingest"
+    )
