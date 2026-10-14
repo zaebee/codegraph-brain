@@ -17,10 +17,10 @@ from typing import TYPE_CHECKING
 import structlog
 
 from cgis.core.extractor import BaseExtractor
-from cgis.npm_dependencies import NpmDependencies
-from cgis.python_dependencies import declared_import_roots
-from cgis.tsconfig_paths import TSCONFIG, TsconfigPaths
-from cgis.workspaces import (
+from cgis.languages.python.dependencies import declared_import_roots
+from cgis.languages.typescript.npm import NpmDependencies
+from cgis.languages.typescript.tsconfig import TSCONFIG, TsconfigPaths
+from cgis.languages.typescript.workspaces import (
     PACKAGE_MANIFEST,
     PNPM_WORKSPACE,
     WorkspacePackages,

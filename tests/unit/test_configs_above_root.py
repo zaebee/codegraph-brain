@@ -20,8 +20,8 @@ import pytest
 from cgis.core.models import EdgeType, NodeNamespace
 from cgis.import_names import ImportNameCollector
 from cgis.languages.typescript.extractor import TypeScriptExtractor
+from cgis.languages.typescript.workspaces import pnpm_member_names
 from cgis.pipeline import IngestionPipeline
-from cgis.workspaces import pnpm_member_names
 
 APP = """\
 import { cn } from "@/lib/utils";

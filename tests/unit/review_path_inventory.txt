@@ -38,6 +38,7 @@ src/cgis/languages/python/extractor.py
 src/cgis/languages/typescript/__init__.py
 src/cgis/languages/typescript/_bindings.py
 src/cgis/languages/typescript/extractor.py
+src/cgis/languages/typescript/naming.py
 src/cgis/query/analysis/__init__.py
 src/cgis/query/analysis/health.py
 src/cgis/query/drift/__init__.py
