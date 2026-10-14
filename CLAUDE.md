@@ -75,12 +75,15 @@ IngestionPipeline (pipeline.py)
    (`parse(code, file_path) -> tuple[list[Node], list[Edge]]`; emit `CALLS` edges with
    `target="raw_call:<name>"`, set `Node.language = "<name>"`).
 2. In its `__init__.py`, define `PACK`, subclassing `cgis.core.extractor.LanguagePack` (mark methods `@override`)
-   (`name`, `extensions`, `code_fence`, `is_test`, `scope_of`, `extractor`).
+   (`name`, `extensions`, `code_fence`, `is_test`, `scope_of`, `extractor`, `project_reader`).
 3. Add one `Manifest` to `MANIFESTS` in `src/cgis/languages/__init__.py`, with a `load` function that
    imports the pack statically inside it (lazy, yet visible to the review-fingerprint walk). Nothing
    else names the pack: CLI, MCP server, guardian and scripts all go through the registry, and the
    `surface-packs` forbidden-edge gate fails if a surface imports a pack directly.
 4. A pack never imports another pack or `cgis.storage` (`cross-pack`, `pack-isolation` gates).
+5. A pack's `__init__` imports no grammar: import the extractor inside `extractor()`. Config reading
+   goes in a `ProjectReader` (`cgis.core.project`) whose facts are data keyed by `ingest_state`
+   key — the collector (`cgis.import_names`), not the pack, writes them.
 
 ## Type Discipline
 

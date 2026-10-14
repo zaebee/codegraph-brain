@@ -23,6 +23,12 @@
 
 ## Rulings (where this plan departs from the spec's text, and why)
 
+> Superseded in places by the code that shipped (#597): `LanguagePack` lives in
+> `cgis.core.extractor`, manifests carry `load` functions instead of module paths,
+> packs subclass the protocol with `@override`, and (step 2) R7 gave way to light
+> pack modules that import their grammar inside `extractor()`. The spec's
+> implementation notes record each.
+
 - **R1 — Two "is test" rules, not one.** The spec says a pack's `is_test` replaces both `core.paths.is_test_path` and the pipeline's `_TEST_FILE_PATTERN`. They are different rules:
   - `_TEST_FILE_PATTERN` (`foo.test.ts`, `foo.spec.py`) makes the walk **skip** a file;
   - `is_test_path` (`tests/`, `test_*.py`) **flags** an ingested node.

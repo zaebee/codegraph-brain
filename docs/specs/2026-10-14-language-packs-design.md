@@ -100,6 +100,11 @@ Two planes over a shared core:
 - **Read plane.** `storage → query → surfaces`.
 - **Core.** Model types and FQN utilities. It imports nothing else from cgis.
 
+  > **Implementation note (steps 1–2):** the pack contract — `BaseExtractor`,
+  > `ModuleNamer`, `LanguagePack` (`cgis.core.extractor`), `ProjectReader` and
+  > `ProjectFacts` (`cgis.core.project`) — lives in core too. A protocol inside the
+  > registry formed a cycle with the packs that subclass it (#597).
+
 ### Registry
 
 `cgis/languages/__init__.py` holds one lightweight **manifest** per pack: its
@@ -122,6 +127,13 @@ would undo #506 (Gemini on #593). It answers:
 The CLI, MCP server, health script and reviewer all use the registry; none
 names an extractor class. Surfaces and `query` may import
 `cgis.languages` (the registry) but not `cgis.languages.<pack>`.
+
+> **Implementation note (steps 1–2):** manifests load their pack through a
+> function holding a *static* import, never `importlib`, which the
+> review-fingerprint walk cannot follow (#597). Pack modules are imported up
+> front, because every project reader must see configs before the first file
+> of its language; what stays lazy is the grammar, which a pack imports only
+> inside `extractor()` (step 2, ruling S2).
 
 ### The `LanguagePack` contract
 
@@ -154,6 +166,11 @@ class LanguagePack(Protocol):
 
 - `is_test` replaces the Python-only `is_test_path` and the pipeline's
   `_TEST_FILE_PATTERN` (pipeline.py:447). For Go it matches `_test.go`.
+
+  > **Implementation note (step 1):** those are two rules, not one — the walk's
+  > *skip* (`foo.test.ts` is never read) became `Manifest.never_ingested` and the
+  > registry's `skips()`; the node *flag* is the pack's `is_test`. Merging them
+  > would have dropped every `tests/` directory from the graph (#597, ruling R1).
 - `scope_of` returns the namespace unit a file's definitions live in:
   - Python and TS return today's module FQN for the file, so nothing changes;
   - Go returns the package directory, so `func (s *Server) Run()` in
@@ -181,6 +198,12 @@ class ProjectFacts(Protocol):                        # frozen, JSON-serialisable
     def record(self, store: SQLiteStore) -> None: ...      # under today's store keys
     def differs_from(self, store: SQLiteStore) -> bool: ... # a change forces a rebuild
 ```
+
+> **Implementation note (step 2):** `record`/`differs_from` contradict "a pack
+> never touches storage" below, which the `pack-isolation` gate enforces. As
+> built, `ProjectFacts.state()` returns the facts keyed by their `ingest_state`
+> key, and the collector (`cgis.import_names.ImportNames`) records and compares
+> them through the store — same keys, no pack-to-storage edge (ruling S1).
 
 The Python pack's facts are today's dependency roots. The TS pack's are npm
 dependencies, workspace packages (package.json and pnpm) and tsconfig path
