@@ -71,3 +71,25 @@ def test_diff_names_a_changed_edge(tmp_path: Path) -> None:
     assert lines, "a changed confidence must show"
     assert all(line.startswith("edges ") for line in lines), "only edge rows changed"
     assert any("pkg.a.f" in line and "0.5" in line for line in lines)
+
+
+def test_dump_carries_what_uplift_writes(tmp_path: Path) -> None:
+    """Uplift sets ontology_class and domains; step 5 moves it (step-0 review)."""
+    root = _repo(tmp_path / "r")
+    _ingest(root, tmp_path / "g.db")
+    node = gi.dump(tmp_path / "g.db", root)["nodes"][0]
+
+    assert {"ontology_class", "domains", "confidence_score"} <= set(node)
+
+
+def test_diff_names_a_changed_ingest_state(tmp_path: Path) -> None:
+    root = _repo(tmp_path / "r")
+    _ingest(root, tmp_path / "g.db")
+    before = gi.dump(tmp_path / "g.db", root)
+    with sqlite3.connect(tmp_path / "g.db") as conn:
+        conn.execute("UPDATE ingest_state SET value = '[\"x\"]' WHERE key = 'npm_dependencies'")
+    after = gi.dump(tmp_path / "g.db", root)
+
+    assert gi.diff(before, after) == [
+        f"ingest_state: {before['ingest_state']} → {after['ingest_state']}"
+    ]

@@ -28,6 +28,42 @@
    {
     "confidence": 1.0,
     "context": null,
+    "file_path": "shop/cli.py",
+    "id": "shop.cli:imports:shop",
+    "line_number": null,
+    "source": "shop.cli",
+    "target": "shop",
+    "type": "IMPORTS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "shop/cli.py",
+    "id": "shop.cli:imports_symbol:shop.place",
+    "line_number": null,
+    "source": "shop.cli",
+    "target": "shop.service.place",
+    "type": "IMPORTS_SYMBOL",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "shop/cli.py",
+    "id": "shop.cli:structural:shop.cli.run",
+    "line_number": null,
+    "source": "shop.cli",
+    "target": "shop.cli.run",
+    "type": "CONTAINS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
     "file_path": "shop/deps.py",
     "id": "shop.deps:imports:fastapi",
     "line_number": null,
@@ -291,6 +327,18 @@
    },
    {
     "confidence": 1.0,
+    "context": "Call to place",
+    "file_path": "shop/cli.py",
+    "id": "shop/cli.py:edge_48_64",
+    "line_number": 5,
+    "source": "shop.cli.run",
+    "target": "shop.service.place",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
     "context": "DI alias for get_repo",
     "file_path": "shop/deps.py",
     "id": "shop/deps.py:dep_166_183",
@@ -450,6 +498,8 @@
   },
   "nodes": [
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "abc",
@@ -459,10 +509,13 @@
     "metadata": {},
     "name": "abc",
     "namespace": "STDLIB",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "abc.ABC",
@@ -472,10 +525,13 @@
     "metadata": {},
     "name": "ABC",
     "namespace": "STDLIB",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "abc.abstractmethod",
@@ -485,10 +541,13 @@
     "metadata": {},
     "name": "abstractmethod",
     "namespace": "STDLIB",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 3,
     "file_path": "alembic/env.py",
     "id": "alembic.env",
@@ -502,10 +561,13 @@
     },
     "name": "env.py",
     "namespace": "INTERNAL",
+    "ontology_class": "File",
     "start_line": 1,
     "type": "FILE"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 2,
     "file_path": "alembic/env.py",
     "id": "alembic.env.run_migrations",
@@ -515,10 +577,13 @@
     "metadata": {},
     "name": "run_migrations",
     "namespace": "INTERNAL",
+    "ontology_class": "Function",
     "start_line": 1,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "fastapi",
@@ -528,10 +593,13 @@
     "metadata": {},
     "name": "fastapi",
     "namespace": "EXTERNAL",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "fastapi.Depends",
@@ -541,10 +609,13 @@
     "metadata": {},
     "name": "Depends",
     "namespace": "EXTERNAL",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "print",
@@ -554,10 +625,13 @@
     "metadata": {},
     "name": "print",
     "namespace": "STDLIB",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 2,
     "file_path": "shop/__init__.py",
     "id": "shop",
@@ -573,10 +647,51 @@
     },
     "name": "__init__.py",
     "namespace": "INTERNAL",
+    "ontology_class": "File",
     "start_line": 1,
     "type": "FILE"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
+    "end_line": 6,
+    "file_path": "shop/cli.py",
+    "id": "shop.cli",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {
+     "import_map": {
+      "place": "shop.place"
+     },
+     "reexports": {},
+     "star_imports": []
+    },
+    "name": "cli.py",
+    "namespace": "INTERNAL",
+    "ontology_class": "File",
+    "start_line": 1,
+    "type": "FILE"
+   },
+   {
+    "confidence_score": 1.0,
+    "domains": [],
+    "end_line": 5,
+    "file_path": "shop/cli.py",
+    "id": "shop.cli.run",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "run",
+    "namespace": "INTERNAL",
+    "ontology_class": "Function",
+    "start_line": 4,
+    "type": "FUNCTION"
+   },
+   {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 13,
     "file_path": "shop/deps.py",
     "id": "shop.deps",
@@ -595,10 +710,13 @@
     },
     "name": "deps.py",
     "namespace": "INTERNAL",
+    "ontology_class": "File",
     "start_line": 1,
     "type": "FILE"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 12,
     "file_path": "shop/deps.py",
     "id": "shop.deps.RepoDep",
@@ -610,10 +728,13 @@
     },
     "name": "RepoDep",
     "namespace": "INTERNAL",
+    "ontology_class": "Variable",
     "start_line": 12,
     "type": "VARIABLE"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 9,
     "file_path": "shop/deps.py",
     "id": "shop.deps.get_repo",
@@ -623,10 +744,13 @@
     "metadata": {},
     "name": "get_repo",
     "namespace": "INTERNAL",
+    "ontology_class": "Function",
     "start_line": 8,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 12,
     "file_path": "shop/repo.py",
     "id": "shop.repo",
@@ -643,10 +767,13 @@
     },
     "name": "repo.py",
     "namespace": "INTERNAL",
+    "ontology_class": "File",
     "start_line": 1,
     "type": "FILE"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 6,
     "file_path": "shop/repo.py",
     "id": "shop.repo.Repo",
@@ -658,10 +785,13 @@
     },
     "name": "Repo",
     "namespace": "INTERNAL",
+    "ontology_class": "Class",
     "start_line": 4,
     "type": "CLASS"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 6,
     "file_path": "shop/repo.py",
     "id": "shop.repo.Repo.save",
@@ -680,10 +810,13 @@
     },
     "name": "save",
     "namespace": "INTERNAL",
+    "ontology_class": "Method",
     "start_line": 6,
     "type": "METHOD"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 11,
     "file_path": "shop/repo.py",
     "id": "shop.repo.SqlRepo",
@@ -693,10 +826,13 @@
     "metadata": {},
     "name": "SqlRepo",
     "namespace": "INTERNAL",
+    "ontology_class": "Class",
     "start_line": 9,
     "type": "CLASS"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 11,
     "file_path": "shop/repo.py",
     "id": "shop.repo.SqlRepo.save",
@@ -711,10 +847,13 @@
     },
     "name": "save",
     "namespace": "INTERNAL",
+    "ontology_class": "Method",
     "start_line": 10,
     "type": "METHOD"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 17,
     "file_path": "shop/service.py",
     "id": "shop.service",
@@ -731,10 +870,13 @@
     },
     "name": "service.py",
     "namespace": "INTERNAL",
+    "ontology_class": "File",
     "start_line": 1,
     "type": "FILE"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 12,
     "file_path": "shop/service.py",
     "id": "shop.service.OrderService",
@@ -748,10 +890,13 @@
     },
     "name": "OrderService",
     "namespace": "INTERNAL",
+    "ontology_class": "Class",
     "start_line": 7,
     "type": "CLASS"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 9,
     "file_path": "shop/service.py",
     "id": "shop.service.OrderService.__init__",
@@ -768,10 +913,13 @@
     },
     "name": "__init__",
     "namespace": "INTERNAL",
+    "ontology_class": "Method",
     "start_line": 8,
     "type": "METHOD"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 12,
     "file_path": "shop/service.py",
     "id": "shop.service.OrderService.place",
@@ -788,10 +936,13 @@
     },
     "name": "place",
     "namespace": "INTERNAL",
+    "ontology_class": "Method",
     "start_line": 11,
     "type": "METHOD"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 16,
     "file_path": "shop/service.py",
     "id": "shop.service.place",
@@ -806,10 +957,13 @@
     },
     "name": "place",
     "namespace": "INTERNAL",
+    "ontology_class": "Function",
     "start_line": 15,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "typing",
@@ -819,6 +973,7 @@
     "metadata": {},
     "name": "typing",
     "namespace": "STDLIB",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    }
@@ -1041,6 +1196,8 @@
   },
   "nodes": [
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "@x.lib",
@@ -1050,10 +1207,13 @@
     "metadata": {},
     "name": "lib",
     "namespace": "UNKNOWN",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "fn",
@@ -1063,10 +1223,13 @@
     "metadata": {},
     "name": "fn",
     "namespace": "UNKNOWN",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "libFn",
@@ -1076,10 +1239,13 @@
     "metadata": {},
     "name": "libFn",
     "namespace": "UNKNOWN",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "lodash.debounce",
@@ -1089,10 +1255,13 @@
     "metadata": {},
     "name": "debounce",
     "namespace": "EXTERNAL",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 17,
     "file_path": "main.ts",
     "id": "main",
@@ -1120,10 +1289,13 @@
     },
     "name": "main.ts",
     "namespace": "INTERNAL",
+    "ontology_class": "File",
     "start_line": 1,
     "type": "FILE"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 16,
     "file_path": "main.ts",
     "id": "main.main",
@@ -1133,10 +1305,13 @@
     "metadata": {},
     "name": "main",
     "namespace": "INTERNAL",
+    "ontology_class": "Function",
     "start_line": 11,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 9,
     "file_path": "main.ts",
     "id": "main.setTimeout",
@@ -1146,10 +1321,13 @@
     "metadata": {},
     "name": "setTimeout",
     "namespace": "INTERNAL",
+    "ontology_class": "Function",
     "start_line": 7,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "node:crypto",
@@ -1159,10 +1337,13 @@
     "metadata": {},
     "name": "node:crypto",
     "namespace": "STDLIB",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "node:crypto.randomUUID",
@@ -1172,10 +1353,13 @@
     "metadata": {},
     "name": "randomUUID",
     "namespace": "STDLIB",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "react",
@@ -1185,10 +1369,13 @@
     "metadata": {},
     "name": "react",
     "namespace": "EXTERNAL",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "react.useState",
@@ -1198,10 +1385,13 @@
     "metadata": {},
     "name": "useState",
     "namespace": "EXTERNAL",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 4,
     "file_path": "types.d.ts",
     "id": "types.d",
@@ -1211,10 +1401,13 @@
     "metadata": {},
     "name": "types.d.ts",
     "namespace": "INTERNAL",
+    "ontology_class": "File",
     "start_line": 1,
     "type": "FILE"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 4,
     "file_path": "util.ts",
     "id": "util",
@@ -1224,10 +1417,13 @@
     "metadata": {},
     "name": "util.ts",
     "namespace": "INTERNAL",
+    "ontology_class": "File",
     "start_line": 1,
     "type": "FILE"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 3,
     "file_path": "util.ts",
     "id": "util.helper",
@@ -1237,6 +1433,7 @@
     "metadata": {},
     "name": "helper",
     "namespace": "INTERNAL",
+    "ontology_class": "Function",
     "start_line": 1,
     "type": "FUNCTION"
    }
@@ -1288,6 +1485,30 @@
     "line_number": null,
     "source": "py.src.alembic.env",
     "target": "py.src.alembic.env.run_migrations",
+    "type": "CONTAINS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/src/shop/cli.py",
+    "id": "py.src.shop.cli:imports:shop",
+    "line_number": null,
+    "source": "py.src.shop.cli",
+    "target": "shop",
+    "type": "IMPORTS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/src/shop/cli.py",
+    "id": "py.src.shop.cli:structural:py.src.shop.cli.run",
+    "line_number": null,
+    "source": "py.src.shop.cli",
+    "target": "py.src.shop.cli.run",
     "type": "CONTAINS",
     "type_only": 0,
     "weight": 1.0
@@ -1611,6 +1832,18 @@
     "id": "py/lib/legacy/tool.py:edge_49_65",
     "line_number": 5,
     "source": "py.lib.legacy.tool.main",
+    "target": "shop.place",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": "Call to place",
+    "file_path": "py/src/shop/cli.py",
+    "id": "py/src/shop/cli.py:edge_48_64",
+    "line_number": 5,
+    "source": "py.src.shop.cli.run",
     "target": "shop.place",
     "type": "CALLS",
     "type_only": 0,
@@ -1991,6 +2224,8 @@
   },
   "nodes": [
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "abc",
@@ -2000,10 +2235,13 @@
     "metadata": {},
     "name": "abc",
     "namespace": "STDLIB",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "abc.ABC",
@@ -2013,10 +2251,13 @@
     "metadata": {},
     "name": "ABC",
     "namespace": "STDLIB",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "abc.abstractmethod",
@@ -2026,10 +2267,13 @@
     "metadata": {},
     "name": "abstractmethod",
     "namespace": "STDLIB",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "fastapi",
@@ -2039,10 +2283,13 @@
     "metadata": {},
     "name": "fastapi",
     "namespace": "EXTERNAL",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "fastapi.Depends",
@@ -2052,10 +2299,13 @@
     "metadata": {},
     "name": "Depends",
     "namespace": "EXTERNAL",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "fn",
@@ -2065,10 +2315,13 @@
     "metadata": {},
     "name": "fn",
     "namespace": "UNKNOWN",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "lodash.debounce",
@@ -2078,10 +2331,13 @@
     "metadata": {},
     "name": "debounce",
     "namespace": "EXTERNAL",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "node:crypto",
@@ -2091,10 +2347,13 @@
     "metadata": {},
     "name": "node:crypto",
     "namespace": "STDLIB",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "node:crypto.randomUUID",
@@ -2104,10 +2363,13 @@
     "metadata": {},
     "name": "randomUUID",
     "namespace": "STDLIB",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "print",
@@ -2117,10 +2379,13 @@
     "metadata": {},
     "name": "print",
     "namespace": "STDLIB",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 6,
     "file_path": "py/lib/legacy/tool.py",
     "id": "py.lib.legacy.tool",
@@ -2136,10 +2401,13 @@
     },
     "name": "tool.py",
     "namespace": "INTERNAL",
+    "ontology_class": "File",
     "start_line": 1,
     "type": "FILE"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 5,
     "file_path": "py/lib/legacy/tool.py",
     "id": "py.lib.legacy.tool.main",
@@ -2149,10 +2417,13 @@
     "metadata": {},
     "name": "main",
     "namespace": "INTERNAL",
+    "ontology_class": "Function",
     "start_line": 4,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 3,
     "file_path": "py/src/alembic/env.py",
     "id": "py.src.alembic.env",
@@ -2166,10 +2437,13 @@
     },
     "name": "env.py",
     "namespace": "INTERNAL",
+    "ontology_class": "File",
     "start_line": 1,
     "type": "FILE"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 2,
     "file_path": "py/src/alembic/env.py",
     "id": "py.src.alembic.env.run_migrations",
@@ -2179,10 +2453,13 @@
     "metadata": {},
     "name": "run_migrations",
     "namespace": "INTERNAL",
+    "ontology_class": "Function",
     "start_line": 1,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 2,
     "file_path": "py/src/shop/__init__.py",
     "id": "py.src.shop",
@@ -2198,10 +2475,51 @@
     },
     "name": "__init__.py",
     "namespace": "INTERNAL",
+    "ontology_class": "File",
     "start_line": 1,
     "type": "FILE"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
+    "end_line": 6,
+    "file_path": "py/src/shop/cli.py",
+    "id": "py.src.shop.cli",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {
+     "import_map": {
+      "place": "shop.place"
+     },
+     "reexports": {},
+     "star_imports": []
+    },
+    "name": "cli.py",
+    "namespace": "INTERNAL",
+    "ontology_class": "File",
+    "start_line": 1,
+    "type": "FILE"
+   },
+   {
+    "confidence_score": 1.0,
+    "domains": [],
+    "end_line": 5,
+    "file_path": "py/src/shop/cli.py",
+    "id": "py.src.shop.cli.run",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "run",
+    "namespace": "INTERNAL",
+    "ontology_class": "Function",
+    "start_line": 4,
+    "type": "FUNCTION"
+   },
+   {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 13,
     "file_path": "py/src/shop/deps.py",
     "id": "py.src.shop.deps",
@@ -2220,10 +2538,13 @@
     },
     "name": "deps.py",
     "namespace": "INTERNAL",
+    "ontology_class": "File",
     "start_line": 1,
     "type": "FILE"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 12,
     "file_path": "py/src/shop/deps.py",
     "id": "py.src.shop.deps.RepoDep",
@@ -2235,10 +2556,13 @@
     },
     "name": "RepoDep",
     "namespace": "INTERNAL",
+    "ontology_class": "Variable",
     "start_line": 12,
     "type": "VARIABLE"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 9,
     "file_path": "py/src/shop/deps.py",
     "id": "py.src.shop.deps.get_repo",
@@ -2248,10 +2572,13 @@
     "metadata": {},
     "name": "get_repo",
     "namespace": "INTERNAL",
+    "ontology_class": "Function",
     "start_line": 8,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 12,
     "file_path": "py/src/shop/repo.py",
     "id": "py.src.shop.repo",
@@ -2268,10 +2595,13 @@
     },
     "name": "repo.py",
     "namespace": "INTERNAL",
+    "ontology_class": "File",
     "start_line": 1,
     "type": "FILE"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 6,
     "file_path": "py/src/shop/repo.py",
     "id": "py.src.shop.repo.Repo",
@@ -2283,10 +2613,13 @@
     },
     "name": "Repo",
     "namespace": "INTERNAL",
+    "ontology_class": "Class",
     "start_line": 4,
     "type": "CLASS"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 6,
     "file_path": "py/src/shop/repo.py",
     "id": "py.src.shop.repo.Repo.save",
@@ -2305,10 +2638,13 @@
     },
     "name": "save",
     "namespace": "INTERNAL",
+    "ontology_class": "Method",
     "start_line": 6,
     "type": "METHOD"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 11,
     "file_path": "py/src/shop/repo.py",
     "id": "py.src.shop.repo.SqlRepo",
@@ -2318,10 +2654,13 @@
     "metadata": {},
     "name": "SqlRepo",
     "namespace": "INTERNAL",
+    "ontology_class": "Class",
     "start_line": 9,
     "type": "CLASS"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 11,
     "file_path": "py/src/shop/repo.py",
     "id": "py.src.shop.repo.SqlRepo.save",
@@ -2336,10 +2675,13 @@
     },
     "name": "save",
     "namespace": "INTERNAL",
+    "ontology_class": "Method",
     "start_line": 10,
     "type": "METHOD"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 17,
     "file_path": "py/src/shop/service.py",
     "id": "py.src.shop.service",
@@ -2356,10 +2698,13 @@
     },
     "name": "service.py",
     "namespace": "INTERNAL",
+    "ontology_class": "File",
     "start_line": 1,
     "type": "FILE"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 12,
     "file_path": "py/src/shop/service.py",
     "id": "py.src.shop.service.OrderService",
@@ -2373,10 +2718,13 @@
     },
     "name": "OrderService",
     "namespace": "INTERNAL",
+    "ontology_class": "Class",
     "start_line": 7,
     "type": "CLASS"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 9,
     "file_path": "py/src/shop/service.py",
     "id": "py.src.shop.service.OrderService.__init__",
@@ -2393,10 +2741,13 @@
     },
     "name": "__init__",
     "namespace": "INTERNAL",
+    "ontology_class": "Method",
     "start_line": 8,
     "type": "METHOD"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 12,
     "file_path": "py/src/shop/service.py",
     "id": "py.src.shop.service.OrderService.place",
@@ -2413,10 +2764,13 @@
     },
     "name": "place",
     "namespace": "INTERNAL",
+    "ontology_class": "Method",
     "start_line": 11,
     "type": "METHOD"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 16,
     "file_path": "py/src/shop/service.py",
     "id": "py.src.shop.service.place",
@@ -2431,10 +2785,13 @@
     },
     "name": "place",
     "namespace": "INTERNAL",
+    "ontology_class": "Function",
     "start_line": 15,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 6,
     "file_path": "py/tests/test_service.py",
     "id": "py.tests.test_service",
@@ -2450,10 +2807,13 @@
     },
     "name": "test_service.py",
     "namespace": "INTERNAL",
+    "ontology_class": "File",
     "start_line": 1,
     "type": "FILE"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 5,
     "file_path": "py/tests/test_service.py",
     "id": "py.tests.test_service.test_place",
@@ -2463,10 +2823,13 @@
     "metadata": {},
     "name": "test_place",
     "namespace": "INTERNAL",
+    "ontology_class": "Function",
     "start_line": 4,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "react",
@@ -2476,10 +2839,13 @@
     "metadata": {},
     "name": "react",
     "namespace": "EXTERNAL",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "react.useState",
@@ -2489,10 +2855,13 @@
     "metadata": {},
     "name": "useState",
     "namespace": "EXTERNAL",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "shop",
@@ -2502,10 +2871,13 @@
     "metadata": {},
     "name": "shop",
     "namespace": "EXTERNAL",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "shop.place",
@@ -2515,10 +2887,13 @@
     "metadata": {},
     "name": "place",
     "namespace": "EXTERNAL",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "shop.service",
@@ -2528,10 +2903,13 @@
     "metadata": {},
     "name": "service",
     "namespace": "EXTERNAL",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 17,
     "file_path": "ts/apps/web/src/main.ts",
     "id": "ts.apps.web.src.main",
@@ -2559,10 +2937,13 @@
     },
     "name": "main.ts",
     "namespace": "INTERNAL",
+    "ontology_class": "File",
     "start_line": 1,
     "type": "FILE"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 16,
     "file_path": "ts/apps/web/src/main.ts",
     "id": "ts.apps.web.src.main.main",
@@ -2572,10 +2953,13 @@
     "metadata": {},
     "name": "main",
     "namespace": "INTERNAL",
+    "ontology_class": "Function",
     "start_line": 11,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 9,
     "file_path": "ts/apps/web/src/main.ts",
     "id": "ts.apps.web.src.main.setTimeout",
@@ -2585,10 +2969,13 @@
     "metadata": {},
     "name": "setTimeout",
     "namespace": "INTERNAL",
+    "ontology_class": "Function",
     "start_line": 7,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 4,
     "file_path": "ts/apps/web/src/types.d.ts",
     "id": "ts.apps.web.src.types.d",
@@ -2598,10 +2985,13 @@
     "metadata": {},
     "name": "types.d.ts",
     "namespace": "INTERNAL",
+    "ontology_class": "File",
     "start_line": 1,
     "type": "FILE"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 4,
     "file_path": "ts/apps/web/src/util.ts",
     "id": "ts.apps.web.src.util",
@@ -2611,10 +3001,13 @@
     "metadata": {},
     "name": "util.ts",
     "namespace": "INTERNAL",
+    "ontology_class": "File",
     "start_line": 1,
     "type": "FILE"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 3,
     "file_path": "ts/apps/web/src/util.ts",
     "id": "ts.apps.web.src.util.helper",
@@ -2624,10 +3017,13 @@
     "metadata": {},
     "name": "helper",
     "namespace": "INTERNAL",
+    "ontology_class": "Function",
     "start_line": 1,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 4,
     "file_path": "ts/packages/lib/index.ts",
     "id": "ts.packages.lib",
@@ -2637,10 +3033,13 @@
     "metadata": {},
     "name": "index.ts",
     "namespace": "INTERNAL",
+    "ontology_class": "File",
     "start_line": 1,
     "type": "FILE"
    },
    {
+    "confidence_score": 1.0,
+    "domains": [],
     "end_line": 3,
     "file_path": "ts/packages/lib/index.ts",
     "id": "ts.packages.lib.libFn",
@@ -2650,10 +3049,13 @@
     "metadata": {},
     "name": "libFn",
     "namespace": "INTERNAL",
+    "ontology_class": "Function",
     "start_line": 1,
     "type": "FUNCTION"
    },
    {
+    "confidence_score": 0.8,
+    "domains": [],
     "end_line": 0,
     "file_path": "EXTERNAL",
     "id": "typing",
@@ -2663,6 +3065,7 @@
     "metadata": {},
     "name": "typing",
     "namespace": "STDLIB",
+    "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
    }

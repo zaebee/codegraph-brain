@@ -23,7 +23,8 @@ from cgis.storage.sqlite_store import SQLiteStore
 
 _NODE_COLUMNS = (
     "id", "type", "name", "file_path", "start_line", "end_line", "language",
-    "namespace", "is_test", "is_generated", "metadata",
+    "namespace", "is_test", "is_generated", "metadata", "ontology_class",
+    "domains", "confidence_score",
 )  # fmt: skip
 _EDGE_COLUMNS = (
     "id", "source", "target", "type", "weight", "confidence", "context",
@@ -122,7 +123,7 @@ def snapshot(corpus: Path) -> dict[str, object]:
     """
     with tempfile.TemporaryDirectory() as tmp:
         copy = Path(tmp) / "corpus"
-        shutil.copytree(corpus, copy)
+        shutil.copytree(corpus, copy, ignore=shutil.ignore_patterns("__pycache__"))
         (copy / ".git").mkdir()
         dumps: dict[str, object] = {}
         for name, relative in SNAPSHOT_ROOTS.items():
