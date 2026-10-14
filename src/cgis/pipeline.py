@@ -12,10 +12,10 @@ import structlog
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
+from cgis.core.extractor import BaseExtractor
 from cgis.core.generated import is_generated_source
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.core.paths import EXCLUDED_DIRS
-from cgis.extractors.base import BaseExtractor
 from cgis.import_names import ImportNameCollector
 from cgis.resolver.engine import ResolverEngine
 from cgis.resolver.symbols import dispatch_edges

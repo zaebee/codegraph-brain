@@ -1,6 +1,6 @@
 """Type-name collection from annotation subtrees (spec D9).
 
-`clean_python_type_string` in `_python_types.py` answers "what type is this
+`clean_python_type_string` in `_types.py` answers "what type is this
 variable" — it reduces `list[Node]` to `list`, which is correct for
 `local_types` (the receiver of `x.append()` really is a list). A reference edge
 asks the other question: which types does this annotation *name*. Measured on
@@ -13,7 +13,7 @@ from tree_sitter import Node as BaseNode
 
 _STRING_PARSER = Parser(Language(tspython.language()))
 
-# Mirrors `TypeResolver._GENERIC_WRAPPERS` in `_python_types.py` (kept as a
+# Mirrors `TypeResolver._GENERIC_WRAPPERS` in `_types.py` (kept as a
 # separate constant rather than importing a private class attribute across
 # modules): these typing constructs are never themselves a type reference.
 # `Annotated[T, ...]` additionally carries non-type metadata (typically a

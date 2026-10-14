@@ -16,11 +16,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 
-from cgis.extractors.base import BaseExtractor
-from cgis.extractors.python_extractor import PythonExtractor
-from cgis.extractors.python_extractor import file_path_to_module_fqn as python_module_fqn
-from cgis.extractors.typescript_extractor import TypeScriptExtractor
-from cgis.extractors.typescript_extractor import file_path_to_module_fqn as typescript_module_fqn
+from cgis.core.extractor import BaseExtractor
+from cgis.languages.python.extractor import PythonExtractor
+from cgis.languages.python.extractor import file_path_to_module_fqn as python_module_fqn
+from cgis.languages.typescript.extractor import TypeScriptExtractor
+from cgis.languages.typescript.extractor import file_path_to_module_fqn as typescript_module_fqn
 
 
 @dataclass(frozen=True)

@@ -10,7 +10,7 @@ from typing import Any
 from tree_sitter import Node as BaseNode
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
-from cgis.extractors._python_ast import (
+from cgis.languages.python._syntax import (
     PYTHON_LANG,
     extract_node_name,
     get_id,

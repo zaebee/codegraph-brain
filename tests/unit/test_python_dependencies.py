@@ -8,7 +8,7 @@ read from them, and that the pipeline classifies by them.
 from pathlib import Path
 
 from cgis.core.models import Node, NodeNamespace
-from cgis.extractors.python_extractor import PythonExtractor
+from cgis.languages.python.extractor import PythonExtractor
 from cgis.pipeline import IngestionPipeline
 from cgis.python_dependencies import declared_import_roots, import_name
 from cgis.storage.sqlite_store import SQLiteStore

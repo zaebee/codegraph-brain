@@ -207,9 +207,9 @@ def test_named_receiver_calls_resolve_to_their_exact_targets(
             "cgis.resolver.engine.ResolverEngine._resolved_call_edge",
             "cgis.resolver.symbols.SymbolResolver.resolve_self_call",
         ),
-        ("cgis.extractors.python_extractor.PythonExtractor.parse", "tree_sitter.Parser.parse"),
+        ("cgis.languages.python.extractor.PythonExtractor.parse", "tree_sitter.Parser.parse"),
         (
-            "cgis.extractors.typescript_extractor.TypeScriptExtractor.parse",
+            "cgis.languages.typescript.extractor.TypeScriptExtractor.parse",
             "tree_sitter.Parser.parse",
         ),
     }

@@ -36,9 +36,9 @@ from cgis import __app_name__, __version__
 from cgis.core.coverage import TraversalCoverage
 from cgis.core.freshness import FreshnessState
 from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeNamespace, NodeType
-from cgis.extractors.python_extractor import file_path_to_module_fqn
 from cgis.extractors.registry import build_extractors, is_supported, language_for
 from cgis.guardian.metrics import load_reviews, rate_review
+from cgis.languages.python.extractor import file_path_to_module_fqn
 from cgis.pipeline import IngestionPipeline
 from cgis.query.analysis.analyzer import AnalyzerEngine
 from cgis.query.analysis.anomaly import AnomalyType, ArchitecturalAnomaly

@@ -11,7 +11,7 @@ import pytest
 
 from cgis.core.freshness import Freshness, FreshnessState
 from cgis.core.models import Edge, Node, NodeType
-from cgis.extractors.python_extractor import PythonExtractor
+from cgis.languages.python.extractor import PythonExtractor
 from cgis.pipeline import IngestionPipeline
 from cgis.storage.sqlite_store import SQLiteStore
 

@@ -114,8 +114,10 @@ patterns:
 # measurement (see plan: docs/specs/plans/2026-06-10-motif-basis-part-b.md).
 project_domains:
   # Python graph (ingest root: src/ → FQNs carry the cgis. prefix)
+  # Re-pointed in language-packs step 1: the extractors moved into cgis.languages.<pack>;
+  # the contract (BaseExtractor) moved to cgis.core.
   - name: "extraction"
-    fqn_prefix: "cgis.extractors"
+    fqn_prefix: "cgis.languages"
     expected_pattern: layered_dag
     profile: python
     # Re-negotiated in #116: PythonExtractor was decomposed from a God Object into a

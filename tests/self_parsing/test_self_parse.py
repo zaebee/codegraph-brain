@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeNamespace
-from cgis.extractors.python_extractor import file_path_to_module_fqn
+from cgis.languages.python.extractor import file_path_to_module_fqn
 from cgis.storage.sqlite_store import SQLiteStore
 
 SRC_DIR = Path(__file__).parent.parent.parent / "src" / "cgis"
@@ -67,9 +67,9 @@ EXPECTED_NODES = [
     _fqn("resolver/symbols.py",            "SymbolResolver"),
     _fqn("resolver/symbols.py",            "SymbolResolver", "resolve_global_call"),
     # extractor
-    _fqn("extractors/python_extractor.py", "PythonExtractor"),
-    _fqn("extractors/python_extractor.py", "PythonExtractor", "parse"),
-    _fqn("extractors/python_extractor.py", "file_path_to_module_fqn"),
+    _fqn("languages/python/extractor.py", "PythonExtractor"),
+    _fqn("languages/python/extractor.py", "PythonExtractor", "parse"),
+    _fqn("languages/python/extractor.py", "file_path_to_module_fqn"),
 ]
 # fmt: on
 

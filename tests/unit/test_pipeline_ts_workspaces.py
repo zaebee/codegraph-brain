@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 from cgis.core.models import EdgeType
-from cgis.extractors.typescript_extractor import TypeScriptExtractor
+from cgis.languages.typescript.extractor import TypeScriptExtractor
 from cgis.pipeline import IngestionPipeline
 from cgis.storage.sqlite_store import SQLiteStore
 

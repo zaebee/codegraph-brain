@@ -3,8 +3,8 @@
 import pytest
 
 from cgis.core.models import Edge, EdgeType, NodeType
-from cgis.extractors._python_ast import resolve_relative_module
-from cgis.extractors.python_extractor import PythonExtractor, file_path_to_module_fqn
+from cgis.languages.python._syntax import resolve_relative_module
+from cgis.languages.python.extractor import PythonExtractor, file_path_to_module_fqn
 
 
 @pytest.fixture

@@ -6,7 +6,7 @@ import pytest
 from conftest import module_with_funcs
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
-from cgis.extractors.python_extractor import PythonExtractor
+from cgis.languages.python.extractor import PythonExtractor
 from cgis.pipeline import IngestionPipeline
 from cgis.query.drift.fingerprint import (
     FingerprintExtractor,

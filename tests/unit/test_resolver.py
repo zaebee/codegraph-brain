@@ -3,7 +3,7 @@
 import pytest
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
-from cgis.extractors.python_extractor import PythonExtractor
+from cgis.languages.python.extractor import PythonExtractor
 from cgis.resolver.engine import ResolverEngine
 
 

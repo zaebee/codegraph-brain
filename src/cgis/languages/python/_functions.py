@@ -14,8 +14,8 @@ from typing import Any
 from tree_sitter import Node as BaseNode
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
-from cgis.extractors._python_annotations import _WRAPPER_NAMES, collect_type_names
-from cgis.extractors._python_ast import (
+from cgis.languages.python._annotations import _WRAPPER_NAMES, collect_type_names
+from cgis.languages.python._syntax import (
     PYTHON_LANG,
     assigned_attr_name,
     extract_node_name,
@@ -23,7 +23,7 @@ from cgis.extractors._python_ast import (
     get_identifier,
     is_method,
 )
-from cgis.extractors._python_types import TypeResolver
+from cgis.languages.python._types import TypeResolver
 
 
 def _descendants_of_type(node: BaseNode, node_type: str) -> list[BaseNode]:

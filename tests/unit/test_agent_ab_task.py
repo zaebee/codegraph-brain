@@ -1,6 +1,7 @@
 """Agent A/B tasks and answer scoring (#543)."""
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -50,12 +51,19 @@ def test_shipped_tasks_load_with_unique_ids() -> None:
 
 
 def test_shipped_cgis_keys_name_files_that_exist() -> None:
-    """A key naming a moved file can never be met, so every run would score a miss."""
+    """A key naming a moved file can never be met, so every run would score a miss.
+
+    Checked in the tree the task runs on — `agent_ab.py` checks out `task.sha` — not
+    in HEAD: a later move (language-packs step 1) must not fail a task pinned before it.
+    """
     for task in load_tasks(TASKS_DIR):
         if task.repo != "cgis":
             continue
         for path in task.gold.files + task.gold.allowed_files:
-            assert (REPO_ROOT / path).is_file(), f"{task.id}: {path}"
+            found = subprocess.run(
+                ["git", "cat-file", "-e", f"{task.sha}:{path}"], cwd=REPO_ROOT, check=False
+            )
+            assert found.returncode == 0, f"{task.id}: {path} not in {task.sha[:7]}"
 
 
 def test_duplicate_ids_are_refused(tmp_path: Path) -> None:

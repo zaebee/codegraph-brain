@@ -13,7 +13,7 @@ from pathlib import Path
 import structlog
 import yaml
 
-from cgis.extractors.base import BaseExtractor, ModuleNamer
+from cgis.core.extractor import BaseExtractor, ModuleNamer
 
 logger = structlog.getLogger(__name__)
 

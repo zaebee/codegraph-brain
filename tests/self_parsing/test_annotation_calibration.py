@@ -6,7 +6,7 @@ the numbers in the same commit, with the new measurement in the message.
 """
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
-from cgis.extractors.python_extractor import PythonExtractor
+from cgis.languages.python.extractor import PythonExtractor
 from cgis.resolver.engine import ResolverEngine
 from cgis.storage.sqlite_store import SQLiteStore
 

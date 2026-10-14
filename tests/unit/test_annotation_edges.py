@@ -1,7 +1,7 @@
 """Annotation positions produce one raw_dep edge per named type (spec D4, D9)."""
 
 from cgis.core.models import Edge, EdgeType
-from cgis.extractors.python_extractor import PythonExtractor
+from cgis.languages.python.extractor import PythonExtractor
 from cgis.resolver.engine import ResolverEngine
 
 _RAW_DEP = "raw_dep:"

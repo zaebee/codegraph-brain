@@ -27,7 +27,7 @@ from pathlib import Path
 
 import structlog
 
-from cgis.extractors.base import BaseExtractor, ModuleNamer
+from cgis.core.extractor import BaseExtractor, ModuleNamer
 
 logger = structlog.getLogger(__name__)
 

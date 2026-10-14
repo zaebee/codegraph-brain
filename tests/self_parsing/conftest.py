@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 
 from cgis.core.models import Edge, Node
-from cgis.extractors.python_extractor import PythonExtractor
-from cgis.extractors.typescript_extractor import TypeScriptExtractor
+from cgis.languages.python.extractor import PythonExtractor
+from cgis.languages.typescript.extractor import TypeScriptExtractor
 from cgis.pipeline import IngestionPipeline
 from cgis.storage.sqlite_store import SQLiteStore
 

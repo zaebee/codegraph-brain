@@ -6,10 +6,10 @@ domains:
     description: "Source code parsing and AST extraction"
     heuristics:
       file_path_patterns:
-        - "*extractors/*"
+        - "*languages/*"
       fqn_patterns:
         - "*.Extractor*"
-        - "*extractors.*"
+        - "*languages.*"
 
   StorageLayer:
     description: "Database storage, schemas, and persistence"

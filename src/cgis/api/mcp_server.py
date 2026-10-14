@@ -21,8 +21,8 @@ from cgis.api.tool_allowlist import TOOLS_ENV, CgisServer
 from cgis.core.coverage import TraversalCoverage
 from cgis.core.freshness import Freshness, FreshnessState
 from cgis.core.models import Edge, EdgeType, Node, NodeType
-from cgis.extractors.python_extractor import PythonExtractor
-from cgis.extractors.typescript_extractor import TypeScriptExtractor
+from cgis.languages.python.extractor import PythonExtractor
+from cgis.languages.typescript.extractor import TypeScriptExtractor
 from cgis.pipeline import IngestionPipeline
 from cgis.query.analysis.overview import DEFAULT_DEPTH, DEFAULT_LIMIT, build_overview
 from cgis.query.analysis.suggest_service import report_to_dict, suggest_packages

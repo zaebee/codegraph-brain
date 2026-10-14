@@ -5,9 +5,9 @@ from pathlib import Path
 import pytest
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace
-from cgis.extractors.python_extractor import PythonExtractor
 from cgis.extractors.registry import build_extractors
-from cgis.extractors.typescript_extractor import TypeScriptExtractor
+from cgis.languages.python.extractor import PythonExtractor
+from cgis.languages.typescript.extractor import TypeScriptExtractor
 from cgis.pipeline import IngestionPipeline
 from cgis.resolver.engine import ResolverEngine
 from cgis.resolver.indices import IndexBuilder

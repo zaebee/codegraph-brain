@@ -6,9 +6,9 @@
   "cgis.resolver.uplift -> cgis.storage.sqlite_store": 8
  },
  "surface-packs": {
-  "cgis.api.mcp_server -> cgis.extractors.python_extractor": 3,
-  "cgis.api.mcp_server -> cgis.extractors.typescript_extractor": 4,
-  "cgis.cli -> cgis.extractors.python_extractor": 2
+  "cgis.api.mcp_server -> cgis.languages.python.extractor": 3,
+  "cgis.api.mcp_server -> cgis.languages.typescript.extractor": 4,
+  "cgis.cli -> cgis.languages.python.extractor": 2
  },
  "surface-storage": {
   "cgis.api.auto_refresh -> cgis.storage.sqlite_store": 7,

@@ -13,13 +13,13 @@ from pathlib import Path
 import pytest
 
 from cgis.core.models import NodeType
-from cgis.extractors.python_extractor import file_path_to_module_fqn as python_fqn
 from cgis.extractors.registry import (
     LANGUAGES,
     build_extractors,
     is_supported,
     language_for,
 )
+from cgis.languages.python.extractor import file_path_to_module_fqn as python_fqn
 from cgis.pipeline import IngestionPipeline
 
 TS_SOURCE = """

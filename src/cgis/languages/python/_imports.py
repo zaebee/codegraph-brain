@@ -7,7 +7,7 @@ Walks ``import`` / ``import_from`` AST nodes, builds the per-file ``import_map``
 from tree_sitter import Node as BaseNode
 
 from cgis.core.models import Edge, EdgeType
-from cgis.extractors._python_ast import resolve_relative_module
+from cgis.languages.python._syntax import resolve_relative_module
 
 
 def _has_wildcard(node: BaseNode) -> bool:
