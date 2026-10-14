@@ -25,16 +25,28 @@ import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-#: A cgis-adjacent executable in command position: start of the command, or after
-#: a separator, a subshell or a pipe, optionally with a directory in front.
+#: Words that run the command after them: `env cgis`, `timeout 9 sqlite3`, `VAR=x uv`.
+_PREFIXES = (
+    r"(?:(?:env|exec|nohup|time|timeout\s+\S+|sudo|command|xargs|nice"
+    r"|do|then|else|!|\{|\w+=\S*)\s+)*"
+)
+#: A cgis-adjacent executable in command position: start of a line, or after a
+#: separator, a subshell or a pipe, past any prefix word, optionally with a
+#: directory in front. A newline starts a command too (#590 review).
 _COMMAND = re.compile(
-    r"(?:^|[;&|(`]|\$\()\s*(?:\S*/)?(?:cgis|cgis-mcp|codegraph-brain|uvx|uv|sqlite3)\b(?![./-])"
+    r"(?:^|[;&|(`\n]|\$\()\s*"
+    + _PREFIXES
+    + r"(?:\S*/)?(?:cgis|cgis-mcp|codegraph-brain|uvx|uv|sqlite3)\b(?![./-])",
+    re.MULTILINE,
 )
 _PYTHON_IMPORT = re.compile(r"-m\s+cgis\b|\b(?:import|from)\s+cgis\b")
-#: A Python interpreter in command position. An import of cgis only runs cgis when
-#: Python reads it: the same text in a grep pattern searched for it in this
-#: repository's own source, and was refused (#589).
-_PYTHON = re.compile(r"(?:^|[;&|(`]|\$\()\s*(?:\S*/)?(?:python[\d.]*|pypy3?)\b")
+#: A Python interpreter named anywhere in the command. An import of cgis only runs
+#: cgis when Python reads it: the same text in a grep pattern searched for it in
+#: this repository's own source, and was refused (#589). Anywhere, not in command
+#: position: `env python3`, `bash -c "python …"`, a newline before `python3` all
+#: run it, and a guard that keeps the control arm honest must err towards refusing
+#: (#590 review) — a grep that also names python is refused, and that is fine.
+_PYTHON = re.compile(r"\b(?:i?python[\d.]*|pypy3?)\b")
 _GRAPH_FILE = re.compile(r"\bgraph\.(?:db|json)\b")
 
 _PATH_KEYS = ("file_path", "path", "pattern", "notebook_path")
