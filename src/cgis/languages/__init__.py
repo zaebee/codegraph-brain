@@ -8,7 +8,8 @@ module, never `cgis.languages.<pack>` (the `surface-packs` gate).
 Adding a language is a manifest here plus a package beside this file that
 exposes `PACK`. Each manifest loads its pack with a static import inside a
 function — lazy, yet visible to the review-fingerprint walk, which cannot follow
-`importlib` (`test_no_dynamic_imports_in_the_review_path`).
+`importlib` (`test_no_dynamic_imports_in_the_review_path`). A pack's own module
+imports no grammar; its `extractor()` does (step 2, ruling S2).
 
 Case-sensitive on purpose: `IngestionPipeline._get_extractor` matches
 `filename.endswith(ext)` against these lowercase extensions, so `Foo.TS` is
@@ -20,10 +21,11 @@ import re
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from functools import cache
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 from cgis.core.extractor import BaseExtractor, LanguagePack
 from cgis.core.models import Node
+from cgis.core.project import ProjectReader
 
 
 @dataclass(frozen=True)
@@ -109,6 +111,11 @@ def scope_of(path: str, source_root: str | None) -> str:
     """
     pack = pack_for_path(path) or _load("python")
     return pack.scope_of(path, source_root)
+
+
+def project_readers(root: Path, extractors: Mapping[str, BaseExtractor]) -> list[ProjectReader]:
+    """Every pack's project reader, in manifest order — imports each pack, loads no grammar."""
+    return [_load(m.name).project_reader(root, extractors) for m in MANIFESTS]
 
 
 def skips(filename: str) -> bool:

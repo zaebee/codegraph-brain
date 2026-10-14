@@ -1,40 +1,35 @@
 """The names imports resolve through, collected from the configs around a walk.
 
-Four sources, read the same way and handed to the resolver together: workspace
-packages and declared npm dependencies from `package.json` (#504, #556) and
-`compilerOptions.paths` aliases from `tsconfig.json` (#508), which the walk passes
-or which sit above the ingest root (#555), and the dependencies a Python project
-declares (#495), read from the manifests at or above the ingest root.
-Kept out of `IngestionPipeline`, which only says which files it walked past and
-when the result must be stored.
+Each language pack reads its own (`cgis.core.project`); this module only routes
+the walk's files and the directories above the root to every pack's reader, and
+merges what they read (language-packs step 2). Kept out of `IngestionPipeline`,
+which only says which files it walked past and when the result must be stored.
 """
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-import structlog
+from typing import TYPE_CHECKING, cast
 
 from cgis.core.extractor import BaseExtractor
-from cgis.npm_dependencies import NpmDependencies
-from cgis.python_dependencies import declared_import_roots
-from cgis.tsconfig_paths import TSCONFIG, TsconfigPaths
-from cgis.workspaces import (
-    PACKAGE_MANIFEST,
-    PNPM_WORKSPACE,
-    WorkspacePackages,
-    pnpm_member_names,
-    workspace_member_names,
-)
+from cgis.core.project import ProjectFacts
+from cgis.languages import project_readers
 
 if TYPE_CHECKING:
     from cgis.storage.sqlite_store import SQLiteStore
 
-logger = structlog.getLogger(__name__)
-
 #: What marks a repository boundary the upward search never crosses.
 _REPOSITORY_MARKER = ".git"
+
+#: The facts the collector can record, compare and hand the resolver, with the
+#: JSON shape each reads back as. A pack contributing any other key needs store
+#: and resolver support first; until then its facts would vanish silently.
+_FACT_SHAPES: dict[str, type] = {
+    "workspace_packages": dict,
+    "tsconfig_paths": dict,
+    "python_dependencies": list,
+    "npm_dependencies": list,
+}
 
 
 @dataclass(frozen=True)
@@ -67,12 +62,47 @@ class ImportNames:
             or (store.get_npm_dependencies() or []) != self.npm_dependencies
         )
 
+    @classmethod
+    def from_facts(cls, facts: Iterable[ProjectFacts]) -> "ImportNames":
+        """Merge every pack's facts; a pack that read nothing contributes empty values.
+
+        A key two packs both claim is an error, not a last-writer-wins: one pack's
+        facts would vanish from resolution without a trace.
+        """
+        state: dict[str, object] = {}
+        for fact in facts:
+            contribution = fact.state()
+            shared = state.keys() & contribution.keys()
+            if shared:
+                msg = f"two packs record the same ingest_state key(s): {sorted(shared)}"
+                raise ValueError(msg)
+            state.update(contribution)
+        _check_shapes(state)
+        return cls(
+            workspace_packages=cast("dict[str, str]", state.get("workspace_packages", {})),
+            path_aliases=cast("dict[str, dict[str, list[str]]]", state.get("tsconfig_paths", {})),
+            python_dependencies=cast("list[str]", state.get("python_dependencies", [])),
+            npm_dependencies=cast("list[str]", state.get("npm_dependencies", [])),
+        )
+
     def record(self, store: "SQLiteStore") -> None:
         """Record these names on the stored graph, for the next run's `differ_from`."""
         store.record_workspace_packages(self.workspace_packages)
         store.record_tsconfig_paths(self.path_aliases)
         store.record_python_dependencies(self.python_dependencies)
         store.record_npm_dependencies(self.npm_dependencies)
+
+
+def _check_shapes(state: Mapping[str, object]) -> None:
+    """Refuse a fact the collector cannot store, or one that would never read back equal."""
+    unknown = sorted(state.keys() - _FACT_SHAPES.keys())
+    if unknown:
+        msg = f"no collector support for ingest_state key(s): {unknown}"
+        raise ValueError(msg)
+    for key, value in state.items():
+        if not isinstance(value, _FACT_SHAPES[key]):
+            msg = f"{key} must be a {_FACT_SHAPES[key].__name__}, not {type(value).__name__}"
+            raise TypeError(msg)
 
 
 def _enclosing_directories(root: Path) -> tuple[list[Path], bool]:
@@ -94,69 +124,26 @@ def _enclosing_directories(root: Path) -> tuple[list[Path], bool]:
 
 
 class ImportNameCollector:
-    """Takes the `package.json` and `tsconfig.json` files a walk passes."""
+    """Routes the configs a walk passes to every language pack's reader."""
 
     def __init__(self, workspace_root: Path, extractors: Mapping[str, BaseExtractor]) -> None:
-        """Collect for `workspace_root`, naming modules with the TypeScript extractor's rule.
+        """Collect for `workspace_root`; `extractors` reach the readers that name modules (S4).
 
         The root is resolved first: the search above it walks `parents`, which a
         relative path does not have past `.` (#560 review). The pipeline already
         passes a resolved root, so for it nothing changes.
         """
         self._root = workspace_root.resolve()
-        self._packages = WorkspacePackages(self._root, extractors)
-        self._tsconfigs = TsconfigPaths(self._root, extractors)
-        self._npm = NpmDependencies()
-        # Workspace packages named by a manifest above the root, outside the walk.
-        self._siblings: set[str] = set()
-        self._note_configs_above()
-
-    def _note_configs_above(self) -> None:
-        """Read the configs above the ingest root that its files still belong to (#555).
-
-        `cgis ingest app/src` never walks past `app/tsconfig.json` or
-        `app/package.json`, yet the compiler gives each file the nearest tsconfig
-        above it and Node finds packages in every `node_modules` up the tree. So
-        the nearest tsconfig above counts — unless the root has its own, which is
-        nearer — and every package.json above declares dependencies, less the
-        workspace packages a monorepo manifest there names. The search stops at
-        the repository boundary, as `python_dependencies` does (#495).
-        """
+        self._readers = project_readers(self._root, extractors)
         directories, bounded = _enclosing_directories(self._root)
-        manifests = [d / PACKAGE_MANIFEST for d in directories if (d / PACKAGE_MANIFEST).is_file()]
-        # Without a repository the walk up reaches `$HOME` or `/`: a stray manifest
-        # there would add packages, so only the nearest is trusted (#560 review).
-        for manifest in manifests if bounded else manifests[:1]:
-            self._npm.note(manifest)
-            self._siblings |= workspace_member_names(manifest)
-        # pnpm names its workspace in its own file, beside the root manifest (#562).
-        pnpm = [d / PNPM_WORKSPACE for d in directories if (d / PNPM_WORKSPACE).is_file()]
-        for workspace_file in pnpm if bounded else pnpm[:1]:
-            self._siblings |= pnpm_member_names(workspace_file)
-        if (self._root / TSCONFIG).is_file():
-            return
-        config = next((d / TSCONFIG for d in directories if (d / TSCONFIG).is_file()), None)
-        if config is not None:
-            logger.info("Reading tsconfig.json above the ingest root", path=str(config))
-            self._tsconfigs.note(config)
+        for reader in self._readers:
+            reader.note_above(directories, bounded)
 
     def note(self, path: Path) -> None:
-        """Hand a file the walk passed to whichever reader takes it; any other is ignored."""
-        if path.name == PACKAGE_MANIFEST:
-            self._packages.note(path)
-            self._npm.note(path)
-        elif path.name == TSCONFIG:
-            self._tsconfigs.note(path)
+        """Hand a file the walk passed to every reader; each takes only its own."""
+        for reader in self._readers:
+            reader.note(path)
 
     def collect(self) -> ImportNames:
-        """The names, once the walk is done.
-
-        Aliases are read last: a tsconfig can extend a shared config that lives in
-        a workspace package, which only the finished package map can locate.
-        """
-        return ImportNames(
-            workspace_packages=self._packages.unambiguous(),
-            path_aliases=self._tsconfigs.aliases(self._packages.directories()),
-            python_dependencies=sorted(declared_import_roots(self._root)),
-            npm_dependencies=self._npm.declared(excluding=self._packages.names() | self._siblings),
-        )
+        """The names, once the walk is done."""
+        return ImportNames.from_facts(reader.facts() for reader in self._readers)

@@ -3,7 +3,8 @@
 import pytest
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
-from cgis.languages.typescript.extractor import TypeScriptExtractor, file_path_to_module_fqn
+from cgis.languages.typescript.extractor import TypeScriptExtractor
+from cgis.languages.typescript.naming import file_path_to_module_fqn
 
 # ---------------------------------------------------------------------------
 # file_path_to_module_fqn

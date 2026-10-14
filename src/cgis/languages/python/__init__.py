@@ -1,11 +1,14 @@
 """The Python language pack: tree-sitter-python, module FQNs from file paths."""
 
+from collections.abc import Mapping
+from pathlib import Path
 from typing import override
 
 from cgis.core.extractor import BaseExtractor, LanguagePack
 from cgis.core.paths import is_test_path
-from cgis.languages.python._syntax import PYTHON_LANG
-from cgis.languages.python.extractor import PythonExtractor, file_path_to_module_fqn
+from cgis.core.project import ProjectReader
+from cgis.languages.python._syntax import PYTHON_LANG, file_path_to_module_fqn
+from cgis.languages.python.project import PythonProjectReader
 
 
 class PythonPack(LanguagePack):
@@ -31,8 +34,15 @@ class PythonPack(LanguagePack):
 
     @override
     def extractor(self, extension: str, source_roots: list[str]) -> BaseExtractor:
-        """One grammar for the one extension."""
+        """One grammar for the one extension — loaded here, on first use."""
+        from cgis.languages.python.extractor import PythonExtractor  # noqa: PLC0415
+
         return PythonExtractor(source_roots=source_roots)
+
+    @override
+    def project_reader(self, root: Path, extractors: Mapping[str, BaseExtractor]) -> ProjectReader:
+        """This pack's config reader for the project at `root`."""
+        return PythonProjectReader(root)
 
 
 PACK = PythonPack()

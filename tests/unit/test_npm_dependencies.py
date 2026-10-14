@@ -18,7 +18,7 @@ from pathlib import Path
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace
 from cgis.languages.typescript.extractor import TypeScriptExtractor
-from cgis.npm_dependencies import NpmDependencies
+from cgis.languages.typescript.npm import NpmDependencies
 from cgis.pipeline import IngestionPipeline
 from cgis.storage.sqlite_store import SQLiteStore
 

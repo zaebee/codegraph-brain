@@ -135,16 +135,15 @@ class WorkspacePackages:
         Never the repository root: its manifest names the monorepo itself, and
         mapping it would send an import of that name to the empty directory FQN.
         An unreadable or nameless manifest is skipped: one bad file must not stop
-        the ingest.
+        the ingest. The extractor is asked for last: a root manifest, which is
+        skipped anyway, must not load a grammar.
         """
-        if self._extractor is None:
-            return
         directory = manifest.resolve().parent
         try:
             relative = directory.relative_to(self._root).as_posix()
         except ValueError:
             return
-        if relative in ("", "."):
+        if relative in ("", ".") or self._extractor is None:
             return
         try:
             data = json.loads(manifest.read_text(encoding="utf-8"))

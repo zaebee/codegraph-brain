@@ -279,3 +279,37 @@ def test_a_typescript_file_does_load_it(tmp_path: Path) -> None:
     """The control: without it, the test above would pass on a probe that sees nothing."""
     loaded = _cli_ingest_loads(tmp_path, {"pkg/a.py": PY_SOURCE, "app/h.ts": TS_SOURCE})
     assert "tree_sitter_typescript" in loaded
+
+
+def test_importing_the_packs_loads_no_grammar() -> None:
+    """Ruling S2: readers need every pack from the first file; grammars wait for a parse."""
+    script = (
+        "import json, sys\n"
+        "from cgis.languages import pack_named\n"
+        "for name in ('python', 'typescript'):\n"
+        "    pack = pack_named(name)\n"
+        "    pack.scope_of('src/app/x.tsx', 'src')\n"
+        "    pack.code_fence('a.py')\n"
+        "loaded = {m.split('.')[0] for m in sys.modules if m.startswith('tree_sitter_')}\n"
+        "print(json.dumps(sorted(loaded)))\n"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, check=False
+    )
+    assert out.returncode == 0, out.stderr
+    assert json.loads(out.stdout.strip().splitlines()[-1]) == []
+
+
+def test_a_typescript_only_ingest_never_loads_the_python_grammar(tmp_path: Path) -> None:
+    """Every pack's reader exists from the first file now; the Python grammar must still wait."""
+    files = {"app/h.ts": TS_SOURCE, "README.md": "# demo\n"}
+    assert _cli_ingest_loads(tmp_path, files) == ["tree_sitter_typescript"]
+
+
+def test_a_root_package_json_does_not_load_the_typescript_grammar(tmp_path: Path) -> None:
+    """A tooling manifest at a Python repo's root (prettier, commitlint) names no package."""
+    files = {
+        "pkg/a.py": PY_SOURCE,
+        "package.json": '{"name": "tooling", "devDependencies": {"prettier": "3"}}',
+    }
+    assert _cli_ingest_loads(tmp_path, files) == ["tree_sitter_python"]

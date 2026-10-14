@@ -19,9 +19,9 @@ import pytest
 
 from cgis.core.models import EdgeType
 from cgis.languages.typescript.extractor import TypeScriptExtractor
+from cgis.languages.typescript.tsconfig import TsconfigPaths, load_jsonc
 from cgis.pipeline import IngestionPipeline
 from cgis.storage.sqlite_store import SQLiteStore
-from cgis.tsconfig_paths import TsconfigPaths, load_jsonc
 
 BUTTON = "export function Button() {\n  return 1;\n}\n"
 
