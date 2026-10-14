@@ -1,0 +1,21 @@
+{
+ "core-isolation": {},
+ "cross-pack": {},
+ "pack-isolation": {},
+ "resolver-storage": {
+  "cgis.resolver.uplift -> cgis.storage.sqlite_store": 8
+ },
+ "surface-packs": {
+  "cgis.api.mcp_server -> cgis.extractors.python_extractor": 3,
+  "cgis.api.mcp_server -> cgis.extractors.typescript_extractor": 4,
+  "cgis.cli -> cgis.extractors.python_extractor": 2
+ },
+ "surface-storage": {
+  "cgis.api.auto_refresh -> cgis.storage.sqlite_store": 7,
+  "cgis.api.mcp_server -> cgis.storage.sqlite_store": 20,
+  "cgis.cli -> cgis.storage.sqlite_store": 25,
+  "cgis.guardian.chunked -> cgis.storage.sqlite_store": 3,
+  "cgis.guardian.chunker -> cgis.storage.sqlite_store": 4,
+  "cgis.guardian.collector -> cgis.storage.sqlite_store": 6
+ }
+}

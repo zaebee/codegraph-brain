@@ -9,7 +9,11 @@ Six invariants are enforced:
   6. God Object Baseline    — number of God Objects does not grow beyond known set.
 """
 
-from cgis.core.models import Edge, EdgeType, Node
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
 from cgis.query.analysis.analyzer import AnalyzerEngine
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -205,3 +209,132 @@ def test_god_object_baseline_not_exceeded(
     assert not new_violations, _GOD_OBJECT_VIOLATION + "\n".join(
         f"  {fqn}" for fqn in sorted(new_violations)
     )
+
+
+# ---------------------------------------------------------------------------
+# Invariant 7 — Forbidden edges (language-packs spec, Drift gates)
+# ---------------------------------------------------------------------------
+
+_ALLOWLIST = Path(__file__).parent / "forbidden_edges_allowlist.json"
+_RULE_EDGES = frozenset({EdgeType.IMPORTS, EdgeType.IMPORTS_SYMBOL, EdgeType.CALLS})
+
+
+@dataclass(frozen=True)
+class _Rule:
+    """No edge from a module under `sources` to one under `targets`, bar the exemptions."""
+
+    name: str
+    sources: tuple[str, ...]
+    targets: tuple[str, ...]
+    exempt_modules: frozenset[str] = field(default_factory=frozenset)  # exact module ids
+    exempt_prefixes: tuple[str, ...] = ()
+    cross_pack: bool = False  # fire only when the `cgis.languages.<pack>` segments differ
+
+
+RULES: tuple[_Rule, ...] = (
+    _Rule("cross-pack", ("cgis.languages",), ("cgis.languages",),
+          exempt_modules=frozenset({"cgis.languages"}), cross_pack=True),
+    _Rule("pack-isolation", ("cgis.languages", "cgis.extractors"),
+          ("cgis.storage", "cgis.query", "cgis.api", "cgis.guardian", "cgis.pipeline")),
+    _Rule("resolver-storage", ("cgis.resolver",), ("cgis.storage",)),
+    _Rule("surface-packs", ("cgis.query", "cgis.guardian", "cgis.cli", "cgis.api"),
+          ("cgis.languages", "cgis.extractors"),
+          exempt_modules=frozenset({"cgis.languages", "cgis.extractors.registry"})),
+    _Rule("surface-storage", ("cgis.cli", "cgis.api", "cgis.guardian"), ("cgis.storage",)),
+    _Rule("core-isolation", ("cgis.core",), ("cgis",), exempt_prefixes=("cgis.core",)),
+)  # fmt: skip
+
+
+def _under(module: str, prefix: str) -> bool:
+    return module == prefix or module.startswith(prefix + ".")
+
+
+def _pack(module: str) -> str | None:
+    parts = module.split(".")
+    return parts[2] if len(parts) > 2 and parts[:2] == ["cgis", "languages"] else None
+
+
+def _fires(rule: _Rule, src: str, dst: str) -> bool:
+    if not any(_under(src, p) for p in rule.sources) or not any(
+        _under(dst, p) for p in rule.targets
+    ):
+        return False
+    if dst in rule.exempt_modules or any(_under(dst, p) for p in rule.exempt_prefixes):
+        return False
+    return not rule.cross_pack or (_pack(src) is not None and _pack(src) != _pack(dst))
+
+
+def forbidden_edges(nodes: list[Node], edges: list[Edge]) -> dict[str, dict[str, int]]:
+    """Rule → "src module -> dst module" → edge count, over INTERNAL targets only."""
+    module_of_file = {n.file_path: n.id for n in nodes if n.type == NodeType.FILE}
+    by_id = {n.id: n for n in nodes}
+    found: dict[str, dict[str, int]] = {rule.name: {} for rule in RULES}
+    for e in edges:
+        src, dst = by_id.get(e.source), by_id.get(e.target)
+        if e.type not in _RULE_EDGES or src is None or dst is None:
+            continue
+        if dst.namespace != NodeNamespace.INTERNAL:
+            continue
+        a, b = module_of_file.get(src.file_path), module_of_file.get(dst.file_path)
+        if a is None or b is None or a == b:
+            continue
+        for rule in RULES:
+            if _fires(rule, a, b):
+                key = f"{a} -> {b}"
+                found[rule.name][key] = found[rule.name].get(key, 0) + 1
+    return found
+
+
+def test_forbidden_edges_match_the_allowlist_exactly(
+    root_graph_data: tuple[SQLiteStore, list[Node], list[Edge]],
+) -> None:
+    """Exact equality: a new edge fails, a grown count fails, a vanished entry fails.
+
+    When a refactor removes violations, lower or delete the entries in the same PR.
+    Never add one: a new forbidden edge is the regression this gate exists for.
+    """
+    _, nodes, edges = root_graph_data
+    actual = forbidden_edges(nodes, edges)
+    allowed = json.loads(_ALLOWLIST.read_text(encoding="utf-8"))
+    assert actual == allowed, (
+        "Forbidden edges differ from forbidden_edges_allowlist.json. Actual:\n"
+        + json.dumps(actual, indent=1, sort_keys=True)
+    )
+
+
+def test_external_targets_are_never_attributed() -> None:
+    """A call into a stdlib or unresolved node is not an edge between our modules."""
+    file_a = Node(
+        id="cgis.resolver.x",
+        type=NodeType.FILE,
+        name="x",
+        file_path="cgis/resolver/x.py",
+        start_line=1,
+        end_line=1,
+    )
+    fn = Node(
+        id="cgis.resolver.x.f",
+        type=NodeType.FUNCTION,
+        name="f",
+        file_path="cgis/resolver/x.py",
+        start_line=1,
+        end_line=1,
+    )
+    ext = Node(
+        id="cgis.storage.fake",
+        type=NodeType.FUNCTION,
+        name="fake",
+        file_path="<virtual>",
+        start_line=0,
+        end_line=0,
+        namespace=NodeNamespace.UNKNOWN,
+    )
+    edge = Edge(id="e", source=fn.id, target=ext.id, type=EdgeType.CALLS)
+    assert forbidden_edges([file_a, fn, ext], [edge])["resolver-storage"] == {}
+
+
+def test_cross_pack_fires_only_between_different_packs() -> None:
+    rule = RULES[0]
+    assert _fires(rule, "cgis.languages.go.extractor", "cgis.languages.python.indices")
+    assert not _fires(rule, "cgis.languages.go.extractor", "cgis.languages.go.rules")
+    assert not _fires(rule, "cgis.languages.go.extractor", "cgis.languages")
