@@ -72,6 +72,23 @@ def _path_prefixes(store: SQLiteStore) -> set[str]:
     return {".".join(base.parts[start:]) for base in bases for start in range(1, len(base.parts))}
 
 
+def without_path_prefix(store: SQLiteStore, prefix: str) -> str | None:
+    """`prefix` with a leading directory above the graph dropped, or None (#584).
+
+    The `fqn_prefix` of `cgis_find_symbol` scopes a search rather than naming a
+    node, so unlike `_without_leading_segments` the rest need not exist as a
+    node: `src.cgis` on a graph ingested from `src/` is the prefix `cgis`.
+    Something must remain — dropping the whole prefix would widen the search
+    to the entire graph, which is not what was asked.
+    """
+    prefixes = _path_prefixes(store)
+    parts = prefix.split(".")
+    for start in range(1, len(parts)):
+        if ".".join(parts[:start]) in prefixes:
+            return ".".join(parts[start:])
+    return None
+
+
 def _without_leading_segments(store: SQLiteStore, fqn: str) -> str | None:
     """The node ``fqn`` names once a path prefix above the graph is dropped (#568).
 

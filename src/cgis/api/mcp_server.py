@@ -39,7 +39,7 @@ from cgis.query.engine import (
     Truncation,
     agent_screen,
 )
-from cgis.query.fqn import is_package_prefix, resolve_fqn
+from cgis.query.fqn import is_package_prefix, resolve_fqn, without_path_prefix
 from cgis.query.render.graph_json import graph_to_json
 from cgis.query.render.mermaid import MermaidCompiler
 from cgis.query.render.metrics import DuckDBAnalyzer
@@ -969,7 +969,9 @@ def cgis_find_symbol(
     ``get_reservation_prices``) but not its full FQN — it removes the
     read-the-file-first guesswork. Returns JSON ``[{fqn, name, type, file,
     line}]`` ranked exact > prefix > substring. ``kind`` filters by node type
-    (FUNCTION / METHOD / CLASS / …); ``fqn_prefix`` scopes the search.
+    (FUNCTION / METHOD / CLASS / …); ``fqn_prefix`` scopes the search. A prefix
+    that starts with the directories the graph was ingested below (``src.cgis``
+    for a graph of ``src/``) and matches nothing is retried without them.
     """
     if not Path(db_path).exists():
         return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
@@ -978,6 +980,11 @@ def cgis_find_symbol(
         kinds = (kind.strip().upper(),) if kind and kind.strip() else ()
         with SQLiteStore(db_path) as store:
             matches = store.search_nodes(query, kinds=kinds, fqn_prefix=fqn_prefix, limit=limit)
+            # `src.cgis` built from the path an agent sees, on a graph ingested from
+            # `src/` (#584): retried without the directory, as `resolve_fqn` does (#568).
+            scoped = fqn_prefix and not matches and without_path_prefix(store, fqn_prefix)
+            if scoped:
+                matches = store.search_nodes(query, kinds=kinds, fqn_prefix=scoped, limit=limit)
     except Exception as exc:
         return f"❌ {exc}"
     payload = [
