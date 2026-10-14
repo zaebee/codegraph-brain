@@ -5,6 +5,8 @@ import sqlite3
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
 
@@ -26,7 +28,9 @@ def _ingest(root: Path, db: Path) -> None:
 
 def _repo(root: Path) -> Path:
     (root / "pkg").mkdir(parents=True)
-    (root / "pkg" / "a.py").write_text("def f():\n    g()\n\ndef g():\n    pass\n")
+    (root / "pkg" / "a.py").write_text(
+        "def f():\n    g()\n\ndef g():\n    pass\n", encoding="utf-8"
+    )
     return root
 
 
@@ -93,3 +97,26 @@ def test_diff_names_a_changed_ingest_state(tmp_path: Path) -> None:
     assert gi.diff(before, after) == [
         f"ingest_state: {before['ingest_state']} → {after['ingest_state']}"
     ]
+
+
+def test_dump_refuses_a_missing_database(tmp_path: Path) -> None:
+    """sqlite3.connect would create an empty file and fail later on a missing table."""
+    missing = tmp_path / "nope.db"
+    with pytest.raises(FileNotFoundError, match=r"nope\.db"):
+        gi.dump(missing, tmp_path)
+    assert not missing.exists()
+
+
+def test_dump_refuses_a_file_that_is_not_a_database(tmp_path: Path) -> None:
+    """Only a .db/.sqlite/.sqlite3 file is opened — the argument is never a connection string."""
+    other = tmp_path / "notes.txt"
+    other.write_text("x", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"notes\.txt"):
+        gi.dump(other, tmp_path)
+
+
+def test_normalise_reaches_a_root_escaped_inside_json_text() -> None:
+    """A Windows root is `C:\\x` in the column but `C:\\\\x` in JSON text."""
+    text = json.dumps({"p": "C:\\x\\f.py"})
+    normalised = gi._normalise(text, "C:\\x")  # noqa: SLF001
+    assert normalised == {"p": "<ROOT>\\f.py"}

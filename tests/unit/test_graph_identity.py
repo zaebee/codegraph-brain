@@ -31,12 +31,14 @@ def _snapshot(seed: str, out: Path) -> dict[str, dict[str, object]]:
     """
     env = {**os.environ, "PYTHONHASHSEED": seed}
     script = str(REPO / "scripts" / "graph_identity.py")
-    subprocess.run(
+    result = subprocess.run(
         [sys.executable, script, "snapshot", str(CORPUS), "--out", str(out)],
         env=env,
         capture_output=True,
-        check=True,
+        text=True,
+        check=False,
     )
+    assert result.returncode == 0, f"snapshot failed (PYTHONHASHSEED={seed}):\n{result.stderr}"
     snapshot: dict[str, dict[str, object]] = json.loads(out.read_text(encoding="utf-8"))
     return snapshot
 

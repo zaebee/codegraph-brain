@@ -31,6 +31,7 @@ _EDGE_COLUMNS = (
     "file_path", "line_number", "type_only",
 )  # fmt: skip
 _VOLATILE_STATE = frozenset({"ingested_at"})
+_DB_SUFFIXES = frozenset({".db", ".sqlite", ".sqlite3"})
 
 #: The corpus roots a snapshot ingests, by name. `sub` reads configs above its
 #: root (#555); `py_src` is the src layout, where the local `alembic` package
@@ -44,7 +45,7 @@ def _normalise(value: object, root: str) -> object:
         text = value.replace(root, "<ROOT>")
         if text[:1] in "[{":
             try:
-                return _normalise(json.loads(text), "\0")
+                return _normalise(json.loads(text), root)
             except ValueError:
                 return text
         return text
@@ -67,7 +68,17 @@ def _rows(
 
 
 def dump(db_path: Path, root: Path) -> dict[str, object]:
-    """The canonical content of one stored graph, with `root` normalised away."""
+    """The canonical content of one stored graph, with `root` normalised away.
+
+    `db_path` must be an existing database file: `sqlite3.connect` would create
+    a missing one, and its URI-free path keeps the argument a plain file name.
+    """
+    if db_path.suffix not in _DB_SUFFIXES:
+        msg = f"not a graph database (expected {sorted(_DB_SUFFIXES)}): {db_path}"
+        raise ValueError(msg)
+    if not db_path.is_file():
+        msg = f"no graph database at {db_path}"
+        raise FileNotFoundError(msg)
     prefix = str(root.resolve())
     with sqlite3.connect(db_path) as conn:
         state = {
