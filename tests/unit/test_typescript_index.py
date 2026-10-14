@@ -62,3 +62,21 @@ def test_classification_chain() -> None:
         classify("json.parse", ctx) is NodeNamespace.INTERNAL
     )  # an internal root, not Python's json
     assert classify("os.path", ctx) is NodeNamespace.UNKNOWN  # #454: Python names mean nothing here
+
+
+def test_workspace_packages_are_kept_longest_name_first() -> None:
+    """`a.b` is both "package a, subpath b" and "package a.b": the longer name wins (#504)."""
+    facts = index_facts(
+        MappingProxyType({}),
+        {"workspace_packages": {"a": "x", "a.b": "y"}, "npm_dependencies": []},
+    )
+    assert list(facts.workspace_packages) == ["a.b", "a"]
+
+
+def test_path_aliases_are_ordered_per_project() -> None:
+    facts = index_facts(
+        MappingProxyType({}),
+        {"tsconfig_paths": {"apps/web": {"@.*": ["apps.web.src.*"]}}, "npm_dependencies": []},
+    )
+    (alias,) = facts.path_aliases["apps/web"]
+    assert (alias.prefix, alias.wildcard, alias.targets) == ("@.", True, ("apps.web.src.*",))

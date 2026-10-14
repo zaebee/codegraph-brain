@@ -2,6 +2,7 @@
 
 import pytest
 
+from cgis.core.models import Node, NodeType
 from cgis.core.resolution import AFTER_IMPORT_MAP, ResolutionRules, ResolutionView
 from cgis.languages import rules_for, type_normalizers
 from cgis.resolver.indices import IndexBuilder
@@ -36,3 +37,30 @@ def test_rules_follow_the_classifying_pack() -> None:
 
 def test_normalizers_come_in_manifest_order() -> None:
     assert isinstance(type_normalizers(), tuple)
+
+
+def _module(fqn: str, path: str) -> Node:
+    return Node(
+        id=fqn,
+        type=NodeType.FILE,
+        name=path.rsplit("/", 1)[-1],
+        file_path=path,
+        start_line=1,
+        end_line=1,
+        language="typescript",
+    )
+
+
+def test_typescript_reconciles_through_its_own_pack() -> None:
+    """Aliases and workspace packages are the TS pack's facts; the index no longer carries them."""
+    nodes = [_module("packages.lib.util", "packages/lib/util.ts")]
+    index = IndexBuilder().build(nodes, workspace_packages={"@acme.lib": "packages.lib"})
+    assert not hasattr(index, "workspace_packages")
+    assert index.resolve_import_target("@acme.lib.util", "apps/web/a.ts") == "packages.lib.util"
+    assert index.resolve_import_target("@acme.lib.util", "apps/web/a.py") is None
+
+
+def test_python_reconciles_by_layout_prefixes() -> None:
+    rules = rules_for("app/x.py")
+    assert rules is not None
+    assert rules.reconcile_import is not None
