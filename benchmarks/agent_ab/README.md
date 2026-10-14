@@ -75,16 +75,19 @@ uv run python scripts/agent_ab.py report
 
 `--model` defaults to `claude-sonnet-5-5`; `--max-budget-usd` (default 2.00)
 caps each session. Every non-dry run is a paid session, so this never runs in
-CI. Transcripts are written to `transcripts/<task>/<arm>-<cgis sha>-<run>.jsonl`
-(git-ignored); `results.jsonl` gets one line per (task, arm, run) and is meant to
-be committed with the write-up.
+CI. Transcripts are written to `transcripts/<task>/<arm>-<sha7>-<run>.jsonl`, with
+the first 7 characters of the cgis commit (git-ignored); `results.jsonl` gets one
+line per (task, arm, cgis commit, run) and is meant to be committed with the
+write-up.
 
 Run numbers continue from the highest one already in `--results` for the same
 task, arm and cgis commit, so a second invocation that finishes an interrupted
-batch adds runs instead of reusing them. A session that fails — its ingest
-killed, `claude -p` crashing — is written as a line with `failed` set to the
-reason, the batch goes on, and `run` exits 1 at the end. `report` counts failed
-sessions in their own column and leaves them out of the medians.
+batch adds runs instead of reusing them. A session that fails is written as a
+line with `failed` set to the reason, and the batch goes on: an ingest or
+worktree that raises gives a line with no metrics, and a `claude -p` that exits
+non-zero keeps its scored metrics and cost but is marked failed too. `run` exits
+1 at the end if any session failed; `report` counts failed sessions in their own
+column and leaves them out of the medians. A dry run writes nothing.
 
 ## Tasks
 

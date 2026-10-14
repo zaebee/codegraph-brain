@@ -251,6 +251,69 @@ def test_a_second_invocation_continues_the_numbering(
     assert len(list((args.transcripts / TASK.id).glob("cgis-*.jsonl"))) == 4
 
 
+def test_a_failed_runs_number_is_not_reused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The failure row carries the same cgis sha, so the next invocation skips its number."""
+    _patch_run(monkeypatch, tmp_path)
+
+    def dead_ingest(_wt: Path, _src: str) -> float:
+        _msg = "killed"
+        raise RuntimeError(_msg)
+
+    args = _args(tmp_path, runs=1, task=[TASK.id], arm=["cgis"])
+    monkeypatch.setattr(ab, "ingest", dead_ingest)
+    assert ab.cmd_run(args) == 1
+    monkeypatch.setattr(ab, "ingest", lambda _wt, _src: 1.0)
+    assert ab.cmd_run(args) == 0
+
+    rows = [json.loads(line) for line in args.results.read_text().splitlines()]
+    assert [(r["run"], bool(r.get("failed"))) for r in rows] == [(0, True), (1, False)]
+
+
+def test_a_session_that_exits_non_zero_is_failed_but_keeps_its_cost(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An OOM-killed `claude -p` scored recall 0 and sank the median (#578 review)."""
+    _patch_run(monkeypatch, tmp_path)
+    killed = ab.subprocess.run
+
+    def run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        done = killed(cmd, **kwargs)
+        return subprocess.CompletedProcess(cmd, 137 if cmd[0] != "git" else 0, done.stdout, "")
+
+    monkeypatch.setattr(ab.subprocess, "run", run)
+    args = _args(tmp_path, runs=1, task=[TASK.id], arm=["cgis"])
+
+    assert ab.cmd_run(args) == 1
+    row = json.loads(args.results.read_text().splitlines()[0])
+    assert row["failed"] == "claude -p exited with 137"
+    assert row["cost_usd"] == 0.25
+
+
+def test_a_failed_dry_run_writes_nothing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """`--results` defaults to the committed file; a dry run must not add to it."""
+    _patch_run(monkeypatch, tmp_path)
+
+    def broken(_sha: str, _repo: Path) -> Iterator[Path]:
+        _msg = "no worktree"
+        raise RuntimeError(_msg)
+
+    monkeypatch.setattr(ab, "worktree_at", broken)
+    args = _args(tmp_path, dry_run=True, runs=1, task=[TASK.id], arm=["cgis"])
+
+    assert ab.cmd_run(args) == 1
+    assert not args.results.exists()
+
+
+def test_a_truncated_line_does_not_stop_the_numbering(tmp_path: Path) -> None:
+    results = tmp_path / "results.jsonl"
+    good = json.dumps({"task": "t", "arm": "cgis", "cgis_sha": "s", "run": 2})
+    results.write_text(good + '\n{"task": "t", "arm": "cg')
+
+    assert ab.next_run(ab.load_results(results), "t", "cgis", "s") == 3
+
+
 def test_numbering_is_per_task_arm_and_cgis(tmp_path: Path) -> None:
     results = tmp_path / "results.jsonl"
     rows = [
@@ -260,9 +323,10 @@ def test_numbering_is_per_task_arm_and_cgis(tmp_path: Path) -> None:
     ]
     results.write_text("".join(json.dumps(r) + "\n" for r in rows) + "\n")
 
-    assert ab.next_run(results, "t", "cgis", "new") == 2
-    assert ab.next_run(results, "t", "cgis", "newer") == 0
-    assert ab.next_run(tmp_path / "none.jsonl", "t", "cgis", "new") == 0
+    loaded = ab.load_results(results)
+    assert ab.next_run(loaded, "t", "cgis", "new") == 2
+    assert ab.next_run(loaded, "t", "cgis", "newer") == 0
+    assert ab.load_results(tmp_path / "none.jsonl") == []
 
 
 def test_unknown_task_ids_and_missing_repos_are_refused(tmp_path: Path) -> None:

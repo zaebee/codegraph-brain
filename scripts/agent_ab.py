@@ -23,8 +23,8 @@ pinned commit, so no run sees another's files or a graph it did not build.
 All arms run under the same PreToolUse hook (`cgis.bench.guard`), the same
 allowed tools (Read, Grep, Glob, Bash; no edits, no web, no sub-agents) and a
 PATH with no cgis or uv on it. Costs money: every non-dry run is a real session.
-Results append to `benchmarks/agent_ab/results.jsonl`, one line per
-(task, arm, run); the raw stream-json transcripts go to `benchmarks/agent_ab/
+Results append to `benchmarks/agent_ab/results.jsonl`, one line per (task, arm,
+cgis commit, run); the raw stream-json transcripts go to `benchmarks/agent_ab/
 transcripts/`, which is git-ignored.
 """
 
@@ -299,8 +299,12 @@ def run_session(cmd: list[str], cwd: Path, timeout: int) -> tuple[str, int]:
 
 def run_one(
     task: AgentTask, arm: Arm, run: int, repo: Path, args: argparse.Namespace, cgis_sha: str
-) -> None:
-    """One session: worktree → (ingest) → claude -p → transcript → results line."""
+) -> bool:
+    """One session: worktree → (ingest) → claude -p → transcript → results line.
+
+    False when the session ran but `claude -p` exited non-zero, so the batch's
+    exit status counts it with the sessions that raised.
+    """
     with worktree_at(task.sha, repo) as wt, tempfile.TemporaryDirectory(prefix="ab-") as tmp:
         removed = remove_graph_files(wt)
         ingest_s = ingest(wt, task.src_root) if arm != "control" else 0.0
@@ -316,7 +320,7 @@ def run_one(
         if args.dry_run:
             print(f"[{task.id} {arm} #{run}] cwd={wt} removed={len(removed)}")
             print("  " + " ".join([*cmd[:2], "<prompt>", *cmd[3:]]))
-            return
+            return True
         start = time.monotonic()
         stdout, returncode = run_session(cmd, wt, args.timeout)
         wall_s = time.monotonic() - start
@@ -336,12 +340,19 @@ def run_one(
         else str(transcript_path),
     }
     row = results_row(task, arm, run, stdout.splitlines(), meta)
-    _append_jsonl(args.results, row)
+    if returncode != 0:
+        # A killed or crashed session still scores — usually recall 0 — and would
+        # sink the median. The row keeps its cost; `failed` keeps it out (#577).
+        row["failed"] = f"claude -p exited with {returncode}"
+    # Printed before the row is written: a broken pipe on the print must not turn
+    # a recorded run into a second, failed row for the same run (#578 review).
     print(
         f"[{task.id} {arm} #{run}] recall={row['recall']:.2f} cost=${row['cost_usd']:.3f} "
         f"calls={row['total_tool_calls']} reads={row['files_read']} "
-        f"contaminated={row['contaminated']}"
+        f"contaminated={row['contaminated']}" + (f" FAILED: {row['failed']}" if returncode else "")
     )
+    _append_jsonl(args.results, row)
+    return returncode == 0
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -361,8 +372,9 @@ def cmd_run(args: argparse.Namespace) -> int:
     arms: list[Arm] = args.arm or list(ARMS)
     cgis_sha = "dry-run" if args.dry_run else _git("rev-parse", "HEAD")
     failed = 0
+    existing = load_results(args.results)  # once, not per task and arm (Gemini on #578)
     for task in tasks:
-        first = {arm: next_run(args.results, task.id, arm, cgis_sha) for arm in arms}
+        first = {arm: next_run(existing, task.id, arm, cgis_sha) for arm in arms}
         for offset in range(args.runs):
             for arm in arms:
                 session = (task, arm, first[arm] + offset, repos[task.repo])
@@ -372,20 +384,40 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 1 if failed else 0
 
 
-def next_run(results: Path, task_id: str, arm: str, cgis_sha: str) -> int:
-    """The first run number not yet in `results` for this task, arm and cgis (#577).
+def next_run(rows: Sequence[dict[str, object]], task_id: str, arm: str, cgis_sha: str) -> int:
+    """The first run number not yet in `rows` for this task, arm and cgis (#577).
 
     Counting from 0 on every invocation made a second one, finishing an aborted
     batch, collide with the first one's rows and overwrite its transcripts.
     """
-    if not results.exists():
-        return 0
+    key = (task_id, arm, cgis_sha)
     taken = [
-        int(row["run"])
-        for row in map(json.loads, filter(str.strip, results.read_text("utf-8").splitlines()))
-        if (row.get("task"), row.get("arm"), row.get("cgis_sha")) == (task_id, arm, cgis_sha)
+        row["run"]
+        for row in rows
+        if (row.get("task"), row.get("arm"), row.get("cgis_sha")) == key
+        and isinstance(row.get("run"), int)
     ]
     return max(taken, default=-1) + 1
+
+
+def load_results(path: Path) -> list[dict[str, object]]:
+    """Every parseable row of a results file; none when it does not exist yet."""
+    if not path.exists():
+        return []
+    return [row for row in map(_parsed, path.read_text("utf-8").splitlines()) if row]
+
+
+def _parsed(line: str) -> dict[str, object]:
+    """One results line, or an empty row for a blank or truncated one.
+
+    A line cut short by a killed run must not stop every later invocation from
+    numbering its runs (#578 review).
+    """
+    try:
+        row = json.loads(line)
+    except json.JSONDecodeError:
+        return {}
+    return row if isinstance(row, dict) else {}
 
 
 def _run_or_record(
@@ -396,18 +428,18 @@ def _run_or_record(
     args: argparse.Namespace,
     cgis_sha: str,
 ) -> bool:
-    """Run one session; on failure, write a `failed` row and report False instead of raising.
+    """Run one session; False if it failed, with a `failed` row written instead of raising.
 
     One failed ingest — earlyoom's SIGTERM on a loaded host — used to end the
     whole batch, losing every session after it (#577).
     """
     try:
-        run_one(task, arm, run, repo, args, cgis_sha)
+        return run_one(task, arm, run, repo, args, cgis_sha)
     except Exception as exc:  # any failure is one lost session, not the batch
         print(f"[{task.id} {arm} #{run}] FAILED: {exc}", file=sys.stderr)
-        _append_jsonl(args.results, failure_row(task, arm, run, args, cgis_sha, exc))
+        if not args.dry_run:  # a dry run writes no results, failed or not
+            _append_jsonl(args.results, failure_row(task, arm, run, args, cgis_sha, exc))
         return False
-    return True
 
 
 def failure_row(
@@ -432,7 +464,8 @@ def failure_row(
         "cgis_sha": cgis_sha,
         "is_error": True,
         "contaminated": False,
-        "failed": str(exc)[:500],
+        # The tail: an ingest's stderr ends with the line that says what died.
+        "failed": str(exc)[-500:],
     }
 
 
