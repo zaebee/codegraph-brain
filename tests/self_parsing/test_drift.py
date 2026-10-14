@@ -132,7 +132,14 @@ def test_ts_self_drift_within_tolerance(
 
 _PLANES = {
     "build": (
-        ("pipeline", "languages.python", "languages.typescript", "resolution", "storage"),
+        (
+            "pipeline",
+            "languages",
+            "languages.python",
+            "languages.typescript",
+            "resolution",
+            "storage",
+        ),
         "orchestrator",
     ),
     "read": (("storage", "query", "guardian", "cli", "api"), "layered_dag"),
@@ -156,6 +163,12 @@ def test_plane_quotients_observed_not_enforced(
         drift_tolerance=1.0, enforce=False,
     )  # fmt: skip
     by_name = {d.name: d for d in _selected_domains(scorer, graph="python")}
+    # The registry module `cgis.languages` is in no drift domain (a domain on its
+    # prefix would take the packs too); for the plane it is a node of its own, the
+    # longest-prefix match leaving it only the registry's nodes.
+    by_name["languages"] = DomainConfig(
+        name="languages", fqn_prefix="cgis.languages", expected_pattern=None
+    )
     nodes, edges = store.get_all_nodes(), store.get_all_edges()
     for plane, (names, template) in _PLANES.items():
         domains = [by_name[n] for n in names]
@@ -165,5 +178,11 @@ def test_plane_quotients_observed_not_enforced(
         )
         fingerprint = extractor.extract(binding.fqn_prefix)
         assert fingerprint.node_count == len(domains), f"{plane}: a domain matched nothing"
+        # A domain with no edge in its plane is a hole, not a better score: step 6
+        # left the packs isolated (their only link, the registry, was in no domain)
+        # and the build plane read 0.016 instead of an honest number.
+        linked = {e.source for e in qedges} | {e.target for e in qedges}
+        isolated = sorted(n.id for n in qnodes if n.id not in linked)
+        assert not isolated, f"{plane}: quotient nodes with no edge: {isolated}"
         report = scorer.score(fingerprint, dataclasses.replace(binding, expected_pattern=template))
         print(f"\n[plane observe-only] {plane} vs {template}: drift={report.drift_score:.3f}")

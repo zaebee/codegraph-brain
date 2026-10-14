@@ -310,3 +310,4 @@ def test_every_pack_has_a_domain_at_the_shared_tolerance() -> None:
 def test_core_has_a_domain() -> None:
     domains = {d["name"]: d for d in _load()["project_domains"]}
     assert domains["core"]["fqn_prefix"] == "cgis.core"
+    assert domains["core"]["expected_pattern"] == "layered_dag"  # ruling G1, not pure_utility
