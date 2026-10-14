@@ -3,6 +3,34 @@
 One section per run, newest first. The raw lines are in `results.jsonl`; the
 transcripts they point at are git-ignored and stay on the machine that ran them.
 
+## 2026-10-14: three cgis tasks with a deep chain
+
+cgis at bc303eb, Sonnet 5.5, 3 runs per arm, 0 failed, 0 contaminated, about $2.3.
+None of these tasks was used to find the recent fixes.
+
+| task | arm | recall | precision | median $ | median tool calls | cgis calls |
+|---|---|---|---|---|---|---|
+| `cgis-impact-drift-same-name` | control | 1.00 | 1.00 | 0.124 | 9 | — |
+| | cgis-forced | 1.00 | 1.00 | **0.085** | 3 | 1, 1, 1 |
+| `cgis-impact-transitive-tsconfig` | control | 1.00 | 1.00 | 0.126 | 7 | — |
+| | cgis-forced | 1.00 | 1.00 | **0.091** | 4 | 1, 2, 1 |
+| `cgis-flow-ingest-to-sqlite` | control | 1.00 | 0.86 | **0.112** | 5 | — |
+| | cgis-forced | 1.00 | 0.52 | 0.167 | 4 | 2, 2, 2 |
+
+- **Impact across several hops pays:** about 30% cheaper on both impact tasks,
+  with one cgis call doing what took control 7–9 greps and reads. Together with
+  `credit_wallet`, that makes three impact tasks out of three where the graph
+  wins once the question needs more than one hop.
+- **Flow does not, and the cause is the answer's size.** Every forced session
+  called `cgis_trace_flow(cgis.cli.ingest, depth=3, json)` and got **32,637
+  characters**, the bloat #551 fixed for impact only: trace has no node budget
+  and no test filter. Given everything downstream, the agent cannot tell the
+  main path from side branches and names them all (precision 0.52, 20 extra
+  symbols such as every `ResolverEngine._resolved_*_edge`).
+- `occupied_window` (above) and these together say where cgis earns its place:
+  multi-hop impact. A one-hop caller list and a "main path" flow question are
+  not where it helps today.
+
 ## 2026-10-14: `owner-impact-occupied-window-same-name`, a task no fix was tuned on
 
 cgis at 827143e (after #551, #568, #550, #545), Sonnet 5.5, 0 contaminated. The
