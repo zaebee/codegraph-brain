@@ -518,12 +518,13 @@ def annotated_alias_type(
     wrapper = get_identifier(base, code_bytes) if base is not None else ""
     if wrapper.rsplit(".", maxsplit=1)[-1] != "Annotated":
         return None
-    raw = code_bytes[right.start_byte : right.end_byte].decode("utf-8")
-    # A forward reference (`Annotated["T", ...]`) names T too.
-    type_name = types.clean_python_type_string(raw).strip("\"'")
-    if not type_name or type_name in _BUILTIN_CONTAINERS:
+    # The AST, not the source text: `collect_type_names` already reads only
+    # Annotated's first argument and handles a forward reference ("T"), a
+    # comment inside the brackets and a qualified wrapper (Gemini on #572).
+    names = collect_type_names(right, code_bytes)
+    if not names or names[0] in _BUILTIN_CONTAINERS:
         return None
-    return types.resolve_type_fqn(type_name, import_map, file_path)
+    return types.resolve_type_fqn(names[0], import_map, file_path)
 
 
 #: `Annotated[list[T], ...]` cleans to `list`: a builtin, never a class of ours, and

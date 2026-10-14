@@ -51,12 +51,17 @@ CurrentUser = Depends(get_user)
 QualifiedDep = typing.Annotated[Service, Depends(get_service)]
 ForwardDep = Annotated["Service", Depends(get_service)]
 ListDep = Annotated[list[Service], Depends(get_service)]
+CommentedDep = Annotated[
+    # the service, injected
+    Service,
+    Depends(get_service),
+]
 """
 
 _ROUTES = """
 from typing import Annotated
 from fastapi import Depends
-from deps import ForwardDep, QualifiedDep, ServiceDep, CurrentUser, get_service
+from deps import CommentedDep, ForwardDep, QualifiedDep, ServiceDep, CurrentUser, get_service
 from service import Service
 
 
@@ -77,6 +82,10 @@ async def qualified(svc: QualifiedDep):
 
 
 async def forward(svc: ForwardDep):
+    svc.run()
+
+
+async def commented(svc: CommentedDep):
     svc.run()
 
 
@@ -162,8 +171,8 @@ def test_retyping_the_alias_reresolves_the_route_on_an_incremental_ingest(
     assert "service.Service.run" not in targets
 
 
-@pytest.mark.parametrize("route", ["routes.qualified", "routes.forward"])
-def test_typing_annotated_and_a_forward_reference_resolve(
+@pytest.mark.parametrize("route", ["routes.qualified", "routes.forward", "routes.commented"])
+def test_qualified_forward_and_commented_aliases_resolve(
     repo: tuple[Path, str], route: str
 ) -> None:
     _, db = repo
