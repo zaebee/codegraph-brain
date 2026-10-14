@@ -101,6 +101,9 @@ codegraph-brain = "cgis.api.mcp_server:mcp.run"
 # Target Python 3.12+
 target-version = "py312"
 line-length = 100
+# Fixture corpora are inputs, not code: reformatting one changes what the
+# graph-identity snapshot measures (docs/plans/2026-10-14-language-packs.md).
+extend-exclude = ["tests/fixtures"]
 
 [tool.ruff.lint]
 # Enable many plugins: 
@@ -237,6 +240,8 @@ color = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# pytest's defaults plus `fixtures`: the identity corpus holds a test file of its own.
+norecursedirs = [".*", "*.egg", "_darcs", "build", "CVS", "dist", "node_modules", "venv", "{arch}", "fixtures"]
 asyncio_mode = "auto"
 markers = [
     "slow: marks tests as slow — run with '-m slow' or skip with '-m \"not slow\"'",

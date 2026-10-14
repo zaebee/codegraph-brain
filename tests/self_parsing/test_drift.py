@@ -7,6 +7,8 @@ exceeding it here means the structure regressed (or the ratchet must be
 consciously re-negotiated in the YAML, with a comment).
 """
 
+import dataclasses
+
 from cgis.core.models import Edge, Node
 from cgis.query.drift.drift import DomainConfig, DriftScorer
 from cgis.query.drift.fingerprint import FingerprintExtractor
@@ -161,3 +163,34 @@ def test_py_quotient_drift_observed_not_enforced(
             f"(tolerance {binding.drift_tolerance:.2f}, tv_imports={report.tv_imports}, "
             f"tv_calls={report.tv_calls})\n  violations: {report.violations}"
         )
+
+
+_PLANES = {
+    "build": (("pipeline", "extraction", "resolution", "storage"), "orchestrator"),
+    "read": (("storage", "query", "guardian", "cli", "api"), "layered_dag"),
+}
+
+
+def test_plane_quotients_observed_not_enforced(
+    root_graph_data: tuple[SQLiteStore, list[Node], list[Edge]],
+) -> None:
+    """Score each plane's quotient against its template; print, never fail (spec: Drift gates).
+
+    The enforced topology gate is the forbidden-edge test in test_architecture.py.
+    These numbers are kept for the record and for #554.
+    """
+    store, _, _ = root_graph_data
+    scorer = DriftScorer(_PATTERNS)
+    binding = scorer.load_project_level()[0]
+    by_name = {d.name: d for d in _selected_domains(scorer, graph="python")}
+    nodes, edges = store.get_all_nodes(), store.get_all_edges()
+    for plane, (names, template) in _PLANES.items():
+        domains = [by_name[n] for n in names]
+        qnodes, qedges = build_quotient(nodes, edges, domains)
+        extractor = FingerprintExtractor.from_graph(
+            qnodes, qedges, quotient_call_tally(nodes, edges, domains)
+        )
+        fingerprint = extractor.extract(binding.fqn_prefix)
+        assert fingerprint.node_count == len(domains), f"{plane}: a domain matched nothing"
+        report = scorer.score(fingerprint, dataclasses.replace(binding, expected_pattern=template))
+        print(f"\n[plane observe-only] {plane} vs {template}: drift={report.drift_score:.3f}")

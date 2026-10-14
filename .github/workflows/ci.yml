@@ -162,6 +162,18 @@ jobs:
           # this exemption hides it — that is the cost, and it is the reason the
           # rule stays on for src/.
           #
+          # pythonsecurity:S8706 (connection-string injection) is the same
+          # finding at sqlite3.connect: graph_identity.py opens a database named
+          # on its own command line. `dump()` requires an existing .db/.sqlite/
+          # .sqlite3 regular file before connecting, and passes no `uri=True`, so
+          # the argument is a file name and never a connection string. Exempted
+          # for scripts/ on the S2083 reasoning above — the engine does not model
+          # the check — and kept on for src/.
+          #
+          # tests/fixtures/ is excluded outright: it holds input corpora, not
+          # code. Its package.json files exist to be parsed by cgis, and a lock
+          # file next to them (text:S8564) would be a fixture nothing reads.
+          #
           # `sonar.newCode.referenceBranch` overrides the server-side new-code
           # definition for this analysis. The instance default is
           # `previous_version` (confirmed: sonar.leak.period=previous_version,
@@ -218,13 +230,17 @@ jobs:
             -Dsonar.newCode.referenceBranch=main
             -Dsonar.sources=src,scripts,.github
             -Dsonar.tests=tests
+            -Dsonar.exclusions=tests/fixtures/**
+            -Dsonar.test.exclusions=tests/fixtures/**
             -Dsonar.python.version=3.12
             -Dsonar.python.coverage.reportPaths=coverage.xml
-            -Dsonar.issue.ignore.multicriteria=e1,e2,e3,e4
+            -Dsonar.issue.ignore.multicriteria=e1,e2,e3,e4,e5
             -Dsonar.issue.ignore.multicriteria.e1.ruleKey=pythonsecurity:S8707
             -Dsonar.issue.ignore.multicriteria.e1.resourceKey=scripts/**/*.py
             -Dsonar.issue.ignore.multicriteria.e4.ruleKey=pythonsecurity:S2083
             -Dsonar.issue.ignore.multicriteria.e4.resourceKey=scripts/**/*.py
+            -Dsonar.issue.ignore.multicriteria.e5.ruleKey=pythonsecurity:S8706
+            -Dsonar.issue.ignore.multicriteria.e5.resourceKey=scripts/**/*.py
             -Dsonar.issue.ignore.multicriteria.e2.ruleKey=githubactions:S8541
             -Dsonar.issue.ignore.multicriteria.e2.resourceKey=.github/workflows/*.yml
             -Dsonar.issue.ignore.multicriteria.e3.ruleKey=githubactions:S8544
