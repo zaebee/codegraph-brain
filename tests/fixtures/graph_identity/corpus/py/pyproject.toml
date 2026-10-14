@@ -1,0 +1,3 @@
+[project]
+name = "shop"
+dependencies = ["fastapi>=0.110", "alembic>=1.13"]
