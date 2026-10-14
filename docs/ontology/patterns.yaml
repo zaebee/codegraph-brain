@@ -139,7 +139,12 @@ project_domains:
     profile: python
     drift_tolerance: 0.40 # v2 measured ≈0.25 post-#115 split (tv_imp 0.00 — real 021C chain engine→symbols→indices; residual is tv_calls)
     hygiene_baseline:
-      unresolved_ratio: 0.45 # measured 0.4451 when the gate came alive (#149)
+      # Re-baselined 0.45 -> 0.46 in language-packs step 5 (user decision): moving
+      # resolver/uplift.py into cgis/pipeline/ took 70 calls, 28 of them unresolved
+      # (0.40), out of a domain at 0.44 — 136/309 became 108/239 = 0.452 with no
+      # unresolved edge added and the moved code unchanged. A denominator effect,
+      # not a resolution regression; 0.46 keeps the ratchet's usual small headroom.
+      unresolved_ratio: 0.46 # measured 0.4519 after step 5 (was 0.4451 at #149)
 
   - name: "pipeline"
     fqn_prefix: "cgis.pipeline"

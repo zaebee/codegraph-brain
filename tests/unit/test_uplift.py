@@ -1,4 +1,4 @@
-"""Unit tests for the SemanticUpliftEngine (src/cgis/resolver/uplift.py)."""
+"""Unit tests for the SemanticUpliftEngine (src/cgis/pipeline/uplift.py)."""
 
 from collections.abc import Generator
 from pathlib import Path
@@ -13,7 +13,7 @@ from cgis.core.models import (
     NodeNamespace,
     NodeType,
 )
-from cgis.resolver.uplift import (
+from cgis.pipeline.uplift import (
     SemanticUpliftEngine,
     _phase1_map_ontology_classes,
     _phase2_apply_heuristic_tagging,

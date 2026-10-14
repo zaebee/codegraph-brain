@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+import cgis.pipeline as pipeline_module
 from cgis.core.models import EdgeType, NodeType
 from cgis.languages.python.extractor import PythonExtractor
 from cgis.pipeline import IngestionPipeline
@@ -286,3 +287,22 @@ def test_pipeline_stamps_generated_nodes(pipeline: IngestionPipeline, tmp_path: 
     by_file = {n.id: n.is_generated for n in nodes if n.type == NodeType.CLASS}
     assert by_file["stub.Vehicle"] is True
     assert by_file["service.Service"] is False
+
+
+def test_post_write_passes_run_in_order(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Dispatch is refreshed over the stored graph, then uplift runs — after the write (#545)."""
+    (tmp_path / "a.py").write_text("class A:\n    def f(self):\n        pass\n", encoding="utf-8")
+    order: list[str] = []
+    real_refresh = pipeline_module.refresh_dispatch
+
+    def refresh(store: SQLiteStore) -> None:
+        order.append("dispatch")
+        real_refresh(store)
+
+    monkeypatch.setattr(pipeline_module, "refresh_dispatch", refresh)
+    monkeypatch.setattr(
+        pipeline_module.SemanticUpliftEngine, "execute_uplift", lambda _self: order.append("uplift")
+    )
+    with SQLiteStore(str(tmp_path / "g.db")) as store:
+        IngestionPipeline({".py": PythonExtractor()}).run(str(tmp_path), store=store)
+    assert order == ["dispatch", "uplift"]
