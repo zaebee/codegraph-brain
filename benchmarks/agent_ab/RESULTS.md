@@ -3,6 +3,29 @@
 One section per run, newest first. The raw lines are in `results.jsonl`; the
 transcripts they point at are git-ignored and stay on the machine that ran them.
 
+## 2026-10-14: does one instruction line get the agent to call cgis?
+
+cgis at 5a5c836, `cgis-instructed` — the `cgis` arm plus one appended system-prompt
+line, "query cgis first, then read source only to confirm", the nearest stand-in for
+a line in a project's CLAUDE.md. Same two impact tasks, 3 runs each, about $0.8.
+
+| task | cgis calls per run | cost per run |
+|---|---|---|
+| `cgis-impact-drift-same-name` | 0, 0, **1** | 0.184, 0.148, **0.075** |
+| `cgis-impact-transitive-tsconfig` | **1**, 0, 0 | **0.099**, 0.154, 0.153 |
+
+- **The line moves the agent a little: 2 of 6 sessions called the graph**, against 0
+  of 18 without it. Both made one call, and both were the cheapest runs of the
+  six, at the level of `cgis-forced` (0.085 / 0.091). The other four ignored the
+  line and cost more than plain `cgis` (median 0.150 against 0.126–0.138).
+- So an instruction is a coin toss weighted against the graph; the hook that refuses
+  Read/Grep/Bash until one cgis call (`cgis-forced`) is what delivers the saving
+  reliably. A project wanting the gain needs that hook, not a sentence.
+- One run is marked `contaminated` with no cgis CLI call in it: on a task in this
+  repository every path contains `cgis/`, and the guard's predicate took the agent's
+  own `grep`/`sed` over `src/cgis/...` for one. A harness false positive, kept out of
+  the medians by the report as usual.
+
 ## 2026-10-14: does a short tool menu get an unprompted agent to call cgis? (#542 item 3)
 
 cgis at dbf3de9 (the `cgis-narrow` arm of #586), Sonnet 5.5, 3 runs per arm, 0 failed,
