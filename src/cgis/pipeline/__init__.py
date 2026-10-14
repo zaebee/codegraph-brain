@@ -17,9 +17,9 @@ from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.core.paths import EXCLUDED_DIRS
 from cgis.import_names import ImportNameCollector
 from cgis.languages import cross_file_metadata, skips
+from cgis.pipeline.uplift import SemanticUpliftEngine
 from cgis.resolver.engine import ResolverEngine
 from cgis.resolver.symbols import dispatch_edges
-from cgis.resolver.uplift import SemanticUpliftEngine
 
 if TYPE_CHECKING:
     from cgis.storage.sqlite_store import SQLiteStore

@@ -3,9 +3,7 @@
  "cross-pack": {},
  "engine-packs": {},
  "pack-isolation": {},
- "resolver-storage": {
-  "cgis.resolver.uplift -> cgis.storage.sqlite_store": 8
- },
+ "resolver-storage": {},
  "surface-packs": {},
  "surface-storage": {
   "cgis.api.auto_refresh -> cgis.storage.sqlite_store": 7,
