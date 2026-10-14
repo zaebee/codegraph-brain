@@ -279,6 +279,7 @@ class SymbolResolver:
         class_fqn = local_types.get(var_name)
         if not class_fqn:
             return None
+        class_fqn = _through_annotated_alias(self.index, class_fqn)
         candidate = f"{class_fqn}.{method_name}"
         resolved = self.index.map_to_node_fqn(candidate)
         if resolved:
@@ -303,3 +304,19 @@ class SymbolResolver:
             if len(same_file) == 1:
                 return same_file[0]
         return None
+
+
+def _through_annotated_alias(index: SymbolIndex, type_fqn: str) -> str:
+    """`T` when `type_fqn` is an `Annotated[T, Depends(...)]` DI alias, else `type_fqn`.
+
+    A parameter typed `service: ServiceDep` holds a `Service`, but its recorded
+    type is the alias, which has no methods — so `service.run()` stayed
+    unresolved and impact stopped short of every FastAPI route injected that way
+    (#550). Module-level, as `_package_call`: `SymbolResolver` is at the
+    god-object threshold.
+    """
+    alias_fqn = index.map_to_node_fqn(type_fqn) or type_fqn
+    if not index.is_variable_node(alias_fqn):
+        return type_fqn
+    annotated: str | None = index.nodes[alias_fqn].metadata.get("annotated_type")
+    return annotated or type_fqn

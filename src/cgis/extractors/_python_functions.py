@@ -236,12 +236,17 @@ class FunctionHandler:
         nodes: list[Node],
         edges: list[Edge],
         module_fqn: str,
+        import_map: dict[str, str] | None = None,
     ) -> None:
         """Emit a VARIABLE alias node + DEPENDS_ON edges for module-level DI assignments.
 
         Only fires for `Name = <RHS containing Depends/Security>` with a plain
         identifier LHS at true module level (class bodies excluded by the
         caller). Plain constants never reach the node list (spec §3.2a).
+
+        An `Annotated[T, Depends(...)]` alias also records `T`'s FQN as
+        `annotated_type` (#550): a parameter typed with the alias holds a `T`,
+        and the resolver reads it to type the parameter's method calls.
         """
         left = node.child_by_field_name("left")
         right = node.child_by_field_name("right")
@@ -254,6 +259,7 @@ class FunctionHandler:
         if name == "unknown":
             return
         alias_id = f"{module_fqn}.{name}" if module_fqn else name
+        annotated = annotated_alias_type(right, code_bytes, self._types, import_map, file_path)
         nodes.append(
             Node(
                 id=alias_id,
@@ -263,6 +269,7 @@ class FunctionHandler:
                 start_line=node.start_point.row + 1,
                 end_line=node.end_point.row + 1,
                 language=PYTHON_LANG,
+                metadata={"annotated_type": annotated} if annotated else {},
             )
         )
         for call in di_calls:
@@ -492,6 +499,28 @@ def receiver_attribute_names(
             names.add(name)
         stack.extend(current.children)
     return sorted(names)
+
+
+def annotated_alias_type(
+    right: BaseNode,
+    code_bytes: bytes,
+    types: TypeResolver,
+    import_map: dict[str, str] | None,
+    file_path: str,
+) -> str | None:
+    """The FQN of `T` when `right` is `Annotated[T, ...]` (or `typing.Annotated`), #550.
+
+    Any other right-hand side — `Depends(get_user)` alone, say — names no type,
+    so the alias records none. Module-level for the same reason as
+    `emit_annotation_edges`: `FunctionHandler` sits at the god-object threshold.
+    """
+    base = right.child_by_field_name("value") if right.type == "subscript" else None
+    wrapper = get_identifier(base, code_bytes) if base is not None else ""
+    if wrapper.rsplit(".", maxsplit=1)[-1] != "Annotated":
+        return None
+    raw = code_bytes[right.start_byte : right.end_byte].decode("utf-8")
+    type_name = types.clean_python_type_string(raw)
+    return types.resolve_type_fqn(type_name, import_map, file_path) if type_name else None
 
 
 def emit_annotation_edges(

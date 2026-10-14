@@ -31,6 +31,8 @@ logger = structlog.getLogger(__name__)
 _CROSS_FILE_METADATA: dict[NodeType, tuple[str, ...]] = {
     NodeType.FILE: ("import_map", "reexports", "star_imports"),
     NodeType.CLASS: ("self_types",),
+    # Another file's parameter typed with the alias reads the type behind it (#550).
+    NodeType.VARIABLE: ("annotated_type",),
 }
 
 
