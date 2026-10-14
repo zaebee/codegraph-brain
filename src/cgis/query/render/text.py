@@ -92,7 +92,8 @@ def _reached_without_mentions(root: str, children: _Children) -> set[str]:
     reached = {root}
     stack = [root]
     while stack:
-        for _line_no, child, edge_type in children[stack.pop()]:
+        current = stack.pop()
+        for _line_no, child, edge_type in children[current]:
             if edge_type not in _MENTIONS and child not in reached:
                 reached.add(child)
                 stack.append(child)
