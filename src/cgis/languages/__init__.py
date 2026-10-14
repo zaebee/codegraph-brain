@@ -19,13 +19,13 @@ node — the silent miss #344 removed. `TestCaseSensitivity` pins the agreement.
 
 import re
 from collections.abc import Callable, Iterator, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cache, lru_cache
 from pathlib import Path, PurePosixPath
 
 from cgis.core.extractor import BaseExtractor, LanguagePack
 from cgis.core.index import IndexFacts
-from cgis.core.models import Node
+from cgis.core.models import Node, NodeType
 from cgis.core.project import ProjectReader
 
 
@@ -37,6 +37,10 @@ class Manifest:
     load: Callable[[], LanguagePack]  #: imports the pack; called once, on first use
     extensions: tuple[str, ...]  #: matched against the path suffix, dot included
     never_ingested: re.Pattern[str]  #: this language's test files the walk skips outright
+    #: Per node type, the metadata keys other files resolve against; a change to
+    #: one forces a rebuild of an incremental run. Declared here so collecting the
+    #: union imports no pack (spec, Incremental ingest).
+    cross_file_metadata: Mapping[NodeType, tuple[str, ...]] = field(default_factory=dict)
 
 
 def _python() -> LanguagePack:
@@ -57,6 +61,12 @@ MANIFESTS: tuple[Manifest, ...] = (
         load=_python,
         extensions=(".py",),
         never_ingested=re.compile(r"\.(test|spec)\.py$", re.IGNORECASE),
+        cross_file_metadata={
+            NodeType.FILE: ("import_map", "reexports", "star_imports"),
+            NodeType.CLASS: ("self_types",),
+            # Another file's parameter typed with the alias reads the type behind it (#550).
+            NodeType.VARIABLE: ("annotated_type",),
+        },
     ),
     Manifest(
         name="typescript",
@@ -134,6 +144,16 @@ def classifying_pack(source_file: str | None) -> LanguagePack | None:
     path, and a path's suffix never changes.
     """
     return _load("python") if source_file is None else pack_for_path(source_file)
+
+
+def cross_file_metadata() -> dict[NodeType, tuple[str, ...]]:
+    """The union over every manifest, keys in manifest order; imports no pack."""
+    merged: dict[NodeType, tuple[str, ...]] = {}
+    for manifest in MANIFESTS:
+        for node_type, keys in manifest.cross_file_metadata.items():
+            known = merged.get(node_type, ())
+            merged[node_type] = known + tuple(k for k in keys if k not in known)
+    return merged
 
 
 def skips(filename: str) -> bool:

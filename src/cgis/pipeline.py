@@ -16,7 +16,7 @@ from cgis.core.generated import is_generated_source
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.core.paths import EXCLUDED_DIRS
 from cgis.import_names import ImportNameCollector
-from cgis.languages import skips
+from cgis.languages import cross_file_metadata, skips
 from cgis.resolver.engine import ResolverEngine
 from cgis.resolver.symbols import dispatch_edges
 from cgis.resolver.uplift import SemanticUpliftEngine
@@ -29,12 +29,8 @@ logger = structlog.getLogger(__name__)
 #: The node metadata another file's resolution reads, by node type. Everything
 #: else a file carries (`local_types`, `shadowed_globals`, decorators) only
 #: steers the resolution of that file's own edges, which are re-resolved anyway.
-_CROSS_FILE_METADATA: dict[NodeType, tuple[str, ...]] = {
-    NodeType.FILE: ("import_map", "reexports", "star_imports"),
-    NodeType.CLASS: ("self_types",),
-    # Another file's parameter typed with the alias reads the type behind it (#550).
-    NodeType.VARIABLE: ("annotated_type",),
-}
+#: Per node type, the metadata other files resolve against — every manifest's, unioned.
+_CROSS_FILE_KEYS = cross_file_metadata()
 
 
 def refresh_dispatch(store: "SQLiteStore") -> None:
@@ -64,7 +60,7 @@ def _resolution_signature(nodes: list[Node], edges: list[Edge]) -> frozenset[str
     """
     signature: set[str] = set()
     for node in nodes:
-        keys = _CROSS_FILE_METADATA.get(node.type, ())
+        keys = _CROSS_FILE_KEYS.get(node.type, ())
         meta = {key: node.metadata.get(key) for key in keys}
         signature.add(json.dumps([node.id, node.type.value, node.name, meta], sort_keys=True))
     signature.update(
