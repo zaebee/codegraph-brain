@@ -64,6 +64,10 @@ class EdgeType(StrEnum):
 
     # Behavioral/Execution
     CALLS = "CALLS"
+    # Base-class method -> an override of it in a subclass (#545): a call through
+    # the base may run the override. Synthesized from the class hierarchy, not
+    # seen at a call site, so it is kept apart from CALLS and its metrics.
+    DISPATCHES = "DISPATCHES"
     INSTANTIATES = "INSTANTIATES"
     REFERENCES = "REFERENCES"
     USES = "USES"

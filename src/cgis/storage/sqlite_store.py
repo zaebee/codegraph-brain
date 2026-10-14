@@ -419,6 +419,37 @@ class SQLiteStore:
         row = self._conn.execute("SELECT COUNT(*) AS n FROM nodes").fetchone()
         return int(row["n"]) if row else 0
 
+    def get_edges_of_type(self, edge_type: EdgeType) -> list[Edge]:
+        """Every stored edge of one type, in insertion order."""
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        rows = self._conn.execute(
+            "SELECT * FROM edges WHERE type = ? ORDER BY rowid", (edge_type.value,)
+        ).fetchall()
+        return [self._row_to_edge(row) for row in rows]
+
+    def get_nodes_of_type(self, node_type: NodeType) -> list[Node]:
+        """Every stored node of one type."""
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        rows = self._conn.execute(
+            "SELECT * FROM nodes WHERE type = ?", (node_type.value,)
+        ).fetchall()
+        return [self._row_to_node(row) for row in rows]
+
+    def replace_edges_of_type(self, edge_type: EdgeType, edges: list[Edge]) -> None:
+        """Swap every stored edge of `edge_type` for `edges`, in one transaction.
+
+        For edges derived from the whole graph rather than from one file
+        (DISPATCHES, #545): an incremental write replaces edges file by file and
+        cannot know which derived edges a change elsewhere made stale.
+        """
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        with self._conn:
+            self._conn.execute("DELETE FROM edges WHERE type = ?", (edge_type.value,))
+            self._conn.executemany(self._EDGE_INSERT, [self._edge_to_row(e) for e in edges])
+
     def get_edge_count(self) -> int:
         """Return the total edge count via a cheap COUNT(*) (no join/aggregation)."""
         if not self._conn:
@@ -810,7 +841,12 @@ class SQLiteStore:
         return nodes, edges
 
     def get_edge_stats(self) -> EdgeStats:
-        """Return resolution statistics for all edges in the graph."""
+        """Return resolution statistics for the edges extracted from the code.
+
+        DISPATCHES edges are left out (#545): the resolver synthesizes them from
+        the class hierarchy, every one internal by construction, so counting them
+        would lower `unresolved_ratio` without a single reference resolving.
+        """
         if not self._conn:
             raise RuntimeError(self._error_message)
         row = self._conn.execute(
@@ -824,6 +860,7 @@ class SQLiteStore:
                            OR e.target GLOB ? THEN 1 END) AS unresolved
             FROM edges e
             LEFT JOIN nodes n ON e.target = n.id
+            WHERE e.type != 'DISPATCHES'
             """,
             (f"{RAW_CALL_PREFIX}*",),
         ).fetchone()

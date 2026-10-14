@@ -18,6 +18,7 @@ from cgis.core.paths import EXCLUDED_DIRS
 from cgis.extractors.base import BaseExtractor
 from cgis.import_names import ImportNameCollector
 from cgis.resolver.engine import ResolverEngine
+from cgis.resolver.symbols import dispatch_edges
 from cgis.resolver.uplift import SemanticUpliftEngine
 
 if TYPE_CHECKING:
@@ -34,6 +35,23 @@ _CROSS_FILE_METADATA: dict[NodeType, tuple[str, ...]] = {
     # Another file's parameter typed with the alias reads the type behind it (#550).
     NodeType.VARIABLE: ("annotated_type",),
 }
+
+
+def refresh_dispatch(store: "SQLiteStore") -> None:
+    """Recompute every DISPATCHES edge over the stored graph (#545).
+
+    The resolver links overrides from the EXTENDS edges it sees, and an
+    incremental run sees only changed files': unchanged files contribute nodes,
+    not edges. A body edit in a base class then deleted its outgoing DISPATCHES
+    (their source is in the changed file) with nothing to put them back, and an
+    edit below an unchanged middle class lost the link past it (found in
+    review). The stored graph holds every EXTENDS edge, so the pass runs on it.
+    """
+    inheritance: dict[str, list[str]] = {}
+    for edge in store.get_edges_of_type(EdgeType.EXTENDS):
+        inheritance.setdefault(edge.source, []).append(edge.target)
+    methods = store.get_nodes_of_type(NodeType.METHOD)
+    store.replace_edges_of_type(EdgeType.DISPATCHES, dispatch_edges(methods, inheritance))
 
 
 def _resolution_signature(nodes: list[Node], edges: list[Edge]) -> frozenset[str]:
@@ -247,6 +265,7 @@ class IngestionPipeline:
             rebuild,
         )
         import_names.record(store)
+        refresh_dispatch(store)
         logger.info("Running semantic uplift...")
         SemanticUpliftEngine(store, self._domains_config).execute_uplift()
         logger.info("Semantic uplift complete.")
