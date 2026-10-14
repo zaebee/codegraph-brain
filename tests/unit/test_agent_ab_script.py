@@ -111,6 +111,28 @@ def test_cgis_command_uses_this_checkouts_server_and_the_plugin_without_mcp_json
     assert cmd[cmd.index("--effort") + 1] == "high"
 
 
+def test_the_narrow_arm_lists_three_tools_and_is_otherwise_the_cgis_arm(tmp_path: Path) -> None:
+    narrow_servers = ab.mcp_config("cgis-narrow")["mcpServers"]
+    full_servers = ab.mcp_config("cgis")["mcpServers"]
+    assert isinstance(narrow_servers, dict)
+    assert isinstance(full_servers, dict)
+    narrow, full = narrow_servers["cgis"], full_servers["cgis"]
+
+    assert narrow["env"] == {"CGIS_MCP_TOOLS": "analyze_impact,find_symbol,trace_flow"}
+    assert "env" not in full
+    assert narrow["command"] == full["command"]
+    cmd = ab.build_command(
+        claude="claude",
+        prompt="q",
+        arm="cgis-narrow",
+        config_dir=tmp_path,
+        model="m",
+        effort=None,
+        max_budget_usd=1.0,
+    )
+    assert "--append-system-prompt" not in cmd, "narrow is unprompted, like cgis"
+
+
 def test_instructed_arm_is_the_cgis_arm_plus_one_system_prompt_line(tmp_path: Path) -> None:
     (tmp_path / "a").mkdir()
     (tmp_path / "b").mkdir()

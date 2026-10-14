@@ -74,6 +74,9 @@ class Transcript(BaseModel, frozen=True):
     cwd: str = ""
     model: str = ""
     mcp_servers: dict[str, str] = Field(default_factory=dict)
+    #: The `mcp__cgis__*` tools the session was offered — what an arm narrowing the
+    #: server's list (`cgis-narrow`) must be checked against after the run.
+    cgis_tools: list[str] = Field(default_factory=list)
     calls: list[ToolCall] = Field(default_factory=list)
     answer: str = ""
     subtype: str = ""
@@ -132,9 +135,14 @@ class _Builder:
         self.residual = 0
 
     def init(self, event: dict[str, object]) -> None:
-        """Record the session's working directory, model and MCP server states."""
+        """Record the session's working directory, model, MCP servers and cgis tools."""
         self.fields["cwd"] = str(event.get("cwd", ""))
         self.fields["model"] = str(event.get("model", ""))
+        tools = event.get("tools")
+        if isinstance(tools, list):
+            self.fields["cgis_tools"] = sorted(
+                str(t) for t in tools if str(t).startswith("mcp__cgis__")
+            )
         servers = event.get("mcp_servers")
         if isinstance(servers, list):
             self.fields["mcp_servers"] = {

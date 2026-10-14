@@ -1,5 +1,7 @@
 """Parsing headless Claude Code transcripts into A/B metrics (#543)."""
 
+import json
+
 import agent_ab_stubs as stub
 
 from cgis.bench.transcript import (
@@ -12,6 +14,16 @@ from cgis.bench.transcript import (
     run_metrics,
     sufficiency,
 )
+
+
+def test_the_cgis_tools_offered_are_read_from_the_header() -> None:
+    """What proves a narrowed arm was narrowed (#586 review)."""
+    header = stub.init(
+        tools=["Read", "mcp__cgis__cgis_find_symbol", "mcp__cgis__cgis_analyze_impact"]
+    )
+    t = parse_transcript([json.dumps(header)])
+
+    assert t.cgis_tools == ["mcp__cgis__cgis_analyze_impact", "mcp__cgis__cgis_find_symbol"]
 
 
 def test_parse_reads_session_header_calls_and_closing_totals() -> None:

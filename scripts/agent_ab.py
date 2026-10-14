@@ -52,9 +52,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from guardian_replay_skeptic import worktree_at
 
-Arm = Literal["control", "cgis", "cgis-instructed", "cgis-forced"]
-ARMS: tuple[Arm, ...] = ("control", "cgis", "cgis-instructed", "cgis-forced")
+Arm = Literal["control", "cgis", "cgis-narrow", "cgis-instructed", "cgis-forced"]
+ARMS: tuple[Arm, ...] = ("control", "cgis", "cgis-narrow", "cgis-instructed", "cgis-forced")
 _INSTRUCTED: tuple[Arm, ...] = ("cgis-instructed", "cgis-forced")
+
+#: The tools `cgis-narrow` lists (#542 item 3): the two the A/B runs found paying
+#: for themselves — multi-hop impact, and the lookup that finds an FQN to ask
+#: about — plus trace. Everything else is unlisted through `CGIS_MCP_TOOLS`.
+NARROW_TOOLS = "analyze_impact,find_symbol,trace_flow"
 
 #: Appended to the system prompt in the `cgis-instructed` arm only.
 CGIS_INSTRUCTION = (
@@ -115,10 +120,17 @@ def remove_graph_files(root: Path) -> list[Path]:
 
 
 def mcp_config(arm: Arm) -> dict[str, object]:
-    """The `--mcp-config` document: empty for control, this checkout's server for cgis."""
+    """The `--mcp-config` document: empty for control, this checkout's server for cgis.
+
+    `cgis-narrow` is the `cgis` arm with the server told to list three tools: does
+    a short menu get an unprompted agent to call the graph at all (#542)?
+    """
     if arm == "control":
         return {"mcpServers": {}}
-    return {"mcpServers": {"cgis": {"command": bin_path("cgis-mcp"), "args": []}}}
+    server: dict[str, object] = {"command": bin_path("cgis-mcp"), "args": []}
+    if arm == "cgis-narrow":
+        server["env"] = {"CGIS_MCP_TOOLS": NARROW_TOOLS}
+    return {"mcpServers": {"cgis": server}}
 
 
 def _quote(arg: str) -> str:
@@ -242,6 +254,7 @@ def results_row(
         **meta,
         "served_model": transcript.model,
         "mcp_servers": transcript.mcp_servers,
+        "cgis_tools": len(transcript.cgis_tools),
         "subtype": transcript.subtype,
         "is_error": transcript.is_error,
         "cost_usd": transcript.cost_usd,
