@@ -46,14 +46,15 @@ The pipeline runs in three phases: **Extract → Resolve → Store**.
 
 ```
 IngestionPipeline (pipeline.py)
-  ├── BaseExtractor subclasses (extractors/)   ← language-specific AST → Nodes+Edges
-  │     └── PythonExtractor                    ← only language implemented so far
+  ├── cgis.languages (registry)                ← lazy: a pack is imported when its first file is met
+  │     ├── languages/python/                  ← PythonExtractor + PACK
+  │     └── languages/typescript/              ← TypeScriptExtractor (.ts/.tsx) + PACK
   ├── ResolverEngine (resolver/engine.py)      ← raw_call: targets → resolved FQN edges
   └── SQLiteStore (storage/sqlite_store.py)    ← persists graph; WAL mode
         └── QueryEngine (query/engine.py)      ← BFS traversals (impact / flow)
 ```
 
-**Node FQN format**: `module.ClassName.method_name` — fully dot-separated, derived from the file path (e.g., `src/cgis/pipeline.py` → `src.cgis.pipeline.IngestionPipeline.run`). Use `file_path_to_module_fqn(path)` from `extractors/python_extractor.py` to convert paths. `__init__.py` strips the `/__init__` suffix.
+**Node FQN format**: `module.ClassName.method_name` — fully dot-separated, derived from the file path (e.g., `src/cgis/pipeline.py` → `src.cgis.pipeline.IngestionPipeline.run`). Use `cgis.languages.scope_of(path, source_root)` to convert paths (it picks the file's own pack; the Python rule lives in `languages/python/extractor.py`). `__init__.py` strips the `/__init__` suffix.
 
 **Raw call convention**: Extractors emit edges with `target = "raw_call:<name>"`. The `ResolverEngine` then resolves these to actual FQNs or leaves them unresolved (keeps the `raw_call:` prefix in output).
 
@@ -68,12 +69,18 @@ IngestionPipeline (pipeline.py)
 - `NodeType` — structural (`FILE`, `MODULE`, `CLASS`, `FUNCTION`, `METHOD`…), runtime (`API_ENDPOINT`, `DB_TABLE`…), semantic (`DOMAIN_CONCEPT`).
 - `EdgeType` — structural (`CONTAINS`, `DECLARES`, `IMPORTS`), behavioral (`CALLS`, `REFERENCES`), semantic (`HANDLES`, `PERSISTS`, `AUTHORIZES`).
 
-## Adding a New Language Extractor
+## Adding a Language Pack
 
-1. Subclass `BaseExtractor` in `src/cgis/extractors/`.
-2. Implement `parse(code: str, file_path: str) -> tuple[list[Node], list[Edge]]`.
-3. Emit `CALLS` edges with `target="raw_call:<name>"` — the resolver handles the rest.
-4. Register the extractor in `cli.py`'s `extractors` dict with the file extension key.
+1. Create `src/cgis/languages/<name>/` with an extractor subclassing `cgis.core.extractor.BaseExtractor`
+   (`parse(code, file_path) -> tuple[list[Node], list[Edge]]`; emit `CALLS` edges with
+   `target="raw_call:<name>"`, set `Node.language = "<name>"`).
+2. In its `__init__.py`, define `PACK`, satisfying `cgis.languages.LanguagePack`
+   (`name`, `extensions`, `code_fence`, `is_test`, `scope_of`, `extractor`).
+3. Add one `Manifest` to `MANIFESTS` in `src/cgis/languages/__init__.py`, with a `load` function that
+   imports the pack statically inside it (lazy, yet visible to the review-fingerprint walk). Nothing
+   else names the pack: CLI, MCP server, guardian and scripts all go through the registry, and the
+   `surface-packs` forbidden-edge gate fails if a surface imports a pack directly.
+4. A pack never imports another pack or `cgis.storage` (`cross-pack`, `pack-isolation` gates).
 
 ## Type Discipline
 

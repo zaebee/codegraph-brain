@@ -310,8 +310,8 @@ cgis reading refactored source.
   from step 0 on. **The Python/TS snapshot never changes, step 7 included.**
   Go gets a corpus and snapshot of its own, so the pilot cannot quietly move
   the existing languages.
-- `scripts/graph_identity.py <corpus> <db-before> <db-after>` diffs two
-  ingests. Every PR in steps 1–5 reports it in its description, for cgis
+- `scripts/graph_identity.py diff <db-a> <root-a> <db-b> <root-b>` diffs two
+  ingests (`snapshot <corpus>` records one). Every PR in steps 1–5 reports it in its description, for cgis
   `src/` at 715cd9a and owner-api @ 8de2245, with `main`'s cgis and the
   branch's cgis over the same input.
 

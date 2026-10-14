@@ -170,7 +170,9 @@ jobs:
           # for scripts/ on the S2083 reasoning above — the engine does not model
           # the check — and kept on for src/.
           #
-          # tests/fixtures/ is excluded outright: it holds input corpora, not
+          # tests/fixtures/ is excluded from test analysis
+          # (`sonar.test.exclusions`; it sits under `sonar.tests`, so
+          # `sonar.exclusions` would not reach it): it holds input corpora, not
           # code. Its package.json files exist to be parsed by cgis, and a lock
           # file next to them (text:S8564) would be a fixture nothing reads.
           #
@@ -230,7 +232,6 @@ jobs:
             -Dsonar.newCode.referenceBranch=main
             -Dsonar.sources=src,scripts,.github
             -Dsonar.tests=tests
-            -Dsonar.exclusions=tests/fixtures/**
             -Dsonar.test.exclusions=tests/fixtures/**
             -Dsonar.python.version=3.12
             -Dsonar.python.coverage.reportPaths=coverage.xml
