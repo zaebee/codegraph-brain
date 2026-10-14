@@ -3,6 +3,28 @@
 One section per run, newest first. The raw lines are in `results.jsonl`; the
 transcripts they point at are git-ignored and stay on the machine that ran them.
 
+## 2026-10-14: `cgis-flow-ingest-to-sqlite` after #581 (text format, trace budget)
+
+cgis at a1dd2b8, Sonnet 5.5, 3 runs per arm, 0 failed, 0 contaminated, about $0.6.
+
+| arm | recall | precision | median $ | trace answer |
+|---|---|---|---|---|
+| control | 1.00 | 0.94 | **0.101** | — |
+| cgis-forced, before (#579) | 1.00 | 0.52 | 0.167 | 32,637 chars of json |
+| cgis-forced, now | 1.00 | 0.58 | 0.112 | 6.3–8.9k chars of text |
+
+- **Size: fixed.** All three sessions asked for `output_format="text"` on their
+  own (the server instructions now say to), and the answer shrank about 4×.
+  Cost fell by a third, to 11% above control.
+- **Precision: not fixed.** Given every node the root reaches, the agent still
+  lists most of them (17–21 outside the key: `_compute_hash`,
+  `_is_noop_incremental`, `ResolverEngine` helpers). Control reads the code and
+  names the spine. The format no longer costs the agent; deciding which
+  branches are the main path is the part the graph does not do.
+- Two sessions first called `cgis_find_symbol(query="ingest", fqn_prefix="src.cgis")`
+  and got nothing: #568 taught `resolve_fqn` to drop a directory above the
+  graph, but `find_symbol`'s `fqn_prefix` filter was not given the same rule.
+
 ## 2026-10-14: three cgis tasks with a deep chain
 
 cgis at bc303eb, Sonnet 5.5, 3 runs per arm, 0 failed, 0 contaminated, about $2.3.
