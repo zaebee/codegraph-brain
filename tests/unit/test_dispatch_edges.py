@@ -178,3 +178,46 @@ def test_resolution_stats_leave_dispatch_edges_out(db: str) -> None:
         everything = len(store.get_all_edges())
 
     assert stats.total == everything - len(_dispatches(db))
+
+
+_HIERARCHY = {
+    "a.py": "class A:\n    def m(self):\n        return 1\n\n    def n(self):\n        return 1\n",
+    "b.py": "from a import A\n\n\nclass B(A):\n    pass\n",
+    "c.py": (
+        "from a import A\nfrom b import B\n\n\n"
+        "class C(B):\n    def m(self):\n        return 2\n\n\n"
+        "class D(A):\n    def n(self):\n        return 2\n"
+    ),
+}
+
+
+@pytest.fixture
+def hierarchy(tmp_path: Path) -> tuple[Path, str]:
+    """A → B (no m) → C.m, and A → D.n, across three files; ingested."""
+    for rel, source in _HIERARCHY.items():
+        (tmp_path / rel).write_text(source, encoding="utf-8")
+    db_path = str(tmp_path / "graph.db")
+    cgis_ingest(str(tmp_path), db_path)
+    return tmp_path, db_path
+
+
+_LINKS = {("a.A.m", "c.C.m"), ("a.A.n", "c.D.n")}
+
+
+@pytest.mark.parametrize("edited", ["a.py", "c.py"])
+def test_a_body_edit_keeps_every_dispatch_edge(hierarchy: tuple[Path, str], edited: str) -> None:
+    """A body-only edit is an incremental run that rebuilds nothing (found in review).
+
+    Editing the base file dropped both edges — their source is in it — and nothing
+    put them back. Editing `c.py` lost `A.m → C.m`, because the walk past the
+    unchanged middle class `B` needs `b.py`'s EXTENDS edge, which an incremental
+    run does not load. The pass now runs over the stored graph after each write.
+    """
+    root, db = hierarchy
+    assert set(_dispatches(db)) == _LINKS
+    path = root / edited
+    path.write_text(path.read_text(encoding="utf-8").replace("return", "return 0 +"))
+
+    cgis_ingest(str(root), db)
+
+    assert set(_dispatches(db)) == _LINKS

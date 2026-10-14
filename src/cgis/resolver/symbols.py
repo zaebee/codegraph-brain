@@ -121,7 +121,7 @@ class SymbolResolver:
             nodes, workspace_packages, tsconfig_paths, dependency_roots, npm_dependencies
         )
         # class_fqn -> [resolved parent FQNs] built from EXTENDS edges; read by the
-        # dispatch pass too (`resolver.dispatch`).
+        # DISPATCHES pass too (`dispatch_edges`, below).
         self.inheritance_tree: dict[str, list[str]] = {}
         for edge in edges:
             if edge.type == EdgeType.EXTENDS:
@@ -332,37 +332,27 @@ def _through_annotated_alias(index: SymbolIndex, type_fqn: str) -> str:
 
 # --- DISPATCHES (#545) -------------------------------------------------------
 #
-# DISPATCHES edges: a base-class method to each override of it (#545).
-#
 # A call resolves to the method its receiver's declared type has, so a call through
-# a base (`client.convert_hit_to_object()` with `client: OpenSearchClient`) lands on
-# the base method and nothing records that a subclass override may run instead.
-# Impact on the override then misses every caller that goes through the base. On
-# owner-api @ 8de2245 this pass adds 49 edges and 6 production callers to the
-# overrides' impact; on cgis itself, 10 and 4 (`BaseProvider.generate_structured`).
-# Most polymorphic calls there are on an untyped receiver (`handler.handle()` in a
-# loop) and stay unresolved — this pass cannot reach those.
+# a base lands on the base method, and nothing recorded that a subclass override may
+# run instead: impact on the override missed every caller going through the base.
+# One edge links the nearest ancestor that defines a method to each class that
+# redefines it — class hierarchy analysis, with no attempt to tell which receivers
+# can actually hold the subclass, hence a type of its own at a lower confidence.
+# Dunder methods and overrides in test code are left out.
 #
-# This pass adds one edge from the nearest ancestor that defines a method to the
-# class that redefines it: class hierarchy analysis, with no attempt to tell
-# which receivers can actually hold the subclass. That is why the edges are a
-# type of their own, at a lower confidence than a resolved call — impact and
-# trace follow them, the CALLS-based metrics do not count them.
-#
-# Left out: dunder methods (`__init__` chains through `super()`, and `__eq__` on
-# every model is no call path anyone asked about), and overrides in test code — a
-# fake repository is not where a production call dispatches to.
-#
+# Pure over methods and the inheritance tree: the resolver runs it on what it
+# extracted, and the pipeline re-runs it over the whole stored graph after every
+# write — an incremental run sees only changed files' EXTENDS (`refresh_dispatch`).
 # Module-level, beside `_package_call`: `SymbolResolver` is at the god-object
-# threshold, and a module of its own put a second import star into
-# `cgis.resolver` (self-drift 0.38 -> 0.41 against `pipeline_stage`).
+# threshold, and a module of its own moved `cgis.resolver`'s self-drift past
+# `pipeline_stage`'s tolerance.
 
 #: Below a resolved call (1.0) and an import-map hit (0.8): the receiver may never
 #: hold the subclass at all.
 DISPATCH_CONFIDENCE = 0.5
 
 
-def dispatch_edges(index: SymbolIndex, inheritance: Mapping[str, list[str]]) -> list[Edge]:
+def dispatch_edges(methods: Iterable[Node], inheritance: Mapping[str, list[str]]) -> list[Edge]:
     """One DISPATCHES edge from each overridden method to its override.
 
     The source is the nearest definition up each parent's line, so a chain of
@@ -371,21 +361,24 @@ def dispatch_edges(index: SymbolIndex, inheritance: Mapping[str, list[str]]) -> 
     parents (or a diamond) an override may get more than one edge, never the
     same one twice.
     """
+    by_class: dict[str, dict[str, Node]] = {}
+    for method in methods:
+        cls, _, name = method.id.rpartition(".")
+        by_class.setdefault(cls, {})[name] = method
     edges: dict[str, Edge] = {}
     for cls, parents in inheritance.items():
-        for name, override_fqn in index.class_methods.get(cls, {}).items():
-            override = index.nodes.get(override_fqn)
-            if override is None or override.is_test or _is_dunder(name):
+        for name, override in by_class.get(cls, {}).items():
+            if override.is_test or _is_dunder(name):
                 continue
             for parent in parents:
-                base = _defined_in_ancestry(index, inheritance, parent, name)
-                edge_id = f"dispatch:{base}->{override_fqn}"
-                if base is None or base == override_fqn or edge_id in edges:
+                base = _defined_in_ancestry(by_class, inheritance, parent, name)
+                if base is None:
                     continue
+                edge_id = f"dispatch:{base}->{override.id}"
                 edges[edge_id] = Edge(
                     id=edge_id,
                     source=base,
-                    target=override_fqn,
+                    target=override.id,
                     type=EdgeType.DISPATCHES,
                     confidence=DISPATCH_CONFIDENCE,
                     context=f"override of {base}",
@@ -396,7 +389,10 @@ def dispatch_edges(index: SymbolIndex, inheritance: Mapping[str, list[str]]) -> 
 
 
 def _defined_in_ancestry(
-    index: SymbolIndex, inheritance: Mapping[str, list[str]], cls: str, name: str
+    by_class: Mapping[str, Mapping[str, Node]],
+    inheritance: Mapping[str, list[str]],
+    cls: str,
+    name: str,
 ) -> str | None:
     """The method `name` as `cls` or its nearest ancestor defines it, depth first."""
     seen: set[str] = set()
@@ -406,9 +402,9 @@ def _defined_in_ancestry(
         if current in seen:
             continue
         seen.add(current)
-        method = index.class_methods.get(current, {}).get(name)
+        method = by_class.get(current, {}).get(name)
         if method is not None:
-            return method
+            return method.id
         stack.extend(reversed(inheritance.get(current, [])))
     return None
 

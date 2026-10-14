@@ -44,8 +44,14 @@ _GraphData = tuple[SQLiteStore, list[Node], list[Edge]]
 # drifted to 646+59 through ordinary growth, one short of its edge — and #451
 # adds 3 annotation references (ResolutionMetric and the analyzer it reads).
 # Both re-centred on the branch measurement.
-_EXPECTED_ANNOTATION_REFERENCES = 708
-_EXPECTED_NAME_REFERENCES = 214
+#
+# Re-measured 2026-10-14 on the #545 branch (fresh `cgis ingest src --source-root src`):
+# origin/main 8e0ef37 held 763 annotation / 234 name references — the annotation band
+# had drifted to 708+55 through ordinary growth — and #545 adds 12 / 4 (the
+# DISPATCHES pass's and the store's new signatures: Node, Edge, EdgeType, NodeType,
+# Mapping, SQLiteStore). Both re-centred on the branch measurement.
+_EXPECTED_ANNOTATION_REFERENCES = 775
+_EXPECTED_NAME_REFERENCES = 238
 _TOLERANCE = 60  # ~10% of the annotation band: ordinary code churn, not a lost source
 _NAME_REF_TOLERANCE = 25  # the name-reference band is smaller, so its band is too
 
