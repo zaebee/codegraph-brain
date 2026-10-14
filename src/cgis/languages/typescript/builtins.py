@@ -14,28 +14,15 @@ map the root to STDLIB without a Python module that happens to call something
 
 from cgis.core.js_globals import JS_BUILTINS_ROOT, JS_GLOBALS
 
-#: Extensions whose calls are JavaScript at runtime. Matches the extractors
-#: registered in `cgis.languages` for `.ts`/`.tsx`.
-_JS_SUFFIXES: tuple[str, ...] = (".ts", ".tsx")
 
-
-def is_js_source(file_path: str | None) -> bool:
-    """True when `file_path` is a JavaScript/TypeScript source cgis extracts."""
-    return file_path is not None and file_path.endswith(_JS_SUFFIXES)
-
-
-def js_builtin_target(
-    raw_name: str, file_path: str | None, shadowed: frozenset[str] = frozenset()
-) -> str | None:
+def js_builtin_target(raw_name: str, shadowed: frozenset[str] = frozenset()) -> str | None:
     """The `js_builtins.*` FQN for a call on a JS global, or None when it is not one.
 
-    `file_path` is the calling source's file; without it the language is unknown
-    and nothing is rewritten. `shadowed` holds the globals that file imports or
-    declares itself — `import history from './history'`, `const confirm = ...`, a
-    parameter named `process` — which are the file's own values, not the runtime's.
+    `shadowed` holds the globals the calling file imports or declares itself —
+    `import history from './history'`, `const confirm = ...`, a parameter named
+    `process` — which are the file's own values, not the runtime's.
+    Only the TypeScript pack calls this, so the source is already JavaScript.
     """
-    if not is_js_source(file_path):
-        return None
     root = raw_name.split(".", maxsplit=1)[0]
     if root not in JS_GLOBALS or root in shadowed:
         return None

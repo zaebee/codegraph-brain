@@ -20,6 +20,7 @@ from cgis.languages import (
     MANIFESTS,
     Manifest,
     classifying_pack,
+    cross_file_metadata,
     extractors,
     is_supported,
     pack_for_node,
@@ -338,3 +339,27 @@ def test_a_source_no_pack_reads_gets_the_generic_tail(source: str) -> None:
     assert index.classify_fqn("app.g", source) is NodeNamespace.INTERNAL
     assert index.classify_fqn("js_builtins.Math", source) is NodeNamespace.STDLIB
     assert index.classify_fqn("os.path", source) is NodeNamespace.UNKNOWN
+
+
+def test_cross_file_metadata_is_the_old_table() -> None:
+    """The pipeline's incremental signature reads exactly what it read before step 4."""
+    assert cross_file_metadata() == {
+        NodeType.FILE: ("import_map", "reexports", "star_imports"),
+        NodeType.CLASS: ("self_types",),
+        NodeType.VARIABLE: ("annotated_type",),
+    }
+
+
+def test_cross_file_metadata_imports_no_pack() -> None:
+    """Spec: declared in the manifest, so collecting it imports nothing."""
+    script = (
+        "import sys\n"
+        "from cgis.languages import cross_file_metadata\n"
+        "cross_file_metadata()\n"
+        "print(sorted(m for m in sys.modules if m.startswith('cgis.languages.')))\n"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, check=False
+    )
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip() == "[]"

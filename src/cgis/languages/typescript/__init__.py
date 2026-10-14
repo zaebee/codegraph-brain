@@ -9,7 +9,8 @@ from cgis.core.index import ClassifyContext, IndexFacts
 from cgis.core.models import Node, NodeNamespace
 from cgis.core.paths import is_test_path
 from cgis.core.project import ProjectReader
-from cgis.languages.typescript import index
+from cgis.core.resolution import ResolutionRules
+from cgis.languages.typescript import index, resolution
 from cgis.languages.typescript.naming import TYPESCRIPT_LANG, file_path_to_module_fqn
 from cgis.languages.typescript.project import TypeScriptProjectReader
 
@@ -56,6 +57,11 @@ class TypeScriptPack(LanguagePack):
     def classify(self, fqn: str, ctx: ClassifyContext) -> NodeNamespace:
         """See `cgis.languages.typescript.index.classify`."""
         return index.classify(fqn, ctx)
+
+    @override
+    def resolution(self) -> ResolutionRules:
+        """See `cgis.languages.typescript.resolution`."""
+        return resolution.RULES
 
 
 PACK = TypeScriptPack()

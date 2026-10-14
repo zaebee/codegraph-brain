@@ -12,7 +12,8 @@ from cgis.core.models import (
     NodeNamespace,
     NodeType,
 )
-from cgis.resolver.js_builtins import js_builtin_target
+from cgis.core.resolution import ResolutionView
+from cgis.languages import rules_for
 from cgis.resolver.symbols import SymbolResolver, dispatch_edges
 
 RAW_DEP_PREFIX = "raw_dep:"
@@ -44,6 +45,19 @@ def _agree_on_confidence(edges: list[Edge], virtual_nodes: dict[str, Node]) -> l
         else edge
         for edge in edges
     ]
+
+
+def _fallback(view: ResolutionView, name: str, file_path: str | None) -> tuple[str, float] | None:
+    """The source pack's fallback for a call nothing resolved: (target, confidence), or None.
+
+    No file means no language, so nothing is rewritten — as before step 4.
+    """
+    if not file_path:
+        return None
+    rules = rules_for(file_path)
+    if rules is None or rules.fallback is None:
+        return None
+    return rules.fallback(name, file_path, view)
 
 
 class ResolverEngine:
@@ -170,10 +184,9 @@ class ResolverEngine:
             # Fallback only: a project symbol named like a global has already won above.
             # Confidence stays at the unresolved 0.8, the value a Python builtin gets.
             file_path = self._index.normalized_file_path(edge.source, edge.file_path)
-            shadowed = self._index.file_shadowed_globals.get(file_path or "", frozenset())
-            new_target = js_builtin_target(raw_name, file_path, shadowed)
-            if new_target is not None:
-                return edge.model_copy(update={"target": new_target, "confidence": 0.8})
+            hit = _fallback(self._index, raw_name, file_path)
+            if hit is not None:
+                return edge.model_copy(update={"target": hit[0], "confidence": hit[1]})
         final_target = new_target or raw_name
         confidence = min(edge.confidence + 0.5, 1.0) if new_target else 0.8
         return edge.model_copy(update={"target": final_target, "confidence": confidence})

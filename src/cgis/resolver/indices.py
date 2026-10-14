@@ -1,39 +1,19 @@
 """Symbol indices for FQN resolution: built once by IndexBuilder, read-only after."""
 
 import os
-import posixpath
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import NamedTuple
 
 from cgis.core.index import ClassifyContext, IndexFacts
 from cgis.core.js_globals import JS_BUILTINS_ROOT
 from cgis.core.models import SELF_PREFIX, Node, NodeNamespace, NodeType
-from cgis.languages import classifying_pack
+from cgis.languages import classifying_pack, rules_for
 from cgis.languages import index_facts as pack_index_facts
 
+
 #: Sources whose references read against Python's stdlib, builtins and import roots.
-_PYTHON_SUFFIXES: tuple[str, ...] = (".py",)
 #: The suffixes the TypeScript extractor handles; `.js`/`.jsx` are not ingested (registry.py).
-_TYPESCRIPT_SUFFIXES = (".ts", ".tsx")
-#: What a declaration file's module FQN ends in: `Calendar.d.ts` -> `Calendar.d` (#507).
-_DECLARATION_SUFFIX = ".d"
-#: The wildcard of a tsconfig `paths` alias, kept in its dotted spelling (#508).
-_ALIAS_WILDCARD = "*"
-
-
-class PathAlias(NamedTuple):
-    """One tsconfig `paths` entry, dotted: `@lib.*` -> (`apps.web.lib.*`,) (#508)."""
-
-    #: The pattern without its trailing `*`: what a matching import starts with.
-    prefix: str
-    #: Whether the pattern ended in `*`; otherwise it must equal the import.
-    wildcard: bool
-    #: Target FQNs in the order TypeScript tries them; a `*` takes the remainder.
-    targets: tuple[str, ...]
-
-
 @dataclass(frozen=True)
 class SymbolIndex:
     """Immutable lookup indices over the extracted node set.
@@ -67,9 +47,6 @@ class SymbolIndex:
     file_variable_symbols: Mapping[tuple[str, str], list[str]]
     # normalized file_path -> {local_alias: target_fqn}  (from FILE node import_map)
     file_imports: Mapping[str, dict[str, str]]
-    # normalized file_path -> JS globals the file imports or declares itself
-    # (from TypeScript FILE node metadata; read by the js_builtins fallback, #111).
-    file_shadowed_globals: Mapping[str, frozenset[str]]
     # module_fqn -> {name: definer_fqn}: names a module forwards rather than defines,
     # from explicit re-exports and expanded star imports (#417).
     reexports: Mapping[str, dict[str, str]]
@@ -86,19 +63,6 @@ class SymbolIndex:
     # import maps, never guessed — kept apart from `internal_roots` so a target can
     # be reconciled by stripping *these* and nothing else (#494).
     layout_prefixes: frozenset[str] = frozenset()
-    # dotted workspace package name -> the directory FQN it lives at, longest name
-    # first: `@calcom.lib` -> `packages.lib`. Read from the `package.json` files the
-    # pipeline walked, never guessed, and consulted only for TypeScript sources
-    # (#504). Longest first because npm names may contain dots, so once `/` is
-    # dotted `a.b` is both "package a, subpath b" and "package a.b".
-    workspace_packages: Mapping[str, str] = MappingProxyType({})
-    # project directory -> its tsconfig `paths` aliases, exact patterns first and
-    # then wildcards longest prefix first — the order TypeScript picks one in.
-    # A file uses the nearest project above it (#508).
-    path_aliases: Mapping[str, tuple[PathAlias, ...]] = MappingProxyType({})
-    # normalized file_path -> {local name: package symbol FQN} for a TS file's imports:
-    # `useState` -> `react.useState`, a namespace import `Icons` -> `lucide-react`.
-    file_bare_bindings: Mapping[str, dict[str, str]] = MappingProxyType({})
 
     def resolve_import_target(self, fqn: str, source_file: str | None = None) -> str | None:
         """Reconcile a module import against the node ids, or None to leave it alone.
@@ -125,14 +89,12 @@ class SymbolIndex:
         """
         if fqn in self.nodes:
             return fqn
-        if source_file is not None and source_file.endswith(_TYPESCRIPT_SUFFIXES):
-            aliased = _alias_candidates(fqn, source_file, self.path_aliases)
-            return _resolve_typescript_import(fqn, self.nodes, self.workspace_packages, aliased)
-        if source_file is not None and not source_file.endswith(_PYTHON_SUFFIXES):
+        rules = rules_for(source_file)
+        if rules is None or rules.reconcile_import is None:
             return None
-        return self._strip_layout_prefixes(fqn)
+        return rules.reconcile_import(fqn, source_file, self)
 
-    def _strip_layout_prefixes(self, fqn: str) -> str | None:
+    def strip_layout_prefixes(self, fqn: str) -> str | None:
         """The node `fqn` names once known layout prefixes are dropped from its head.
 
         Strips one leading segment at a time, and only while each is a corroborated
@@ -220,7 +182,7 @@ class SymbolIndex:
             return candidates[0]
         if self.classify_fqn(fqn) in (NodeNamespace.EXTERNAL, NodeNamespace.STDLIB):
             return None
-        return self._strip_layout_prefixes(fqn)
+        return self.strip_layout_prefixes(fqn)
 
     def follow_reexport(self, fqn: str) -> str | None:
         """Resolve `module.name` through every forwarding hop, or None if not forwarded.
@@ -315,101 +277,16 @@ class SymbolIndex:
 _ROOT_PACKAGE = "__init__"
 
 
-def _resolve_typescript_import(
-    fqn: str,
-    nodes: Mapping[str, Node],
-    packages: Mapping[str, str],
-    aliased: tuple[str, ...] = (),
-) -> str | None:
-    """Reconcile a TypeScript import against the node ids, or None to leave it alone.
-
-    Each candidate is tried as written and then as a declaration file:
-    `packages/types/Calendar.d.ts` is the module `packages.types.Calendar.d`,
-    while code imports it with no `.d` (#507). That is the order TypeScript
-    resolves in, so an implementation beside its declaration wins. The node ids
-    are not changed instead: that would rename every declaration node in
-    existing graphs and give `foo.ts` and `foo.d.ts` one id.
-
-    The candidates are the target itself — a relative import, already made
-    absolute by the extractor — then what a tsconfig `paths` alias of the
-    importing project rewrites it to (#508), and then, for a workspace package,
-    the module it names (#504). Aliases come before packages because TypeScript
-    consults `paths` before `node_modules`, where a workspace package is linked.
-    """
-    for candidate in (fqn, *aliased, *_workspace_candidates(fqn, packages)):
-        for spelled in (candidate, f"{candidate}{_DECLARATION_SUFFIX}"):
-            if spelled in nodes:
-                return spelled
-    return None
-
-
-def _workspace_candidates(fqn: str, packages: Mapping[str, str]) -> tuple[str, ...]:
-    """The module FQNs a TypeScript import of a workspace package may name.
-
-    `@calcom.lib.hooks.useLocale` becomes `packages.lib.hooks.useLocale` when the
-    pipeline found a `package.json` named `@calcom/lib` in `packages/lib`; the
-    package root is tried before `src/`, a common layout for a package's sources.
-
-    The name must match on a segment boundary, so `@x/a` never claims
-    `@x/a-b`. The first — longest — package that matches decides: falling back
-    to a shorter one would read `a.b.util` as package `a` when package `a.b`
-    was meant. No candidates for a name the map does not hold.
-    """
-    for name, directory in packages.items():
-        if fqn != name and not fqn.startswith(name + "."):
-            continue
-        subpath = fqn[len(name) + 1 :]
-        return tuple(
-            f"{base}.{subpath}" if subpath else base for base in (directory, f"{directory}.src")
-        )
-    return ()
-
-
-def _alias_candidates(
-    fqn: str, source_file: str, scopes: Mapping[str, tuple[PathAlias, ...]]
-) -> tuple[str, ...]:
-    """The module FQNs the importing project's tsconfig `paths` rewrite `fqn` to.
-
-    The project is the nearest directory above `source_file` that has a
-    tsconfig; a nearer one without aliases shadows a farther one with them, as
-    it does for the compiler. Within it the first pattern that matches decides,
-    exact before wildcard and longer prefix before shorter — and, as in
-    TypeScript, a pattern whose targets miss does not fall back to another.
-    """
-    if not scopes:
-        return ()
-    directory = posixpath.dirname(source_file.replace(os.sep, "/"))
-    while directory not in scopes:
-        if not directory:
-            return ()
-        directory = posixpath.dirname(directory)
-    for alias in scopes[directory]:
-        if not alias.wildcard:
-            if fqn == alias.prefix:
-                return alias.targets
-            continue
-        if fqn.startswith(alias.prefix):
-            # The remainder may be empty, as in TypeScript (`jquery*` matches
-            # `jquery`): the target is then its directory, so `lib.*` -> `lib`.
-            rest = fqn[len(alias.prefix) :]
-            substituted = (
-                t.replace(_ALIAS_WILDCARD, rest).removesuffix(".") for t in alias.targets
-            )
-            return tuple(candidate for candidate in substituted if candidate)
-    return ()
-
-
-def _ordered_aliases(rules: Mapping[str, list[str]]) -> tuple[PathAlias, ...]:
-    """One project's aliases as `PathAlias`es, in the order TypeScript tries patterns."""
-    aliases = [
-        PathAlias(
-            prefix=pattern.removesuffix(_ALIAS_WILDCARD),
-            wildcard=pattern.endswith(_ALIAS_WILDCARD),
-            targets=tuple(targets),
-        )
-        for pattern, targets in rules.items()
-    ]
-    return tuple(sorted(aliases, key=lambda a: (a.wildcard, -len(a.prefix), a.prefix)))
+def _merged_reexports(facts: Mapping[str, IndexFacts]) -> dict[str, dict[str, str]]:
+    """Every pack's forwarded names; a module two packs both forward is an error."""
+    merged: dict[str, dict[str, str]] = {}
+    for pack_facts in facts.values():
+        for module_fqn, names in pack_facts.reexports.items():
+            if module_fqn in merged:
+                msg = f"two packs forward names from {module_fqn}"
+                raise ValueError(msg)
+            merged[module_fqn] = dict(names)
+    return merged
 
 
 class IndexBuilder:
@@ -444,10 +321,6 @@ class IndexBuilder:
         variable_symbols: dict[str, list[str]] = {}
         file_variable_symbols: dict[tuple[str, str], list[str]] = {}
         file_imports: dict[str, dict[str, str]] = {}
-        file_shadowed_globals: dict[str, frozenset[str]] = {}
-        file_bare_bindings: dict[str, dict[str, str]] = {}
-        reexports: dict[str, dict[str, str]] = {}
-        star_imports: dict[str, list[str]] = {}
         suffix_map: dict[str, list[str]] = {}
         internal_roots: set[str] = set()
 
@@ -457,14 +330,7 @@ class IndexBuilder:
                 node,
                 file_imports,
                 self_types,
-                reexports,
-                star_imports,
-                file_bare_bindings,
             )
-            if node.type == NodeType.FILE and node.metadata.get("shadowed_globals"):
-                file_shadowed_globals[os.path.normpath(node.file_path)] = frozenset(
-                    node.metadata["shadowed_globals"]
-                )
 
             # Index global functions/symbols
             if node.type in (NodeType.FUNCTION, NodeType.CLASS):
@@ -487,11 +353,13 @@ class IndexBuilder:
         state = {
             "python_dependencies": list(dependency_roots),
             "npm_dependencies": list(npm_dependencies),
+            "workspace_packages": dict(workspace_packages or {}),
+            "tsconfig_paths": dict(tsconfig_paths or {}),
         }
         facts = pack_index_facts(MappingProxyType(nodes_by_id), state)
         roots = frozenset(internal_roots.union(*(f.internal_roots for f in facts.values())))
         prefixes = frozenset[str]().union(*(f.layout_prefixes for f in facts.values()))
-        self._expand_star_imports(star_imports, reexports, set(nodes_by_id))
+        reexports = _merged_reexports(facts)
 
         # Read-only views, not copies: MappingProxyType wraps in O(1), so this
         # buys write protection without touching ingest cost (#183).
@@ -504,139 +372,30 @@ class IndexBuilder:
             variable_symbols=MappingProxyType(variable_symbols),
             file_variable_symbols=MappingProxyType(file_variable_symbols),
             file_imports=MappingProxyType(file_imports),
-            file_shadowed_globals=MappingProxyType(file_shadowed_globals),
             reexports=MappingProxyType(reexports),
             suffix_map=MappingProxyType(suffix_map),
             internal_roots=roots,
             layout_prefixes=prefixes,
             facts=MappingProxyType(facts),
-            workspace_packages=MappingProxyType(
-                dict(sorted((workspace_packages or {}).items(), key=lambda item: -len(item[0])))
-            ),
-            path_aliases=MappingProxyType(
-                {scope: _ordered_aliases(rules) for scope, rules in (tsconfig_paths or {}).items()}
-            ),
-            file_bare_bindings=MappingProxyType(file_bare_bindings),
         )
-
-    @staticmethod
-    def _public_names_under(module_fqn: str, node_ids: set[str]) -> dict[str, str]:
-        """The symbols `from <module_fqn> import *` would bring in directly.
-
-        Only names defined immediately under the module: a dotted remainder is a
-        symbol inside one of its children, and a leading underscore is private —
-        `import *` takes neither.
-
-        The module is tried verbatim and then with leading segments stripped. A
-        star import written absolutely (`from app.tests.fixtures import *`)
-        records the path as the author typed it, while node ids are
-        `tests.fixtures` when the project was ingested at app/ — the same prefix
-        mismatch that made the first version of this feature resolve nothing, and
-        it reaches the star sources as well as the map keys.
-        """
-        parts = module_fqn.split(".")
-        for i in range(len(parts)):
-            prefix = ".".join(parts[i:]) + "."
-            names: dict[str, str] = {}
-            for node_id in node_ids:
-                if not node_id.startswith(prefix):
-                    continue
-                name = node_id[len(prefix) :]
-                if "." not in name and not name.startswith("_"):
-                    names.setdefault(name, node_id)
-            if names:
-                return names
-        return {}
-
-    @staticmethod
-    def _close_over_sources(
-        by_module: dict[str, dict[str, str]],
-        star_imports: dict[str, list[str]],
-        reexports: dict[str, dict[str, str]],
-    ) -> None:
-        """Pull each source's own forwarded names in, repeatedly, until stable.
-
-        A star import of a package that itself re-exports needs those names too:
-        `app/__init__` starring `app.models`, which stars `app.models.rating`,
-        must reach Rating. Repeating terminates because names are only ever
-        added, never removed.
-        """
-        changed = True
-        while changed:
-            changed = False
-            for module_fqn, sources in star_imports.items():
-                target = by_module[module_fqn]
-                for source in sources:
-                    inherited = {**reexports.get(source, {}), **by_module.get(source, {})}
-                    for name, definer in inherited.items():
-                        if name not in target:
-                            target[name] = definer
-                            changed = True
-
-    @classmethod
-    def _expand_star_imports(
-        cls,
-        star_imports: dict[str, list[str]],
-        reexports: dict[str, dict[str, str]],
-        node_ids: set[str],
-    ) -> None:
-        """Turn `from X import *` into the names X actually exports.
-
-        The extractor cannot do this: it sees one file, and the names belong to
-        the *exporting* module. Here every node is known.
-
-        `__all__` is not read. Where a module has one, the difference is a module
-        deliberately hiding a public name — rare, and the extra entry is inert:
-        it only ever fires if some file actually imports that name.
-
-        An explicit re-export already recorded wins over a starred one: a module
-        that both stars a submodule and names a symbol explicitly meant the
-        explicit one.
-        """
-        by_module = {
-            module_fqn: {
-                name: definer
-                for source in sources
-                for name, definer in cls._public_names_under(source, node_ids).items()
-            }
-            for module_fqn, sources in star_imports.items()
-        }
-        cls._close_over_sources(by_module, star_imports, reexports)
-        for module_fqn, names in by_module.items():
-            if not names:
-                continue
-            existing = reexports.setdefault(module_fqn, {})
-            for name, definer in names.items():
-                existing.setdefault(name, definer)
 
     @staticmethod
     def _index_metadata(
         node: Node,
         file_imports: dict[str, dict[str, str]],
         self_types: dict[str, dict[str, str]],
-        reexports: dict[str, dict[str, str]],
-        star_imports: dict[str, list[str]],
-        bare_bindings: dict[str, dict[str, str]],
     ) -> None:
         """Read the maps the extractor attached to a FILE or CLASS node.
 
-        A FILE carries its import map, and a TypeScript one its bare imports and
-        their bindings (#556); a CLASS carries the attribute types recorded from
-        annotations (spec D1). All are extractor output the resolver consumes
-        rather than anything derived here.
+        A FILE carries its import map; a CLASS the attribute types recorded from
+        annotations (spec D1). Re-exports and star imports are the Python pack's,
+        and a TypeScript FILE's bare imports and bindings the TypeScript pack's,
+        index facts (step 4).
+        All are extractor output the resolver consumes rather than derives.
         """
         if node.type == NodeType.FILE:
             path = os.path.normpath(node.file_path)
             file_imports[path] = node.metadata.get("import_map") or {}
-            specifiers = node.metadata.get("bare_imports")
-            if specifiers:
-                bare_bindings[path] = dict(node.metadata.get("bare_bindings") or {})
-            forwarded = node.metadata.get("reexports")
-            if forwarded:
-                reexports[node.id] = dict(forwarded)
-            wildcards = node.metadata.get("star_imports")
-            if wildcards:
-                star_imports[node.id] = list(wildcards)
         elif node.type == NodeType.CLASS:
             declared = node.metadata.get("self_types")
             if declared:

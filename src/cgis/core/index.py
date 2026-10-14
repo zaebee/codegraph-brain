@@ -21,6 +21,11 @@ class IndexFacts(Protocol):
         ...
 
     @property
+    def reexports(self) -> Mapping[str, Mapping[str, str]]:
+        """module_fqn -> {name: definer_fqn}: the names a module forwards (#417)."""
+        ...
+
+    @property
     def layout_prefixes(self) -> frozenset[str]:
         """Prefixes sources write that node ids do not carry (#494): stripped off a target."""
         ...

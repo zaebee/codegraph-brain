@@ -263,6 +263,25 @@ The generic chain, with today's positions of language logic:
 `reconcile_import` takes the language-split half of `resolve_import_target`
 (indices.py:141–146). Step 4 of the migration extracts these one at a time.
 
+> **Implementation note (step 4):** the contract is `cgis.core.resolution` —
+> `ResolutionRules` (normalizers, steps at validated positions, a fallback
+> returning `(target, confidence)`, `reconcile_import`) and `ResolutionView`, the
+> protocol a rule reads the index through, so packs never import the resolver
+> (ruling D4). `layout_prefixes`, `reexports` and `suffix_map` stay generic on
+> `SymbolIndex` — `map_to_node_fqn`/`follow_reexport` serve every language; the
+> packs compute `layout_prefixes` and `reexports` (Python's star expansion), while
+> `suffix_map` is still built generically. Only the TS-only facts left it (D1). Every pack's type
+> normalizers apply, in manifest order, because `receiver_type_fqn` has no source
+> (D2). The `engine-packs` allowlist is empty: `cgis.resolver` imports no language
+> pack. Some language knowledge remains in its text, for step 5 to weigh: the
+> Python `__init__` root rule inside `strip_layout_prefixes` (reached from the
+> generic `resolve_layout`), the JS-builtins root in `classify_fqn`'s generic tail,
+> and `_is_dunder` in DISPATCHES.
+> The owner-api ingest moved +2.2% (median of three). One measured lesson: typing
+> an engine helper with `SymbolIndex` instead of `ResolutionView` added an
+> engine→indices import that turned the domain's chain into a triangle and its
+> self-drift from 0.38 to 0.59; through the protocol it is 0.18.
+
 **Incremental ingest.** `cross_file_metadata` lists, per node type, the
 metadata keys other files resolve against. It is declared in the pack's
 registry manifest, not read from the pack module, so collecting it imports

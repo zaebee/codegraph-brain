@@ -76,7 +76,10 @@ IngestionPipeline (pipeline.py)
    `target="raw_call:<name>"`, set `Node.language = "<name>"`).
 2. In its `__init__.py`, define `PACK`, subclassing `cgis.core.extractor.LanguagePack` (mark methods `@override`)
    (`name`, `extensions`, `code_fence`, `is_test`, `scope_of`, `extractor`, `project_reader`,
-   `index_facts`, `classify`). `classify` answers for references from the pack's own files and
+   `index_facts`, `classify`, `resolution`). `resolution()` returns `ResolutionRules`
+   (`cgis.core.resolution`): type normalizers, steps at a position (`after:import_map`), a
+   fallback with its confidence, `reconcile_import` — all reading the index as `ResolutionView`.
+   Metadata other files resolve against goes in the manifest's `cross_file_metadata`. `classify` answers for references from the pack's own files and
    runs the whole chain; a source with no pack gets the generic tail in `SymbolIndex.classify_fqn`.
 3. Add one `Manifest` to `MANIFESTS` in `src/cgis/languages/__init__.py`, with a `load` function that
    imports the pack statically inside it (lazy, yet visible to the review-fingerprint walk). Nothing
