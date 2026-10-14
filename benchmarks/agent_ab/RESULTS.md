@@ -3,6 +3,33 @@
 One section per run, newest first. The raw lines are in `results.jsonl`; the
 transcripts they point at are git-ignored and stay on the machine that ran them.
 
+## 2026-10-14: `owner-impact-occupied-window-same-name`, a task no fix was tuned on
+
+cgis at 827143e (after #551, #568, #550, #545), Sonnet 5.5, 0 contaminated. The
+three fixes before this were all found in `credit_wallet` transcripts and measured
+there; this task checks whether the gain carries to a question they never saw.
+
+| arm | runs | recall | precision | median $ | median tool calls | cgis calls per run |
+|---|---|---|---|---|---|---|
+| control | 3 | 1.00 | 1.00 | **0.130** | 2 | — |
+| cgis | 3 | 1.00 | 1.00 | 0.145 | 4 | 0, 0, 0 |
+| cgis-forced | 2 | 1.00 | 1.00 | 0.135 | 3.5 | 2, 1 |
+
+- **It does not carry.** On "list the direct callers", with a same-named
+  function in another module as the trap, control answered with one grep and
+  one look at the imports, and was the cheapest arm. The graph names the four
+  callers exactly (`impact depth=1`, 2.5k characters), but there is nothing
+  for it to save on a one-hop question that grep plus the imports already
+  answer.
+- The `credit_wallet` gain came from a deep transitive chain through DI. That
+  is where the graph pays, so the question for #542's default tool set is
+  which kinds of question agents ask, not whether cgis is cheaper in general.
+- `cgis` made no graph call again: 0 in 6 sessions across the two tasks.
+- `cgis-forced` has 2 runs, not 3. The host ran out of memory, and earlyoom
+  sent SIGTERM to the third session's `cgis ingest`, which aborted the runner
+  twice. Not a cgis failure. The runner stops at the first failed ingest
+  instead of recording it and going on.
+
 ## 2026-10-14: `owner-impact-credit-wallet`, after #568 and #550
 
 cgis at fc33b20, Sonnet 5.5, 3 runs per arm, 0 contaminated, about $1.5 in total.
