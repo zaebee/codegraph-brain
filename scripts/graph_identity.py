@@ -9,11 +9,17 @@ temp directories.
 
 import argparse
 import json
+import shutil
 import sqlite3
 import sys
+import tempfile
 from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
+
+from cgis.extractors.registry import build_extractors
+from cgis.pipeline import IngestionPipeline
+from cgis.storage.sqlite_store import SQLiteStore
 
 _NODE_COLUMNS = (
     "id", "type", "name", "file_path", "start_line", "end_line", "language",
@@ -24,6 +30,11 @@ _EDGE_COLUMNS = (
     "file_path", "line_number", "type_only",
 )  # fmt: skip
 _VOLATILE_STATE = frozenset({"ingested_at"})
+
+#: The corpus roots a snapshot ingests, by name. `sub` reads configs above its
+#: root (#555); `py_src` is the src layout, where the local `alembic` package
+#: meets the declared `alembic` dependency.
+SNAPSHOT_ROOTS: dict[str, str] = {"whole": ".", "sub": "ts/apps/web/src", "py_src": "py/src"}
 
 
 def _normalise(value: object, root: str) -> object:
@@ -93,14 +104,52 @@ def diff(before: Mapping[str, object], after: Mapping[str, object]) -> list[str]
     return lines
 
 
+def _ingest(root: Path, db: Path) -> None:
+    """One full ingest of `root` into `db`, as `cgis ingest` does it, ingest state included."""
+    with SQLiteStore(str(db)) as store:
+        pipeline = IngestionPipeline(build_extractors([]))
+        pipeline.run(str(root), store=store)
+        store.record_ingest(str(root), pipeline.observed_mtimes)
+        store.record_ingest_options([], None)
+
+
+def snapshot(corpus: Path) -> dict[str, object]:
+    """Every snapshot root, ingested from a temp copy of `corpus` with a `.git` marker.
+
+    The copy keeps the checked-in corpus free of `.git` (which git cannot hold)
+    and makes the repository boundary of the upward config search (#555) the
+    corpus itself, wherever the tests run.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        copy = Path(tmp) / "corpus"
+        shutil.copytree(corpus, copy)
+        (copy / ".git").mkdir()
+        dumps: dict[str, object] = {}
+        for name, relative in SNAPSHOT_ROOTS.items():
+            db = Path(tmp) / f"{name}.db"
+            _ingest(copy / relative, db)
+            dumps[name] = dump(db, copy)
+        return dumps
+
+
 def main(argv: list[str] | None = None) -> int:
-    """`diff <db-a> <root-a> <db-b> <root-b>`: exit 1 and print when the graphs differ."""
+    """`diff` two stored graphs (exit 1 when they differ), or `snapshot` the corpus."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
     d = sub.add_parser("diff")
     for name in ("db_a", "root_a", "db_b", "root_b"):
         d.add_argument(name, type=Path)
+    s = sub.add_parser("snapshot")
+    s.add_argument("corpus", type=Path)
+    s.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
+    if args.command == "snapshot":
+        text = json.dumps(snapshot(args.corpus), indent=1, sort_keys=True, ensure_ascii=False)
+        if args.out:
+            args.out.write_text(text + "\n", encoding="utf-8")
+        else:
+            print(text)
+        return 0
     lines = diff(dump(args.db_a, args.root_a), dump(args.db_b, args.root_b))
     print("\n".join(lines) if lines else "identical")
     return 1 if lines else 0

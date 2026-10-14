@@ -1,0 +1,2671 @@
+{
+ "py_src": {
+  "edges": [
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "alembic/env.py",
+    "id": "alembic.env:structural:alembic.env.run_migrations",
+    "line_number": null,
+    "source": "alembic.env",
+    "target": "alembic.env.run_migrations",
+    "type": "CONTAINS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 0.5,
+    "context": "override of shop.repo.Repo.save",
+    "file_path": "shop/repo.py",
+    "id": "dispatch:shop.repo.Repo.save->shop.repo.SqlRepo.save",
+    "line_number": 10,
+    "source": "shop.repo.Repo.save",
+    "target": "shop.repo.SqlRepo.save",
+    "type": "DISPATCHES",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "shop/deps.py",
+    "id": "shop.deps:imports:fastapi",
+    "line_number": null,
+    "source": "shop.deps",
+    "target": "fastapi",
+    "type": "IMPORTS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "shop/deps.py",
+    "id": "shop.deps:imports:shop.repo",
+    "line_number": null,
+    "source": "shop.deps",
+    "target": "shop.repo",
+    "type": "IMPORTS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "shop/deps.py",
+    "id": "shop.deps:imports:typing",
+    "line_number": null,
+    "source": "shop.deps",
+    "target": "typing",
+    "type": "IMPORTS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "shop/deps.py",
+    "id": "shop.deps:imports_symbol:shop.repo.Repo",
+    "line_number": null,
+    "source": "shop.deps",
+    "target": "shop.repo.Repo",
+    "type": "IMPORTS_SYMBOL",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "shop/deps.py",
+    "id": "shop.deps:imports_symbol:shop.repo.SqlRepo",
+    "line_number": null,
+    "source": "shop.deps",
+    "target": "shop.repo.SqlRepo",
+    "type": "IMPORTS_SYMBOL",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "shop/deps.py",
+    "id": "shop.deps:structural:shop.deps.get_repo",
+    "line_number": null,
+    "source": "shop.deps",
+    "target": "shop.deps.get_repo",
+    "type": "CONTAINS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "shop/repo.py",
+    "id": "shop.repo.Repo.save:decorator:0:abstractmethod",
+    "line_number": null,
+    "source": "shop.repo.Repo.save",
+    "target": "abc.abstractmethod",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "shop/repo.py",
+    "id": "shop.repo.Repo:extends:ABC",
+    "line_number": null,
+    "source": "shop.repo.Repo",
+    "target": "abc.ABC",
+    "type": "EXTENDS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "shop/repo.py",
+    "id": "shop.repo.Repo:structural:shop.repo.Repo.save",
+    "line_number": null,
+    "source": "shop.repo.Repo",
+    "target": "shop.repo.Repo.save",
+    "type": "DECLARES",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "shop/repo.py",
+    "id": "shop.repo.SqlRepo:extends:Repo",
+    "line_number": null,
+    "source": "shop.repo.SqlRepo",
+    "target": "shop.repo.Repo",
+    "type": "EXTENDS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "shop/repo.py",
+    "id": "shop.repo.SqlRepo:structural:shop.repo.SqlRepo.save",
+    "line_number": null,
+    "source": "shop.repo.SqlRepo",
+    "target": "shop.repo.SqlRepo.save",
+    "type": "DECLARES",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "shop/repo.py",
+    "id": "shop.repo:imports:abc",
+    "line_number": null,
+    "source": "shop.repo",
+    "target": "abc",
+    "type": "IMPORTS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "shop/repo.py",
+    "id": "shop.repo:structural:shop.repo.Repo",
+    "line_number": null,
+    "source": "shop.repo",
+    "target": "shop.repo.Repo",
+    "type": "CONTAINS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "shop/repo.py",
+    "id": "shop.repo:structural:shop.repo.SqlRepo",
+    "line_number": null,
+    "source": "shop.repo",
+    "target": "shop.repo.SqlRepo",
+    "type": "CONTAINS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "shop/service.py",
+    "id": "shop.service.OrderService:structural:shop.service.OrderService.__init__",
+    "line_number": null,
+    "source": "shop.service.OrderService",
+    "target": "shop.service.OrderService.__init__",
+    "type": "DECLARES",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "shop/service.py",
+    "id": "shop.service.OrderService:structural:shop.service.OrderService.place",
+    "line_number": null,
+    "source": "shop.service.OrderService",
+    "target": "shop.service.OrderService.place",
+    "type": "DECLARES",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "shop/service.py",
+    "id": "shop.service:imports:shop.deps",
+    "line_number": null,
+    "source": "shop.service",
+    "target": "shop.deps",
+    "type": "IMPORTS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "shop/service.py",
+    "id": "shop.service:imports:shop.repo",
+    "line_number": null,
+    "source": "shop.service",
+    "target": "shop.repo",
+    "type": "IMPORTS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "shop/service.py",
+    "id": "shop.service:imports_symbol:shop.deps.RepoDep",
+    "line_number": null,
+    "source": "shop.service",
+    "target": "shop.deps.RepoDep",
+    "type": "IMPORTS_SYMBOL",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "shop/service.py",
+    "id": "shop.service:imports_symbol:shop.repo.Repo",
+    "line_number": null,
+    "source": "shop.service",
+    "target": "shop.repo.Repo",
+    "type": "IMPORTS_SYMBOL",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "shop/service.py",
+    "id": "shop.service:structural:shop.service.OrderService",
+    "line_number": null,
+    "source": "shop.service",
+    "target": "shop.service.OrderService",
+    "type": "CONTAINS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "shop/service.py",
+    "id": "shop.service:structural:shop.service.place",
+    "line_number": null,
+    "source": "shop.service",
+    "target": "shop.service.place",
+    "type": "CONTAINS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": "DI alias for get_repo",
+    "file_path": "shop/deps.py",
+    "id": "shop/deps.py:dep_166_183",
+    "line_number": 12,
+    "source": "shop.deps.RepoDep",
+    "target": "shop.deps.get_repo",
+    "type": "DEPENDS_ON",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": "Call to SqlRepo",
+    "file_path": "shop/deps.py",
+    "id": "shop/deps.py:edge_128_137",
+    "line_number": 9,
+    "source": "shop.deps.get_repo",
+    "target": "shop.repo.SqlRepo",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": "Call to Depends",
+    "file_path": "shop/deps.py",
+    "id": "shop/deps.py:edge_166_183",
+    "line_number": 12,
+    "source": "shop.deps",
+    "target": "fastapi.Depends",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": "Name reference candidate Repo",
+    "file_path": "shop/deps.py",
+    "id": "shop/deps.py:nameref_shop.deps|Repo",
+    "line_number": 12,
+    "source": "shop.deps",
+    "target": "shop.repo.Repo",
+    "type": "REFERENCES",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": "Annotation candidate Repo",
+    "file_path": "shop/deps.py",
+    "id": "shop/deps.py:rawdep_111_115_Repo",
+    "line_number": 8,
+    "source": "shop.deps.get_repo",
+    "target": "shop.repo.Repo",
+    "type": "REFERENCES",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 0.8,
+    "context": "Call to print",
+    "file_path": "shop/repo.py",
+    "id": "shop/repo.py:edge_188_199",
+    "line_number": 11,
+    "source": "shop.repo.SqlRepo.save",
+    "target": "print",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": "Name reference candidate Repo",
+    "file_path": "shop/repo.py",
+    "id": "shop/repo.py:nameref_shop.repo.SqlRepo|Repo",
+    "line_number": 9,
+    "source": "shop.repo.SqlRepo",
+    "target": "shop.repo.Repo",
+    "type": "REFERENCES",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": "Call to self.repo.save",
+    "file_path": "shop/service.py",
+    "id": "shop/service.py:edge_229_249",
+    "line_number": 12,
+    "source": "shop.service.OrderService.place",
+    "target": "shop.repo.Repo.save",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": "Call to repo.save",
+    "file_path": "shop/service.py",
+    "id": "shop/service.py:edge_298_313",
+    "line_number": 16,
+    "source": "shop.service.place",
+    "target": "shop.repo.Repo.save",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": "Annotation candidate RepoDep",
+    "file_path": "shop/service.py",
+    "id": "shop/service.py:rawdep_137_144_RepoDep",
+    "line_number": 8,
+    "source": "shop.service.OrderService.__init__",
+    "target": "shop.deps.RepoDep",
+    "type": "DEPENDS_ON",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": "Annotation candidate Repo",
+    "file_path": "shop/service.py",
+    "id": "shop/service.py:rawdep_268_272_Repo",
+    "line_number": 15,
+    "source": "shop.service.place",
+    "target": "shop.repo.Repo",
+    "type": "REFERENCES",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "shop/__init__.py",
+    "id": "shop:imports:shop.service",
+    "line_number": null,
+    "source": "shop",
+    "target": "shop.service",
+    "type": "IMPORTS",
+    "type_only": 0,
+    "weight": 1.0
+   }
+  ],
+  "ingest_state": {
+   "ingest_options": {
+    "domains": null,
+    "source_roots": []
+   },
+   "npm_dependencies": [],
+   "python_dependencies": [
+    "alembic",
+    "fastapi"
+   ],
+   "root": "<ROOT>/py/src",
+   "tsconfig_paths": {},
+   "workspace_packages": {}
+  },
+  "nodes": [
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "abc",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "abc",
+    "namespace": "STDLIB",
+    "start_line": 0,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "abc.ABC",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "ABC",
+    "namespace": "STDLIB",
+    "start_line": 0,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "abc.abstractmethod",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "abstractmethod",
+    "namespace": "STDLIB",
+    "start_line": 0,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 3,
+    "file_path": "alembic/env.py",
+    "id": "alembic.env",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {
+     "import_map": {},
+     "reexports": {},
+     "star_imports": []
+    },
+    "name": "env.py",
+    "namespace": "INTERNAL",
+    "start_line": 1,
+    "type": "FILE"
+   },
+   {
+    "end_line": 2,
+    "file_path": "alembic/env.py",
+    "id": "alembic.env.run_migrations",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "run_migrations",
+    "namespace": "INTERNAL",
+    "start_line": 1,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "fastapi",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "fastapi",
+    "namespace": "EXTERNAL",
+    "start_line": 0,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "fastapi.Depends",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "Depends",
+    "namespace": "EXTERNAL",
+    "start_line": 0,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "print",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "print",
+    "namespace": "STDLIB",
+    "start_line": 0,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 2,
+    "file_path": "shop/__init__.py",
+    "id": "shop",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {
+     "import_map": {},
+     "reexports": {},
+     "star_imports": [
+      "shop.service"
+     ]
+    },
+    "name": "__init__.py",
+    "namespace": "INTERNAL",
+    "start_line": 1,
+    "type": "FILE"
+   },
+   {
+    "end_line": 13,
+    "file_path": "shop/deps.py",
+    "id": "shop.deps",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {
+     "import_map": {
+      "Annotated": "typing.Annotated",
+      "Depends": "fastapi.Depends",
+      "Repo": "shop.repo.Repo",
+      "SqlRepo": "shop.repo.SqlRepo"
+     },
+     "reexports": {},
+     "star_imports": []
+    },
+    "name": "deps.py",
+    "namespace": "INTERNAL",
+    "start_line": 1,
+    "type": "FILE"
+   },
+   {
+    "end_line": 12,
+    "file_path": "shop/deps.py",
+    "id": "shop.deps.RepoDep",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {
+     "annotated_type": "shop.repo.Repo"
+    },
+    "name": "RepoDep",
+    "namespace": "INTERNAL",
+    "start_line": 12,
+    "type": "VARIABLE"
+   },
+   {
+    "end_line": 9,
+    "file_path": "shop/deps.py",
+    "id": "shop.deps.get_repo",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "get_repo",
+    "namespace": "INTERNAL",
+    "start_line": 8,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 12,
+    "file_path": "shop/repo.py",
+    "id": "shop.repo",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {
+     "import_map": {
+      "ABC": "abc.ABC",
+      "abstractmethod": "abc.abstractmethod"
+     },
+     "reexports": {},
+     "star_imports": []
+    },
+    "name": "repo.py",
+    "namespace": "INTERNAL",
+    "start_line": 1,
+    "type": "FILE"
+   },
+   {
+    "end_line": 6,
+    "file_path": "shop/repo.py",
+    "id": "shop.repo.Repo",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {
+     "is_abstract": true
+    },
+    "name": "Repo",
+    "namespace": "INTERNAL",
+    "start_line": 4,
+    "type": "CLASS"
+   },
+   {
+    "end_line": 6,
+    "file_path": "shop/repo.py",
+    "id": "shop.repo.Repo.save",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {
+     "decorators": [
+      "abstractmethod"
+     ],
+     "is_abstract": true,
+     "local_types": {
+      "item": "shop.repo.str"
+     },
+     "self_attrs": []
+    },
+    "name": "save",
+    "namespace": "INTERNAL",
+    "start_line": 6,
+    "type": "METHOD"
+   },
+   {
+    "end_line": 11,
+    "file_path": "shop/repo.py",
+    "id": "shop.repo.SqlRepo",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "SqlRepo",
+    "namespace": "INTERNAL",
+    "start_line": 9,
+    "type": "CLASS"
+   },
+   {
+    "end_line": 11,
+    "file_path": "shop/repo.py",
+    "id": "shop.repo.SqlRepo.save",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {
+     "local_types": {
+      "item": "shop.repo.str"
+     },
+     "self_attrs": []
+    },
+    "name": "save",
+    "namespace": "INTERNAL",
+    "start_line": 10,
+    "type": "METHOD"
+   },
+   {
+    "end_line": 17,
+    "file_path": "shop/service.py",
+    "id": "shop.service",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {
+     "import_map": {
+      "Repo": "shop.repo.Repo",
+      "RepoDep": "shop.deps.RepoDep"
+     },
+     "reexports": {},
+     "star_imports": []
+    },
+    "name": "service.py",
+    "namespace": "INTERNAL",
+    "start_line": 1,
+    "type": "FILE"
+   },
+   {
+    "end_line": 12,
+    "file_path": "shop/service.py",
+    "id": "shop.service.OrderService",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {
+     "self_types": {
+      "repo": "shop.deps.RepoDep"
+     }
+    },
+    "name": "OrderService",
+    "namespace": "INTERNAL",
+    "start_line": 7,
+    "type": "CLASS"
+   },
+   {
+    "end_line": 9,
+    "file_path": "shop/service.py",
+    "id": "shop.service.OrderService.__init__",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {
+     "local_types": {
+      "repo": "shop.deps.RepoDep"
+     },
+     "self_attrs": [
+      "repo"
+     ]
+    },
+    "name": "__init__",
+    "namespace": "INTERNAL",
+    "start_line": 8,
+    "type": "METHOD"
+   },
+   {
+    "end_line": 12,
+    "file_path": "shop/service.py",
+    "id": "shop.service.OrderService.place",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {
+     "local_types": {
+      "item": "shop.service.str"
+     },
+     "self_attrs": [
+      "repo"
+     ]
+    },
+    "name": "place",
+    "namespace": "INTERNAL",
+    "start_line": 11,
+    "type": "METHOD"
+   },
+   {
+    "end_line": 16,
+    "file_path": "shop/service.py",
+    "id": "shop.service.place",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {
+     "local_types": {
+      "item": "shop.service.str",
+      "repo": "shop.repo.Repo"
+     }
+    },
+    "name": "place",
+    "namespace": "INTERNAL",
+    "start_line": 15,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "typing",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "typing",
+    "namespace": "STDLIB",
+    "start_line": 0,
+    "type": "FUNCTION"
+   }
+  ]
+ },
+ "sub": {
+  "edges": [
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": null,
+    "id": "main->import:@app.util",
+    "line_number": null,
+    "source": "main",
+    "target": "util",
+    "type": "IMPORTS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 0.8,
+    "context": null,
+    "file_path": null,
+    "id": "main->import:@x.lib",
+    "line_number": null,
+    "source": "main",
+    "target": "@x.lib",
+    "type": "IMPORTS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": null,
+    "id": "main->import:lodash.debounce",
+    "line_number": null,
+    "source": "main",
+    "target": "lodash.debounce",
+    "type": "IMPORTS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": null,
+    "id": "main->import:node:crypto",
+    "line_number": null,
+    "source": "main",
+    "target": "node:crypto",
+    "type": "IMPORTS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": null,
+    "id": "main->import:react",
+    "line_number": null,
+    "source": "main",
+    "target": "react",
+    "type": "IMPORTS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": null,
+    "id": "main->main.main",
+    "line_number": null,
+    "source": "main",
+    "target": "main.main",
+    "type": "CONTAINS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": null,
+    "id": "main->main.setTimeout",
+    "line_number": null,
+    "source": "main",
+    "target": "main.setTimeout",
+    "type": "CONTAINS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 0.6,
+    "context": null,
+    "file_path": null,
+    "id": "main.main->raw_call:debounce@13:19",
+    "line_number": null,
+    "source": "main.main",
+    "target": "lodash.debounce",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 0.6,
+    "context": null,
+    "file_path": null,
+    "id": "main.main->raw_call:helper@13:34",
+    "line_number": null,
+    "source": "main.main",
+    "target": "util.helper",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 0.8,
+    "context": null,
+    "file_path": null,
+    "id": "main.main->raw_call:libFn@13:41",
+    "line_number": null,
+    "source": "main.main",
+    "target": "libFn",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 0.8,
+    "context": null,
+    "file_path": null,
+    "id": "main.main->raw_call:libFn@14:9",
+    "line_number": null,
+    "source": "main.main",
+    "target": "libFn",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 0.6,
+    "context": null,
+    "file_path": null,
+    "id": "main.main->raw_call:randomUUID@12:2",
+    "line_number": null,
+    "source": "main.main",
+    "target": "node:crypto.randomUUID",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 0.6,
+    "context": null,
+    "file_path": null,
+    "id": "main.main->raw_call:setTimeout@13:2",
+    "line_number": null,
+    "source": "main.main",
+    "target": "main.setTimeout",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 0.6,
+    "context": null,
+    "file_path": null,
+    "id": "main.main->raw_call:useState@11:2",
+    "line_number": null,
+    "source": "main.main",
+    "target": "react.useState",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 0.8,
+    "context": null,
+    "file_path": null,
+    "id": "main.setTimeout->raw_call:fn@7:2",
+    "line_number": null,
+    "source": "main.setTimeout",
+    "target": "fn",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": null,
+    "id": "util->util.helper",
+    "line_number": null,
+    "source": "util",
+    "target": "util.helper",
+    "type": "CONTAINS",
+    "type_only": 0,
+    "weight": 1.0
+   }
+  ],
+  "ingest_state": {
+   "ingest_options": {
+    "domains": null,
+    "source_roots": []
+   },
+   "npm_dependencies": [
+    "lodash.debounce",
+    "react"
+   ],
+   "python_dependencies": [],
+   "root": "<ROOT>/ts/apps/web/src",
+   "tsconfig_paths": {
+    "": {
+     "@app.*": [
+      "*"
+     ]
+    }
+   },
+   "workspace_packages": {}
+  },
+  "nodes": [
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "@x.lib",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "lib",
+    "namespace": "UNKNOWN",
+    "start_line": 0,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "fn",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "fn",
+    "namespace": "UNKNOWN",
+    "start_line": 0,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "libFn",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "libFn",
+    "namespace": "UNKNOWN",
+    "start_line": 0,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "lodash.debounce",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "debounce",
+    "namespace": "EXTERNAL",
+    "start_line": 0,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 17,
+    "file_path": "main.ts",
+    "id": "main",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "typescript",
+    "metadata": {
+     "bare_bindings": {
+      "debounce": "lodash.debounce",
+      "helper": "@app.util.helper",
+      "libFn": "@x.lib.libFn",
+      "randomUUID": "node:crypto.randomUUID",
+      "useState": "react.useState"
+     },
+     "bare_imports": [
+      "@app/util",
+      "@x/lib",
+      "lodash.debounce",
+      "node:crypto",
+      "react"
+     ],
+     "shadowed_globals": [
+      "setTimeout"
+     ]
+    },
+    "name": "main.ts",
+    "namespace": "INTERNAL",
+    "start_line": 1,
+    "type": "FILE"
+   },
+   {
+    "end_line": 16,
+    "file_path": "main.ts",
+    "id": "main.main",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "typescript",
+    "metadata": {},
+    "name": "main",
+    "namespace": "INTERNAL",
+    "start_line": 11,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 9,
+    "file_path": "main.ts",
+    "id": "main.setTimeout",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "typescript",
+    "metadata": {},
+    "name": "setTimeout",
+    "namespace": "INTERNAL",
+    "start_line": 7,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "node:crypto",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "node:crypto",
+    "namespace": "STDLIB",
+    "start_line": 0,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "node:crypto.randomUUID",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "randomUUID",
+    "namespace": "STDLIB",
+    "start_line": 0,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "react",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "react",
+    "namespace": "EXTERNAL",
+    "start_line": 0,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "react.useState",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "useState",
+    "namespace": "EXTERNAL",
+    "start_line": 0,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 4,
+    "file_path": "types.d.ts",
+    "id": "types.d",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "typescript",
+    "metadata": {},
+    "name": "types.d.ts",
+    "namespace": "INTERNAL",
+    "start_line": 1,
+    "type": "FILE"
+   },
+   {
+    "end_line": 4,
+    "file_path": "util.ts",
+    "id": "util",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "typescript",
+    "metadata": {},
+    "name": "util.ts",
+    "namespace": "INTERNAL",
+    "start_line": 1,
+    "type": "FILE"
+   },
+   {
+    "end_line": 3,
+    "file_path": "util.ts",
+    "id": "util.helper",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "typescript",
+    "metadata": {},
+    "name": "helper",
+    "namespace": "INTERNAL",
+    "start_line": 1,
+    "type": "FUNCTION"
+   }
+  ]
+ },
+ "whole": {
+  "edges": [
+   {
+    "confidence": 0.5,
+    "context": "override of py.src.shop.repo.Repo.save",
+    "file_path": "py/src/shop/repo.py",
+    "id": "dispatch:py.src.shop.repo.Repo.save->py.src.shop.repo.SqlRepo.save",
+    "line_number": 10,
+    "source": "py.src.shop.repo.Repo.save",
+    "target": "py.src.shop.repo.SqlRepo.save",
+    "type": "DISPATCHES",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/lib/legacy/tool.py",
+    "id": "py.lib.legacy.tool:imports:shop",
+    "line_number": null,
+    "source": "py.lib.legacy.tool",
+    "target": "shop",
+    "type": "IMPORTS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/lib/legacy/tool.py",
+    "id": "py.lib.legacy.tool:structural:py.lib.legacy.tool.main",
+    "line_number": null,
+    "source": "py.lib.legacy.tool",
+    "target": "py.lib.legacy.tool.main",
+    "type": "CONTAINS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/src/alembic/env.py",
+    "id": "py.src.alembic.env:structural:py.src.alembic.env.run_migrations",
+    "line_number": null,
+    "source": "py.src.alembic.env",
+    "target": "py.src.alembic.env.run_migrations",
+    "type": "CONTAINS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/src/shop/deps.py",
+    "id": "py.src.shop.deps:imports:fastapi",
+    "line_number": null,
+    "source": "py.src.shop.deps",
+    "target": "fastapi",
+    "type": "IMPORTS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/src/shop/deps.py",
+    "id": "py.src.shop.deps:imports:py.src.shop.repo",
+    "line_number": null,
+    "source": "py.src.shop.deps",
+    "target": "py.src.shop.repo",
+    "type": "IMPORTS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/src/shop/deps.py",
+    "id": "py.src.shop.deps:imports:typing",
+    "line_number": null,
+    "source": "py.src.shop.deps",
+    "target": "typing",
+    "type": "IMPORTS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/src/shop/deps.py",
+    "id": "py.src.shop.deps:imports_symbol:py.src.shop.repo.Repo",
+    "line_number": null,
+    "source": "py.src.shop.deps",
+    "target": "py.src.shop.repo.Repo",
+    "type": "IMPORTS_SYMBOL",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/src/shop/deps.py",
+    "id": "py.src.shop.deps:imports_symbol:py.src.shop.repo.SqlRepo",
+    "line_number": null,
+    "source": "py.src.shop.deps",
+    "target": "py.src.shop.repo.SqlRepo",
+    "type": "IMPORTS_SYMBOL",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/src/shop/deps.py",
+    "id": "py.src.shop.deps:structural:py.src.shop.deps.get_repo",
+    "line_number": null,
+    "source": "py.src.shop.deps",
+    "target": "py.src.shop.deps.get_repo",
+    "type": "CONTAINS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/src/shop/repo.py",
+    "id": "py.src.shop.repo.Repo.save:decorator:0:abstractmethod",
+    "line_number": null,
+    "source": "py.src.shop.repo.Repo.save",
+    "target": "abc.abstractmethod",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/src/shop/repo.py",
+    "id": "py.src.shop.repo.Repo:extends:ABC",
+    "line_number": null,
+    "source": "py.src.shop.repo.Repo",
+    "target": "abc.ABC",
+    "type": "EXTENDS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/src/shop/repo.py",
+    "id": "py.src.shop.repo.Repo:structural:py.src.shop.repo.Repo.save",
+    "line_number": null,
+    "source": "py.src.shop.repo.Repo",
+    "target": "py.src.shop.repo.Repo.save",
+    "type": "DECLARES",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/src/shop/repo.py",
+    "id": "py.src.shop.repo.SqlRepo:extends:Repo",
+    "line_number": null,
+    "source": "py.src.shop.repo.SqlRepo",
+    "target": "py.src.shop.repo.Repo",
+    "type": "EXTENDS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/src/shop/repo.py",
+    "id": "py.src.shop.repo.SqlRepo:structural:py.src.shop.repo.SqlRepo.save",
+    "line_number": null,
+    "source": "py.src.shop.repo.SqlRepo",
+    "target": "py.src.shop.repo.SqlRepo.save",
+    "type": "DECLARES",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/src/shop/repo.py",
+    "id": "py.src.shop.repo:imports:abc",
+    "line_number": null,
+    "source": "py.src.shop.repo",
+    "target": "abc",
+    "type": "IMPORTS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/src/shop/repo.py",
+    "id": "py.src.shop.repo:structural:py.src.shop.repo.Repo",
+    "line_number": null,
+    "source": "py.src.shop.repo",
+    "target": "py.src.shop.repo.Repo",
+    "type": "CONTAINS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/src/shop/repo.py",
+    "id": "py.src.shop.repo:structural:py.src.shop.repo.SqlRepo",
+    "line_number": null,
+    "source": "py.src.shop.repo",
+    "target": "py.src.shop.repo.SqlRepo",
+    "type": "CONTAINS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/src/shop/service.py",
+    "id": "py.src.shop.service.OrderService:structural:py.src.shop.service.OrderService.__init__",
+    "line_number": null,
+    "source": "py.src.shop.service.OrderService",
+    "target": "py.src.shop.service.OrderService.__init__",
+    "type": "DECLARES",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/src/shop/service.py",
+    "id": "py.src.shop.service.OrderService:structural:py.src.shop.service.OrderService.place",
+    "line_number": null,
+    "source": "py.src.shop.service.OrderService",
+    "target": "py.src.shop.service.OrderService.place",
+    "type": "DECLARES",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/src/shop/service.py",
+    "id": "py.src.shop.service:imports:py.src.shop.deps",
+    "line_number": null,
+    "source": "py.src.shop.service",
+    "target": "py.src.shop.deps",
+    "type": "IMPORTS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/src/shop/service.py",
+    "id": "py.src.shop.service:imports:py.src.shop.repo",
+    "line_number": null,
+    "source": "py.src.shop.service",
+    "target": "py.src.shop.repo",
+    "type": "IMPORTS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/src/shop/service.py",
+    "id": "py.src.shop.service:imports_symbol:py.src.shop.deps.RepoDep",
+    "line_number": null,
+    "source": "py.src.shop.service",
+    "target": "py.src.shop.deps.RepoDep",
+    "type": "IMPORTS_SYMBOL",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/src/shop/service.py",
+    "id": "py.src.shop.service:imports_symbol:py.src.shop.repo.Repo",
+    "line_number": null,
+    "source": "py.src.shop.service",
+    "target": "py.src.shop.repo.Repo",
+    "type": "IMPORTS_SYMBOL",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/src/shop/service.py",
+    "id": "py.src.shop.service:structural:py.src.shop.service.OrderService",
+    "line_number": null,
+    "source": "py.src.shop.service",
+    "target": "py.src.shop.service.OrderService",
+    "type": "CONTAINS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/src/shop/service.py",
+    "id": "py.src.shop.service:structural:py.src.shop.service.place",
+    "line_number": null,
+    "source": "py.src.shop.service",
+    "target": "py.src.shop.service.place",
+    "type": "CONTAINS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/src/shop/__init__.py",
+    "id": "py.src.shop:imports:py.src.shop.service",
+    "line_number": null,
+    "source": "py.src.shop",
+    "target": "py.src.shop.service",
+    "type": "IMPORTS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/tests/test_service.py",
+    "id": "py.tests.test_service:imports:shop.service",
+    "line_number": null,
+    "source": "py.tests.test_service",
+    "target": "shop.service",
+    "type": "IMPORTS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/tests/test_service.py",
+    "id": "py.tests.test_service:imports_symbol:shop.service.place",
+    "line_number": null,
+    "source": "py.tests.test_service",
+    "target": "py.src.shop.service.place",
+    "type": "IMPORTS_SYMBOL",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": "py/tests/test_service.py",
+    "id": "py.tests.test_service:structural:py.tests.test_service.test_place",
+    "line_number": null,
+    "source": "py.tests.test_service",
+    "target": "py.tests.test_service.test_place",
+    "type": "CONTAINS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": "Call to place",
+    "file_path": "py/lib/legacy/tool.py",
+    "id": "py/lib/legacy/tool.py:edge_49_65",
+    "line_number": 5,
+    "source": "py.lib.legacy.tool.main",
+    "target": "shop.place",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": "DI alias for get_repo",
+    "file_path": "py/src/shop/deps.py",
+    "id": "py/src/shop/deps.py:dep_166_183",
+    "line_number": 12,
+    "source": "py.src.shop.deps.RepoDep",
+    "target": "py.src.shop.deps.get_repo",
+    "type": "DEPENDS_ON",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": "Call to SqlRepo",
+    "file_path": "py/src/shop/deps.py",
+    "id": "py/src/shop/deps.py:edge_128_137",
+    "line_number": 9,
+    "source": "py.src.shop.deps.get_repo",
+    "target": "py.src.shop.repo.SqlRepo",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": "Call to Depends",
+    "file_path": "py/src/shop/deps.py",
+    "id": "py/src/shop/deps.py:edge_166_183",
+    "line_number": 12,
+    "source": "py.src.shop.deps",
+    "target": "fastapi.Depends",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": "Name reference candidate Repo",
+    "file_path": "py/src/shop/deps.py",
+    "id": "py/src/shop/deps.py:nameref_py.src.shop.deps|Repo",
+    "line_number": 12,
+    "source": "py.src.shop.deps",
+    "target": "py.src.shop.repo.Repo",
+    "type": "REFERENCES",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": "Annotation candidate Repo",
+    "file_path": "py/src/shop/deps.py",
+    "id": "py/src/shop/deps.py:rawdep_111_115_Repo",
+    "line_number": 8,
+    "source": "py.src.shop.deps.get_repo",
+    "target": "py.src.shop.repo.Repo",
+    "type": "REFERENCES",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 0.8,
+    "context": "Call to print",
+    "file_path": "py/src/shop/repo.py",
+    "id": "py/src/shop/repo.py:edge_188_199",
+    "line_number": 11,
+    "source": "py.src.shop.repo.SqlRepo.save",
+    "target": "print",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": "Name reference candidate Repo",
+    "file_path": "py/src/shop/repo.py",
+    "id": "py/src/shop/repo.py:nameref_py.src.shop.repo.SqlRepo|Repo",
+    "line_number": 9,
+    "source": "py.src.shop.repo.SqlRepo",
+    "target": "py.src.shop.repo.Repo",
+    "type": "REFERENCES",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": "Call to self.repo.save",
+    "file_path": "py/src/shop/service.py",
+    "id": "py/src/shop/service.py:edge_229_249",
+    "line_number": 12,
+    "source": "py.src.shop.service.OrderService.place",
+    "target": "py.src.shop.repo.Repo.save",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": "Call to repo.save",
+    "file_path": "py/src/shop/service.py",
+    "id": "py/src/shop/service.py:edge_298_313",
+    "line_number": 16,
+    "source": "py.src.shop.service.place",
+    "target": "py.src.shop.repo.Repo.save",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": "Annotation candidate RepoDep",
+    "file_path": "py/src/shop/service.py",
+    "id": "py/src/shop/service.py:rawdep_137_144_RepoDep",
+    "line_number": 8,
+    "source": "py.src.shop.service.OrderService.__init__",
+    "target": "py.src.shop.deps.RepoDep",
+    "type": "DEPENDS_ON",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": "Annotation candidate Repo",
+    "file_path": "py/src/shop/service.py",
+    "id": "py/src/shop/service.py:rawdep_268_272_Repo",
+    "line_number": 15,
+    "source": "py.src.shop.service.place",
+    "target": "py.src.shop.repo.Repo",
+    "type": "REFERENCES",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": "Call to place",
+    "file_path": "py/tests/test_service.py",
+    "id": "py/tests/test_service.py:edge_63_79",
+    "line_number": 5,
+    "source": "py.tests.test_service.test_place",
+    "target": "py.src.shop.service.place",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": null,
+    "id": "ts.apps.web.src.main->import:@app.util",
+    "line_number": null,
+    "source": "ts.apps.web.src.main",
+    "target": "ts.apps.web.src.util",
+    "type": "IMPORTS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": null,
+    "id": "ts.apps.web.src.main->import:@x.lib",
+    "line_number": null,
+    "source": "ts.apps.web.src.main",
+    "target": "ts.packages.lib",
+    "type": "IMPORTS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": null,
+    "id": "ts.apps.web.src.main->import:lodash.debounce",
+    "line_number": null,
+    "source": "ts.apps.web.src.main",
+    "target": "lodash.debounce",
+    "type": "IMPORTS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": null,
+    "id": "ts.apps.web.src.main->import:node:crypto",
+    "line_number": null,
+    "source": "ts.apps.web.src.main",
+    "target": "node:crypto",
+    "type": "IMPORTS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": null,
+    "id": "ts.apps.web.src.main->import:react",
+    "line_number": null,
+    "source": "ts.apps.web.src.main",
+    "target": "react",
+    "type": "IMPORTS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": null,
+    "id": "ts.apps.web.src.main->ts.apps.web.src.main.main",
+    "line_number": null,
+    "source": "ts.apps.web.src.main",
+    "target": "ts.apps.web.src.main.main",
+    "type": "CONTAINS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": null,
+    "id": "ts.apps.web.src.main->ts.apps.web.src.main.setTimeout",
+    "line_number": null,
+    "source": "ts.apps.web.src.main",
+    "target": "ts.apps.web.src.main.setTimeout",
+    "type": "CONTAINS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 0.6,
+    "context": null,
+    "file_path": null,
+    "id": "ts.apps.web.src.main.main->raw_call:debounce@13:19",
+    "line_number": null,
+    "source": "ts.apps.web.src.main.main",
+    "target": "lodash.debounce",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 0.6,
+    "context": null,
+    "file_path": null,
+    "id": "ts.apps.web.src.main.main->raw_call:helper@13:34",
+    "line_number": null,
+    "source": "ts.apps.web.src.main.main",
+    "target": "ts.apps.web.src.util.helper",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 0.6,
+    "context": null,
+    "file_path": null,
+    "id": "ts.apps.web.src.main.main->raw_call:libFn@13:41",
+    "line_number": null,
+    "source": "ts.apps.web.src.main.main",
+    "target": "ts.packages.lib.libFn",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 0.6,
+    "context": null,
+    "file_path": null,
+    "id": "ts.apps.web.src.main.main->raw_call:libFn@14:9",
+    "line_number": null,
+    "source": "ts.apps.web.src.main.main",
+    "target": "ts.packages.lib.libFn",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 0.6,
+    "context": null,
+    "file_path": null,
+    "id": "ts.apps.web.src.main.main->raw_call:randomUUID@12:2",
+    "line_number": null,
+    "source": "ts.apps.web.src.main.main",
+    "target": "node:crypto.randomUUID",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 0.6,
+    "context": null,
+    "file_path": null,
+    "id": "ts.apps.web.src.main.main->raw_call:setTimeout@13:2",
+    "line_number": null,
+    "source": "ts.apps.web.src.main.main",
+    "target": "ts.apps.web.src.main.setTimeout",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 0.6,
+    "context": null,
+    "file_path": null,
+    "id": "ts.apps.web.src.main.main->raw_call:useState@11:2",
+    "line_number": null,
+    "source": "ts.apps.web.src.main.main",
+    "target": "react.useState",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 0.8,
+    "context": null,
+    "file_path": null,
+    "id": "ts.apps.web.src.main.setTimeout->raw_call:fn@7:2",
+    "line_number": null,
+    "source": "ts.apps.web.src.main.setTimeout",
+    "target": "fn",
+    "type": "CALLS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": null,
+    "id": "ts.apps.web.src.util->ts.apps.web.src.util.helper",
+    "line_number": null,
+    "source": "ts.apps.web.src.util",
+    "target": "ts.apps.web.src.util.helper",
+    "type": "CONTAINS",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
+    "confidence": 1.0,
+    "context": null,
+    "file_path": null,
+    "id": "ts.packages.lib->ts.packages.lib.libFn",
+    "line_number": null,
+    "source": "ts.packages.lib",
+    "target": "ts.packages.lib.libFn",
+    "type": "CONTAINS",
+    "type_only": 0,
+    "weight": 1.0
+   }
+  ],
+  "ingest_state": {
+   "ingest_options": {
+    "domains": null,
+    "source_roots": []
+   },
+   "npm_dependencies": [
+    "lodash.debounce",
+    "react"
+   ],
+   "python_dependencies": [],
+   "root": "<ROOT>",
+   "tsconfig_paths": {
+    "ts": {
+     "@app.*": [
+      "ts.apps.web.src.*"
+     ]
+    }
+   },
+   "workspace_packages": {
+    "@x.lib": "ts.packages.lib",
+    "mono": "ts",
+    "web": "ts.apps.web"
+   }
+  },
+  "nodes": [
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "abc",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "abc",
+    "namespace": "STDLIB",
+    "start_line": 0,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "abc.ABC",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "ABC",
+    "namespace": "STDLIB",
+    "start_line": 0,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "abc.abstractmethod",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "abstractmethod",
+    "namespace": "STDLIB",
+    "start_line": 0,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "fastapi",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "fastapi",
+    "namespace": "EXTERNAL",
+    "start_line": 0,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "fastapi.Depends",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "Depends",
+    "namespace": "EXTERNAL",
+    "start_line": 0,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "fn",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "fn",
+    "namespace": "UNKNOWN",
+    "start_line": 0,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "lodash.debounce",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "debounce",
+    "namespace": "EXTERNAL",
+    "start_line": 0,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "node:crypto",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "node:crypto",
+    "namespace": "STDLIB",
+    "start_line": 0,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "node:crypto.randomUUID",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "randomUUID",
+    "namespace": "STDLIB",
+    "start_line": 0,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "print",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "print",
+    "namespace": "STDLIB",
+    "start_line": 0,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 6,
+    "file_path": "py/lib/legacy/tool.py",
+    "id": "py.lib.legacy.tool",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {
+     "import_map": {
+      "place": "shop.place"
+     },
+     "reexports": {},
+     "star_imports": []
+    },
+    "name": "tool.py",
+    "namespace": "INTERNAL",
+    "start_line": 1,
+    "type": "FILE"
+   },
+   {
+    "end_line": 5,
+    "file_path": "py/lib/legacy/tool.py",
+    "id": "py.lib.legacy.tool.main",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "main",
+    "namespace": "INTERNAL",
+    "start_line": 4,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 3,
+    "file_path": "py/src/alembic/env.py",
+    "id": "py.src.alembic.env",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {
+     "import_map": {},
+     "reexports": {},
+     "star_imports": []
+    },
+    "name": "env.py",
+    "namespace": "INTERNAL",
+    "start_line": 1,
+    "type": "FILE"
+   },
+   {
+    "end_line": 2,
+    "file_path": "py/src/alembic/env.py",
+    "id": "py.src.alembic.env.run_migrations",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "run_migrations",
+    "namespace": "INTERNAL",
+    "start_line": 1,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 2,
+    "file_path": "py/src/shop/__init__.py",
+    "id": "py.src.shop",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {
+     "import_map": {},
+     "reexports": {},
+     "star_imports": [
+      "py.src.shop.service"
+     ]
+    },
+    "name": "__init__.py",
+    "namespace": "INTERNAL",
+    "start_line": 1,
+    "type": "FILE"
+   },
+   {
+    "end_line": 13,
+    "file_path": "py/src/shop/deps.py",
+    "id": "py.src.shop.deps",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {
+     "import_map": {
+      "Annotated": "typing.Annotated",
+      "Depends": "fastapi.Depends",
+      "Repo": "py.src.shop.repo.Repo",
+      "SqlRepo": "py.src.shop.repo.SqlRepo"
+     },
+     "reexports": {},
+     "star_imports": []
+    },
+    "name": "deps.py",
+    "namespace": "INTERNAL",
+    "start_line": 1,
+    "type": "FILE"
+   },
+   {
+    "end_line": 12,
+    "file_path": "py/src/shop/deps.py",
+    "id": "py.src.shop.deps.RepoDep",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {
+     "annotated_type": "py.src.shop.repo.Repo"
+    },
+    "name": "RepoDep",
+    "namespace": "INTERNAL",
+    "start_line": 12,
+    "type": "VARIABLE"
+   },
+   {
+    "end_line": 9,
+    "file_path": "py/src/shop/deps.py",
+    "id": "py.src.shop.deps.get_repo",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "get_repo",
+    "namespace": "INTERNAL",
+    "start_line": 8,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 12,
+    "file_path": "py/src/shop/repo.py",
+    "id": "py.src.shop.repo",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {
+     "import_map": {
+      "ABC": "abc.ABC",
+      "abstractmethod": "abc.abstractmethod"
+     },
+     "reexports": {},
+     "star_imports": []
+    },
+    "name": "repo.py",
+    "namespace": "INTERNAL",
+    "start_line": 1,
+    "type": "FILE"
+   },
+   {
+    "end_line": 6,
+    "file_path": "py/src/shop/repo.py",
+    "id": "py.src.shop.repo.Repo",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {
+     "is_abstract": true
+    },
+    "name": "Repo",
+    "namespace": "INTERNAL",
+    "start_line": 4,
+    "type": "CLASS"
+   },
+   {
+    "end_line": 6,
+    "file_path": "py/src/shop/repo.py",
+    "id": "py.src.shop.repo.Repo.save",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {
+     "decorators": [
+      "abstractmethod"
+     ],
+     "is_abstract": true,
+     "local_types": {
+      "item": "py.src.shop.repo.str"
+     },
+     "self_attrs": []
+    },
+    "name": "save",
+    "namespace": "INTERNAL",
+    "start_line": 6,
+    "type": "METHOD"
+   },
+   {
+    "end_line": 11,
+    "file_path": "py/src/shop/repo.py",
+    "id": "py.src.shop.repo.SqlRepo",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "SqlRepo",
+    "namespace": "INTERNAL",
+    "start_line": 9,
+    "type": "CLASS"
+   },
+   {
+    "end_line": 11,
+    "file_path": "py/src/shop/repo.py",
+    "id": "py.src.shop.repo.SqlRepo.save",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {
+     "local_types": {
+      "item": "py.src.shop.repo.str"
+     },
+     "self_attrs": []
+    },
+    "name": "save",
+    "namespace": "INTERNAL",
+    "start_line": 10,
+    "type": "METHOD"
+   },
+   {
+    "end_line": 17,
+    "file_path": "py/src/shop/service.py",
+    "id": "py.src.shop.service",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {
+     "import_map": {
+      "Repo": "py.src.shop.repo.Repo",
+      "RepoDep": "py.src.shop.deps.RepoDep"
+     },
+     "reexports": {},
+     "star_imports": []
+    },
+    "name": "service.py",
+    "namespace": "INTERNAL",
+    "start_line": 1,
+    "type": "FILE"
+   },
+   {
+    "end_line": 12,
+    "file_path": "py/src/shop/service.py",
+    "id": "py.src.shop.service.OrderService",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {
+     "self_types": {
+      "repo": "py.src.shop.deps.RepoDep"
+     }
+    },
+    "name": "OrderService",
+    "namespace": "INTERNAL",
+    "start_line": 7,
+    "type": "CLASS"
+   },
+   {
+    "end_line": 9,
+    "file_path": "py/src/shop/service.py",
+    "id": "py.src.shop.service.OrderService.__init__",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {
+     "local_types": {
+      "repo": "py.src.shop.deps.RepoDep"
+     },
+     "self_attrs": [
+      "repo"
+     ]
+    },
+    "name": "__init__",
+    "namespace": "INTERNAL",
+    "start_line": 8,
+    "type": "METHOD"
+   },
+   {
+    "end_line": 12,
+    "file_path": "py/src/shop/service.py",
+    "id": "py.src.shop.service.OrderService.place",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {
+     "local_types": {
+      "item": "py.src.shop.service.str"
+     },
+     "self_attrs": [
+      "repo"
+     ]
+    },
+    "name": "place",
+    "namespace": "INTERNAL",
+    "start_line": 11,
+    "type": "METHOD"
+   },
+   {
+    "end_line": 16,
+    "file_path": "py/src/shop/service.py",
+    "id": "py.src.shop.service.place",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {
+     "local_types": {
+      "item": "py.src.shop.service.str",
+      "repo": "py.src.shop.repo.Repo"
+     }
+    },
+    "name": "place",
+    "namespace": "INTERNAL",
+    "start_line": 15,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 6,
+    "file_path": "py/tests/test_service.py",
+    "id": "py.tests.test_service",
+    "is_generated": 0,
+    "is_test": 1,
+    "language": "python",
+    "metadata": {
+     "import_map": {
+      "place": "shop.service.place"
+     },
+     "reexports": {},
+     "star_imports": []
+    },
+    "name": "test_service.py",
+    "namespace": "INTERNAL",
+    "start_line": 1,
+    "type": "FILE"
+   },
+   {
+    "end_line": 5,
+    "file_path": "py/tests/test_service.py",
+    "id": "py.tests.test_service.test_place",
+    "is_generated": 0,
+    "is_test": 1,
+    "language": "python",
+    "metadata": {},
+    "name": "test_place",
+    "namespace": "INTERNAL",
+    "start_line": 4,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "react",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "react",
+    "namespace": "EXTERNAL",
+    "start_line": 0,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "react.useState",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "useState",
+    "namespace": "EXTERNAL",
+    "start_line": 0,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "shop",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "shop",
+    "namespace": "EXTERNAL",
+    "start_line": 0,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "shop.place",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "place",
+    "namespace": "EXTERNAL",
+    "start_line": 0,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "shop.service",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "service",
+    "namespace": "EXTERNAL",
+    "start_line": 0,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 17,
+    "file_path": "ts/apps/web/src/main.ts",
+    "id": "ts.apps.web.src.main",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "typescript",
+    "metadata": {
+     "bare_bindings": {
+      "debounce": "lodash.debounce",
+      "helper": "@app.util.helper",
+      "libFn": "@x.lib.libFn",
+      "randomUUID": "node:crypto.randomUUID",
+      "useState": "react.useState"
+     },
+     "bare_imports": [
+      "@app/util",
+      "@x/lib",
+      "lodash.debounce",
+      "node:crypto",
+      "react"
+     ],
+     "shadowed_globals": [
+      "setTimeout"
+     ]
+    },
+    "name": "main.ts",
+    "namespace": "INTERNAL",
+    "start_line": 1,
+    "type": "FILE"
+   },
+   {
+    "end_line": 16,
+    "file_path": "ts/apps/web/src/main.ts",
+    "id": "ts.apps.web.src.main.main",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "typescript",
+    "metadata": {},
+    "name": "main",
+    "namespace": "INTERNAL",
+    "start_line": 11,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 9,
+    "file_path": "ts/apps/web/src/main.ts",
+    "id": "ts.apps.web.src.main.setTimeout",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "typescript",
+    "metadata": {},
+    "name": "setTimeout",
+    "namespace": "INTERNAL",
+    "start_line": 7,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 4,
+    "file_path": "ts/apps/web/src/types.d.ts",
+    "id": "ts.apps.web.src.types.d",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "typescript",
+    "metadata": {},
+    "name": "types.d.ts",
+    "namespace": "INTERNAL",
+    "start_line": 1,
+    "type": "FILE"
+   },
+   {
+    "end_line": 4,
+    "file_path": "ts/apps/web/src/util.ts",
+    "id": "ts.apps.web.src.util",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "typescript",
+    "metadata": {},
+    "name": "util.ts",
+    "namespace": "INTERNAL",
+    "start_line": 1,
+    "type": "FILE"
+   },
+   {
+    "end_line": 3,
+    "file_path": "ts/apps/web/src/util.ts",
+    "id": "ts.apps.web.src.util.helper",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "typescript",
+    "metadata": {},
+    "name": "helper",
+    "namespace": "INTERNAL",
+    "start_line": 1,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 4,
+    "file_path": "ts/packages/lib/index.ts",
+    "id": "ts.packages.lib",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "typescript",
+    "metadata": {},
+    "name": "index.ts",
+    "namespace": "INTERNAL",
+    "start_line": 1,
+    "type": "FILE"
+   },
+   {
+    "end_line": 3,
+    "file_path": "ts/packages/lib/index.ts",
+    "id": "ts.packages.lib.libFn",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "typescript",
+    "metadata": {},
+    "name": "libFn",
+    "namespace": "INTERNAL",
+    "start_line": 1,
+    "type": "FUNCTION"
+   },
+   {
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "typing",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "typing",
+    "namespace": "STDLIB",
+    "start_line": 0,
+    "type": "FUNCTION"
+   }
+  ]
+ }
+}
