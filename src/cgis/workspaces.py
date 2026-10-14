@@ -52,23 +52,45 @@ def pnpm_member_names(config: Path) -> set[str]:
     """
     try:
         data = yaml.safe_load(config.read_text(encoding="utf-8"))
-    except (OSError, yaml.YAMLError):
+    # Not UTF-8 is a ValueError, a deeply nested file a RecursionError: either
+    # crashed the whole ingest (#591 review).
+    except (OSError, ValueError, yaml.YAMLError, RecursionError):
         return set()
     packages = data.get("packages") if isinstance(data, dict) else None
     return _member_names(config.parent, packages) if isinstance(packages, list) else set()
 
 
 def _member_names(base: Path, patterns: Iterable[object]) -> set[str]:
-    """Names of the packages whose directories `patterns` match under `base`; `!` skipped."""
-    names: set[str] = set()
+    """Names of the packages whose directories `patterns` match under `base`.
+
+    A `!` pattern subtracts what it matches, and nothing under `node_modules`
+    is a member — as pnpm and npm read their workspaces (#591 review): with
+    `packages/**` an installed copy of a dependency read as a sibling, and a
+    real library then read as our own unresolved code.
+    """
+    included: set[Path] = set()
+    excluded: set[Path] = set()
     for pattern in patterns:
-        if not isinstance(pattern, str) or pattern.startswith("!"):
-            continue
-        for member in base.glob(f"{pattern.rstrip('/')}/{PACKAGE_MANIFEST}"):
-            name = (_read_manifest(member) or {}).get("name")
-            if isinstance(name, str) and name.strip():
-                names.add(name)
+        if isinstance(pattern, str):
+            target = excluded if pattern.startswith("!") else included
+            target |= _manifests(base, pattern.removeprefix("!"))
+    names: set[str] = set()
+    for member in sorted(included - excluded):
+        name = (_read_manifest(member) or {}).get("name")
+        if isinstance(name, str) and name.strip():
+            names.add(name)
     return names
+
+
+def _manifests(base: Path, pattern: str) -> set[Path]:
+    """The package.json files a workspace glob reaches under `base`, none in node_modules."""
+    try:
+        found = base.glob(f"{pattern.rstrip('/')}/{PACKAGE_MANIFEST}")
+        return {m for m in found if "node_modules" not in m.relative_to(base).parts}
+    # An absolute or otherwise unglobbable pattern names nothing, rather than
+    # stopping the ingest (#591 review).
+    except (NotImplementedError, ValueError):
+        return set()
 
 
 def _read_manifest(manifest: Path) -> dict[str, object] | None:

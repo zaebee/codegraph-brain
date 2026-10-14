@@ -181,9 +181,44 @@ def test_a_pnpm_workspace_sibling_above_the_root_is_not_external(tmp_path: Path)
     assert by_id["react"].namespace is NodeNamespace.EXTERNAL
 
 
-def test_a_malformed_pnpm_workspace_file_names_nothing(tmp_path: Path) -> None:
-    (tmp_path / "pnpm-workspace.yaml").write_text("packages: [unclosed", encoding="utf-8")
+@pytest.mark.parametrize(
+    "content",
+    [b"packages: [unclosed", b"\xff\xfe not utf-8", b"[" * 5000, b"- a\n- b\n", b"packages: 3"],
+    ids=["malformed", "not-utf8", "deeply-nested", "top-level-list", "not-a-list"],
+)
+def test_an_unreadable_pnpm_workspace_file_names_nothing(tmp_path: Path, content: bytes) -> None:
+    """None of these may stop an ingest (#591 review: two of them did)."""
+    (tmp_path / "pnpm-workspace.yaml").write_bytes(content)
     assert pnpm_member_names(tmp_path / "pnpm-workspace.yaml") == set()
+
+
+def test_pnpm_exclusions_subtract_and_node_modules_is_never_a_member(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        {
+            "pnpm-workspace.yaml": "packages:\n  - 'packages/**'\n  - '!**/test/**'\n  - '/etc'\n",
+            "packages/a/package.json": json.dumps({"name": "a"}),
+            "packages/a/test/package.json": json.dumps({"name": "a-test"}),
+            "packages/a/node_modules/dep/package.json": json.dumps({"name": "dep"}),
+        },
+    )
+    assert pnpm_member_names(tmp_path / "pnpm-workspace.yaml") == {"a"}
+
+
+def test_without_a_repository_only_the_nearest_pnpm_workspace_counts(tmp_path: Path) -> None:
+    """No `.git`: a stray pnpm-workspace.yaml further up must not name siblings."""
+    _write(
+        tmp_path,
+        {
+            "pnpm-workspace.yaml": "packages:\n  - 'proj/packages/*'\n",
+            "proj/packages/lib/package.json": json.dumps({"name": "@x/lib"}),
+            "proj/apps/web/package.json": json.dumps({"dependencies": {"@x/lib": "^1.0.0"}}),
+            "proj/apps/web/pnpm-workspace.yaml": "packages: []\n",
+            "proj/apps/web/src/main.ts": 'import { f } from "@x/lib";\nexport const m = f;\n',
+        },
+    )
+    nodes, _, _ = _pipeline().run(str(tmp_path / "proj/apps/web/src"))
+    assert {n.id: n for n in nodes}["@x.lib"].namespace is NodeNamespace.EXTERNAL
 
 
 def test_without_a_repository_only_the_nearest_manifest_counts(tmp_path: Path) -> None:
