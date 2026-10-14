@@ -83,7 +83,8 @@ IngestionPipeline (pipeline.py)
 4. A pack never imports another pack or `cgis.storage` (`cross-pack`, `pack-isolation` gates).
 5. A pack's `__init__` imports no grammar: import the extractor inside `extractor()`. Config reading
    goes in a `ProjectReader` (`cgis.core.project`) whose facts are data keyed by `ingest_state`
-   key — the collector (`cgis.import_names`), not the pack, writes them.
+   key — the collector (`cgis.import_names`), not the pack, writes them. A key the collector does not
+   know (`_FACT_SHAPES`) is refused: a new fact needs store and resolver support first.
 
 ## Type Discipline
 

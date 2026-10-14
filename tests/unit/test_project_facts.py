@@ -88,3 +88,27 @@ def test_collected_facts_round_trip_through_the_store(tmp_path: Path) -> None:
         assert names.differ_from(store) is False
         keys = {row[0] for row in store._conn.execute("SELECT key FROM ingest_state")}  # noqa: SLF001
     assert keys >= _STORE_KEYS
+
+
+class _Facts:
+    """A pack's facts as a new pack might write them."""
+
+    def __init__(self, state: dict[str, object]) -> None:
+        self._state = state
+
+    def state(self) -> dict[str, object]:
+        return self._state
+
+
+def test_a_key_the_collector_cannot_store_fails() -> None:
+    """Accepted and dropped, a new pack's facts would never be stored, compared or resolved."""
+    facts = [_Facts({"go_modules": ["example.com/x"]})]
+    with pytest.raises(ValueError, match="go_modules"):
+        ImportNames.from_facts(facts)
+
+
+def test_a_fact_of_the_wrong_shape_fails() -> None:
+    """A tuple never equals the list read back from JSON: every incremental run would rebuild."""
+    facts = [_Facts({"npm_dependencies": ("react",)})]
+    with pytest.raises(TypeError, match="npm_dependencies"):
+        ImportNames.from_facts(facts)

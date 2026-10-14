@@ -21,6 +21,16 @@ if TYPE_CHECKING:
 #: What marks a repository boundary the upward search never crosses.
 _REPOSITORY_MARKER = ".git"
 
+#: The facts the collector can record, compare and hand the resolver, with the
+#: JSON shape each reads back as. A pack contributing any other key needs store
+#: and resolver support first; until then its facts would vanish silently.
+_FACT_SHAPES: dict[str, type] = {
+    "workspace_packages": dict,
+    "tsconfig_paths": dict,
+    "python_dependencies": list,
+    "npm_dependencies": list,
+}
+
 
 @dataclass(frozen=True)
 class ImportNames:
@@ -67,6 +77,7 @@ class ImportNames:
                 msg = f"two packs record the same ingest_state key(s): {sorted(shared)}"
                 raise ValueError(msg)
             state.update(contribution)
+        _check_shapes(state)
         return cls(
             workspace_packages=cast("dict[str, str]", state.get("workspace_packages", {})),
             path_aliases=cast("dict[str, dict[str, list[str]]]", state.get("tsconfig_paths", {})),
@@ -80,6 +91,18 @@ class ImportNames:
         store.record_tsconfig_paths(self.path_aliases)
         store.record_python_dependencies(self.python_dependencies)
         store.record_npm_dependencies(self.npm_dependencies)
+
+
+def _check_shapes(state: Mapping[str, object]) -> None:
+    """Refuse a fact the collector cannot store, or one that would never read back equal."""
+    unknown = sorted(state.keys() - _FACT_SHAPES.keys())
+    if unknown:
+        msg = f"no collector support for ingest_state key(s): {unknown}"
+        raise ValueError(msg)
+    for key, value in state.items():
+        if not isinstance(value, _FACT_SHAPES[key]):
+            msg = f"{key} must be a {_FACT_SHAPES[key].__name__}, not {type(value).__name__}"
+            raise TypeError(msg)
 
 
 def _enclosing_directories(root: Path) -> tuple[list[Path], bool]:
