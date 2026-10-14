@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 
 from cgis.api.mcp_server import cgis_analyze_impact, cgis_ingest
-from cgis.query.engine import QueryEngine, impact_screen
+from cgis.query.engine import QueryEngine, agent_screen
 from cgis.storage.sqlite_store import SQLiteStore
 
 _SOURCES = {
@@ -187,7 +187,7 @@ def test_the_engine_without_a_screen_or_budget_is_unchanged(db: str) -> None:
 
 def test_the_screen_drops_tests_and_marks_files_as_leaves(db: str) -> None:
     with SQLiteStore(db) as store:
-        verdict = impact_screen(store, "pkg.core.target", include_tests=False)(
+        verdict = agent_screen(store, "pkg.core.target", include_tests=False)(
             ["tests.test_core.test_target", "pkg.svc", "pkg.svc.use"]
         )
 

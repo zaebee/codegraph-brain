@@ -36,7 +36,7 @@ class TraversalResult(NamedTuple):
     nodes: list[Node]
     edges: list[Edge]
     coverage: TraversalCoverage | None
-    #: Nodes a screen dropped from the answer — test callers, for `impact_screen`.
+    #: Nodes a screen dropped from the answer — tests, for `agent_screen`.
     excluded: int = 0
     #: Set when ``max_nodes`` stopped the walk early.
     truncation: Truncation | None = None
@@ -58,6 +58,9 @@ class _Verdict(NamedTuple):
 
     dropped: frozenset[str] = frozenset()
     leaves: frozenset[str] = frozenset()
+    #: Left out without being counted: boundary nodes a walk not showing externals
+    #: would prune afterwards anyway, so they must not spend the node budget.
+    hidden: frozenset[str] = frozenset()
 
 
 def _no_screen(_ids: list[str]) -> _Verdict:
@@ -77,7 +80,7 @@ def _admit(
     `pkg.svc.use` — on owner-api 29 of 99 slots went to files (found in
     review). Within each group the order is by id, so the cut is deterministic.
     """
-    admitted = [n for n in reached if n not in verdict.dropped]
+    admitted = [n for n in reached if n not in verdict.dropped and n not in verdict.hidden]
     truncation = None
     room = len(admitted) if max_nodes is None else max(max_nodes - held, 0)
     if len(admitted) > room:
@@ -91,8 +94,15 @@ def _admit(
 Screen = Callable[[list[str]], _Verdict]
 
 
-def impact_screen(store: SQLiteStore, root_id: str, include_tests: bool) -> Screen:
-    """The agent-sized impact view (#551): no test callers, and files as dead ends.
+def agent_screen(
+    store: SQLiteStore, root_id: str, include_tests: bool, show_external: bool = True
+) -> Screen:
+    """The agent-sized traversal view (#551, #580): no tests, and files as dead ends.
+
+    Used by impact and trace alike. Without ``show_external``, stdlib,
+    third-party and unresolved targets are hidden as they are reached: a trace
+    meets one at almost every call (`logger.info`, `list.append`), and kept until
+    the walk's end they filled the node budget only to be pruned from the answer.
 
     A test that calls X is not something that breaks in production when X
     changes, and its own callers are tests too — so a test node is dropped with
@@ -111,9 +121,11 @@ def impact_screen(store: SQLiteStore, root_id: str, include_tests: bool) -> Scre
 
     def screen(ids: list[str]) -> _Verdict:
         nodes = store.get_nodes(ids)
+        internal = {n.id for n in nodes if n.namespace == NodeNamespace.INTERNAL}
         return _Verdict(
             dropped=frozenset(n.id for n in nodes if n.is_test and not include_tests),
             leaves=frozenset(n.id for n in nodes if files_are_leaves and n.type == NodeType.FILE),
+            hidden=frozenset() if show_external else frozenset(ids) - internal,
         )
 
     return screen
@@ -359,6 +371,8 @@ class QueryEngine:
         show_external: bool = True,
         min_confidence: float | None = None,
         with_coverage: bool = True,
+        screen: Screen = _no_screen,
+        max_nodes: int | None = None,
     ) -> TraversalResult:
         """`get_flow_graph`, plus how many of the calls it passed resolved to nothing (#201).
 
@@ -367,7 +381,8 @@ class QueryEngine:
         are exactly the calls the answer is missing.
 
         ``with_coverage=False`` skips the count and the lookup of call targets,
-        for a caller that will not render it.
+        for a caller that will not render it. ``screen`` and ``max_nodes`` are
+        passed to the walk, as for impact (#580).
         """
         walk = self._bfs_traverse(
             start_node_id,
@@ -376,11 +391,14 @@ class QueryEngine:
             max_depth,
             allowed_edge_types,
             min_confidence,
+            screen,
+            max_nodes,
         )
+        omitted = (len(walk.dropped), walk.truncation)
         if not (with_coverage and _follows_calls(allowed_edge_types)):
             nodes = self.store.get_nodes(list(walk.discovered))
             return TraversalResult(
-                *_finish(start_node_id, nodes, walk, _target, show_external), None
+                *_finish(start_node_id, nodes, walk, _target, show_external), None, *omitted
             )
         call_targets = [e.target for e in walk.calls.values()]
         known = {n.id: n for n in self.store.get_nodes([*walk.discovered, *call_targets])}
@@ -393,7 +411,7 @@ class QueryEngine:
             top_unresolved=rank_unresolved(unresolved),
         )
         return TraversalResult(
-            *_finish(start_node_id, nodes, walk, _target, show_external), coverage
+            *_finish(start_node_id, nodes, walk, _target, show_external), coverage, *omitted
         )
 
     def get_structural_graph(
@@ -495,7 +513,7 @@ class QueryEngine:
 
         ``screen`` sees each level's newly reached ids before they are accepted:
         the ids it drops leave with their edges, the ids it calls leaves are kept
-        but not expanded (see ``impact_screen``). ``max_nodes`` caps the answer,
+        but not expanded (see ``agent_screen``). ``max_nodes`` caps the answer,
         nearest levels first: a level that does not fit is cut to the room left
         (see ``_admit``) and the walk stops there.
         """

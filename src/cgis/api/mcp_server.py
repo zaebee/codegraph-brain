@@ -32,11 +32,18 @@ from cgis.query.context.orphans import find_orphan_classes
 from cgis.query.drift.drift_service import analyze_drift
 from cgis.query.drift.fractal import analyze_fractal_db
 from cgis.query.drift.ontology_init import propose_ontology
-from cgis.query.engine import BEHAVIORAL_EDGE_TYPES, QueryEngine, Truncation, impact_screen
+from cgis.query.engine import (
+    BEHAVIORAL_EDGE_TYPES,
+    QueryEngine,
+    TraversalResult,
+    Truncation,
+    agent_screen,
+)
 from cgis.query.fqn import is_package_prefix, resolve_fqn
 from cgis.query.render.graph_json import graph_to_json
 from cgis.query.render.mermaid import MermaidCompiler
 from cgis.query.render.metrics import DuckDBAnalyzer
+from cgis.query.render.text import graph_to_text
 from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 
 print("CGIS MCP Server starting…", file=sys.stderr)
@@ -97,8 +104,27 @@ def _traversal_filters(
 OutputFormat = Annotated[
     str,
     Field(
-        description='"mermaid" for a diagram, or "json" for a payload with real FQNs '
+        description='"text" for an indented tree, one line per node — the cheapest to read; '
+        '"mermaid" for a diagram; or "json" for a payload with real FQNs, to compute with '
         "(case-insensitive). Any other value returns an error."
+    ),
+]
+IncludeTests = Annotated[
+    bool,
+    Field(
+        description="Also return test code. Off by default: on a large repo tests outnumber "
+        "the production code an answer is about. The answer says how many were left out — "
+        "a floor when it is also truncated, since levels past the cut are not walked. A root "
+        "that is itself a test keeps them."
+    ),
+]
+MaxNodes = Annotated[
+    int,
+    Field(
+        description="Most nodes to return, nearest levels first. A level that does not fit "
+        "is cut and the walk stops there; the answer says where and how many were left out, "
+        "so a smaller depth or a narrower FQN can follow.",
+        ge=1,
     ),
 ]
 
@@ -121,9 +147,10 @@ def _blank_fqn_error(fqn: str) -> str | None:
     return None
 
 
-#: Default node budget for `cgis_analyze_impact` (#551). The A/B run's 51k-character
-#: answer was 140 nodes; an agent's client spills a result that size to a file.
-_IMPACT_MAX_NODES = 100
+#: Default node budget for `cgis_analyze_impact` (#551) and `cgis_trace_flow` (#580).
+#: The A/B run's 51k-character impact answer was 140 nodes; an agent's client spills
+#: a result that size to a file.
+_TRAVERSAL_MAX_NODES = 100
 
 
 class _Omissions(NamedTuple):
@@ -157,9 +184,28 @@ def _omission_keys(omissions: "_Omissions | None") -> dict[str, Any]:
     return keys
 
 
-def _wants_json(output_format: str) -> bool:
-    """True when a traversal will be rendered as JSON — the only shape that carries coverage."""
-    return output_format.strip().lower() == "json"
+def _traversal_note(
+    fqn: str,
+    resolved: str,
+    via_suffix: bool,
+    result: TraversalResult,
+    max_nodes: int,
+    left_out: str,
+) -> str:
+    """The notes above a trace or impact answer: resolution, tests left out, truncation."""
+    note = f"> Resolved '{fqn}' → '{resolved}'\n\n" if via_suffix else ""
+    if result.excluded:
+        note += (
+            f"> {result.excluded} test {left_out} left out; include_tests=true returns them.\n\n"
+        )
+    if result.truncation:
+        note += f"> {_truncation_text(result.truncation, max_nodes)}\n\n"
+    return note
+
+
+def _wants_coverage(output_format: str) -> bool:
+    """True when the traversal's coverage will be rendered: json and text carry it."""
+    return output_format.strip().lower() in {"json", "text"}
 
 
 def _render_subgraph_with_freshness(
@@ -171,6 +217,8 @@ def _render_subgraph_with_freshness(
     nodes: list[Node],
     edges: list[Edge],
     coverage: TraversalCoverage | None = None,
+    *,
+    downstream: bool = True,
     excluded_tests: int = 0,
     truncation: Truncation | None = None,
     max_nodes: int = 0,
@@ -186,6 +234,7 @@ def _render_subgraph_with_freshness(
         _graph_freshness(db_path),
         coverage,
         _Omissions(excluded_tests, truncation, max_nodes),
+        downstream=downstream,
     )
 
 
@@ -199,8 +248,10 @@ def _render_subgraph(
     freshness: "Freshness | None" = None,
     coverage: TraversalCoverage | None = None,
     omissions: "_Omissions | None" = None,
+    *,
+    downstream: bool = True,
 ) -> str:
-    """Render a traversal result as a Mermaid diagram or joinable JSON (#171).
+    """Render a traversal result as a tree, a Mermaid diagram or joinable JSON (#171, #569).
 
     ``json`` returns the raw ``{root, nodes, edges}`` payload with real FQNs —
     no markdown wrapper — so an agent can parse and combine it across calls.
@@ -213,7 +264,9 @@ def _render_subgraph(
     knows which shape it is about to produce (#175). ``coverage`` (#201) rides
     in the JSON only. ``omissions`` (#551) become ``excluded_tests`` and
     ``truncated`` keys in the JSON; the caller says them in ``note`` for the
-    diagram.
+    diagram. ``text`` is an indented tree (``graph_to_text``) under the same
+    notes as the diagram, with coverage as a closing line; ``downstream`` says
+    which end of an edge is the child (False for impact).
     """
     fmt = output_format.strip().lower()
     if fmt == "json":
@@ -226,7 +279,21 @@ def _render_subgraph(
         return (
             f"{_freshness_text(freshness)}{note}### {title} `{root}`:\n\n```mermaid\n{diagram}\n```"
         )
-    return f"❌ Unknown format '{output_format}'. Use 'mermaid' or 'json'."
+    if fmt == "text":
+        tree = graph_to_text(root, nodes, edges, downstream=downstream)
+        footer = f"\n\n{_coverage_text(coverage)}" if coverage is not None else ""
+        heading = f"{title} {root} ({len(nodes)} nodes):"
+        return f"{_freshness_text(freshness)}{note}{heading}\n{tree}{footer}"
+    return f"❌ Unknown format '{output_format}'. Use 'text', 'mermaid' or 'json'."
+
+
+def _coverage_text(coverage: TraversalCoverage) -> str:
+    """Coverage as one line: how many calls resolved to nothing, and the commonest names."""
+    top = ", ".join(f"{name} ({count})" for name, count in coverage.top_unresolved[:5])
+    return (
+        f"coverage: {coverage.calls_unresolved} of {coverage.calls_examined} calls unresolved"
+        f" ({coverage.basis})" + (f"; most often {top}" if top else "")
+    )
 
 
 #: Names cgis will create a database under. Everything else is refused, so an
@@ -451,6 +518,8 @@ def cgis_trace_flow(
     output_format: OutputFormat = "mermaid",
     include_structure: IncludeStructure = False,
     include_external: IncludeExternal = False,
+    include_tests: IncludeTests = False,
+    max_nodes: MaxNodes = _TRAVERSAL_MAX_NODES,
 ) -> str:
     """Downstream subgraph of one FQN: everything it reaches within ``depth`` hops.
 
@@ -465,8 +534,13 @@ def cgis_trace_flow(
     ``cgis_get_structure``; for a source-included brief to read before editing
     one symbol, ``cgis_context``.
 
-    ``output_format="mermaid"`` (default) returns a human-readable diagram;
-    ``"json"`` returns a joinable ``{root, nodes, edges, coverage}`` payload
+    Test code is left out unless ``include_tests`` asks for it, and at most
+    ``max_nodes`` nodes come back, nearest first, as for impact.
+
+    ``output_format="text"`` returns the subgraph as an indented tree, one line
+    per node with children in call-site order, so a flow reads top down — about
+    a fifth of the json for the same answer; ``"mermaid"`` (default) a diagram;
+    ``"json"`` a joinable ``{root, nodes, edges, coverage}`` payload
     with real FQNs (not display hashes) for agent/CI use. ``coverage`` counts
     the calls the traversed functions make that resolved to nothing, and
     ``top_unresolved`` names the most frequent. Read the names, not only the
@@ -489,12 +563,14 @@ def cgis_trace_flow(
                 max_depth=depth,
                 allowed_edge_types=allowed,
                 show_external=show_external,
-                with_coverage=_wants_json(output_format),
+                with_coverage=_wants_coverage(output_format),
+                screen=agent_screen(store, res.resolved, include_tests, show_external),
+                max_nodes=max_nodes,
             )
     except Exception as exc:
         return f"❌ {exc}"
 
-    note = f"> Resolved '{fqn}' → '{res.resolved}'\n\n" if res.via_suffix else ""
+    note = _traversal_note(fqn, res.resolved, res.via_suffix, result, max_nodes, "node(s)")
     return _render_subgraph_with_freshness(
         db_path,
         output_format,
@@ -504,6 +580,9 @@ def cgis_trace_flow(
         result.nodes,
         result.edges,
         result.coverage,
+        excluded_tests=result.excluded,
+        truncation=result.truncation,
+        max_nodes=max_nodes,
     )
 
 
@@ -523,25 +602,8 @@ def cgis_analyze_impact(
     output_format: OutputFormat = "mermaid",
     include_structure: IncludeStructure = False,
     include_external: IncludeExternal = False,
-    include_tests: Annotated[
-        bool,
-        Field(
-            description="Also return callers in test code. Off by default: a test is not "
-            "production code that breaks, and on a large repo tests outnumber the real "
-            "callers. The answer says how many were left out — a floor when it is also "
-            "truncated, since levels past the cut are not walked. A root that is itself a "
-            "test keeps its test callers."
-        ),
-    ] = False,
-    max_nodes: Annotated[
-        int,
-        Field(
-            description="Most nodes to return, nearest levels first. A level that does not "
-            "fit is cut and the walk stops there; the answer says where and how many were "
-            "left out, so a smaller depth or a narrower FQN can follow.",
-            ge=1,
-        ),
-    ] = _IMPACT_MAX_NODES,
+    include_tests: IncludeTests = False,
+    max_nodes: MaxNodes = _TRAVERSAL_MAX_NODES,
 ) -> str:
     """Upstream subgraph of one FQN: everything that reaches it within ``depth`` hops.
 
@@ -560,7 +622,8 @@ def cgis_analyze_impact(
     ``cgis_get_structure``; for a source-included brief to read before editing
     one symbol, ``cgis_context``.
 
-    ``output_format="mermaid"`` (default)
+    ``output_format="text"`` returns an indented tree of callers, one line
+    per node — the compact form to read; ``"mermaid"`` (default)
     returns a diagram; ``"json"`` returns a joinable ``{root, nodes, edges,
     coverage}`` payload with real FQNs — letting an agent compute set
     differences (e.g. "which route handlers never reach ``verify_ownership``?")
@@ -584,18 +647,14 @@ def cgis_analyze_impact(
                 max_depth=depth,
                 allowed_edge_types=allowed,
                 show_external=show_external,
-                with_coverage=_wants_json(output_format),
-                screen=impact_screen(store, res.resolved, include_tests),
+                with_coverage=_wants_coverage(output_format),
+                screen=agent_screen(store, res.resolved, include_tests, show_external),
                 max_nodes=max_nodes,
             )
     except Exception as exc:
         return f"❌ {exc}"
 
-    note = f"> Resolved '{fqn}' → '{res.resolved}'\n\n" if res.via_suffix else ""
-    if result.excluded:
-        note += f"> {result.excluded} test caller(s) left out; include_tests=true returns them.\n\n"
-    if result.truncation:
-        note += f"> {_truncation_text(result.truncation, max_nodes)}\n\n"
+    note = _traversal_note(fqn, res.resolved, res.via_suffix, result, max_nodes, "caller(s)")
     return _render_subgraph_with_freshness(
         db_path,
         output_format,
@@ -605,6 +664,7 @@ def cgis_analyze_impact(
         result.nodes,
         result.edges,
         result.coverage,
+        downstream=False,
         excluded_tests=result.excluded,
         truncation=result.truncation,
         max_nodes=max_nodes,

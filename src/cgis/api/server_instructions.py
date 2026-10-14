@@ -38,8 +38,9 @@ relying on it.
 (an injected client, logger.info) resolve to nothing. An empty impact result means \
 "no static callers found", not "safe to delete": dispatch through a registry, a \
 decorator or a framework is invisible. Name the gap rather than assert safety.
-- cgis_analyze_impact leaves out test callers (counted in excluded_tests) and caps the \
-answer at max_nodes, nearest callers first; a cut is reported in truncated.
+- cgis_analyze_impact and cgis_trace_flow leave out test code (counted) and cap the \
+answer at max_nodes, nearest first; a cut is reported. Ask for output_format="text" to \
+read an answer — an indented tree, a fifth the size of json; use json to compute with it.
 
 Coverage: Python (.py) and TypeScript (.ts, .tsx) only. Other languages are not in the \
 graph — read those files, and say which part of the answer the graph could not see.
