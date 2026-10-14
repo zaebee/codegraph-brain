@@ -3,6 +3,27 @@
 One section per run, newest first. The raw lines are in `results.jsonl`; the
 transcripts they point at are git-ignored and stay on the machine that ran them.
 
+## 2026-10-14: `owner-impact-credit-wallet`, after #568 and #550
+
+cgis at fc33b20, Sonnet 5.5, 3 runs per arm, 0 contaminated, about $1.5 in total.
+`cgis` was not re-run: it made no cgis call on this task in the run below.
+
+| arm | recall | precision | median $ | median tool calls | cgis calls per run |
+|---|---|---|---|---|---|
+| control | 1.00 | 1.00 | 0.298 | 7 | — |
+| cgis-forced | 1.00 | 1.00 | **0.184** | 5 | 2, 5, 1 |
+
+- `cgis-forced` went from $0.235 to $0.184 median and is now about 38% cheaper
+  than control. Control was unchanged ($0.30 to $0.298).
+- **#568.** Two of the three sessions opened with
+  `app.domains.finance.service.credit_wallet` again, and this time it resolved:
+  the first answer was the full chain (6,746 characters), with no not-found
+  first. The third tried the bare `credit_wallet`, which is still ambiguous.
+- **#550.** That first answer now includes both routes, `get_top_up` and
+  `stripe_webhook`. One session finished on a single cgis call. The greps that
+  remain are the agent confirming that `FinanceService.top_up` and the worker
+  tasks have no further callers, not looking for missing ones.
+
 ## 2026-10-13: `owner-impact-credit-wallet`, after #563 and #565
 
 cgis at 3c37874, Sonnet 5.5, 3 runs per arm, 0 contaminated, about $2.5 in total.
