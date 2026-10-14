@@ -188,9 +188,9 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
         models_Node["Node (models.py:89)"]:::classNode
     end
     subgraph sg_import_names["import_names.py"]
-        import_names_ImportNameCollector["ImportNameCollector (import_names.py:90)"]:::classNode
-        import_names_ImportNameCollector_collect["collect (import_names.py:141)"]:::methodNode
-        import_names_ImportNameCollector_note["note (import_names.py:133)"]:::methodNode
+        import_names_ImportNameCollector["ImportNameCollector (import_names.py:96)"]:::classNode
+        import_names_ImportNameCollector_collect["collect (import_names.py:151)"]:::methodNode
+        import_names_ImportNameCollector_note["note (import_names.py:143)"]:::methodNode
     end
     subgraph sg_pipeline["pipeline.py"]
         pipeline_IngestionPipeline_cross_file_inputs_changed["_cross_file_inputs_changed (pipeline.py:314)"]:::methodNode
@@ -239,9 +239,9 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
 |--------|------|------|
 | `Node` | CLASS | [`models.py:89`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/core/models.py#L89) |
 | `Edge` | CLASS | [`models.py:146`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/core/models.py#L146) |
-| `ImportNameCollector` | CLASS | [`import_names.py:90`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/import_names.py#L90) |
-| `note` | METHOD | [`import_names.py:133`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/import_names.py#L133) |
-| `collect` | METHOD | [`import_names.py:141`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/import_names.py#L141) |
+| `ImportNameCollector` | CLASS | [`import_names.py:96`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/import_names.py#L96) |
+| `note` | METHOD | [`import_names.py:143`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/import_names.py#L143) |
+| `collect` | METHOD | [`import_names.py:151`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/import_names.py#L151) |
 | `refresh_dispatch` | FUNCTION | [`pipeline.py:40`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L40) |
 | `_observe` | FUNCTION | [`pipeline.py:76`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L76) |
 | `workspace_root` | METHOD | [`pipeline.py:118`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline.py#L118) |

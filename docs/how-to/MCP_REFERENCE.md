@@ -24,7 +24,8 @@ Upstream subgraph of one FQN: everything that reaches it within ``depth`` hops.
     ``cgis_get_structure``; for a source-included brief to read before editing
     one symbol, ``cgis_context``.
 
-    ``output_format="mermaid"`` (default)
+    ``output_format="text"`` returns an indented tree of callers, one line
+    per node — the compact form to read; ``"mermaid"`` (default)
     returns a diagram; ``"json"`` returns a joinable ``{root, nodes, edges,
     coverage}`` payload with real FQNs — letting an agent compute set
     differences (e.g. "which route handlers never reach ``verify_ownership``?")
@@ -38,10 +39,10 @@ Upstream subgraph of one FQN: everything that reaches it within ``depth`` hops.
 | `fqn` | `string` | ✓ | Fully qualified name, e.g. pkg.module.Class.method. A unique dot-boundary suffix also resolves; an ambiguous one returns candidates. Use cgis_find_symbol to look a name up. |
 | `db_path` | `string` |  | SQLite graph built by cgis_ingest. A relative path resolves against the MCP server's working directory, not the agent's — prefer an absolute path. |
 | `depth` | `integer` |  | Maximum edge hops upstream, over callers, importers, subclasses, type references and DI dependents (plus the enclosing class or file with include_structure). |
-| `output_format` | `string` |  | "mermaid" for a diagram, or "json" for a payload with real FQNs (case-insensitive). Any other value returns an error. |
+| `output_format` | `string` |  | "text" for an indented tree, one line per node — the cheapest to read; "mermaid" for a diagram; or "json" for a payload with real FQNs, to compute with (case-insensitive). Any other value returns an error. |
 | `include_structure` | `boolean` |  | Also follow containment (CONTAINS/DECLARES): a module's or class's own members, and the class or file enclosing a symbol. Off by default, as in the CLI; cgis_get_structure is the tool for members alone. |
 | `include_external` | `boolean` |  | Also return stdlib, third-party and unresolved call targets — calls on values whose type is decided at runtime. Off by default, as in the CLI, because they dominate the payload; in json, coverage/top_unresolved still counts what was dropped. |
-| `include_tests` | `boolean` |  | Also return callers in test code. Off by default: a test is not production code that breaks, and on a large repo tests outnumber the real callers. The answer says how many were left out — a floor when it is also truncated, since levels past the cut are not walked. A root that is itself a test keeps its test callers. |
+| `include_tests` | `boolean` |  | Also return test code. Off by default: on a large repo tests outnumber the production code an answer is about. The answer says how many were left out — a floor when it is also truncated, since levels past the cut are not walked. A root that is itself a test keeps them. |
 | `max_nodes` | `integer` |  | Most nodes to return, nearest levels first. A level that does not fit is cut and the walk stops there; the answer says where and how many were left out, so a smaller depth or a narrower FQN can follow. |
 
 ---
@@ -204,7 +205,9 @@ Resolve a partial symbol name to candidate FQNs (substring match, ranked).
     ``get_reservation_prices``) but not its full FQN — it removes the
     read-the-file-first guesswork. Returns JSON ``[{fqn, name, type, file,
     line}]`` ranked exact > prefix > substring. ``kind`` filters by node type
-    (FUNCTION / METHOD / CLASS / …); ``fqn_prefix`` scopes the search.
+    (FUNCTION / METHOD / CLASS / …); ``fqn_prefix`` scopes the search. A prefix
+    that starts with the directories the graph was ingested below (``src.cgis``
+    for a graph of ``src/``) and covers no code is read without them.
 
 | Argument | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
@@ -252,8 +255,9 @@ Members of a module or class — or, for a package prefix, the modules it holds.
     For how the code connects use ``cgis_trace_flow`` (what it depends on) or
     ``cgis_analyze_impact`` (what depends on it).
 
-    Matches the CLI ``structure`` command. ``output_format="mermaid"`` (default) returns a
-    diagram of the hierarchy rooted at the given FQN; ``"json"`` returns the
+    Matches the CLI ``structure`` command. ``output_format="text"`` returns the
+    hierarchy as an indented tree, one line per member; ``"mermaid"`` (default) a
+    diagram of the hierarchy rooted at the given FQN; ``"json"`` the
     joinable ``{root, nodes, edges}`` payload with real FQNs.
 
 | Argument | Type | Required | Description |
@@ -261,7 +265,7 @@ Members of a module or class — or, for a package prefix, the modules it holds.
 | `fqn` | `string` | ✓ | Fully qualified name, e.g. pkg.module.Class.method. A unique dot-boundary suffix also resolves; an ambiguous one returns candidates. Use cgis_find_symbol to look a name up. |
 | `db_path` | `string` |  | SQLite graph built by cgis_ingest. A relative path resolves against the MCP server's working directory, not the agent's — prefer an absolute path. |
 | `depth` | `integer` |  | Maximum containment levels to descend (module → class → method). |
-| `output_format` | `string` |  | "mermaid" for a diagram, or "json" for a payload with real FQNs (case-insensitive). Any other value returns an error. |
+| `output_format` | `string` |  | "text" for an indented tree, one line per node — the cheapest to read; "mermaid" for a diagram; or "json" for a payload with real FQNs, to compute with (case-insensitive). Any other value returns an error. |
 
 ---
 
@@ -428,8 +432,13 @@ Downstream subgraph of one FQN: everything it reaches within ``depth`` hops.
     ``cgis_get_structure``; for a source-included brief to read before editing
     one symbol, ``cgis_context``.
 
-    ``output_format="mermaid"`` (default) returns a human-readable diagram;
-    ``"json"`` returns a joinable ``{root, nodes, edges, coverage}`` payload
+    Test code is left out unless ``include_tests`` asks for it, and at most
+    ``max_nodes`` nodes come back, nearest first, as for impact.
+
+    ``output_format="text"`` returns the subgraph as an indented tree, one line
+    per node with children in call-site order, so a flow reads top down — about
+    a fifth of the json for the same answer; ``"mermaid"`` (default) a diagram;
+    ``"json"`` a joinable ``{root, nodes, edges, coverage}`` payload
     with real FQNs (not display hashes) for agent/CI use. ``coverage`` counts
     the calls the traversed functions make that resolved to nothing, and
     ``top_unresolved`` names the most frequent. Read the names, not only the
@@ -442,9 +451,11 @@ Downstream subgraph of one FQN: everything it reaches within ``depth`` hops.
 | `fqn` | `string` | ✓ | Fully qualified name, e.g. pkg.module.Class.method. A unique dot-boundary suffix also resolves; an ambiguous one returns candidates. Use cgis_find_symbol to look a name up. |
 | `db_path` | `string` |  | SQLite graph built by cgis_ingest. A relative path resolves against the MCP server's working directory, not the agent's — prefer an absolute path. |
 | `depth` | `integer` |  | Maximum edge hops downstream, over calls, imports, inheritance, DI dependencies and references (plus containment with include_structure). |
-| `output_format` | `string` |  | "mermaid" for a diagram, or "json" for a payload with real FQNs (case-insensitive). Any other value returns an error. |
+| `output_format` | `string` |  | "text" for an indented tree, one line per node — the cheapest to read; "mermaid" for a diagram; or "json" for a payload with real FQNs, to compute with (case-insensitive). Any other value returns an error. |
 | `include_structure` | `boolean` |  | Also follow containment (CONTAINS/DECLARES): a module's or class's own members, and the class or file enclosing a symbol. Off by default, as in the CLI; cgis_get_structure is the tool for members alone. |
 | `include_external` | `boolean` |  | Also return stdlib, third-party and unresolved call targets — calls on values whose type is decided at runtime. Off by default, as in the CLI, because they dominate the payload; in json, coverage/top_unresolved still counts what was dropped. |
+| `include_tests` | `boolean` |  | Also return test code. Off by default: on a large repo tests outnumber the production code an answer is about. The answer says how many were left out — a floor when it is also truncated, since levels past the cut are not walked. A root that is itself a test keeps them. |
+| `max_nodes` | `integer` |  | Most nodes to return, nearest levels first. A level that does not fit is cut and the walk stops there; the answer says where and how many were left out, so a smaller depth or a narrower FQN can follow. |
 
 ---
 
