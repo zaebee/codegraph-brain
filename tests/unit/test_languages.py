@@ -304,3 +304,12 @@ def test_a_typescript_only_ingest_never_loads_the_python_grammar(tmp_path: Path)
     """Every pack's reader exists from the first file now; the Python grammar must still wait."""
     files = {"app/h.ts": TS_SOURCE, "README.md": "# demo\n"}
     assert _cli_ingest_loads(tmp_path, files) == ["tree_sitter_typescript"]
+
+
+def test_a_root_package_json_does_not_load_the_typescript_grammar(tmp_path: Path) -> None:
+    """A tooling manifest at a Python repo's root (prettier, commitlint) names no package."""
+    files = {
+        "pkg/a.py": PY_SOURCE,
+        "package.json": '{"name": "tooling", "devDependencies": {"prettier": "3"}}',
+    }
+    assert _cli_ingest_loads(tmp_path, files) == ["tree_sitter_python"]
