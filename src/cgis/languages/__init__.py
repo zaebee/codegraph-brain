@@ -168,8 +168,13 @@ def rules_for(source_file: str | None) -> ResolutionRules | None:
     return None if pack is None else _rules(pack.name)
 
 
+@cache
 def type_normalizers() -> tuple[TypeNormalizer, ...]:
-    """Every pack's type normalizers, in manifest order (step 4, ruling D2)."""
+    """Every pack's type normalizers, in manifest order (step 4, ruling D2).
+
+    Cached: the engine asks for them on every declared type, and the packs'
+    rules never change once loaded.
+    """
     return tuple(n for m in MANIFESTS for n in _rules(m.name).type_normalizers)
 
 

@@ -112,3 +112,8 @@ def test_a_normalizer_applies_without_a_source() -> None:
     index = IndexBuilder().build([alias, service])
     (normalize,) = type_normalizers()
     assert normalize("app.deps.ServiceDep", index) == "app.svc.Service"
+
+
+def test_the_normalizers_are_collected_once() -> None:
+    """On the hot path (every declared type): the tuple is built once, not per call."""
+    assert type_normalizers() is type_normalizers()
