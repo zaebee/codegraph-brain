@@ -40,6 +40,8 @@ class TypeScriptIndexFacts:
 
     internal_roots: frozenset[str]
     layout_prefixes: frozenset[str]
+    #: TypeScript records no forwarded names (yet); always empty.
+    reexports: Mapping[str, Mapping[str, str]]
     #: npm packages the manifests declare, as written, less our workspace packages.
     npm_dependencies: frozenset[str]
     #: normalized file_path -> the bare specifiers that file imports, as written.
@@ -70,6 +72,7 @@ def index_facts(nodes: Mapping[str, Node], state: Mapping[str, object]) -> TypeS
     return TypeScriptIndexFacts(
         internal_roots=frozenset(),
         layout_prefixes=frozenset(),
+        reexports=MappingProxyType({}),
         npm_dependencies=frozenset(cast("list[str]", state.get("npm_dependencies", []))),
         file_bare_imports=MappingProxyType(bare),
         file_shadowed_globals=MappingProxyType(

@@ -277,6 +277,18 @@ class SymbolIndex:
 _ROOT_PACKAGE = "__init__"
 
 
+def _merged_reexports(facts: Mapping[str, IndexFacts]) -> dict[str, dict[str, str]]:
+    """Every pack's forwarded names; a module two packs both forward is an error."""
+    merged: dict[str, dict[str, str]] = {}
+    for pack_facts in facts.values():
+        for module_fqn, names in pack_facts.reexports.items():
+            if module_fqn in merged:
+                msg = f"two packs forward names from {module_fqn}"
+                raise ValueError(msg)
+            merged[module_fqn] = dict(names)
+    return merged
+
+
 class IndexBuilder:
     """Builds a SymbolIndex from extracted nodes (Phase 1: indexing).
 
@@ -309,8 +321,6 @@ class IndexBuilder:
         variable_symbols: dict[str, list[str]] = {}
         file_variable_symbols: dict[tuple[str, str], list[str]] = {}
         file_imports: dict[str, dict[str, str]] = {}
-        reexports: dict[str, dict[str, str]] = {}
-        star_imports: dict[str, list[str]] = {}
         suffix_map: dict[str, list[str]] = {}
         internal_roots: set[str] = set()
 
@@ -320,8 +330,6 @@ class IndexBuilder:
                 node,
                 file_imports,
                 self_types,
-                reexports,
-                star_imports,
             )
 
             # Index global functions/symbols
@@ -351,7 +359,7 @@ class IndexBuilder:
         facts = pack_index_facts(MappingProxyType(nodes_by_id), state)
         roots = frozenset(internal_roots.union(*(f.internal_roots for f in facts.values())))
         prefixes = frozenset[str]().union(*(f.layout_prefixes for f in facts.values()))
-        self._expand_star_imports(star_imports, reexports, set(nodes_by_id))
+        reexports = _merged_reexports(facts)
 
         # Read-only views, not copies: MappingProxyType wraps in O(1), so this
         # buys write protection without touching ingest cost (#183).
@@ -372,119 +380,22 @@ class IndexBuilder:
         )
 
     @staticmethod
-    def _public_names_under(module_fqn: str, node_ids: set[str]) -> dict[str, str]:
-        """The symbols `from <module_fqn> import *` would bring in directly.
-
-        Only names defined immediately under the module: a dotted remainder is a
-        symbol inside one of its children, and a leading underscore is private —
-        `import *` takes neither.
-
-        The module is tried verbatim and then with leading segments stripped. A
-        star import written absolutely (`from app.tests.fixtures import *`)
-        records the path as the author typed it, while node ids are
-        `tests.fixtures` when the project was ingested at app/ — the same prefix
-        mismatch that made the first version of this feature resolve nothing, and
-        it reaches the star sources as well as the map keys.
-        """
-        parts = module_fqn.split(".")
-        for i in range(len(parts)):
-            prefix = ".".join(parts[i:]) + "."
-            names: dict[str, str] = {}
-            for node_id in node_ids:
-                if not node_id.startswith(prefix):
-                    continue
-                name = node_id[len(prefix) :]
-                if "." not in name and not name.startswith("_"):
-                    names.setdefault(name, node_id)
-            if names:
-                return names
-        return {}
-
-    @staticmethod
-    def _close_over_sources(
-        by_module: dict[str, dict[str, str]],
-        star_imports: dict[str, list[str]],
-        reexports: dict[str, dict[str, str]],
-    ) -> None:
-        """Pull each source's own forwarded names in, repeatedly, until stable.
-
-        A star import of a package that itself re-exports needs those names too:
-        `app/__init__` starring `app.models`, which stars `app.models.rating`,
-        must reach Rating. Repeating terminates because names are only ever
-        added, never removed.
-        """
-        changed = True
-        while changed:
-            changed = False
-            for module_fqn, sources in star_imports.items():
-                target = by_module[module_fqn]
-                for source in sources:
-                    inherited = {**reexports.get(source, {}), **by_module.get(source, {})}
-                    for name, definer in inherited.items():
-                        if name not in target:
-                            target[name] = definer
-                            changed = True
-
-    @classmethod
-    def _expand_star_imports(
-        cls,
-        star_imports: dict[str, list[str]],
-        reexports: dict[str, dict[str, str]],
-        node_ids: set[str],
-    ) -> None:
-        """Turn `from X import *` into the names X actually exports.
-
-        The extractor cannot do this: it sees one file, and the names belong to
-        the *exporting* module. Here every node is known.
-
-        `__all__` is not read. Where a module has one, the difference is a module
-        deliberately hiding a public name — rare, and the extra entry is inert:
-        it only ever fires if some file actually imports that name.
-
-        An explicit re-export already recorded wins over a starred one: a module
-        that both stars a submodule and names a symbol explicitly meant the
-        explicit one.
-        """
-        by_module = {
-            module_fqn: {
-                name: definer
-                for source in sources
-                for name, definer in cls._public_names_under(source, node_ids).items()
-            }
-            for module_fqn, sources in star_imports.items()
-        }
-        cls._close_over_sources(by_module, star_imports, reexports)
-        for module_fqn, names in by_module.items():
-            if not names:
-                continue
-            existing = reexports.setdefault(module_fqn, {})
-            for name, definer in names.items():
-                existing.setdefault(name, definer)
-
-    @staticmethod
     def _index_metadata(
         node: Node,
         file_imports: dict[str, dict[str, str]],
         self_types: dict[str, dict[str, str]],
-        reexports: dict[str, dict[str, str]],
-        star_imports: dict[str, list[str]],
     ) -> None:
         """Read the maps the extractor attached to a FILE or CLASS node.
 
-        A FILE carries its import map, re-exports and star imports; a CLASS the
-        attribute types recorded from annotations (spec D1). A TypeScript FILE's
-        bare imports and bindings are the TypeScript pack's index facts (step 4).
+        A FILE carries its import map; a CLASS the attribute types recorded from
+        annotations (spec D1). Re-exports and star imports are the Python pack's,
+        and a TypeScript FILE's bare imports and bindings the TypeScript pack's,
+        index facts (step 4).
         All are extractor output the resolver consumes rather than derives.
         """
         if node.type == NodeType.FILE:
             path = os.path.normpath(node.file_path)
             file_imports[path] = node.metadata.get("import_map") or {}
-            forwarded = node.metadata.get("reexports")
-            if forwarded:
-                reexports[node.id] = dict(forwarded)
-            wildcards = node.metadata.get("star_imports")
-            if wildcards:
-                star_imports[node.id] = list(wildcards)
         elif node.type == NodeType.CLASS:
             declared = node.metadata.get("self_types")
             if declared:

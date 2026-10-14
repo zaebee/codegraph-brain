@@ -81,3 +81,34 @@ def test_js_builtins_are_the_typescript_packs_fallback() -> None:
     assert py.fallback is None
     view = IndexBuilder().build([])
     assert ts.fallback("Math.max", "app/x.ts", view) == ("js_builtins.Math.max", 0.8)
+
+
+def test_the_annotated_alias_is_pythons_normalizer() -> None:
+    rules = rules_for("app/x.py")
+    assert rules is not None
+    assert len(rules.type_normalizers) == 1
+    assert type_normalizers() == rules.type_normalizers
+
+
+def test_a_normalizer_applies_without_a_source() -> None:
+    """receiver_type_fqn has no source file: ServiceDep still reads as Service (#550, D2)."""
+    alias = Node(
+        id="app.deps.ServiceDep",
+        type=NodeType.VARIABLE,
+        name="ServiceDep",
+        file_path="app/deps.py",
+        start_line=1,
+        end_line=1,
+        metadata={"annotated_type": "app.svc.Service"},
+    )
+    service = Node(
+        id="app.svc.Service",
+        type=NodeType.CLASS,
+        name="Service",
+        file_path="app/svc.py",
+        start_line=1,
+        end_line=1,
+    )
+    index = IndexBuilder().build([alias, service])
+    (normalize,) = type_normalizers()
+    assert normalize("app.deps.ServiceDep", index) == "app.svc.Service"

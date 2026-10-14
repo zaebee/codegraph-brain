@@ -89,3 +89,12 @@ def test_classification_chain() -> None:
     assert classify("len", ctx) is NodeNamespace.STDLIB
     assert classify("js_builtins.Math", ctx) is NodeNamespace.STDLIB
     assert classify("nothing.known", ctx) is NodeNamespace.UNKNOWN
+
+
+def test_star_imports_expand_to_the_public_names_under_the_source() -> None:
+    """`from pkg.mod import *` forwards `A`, never the private `_b` (#417)."""
+    file_node = _node(
+        "pkg.app", NodeType.FILE, file_path="pkg/app.py", metadata={"star_imports": ["pkg.mod"]}
+    )
+    facts = _facts([file_node, _node("pkg.mod.A"), _node("pkg.mod._b")])
+    assert facts.reexports == {"pkg.app": {"A": "pkg.mod.A"}}
