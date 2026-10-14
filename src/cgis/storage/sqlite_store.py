@@ -810,7 +810,12 @@ class SQLiteStore:
         return nodes, edges
 
     def get_edge_stats(self) -> EdgeStats:
-        """Return resolution statistics for all edges in the graph."""
+        """Return resolution statistics for the edges extracted from the code.
+
+        DISPATCHES edges are left out (#545): the resolver synthesizes them from
+        the class hierarchy, every one internal by construction, so counting them
+        would lower `unresolved_ratio` without a single reference resolving.
+        """
         if not self._conn:
             raise RuntimeError(self._error_message)
         row = self._conn.execute(
@@ -824,6 +829,7 @@ class SQLiteStore:
                            OR e.target GLOB ? THEN 1 END) AS unresolved
             FROM edges e
             LEFT JOIN nodes n ON e.target = n.id
+            WHERE e.type != 'DISPATCHES'
             """,
             (f"{RAW_CALL_PREFIX}*",),
         ).fetchone()
@@ -840,7 +846,7 @@ class SQLiteStore:
             SELECT e.target, COUNT(*) AS cnt
             FROM edges e
             LEFT JOIN nodes n ON e.target = n.id
-            WHERE n.namespace = 'UNKNOWN' OR n.id IS NULL
+            WHERE (n.namespace = 'UNKNOWN' OR n.id IS NULL) AND e.type != 'DISPATCHES'
             GROUP BY e.target
             ORDER BY cnt DESC
             LIMIT 10

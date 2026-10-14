@@ -31,6 +31,7 @@ edge_types:
     - EXTENDS     # Subclass inherits from a superclass
   behavioral:
     - CALLS         # Function/method invokes another function/method
+    - DISPATCHES    # Base-class method -> an override in a subclass; synthesized from the class hierarchy (#545)
     - INSTANTIATES  # Code instantiates a class
     - REFERENCES    # Node references another node without calling it
     - USES          # Node uses a variable or resource

@@ -120,8 +120,9 @@ class SymbolResolver:
         self.index: SymbolIndex = IndexBuilder().build(
             nodes, workspace_packages, tsconfig_paths, dependency_roots, npm_dependencies
         )
-        # class_fqn -> [resolved parent FQNs] built from EXTENDS edges
-        self._inheritance_tree: dict[str, list[str]] = {}
+        # class_fqn -> [resolved parent FQNs] built from EXTENDS edges; read by the
+        # dispatch pass too (`resolver.dispatch`).
+        self.inheritance_tree: dict[str, list[str]] = {}
         for edge in edges:
             if edge.type == EdgeType.EXTENDS:
                 raw = edge.target.removeprefix(RAW_CLASS_PREFIX)
@@ -130,7 +131,7 @@ class SymbolResolver:
                 # Storing the bare `raw` name would false-match an unrelated class
                 # that happens to share that bare name (#183).
                 if resolved:
-                    self._inheritance_tree.setdefault(edge.source, []).append(resolved)
+                    self.inheritance_tree.setdefault(edge.source, []).append(resolved)
 
     def resolve_class_ref(
         self, name: str, source_fqn: str, edge_file_path: str | None
@@ -169,7 +170,7 @@ class SymbolResolver:
             return self._resolve_method_on_class_hierarchy(owner, method_name, set())
         if "." in method:
             return None
-        declaring = _declaring_class(self.index, owner, attr, self._inheritance_tree)
+        declaring = _declaring_class(self.index, owner, attr, self.inheritance_tree)
         if declaring is None:
             return None
         receiver = receiver_type_fqn(self.index, declaring, attr)
@@ -250,7 +251,7 @@ class SymbolResolver:
         direct = self.index.class_methods.get(class_fqn, {}).get(method_name)
         if direct:
             return direct
-        for parent_fqn in self._inheritance_tree.get(class_fqn, []):
+        for parent_fqn in self.inheritance_tree.get(class_fqn, []):
             result = self._resolve_method_on_class_hierarchy(parent_fqn, method_name, visited)
             if result:
                 return result
@@ -327,3 +328,91 @@ def _through_annotated_alias(index: SymbolIndex, type_fqn: str) -> str:
     # Recorded through the alias module's import map, so it may carry a layout
     # prefix (`app.domains.x.T` against a node `domains.x.T`).
     return index.map_to_node_fqn(annotated) or annotated
+
+
+# --- DISPATCHES (#545) -------------------------------------------------------
+#
+# DISPATCHES edges: a base-class method to each override of it (#545).
+#
+# A call resolves to the method its receiver's declared type has, so a call through
+# a base (`client.convert_hit_to_object()` with `client: OpenSearchClient`) lands on
+# the base method and nothing records that a subclass override may run instead.
+# Impact on the override then misses every caller that goes through the base. On
+# owner-api @ 8de2245 this pass adds 49 edges and 6 production callers to the
+# overrides' impact; on cgis itself, 10 and 4 (`BaseProvider.generate_structured`).
+# Most polymorphic calls there are on an untyped receiver (`handler.handle()` in a
+# loop) and stay unresolved — this pass cannot reach those.
+#
+# This pass adds one edge from the nearest ancestor that defines a method to the
+# class that redefines it: class hierarchy analysis, with no attempt to tell
+# which receivers can actually hold the subclass. That is why the edges are a
+# type of their own, at a lower confidence than a resolved call — impact and
+# trace follow them, the CALLS-based metrics do not count them.
+#
+# Left out: dunder methods (`__init__` chains through `super()`, and `__eq__` on
+# every model is no call path anyone asked about), and overrides in test code — a
+# fake repository is not where a production call dispatches to.
+#
+# Module-level, beside `_package_call`: `SymbolResolver` is at the god-object
+# threshold, and a module of its own put a second import star into
+# `cgis.resolver` (self-drift 0.38 -> 0.41 against `pipeline_stage`).
+
+#: Below a resolved call (1.0) and an import-map hit (0.8): the receiver may never
+#: hold the subclass at all.
+DISPATCH_CONFIDENCE = 0.5
+
+
+def dispatch_edges(index: SymbolIndex, inheritance: Mapping[str, list[str]]) -> list[Edge]:
+    """One DISPATCHES edge from each overridden method to its override.
+
+    The source is the nearest definition up each parent's line, so a chain of
+    overrides becomes a chain of edges and a method a middle class does not
+    redefine still links the grandparent to the grandchild. With several
+    parents (or a diamond) an override may get more than one edge, never the
+    same one twice.
+    """
+    edges: dict[str, Edge] = {}
+    for cls, parents in inheritance.items():
+        for name, override_fqn in index.class_methods.get(cls, {}).items():
+            override = index.nodes.get(override_fqn)
+            if override is None or override.is_test or _is_dunder(name):
+                continue
+            for parent in parents:
+                base = _defined_in_ancestry(index, inheritance, parent, name)
+                edge_id = f"dispatch:{base}->{override_fqn}"
+                if base is None or base == override_fqn or edge_id in edges:
+                    continue
+                edges[edge_id] = Edge(
+                    id=edge_id,
+                    source=base,
+                    target=override_fqn,
+                    type=EdgeType.DISPATCHES,
+                    confidence=DISPATCH_CONFIDENCE,
+                    context=f"override of {base}",
+                    file_path=override.file_path,
+                    line_number=override.start_line,
+                )
+    return list(edges.values())
+
+
+def _defined_in_ancestry(
+    index: SymbolIndex, inheritance: Mapping[str, list[str]], cls: str, name: str
+) -> str | None:
+    """The method `name` as `cls` or its nearest ancestor defines it, depth first."""
+    seen: set[str] = set()
+    stack = [cls]
+    while stack:
+        current = stack.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        method = index.class_methods.get(current, {}).get(name)
+        if method is not None:
+            return method
+        stack.extend(reversed(inheritance.get(current, [])))
+    return None
+
+
+def _is_dunder(name: str) -> bool:
+    """`__init__`, `__eq__` and the like."""
+    return name.startswith("__") and name.endswith("__")

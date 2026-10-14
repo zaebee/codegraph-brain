@@ -13,7 +13,7 @@ from cgis.core.models import (
     NodeType,
 )
 from cgis.resolver.js_builtins import js_builtin_target
-from cgis.resolver.symbols import SymbolResolver
+from cgis.resolver.symbols import SymbolResolver, dispatch_edges
 
 RAW_DEP_PREFIX = "raw_dep:"
 RAW_IMPORT_PREFIX = "raw_import:"
@@ -119,6 +119,7 @@ class ResolverEngine:
                 resolved_edges.append(call_edge)
                 self._ensure_virtual_node(call_edge, virtual_nodes)
 
+        resolved_edges.extend(dispatch_edges(self._index, self._resolver.inheritance_tree))
         return _agree_on_confidence(resolved_edges, virtual_nodes), list(virtual_nodes.values())
 
     def _reconciled_layout_edge(self, edge: Edge) -> Edge:
