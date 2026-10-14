@@ -21,7 +21,7 @@ domains:
         - "*storage.*"
 
   SemanticEngine:
-    description: "Symbol resolution, linkage, and semantic uplift"
+    description: "Symbol resolution and linkage"
     heuristics:
       file_path_patterns:
         - "*resolver/*"
@@ -29,8 +29,6 @@ domains:
         - "*.Resolver*"
         - "*.ResolverEngine*"
         - "*resolver.*"
-        - "*.uplift*"
-        - "*.SemanticUplift*"
 
   QueryLayer:
     description: "Graph traversal and query operations"
@@ -53,12 +51,13 @@ domains:
         - "*.EdgeType*"
 
   Pipeline:
-    description: "Ingestion pipeline orchestration"
+    description: "Ingestion pipeline orchestration and its post-write passes (semantic uplift, dispatch)"
     heuristics:
       file_path_patterns:
-        - "*pipeline.py"
+        - "*pipeline/*"
       fqn_patterns:
         - "*.IngestionPipeline*"
+        - "*pipeline"
         - "*pipeline.*"
 
   APILayer:

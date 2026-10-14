@@ -129,4 +129,4 @@ domains:
         - "*storage.*"
 ```
 
-**Ontology compliance rule:** Any PR that adds a new `NodeType`, `EdgeType`, or modifies `domains.yaml` must update this document and the `_ONTOLOGY_CLASS` mapping in `src/cgis/resolver/uplift.py`.
+**Ontology compliance rule:** Any PR that adds a new `NodeType`, `EdgeType`, or modifies `domains.yaml` must update this document and the `_ONTOLOGY_CLASS` mapping in `src/cgis/pipeline/uplift.py`.
