@@ -1,5 +1,7 @@
 """Unit tests for SymbolIndex and IndexBuilder."""
 
+import dataclasses
+
 import pytest
 
 from cgis.core.models import Node, NodeNamespace, NodeType
@@ -473,3 +475,14 @@ def test_a_src_layout_package_keeps_its_heads() -> None:
     )
     assert index.classify_fqn("alembic.env.run") is NodeNamespace.INTERNAL
     assert index.classify_fqn("alembic.op.add_column") is NodeNamespace.EXTERNAL
+
+
+def test_an_index_cannot_be_built_without_its_packs_facts() -> None:
+    """Classification reads `facts[pack]`: an index lacking them must fail where it is made.
+
+    With an empty default the first classification would raise a KeyError far
+    from the cause — or, guarded, silently fall back and misread a Python name.
+    """
+    facts = next(f for f in dataclasses.fields(SymbolIndex) if f.name == "facts")
+    assert facts.default is dataclasses.MISSING
+    assert facts.default_factory is dataclasses.MISSING

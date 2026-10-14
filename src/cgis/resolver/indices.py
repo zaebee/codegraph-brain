@@ -77,6 +77,10 @@ class SymbolIndex:
     suffix_map: Mapping[str, list[str]]
     # top-level root segments of all internal nodes (for classify)
     internal_roots: frozenset[str]
+    # pack name -> that pack's index facts (language-packs step 3): Python's
+    # external and dependency roots, TypeScript's npm packages and bare imports.
+    # Required: classification reads it, so an index without it fails where made.
+    facts: Mapping[str, IndexFacts]
     # prefixes the sources write but the node ids do not carry, because the ingest
     # root was inside the package: `app.` when `cgis ingest app/`. Learned from the
     # import maps, never guessed — kept apart from `internal_roots` so a target can
@@ -92,9 +96,6 @@ class SymbolIndex:
     # then wildcards longest prefix first — the order TypeScript picks one in.
     # A file uses the nearest project above it (#508).
     path_aliases: Mapping[str, tuple[PathAlias, ...]] = MappingProxyType({})
-    # pack name -> that pack's index facts (language-packs step 3): Python's
-    # external and dependency roots, TypeScript's npm packages and bare imports.
-    facts: Mapping[str, IndexFacts] = MappingProxyType({})
     # normalized file_path -> {local name: package symbol FQN} for a TS file's imports:
     # `useState` -> `react.useState`, a namespace import `Icons` -> `lucide-react`.
     file_bare_bindings: Mapping[str, dict[str, str]] = MappingProxyType({})
