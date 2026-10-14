@@ -254,6 +254,7 @@ def results_row(
         **meta,
         "served_model": transcript.model,
         "mcp_servers": transcript.mcp_servers,
+        "cgis_tools": len(transcript.cgis_tools),
         "subtype": transcript.subtype,
         "is_error": transcript.is_error,
         "cost_usd": transcript.cost_usd,

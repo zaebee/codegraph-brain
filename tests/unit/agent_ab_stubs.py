@@ -3,7 +3,9 @@
 import json
 
 
-def init(cwd: str = "/w", servers: dict[str, str] | None = None) -> dict[str, object]:
+def init(
+    cwd: str = "/w", servers: dict[str, str] | None = None, tools: list[str] | None = None
+) -> dict[str, object]:
     """The session's opening `system`/`init` event."""
     return {
         "type": "system",
@@ -11,6 +13,7 @@ def init(cwd: str = "/w", servers: dict[str, str] | None = None) -> dict[str, ob
         "cwd": cwd,
         "model": "claude-sonnet-5-5",
         "mcp_servers": [{"name": k, "status": v} for k, v in (servers or {}).items()],
+        "tools": tools or [],
     }
 
 

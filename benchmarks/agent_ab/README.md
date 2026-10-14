@@ -44,6 +44,13 @@ resolver gets wrong. Each task's `notes` say how it was checked.
 | `cgis-instructed` | as `cgis` | as `cgis` | as `cgis` | one line: query cgis first |
 | `cgis-forced` | as `cgis` | as `cgis` | as `cgis` | as `cgis-instructed`, and the guard refuses Read/Grep/Glob/Bash until one cgis call |
 
+`cgis-narrow` asks whether a short tool menu gets an unprompted agent to call the
+graph (#542). The server instructions and the plugin skill still name all fifteen
+tools, so it measures a short menu with a longer guide beside it. Each results line
+records `cgis_tools`, the number of `mcp__cgis__*` tools the session was offered,
+so an `env` the client ignored would show as 15. With no `--arm` a run now covers
+five arms.
+
 `cgis-instructed` exists because the first pilot's `cgis` arm made no cgis call in
 12 of 12 sessions: with the server connected and the skill loaded, Sonnet still
 went straight to Grep. It stands in for #542's MCP server instructions. It barely moved the agent (2 cgis
