@@ -210,7 +210,123 @@ def test_a_run_writes_its_transcript_and_a_scored_results_line(
     assert row["recall"] == pytest.approx(4 / 9)
     assert row["cgis_calls"] == 2
     assert row["contaminated"] is False
-    assert (args.transcripts / TASK.id / "cgis-0.jsonl").is_file()
+    assert (args.transcripts / TASK.id / "cgis-cafe-0.jsonl").is_file()
+
+
+def test_a_failed_session_is_recorded_and_the_batch_goes_on(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """earlyoom's SIGTERM on one ingest used to end the whole batch (#577)."""
+    _patch_run(monkeypatch, tmp_path)
+    ingests: list[str] = []
+
+    def flaky_ingest(_wt: Path, _src: str) -> float:
+        ingests.append("x")
+        if len(ingests) == 1:
+            _msg = "cgis ingest failed (rc=-15):"
+            raise RuntimeError(_msg)
+        return 1.0
+
+    monkeypatch.setattr(ab, "ingest", flaky_ingest)
+    args = _args(tmp_path, runs=2, task=[TASK.id], arm=["cgis"])
+
+    assert ab.cmd_run(args) == 1, "a batch with a failure must not exit 0"
+    rows = [json.loads(line) for line in args.results.read_text().splitlines()]
+    assert [(r["run"], bool(r.get("failed"))) for r in rows] == [(0, True), (1, False)]
+    assert "rc=-15" in rows[0]["failed"]
+    assert rows[0]["is_error"] is True
+
+
+def test_a_second_invocation_continues_the_numbering(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _patch_run(monkeypatch, tmp_path)
+    args = _args(tmp_path, runs=2, task=[TASK.id], arm=["cgis"])
+
+    assert ab.cmd_run(args) == 0
+    assert ab.cmd_run(args) == 0
+
+    rows = [json.loads(line) for line in args.results.read_text().splitlines()]
+    assert [r["run"] for r in rows] == [0, 1, 2, 3]
+    assert len(list((args.transcripts / TASK.id).glob("cgis-*.jsonl"))) == 4
+
+
+def test_a_failed_runs_number_is_not_reused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The failure row carries the same cgis sha, so the next invocation skips its number."""
+    _patch_run(monkeypatch, tmp_path)
+
+    def dead_ingest(_wt: Path, _src: str) -> float:
+        _msg = "killed"
+        raise RuntimeError(_msg)
+
+    args = _args(tmp_path, runs=1, task=[TASK.id], arm=["cgis"])
+    monkeypatch.setattr(ab, "ingest", dead_ingest)
+    assert ab.cmd_run(args) == 1
+    monkeypatch.setattr(ab, "ingest", lambda _wt, _src: 1.0)
+    assert ab.cmd_run(args) == 0
+
+    rows = [json.loads(line) for line in args.results.read_text().splitlines()]
+    assert [(r["run"], bool(r.get("failed"))) for r in rows] == [(0, True), (1, False)]
+
+
+def test_a_session_that_exits_non_zero_is_failed_but_keeps_its_cost(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An OOM-killed `claude -p` scored recall 0 and sank the median (#578 review)."""
+    _patch_run(monkeypatch, tmp_path)
+    killed = ab.subprocess.run
+
+    def run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        done = killed(cmd, **kwargs)
+        return subprocess.CompletedProcess(cmd, 137 if cmd[0] != "git" else 0, done.stdout, "")
+
+    monkeypatch.setattr(ab.subprocess, "run", run)
+    args = _args(tmp_path, runs=1, task=[TASK.id], arm=["cgis"])
+
+    assert ab.cmd_run(args) == 1
+    row = json.loads(args.results.read_text().splitlines()[0])
+    assert row["failed"] == "claude -p exited with 137"
+    assert row["cost_usd"] == 0.25
+
+
+def test_a_failed_dry_run_writes_nothing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """`--results` defaults to the committed file; a dry run must not add to it."""
+    _patch_run(monkeypatch, tmp_path)
+
+    def broken(_sha: str, _repo: Path) -> Iterator[Path]:
+        _msg = "no worktree"
+        raise RuntimeError(_msg)
+
+    monkeypatch.setattr(ab, "worktree_at", broken)
+    args = _args(tmp_path, dry_run=True, runs=1, task=[TASK.id], arm=["cgis"])
+
+    assert ab.cmd_run(args) == 1
+    assert not args.results.exists()
+
+
+def test_a_truncated_line_does_not_stop_the_numbering(tmp_path: Path) -> None:
+    results = tmp_path / "results.jsonl"
+    good = json.dumps({"task": "t", "arm": "cgis", "cgis_sha": "s", "run": 2})
+    results.write_text(good + '\n{"task": "t", "arm": "cg')
+
+    assert ab.next_run(ab.load_results(results), "t", "cgis", "s") == 3
+
+
+def test_numbering_is_per_task_arm_and_cgis(tmp_path: Path) -> None:
+    results = tmp_path / "results.jsonl"
+    rows = [
+        {"task": "t", "arm": "cgis", "cgis_sha": "old", "run": 5},
+        {"task": "t", "arm": "control", "cgis_sha": "new", "run": 7},
+        {"task": "t", "arm": "cgis", "cgis_sha": "new", "run": 1},
+    ]
+    results.write_text("".join(json.dumps(r) + "\n" for r in rows) + "\n")
+
+    loaded = ab.load_results(results)
+    assert ab.next_run(loaded, "t", "cgis", "new") == 2
+    assert ab.next_run(loaded, "t", "cgis", "newer") == 0
+    assert ab.load_results(tmp_path / "none.jsonl") == []
 
 
 def test_unknown_task_ids_and_missing_repos_are_refused(tmp_path: Path) -> None:
@@ -253,13 +369,28 @@ def test_summarize_takes_medians_over_clean_runs_only() -> None:
     assert summary[("t", "control")]["recall"] is None
 
 
+def test_summarize_counts_failed_sessions_apart() -> None:
+    rows = [_row("t", "cgis", 1.0), {"task": "t", "arm": "cgis", "failed": "killed"}]
+    summary = ab.summarize(rows)[0]
+
+    assert (summary["runs"], summary["failed"], summary["recall"]) == (1, 1, 1.0)
+
+
 def test_report_prints_a_markdown_table(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     results = tmp_path / "results.jsonl"
     results.write_text(json.dumps(_row("t", "cgis", 1.0)) + "\n\n")
     assert ab.main(["report", "--results", str(results)]) == 0
     out = capsys.readouterr().out.splitlines()
     assert out[0].startswith("| task | arm |")
-    assert out[2] == "| t | cgis | 1 | 0 | 1.00 | 1.00 | 0.30 | 10.00 | 4.00 | 8.00 |"
+    assert out[2] == "| t | cgis | 1 | 0 | 0 | 1.00 | 1.00 | 0.30 | 10.00 | 4.00 | 8.00 |"
+
+
+def test_report_skips_a_truncated_line(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    results = tmp_path / "results.jsonl"
+    results.write_text(json.dumps(_row("t", "cgis", 1.0)) + '\n{"task": "t", "ar')
+
+    assert ab.main(["report", "--results", str(results)]) == 0
+    assert "| t | cgis | 1 |" in capsys.readouterr().out
 
 
 def test_report_without_results_fails(tmp_path: Path) -> None:

@@ -23,8 +23,8 @@ pinned commit, so no run sees another's files or a graph it did not build.
 All arms run under the same PreToolUse hook (`cgis.bench.guard`), the same
 allowed tools (Read, Grep, Glob, Bash; no edits, no web, no sub-agents) and a
 PATH with no cgis or uv on it. Costs money: every non-dry run is a real session.
-Results append to `benchmarks/agent_ab/results.jsonl`, one line per
-(task, arm, run); the raw stream-json transcripts go to `benchmarks/agent_ab/
+Results append to `benchmarks/agent_ab/results.jsonl`, one line per (task, arm,
+cgis commit, run); the raw stream-json transcripts go to `benchmarks/agent_ab/
 transcripts/`, which is git-ignored.
 """
 
@@ -297,8 +297,14 @@ def run_session(cmd: list[str], cwd: Path, timeout: int) -> tuple[str, int]:
     return proc.stdout, proc.returncode
 
 
-def run_one(task: AgentTask, arm: Arm, run: int, repo: Path, args: argparse.Namespace) -> None:
-    """One session: worktree → (ingest) → claude -p → transcript → results line."""
+def run_one(
+    task: AgentTask, arm: Arm, run: int, repo: Path, args: argparse.Namespace, cgis_sha: str
+) -> bool:
+    """One session: worktree → (ingest) → claude -p → transcript → results line.
+
+    False when the session ran but `claude -p` exited non-zero, so the batch's
+    exit status counts it with the sessions that raised.
+    """
     with worktree_at(task.sha, repo) as wt, tempfile.TemporaryDirectory(prefix="ab-") as tmp:
         removed = remove_graph_files(wt)
         ingest_s = ingest(wt, task.src_root) if arm != "control" else 0.0
@@ -314,17 +320,18 @@ def run_one(task: AgentTask, arm: Arm, run: int, repo: Path, args: argparse.Name
         if args.dry_run:
             print(f"[{task.id} {arm} #{run}] cwd={wt} removed={len(removed)}")
             print("  " + " ".join([*cmd[:2], "<prompt>", *cmd[3:]]))
-            return
+            return True
         start = time.monotonic()
         stdout, returncode = run_session(cmd, wt, args.timeout)
         wall_s = time.monotonic() - start
-    transcript_path = args.transcripts / task.id / f"{arm}-{run}.jsonl"
+    # The sha keeps a later cgis's run 0 from overwriting an earlier one's (#577).
+    transcript_path = args.transcripts / task.id / f"{arm}-{cgis_sha[:7]}-{run}.jsonl"
     transcript_path.parent.mkdir(parents=True, exist_ok=True)
     transcript_path.write_text(stdout, encoding="utf-8")
     meta: dict[str, object] = {
         "model": args.model,
         "effort": args.effort,
-        "cgis_sha": _git("rev-parse", "HEAD"),
+        "cgis_sha": cgis_sha,
         "returncode": returncode,
         "ingest_s": round(ingest_s, 2),
         "wall_s": round(wall_s, 2),
@@ -333,12 +340,19 @@ def run_one(task: AgentTask, arm: Arm, run: int, repo: Path, args: argparse.Name
         else str(transcript_path),
     }
     row = results_row(task, arm, run, stdout.splitlines(), meta)
-    _append_jsonl(args.results, row)
+    if returncode != 0:
+        # A killed or crashed session still scores — usually recall 0 — and would
+        # sink the median. The row keeps its cost; `failed` keeps it out (#577).
+        row["failed"] = f"claude -p exited with {returncode}"
+    # Printed before the row is written: a broken pipe on the print must not turn
+    # a recorded run into a second, failed row for the same run (#578 review).
     print(
         f"[{task.id} {arm} #{run}] recall={row['recall']:.2f} cost=${row['cost_usd']:.3f} "
         f"calls={row['total_tool_calls']} reads={row['files_read']} "
-        f"contaminated={row['contaminated']}"
+        f"contaminated={row['contaminated']}" + (f" FAILED: {row['failed']}" if returncode else "")
     )
+    _append_jsonl(args.results, row)
+    return returncode == 0
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -356,26 +370,120 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"no --repo NAME=PATH for: {missing}", file=sys.stderr)
         return 2
     arms: list[Arm] = args.arm or list(ARMS)
+    cgis_sha = "dry-run" if args.dry_run else _git("rev-parse", "HEAD")
+    failed = 0
+    existing = load_results(args.results)  # once, not per task and arm (Gemini on #578)
     for task in tasks:
-        for run in range(args.runs):
+        first = {arm: next_run(existing, task.id, arm, cgis_sha) for arm in arms}
+        for offset in range(args.runs):
             for arm in arms:
-                run_one(task, arm, run, repos[task.repo], args)
-    return 0
+                session = (task, arm, first[arm] + offset, repos[task.repo])
+                failed += not _run_or_record(*session, args, cgis_sha)
+    if failed:
+        print(f"{failed} session(s) failed; see `failed` in {args.results}", file=sys.stderr)
+    return 1 if failed else 0
+
+
+def next_run(rows: Sequence[dict[str, object]], task_id: str, arm: str, cgis_sha: str) -> int:
+    """The first run number not yet in `rows` for this task, arm and cgis (#577).
+
+    Counting from 0 on every invocation made a second one, finishing an aborted
+    batch, collide with the first one's rows and overwrite its transcripts.
+    """
+    key = (task_id, arm, cgis_sha)
+    taken = [
+        row["run"]
+        for row in rows
+        if (row.get("task"), row.get("arm"), row.get("cgis_sha")) == key
+        and isinstance(row.get("run"), int)
+    ]
+    return max(taken, default=-1) + 1
+
+
+def load_results(path: Path) -> list[dict[str, object]]:
+    """Every parseable row of a results file; none when it does not exist yet."""
+    if not path.exists():
+        return []
+    return [row for row in map(_parsed, path.read_text("utf-8").splitlines()) if row]
+
+
+def _parsed(line: str) -> dict[str, object]:
+    """One results line, or an empty row for a blank or truncated one.
+
+    A line cut short by a killed run must not stop every later invocation from
+    numbering its runs (#578 review).
+    """
+    try:
+        row = json.loads(line)
+    except json.JSONDecodeError:
+        return {}
+    return row if isinstance(row, dict) else {}
+
+
+def _run_or_record(
+    task: AgentTask,
+    arm: Arm,
+    run: int,
+    repo: Path,
+    args: argparse.Namespace,
+    cgis_sha: str,
+) -> bool:
+    """Run one session; False if it failed, with a `failed` row written instead of raising.
+
+    One failed ingest — earlyoom's SIGTERM on a loaded host — used to end the
+    whole batch, losing every session after it (#577).
+    """
+    try:
+        return run_one(task, arm, run, repo, args, cgis_sha)
+    except Exception as exc:  # any failure is one lost session, not the batch
+        print(f"[{task.id} {arm} #{run}] FAILED: {exc}", file=sys.stderr)
+        if not args.dry_run:  # a dry run writes no results, failed or not
+            _append_jsonl(args.results, failure_row(task, arm, run, args, cgis_sha, exc))
+        return False
+
+
+def failure_row(
+    task: AgentTask,
+    arm: Arm,
+    run: int,
+    args: argparse.Namespace,
+    cgis_sha: str,
+    exc: Exception,
+) -> dict[str, object]:
+    """A results line for a session that never produced a transcript."""
+    return {
+        "timestamp": datetime.now(UTC).isoformat(),
+        "task": task.id,
+        "type": task.type,
+        "repo": task.repo,
+        "repo_sha": task.sha,
+        "arm": arm,
+        "run": run,
+        "model": args.model,
+        "effort": args.effort,
+        "cgis_sha": cgis_sha,
+        "is_error": True,
+        "contaminated": False,
+        # The tail: an ingest's stderr ends with the line that says what died.
+        "failed": str(exc)[-500:],
+    }
 
 
 def summarize(rows: Sequence[dict[str, object]]) -> list[dict[str, object]]:
-    """Median per (task, arm) over clean runs; contaminated runs are counted, not scored."""
+    """Median per (task, arm) over clean runs; failed and contaminated ones are counted only."""
     groups: dict[tuple[str, str], list[dict[str, object]]] = defaultdict(list)
     for row in rows:
         groups[(str(row["task"]), str(row["arm"]))].append(row)
     summary: list[dict[str, object]] = []
     for (task, arm), group in sorted(groups.items()):
-        clean = [r for r in group if not r.get("contaminated")]
+        finished = [r for r in group if not r.get("failed")]
+        clean = [r for r in finished if not r.get("contaminated")]
         entry: dict[str, object] = {
             "task": task,
             "arm": arm,
-            "runs": len(group),
-            "contaminated": len(group) - len(clean),
+            "runs": len(finished),
+            "failed": len(group) - len(finished),
+            "contaminated": len(finished) - len(clean),
         }
         for key in ("recall", "precision", "cost_usd", "total_tool_calls", "files_read", "turns"):
             values = [float(str(r[key])) for r in clean if r.get(key) is not None]
@@ -398,10 +506,9 @@ def cmd_report(args: argparse.Namespace) -> int:
     if not args.results.exists():
         print(f"no results at {args.results}", file=sys.stderr)
         return 1
-    lines = args.results.read_text(encoding="utf-8").splitlines()
-    rows = [json.loads(line) for line in lines if line.strip()]
+    rows = load_results(args.results)  # a truncated line is skipped, as in `run` (Gemini)
     columns = [
-        "task", "arm", "runs", "contaminated", "recall", "precision",
+        "task", "arm", "runs", "failed", "contaminated", "recall", "precision",
         "cost_usd", "total_tool_calls", "files_read", "turns",
     ]  # fmt: skip
     print("| " + " | ".join(columns) + " |")
