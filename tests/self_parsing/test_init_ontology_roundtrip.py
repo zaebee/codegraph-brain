@@ -19,7 +19,7 @@ def test_self_graph_proposal_round_trips(
     - every domain report has status != "empty"
     - every domain report satisfies drift_score <= tolerance + 1e-9
     - sanity: some discovered fqn_prefix contains "query"
-    - sanity: some discovered fqn_prefix contains "extractors"
+    - sanity: some discovered fqn_prefix contains "languages"
     """
     store, _, _ = root_graph_data
     db_path = store.db_path
@@ -50,6 +50,6 @@ def test_self_graph_proposal_round_trips(
     assert any("query" in p for p in discovered_prefixes), (
         f"No 'query' prefix found; discovered: {discovered_prefixes}"
     )
-    assert any("extractors" in p for p in discovered_prefixes), (
-        f"No 'extractors' prefix found; discovered: {discovered_prefixes}"
+    assert any("languages" in p for p in discovered_prefixes), (
+        f"No 'languages' prefix found; discovered: {discovered_prefixes}"
     )

@@ -12,7 +12,7 @@ sys.path.insert(0, str(REPO / "scripts"))
 
 import graph_identity as gi  # noqa: E402
 
-from cgis.extractors.registry import build_extractors  # noqa: E402
+from cgis.languages import extractors  # noqa: E402
 from cgis.pipeline import IngestionPipeline  # noqa: E402
 from cgis.storage.sqlite_store import SQLiteStore  # noqa: E402
 
@@ -20,7 +20,7 @@ from cgis.storage.sqlite_store import SQLiteStore  # noqa: E402
 def _ingest(root: Path, db: Path) -> None:
     """As `cgis ingest` does it, ingest state included."""
     with SQLiteStore(str(db)) as store:
-        pipeline = IngestionPipeline(build_extractors([]))
+        pipeline = IngestionPipeline(extractors([]))
         pipeline.run(str(root), store=store)
         store.record_ingest(str(root), pipeline.observed_mtimes)
         store.record_ingest_options([], None)

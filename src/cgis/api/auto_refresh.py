@@ -23,7 +23,7 @@ from pathlib import Path
 import structlog
 
 from cgis.core.freshness import FreshnessState
-from cgis.extractors.registry import build_extractors
+from cgis.languages import extractors
 from cgis.pipeline import IngestionPipeline
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -78,7 +78,7 @@ def _refresh(db_path: str) -> bool:
             )
             return False
         started = time.perf_counter()
-        pipeline = IngestionPipeline(build_extractors(source_roots), domains_config=domains)
+        pipeline = IngestionPipeline(extractors(source_roots), domains_config=domains)
         nodes, _raw, _resolved = pipeline.run(root, store=store)
         if nodes:
             store.record_ingest(root, pipeline.observed_mtimes)

@@ -18,7 +18,7 @@ from contextlib import closing
 from pathlib import Path
 from typing import cast
 
-from cgis.extractors.registry import build_extractors
+from cgis.languages import extractors
 from cgis.pipeline import IngestionPipeline
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -120,7 +120,7 @@ def diff(before: Mapping[str, object], after: Mapping[str, object]) -> list[str]
 def _ingest(root: Path, db: Path) -> None:
     """One full ingest of `root` into `db`, as `cgis ingest` does it, ingest state included."""
     with SQLiteStore(str(db)) as store:
-        pipeline = IngestionPipeline(build_extractors([]))
+        pipeline = IngestionPipeline(extractors([]))
         pipeline.run(str(root), store=store)
         store.record_ingest(str(root), pipeline.observed_mtimes)
         store.record_ingest_options([], None)

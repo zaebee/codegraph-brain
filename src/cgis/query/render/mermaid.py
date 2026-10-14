@@ -3,7 +3,7 @@
 import re
 
 from cgis.core.models import VIRTUAL_FILE_PATH, Edge, Node, NodeNamespace, NodeType
-from cgis.extractors.registry import language_for
+from cgis.languages import pack_for_node
 
 _RAW_CALL_PREFIX = "raw_call:"
 _UNRESOLVED_STYLE = ":::unresolvedNode"
@@ -72,11 +72,11 @@ def _node_slug(node: Node) -> str:
     :func:`_fqn_slug`. Collisions are disambiguated later by :class:`_IdAllocator`.
     """
     if node.namespace == NodeNamespace.INTERNAL and node.file_path != VIRTUAL_FILE_PATH:
-        # The path FQN by the file's own language: the Python helper keeps `.ts`
-        # on, so every TypeScript node used to miss and fall back (#504).
-        language = language_for(node.file_path)
-        if language is not None:
-            path_fqn = language.file_path_to_module_fqn(node.file_path, None)
+        # The path FQN by the node's own pack: the Python rule keeps `.ts` on,
+        # so every TypeScript node used to miss and fall back (#504).
+        pack = pack_for_node(node)
+        if pack is not None:
+            path_fqn = pack.scope_of(node.file_path, None)
             slug = _internal_node_slug(node.id, path_fqn)
             if slug is not None:
                 return slug

@@ -17,10 +17,10 @@ from typing import ClassVar
 import pytest
 from pydantic import BaseModel
 
-from cgis.extractors.registry import build_extractors
 from cgis.guardian.martian import SliceCounts
 from cgis.guardian.providers.base import BaseProvider, ProviderUsage
 from cgis.guardian.providers.mistral import MistralProvider
+from cgis.languages import extractors
 from cgis.pipeline import IngestionPipeline
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -354,7 +354,7 @@ class TestGraphAlignment:
             (tree / rel).write_text(src, encoding="utf-8")
         db = tmp_path / "g.db"
         with SQLiteStore(str(db)) as store:
-            IngestionPipeline(build_extractors([])).run(str(tree), store=store)
+            IngestionPipeline(extractors([])).run(str(tree), store=store)
         return db
 
     def test_counts_the_changed_files_the_graph_knows(self, tmp_path: Path) -> None:

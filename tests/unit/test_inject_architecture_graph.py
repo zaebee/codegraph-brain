@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from cgis.extractors.registry import build_extractors
+from cgis.languages import extractors
 from cgis.pipeline import IngestionPipeline
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -112,7 +112,7 @@ def _graph_db(tmp_path: Path) -> str:
     db = str(tmp_path / "graph.db")
     # Autodoc ingests ./src, so stored paths lack the prefix that --path-prefix restores.
     with SQLiteStore(db) as store:
-        IngestionPipeline(build_extractors([])).run(str(tmp_path / "src"), store=store)
+        IngestionPipeline(extractors([])).run(str(tmp_path / "src"), store=store)
     return db
 
 

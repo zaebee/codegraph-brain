@@ -21,8 +21,7 @@ from cgis.api.tool_allowlist import TOOLS_ENV, CgisServer
 from cgis.core.coverage import TraversalCoverage
 from cgis.core.freshness import Freshness, FreshnessState
 from cgis.core.models import Edge, EdgeType, Node, NodeType
-from cgis.languages.python.extractor import PythonExtractor
-from cgis.languages.typescript.extractor import TypeScriptExtractor
+from cgis.languages import extractors
 from cgis.pipeline import IngestionPipeline
 from cgis.query.analysis.overview import DEFAULT_DEPTH, DEFAULT_LIMIT, build_overview
 from cgis.query.analysis.suggest_service import report_to_dict, suggest_packages
@@ -57,11 +56,6 @@ logger = structlog.getLogger(__name__)
 
 mcp = CgisServer("cgis-code-graph", instructions=SERVER_INSTRUCTIONS, version=__version__)
 
-_EXTRACTORS = {
-    ".py": PythonExtractor(),
-    ".ts": TypeScriptExtractor(),
-    ".tsx": TypeScriptExtractor(tsx=True),
-}
 _DEFAULT_DB = "graph.db"
 
 # Agents choose arguments from the JSON schema, and the SDK does not copy
@@ -469,7 +463,7 @@ def cgis_ingest(
         logger.warning("MCP ingest refused db_path", db=db_path)
         return refusal
 
-    pipeline = IngestionPipeline(_EXTRACTORS)
+    pipeline = IngestionPipeline(extractors([]))
     try:
         with SQLiteStore(db_path) as store:
             # A rebuild replaces the stored graph in the transaction that writes the
