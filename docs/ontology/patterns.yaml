@@ -259,15 +259,9 @@ project_domains:
     hygiene_baseline:
       unresolved_ratio: 0.79 # measured 0.7857 when the gate came alive (#149)
 
-# ── Project-level quotient binding (spec §3.4) — OBSERVE-ONLY burn-in ────────
-# Measured quotient IMPORTS census {021D .4, 021U .4, 030T .2}: the domain
-# graph is an orchestrator star out of `pipeline`, NOT the chain the spec
-# example claimed. enforce stays false until the burn-in settles whether to
-# rebind to orchestrator or restructure; flipping to true makes it a ratchet.
-project_level:
-  - name: "cgis-project"
-    fqn_prefix: "quotient"
-    expected_pattern: pipeline_stage
-    profile: python
-    drift_tolerance: 0.15
-    enforce: false
+# ── Project-level quotient ───────────────────────────────────────────────────
+# Retired in language-packs step 6 (#146). cgis's topology is enforced by the
+# forbidden-edge gate (tests/self_parsing/test_architecture.py, exact shrinking
+# allowlists); the build/read plane quotients are printed observe-only by
+# tests/self_parsing/test_drift.py. The `project_level` section remains a
+# supported feature for other repositories.

@@ -198,15 +198,14 @@ def test_profiles_declare_layers_summing_to_one() -> None:
         assert abs(sum(layers.values()) - 1.0) < 1e-9, name
 
 
-def test_project_level_binding_observe_only() -> None:
-    """project_level exists, matches the quotient prefix, and is enforce: false."""
-    data = _load()
-    bindings = data["project_level"]
-    assert len(bindings) == 1
-    b = bindings[0]
-    assert b["fqn_prefix"] == "quotient"
-    assert b["enforce"] is False
-    assert b["expected_pattern"] in data["patterns"]
+def test_this_repository_binds_no_project_level_quotient() -> None:
+    """Retired in language-packs step 6 (#146).
+
+    The enforced topology gate is the forbidden-edge test in test_architecture.py;
+    plane quotients are reported, not bound. The feature itself stays for other
+    repositories' patterns.yaml.
+    """
+    assert "project_level" not in _load()
 
 
 # ---------------------------------------------------------------------------

@@ -25,6 +25,3 @@ project_domains:
   store: 0.15
   providers: 0.17
   utils: 0.20
-
-project_level:
-  cgis-project: 0.15
