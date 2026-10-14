@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from cgis.core.models import EdgeType
+from cgis.query.fqn import effective_prefix
 
 if TYPE_CHECKING:
     from cgis.core.models import Edge, Node
@@ -225,6 +226,7 @@ def suggest_packages(
         return _empty_report("", layer, "no fqn_prefix given")
 
     with SQLiteStore(db_path) as store:
+        package = effective_prefix(store, package)  # `src.cgis` on a graph of src/ (#584)
         nodes: list[Node] = store.get_all_nodes()
         edges: list[Edge] = store.get_all_edges()
 

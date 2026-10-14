@@ -23,6 +23,7 @@ from dataclasses import dataclass
 
 from cgis.core.models import EdgeType, Node, NodeNamespace, NodeType
 from cgis.query.engine import QueryEngine
+from cgis.query.fqn import effective_prefix
 from cgis.storage.sqlite_store import SQLiteStore
 
 # Edges that mean the source *enforces* (invokes / wires) the checkpoint, as
@@ -192,6 +193,7 @@ def audit_reachability(
     if from_type is None and from_prefix is None:
         msg = "audit_reachability requires from_type or a non-empty from_prefix to select sources."
         raise ValueError(msg)
+    from_prefix = effective_prefix(store, from_prefix) if from_prefix else from_prefix
     nodes = store.get_all_nodes()
     # Select before traversing: an empty selection has nothing to prove.
     sources = _select_sources(nodes, target_fqn, from_type, from_prefix)

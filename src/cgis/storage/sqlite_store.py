@@ -419,6 +419,23 @@ class SQLiteStore:
         row = self._conn.execute("SELECT COUNT(*) AS n FROM nodes").fetchone()
         return int(row["n"]) if row else 0
 
+    def covers_internal(self, prefix: str) -> bool:
+        """True when an internal node's id is `prefix` or lies under it on a dot boundary.
+
+        What `effective_prefix` asks before reading a prefix any other way (#584):
+        phantom EXTERNAL nodes minted by absolute imports (`app.domains.x` on a
+        graph of `app/`) must not count as the prefix covering real code.
+        """
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        row = self._conn.execute(
+            "SELECT 1 FROM nodes WHERE namespace = 'INTERNAL' "
+            "AND (id = ? OR id LIKE ? ESCAPE '\\') LIMIT 1",
+            (prefix, f"{escaped}.%"),
+        ).fetchone()
+        return row is not None
+
     def get_edges_of_type(self, edge_type: EdgeType) -> list[Edge]:
         """Every stored edge of one type, in insertion order."""
         if not self._conn:

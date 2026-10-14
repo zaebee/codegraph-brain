@@ -72,6 +72,34 @@ def _path_prefixes(store: SQLiteStore) -> set[str]:
     return {".".join(base.parts[start:]) for base in bases for start in range(1, len(base.parts))}
 
 
+def effective_prefix(store: SQLiteStore, prefix: str) -> str:
+    """The FQN prefix a scoped query should use: `prefix`, or it without a directory above.
+
+    Every entry point that takes an FQN prefix goes through this — find_symbol,
+    orphans, audit's `from_prefix`, suggest-packages, metrics' `scope`, and their
+    CLI twins (#584). Fixed one entry at a time, the rule kept missing the next:
+    #568 for FQNs, then `find_symbol`, then the four found in its review.
+
+    `prefix` is kept whenever internal code lies under it, so a real package
+    named like the root's last directory (`proj/proj`) is never re-read as a
+    sibling tree. Only a prefix covering no internal node — empty, or only the
+    phantom EXTERNAL nodes absolute imports mint — is replaced, and only by a
+    shorter prefix that does cover some.
+    """
+    if store.covers_internal(prefix):
+        return prefix
+    shorter = without_path_prefix(store, prefix)
+    return shorter if shorter is not None and store.covers_internal(shorter) else prefix
+
+
+def effective_prefixes(db_path: str, prefixes: list[str]) -> list[str]:
+    """`effective_prefix` for each of `prefixes`, for a caller holding a path, not a store."""
+    if not prefixes:
+        return prefixes
+    with SQLiteStore(db_path) as store:
+        return [effective_prefix(store, prefix) for prefix in prefixes]
+
+
 def without_path_prefix(store: SQLiteStore, prefix: str) -> str | None:
     """`prefix` with a leading directory above the graph dropped, or None (#584).
 

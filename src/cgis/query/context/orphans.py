@@ -56,6 +56,7 @@ only inside a decorator used to be a second one; #429 closed it.
 from dataclasses import dataclass
 
 from cgis.core.models import EdgeType, Node, NodeNamespace, NodeType
+from cgis.query.fqn import effective_prefix
 from cgis.storage.sqlite_store import SQLiteStore
 
 # Incoming edge types that mean somebody uses this class. `IMPORTS_SYMBOL` is
@@ -161,6 +162,7 @@ def find_orphan_classes(
     incoming evidence at all rather than weak evidence.
     """
     prefix = prefix.strip() or None if prefix is not None else None
+    prefix = effective_prefix(store, prefix) if prefix else prefix
     nodes = store.get_all_nodes()
     test_sources = sum(1 for node in nodes if node.is_test)
     # The store answers this in SQL: going through `get_all_edges` builds a

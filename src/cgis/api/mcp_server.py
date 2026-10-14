@@ -39,7 +39,12 @@ from cgis.query.engine import (
     Truncation,
     agent_screen,
 )
-from cgis.query.fqn import is_package_prefix, resolve_fqn, without_path_prefix
+from cgis.query.fqn import (
+    effective_prefix,
+    effective_prefixes,
+    is_package_prefix,
+    resolve_fqn,
+)
 from cgis.query.render.graph_json import graph_to_json
 from cgis.query.render.mermaid import MermaidCompiler
 from cgis.query.render.metrics import DuckDBAnalyzer
@@ -971,7 +976,7 @@ def cgis_find_symbol(
     line}]`` ranked exact > prefix > substring. ``kind`` filters by node type
     (FUNCTION / METHOD / CLASS / …); ``fqn_prefix`` scopes the search. A prefix
     that starts with the directories the graph was ingested below (``src.cgis``
-    for a graph of ``src/``) and matches nothing is retried without them.
+    for a graph of ``src/``) and covers no code is read without them.
     """
     if not Path(db_path).exists():
         return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
@@ -979,12 +984,8 @@ def cgis_find_symbol(
         # Blank/whitespace kind means "no type filter", not "match nothing".
         kinds = (kind.strip().upper(),) if kind and kind.strip() else ()
         with SQLiteStore(db_path) as store:
-            matches = store.search_nodes(query, kinds=kinds, fqn_prefix=fqn_prefix, limit=limit)
-            # `src.cgis` built from the path an agent sees, on a graph ingested from
-            # `src/` (#584): retried without the directory, as `resolve_fqn` does (#568).
-            scoped = fqn_prefix and not matches and without_path_prefix(store, fqn_prefix)
-            if scoped:
-                matches = store.search_nodes(query, kinds=kinds, fqn_prefix=scoped, limit=limit)
+            scope = effective_prefix(store, fqn_prefix) if fqn_prefix else fqn_prefix
+            matches = store.search_nodes(query, kinds=kinds, fqn_prefix=scope, limit=limit)
     except Exception as exc:
         return f"❌ {exc}"
     payload = [
@@ -1179,7 +1180,7 @@ def cgis_metrics(
                 file_limit=limit,
                 cohesion_limit=limit,
                 exclude=exclude or [],
-                scope=scope or [],
+                scope=effective_prefixes(db_path, scope or []),
             )
     except Exception as exc:
         return f"❌ {exc}"
