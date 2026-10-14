@@ -27,6 +27,7 @@ from cgis.core.extractor import BaseExtractor, LanguagePack
 from cgis.core.index import IndexFacts
 from cgis.core.models import Node, NodeType
 from cgis.core.project import ProjectReader
+from cgis.core.resolution import ResolutionRules, TypeNormalizer
 
 
 @dataclass(frozen=True)
@@ -154,6 +155,22 @@ def cross_file_metadata() -> dict[NodeType, tuple[str, ...]]:
             known = merged.get(node_type, ())
             merged[node_type] = known + tuple(k for k in keys if k not in known)
     return merged
+
+
+@cache
+def _rules(name: str) -> ResolutionRules:
+    return _load(name).resolution()
+
+
+def rules_for(source_file: str | None) -> ResolutionRules | None:
+    """The resolution rules of the pack that classifies `source_file`, or None."""
+    pack = classifying_pack(source_file)
+    return None if pack is None else _rules(pack.name)
+
+
+def type_normalizers() -> tuple[TypeNormalizer, ...]:
+    """Every pack's type normalizers, in manifest order (step 4, ruling D2)."""
+    return tuple(n for m in MANIFESTS for n in _rules(m.name).type_normalizers)
 
 
 def skips(filename: str) -> bool:

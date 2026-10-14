@@ -12,6 +12,7 @@ from typing import Protocol, runtime_checkable
 from cgis.core.index import ClassifyContext, IndexFacts
 from cgis.core.models import Edge, Node, NodeNamespace
 from cgis.core.project import ProjectReader
+from cgis.core.resolution import ResolutionRules
 
 
 @runtime_checkable
@@ -98,4 +99,8 @@ class LanguagePack(Protocol):
 
     def classify(self, fqn: str, ctx: ClassifyContext) -> NodeNamespace:
         """The namespace of `fqn` referenced from one of this pack's files: the whole chain (C1)."""
+        ...
+
+    def resolution(self) -> ResolutionRules:
+        """This pack's resolution rules (spec: Resolution)."""
         ...

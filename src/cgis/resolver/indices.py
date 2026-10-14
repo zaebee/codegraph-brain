@@ -130,9 +130,9 @@ class SymbolIndex:
             return _resolve_typescript_import(fqn, self.nodes, self.workspace_packages, aliased)
         if source_file is not None and not source_file.endswith(_PYTHON_SUFFIXES):
             return None
-        return self._strip_layout_prefixes(fqn)
+        return self.strip_layout_prefixes(fqn)
 
-    def _strip_layout_prefixes(self, fqn: str) -> str | None:
+    def strip_layout_prefixes(self, fqn: str) -> str | None:
         """The node `fqn` names once known layout prefixes are dropped from its head.
 
         Strips one leading segment at a time, and only while each is a corroborated
@@ -220,7 +220,7 @@ class SymbolIndex:
             return candidates[0]
         if self.classify_fqn(fqn) in (NodeNamespace.EXTERNAL, NodeNamespace.STDLIB):
             return None
-        return self._strip_layout_prefixes(fqn)
+        return self.strip_layout_prefixes(fqn)
 
     def follow_reexport(self, fqn: str) -> str | None:
         """Resolve `module.name` through every forwarding hop, or None if not forwarded.
