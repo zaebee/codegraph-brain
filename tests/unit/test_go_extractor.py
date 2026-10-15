@@ -1,6 +1,7 @@
 """The Go extractor: tree-sitter-go AST -> Nodes and Edges (step 7b, Task B3)."""
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
+from cgis.languages.go._syntax import base_type, selector_chain
 from cgis.languages.go.extractor import GoExtractor
 
 SERVER = "internal/server/server.go"
@@ -217,3 +218,35 @@ def test_every_file_s_init_is_its_own_node() -> None:
     assert "internal.server.init_a_go" in a
     assert "internal.server.init_b_go" in b
     assert a["internal.server.init_a_go"].name == "init"
+
+
+def test_a_parenthesised_type_block_declares_every_type() -> None:
+    """`type ( A struct{}; B interface{} )`: tree-sitter-go keeps the specs direct (PR #607)."""
+    code = "package p\ntype (\n\tA struct{ Base }\n\tB interface{ M() }\n)\nfunc (a *A) Run() {}\n"
+    nodes, edges = _parse(code, "p/x.go")
+    assert {"p.A", "p.B", "p.B.M", "p.A.Run"} <= set(nodes)
+    assert ("p.A", "raw_class:Base") in _edges(edges, EdgeType.EXTENDS)
+    # A.Run's type is declared in this very file, inside the block.
+    assert ("p.x_go", "p.A.Run") not in _edges(edges, EdgeType.CONTAINS)
+
+
+class _Broken:
+    """A syntax node as tree-sitter leaves one in code still being typed: fields missing."""
+
+    def __init__(self, node_type: str) -> None:
+        self.type = node_type
+        self.named_children: list[object] = []
+        self.text = b""
+
+    def child_by_field_name(self, _name: str) -> None:
+        return None
+
+
+def test_a_selector_with_no_operand_reads_as_no_name() -> None:
+    """It recursed into itself forever (Gemini, PR #607)."""
+    assert selector_chain(_Broken("selector_expression")) == []  # type: ignore[arg-type]
+
+
+def test_a_pointer_with_nothing_under_it_names_no_type() -> None:
+    """A trailing `*` mid-edit raised IndexError and failed the whole file (Gemini, PR #607)."""
+    assert base_type(_Broken("pointer_type")) is None  # type: ignore[arg-type]

@@ -108,13 +108,15 @@ def _import_specs(declaration: TSNode) -> Iterator[TSNode]:
 
 
 def base_type(node: TSNode | None) -> TSNode | None:
-    """The named type under pointers and type arguments: `*Box[T]` -> `Box`."""
+    """The named type under pointers and type arguments: `*Box[T]` -> `Box`.
+
+    None for a pointer with nothing under it — code still being typed.
+    """
     while node is not None and node.type in ("pointer_type", "generic_type"):
-        node = (
-            node.child_by_field_name("type")
-            if node.type == "generic_type"
-            else node.named_children[0]
-        )
+        if node.type == "generic_type":
+            node = node.child_by_field_name("type")
+        else:
+            node = node.named_children[0] if node.named_children else None
     return node
 
 
@@ -147,7 +149,10 @@ def selector_chain(node: TSNode) -> list[str]:
         return [text(node)]
     if node.type != "selector_expression":
         return []
-    head = selector_chain(node.child_by_field_name("operand") or node)
+    operand = node.child_by_field_name("operand")
+    if operand is None:
+        return []  # incomplete syntax; recursing on `node` itself never ended
+    head = selector_chain(operand)
     field = text(node.child_by_field_name("field"))
     return [*head, field] if head and field else []
 
