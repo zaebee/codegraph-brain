@@ -592,6 +592,7 @@
   ],
   "ingest_state": {
    "go_module": {
+    "offset": "",
     "path": "example.com/shop",
     "replaces": {
      "example.com/money": "money"
@@ -739,6 +740,7 @@
      "imports": [
       "C"
      ],
+     "package_dir": "internal.native",
      "scope": "internal.native"
     },
     "name": "native.go",
@@ -916,6 +918,7 @@
      "imports": [
       "example.com/shop/internal/store"
      ],
+     "package_dir": "internal.server",
      "scope": "internal.server"
     },
     "name": "server.go",
@@ -940,6 +943,7 @@
      "imports": [
       "testing"
      ],
+     "package_dir": "internal.server",
      "scope": "internal.server"
     },
     "name": "server_test.go",
@@ -964,6 +968,7 @@
      "imports": [
       "example.com/shop/internal/store"
      ],
+     "package_dir": "internal.server",
      "scope": "internal.server"
     },
     "name": "types.go",
@@ -1000,6 +1005,7 @@
     "metadata": {
      "import_map": {},
      "imports": [],
+     "package_dir": "internal.server",
      "scope": "internal.server"
     },
     "name": "validate.go",
@@ -1088,6 +1094,7 @@
      "imports": [
       "sync"
      ],
+     "package_dir": "internal.store",
      "scope": "internal.store"
     },
     "name": "store.go",
@@ -1156,6 +1163,7 @@
       "fmt",
       "github.com/google/uuid"
      ],
+     "package_dir": "",
      "scope": "main"
     },
     "name": "main.go",
@@ -1196,6 +1204,7 @@
      "imports": [
       "strconv"
      ],
+     "package_dir": "money",
      "scope": "money"
     },
     "name": "money.go",

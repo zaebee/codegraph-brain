@@ -479,14 +479,23 @@ made there, not worked around in Go.
 
 > **Implementation note (step 7b):** the pilot as built.
 >
-> - **H4 — import paths reach node ids through the module path.** Imports are
->   recorded dotted (`example.com.app.internal.server`), and the module path's
->   segments are `layout_prefixes`, so the generic strip maps a call to
->   `internal.server.Run`. That needed one more contract fix: layout
->   reconciliation classified a target with no source file (the Python
->   reading), which calls a Go import of the project's own module EXTERNAL;
->   the import-map and local-type paths now pass the source file through.
->   Graph-identical for Python/TypeScript.
+> - **H4 — import paths reach node ids through the module, mapped by the pack.**
+>   Imports are recorded dotted (`example.com.app.internal.server`). The plan
+>   put the module path's segments into the global `layout_prefixes`; review
+>   showed that strips Python imports too (#319's collision), misses a root
+>   package named unlike the module's last segment, and breaks an ingest below
+>   the module root. As built, the Go pack's `reconcile_import` strips the
+>   module path (or a replace), the ingest root's offset under the module, and
+>   finds the package directory, whose scope is the clause's at the root. A new
+>   contract flag, `ResolutionRules.reconciles_references`, lets it map call
+>   targets and local types too, not only import edges; Python and TypeScript
+>   leave it off. Layout reconciliation also classifies a target as its source
+>   file reads it now, not with the Python reading. Graph-identical for
+>   Python/TypeScript.
+> - **One FQN, one definition.** An external test package (`package x_test`)
+>   gets `<directory>_test`; each file's `init` is `<scope>.init_<file>`; the
+>   walk is sorted, so build-tag variants sharing an FQN resolve the same way
+>   on every machine. Go builtins are STDLIB, claimed before the global index.
 > - **H5 — a package import names the package's first FILE node.** No node per
 >   package, no new `NodeType`.
 > - **H6 — receiver calls are `raw_call:self.<name>`.** Parameter, `var` and
@@ -503,9 +512,8 @@ made there, not worked around in Go.
 >   environment, `graph_identity.py snapshot --root`, and the calibration band.
 >
 > Follow-ups: implicit interface satisfaction; generics beyond extraction; cgo
-> beyond classification; `go.work`; the global layout-prefix set (H4); struct
-> field types as `self_types`; a replace whose path shares no prefix with the
-> module.
+> beyond classification; `go.work`; struct field types as `self_types`; types
+> inferred from a function's return value.
 
 ## Risks and open questions
 

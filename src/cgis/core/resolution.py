@@ -64,6 +64,11 @@ class ResolutionRules:
     fallback: Fallback | None = None
     #: An import target with no node of that name: the node it means, or None.
     reconcile_import: ImportReconciler | None = None
+    #: Whether `reconcile_import` also maps a reference through an import (a call
+    #: target, a local variable's type) that layout reconciliation left without a
+    #: node. Go's import paths name directories of a module, which only the pack can
+    #: map; Python and TypeScript keep their references to layout rules (step 7b).
+    reconciles_references: bool = False
 
     def __post_init__(self) -> None:
         """Refuse a step at a position the engine never runs."""

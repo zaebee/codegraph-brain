@@ -43,6 +43,7 @@ def test_the_module_its_requires_and_internal_replaces(tmp_path: Path) -> None:
             "path": "example.com/app",
             "requires": ["github.com/single/dep", "github.com/x/y", "golang.org/x/text"],
             "replaces": {"example.com/lib": "lib"},
+            "offset": "",
         }
     }
 
@@ -76,7 +77,13 @@ def test_the_nearest_go_mod_above_counts_when_the_root_has_none(tmp_path: Path) 
     root.mkdir()
     reader = GoProjectReader(root)
     reader.note_above([tmp_path], bounded=True)
-    assert reader.facts().state()[GO_MODULE_KEY]["path"] == "example.com/app"  # type: ignore[index]
+    module = reader.facts().state()[GO_MODULE_KEY]
+    assert module == {
+        "path": "example.com/app",
+        "requires": [],
+        "replaces": {},
+        "offset": "internal",
+    }
 
 
 def test_the_root_go_mod_wins_over_one_above(tmp_path: Path) -> None:

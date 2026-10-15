@@ -1,8 +1,10 @@
 """The Go pack's resolution rules (spec: Go pilot, resolution).
 
-Package-qualified calls need no rule of their own: the import map gives
-`example.com.app.internal.server.Run` and the module path's layout prefixes
-take it to `internal.server.Run` (H4). What is left is the import edge itself.
+An import path names a package directory of a module, which only this pack can
+map to node ids: strip the module path (or a replace), then the ingest root's
+offset under the module, then find the package directory — whose scope is the
+package clause's at the module root (7b review I1, I2). The same mapping serves
+the import edge and every reference through it (`reconciles_references`).
 """
 
 from typing import cast
@@ -13,29 +15,49 @@ from cgis.languages.go.index import GoIndexFacts
 from cgis.languages.go.naming import GO_LANG
 
 
-def _package_scope(fqn: str, facts: GoIndexFacts) -> str | None:
-    """The directory scope an import of ours names: module path or a replace stripped."""
-    for module, directory in ((facts.module, ""), *facts.replaces.items()):
-        if module and (fqn == module or fqn.startswith(f"{module}.")):
-            rest = fqn[len(module) + 1 :]
+def _strip(fqn: str, prefix: str) -> str | None:
+    """`fqn` with `prefix` and its dot removed; '' when equal; None when not under it."""
+    if fqn == prefix:
+        return ""
+    return fqn[len(prefix) + 1 :] if prefix and fqn.startswith(f"{prefix}.") else None
+
+
+def _ingest_relative(fqn: str, facts: GoIndexFacts) -> str | None:
+    """The part of a dotted import path below the ingest root; None for anyone else's."""
+    rest = _strip(fqn, facts.module) if facts.module else None
+    if rest is not None:
+        return rest if not facts.offset else _strip(rest, facts.offset)
+    for module, directory in facts.replaces.items():
+        rest = _strip(fqn, module)
+        if rest is not None:
             return ".".join(p for p in (directory, rest) if p)
     return None
 
 
 def reconcile_import(fqn: str, _source_file: str | None, view: ResolutionView) -> str | None:
-    """A package import -> the package's first FILE node (H5); None for anyone else's.
+    """A package path -> its first production FILE (H5); a path to a symbol -> the symbol.
 
-    A Go package has no node of its own, so the edge names a representative
-    file: the lexicographically first, which is deterministic and keeps the
-    package-to-package topology. Approximate, and documented as such.
+    A Go package has no node of its own, so an import edge names a
+    representative file: the first by id, a production file when there is one.
     """
     facts = view.facts.get(GO_LANG)
     if facts is None:
         return None
     go = cast("GoIndexFacts", facts)
-    scope = _package_scope(fqn, go)
-    files = go.package_files.get(scope) if scope is not None else None
-    return files[0] if files else None
+    relative = _ingest_relative(fqn, go)
+    if relative is None:
+        return None
+    parts = relative.split(".") if relative else []
+    for cut in range(len(parts), -1, -1):
+        scope = go.package_dirs.get(".".join(parts[:cut]))
+        if scope is None:
+            continue
+        if cut == len(parts):
+            files = go.package_files.get(scope, ())
+            return files[0] if files else None
+        symbol = ".".join([scope, *parts[cut:]])
+        return symbol if symbol in view.nodes else None
+    return None
 
 
 def builtin_call(name: str, file_path: str, view: ResolutionView) -> str | None:
@@ -55,4 +77,5 @@ def builtin_call(name: str, file_path: str, view: ResolutionView) -> str | None:
 RULES = ResolutionRules(
     steps=((AFTER_IMPORT_MAP, builtin_call),),
     reconcile_import=reconcile_import,
+    reconciles_references=True,
 )

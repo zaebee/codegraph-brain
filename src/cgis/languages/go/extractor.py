@@ -45,6 +45,8 @@ class _File:
 
     path: str
     node_id: str
+    #: The package directory, dotted, relative to the ingest root; empty at the root.
+    directory: str
     scope: str
     is_test: bool
     import_map: Mapping[str, str]
@@ -65,10 +67,12 @@ class GoExtractor(BaseExtractor):
         root = self._parser.parse(code.encode("utf-8")).root_node
         source_root = self._pick_source_root(file_path)
         package = text(_child(_child(root, "package_clause"), "package_identifier"))
+        directory = scope_of(file_path, source_root)
         ctx = _File(
             path=file_path,
             node_id=file_node_id(file_path, source_root),
-            scope=_package_scope(scope_of(file_path, source_root), package),
+            directory=directory,
+            scope=_package_scope(directory, package),
             is_test=is_test(file_path),
             import_map={
                 name: dotted(path) for name, path in imports(root) if name not in UNNAMED_IMPORTS
@@ -114,6 +118,8 @@ def _file(ctx: _File, root: TSNode, nodes: list[Node], edges: list[Edge]) -> Non
     name = ctx.path.replace("\\", "/").rsplit("/", 1)[-1]
     metadata: dict[str, object] = {
         "scope": ctx.scope,
+        # What an import path names: the scope is the clause's at the root (7b review I1).
+        "package_dir": ctx.directory,
         "import_map": dict(ctx.import_map),
         # As written: a dotted path cannot say whether its first segment was a domain.
         "imports": sorted({path for _, path in imports(root)}),

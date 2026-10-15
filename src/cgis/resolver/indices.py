@@ -171,7 +171,7 @@ class SymbolIndex:
                 resolved = self.resolve_layout(forwarded, source_file)
                 if resolved is not None:
                     return resolved
-        return None
+        return _pack_reconciled(self, imported_fqn, source_file)
 
     def resolve_layout(self, fqn: str, source_file: str | None = None) -> str | None:
         """Match an FQN to a node id, reconciling layout prefixes. No re-exports.
@@ -285,6 +285,14 @@ class SymbolIndex:
 
 #: The head a relative import in the ingest root's own `__init__.py` carries (#319).
 _ROOT_PACKAGE = "__init__"
+
+
+def _pack_reconciled(index: "SymbolIndex", fqn: str, source_file: str | None) -> str | None:
+    """The node the source's pack maps `fqn` to, for a pack that maps references (Go)."""
+    rules = rules_for(source_file)
+    if rules is None or not rules.reconciles_references or rules.reconcile_import is None:
+        return None
+    return rules.reconcile_import(fqn, source_file, index)
 
 
 def _pack_state(built_in: Mapping[str, object], extra: Mapping[str, object]) -> dict[str, object]:

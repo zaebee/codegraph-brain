@@ -70,7 +70,12 @@ def _internal_replace(target: list[str], go_mod: Path, root: Path) -> str | None
 
 
 def parse_go_mod(text: str, go_mod: Path, root: Path) -> dict[str, object]:
-    """The module path, required module paths, and replaces that point inside `root`."""
+    """The module path, required module paths, and replaces that point inside `root`.
+
+    `offset` is where `root` sits under the module, dotted — `internal` for
+    `cgis ingest internal/` — since node ids are relative to `root` while import
+    paths are relative to the module (7b review I2).
+    """
     path = ""
     requires: set[str] = set()
     replaces: dict[str, str] = {}
@@ -84,7 +89,16 @@ def parse_go_mod(text: str, go_mod: Path, root: Path) -> dict[str, object]:
             local = _internal_replace(fields[arrow + 1 :], go_mod, root)
             if arrow and local is not None:
                 replaces[fields[0]] = local
-    return {"path": path, "requires": sorted(requires), "replaces": replaces}
+    try:
+        offset = root.resolve().relative_to(go_mod.parent.resolve()).as_posix()
+    except ValueError:
+        offset = "."
+    return {
+        "path": path,
+        "requires": sorted(requires),
+        "replaces": replaces,
+        "offset": "" if offset == "." else offset.replace("/", "."),
+    }
 
 
 class GoProjectReader(ProjectReader):

@@ -148,7 +148,9 @@ BUILTINS = (
 )
 
 
-def _resolve_with(files: dict[str, tuple[str, str]]) -> tuple[list[Edge], dict[str, Node]]:
+def _resolve_with(
+    files: dict[str, tuple[str, str]], module: dict[str, object] = MODULE
+) -> tuple[list[Edge], dict[str, Node]]:
     """Ingest `{path: (language, code)}` with the real extractors of each language."""
     by_ext = extractors([])
     nodes: list[Node] = []
@@ -157,7 +159,7 @@ def _resolve_with(files: dict[str, tuple[str, str]]) -> tuple[list[Edge], dict[s
         n, e = by_ext[ext].parse(code, path)
         nodes += n
         edges += e
-    resolved, virtual = ResolverEngine(nodes, edges, project_state=MODULE).resolve()
+    resolved, virtual = ResolverEngine(nodes, edges, project_state=module).resolve()
     return resolved, {n.id: n for n in [*nodes, *virtual]}
 
 
@@ -208,3 +210,73 @@ def test_a_definition_in_several_files_resolves_to_the_same_one_every_time(
     nodes, _, _ = IngestionPipeline(extractors([])).run(str(tmp_path / "tree"))
     winner = {n.id: n for n in nodes}["sys.Open"]
     assert winner.file_path == "sys/zz_linux.go"
+
+
+def _go_graph(
+    files: dict[str, str], module: dict[str, object]
+) -> tuple[list[Edge], dict[str, Node]]:
+    """Resolve Go `files` (paths relative to the ingest root) against `go_module` facts."""
+    nodes: list[Node] = []
+    edges: list[Edge] = []
+    for path, code in files.items():
+        n, e = GoExtractor().parse(code, path)
+        nodes += n
+        edges += e
+    resolved, virtual = ResolverEngine(nodes, edges, project_state={"go_module": module}).resolve()
+    return resolved, {n.id: n for n in [*nodes, *virtual]}
+
+
+ROOT_PACKAGE = {
+    "app.go": "package app\nfunc Top() {}\n",
+    # Sorts before app.go: the representative must still be the production file (M6).
+    "aa_test.go": "package app\nfunc helperForTests() {}\n",
+    "cmd/x/main.go": 'package main\nimport app "example.com/go-app"\nfunc main() { app.Top() }\n',
+}
+
+
+def test_the_root_package_is_reached_by_the_module_path() -> None:
+    """I1: a root package named unlike the module's last segment (`go-app` vs `app`)."""
+    edges, _ = _go_graph(ROOT_PACKAGE, {"path": "example.com/go-app"})
+    assert "app.Top" in _calls_from(edges, "cmd.x.main")
+
+
+def test_a_root_package_import_names_a_production_file_of_it() -> None:
+    """I1, and 7b review M6: the representative is not a `_test.go` file when one isn't."""
+    edges, _ = _go_graph(ROOT_PACKAGE, {"path": "example.com/go-app"})
+    imports = {
+        e.target for e in edges if e.type is EdgeType.IMPORTS and e.source == "cmd.x.main_go"
+    }
+    assert imports == {"app_go"}
+
+
+def test_an_ingest_below_the_module_root_still_resolves_across_packages() -> None:
+    """I2: `cgis ingest internal/` under a go.mod at the repository root."""
+    files = {
+        "a/a.go": "package a\nfunc A() {}\n",
+        "b/b.go": 'package b\nimport "example.com/app/internal/a"\nfunc B() { a.A() }\n',
+    }
+    edges, _ = _go_graph(files, {"path": "example.com/app", "offset": "internal"})
+    assert "a.A" in _calls_from(edges, "b.B")
+    imports = {e.target for e in edges if e.type is EdgeType.IMPORTS and e.source == "b.b_go"}
+    assert imports == {"a.a_go"}
+
+
+def test_a_go_module_path_never_strips_a_python_import() -> None:
+    """I5: module `example.com/api` beside a Python `api/` package, which keeps #319's rule.
+
+    `from api.utils import helper` with no `api/utils.py` must not land on a top-level
+    `utils.helper`: that is the collision #319 refused, now through Go's module segments.
+    """
+    edges, _ = _resolve_with(
+        {
+            "svc/main.go": (".go", "package svc\nfunc Main() {}\n"),
+            "api/__init__.py": (".py", ""),
+            "api/handlers.py": (
+                ".py",
+                "from api.utils import helper\n\ndef run():\n    helper()\n",
+            ),
+            "utils.py": (".py", "def helper():\n    pass\n"),
+        },
+        module={"go_module": {"path": "example.com/api"}},
+    )
+    assert "utils.helper" not in _calls_from(edges, "api.handlers.run")
