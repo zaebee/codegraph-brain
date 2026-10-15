@@ -35,6 +35,7 @@ class Manifest:
     """What the registry knows about a pack without importing it."""
 
     name: str  #: equals `Node.language` for everything the pack emits
+    title: str  #: how people write the language's name: what coverage claims say
     load: Callable[[], LanguagePack]  #: imports the pack; called once, on first use
     extensions: tuple[str, ...]  #: matched against the path suffix, dot included
     never_ingested: re.Pattern[str]  #: this language's test files the walk skips outright
@@ -65,6 +66,7 @@ def _go() -> LanguagePack:
 MANIFESTS: tuple[Manifest, ...] = (
     Manifest(
         name="python",
+        title="Python",
         load=_python,
         extensions=(".py",),
         never_ingested=re.compile(r"\.(test|spec)\.py$", re.IGNORECASE),
@@ -77,6 +79,7 @@ MANIFESTS: tuple[Manifest, ...] = (
     ),
     Manifest(
         name="typescript",
+        title="TypeScript",
         load=_typescript,
         extensions=(".ts", ".tsx"),
         # .js/.jsx have no pack, but the walk always skipped their test files;
@@ -85,6 +88,7 @@ MANIFESTS: tuple[Manifest, ...] = (
     ),
     Manifest(
         name="go",
+        title="Go",
         load=_go,
         extensions=(".go",),
         # `_test.go` files are ingested and flagged `is_test`, never skipped.

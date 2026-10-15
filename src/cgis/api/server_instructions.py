@@ -5,9 +5,22 @@ Guidance on when to query the graph used to live only in the Claude plugin skill
 a custom harness — got the tool schemas and no hint of when to use them. This is
 that skill, distilled: when the graph beats grep, how to read what comes back,
 and where it is blind. Keep the two in step; the skill may say more.
+
+The coverage line is built from the language registry, so a new pack is announced
+the moment it ships — it said "Python and TypeScript only" for as long as Go had.
 """
 
-SERVER_INSTRUCTIONS = """\
+from cgis.languages import MANIFESTS
+
+
+def _coverage() -> str:
+    """`Python (.py), TypeScript (.ts, .tsx) and Go (.go)`, from the registry."""
+    named = [f"{m.title} ({', '.join(m.extensions)})" for m in MANIFESTS]
+    return named[0] if len(named) == 1 else f"{', '.join(named[:-1])} and {named[-1]}"
+
+
+# An f-string for the coverage line: a literal brace in the prose must be doubled.
+SERVER_INSTRUCTIONS = f"""\
 cgis holds a deterministic graph of a codebase: every function, method and class, and \
 the resolved calls, imports, inheritance and references between them. Use it for \
 questions about how code connects, before grepping across files or reading whole \
@@ -42,6 +55,6 @@ decorator or a framework is invisible. Name the gap rather than assert safety.
 answer at max_nodes, nearest first; a cut is reported. Ask for output_format="text" to \
 read an answer — an indented tree, a fifth the size of json; use json to compute with it.
 
-Coverage: Python (.py) and TypeScript (.ts, .tsx) only. Other languages are not in the \
-graph — read those files, and say which part of the answer the graph could not see.
+Coverage: {_coverage()} only. Other languages are not in the graph — read those \
+files, and say which part of the answer the graph could not see.
 """

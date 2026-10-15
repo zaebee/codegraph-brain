@@ -44,7 +44,7 @@ This matters when you act on the output: **an empty impact result means "no stat
 
 ## Coverage
 
-Extractors exist for **Python** (`.py`) and **TypeScript** (`.ts`, `.tsx`). Vue, Astro, Go, Rust and everything else are invisible to the graph — in a mixed repository, fall back to reading files for those parts and say which parts of the answer the graph could not cover.
+Extractors exist for **Python** (`.py`), **TypeScript** (`.ts`, `.tsx`) and **Go** (`.go`, a pilot: interfaces are not yet linked to their implementations, #609). Vue, Astro, Rust and everything else are invisible to the graph — in a mixed repository, fall back to reading files for those parts and say which parts of the answer the graph could not cover.
 
 ## Not covered here
 

@@ -10,7 +10,7 @@
 
 CGIS parses a repository with tree-sitter into a graph of fully qualified symbols and the calls, imports and containment between them, stores it in SQLite, and serves it to AI agents over MCP. An agent that would otherwise grep and read whole files asks the graph instead.
 
-- **Languages:** Python · TypeScript / TSX
+- **Languages:** Python · TypeScript / TSX · Go (pilot)
 - **Runs:** locally — no account, no telemetry; the graph never leaves your disk ([the one opt-in exception](https://github.com/zaebee/codegraph-brain/blob/main/PRIVACY.md))
 
 ```console
