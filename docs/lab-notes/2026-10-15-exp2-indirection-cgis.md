@@ -54,3 +54,21 @@ Per pair, take the ratio of median cost (indirect / direct) and the difference o
 4. **Ceiling:** stated both per run and per pair median (the exp1 G4 ambiguity, fixed here).
 
 A bootstrap 95% interval over pairs is reported for gate 1.
+
+## Rulings after adjudication, before pairing
+
+- **Contested gold excluded.** `triads.tangle_mass` has 7 callers or 33, depending on whether a
+  `@property` read, plus `getattr` on a registered component name, counts as a call.
+  `paths.is_test_path` jumps past 50 callers if implicit protocol calls count: `with SQLiteStore(...)`
+  → `__enter__`, or a pydantic validator on every `Node(...)`. A task whose gold rests on a contested
+  rule tests the rule, not the agent, so both are dropped.
+- **Constructor calls count as calls to `__init__`.**
+- **Out of band, run as unpaired descriptive tasks:** `go.naming._relative` (35 symbols / 14 files),
+  `js_globals.specifier_fqn` (36 / 14) and `BaseProvider._record_usage` (29 / 11). All three were
+  drawn as direct; cgis classed them that way only because it does not follow polymorphic dispatch
+  upward (a pack override, `BaseProvider.generate_structured`), nor `pack.classify` in the resolver.
+  That is a resolver gap like #632.
+- **Hop kinds in the pairable pool:** every indirect candidate in the size band is indirect through
+  `param_obj` and/or `attr_dep` only. Polymorphic, callback and registry hops occur only in the large,
+  out-of-band tasks. So gate 3 (dynamic against held-object) cannot be tested on pairs.
+- **Seen before pairing:** I saw files and symbol counts per target, and nothing else.
