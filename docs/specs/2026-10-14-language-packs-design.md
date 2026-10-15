@@ -495,7 +495,8 @@ made there, not worked around in Go.
 > - **One FQN, one definition.** An external test package (`package x_test`)
 >   gets `<directory>_test`; each file's `init` is `<scope>.init_<file>`; the
 >   walk is sorted, so build-tag variants sharing an FQN resolve the same way
->   on every machine. Go builtins are STDLIB, claimed before the global index.
+>   on every machine on a full ingest. An incremental run re-writes only the
+>   changed file, which then wins until the next full ingest. Go builtins are STDLIB, claimed before the global index.
 > - **H5 — a package import names the package's first FILE node.** No node per
 >   package, no new `NodeType`.
 > - **H6 — receiver calls are `raw_call:self.<name>`.** Parameter, `var` and
@@ -513,7 +514,9 @@ made there, not worked around in Go.
 >
 > Follow-ups: implicit interface satisfaction; generics beyond extraction; cgo
 > beyond classification; `go.work`; struct field types as `self_types`; types
-> inferred from a function's return value.
+> inferred from a function's return value; a replace nested under the module
+> path (`example.com/app/sdk => ./third_party/sdk`), which the module prefix
+> shadows; `--source-root` with Go.
 
 ## Risks and open questions
 

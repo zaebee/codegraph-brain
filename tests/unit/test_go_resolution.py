@@ -280,3 +280,38 @@ def test_a_go_module_path_never_strips_a_python_import() -> None:
         module={"go_module": {"path": "example.com/api"}},
     )
     assert "utils.helper" not in _calls_from(edges, "api.handlers.run")
+
+
+def test_an_import_of_a_directory_names_its_production_package_not_the_test_one() -> None:
+    """`srv` and `srv_test` share a directory; importing it means `srv` (delta review)."""
+    files = {
+        # Sorts first: the external test package must still not stand for the directory.
+        "srv/a_test.go": "package srv_test\nfunc Helper() {}\n",
+        "srv/srv.go": "package srv\nfunc Helper() {}\n",
+        "cmd/x/main.go": (
+            'package main\nimport "example.com/app/srv"\nfunc main() { srv.Helper() }\n'
+        ),
+    }
+    edges, _ = _go_graph(files, {"path": "example.com/app"})
+    assert "srv.Helper" in _calls_from(edges, "cmd.x.main")
+
+
+def test_directories_are_walked_in_sorted_order(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The filesystem hands directories in its own order; the pipeline sorts them (I3)."""
+    for name in ("aa", "mm", "zz"):
+        (tmp_path / "tree" / name).mkdir(parents=True)
+        (tmp_path / "tree" / name / "x.go").write_text(f"package {name}\n", encoding="utf-8")
+    real_walk = Path.walk
+    visited: list[str] = []
+
+    def reversed_walk(self: Path, *args: object, **kwargs: object) -> object:
+        for root, dirs, files in real_walk(self, *args, **kwargs):  # type: ignore[arg-type]
+            dirs.sort(reverse=True)
+            yield root, dirs, files
+            visited.append(root.name)
+
+    monkeypatch.setattr(Path, "walk", reversed_walk)
+    IngestionPipeline(extractors([])).run(str(tmp_path / "tree"))
+    assert visited == ["tree", "aa", "mm", "zz"]

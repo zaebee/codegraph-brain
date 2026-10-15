@@ -33,6 +33,7 @@ class GoIndexFacts:
 
     internal_roots: frozenset[str] = frozenset()
     reexports: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
+    #: Always empty: the contract's field, kept for the protocol; see the class docstring.
     layout_prefixes: frozenset[str] = frozenset()
     #: The module path, dotted; empty without a `go.mod`.
     module: str = ""
