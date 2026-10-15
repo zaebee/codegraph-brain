@@ -124,8 +124,20 @@ corrected pool.** It gives 7 pairs, at or above the minimum of 6:
 | 6 | prompt._loc 5/10 | DriftScorer.fit_templates 6/10 |
 | 7 | effective_prefix 7/15 | drift._fit_config 6/12 |
 
-These counts include the wrapper, which the pairing saw. In the task files it is optional, so each
-required count drops by 1 where the wrapper applied. That holds on both sides of pairs 3–7 and on the
-direct side of pair 2's partner (get_edge_stats), so within-pair differences move by at most 1.
+The pairing saw counts that include the wrapper. In the task files the wrapper is optional, so the
+**required** counts as run are:
+
+| # | direct (files/symbols) | indirect (files/symbols) | Δsymbols |
+|---|---|---|---|
+| 1 | 3/5 | 3/5 | 0 |
+| 2 | 4/4 | 4/5 | 1 |
+| 3 | 3/5 | 4/10 | **5** |
+| 4 | 3/12 | 3/11 | 1 |
+| 5 | 5/6 | 4/7 | 1 |
+| 6 | 4/9 | 5/9 | 0 |
+| 7 | 6/14 | 5/11 | 3 |
+
+Pair 3 now exceeds the ±4 tolerance by 1, because its direct side lost the wrapper and its indirect side
+did not. It stays, and it is flagged: the analysis is reported with and without pair 3.
 The descriptive tasks are `_relative` (47/14), `specifier_fqn` (47/13) and `_record_usage` (29/11).
 The table above supersedes the earlier pairs table.
