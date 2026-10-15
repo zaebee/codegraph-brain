@@ -19,14 +19,16 @@ Measured together, a rise could not be attributed to either change, so there are
 
 - **Arm A (`sites-only`):** #644's code, with the server instructions as on main. One local commit
   reverts `src/cgis/api/server_instructions.py` to main; its sha is recorded in every result row.
-- **Arm B (`sites+directive`):** #644 as reviewed.
+- **Arm B (`sites+directive`):** #644 as reviewed: the branch head that carries this note. Its sha is
+  recorded in every result row. Arm A is rebuilt on that same head, so the two differ in one file.
 - Both arms:
   - harness arm `cgis-forced`, as in exp3 and exp3b;
   - task `owner-exp1-big-ind-calculate-total-price` against owner-api 8de22452, gold unchanged;
   - model `claude-sonnet-5-5`, 3 runs per arm, on the organisation key (every transcript must show
     `apiKeySource: ANTHROPIC_API_KEY`).
 - **Baseline:** exp3b (`results-exp3b-forced.jsonl`), with recall 0.83 / 0.83 / 0.83. Arm A differs
-  from exp3b only in the coverage line. Arm B also changes the server instructions that exp3 and
+  from exp3b only in the coverage output: the text line, and in json the new `sites` and the
+  screened counts. Arm B also changes the server instructions that exp3 and
   exp3b used. That is a stated limitation of comparing B with them.
 
 ## Criterion (per arm)
@@ -36,6 +38,7 @@ Measured together, a rise could not be attributed to either change, so there are
 - **Reading:**
   - A helps → the place is enough.
   - Only B helps → the directive is what moves the agent.
+  - Only A helps → the directive hurts. That is unexpected; read the B transcripts before concluding.
   - Neither helps → the next lever is outside the coverage line.
 
   With n=3 per arm this is a probe, not a gate.
