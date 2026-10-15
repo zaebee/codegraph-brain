@@ -458,6 +458,25 @@ already enforced: `docs/ontology/tolerances.lock` and
 contract is missing something. The contract gets fixed, and the change is
 made there, not worked around in Go.
 
+> **Implementation note (step 7a):** Go needed three contract fixes before its
+> pack, made first in a graph-identical PR so that 7b's diff can stay inside
+> `languages/go/`:
+>
+> - **H1 — `file_node_id`.** `scope_of` answered two questions that coincide
+>   for Python and TypeScript: a file's FILE node, and the namespace its
+>   definitions live in. `LanguagePack.file_node_id` takes the first; the CLI,
+>   the guardian collector and the martian probe use it. Mermaid's slug peels a
+>   definition's namespace and stays on `scope_of`.
+> - **H2 — same-scope tiebreak.** A FILE node may declare `metadata["scope"]`;
+>   files that share one share the global- and variable-symbol tiebreak key.
+>   A file that declares none keys by its path, as before — not by its node
+>   id, which `components/index.tsx` and `components.tsx` share.
+> - **H3 — pack-owned project state.** A fact under a key other than the four
+>   built-ins travels as `ImportNames.extra`: recorded through the store's
+>   public `record_state`, compared on the next run, and merged into the state
+>   `index_facts` reads. It may not shadow a built-in or a key the store owns,
+>   and must read back equal from JSON.
+
 ## Risks and open questions
 
 - **Behaviour hidden in Python-only paths that Go also reaches.** For
