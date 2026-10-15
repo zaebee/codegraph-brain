@@ -101,7 +101,12 @@ def _declared_types(root: TSNode) -> list[str]:
 def _file(ctx: _File, root: TSNode, nodes: list[Node], edges: list[Edge]) -> None:
     """The FILE node, the imports, then every top-level declaration."""
     name = ctx.path.replace("\\", "/").rsplit("/", 1)[-1]
-    metadata: dict[str, object] = {"scope": ctx.scope, "import_map": dict(ctx.import_map)}
+    metadata: dict[str, object] = {
+        "scope": ctx.scope,
+        "import_map": dict(ctx.import_map),
+        # As written: a dotted path cannot say whether its first segment was a domain.
+        "imports": sorted({path for _, path in imports(root)}),
+    }
     nodes.append(_node(ctx, ctx.node_id, name, NodeType.FILE, root, metadata))
     for _, path in imports(root):
         target = dotted(path)
