@@ -58,3 +58,16 @@ Indirection and radius are confounded in owner-api. Of 1978 candidates with 1–
 the small × indirect cell has 35, and only 3 after requiring distinct files and closure overlap
 below 0.2 (big × indirect: 28 → 8). If small × indirect cannot reach 6 tasks, H2 is tested in the
 big row only, and that limit is stated in the result rather than patched afterwards.
+
+## Rulings before the pilot (no session run yet)
+
+- **reservation-conflict-query:** a callable passed as an argument
+  (`self._check_conflicts_internal` → `_execute_with_metrics`,
+  services/reservation_conflict_service.py:183-185) reaches the target. Neither cgis nor the AST
+  closure follows it. Its 12 known callers are a lower bound, so they go in `allowed_symbols`:
+  naming them costs nothing and they are not required. Cost if wrong: that task's recall reads high.
+- **lock-wallet:** its callers contain the whole `credit_wallet` chain, the excluded tuned task. Kept,
+  because the exclusion guards the cgis arm against tuning and the pilot runs control only. The cost
+  is weaker independence between two tasks in the full set.
+- Gold for the 6 pilot tasks: 82 cgis callers checked, none a false positive. Of the 24 AST-only
+  candidates, 21 were accepted and 3 rejected as same-name calls to other objects, each with file:line.

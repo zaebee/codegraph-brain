@@ -1,0 +1,64 @@
+id: owner-exp1-big-ind-calculate-total-price
+repo: owner-api
+sha: 8de22452b5d91242dd742a666ef2cd7b1eb7c1ff
+src_root: ownima-backend/app
+type: impact
+question: 'In this repository, the method `PricingService.calculate_total_price` in
+
+  `ownima-backend/app/domains/pricing/service.py` is about to change. Which code under
+
+  `ownima-backend/app/` (not tests, not scripts) can end up calling it, directly or
+
+  transitively? Follow every chain up to its entry point (an HTTP route, a worker task,
+
+  or a function nothing else calls) and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - CatalogService._apply_prices
+  - CatalogService._price_group_from_templates
+  - CatalogService._price_owner_group
+  - CatalogService.build_cards
+  - CatalogService.get_vehicle_detail
+  - CatalogService.search_vehicles
+  - FavoritesService._hydrate
+  - FavoritesService.list_page
+  - VehicleService._apply_vehicle_prices
+  - VehicleService.list_vehicles
+  - catalog.routes.get_catalog_vehicle_detail
+  - catalog.routes.search_catalog_vehicles
+  - favorites.routes.list_favorites
+  - pricing.vehicles.apply_vehicle_prices
+  - rider.routes.get_vehicle
+  - rider.routes.search_vehicles
+  - routes.get_vehicle._get_vehicle_details
+  - time_table.routes.list_time_slots_by_vehicle
+  - vehicle.routes.list_vehicles
+  files:
+  - ownima-backend/app/domains/catalog/routes.py
+  - ownima-backend/app/domains/catalog/service.py
+  - ownima-backend/app/domains/favorites/routes.py
+  - ownima-backend/app/domains/favorites/service.py
+  - ownima-backend/app/domains/pricing/service.py
+  - ownima-backend/app/domains/pricing/vehicles.py
+  - ownima-backend/app/domains/rider/routes.py
+  - ownima-backend/app/domains/time_table/routes.py
+  - ownima-backend/app/domains/vehicle/routes.py
+  - ownima-backend/app/domains/vehicle/service.py
+  allowed_symbols:
+  - PricingService.calculate_total_price
+notes: 'Exp1 (docs/lab-notes/2026-10-15-exp1-radius-indirection.md), cell big x indirect.
+
+  Gold: cgis closure + AST name closure, every difference adjudicated with file:line.
+
+  Accepted favorites chain: list_favorites (favorites/routes.py:176 FavoritesServiceDep, :214 service.list_page)
+  -> FavoritesService.list_page (service.py:292 self._hydrate) -> _hydrate (service.py:383 self.catalog_service.build_cards;
+  catalog_service typed Any but injected as CatalogServiceDep in get_favorites_service service.py:562)
+  -> CatalogService.build_cards -> _apply_prices -> _price_owner_group -> _price_group_from_templates
+  -> self.pricing_service.calculate_total_price (catalog/service.py:189). Rejected vehicle.routes.get_vehicle:
+  calls VehicleService.get_vehicle (vehicle/routes.py:61 -> vehicle/service.py:422-455), which reads templates
+  but never prices; the name match is rider.routes.get_vehicle. All 16 cgis callers verified. Indirect:
+  yes.
+
+  '

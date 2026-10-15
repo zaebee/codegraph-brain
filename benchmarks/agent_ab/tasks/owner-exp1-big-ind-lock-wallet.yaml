@@ -1,0 +1,55 @@
+id: owner-exp1-big-ind-lock-wallet
+repo: owner-api
+sha: 8de22452b5d91242dd742a666ef2cd7b1eb7c1ff
+src_root: ownima-backend/app
+type: impact
+question: 'In this repository, the module-level function `lock_wallet` in
+
+  `ownima-backend/app/domains/finance/service.py` is about to change. Which code under
+
+  `ownima-backend/app/` (not tests, not scripts) can end up calling it, directly or
+
+  transitively? Follow every chain up to its entry point (an HTTP route, a worker task,
+
+  or a function nothing else calls) and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - FinanceService.credit_wallet
+  - FinanceService.lock_wallet
+  - FinanceService.top_up
+  - TopUpService._credit
+  - TopUpService.fulfill
+  - TopUpService.get_status
+  - TopUpService.handle_webhook_event
+  - VehicleBonusCreditor._pay
+  - VehicleBonusCreditor.credit
+  - VehicleBonusWorker.credit
+  - VehicleBonusWorker.reconcile
+  - finance.routes.get_top_up
+  - finance.routes.stripe_webhook
+  - finance.service.credit_wallet
+  - worker.vehicle_bonus.reconcile_vehicle_bonus
+  files:
+  - ownima-backend/app/domains/finance/routes.py
+  - ownima-backend/app/domains/finance/service.py
+  - ownima-backend/app/domains/finance/top_up_service.py
+  - ownima-backend/app/domains/finance/vehicle_bonus_credit.py
+  - ownima-backend/app/worker/vehicle_bonus.py
+  allowed_symbols:
+  - finance.service.lock_wallet
+notes: 'Exp1 (docs/lab-notes/2026-10-15-exp1-radius-indirection.md), cell big x indirect.
+
+  Gold: cgis closure + AST name closure, every difference adjudicated with file:line.
+
+  No AST_ONLY. Target is the module function (finance/service.py:188); FinanceService.lock_wallet (:328)
+  is a thin method that calls it (:330), so it is correctly a caller; it has no non-test callers itself.
+  All 15 cgis callers verified: module credit_wallet (:226), FinanceService.credit_wallet (:344), top_up
+  (:367), VehicleBonusCreditor._pay (vehicle_bonus_credit.py:181 direct, :202 credit_wallet), TopUpService._credit
+  via self._finance.credit_wallet (top_up_service.py:316; finance: FinanceService injected, :119/127),
+  fulfill (:266), get_status (:294), handle_webhook_event (:305), routes get_top_up (finance/routes.py:232)
+  / stripe_webhook (:344). FinanceService.grant_signup_bonus takes its own SELECT FOR UPDATE (service.py:~455-458)
+  and is correctly NOT a caller. Indirect: yes.
+
+  '

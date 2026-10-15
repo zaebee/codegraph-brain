@@ -1,0 +1,66 @@
+id: owner-exp1-big-ind-opensearch-mget
+repo: owner-api
+sha: 8de22452b5d91242dd742a666ef2cd7b1eb7c1ff
+src_root: ownima-backend/app
+type: impact
+question: 'In this repository, the method `OpenSearchClient.mget` in
+
+  `ownima-backend/app/storage/base.py` is about to change. Which code under
+
+  `ownima-backend/app/` (not tests, not scripts) can end up calling it, directly or
+
+  transitively? Follow every chain up to its entry point (an HTTP route, a worker task,
+
+  or a function nothing else calls) and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - AdminChatReader._populate
+  - AdminChatReader.export_transcript
+  - AdminChatReader.get_thread
+  - AdminChatReader.list_conversations
+  - BulkImportService._keep_other_owners_documents
+  - BulkImportService.import_vehicles_from_csv
+  - ChatService._reservations
+  - ChatService.list_conversations
+  - Worker._run_reset
+  - Worker.reset_showcase_data
+  - admin.chat.export_admin_chat_transcript
+  - admin.chat.get_admin_chat_thread
+  - admin.chat.list_admin_chat_conversations
+  - bulk_import.routes.bulk_import_vehicles
+  - chat.routes.conversations
+  - chat.service.fetch_reservation_docs
+  - notifications.routes._resolve_live_deadlines
+  - notifications.routes.list_notifications
+  - notifications.routes.mark_notification_read
+  - supplier.routes.assign_supplier_vehicles
+  files:
+  - ownima-backend/app/domains/admin/chat.py
+  - ownima-backend/app/domains/admin/chat_service.py
+  - ownima-backend/app/domains/bulk_import/routes.py
+  - ownima-backend/app/domains/bulk_import/service.py
+  - ownima-backend/app/domains/chat/routes.py
+  - ownima-backend/app/domains/chat/service.py
+  - ownima-backend/app/domains/notifications/routes.py
+  - ownima-backend/app/domains/supplier/routes.py
+  - ownima-backend/app/storage/base.py
+  - ownima-backend/app/worker/showcase.py
+  allowed_symbols:
+  - OpenSearchClient.mget
+notes: 'Exp1 (docs/lab-notes/2026-10-15-exp1-radius-indirection.md), cell big x indirect.
+
+  Gold: cgis closure + AST name closure, every difference adjudicated with file:line.
+
+  Accepted all 12. ReservationClientDep = OpenSearchClient[Reservation,...] via get_reservation_client
+  -> ReservationSearchClient (subclass, storage/reservation.py:14, no mget override; the only def mget
+  is storage/base.py:222). chat/service.py:311 fetch_reservation_docs(reservation_client: Any) calls reservation_client.mget;
+  ChatService built with ReservationClientDep (chat/service.py:1193-1197); _reservations -> fetch_reservation_docs
+  (:1032); list_conversations -> self._reservations (:1136); chat.routes.conversations -> chat_service.list_conversations
+  (ChatServiceDep). AdminChatReader(session, reservation_client) built from ReservationClientDep in admin/chat.py:209/254,
+  294/309, 387/437; list_conversations (:355 _populate, :374), get_thread (:453), export_transcript (:606),
+  _populate (:673) call fetch_reservation_docs(self.reservation_client). Worker.reset_showcase_data ->
+  cls._run_reset (worker/showcase.py:214). All 8 cgis callers verified. Indirect: yes.
+
+  '
