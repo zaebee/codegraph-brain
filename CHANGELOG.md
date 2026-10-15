@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.30.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.29.0...codegraph-brain-v0.30.0) (2026-10-15)
+
+
+### Features
+
+* **languages:** Go field and call-result types resolve receiver calls ([#608](https://github.com/zaebee/codegraph-brain/issues/608)) ([#614](https://github.com/zaebee/codegraph-brain/issues/614)) ([96ec5f3](https://github.com/zaebee/codegraph-brain/commit/96ec5f380d52ba1560c63b8b84af673627bc88d0))
+* **languages:** step 7b — the Go pilot ([#607](https://github.com/zaebee/codegraph-brain/issues/607)) ([4a62703](https://github.com/zaebee/codegraph-brain/commit/4a62703f41a4dfb74d1f96bee132b3f78f84c895))
+* **pipeline:** a graph built by other extraction code is rebuilt in full ([#617](https://github.com/zaebee/codegraph-brain/issues/617)) ([dc33153](https://github.com/zaebee/codegraph-brain/commit/dc331531556cc2dc49c8adfacbec079584953eb8))
+* **python:** FastAPI handlers play the ROUTE_HANDLER role ([#566](https://github.com/zaebee/codegraph-brain/issues/566)) ([#616](https://github.com/zaebee/codegraph-brain/issues/616)) ([9098ccd](https://github.com/zaebee/codegraph-brain/commit/9098ccd87ef08fbb3139243fda426b62e8d1b32b))
+
+
+### Bug Fixes
+
+* **docs:** coverage claims name Go — the MCP instructions are built from the registry ([#615](https://github.com/zaebee/codegraph-brain/issues/615)) ([8ea6362](https://github.com/zaebee/codegraph-brain/commit/8ea636239122b24c4a42b2a65517ebb12dad1b03))
+
+
+### Documentation
+
+* auto-sync architecture graph and MCP reference ([#598](https://github.com/zaebee/codegraph-brain/issues/598)) ([3feb1ac](https://github.com/zaebee/codegraph-brain/commit/3feb1ac40b1896acb0e57109c9bd1f2bf941d7bc))
+* auto-sync architecture graph and MCP reference ([#620](https://github.com/zaebee/codegraph-brain/issues/620)) ([3f36e15](https://github.com/zaebee/codegraph-brain/commit/3f36e15c30dca7280b57bebd70a8793764cd872e))
+* **spec:** language packs and a two-plane topology ([#593](https://github.com/zaebee/codegraph-brain/issues/593)) ([d9e7d85](https://github.com/zaebee/codegraph-brain/commit/d9e7d852b17d4cab4a2a4a0f2519f11f8de9236e))
+
 ## [0.29.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.28.0...codegraph-brain-v0.29.0) (2026-10-14)
 
 
