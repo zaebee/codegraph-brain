@@ -19,6 +19,7 @@ def _coverage() -> str:
     return named[0] if len(named) == 1 else f"{', '.join(named[:-1])} and {named[-1]}"
 
 
+# An f-string for the coverage line: a literal brace in the prose must be doubled.
 SERVER_INSTRUCTIONS = f"""\
 cgis holds a deterministic graph of a codebase: every function, method and class, and \
 the resolved calls, imports, inheritance and references between them. Use it for \

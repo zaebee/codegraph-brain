@@ -35,7 +35,7 @@ The repository also contains **Guardian**, a graph-aware LLM code reviewer that 
 
 ## Coverage
 
-Extractors exist for **Python** and **TypeScript** (`.py`, `.ts`, `.tsx`). Other languages are invisible to the graph — see the [case study](https://github.com/zaebee/codegraph-brain/blob/main/docs/CASE_STUDY.md) for measured coverage on a real twelve-repository codebase, including what it misses.
+Extractors exist for **Python** (`.py`), **TypeScript** (`.ts`, `.tsx`) and **Go** (`.go`, a pilot). Other languages are invisible to the graph — see the [case study](https://github.com/zaebee/codegraph-brain/blob/main/docs/CASE_STUDY.md) for measured coverage on a real twelve-repository codebase, including what it misses.
 
 ## Links
 

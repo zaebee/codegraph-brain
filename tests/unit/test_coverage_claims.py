@@ -5,6 +5,7 @@ TypeScript only" — and that Go was invisible — for as long as the Go pack ha
 shipped: an agent on a Go repository was told to read the files instead.
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,7 @@ CLAIMS = [
     "README.md",
     "plugin/skills/cgis/SKILL.md",
     "plugin/skills/ingest/SKILL.md",
+    "plugin/README.md",
     "docs/AUDIT.md",
 ]
 
@@ -36,7 +38,8 @@ def test_the_instructions_name_every_language_and_extension() -> None:
 @pytest.mark.parametrize("path", CLAIMS)
 def test_every_coverage_claim_names_every_language(path: str) -> None:
     text = (REPO / path).read_text(encoding="utf-8")
-    missing = [m.title for m in MANIFESTS if m.title not in text]
+    # A whole word: "Go" must not pass for "Google" or "Golang".
+    missing = [m.title for m in MANIFESTS if not re.search(rf"\b{re.escape(m.title)}\b", text)]
     assert not missing, f"{path} does not name {missing}"
 
 
