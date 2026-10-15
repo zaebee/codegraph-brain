@@ -99,7 +99,7 @@ the full run starts. The full run is all 19 tasks × 3 fresh runs.
 
 5 sessions, all on the organisation key; they do not count. Two gold defects:
 
-1. **The decorator ruling was wrong in one direction.** `@refreshes_graph`'s wrapper calls the tool,
+1. **[Incomplete: the refresh path was added only where gold held `IngestionPipeline.run`; it missed `extractors`, see Post-review C1.]** **The decorator ruling was wrong in one direction.** `@refreshes_graph`'s wrapper calls the tool,
    and it also calls `refresh_if_stale` → `IngestionPipeline.run`, so all 14 decorated MCP tools really
    reach the whole ingest chain. Agents named those tools, correctly. Corrected rulings:
    - the wrapper and the refresh path are real callers in gold;
@@ -150,7 +150,7 @@ The table above supersedes the earlier pairs table.
 | # | direct | cost | recall | indirect | cost | recall | ratio |
 |---|---|---|---|---|---|---|---|
 | 1 | reject_metrics_path | $0.073 | 1.00 | _finder_pass | $0.078 | 1.00 | 1.06 |
-| 2 | extractors | $0.074 | 1.00 | get_edge_stats | $0.057 | 1.00 | 0.77 |
+| 2 | extractors [gold corrected post-review; pair invalid, C1] | $0.074 | 1.00 | get_edge_stats | $0.057 | 1.00 | 0.77 |
 | 3 | build_ladder | $0.065 | 1.00 | _sanitize_finder_result | $0.098 | 0.93 | 1.52 |
 | 4 | resolve_fqn | $0.060 | 1.00 | _as_terms | $0.083 | 1.00 | 1.39 |
 | 5 | visible_findings | $0.071 | 1.00 | get_incoming_edges | $0.077 | 1.00 | 1.08 |
@@ -159,7 +159,7 @@ The table above supersedes the earlier pairs table.
 
 | gate | all 7 pairs | without pair 3 |
 |---|---|---|
-| G1 cost | median ratio **1.08** (bootstrap 95% CI 1.04–1.39); indirect costs more in 6 of 7 → **refuted** by the registered rule (≤ 1.1) | 1.07 (CI 0.90–1.37); 5 of 6 → refuted |
+| G1 cost | **[Superseded, see Post-review C1: pair 2 invalid; 6 pairs → ×1.22 INCONCLUSIVE.]** median ratio **1.08** (bootstrap 95% CI 1.04–1.39); indirect costs more in 6 of 7 → **refuted** by the registered rule (≤ 1.1) | 1.07 (CI 0.90–1.37); 5 of 6 → refuted |
 | G2 recall | median Δ +0.00 → not met | +0.00 → not met |
 | G4 ceiling | per run 40/42 at 1.00 (min 0.93); per pair-task median 13/14 at 1.00 | — |
 
@@ -184,7 +184,7 @@ Descriptive tasks with dynamic hops (polymorphic, callback, registry), unpaired:
 - **Recall stays at the ceiling** in both corpora once the gold is right. Read-only "who calls X" does
   not separate structures by correctness for this model.
 - **Dynamic hops are not tested by the pairs.** The three dynamic tasks are 1.7–2.7× dearer than the paired median and
-  recall 0.93–0.97, but their answers are 28–46 symbols, so size explains as much as the hops do.
+  recall 0.93–0.97, but their answers are 29–46 symbols, so size explains as much as the hops do.
 - **Gold derivation was again the weakest link.** One adjudication rule (the decorator) was wrong, and
   the 5-session pilot caught it before the full run.
 
@@ -207,7 +207,8 @@ tie-break by FQN that was not registered. One gold defect changes the verdict, t
 tools and scored precision 0.36–0.38: once again the agents were right. With the YAML corrected
 (18 required symbols), they score 1.00 / 1.00.
 
-Pair 2 is then not a matched pair: 18 symbols against `get_edge_stats`'s 6, beyond ±4. It was also the
+Pair 2 is then not a matched pair: 18 required symbols against `get_edge_stats`'s 5 required (6 counting
+the optional wrapper, the basis the pairing used), beyond ±4 on either basis. It was also the
 one pair where the indirect side was cheaper, and the reason was the 14 extra tools in the direct
 answer. Dropping it leaves 6 pairs, the registered minimum
 (`benchmarks/agent_ab/analysis/exp2_post_review.py`):
@@ -222,6 +223,17 @@ answer. Dropping it leaves 6 pairs, the registered minimum
 Re-running the registered algorithm on the corrected pool instead pairs `extractors` with
 `refresh_dispatch`, which never ran, and reshuffles pairs 5–6, so no verdict can be computed from the
 sessions that exist. That option was not taken.
+
+**Sensitivity to pair 3 (delta review).** Pair 3 itself exceeds ±4 on required counts (Δ5; see the
+pairs-as-run table). Dropping it as well leaves 5 pairs, below the registered minimum of 6, so the
+result would be descriptive only. Those 5 pairs (1.06, 1.39, 1.08, 1.04, 1.35) have a median of
+**1.08**, on the refute side. **The INCONCLUSIVE verdict therefore depends on keeping pair 3.** The
+honest summary is "unstable", not "between thresholds".
+
+**Reproduction note:** `analysis/exp2_gates.py` with the committed `exp2_pairs.json` reproduces the
+superseded pre-review "REFUTED" by design, because it is the code of record. The corrected figures
+come from `analysis/exp2_post_review.py`, which needs the local, git-ignored transcripts to rescore.
+Without them it prints the stored scores.
 
 **I1, the ratios are bimodal:** 1.04–1.08 against 1.35–1.52. A hierarchical bootstrap over pairs and
 runs puts P(median ≥ 1.3) ≈ 0.36 and P(median ≤ 1.1) ≈ 0.34. The data neither exclude nor show a
@@ -254,8 +266,13 @@ ratios as an indirection effect at all.
   them weak manipulations.
 - **Recall is at the ceiling** in both experiments. On read-only impact questions this model does not
   separate structures by correctness.
-- **Gold derivation failed in every round** of both experiments, each time caught by a pilot or a
-  reviewer, and every time the agents were right and the gold was wrong. That is the strongest finding
-  of this series. An LLM agent reading the code produced better impact sets than our static tools plus
-  an adjudicator. Building gold for agent benchmarks needs its own validation step: for example, score
-  the gold against several independent agent runs before freezing it.
+- **Gold derivation had errors in every round** of both experiments: the exp1 pilot, the exp1
+  review, the exp2 pilot and the exp2 review. A pilot or a reviewer caught each one. **Wherever the
+  agents and the gold disagreed, the agents were right.** That has a selection effect built in:
+  errors were found by reading those disagreements, so an error the agents shared would stay
+  invisible (exp1 M5). The agents also made real errors of their own: classes that do not exist
+  (`ReservationEffectsMixin`, `TopUpHandler`) and missed nested functions. So "agents produce better
+  impact sets than our pipeline" is **not** established. What is established: aggregate rules applied
+  mechanically (decorator, refresh path, `getattr` fan-out) failed at their boundaries, where
+  per-path reading did not. Gold for agent benchmarks needs its own validation step: score it against
+  several independent agent runs, and adjudicate every disagreement, before freezing it.

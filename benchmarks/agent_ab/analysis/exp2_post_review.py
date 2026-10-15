@@ -11,7 +11,11 @@ tasks = {t.id: t for t in load_tasks(Path("benchmarks/agent_ab/tasks"))}
 rows = [json.loads(l) for l in open("benchmarks/agent_ab/results-exp2-full.jsonl")]
 for r in rows:
     if r["task"].endswith("dir-extractors"):
-        s = score_answer(tasks[r["task"]], parse_transcript(Path(r["transcript"]).read_text().splitlines()).answer)
+        tr = Path(r["transcript"])
+        if not tr.is_file():  # transcripts are git-ignored; a clean clone has only the stored scores
+            print(f"extractors run {r['run']}: transcript absent, stored precision {r['precision']:.2f}")
+            continue
+        s = score_answer(tasks[r["task"]], parse_transcript(tr.read_text().splitlines()).answer)
         print(f"extractors run {r['run']}: recall {s.recall:.2f} precision {s.precision:.2f} (stored {r['precision']:.2f})")
 cost = {}
 for r in rows:
