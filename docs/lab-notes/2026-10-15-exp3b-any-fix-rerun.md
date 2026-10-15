@@ -34,3 +34,35 @@ old graph. Fewer wrong edges in the graph is not evidence that answers improved.
   but did not follow them.
 - Also recorded, descriptively: whether each answer mentions `build_cards` / `mget` as unresolved, and
   files read after the first cgis call.
+
+## Result (added after the run; nothing above was changed)
+
+6 sessions, 0 errors, $0.87, cgis at 7a567df, every transcript `apiKeySource: ANTHROPIC_API_KEY`.
+
+| task | exp3 recall (old graph) | exp3b recall (after #638) |
+|---|---|---|
+| calculate-total-price | 0.83 / 0.83 / 0.83 | 0.83 / 0.83 / 0.83 |
+| opensearch-mget | 1.00 / 0.50 / 0.97 | 0.97 / 0.97 / 0.97 |
+
+**Verdict: does not help, as expected.** `calculate-total-price` misses the same FavoritesService
+chain in 3/3 runs. The `opensearch-mget` clause is met (no session below 0.90), but with n=3 the
+missing 0.50 outlier cannot be attributed to the fix; all three runs miss only
+`Worker.reset_showcase_data` (the `cls._run_reset` gap, #637).
+
+**Why the agent does not follow the gap: it is shown the name, not the place.** In all three
+`calculate-total-price` sessions, `cgis_analyze_impact` (text format) ended with:
+
+```
+coverage: 10 of 53 calls unresolved (unresolved_calls_by_name); most often service.get_vehicle (3),
+service.list_vehicles (3), service.get_vehicle_detail (2), self.catalog_service.build_cards (1), ...
+```
+
+So after #638 the gap is visible: `self.catalog_service.build_cards` is listed. But the note gives no
+caller and no file:line. To follow it the agent must grep for `catalog_service.build_cards`, and none
+did; two of three read no file at all. It was also one name among five, with no sign that it matters
+more than `service.get_vehicle`.
+
+**Next lever (from the criterion): the coverage note, not the resolver.** For each unresolved call
+whose name matches a method in the answer, say where it is made (`FavoritesService._hydrate`,
+`favorites/service.py:383`) and that its callers are not in the tree. That turns the note from a
+count into a lead the agent can follow with one read. Worth a probe of the same size after the change.
