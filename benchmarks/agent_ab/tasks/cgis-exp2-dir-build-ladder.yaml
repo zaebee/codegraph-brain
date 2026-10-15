@@ -1,0 +1,43 @@
+id: cgis-exp2-dir-build-ladder
+repo: cgis
+sha: a5e175e0152309f83fb3fee66fa008e0857e965c
+src_root: src
+type: impact
+question: 'In this repository, the function `build_ladder` in
+
+  `src/cgis/query/drift/fractal.py` is about to change. Which code under `src/`
+
+  (not tests, not scripts) can end up calling it, directly or transitively? Follow every
+
+  chain up to its entry point (a CLI command, an MCP tool, or a function nothing else calls)
+
+  and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - mcp_server.cgis_fractal
+  - cli.fractal
+  - fractal.analyze_fractal
+  - fractal.analyze_fractal_db
+  - fractal.measure_layer
+  files:
+  - src/cgis/api/mcp_server.py
+  - src/cgis/cli.py
+  - src/cgis/query/drift/fractal.py
+  allowed_symbols:
+  - auto_refresh.refreshes_graph
+  - auto_refresh.refreshes_graph.wrapper
+  - auto_refresh.wrapper
+  - fractal.build_ladder
+  allowed_files:
+  - src/cgis/api/auto_refresh.py
+notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), dir, pair 3, files 4, hop kinds [''direct''].
+
+  fractal.py:192,275,292; mcp_server.py:1379 cgis_fractal; cli.py:1950 fractal. All direct, no FP. refreshes_graph.wrapper
+  (api/auto_refresh.py:108 `return tool(*args, **kwargs)`) calls every @refreshes_graph-decorated MCP
+  tool: callback via decorator. Only non-direct hop for this target. cgis_fractal is decorated at mcp_server.py:1356.
+  [v2] Decorator rule changed: refreshes_graph.wrapper is framework plumbing, not a caller or a callback
+  hop; removed from gold. files 4->3; hop_kinds [''direct'', ''callback'']->[''direct'']; indirect True->False.
+
+  '

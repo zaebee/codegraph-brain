@@ -1,0 +1,98 @@
+id: cgis-exp2-desc-record-usage
+repo: cgis
+sha: a5e175e0152309f83fb3fee66fa008e0857e965c
+src_root: src
+type: impact
+question: 'In this repository, the method `BaseProvider._record_usage` in
+
+  `src/cgis/guardian/providers/base.py` is about to change. Which code under `src/`
+
+  (not tests, not scripts) can end up calling it, directly or transitively? Follow every
+
+  chain up to its entry point (a CLI command, an MCP tool, or a function nothing else calls)
+
+  and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - axes._axis_pass
+  - axes.run_axis_review
+  - id: axes.run_axis_review.guarded
+    any_of:
+    - axes.run_axis_review.guarded
+    - guardian.axes.guarded
+  - calibrate.judge_matrix
+  - id: calibrate.judge_matrix._one
+    any_of:
+    - calibrate.judge_matrix._one
+    - guardian.calibrate._one
+  - calibrate.judge_pair
+  - chunked._single_pass
+  - chunked.run_chunked_review
+  - chunked.run_review_routed
+  - GuardianReviewer._finder_pass
+  - GuardianReviewer.run_review
+  - core.finder_pass
+  - id: BaseProvider._retry
+    any_of:
+    - BaseProvider._retry
+    - GeminiProvider._retry
+    - MistralProvider._retry
+    - OllamaProvider._retry
+    - OpenRouterProvider._retry
+  - GeminiProvider._generate
+  - GeminiProvider.generate_content
+  - GeminiProvider.generate_structured
+  - MistralProvider._generate
+  - MistralProvider.generate_content
+  - MistralProvider.generate_structured
+  - OllamaProvider._generate
+  - OllamaProvider.generate_content
+  - OllamaProvider.generate_structured
+  - OpenRouterProvider._post
+  - OpenRouterProvider.generate_content
+  - OpenRouterProvider.generate_structured
+  - runner.run_guardian
+  - skeptic.judge_all
+  - id: skeptic.judge_all._one
+    any_of:
+    - skeptic.judge_all._one
+    - guardian.skeptic._one
+  - skeptic.judge_finding
+  files:
+  - src/cgis/guardian/axes.py
+  - src/cgis/guardian/calibrate.py
+  - src/cgis/guardian/chunked.py
+  - src/cgis/guardian/core.py
+  - src/cgis/guardian/providers/base.py
+  - src/cgis/guardian/providers/gemini.py
+  - src/cgis/guardian/providers/mistral.py
+  - src/cgis/guardian/providers/ollama.py
+  - src/cgis/guardian/providers/openrouter.py
+  - src/cgis/guardian/runner.py
+  - src/cgis/guardian/skeptic.py
+  allowed_symbols:
+  - BaseProvider._record_usage
+  - GeminiProvider._record_usage
+  - MistralProvider._record_usage
+  - OllamaProvider._record_usage
+  - OpenRouterProvider._record_usage
+notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), desc, pair 0, files 11, hop kinds [''direct'',
+  ''callback'', ''polymorphic'', ''param_obj''].
+
+  MISFITS DIRECT. cgis''s 12 are correct (gemini.py:57, mistral.py:103, ollama.py:162 _generate; openrouter.py:144
+  _post; each provider''s generate_content/generate_structured -> self._generate/_post). Those last hops
+  are callbacks: the call sits in a lambda thunk passed to self._retry (gemini.py:81/87, mistral.py:114/130,
+  ollama.py:195/210, openrouter.py:183/198) and runs at base.py:128 `await call()`; BaseProvider._retry
+  is therefore on the stack too (MISSED BY BOTH; it invokes the thunk, same file as the target). Upward
+  the provider methods are reached only polymorphically through the abstract BaseProvider.generate_structured
+  (base.py:154): core.py:63/72 finder_pass, skeptic.py:209 judge_finding, calibrate.py:163 judge_pair
+  all call `provider.generate_structured` on a BaseProvider parameter. generate_content has no in-src
+  caller (gemini.py:50 is the google SDK''s client method). All 16 ast_only are true callers: core.py:124
+  _finder_pass, :129 run_review (direct), :136 judge_all; axes.py:48 _axis_pass, :77 guarded, :79/:119
+  run_axis_review; calibrate.py:206 judge_matrix._one, :212 judge_matrix (no in-src caller); skeptic.py:269
+  judge_all._one, :273 judge_all; chunked.py:108 _single_pass (reviewer.run_review, param_obj), :140/:154/:188
+  run_chunked_review, :227/:238/:239 run_review_routed; runner.py:472 run_guardian. No FP.
+
+  '

@@ -1,0 +1,51 @@
+id: cgis-exp2-ind-as-terms
+repo: cgis
+sha: a5e175e0152309f83fb3fee66fa008e0857e965c
+src_root: src
+type: impact
+question: 'In this repository, the function `_as_terms` in
+
+  `src/cgis/query/render/metrics.py` is about to change. Which code under `src/`
+
+  (not tests, not scripts) can end up calling it, directly or transitively? Follow every
+
+  chain up to its entry point (a CLI command, an MCP tool, or a function nothing else calls)
+
+  and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - mcp_server.cgis_metrics
+  - cli.metrics
+  - DuckDBAnalyzer.architecture_report
+  - DuckDBAnalyzer.get_coupling_metrics
+  - DuckDBAnalyzer.get_god_classes
+  - DuckDBAnalyzer.get_pagerank
+  - metrics._scope_restriction
+  - metrics._segment_exclusion
+  - metrics.class_cohesion_metrics
+  - metrics.file_coupling_metrics
+  - metrics.resolution_metric
+  files:
+  - src/cgis/api/mcp_server.py
+  - src/cgis/cli.py
+  - src/cgis/query/render/metrics.py
+  allowed_symbols:
+  - auto_refresh.refreshes_graph
+  - auto_refresh.refreshes_graph.wrapper
+  - auto_refresh.wrapper
+  - metrics._as_terms
+  allowed_files:
+  - src/cgis/api/auto_refresh.py
+notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), ind, pair 4, files 4, hop kinds [''direct'',
+  ''param_obj''].
+
+  metrics.py:77 _segment_exclusion, :103 _scope_restriction; those at :378/:379 resolution_metric, :404/:405
+  file_coupling_metrics, :486/:487 class_cohesion_metrics, :590/:591 get_coupling_metrics, :607/:608 get_god_classes,
+  :655/:685 get_pagerank; :726-731 architecture_report -> self.get_* and module functions (direct); mcp_server.py:1171-1172
+  and cli.py:1482-1483 `with DuckDBAnalyzer(...) as analyzer: analyzer.architecture_report()` (param_obj).
+  No FP, no missed callers. cgis_metrics is @refreshes_graph; the wrapper is plumbing (v2 rule). Fits
+  INDIRECT only via param_obj.
+
+  '

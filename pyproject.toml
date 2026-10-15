@@ -104,7 +104,9 @@ target-version = "py312"
 line-length = 100
 # Fixture corpora are inputs, not code: reformatting one changes what the
 # graph-identity snapshot measures (docs/plans/2026-10-14-language-packs.md).
-extend-exclude = ["tests/fixtures"]
+# benchmarks/agent_ab/analysis holds experiment gate scripts kept byte-identical to what produced
+# the published lab-note numbers; reformatting them would change the code of record.
+extend-exclude = ["tests/fixtures", "benchmarks/agent_ab/analysis"]
 
 [tool.ruff.lint]
 # Enable many plugins: 

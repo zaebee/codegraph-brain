@@ -1,0 +1,35 @@
+id: cgis-exp2-dir-reject-metrics-path
+repo: cgis
+sha: a5e175e0152309f83fb3fee66fa008e0857e965c
+src_root: src
+type: impact
+question: 'In this repository, the function `reject_metrics_path` in
+
+  `src/cgis/guardian/metrics.py` is about to change. Which code under `src/`
+
+  (not tests, not scripts) can end up calling it, directly or transitively? Follow every
+
+  chain up to its entry point (a CLI command, an MCP tool, or a function nothing else calls)
+
+  and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - cli.guardian_rate
+  - metrics._require_writable
+  - metrics.rate_review
+  - metrics.record_review
+  - runner.run_guardian
+  files:
+  - src/cgis/cli.py
+  - src/cgis/guardian/metrics.py
+  - src/cgis/guardian/runner.py
+  allowed_symbols:
+  - metrics.reject_metrics_path
+notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), dir, pair 1, files 3, hop kinds [''direct''].
+
+  metrics.py:111 _require_writable; :178 record_review; :192 rate_review; cli.py:992 guardian_rate (typer
+  command, framework-invoked); runner.py:531 run_guardian (no in-src caller). All plain calls; no FP.
+
+  '

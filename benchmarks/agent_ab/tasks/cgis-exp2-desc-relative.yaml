@@ -1,0 +1,118 @@
+id: cgis-exp2-desc-relative
+repo: cgis
+sha: a5e175e0152309f83fb3fee66fa008e0857e965c
+src_root: src
+type: impact
+question: 'In this repository, the function `_relative` in
+
+  `src/cgis/languages/go/naming.py` is about to change. Which code under `src/`
+
+  (not tests, not scripts) can end up calling it, directly or transitively? Follow every
+
+  chain up to its entry point (a CLI command, an MCP tool, or a function nothing else calls)
+
+  and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - auto_refresh._refresh
+  - auto_refresh.refresh_if_stale
+  - mcp_server._render_subgraph
+  - mcp_server._render_subgraph_with_freshness
+  - mcp_server.cgis_analyze_impact
+  - mcp_server.cgis_audit_reachability
+  - mcp_server.cgis_context
+  - mcp_server.cgis_drift
+  - mcp_server.cgis_find_orphans
+  - mcp_server.cgis_find_symbol
+  - mcp_server.cgis_fractal
+  - mcp_server.cgis_get_structure
+  - mcp_server.cgis_ingest
+  - mcp_server.cgis_init_ontology
+  - mcp_server.cgis_metrics
+  - mcp_server.cgis_overview
+  - mcp_server.cgis_suggest_packages
+  - mcp_server.cgis_trace_flow
+  - mcp_server.cgis_validate
+  - cli._render_graph
+  - cli.impact
+  - cli.ingest
+  - cli.structure
+  - cli.trace
+  - axes.run_axis_review
+  - chunked._single_pass
+  - chunked.run_chunked_review
+  - chunked.run_review_routed
+  - ContextCollector.collect_all
+  - ContextCollector.collect_for_chunk
+  - ContextCollector.collect_graph_context
+  - GraphContextCollector.sections
+  - GuardianReviewer.run_review
+  - runner.run_guardian
+  - languages.file_node_id
+  - GoPack.file_node_id
+  - GoPack.scope_of
+  - GoExtractor.parse
+  - naming.file_node_id
+  - naming.scope_of
+  - languages.scope_of
+  - IngestionPipeline._process_file
+  - IngestionPipeline.run
+  - MermaidCompiler.compile
+  - _IdAllocator.for_node
+  - mermaid._node_slug
+  files:
+  - src/cgis/api/auto_refresh.py
+  - src/cgis/api/mcp_server.py
+  - src/cgis/cli.py
+  - src/cgis/guardian/axes.py
+  - src/cgis/guardian/chunked.py
+  - src/cgis/guardian/collector.py
+  - src/cgis/guardian/core.py
+  - src/cgis/guardian/runner.py
+  - src/cgis/languages/__init__.py
+  - src/cgis/languages/go/__init__.py
+  - src/cgis/languages/go/extractor.py
+  - src/cgis/languages/go/naming.py
+  - src/cgis/pipeline/__init__.py
+  - src/cgis/query/render/mermaid.py
+  allowed_symbols:
+  - auto_refresh.refreshes_graph
+  - auto_refresh.refreshes_graph.wrapper
+  - auto_refresh.wrapper
+  - naming._relative
+notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), desc, pair 0, files 14, hop kinds [''direct'',
+  ''polymorphic'', ''param_obj'', ''attr_dep''].
+
+  MISFITS DIRECT. cgis''s 5 are correct and direct (naming.py:35,41,43; go/__init__.py:35,40 `naming.scope_of/file_node_id`;
+  go/extractor.py:81,84). Beyond them the target is reached through LanguagePack/BaseExtractor dispatch
+  (cgis has DISPATCHES edges, go/__init__.py:33,38, go/extractor.py:76, but its caller closure does not
+  walk them): languages/__init__.py:149 `pack.scope_of` and :155 `pack.file_node_id` (pack_for_path returns
+  GoPack for .go); mermaid.py:84 `pack.scope_of` in _node_slug; collector.py:219 `pack.file_node_id` in
+  GraphContextCollector.sections; pipeline/__init__.py:380 `extractor.parse` -> GoExtractor.parse. Upward:
+  cli.py:843 structure->languages.file_node_id; mermaid.py:119 for_node->_node_slug, :246 compile->alloc.for_node
+  (param_obj); mcp_server.py:279 and cli.py:303 MermaidCompiler().compile (param_obj); collector.py:231
+  sections->compiler.compile; collector.py:328/371 self.graph.sections (attr_dep); collector.py:345 collect_all->self.collect_graph_context;
+  core.py:128 self.context_collector.collect_all (attr_dep); chunked.py:108 reviewer.run_review (param_obj),
+  :140,:153 collector.collect_for_chunk (param_obj), :227,:238,:239; axes.py:68 collector.collect_all;
+  runner.py:472; mcp_server.py:228,575,659,719; cli.py:459,590,859; plus the ingest chain (pipeline/__init__.py:275,
+  cli.py:234/241, mcp_server.py:474, auto_refresh.py:82/57/107). All 31 confirmed ast_only entries are
+  true callers; languages.scope_of itself has no in-src caller but is a real caller. Rejected ast_only:
+  bench.transcript.classify_next/sufficiency/run_metrics (transcript.py:249,296 call bench.transcript._relative,
+  a different function with the same name); PythonPack.file_node_id / TypeScriptPack.file_node_id (self.scope_of
+  of their own pack, python/__init__.py:42, typescript/__init__.py:42); pipeline.uplift.* (uplift.py:145
+  re.compile); python _annotations/_functions/extractor entries and TS extractor (tree-sitter parse, own
+  _walk/_collect); Rejected ast_only (same-name, unrelated): refreshes_graph (decorator body makes no
+  call; the call is in nested wrapper); cli.analyze (cli.py:938 AnalyzerEngine.run, not IngestionPipeline.run);
+  guardian.* via subprocess.run (collector.py:98/120, evidence.py:139, github_poster.py:127) and ast.parse
+  (review_fingerprint.py:131) and their callers; GoExtractor.parse/TypeScriptExtractor.parse (tree-sitter
+  self._parser.parse, own _walk; sibling overrides, not callers); typescript._bindings.shadowed_globals
+  (_bindings.py:50 its own _collect); _annotations._collect_from_string matched via _STRING_PARSER.parse
+  (_annotations.py:130). Redundant: wrapper also calls decorated cgis_trace_flow/analyze_impact/get_structure
+  by callback; run_guardian->post_inline_review is not on the chain (post_inline_review rejected). [v2]
+  Decorator rule changed: refreshes_graph.wrapper is framework plumbing, not a caller or a callback hop;
+  removed from gold. files 14->14; hop_kinds [''direct'', ''polymorphic'', ''param_obj'', ''attr_dep'']->[''direct'',
+  ''polymorphic'', ''param_obj'', ''attr_dep'']; indirect True->True.
+
+  '

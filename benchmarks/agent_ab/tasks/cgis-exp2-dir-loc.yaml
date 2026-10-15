@@ -1,0 +1,49 @@
+id: cgis-exp2-dir-loc
+repo: cgis
+sha: a5e175e0152309f83fb3fee66fa008e0857e965c
+src_root: src
+type: impact
+question: 'In this repository, the function `_loc` in
+
+  `src/cgis/query/context/prompt.py` is about to change. Which code under `src/`
+
+  (not tests, not scripts) can end up calling it, directly or transitively? Follow every
+
+  chain up to its entry point (a CLI command, an MCP tool, or a function nothing else calls)
+
+  and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - mcp_server.cgis_context
+  - cli.context
+  - context_service.build_context
+  - prompt._callees_section
+  - prompt._caller_line
+  - prompt._callers_section
+  - prompt._class_section
+  - prompt._sibling_line
+  - prompt.compile_context
+  files:
+  - src/cgis/api/mcp_server.py
+  - src/cgis/cli.py
+  - src/cgis/query/context/context_service.py
+  - src/cgis/query/context/prompt.py
+  allowed_symbols:
+  - auto_refresh.refreshes_graph
+  - auto_refresh.refreshes_graph.wrapper
+  - auto_refresh.wrapper
+  - prompt._loc
+  allowed_files:
+  - src/cgis/api/auto_refresh.py
+notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), dir, pair 6, files 5, hop kinds [''direct''].
+
+  prompt.py:79,84,110,139,145,178,180,181; context_service.py:127; mcp_server.py:1101 cgis_context; cli.py:1360
+  context. All plain calls, no FP. refreshes_graph.wrapper (api/auto_refresh.py:108 `return tool(*args,
+  **kwargs)`) calls every @refreshes_graph-decorated MCP tool: callback via decorator. Only non-direct
+  hop for this target. cgis_context decorated at mcp_server.py:1051. [v2] Decorator rule changed: refreshes_graph.wrapper
+  is framework plumbing, not a caller or a callback hop; removed from gold. files 5->4; hop_kinds [''direct'',
+  ''callback'']->[''direct'']; indirect True->False.
+
+  '

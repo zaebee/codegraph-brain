@@ -1,0 +1,128 @@
+id: cgis-exp2-desc-specifier-fqn
+repo: cgis
+sha: a5e175e0152309f83fb3fee66fa008e0857e965c
+src_root: src
+type: impact
+question: 'In this repository, the function `specifier_fqn` in
+
+  `src/cgis/core/js_globals.py` is about to change. Which code under `src/`
+
+  (not tests, not scripts) can end up calling it, directly or transitively? Follow every
+
+  chain up to its entry point (a CLI command, an MCP tool, or a function nothing else calls)
+
+  and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - auto_refresh._refresh
+  - auto_refresh.refresh_if_stale
+  - mcp_server.cgis_analyze_impact
+  - mcp_server.cgis_audit_reachability
+  - mcp_server.cgis_context
+  - mcp_server.cgis_drift
+  - mcp_server.cgis_find_orphans
+  - mcp_server.cgis_find_symbol
+  - mcp_server.cgis_fractal
+  - mcp_server.cgis_get_structure
+  - mcp_server.cgis_ingest
+  - mcp_server.cgis_init_ontology
+  - mcp_server.cgis_metrics
+  - mcp_server.cgis_overview
+  - mcp_server.cgis_suggest_packages
+  - mcp_server.cgis_trace_flow
+  - mcp_server.cgis_validate
+  - cli.ingest
+  - TypeScriptPack.classify
+  - _bindings.bare_imports
+  - TypeScriptExtractor._handle_import
+  - TypeScriptExtractor._walk
+  - TypeScriptExtractor.parse
+  - index.classify
+  - index.package_namespace
+  - resolution.package_call
+  - IngestionPipeline._process_file
+  - IngestionPipeline.run
+  - ResolverEngine.__init__
+  - ResolverEngine._ensure_virtual_node
+  - ResolverEngine._resolved_call_edge
+  - ResolverEngine._resolved_class_edge
+  - ResolverEngine._resolved_dep_edge
+  - ResolverEngine.resolve
+  - SymbolIndex.classify_fqn
+  - SymbolIndex.map_to_node_fqn
+  - SymbolIndex.resolve_layout
+  - SymbolResolver.__init__
+  - SymbolResolver._resolve_local_type_call
+  - SymbolResolver._resolve_via_import_map
+  - SymbolResolver.resolve_class_ref
+  - SymbolResolver.resolve_dep_candidate
+  - SymbolResolver.resolve_global_call
+  - SymbolResolver.resolve_self_call
+  - symbols._positioned
+  - symbols.receiver_type_fqn
+  files:
+  - src/cgis/api/auto_refresh.py
+  - src/cgis/api/mcp_server.py
+  - src/cgis/cli.py
+  - src/cgis/core/js_globals.py
+  - src/cgis/languages/typescript/__init__.py
+  - src/cgis/languages/typescript/_bindings.py
+  - src/cgis/languages/typescript/extractor.py
+  - src/cgis/languages/typescript/index.py
+  - src/cgis/languages/typescript/resolution.py
+  - src/cgis/pipeline/__init__.py
+  - src/cgis/resolver/engine.py
+  - src/cgis/resolver/indices.py
+  - src/cgis/resolver/symbols.py
+  allowed_symbols:
+  - auto_refresh.refreshes_graph
+  - auto_refresh.refreshes_graph.wrapper
+  - auto_refresh.wrapper
+  - js_globals.specifier_fqn
+notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), desc, pair 0, files 13, hop kinds [''direct'',
+  ''polymorphic'', ''param_obj'', ''attr_dep'', ''registry''].
+
+  MISFITS DIRECT. cgis''s 8 are correct: extractor.py:268 _handle_import, :166 _walk, :116 parse->bare_imports
+  (_bindings.py:78), :126 parse->_walk; index.py:125 package_namespace, :142 classify; typescript/__init__.py:64
+  TypeScriptPack.classify; resolution.py:138 package_call. Two upward routes cgis does not walk. (1) Extraction:
+  pipeline/__init__.py:380 `extractor.parse` on a BaseExtractor (polymorphic, DISPATCHES to TypeScriptExtractor.parse)
+  -> _process_file <- run (:275) <- cli.py:234/241, mcp_server.py:474, auto_refresh.py:82 `pipeline.run`
+  on a local IngestionPipeline (param_obj) <- refresh_if_stale (auto_refresh.py:57). (2) Resolution: resolver/indices.py:271
+  `pack.classify` on the LanguagePack classifying_pack returns (TypeScriptPack for .ts/.tsx; polymorphic,
+  cgis has no edge) so SymbolIndex.classify_fqn and everything above it: resolve_layout (indices.py:193),
+  map_to_node_fqn (:155/:171), follow_reexport (:216), receiver_type_fqn (symbols.py:64, param_obj), resolve_self_call
+  (symbols.py:189/202 attr_dep), _resolve_local_type_call (:311/:318), _resolve_via_import_map (:285/:291),
+  resolve_class_ref (:155), resolve_dep_candidate (:249), resolve_global_call (:217/:222), SymbolResolver.__init__
+  (:142), engine.py _resolved_call_edge (:186/:190), _resolved_class_edge (:171), _resolved_dep_edge (:225/:228),
+  _ensure_virtual_node (:270 self._index.classify_fqn), _resolved_import_edge (:248 self._index.map_to_node_fqn),
+  resolve (:123-:142), ResolverEngine.__init__ (engine.py:98 constructs SymbolResolver), and pipeline
+  run (:305 ResolverEngine(...), :314 resolver.resolve). Registry: typescript/resolution.py:157 RULES.steps
+  registers package_call; symbols.py:31-33 _positioned runs `step(name, file_path, index)` (registry)
+  <- resolve_global_call (:222). Registry+protocol: python/resolution.py:21/29 annotated_alias calls `view.map_to_node_fqn`
+  on a ResolutionView (the SymbolIndex), and is invoked by symbols._normalized (:41-42, `normalize` from
+  type_normalizers(), registry) <- receiver_type_fqn (:64), _resolve_local_type_call (:309). MISSED BY
+  BOTH: ResolverEngine.__init__ (constructor call names the class), _positioned (registry), _normalized
+  (registry callback). Gold is context-insensitive like every other target: follow_reexport (indices.py:216),
+  _resolved_import_edge (engine.py:248) and annotated_alias pass no source_file, and classifying_pack(None)
+  is the Python pack (languages/__init__.py:177), so at runtime these four never reach TypeScriptPack.classify.
+  Drop them (and _normalized) for a 31-symbol argument-sensitive gold. refreshes_graph.wrapper: framework
+  plumbing under the v2 decorator rule (auto_refresh.py:107-108), not a caller. Rejected ast_only (same
+  final name, different function): refreshes_graph (decorator body makes no call; the call is in its nested
+  wrapper); cli.analyze (cli.py:938 AnalyzerEngine(store).run, not IngestionPipeline.run); guardian collector/evidence/github_poster
+  entries via subprocess.run (collector.py:98/120, evidence.py:139, github_poster.py:127) and review_fingerprint
+  via ast.parse (review_fingerprint.py:131), plus their callers; provider/extractor/CgisServer __init__
+  via super().__init__ (gemini.py:26, mistral.py:33, ollama.py:108, openrouter.py:98, go/extractor.py:72,
+  python/extractor.py:263, typescript/extractor.py:83, tool_allowlist.py:51); GoExtractor.parse / PythonExtractor.parse
+  chain (tree-sitter self._parser.parse, go/extractor.py:78, python/extractor.py:275; sibling overrides,
+  not callers) and the python _annotations/_functions/extractor entries reached only through them; typescript._bindings.shadowed_globals
+  (_bindings.py:50 its own _collect). Also rejected: mcp_server._reject_db_path / guardian.metrics / recording
+  / evidence._python_files_inside / go.project / typescript.project/tsconfig/workspaces / IngestionPipeline.workspace_root
+  / pipeline._running_fingerprint / drift_service.analyze_drift / SQLiteStore.record_ingest* (Path.resolve,
+  matched the name `resolve`); import_names.ImportNameCollector.* (reader.note/facts/note_above, import_names.py:161/166/170,
+  project readers); cgis_drift/cli.drift (analyze_drift), cli.guardian_rate (rate_review); GoPack.classify
+  / PythonPack.classify (go/__init__.py:62, python/__init__.py:64 call their own index.classify: sibling
+  overrides, not callers).
+
+  '

@@ -1,0 +1,48 @@
+id: cgis-exp2-ind-get-edge-stats
+repo: cgis
+sha: a5e175e0152309f83fb3fee66fa008e0857e965c
+src_root: src
+type: impact
+question: 'In this repository, the method `SQLiteStore.get_edge_stats` in
+
+  `src/cgis/storage/sqlite_store.py` is about to change. Which code under `src/`
+
+  (not tests, not scripts) can end up calling it, directly or transitively? Follow every
+
+  chain up to its entry point (a CLI command, an MCP tool, or a function nothing else calls)
+
+  and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - mcp_server.cgis_overview
+  - mcp_server.cgis_validate
+  - cli.overview
+  - cli.validate
+  - overview.build_overview
+  files:
+  - src/cgis/api/mcp_server.py
+  - src/cgis/cli.py
+  - src/cgis/query/analysis/overview.py
+  - src/cgis/storage/sqlite_store.py
+  allowed_symbols:
+  - SQLiteStore.get_edge_stats
+  - auto_refresh.refreshes_graph
+  - auto_refresh.refreshes_graph.wrapper
+  - auto_refresh.wrapper
+  allowed_files:
+  - src/cgis/api/auto_refresh.py
+notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), ind, pair 2, files 5, hop kinds [''param_obj'',
+  ''direct''].
+
+  cli.py:713-714 and mcp_server.py:883-884 `with SQLiteStore(db) as store: store.get_edge_stats()` (param_obj,
+  local); overview.py:59 store parameter (param_obj); mcp_server.py:932 and cli.py:655 build_overview
+  (direct). No FP, no subclass/Protocol of SQLiteStore. refreshes_graph.wrapper (api/auto_refresh.py:108
+  `return tool(*args, **kwargs)`) calls every @refreshes_graph-decorated MCP tool: callback via decorator.
+  Only non-direct hop for this target. cgis_validate/cgis_overview decorated at mcp_server.py:868,904.
+  [v2] Decorator rule changed: refreshes_graph.wrapper is framework plumbing, not a caller or a callback
+  hop; removed from gold. files 5->4; hop_kinds [''param_obj'', ''direct'', ''callback'']->[''param_obj'',
+  ''direct'']; indirect True->True.
+
+  '

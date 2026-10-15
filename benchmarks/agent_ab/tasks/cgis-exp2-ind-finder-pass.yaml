@@ -1,0 +1,37 @@
+id: cgis-exp2-ind-finder-pass
+repo: cgis
+sha: a5e175e0152309f83fb3fee66fa008e0857e965c
+src_root: src
+type: impact
+question: 'In this repository, the method `GuardianReviewer._finder_pass` in
+
+  `src/cgis/guardian/core.py` is about to change. Which code under `src/`
+
+  (not tests, not scripts) can end up calling it, directly or transitively? Follow every
+
+  chain up to its entry point (a CLI command, an MCP tool, or a function nothing else calls)
+
+  and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - chunked._single_pass
+  - chunked.run_chunked_review
+  - chunked.run_review_routed
+  - GuardianReviewer.run_review
+  - runner.run_guardian
+  files:
+  - src/cgis/guardian/chunked.py
+  - src/cgis/guardian/core.py
+  - src/cgis/guardian/runner.py
+  allowed_symbols:
+  - GuardianReviewer._finder_pass
+notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), ind, pair 1, files 3, hop kinds [''direct'',
+  ''param_obj''].
+
+  core.py:129 self._finder_pass (direct); chunked.py:103-108 `reviewer = GuardianReviewer(...)`; `reviewer.run_review()`
+  (param_obj, local object); chunked.py:140,238,239; runner.py:472. No FP, no missed callers (no other
+  GuardianReviewer use in src).
+
+  '
