@@ -302,8 +302,11 @@ def _coverage_text(coverage: TraversalCoverage) -> str:
         site = first_site.get(name)
         if site is None:
             return f"{name} ({count})"
-        where = f" {site.file_path}:{site.line}" if site.file_path and site.line else ""
-        return f"{name} ({count}) at {site.caller}{where}"
+        where = f":{site.line}" if site.line is not None else ""
+        place = f" {site.file_path}{where}" if site.file_path else ""
+        # The path already says the module; the caller's tail says which function.
+        caller = ".".join(site.caller.rsplit(".", maxsplit=2)[-2:])
+        return f"{name} ({count}) at {caller}{place}"
 
     top = ", ".join(named(name, count) for name, count in coverage.top_unresolved[:5])
     return (

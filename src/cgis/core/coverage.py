@@ -22,7 +22,8 @@ SITES_PER_NAME = 3
 #: ``unresolved_calls_made`` — calls the expanded nodes make that resolved to
 #: nothing: dead ends downstream. Exact.
 #:
-#: ``unresolved_calls_by_name`` — unresolved calls anywhere in the graph whose
+#: ``unresolved_calls_by_name`` — unresolved calls anywhere in the graph (from
+#: callers the traversal's screen keeps — no tests, unless it keeps tests) whose
 #: called name matches an expanded node: callers that may be missing upstream.
 #: An upper bound — a name is not an identity, and a common one (``items``)
 #: matches calls on unrelated objects.
@@ -56,9 +57,11 @@ def unresolved_sites(
     """Up to `SITES_PER_NAME` sites for each target in `top`, in `top`'s order.
 
     ``calls`` are (target, caller, file_path, line) for every unresolved call
-    counted; within a target the sites are ordered by caller, then line.
+    counted. Within a target, a site with a line comes first — a decorator call
+    has none, and a name with no place to read is the bare name again — then by
+    caller, then line.
     """
-    ordered = sorted(calls, key=lambda call: (call[0], call[1], call[3] or 0))
+    ordered = sorted(calls, key=lambda call: (call[0], call[3] is None, call[1], call[3] or 0))
     return [
         UnresolvedSite(target=target, caller=caller, file_path=file_path, line=line)
         for name, _ in top

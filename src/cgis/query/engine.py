@@ -314,7 +314,9 @@ class QueryEngine:
         calls that belong to this answer are never on the traversed path. They
         are counted by name instead: unresolved calls whose called name matches
         a function, method or class of ours the traversal expanded. That is an
-        upper bound — see ``CoverageBasis`` — and it is labelled as one.
+        upper bound — see ``CoverageBasis`` — and it is labelled as one. Callers
+        the ``screen`` drops (tests) are left out of both halves of the count, and
+        each named call carries where it is made (``sites``, #641).
 
         ``with_coverage=False`` skips the count and its query, for a caller that
         will not render it. ``screen`` and ``max_nodes`` are passed to the walk.
@@ -344,9 +346,10 @@ class QueryEngine:
             and n.type in _CALLABLE_TYPES
         }
         hidden_calls = self.store.unknown_call_edges(names)
-        # The line under the tree counts what the tree could show: a caller the
-        # screen left out of the answer (a test) leaves the count too, resolved or
-        # not. Unscreened, 36 of 53 calls on owner-api were tests (#641).
+        # A caller the screen leaves out of the answer (a test) leaves the count
+        # too, resolved or not; on owner-api 36 of 53 counted calls were tests
+        # (#641). Only the screen applies here: a confidence floor or a max_nodes
+        # cut still hides a caller from the tree, not from the count.
         callers = sorted({e.source for e in walk.calls.values()} | {e.source for e in hidden_calls})
         left_out = screen(callers).dropped
         examined = [e for e in walk.calls.values() if e.source not in left_out]

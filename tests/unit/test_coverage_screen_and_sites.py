@@ -12,7 +12,7 @@ from collections.abc import Generator
 import pytest
 
 from cgis.api.mcp_server import _coverage_text
-from cgis.core.coverage import TraversalCoverage
+from cgis.core.coverage import TraversalCoverage, UnresolvedSite, unresolved_sites
 from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeNamespace, NodeType
 from cgis.query.engine import QueryEngine, agent_screen
 from cgis.storage.sqlite_store import SQLiteStore
@@ -169,3 +169,34 @@ def test_flow_coverage_also_says_where(store: SQLiteStore) -> None:
     coverage = QueryEngine(store).get_flow_result("favorites.hydrate").coverage
     assert coverage is not None
     assert [(s.caller, s.line) for s in coverage.sites] == [("favorites.hydrate", 383)]
+
+
+def test_sites_follow_top_order_and_prefer_a_place() -> None:
+    """Across names: `top`'s order. Within one: sites with a line first, then caller, line."""
+    calls = [
+        ("a.x", "z.caller", "z.py", 9),
+        ("a.x", "b.caller", None, None),  # a decorator call: no place
+        ("a.x", "b.caller", "b.py", 4),
+        ("b.y", "c.caller", "c.py", 1),
+    ]
+    top = [("b.y", 1), ("a.x", 3)]
+    sites = unresolved_sites(calls, top)
+    assert [(s.target, s.caller, s.line) for s in sites] == [
+        ("b.y", "c.caller", 1),
+        ("a.x", "b.caller", 4),
+        ("a.x", "z.caller", 9),
+        ("a.x", "b.caller", None),
+    ]
+
+
+def test_the_text_line_shortens_the_caller_and_keeps_a_lineless_file() -> None:
+    coverage = TraversalCoverage(
+        basis="unresolved_calls_by_name",
+        calls_examined=2,
+        calls_unresolved=1,
+        top_unresolved=[("router.get", 1)],
+        sites=[
+            UnresolvedSite(target="router.get", caller="pkg.mod.Klass.method", file_path="m.py")
+        ],
+    )
+    assert "router.get (1) at Klass.method m.py;" in _coverage_text(coverage) + ";"
