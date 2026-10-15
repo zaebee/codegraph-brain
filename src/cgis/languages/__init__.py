@@ -56,6 +56,12 @@ def _typescript() -> LanguagePack:
     return PACK
 
 
+def _go() -> LanguagePack:
+    from cgis.languages.go import PACK  # noqa: PLC0415 — on the first .go file
+
+    return PACK
+
+
 MANIFESTS: tuple[Manifest, ...] = (
     Manifest(
         name="python",
@@ -76,6 +82,14 @@ MANIFESTS: tuple[Manifest, ...] = (
         # .js/.jsx have no pack, but the walk always skipped their test files;
         # kept so `skips` stays exactly the pattern it replaced.
         never_ingested=re.compile(r"\.(test|spec)\.(ts|tsx|js|jsx)$", re.IGNORECASE),
+    ),
+    Manifest(
+        name="go",
+        load=_go,
+        extensions=(".go",),
+        # `_test.go` files are ingested and flagged `is_test`, never skipped.
+        never_ingested=re.compile(r"(?!)"),
+        cross_file_metadata={NodeType.FILE: ("import_map",)},
     ),
 )
 

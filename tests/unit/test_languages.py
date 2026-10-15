@@ -128,9 +128,12 @@ class TestPacks:
         ["tests/a.py", "src/test_a.py", "src/a.py", "tests/a.ts", "src/a.test.ts", "contest/a.ts"],
     )
     def test_is_test_is_the_core_rule_for_both_packs(self, path: str) -> None:
-        """Ruling R1: the flag stays `is_test_path`; the Node validator still calls it."""
-        for manifest in MANIFESTS:
-            pack = pack_named(manifest.name)
+        """Ruling R1: the flag stays `is_test_path`; the Node validator still calls it.
+
+        Python and TypeScript only: Go's rule is its own (`_test.go`), passed explicitly.
+        """
+        for name in ("python", "typescript"):
+            pack = pack_named(name)
             assert pack is not None
             assert pack.is_test(path) is is_test_path(path)
 
@@ -172,7 +175,7 @@ class TestExtractors:
             "import sys\n"
             "from cgis.languages import extractors\n"
             "m = extractors([])\n"
-            "assert '.ts' in m and '.tsx' in m and len(list(m)) == 3\n"
+            "assert '.ts' in m and '.tsx' in m and '.go' in m and len(list(m)) == 4\n"
             "print(sorted(x for x in sys.modules if x.startswith('tree_sitter_')))\n"
         )
         out = subprocess.run(
