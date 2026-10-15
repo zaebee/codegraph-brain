@@ -112,10 +112,16 @@ class SymbolResolver:
         tsconfig_paths: Mapping[str, Mapping[str, list[str]]] | None = None,
         dependency_roots: Iterable[str] = (),
         npm_dependencies: Iterable[str] = (),
+        project_state: Mapping[str, object] | None = None,
     ) -> None:
         """Build the symbol index from nodes, then the inheritance tree from EXTENDS edges."""
         self.index: SymbolIndex = IndexBuilder().build(
-            nodes, workspace_packages, tsconfig_paths, dependency_roots, npm_dependencies
+            nodes,
+            workspace_packages,
+            tsconfig_paths,
+            dependency_roots,
+            npm_dependencies,
+            project_state,
         )
         # class_fqn -> [resolved parent FQNs] built from EXTENDS edges; read by the
         # DISPATCHES pass too (`dispatch_edges`, below).
@@ -233,7 +239,9 @@ class SymbolResolver:
         if len(candidates) == 1:
             return candidates[0]
         if candidates and file_path:
-            same_file = self.index.file_variable_symbols.get((file_path, name), [])
+            same_file = self.index.file_variable_symbols.get(
+                (self.index.file_scopes.get(file_path, file_path), name), []
+            )
             if len(same_file) == 1:
                 return same_file[0]
         return None
@@ -300,7 +308,9 @@ class SymbolResolver:
         if len(candidates) == 1:
             return candidates[0]
         if file_path:
-            same_file = self.index.file_global_symbols.get((file_path, name), [])
+            same_file = self.index.file_global_symbols.get(
+                (self.index.file_scopes.get(file_path, file_path), name), []
+            )
             if len(same_file) == 1:
                 return same_file[0]
         return None

@@ -22,6 +22,7 @@ from cgis.languages import (
     classifying_pack,
     cross_file_metadata,
     extractors,
+    file_node_id,
     is_supported,
     pack_for_node,
     pack_for_path,
@@ -200,7 +201,7 @@ class TestModuleFqnRoundTrip:
         )
         assert ingested, "ingest produced no FILE nodes — the fixture is wrong, not the code"
         for relative, node_id in ingested.items():
-            assert scope_of(relative, None) == node_id
+            assert file_node_id(relative, None) == node_id
 
     def test_barrel_file_collapses_like_the_extractor_does(self, tmp_path: Path) -> None:
         ingested = self._files(tmp_path, {"components/index.tsx": TSX_SOURCE})
@@ -210,7 +211,7 @@ class TestModuleFqnRoundTrip:
         ingested = self._files(tmp_path, {"pkg/mod.py": PY_SOURCE, "pkg/__init__.py": ""})
         assert ingested
         for relative, node_id in ingested.items():
-            assert scope_of(relative, None) == node_id
+            assert file_node_id(relative, None) == node_id
 
     def test_the_python_rule_would_have_failed_this(self, tmp_path: Path) -> None:
         """Pins the #344 defect: the Python rule leaves `.ts` on."""
@@ -223,6 +224,12 @@ class TestModuleFqnRoundTrip:
     def test_a_path_no_pack_reads_gets_the_python_rule(self) -> None:
         """Ruling R5: the CLI's extensionless fallback, kept in one place."""
         assert scope_of("src/cgis/pipeline", None) == "src.cgis.pipeline"
+
+
+def test_file_node_id_is_the_scope_for_python_and_typescript() -> None:
+    """Step 7 ruling H1: they coincide for py/ts, so nothing changes for them."""
+    for path in ("pkg/mod.py", "app/handler.ts", "components/index.tsx", "src/cgis/pipeline"):
+        assert file_node_id(path, None) == scope_of(path, None)
 
 
 # The pipeline's pattern before step 1, copied so `skips` is held to it exactly.

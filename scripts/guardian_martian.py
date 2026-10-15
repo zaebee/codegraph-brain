@@ -301,7 +301,7 @@ def graph_alignment(db_path: Path, changed_files: Sequence[str]) -> tuple[int, i
             pack = pack_for_path(path)
             if pack is None:  # pragma: no cover - filtered above
                 continue
-            if store.get_node(pack.scope_of(path, SOURCE_ROOT)):
+            if store.get_node(pack.file_node_id(path, SOURCE_ROOT)):
                 found += 1
     return found, len(supported)
 

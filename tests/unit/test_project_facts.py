@@ -1,15 +1,20 @@
 """Per-pack project readers and the collector that merges their facts (language-packs step 2)."""
 
+import dataclasses
 import json
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
 
+import cgis.resolver.indices as indices
+from cgis.core.models import Node
 from cgis.import_names import ImportNameCollector, ImportNames
 from cgis.languages import extractors, project_readers
 from cgis.languages.python.dependencies import declared_import_roots
 from cgis.languages.python.project import PythonFacts, PythonProjectReader
 from cgis.languages.typescript.project import TypeScriptFacts, TypeScriptProjectReader
+from cgis.pipeline import IngestionPipeline
 from cgis.storage.sqlite_store import SQLiteStore
 
 _STORE_KEYS = {"workspace_packages", "tsconfig_paths", "python_dependencies", "npm_dependencies"}
@@ -100,11 +105,74 @@ class _Facts:
         return self._state
 
 
-def test_a_key_the_collector_cannot_store_fails() -> None:
-    """Accepted and dropped, a new pack's facts would never be stored, compared or resolved."""
-    facts = [_Facts({"go_modules": ["example.com/x"]})]
-    with pytest.raises(ValueError, match="go_modules"):
+def test_a_pack_owned_key_is_carried_recorded_and_compared(tmp_path: Path) -> None:
+    """Step 7 H3: a key the four built-ins do not cover travels as `extra`.
+
+    Replaces step 2's `test_a_key_the_collector_cannot_store_fails`: that refusal
+    stood in for store and resolver support, which `extra` now provides.
+    """
+    names = ImportNames.from_facts([_Facts({"go_module": {"path": "example.com/app"}})])
+    assert names.extra == {"go_module": {"path": "example.com/app"}}
+    with SQLiteStore(str(tmp_path / "g.db")) as store:
+        names.record(store)
+        assert names.differ_from(store) is False
+        changed = ImportNames.from_facts([_Facts({"go_module": {"path": "example.com/other"}})])
+        assert changed.differ_from(store) is True
+
+
+def test_a_pack_owned_value_that_would_not_read_back_equal_fails() -> None:
+    """A tuple stores as a JSON list: it would differ from itself and rebuild every run."""
+    facts = [_Facts({"go_module": ("example.com/app",)})]
+    with pytest.raises(TypeError, match="go_module"):
         ImportNames.from_facts(facts)
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "root",
+        "ingested_at",
+        "ingest_options",
+        "workspace_packages",
+        "tsconfig_paths",
+        "python_dependencies",
+        "npm_dependencies",
+    ],
+)
+def test_the_store_refuses_a_key_with_its_own_recorder(tmp_path: Path, key: str) -> None:
+    """The store's own keys drive the freshness probe; the built-ins have typed recorders."""
+    with SQLiteStore(str(tmp_path / "g.db")) as store:
+        with pytest.raises(ValueError, match=key):
+            store.record_state(key, ["x"])
+        assert store.get_state(key) is None
+
+
+def test_a_pack_value_json_cannot_write_names_its_key() -> None:
+    """A set has no JSON form: the error says which fact, not just which type (PR #606)."""
+    facts = [_Facts({"go_module": {"example.com/app"}})]
+    with pytest.raises(TypeError, match="go_module"):
+        ImportNames.from_facts(facts)
+
+
+def test_pack_state_reaches_index_facts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """IndexBuilder merges a pack's extra state into what index_facts receives (H3)."""
+    seen: dict[str, object] = {}
+    real = indices.pack_index_facts
+
+    def recording(nodes: Mapping[str, Node], state: Mapping[str, object]) -> object:
+        seen.update(state)
+        return real(nodes, state)
+
+    monkeypatch.setattr(indices, "pack_index_facts", recording)
+    indices.IndexBuilder().build([], project_state={"go_module": {"path": "example.com/app"}})
+    assert seen["go_module"] == {"path": "example.com/app"}
+    assert "python_dependencies" in seen  # the built-ins are still there
+
+
+def test_a_pack_key_that_shadows_a_built_in_fails() -> None:
+    builder = indices.IndexBuilder()
+    with pytest.raises(ValueError, match="npm_dependencies"):
+        builder.build([], project_state={"npm_dependencies": []})
 
 
 def test_a_fact_of_the_wrong_shape_fails() -> None:
@@ -112,3 +180,30 @@ def test_a_fact_of_the_wrong_shape_fails() -> None:
     facts = [_Facts({"npm_dependencies": ("react",)})]
     with pytest.raises(TypeError, match="npm_dependencies"):
         ImportNames.from_facts(facts)
+
+
+def test_pack_state_travels_from_the_collector_to_index_facts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The whole H3 chain: collector -> pipeline -> ResolverEngine -> SymbolResolver -> index.
+
+    `test_pack_state_reaches_index_facts` calls the builder directly; this one
+    catches a link of the chain that stops passing `project_state` on.
+    """
+    seen: dict[str, object] = {}
+    real_facts = indices.pack_index_facts
+    real_collect = ImportNameCollector.collect
+
+    def recording(nodes: Mapping[str, Node], state: Mapping[str, object]) -> object:
+        seen.update(state)
+        return real_facts(nodes, state)
+
+    def with_extra(self: ImportNameCollector) -> ImportNames:
+        names = real_collect(self)
+        return dataclasses.replace(names, extra={"go_module": {"path": "example.com/app"}})
+
+    monkeypatch.setattr(indices, "pack_index_facts", recording)
+    monkeypatch.setattr(ImportNameCollector, "collect", with_extra)
+    (tmp_path / "mod.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    IngestionPipeline(extractors([])).run(str(tmp_path))
+    assert seen["go_module"] == {"path": "example.com/app"}

@@ -80,6 +80,7 @@ class ResolverEngine:
         tsconfig_paths: Mapping[str, Mapping[str, list[str]]] | None = None,
         dependency_roots: Iterable[str] = (),
         npm_dependencies: Iterable[str] = (),
+        project_state: Mapping[str, object] | None = None,
     ) -> None:
         """Build the symbol resolver (which builds the index) from the extracted graph.
 
@@ -91,10 +92,17 @@ class ResolverEngine:
         manifests declare, which tell a library apart from a package of ours that
         shares its name (#495). `npm_dependencies` are the npm packages the
         `package.json` files declare, as written, which make a TypeScript import EXTERNAL (#556).
+        `project_state` holds every other fact a language pack declared (step 7, H3).
         """
         self.edges = edges
         self._resolver = SymbolResolver(
-            nodes, edges, workspace_packages, tsconfig_paths, dependency_roots, npm_dependencies
+            nodes,
+            edges,
+            workspace_packages,
+            tsconfig_paths,
+            dependency_roots,
+            npm_dependencies,
+            project_state,
         )
         self._index = self._resolver.index
 

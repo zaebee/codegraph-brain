@@ -6,8 +6,9 @@ merges what they read (language-packs step 2). Kept out of `IngestionPipeline`,
 which only says which files it walked past and when the result must be stored.
 """
 
+import json
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -21,9 +22,9 @@ if TYPE_CHECKING:
 #: What marks a repository boundary the upward search never crosses.
 _REPOSITORY_MARKER = ".git"
 
-#: The facts the collector can record, compare and hand the resolver, with the
-#: JSON shape each reads back as. A pack contributing any other key needs store
-#: and resolver support first; until then its facts would vanish silently.
+#: The built-in facts, each with a typed field, recorder and resolver argument,
+#: and the JSON shape each reads back as. Any other key a pack contributes is
+#: carried as `ImportNames.extra` and reaches its `index_facts` (step 7, H3).
 _FACT_SHAPES: dict[str, type] = {
     "workspace_packages": dict,
     "tsconfig_paths": dict,
@@ -44,6 +45,8 @@ class ImportNames:
     python_dependencies: list[str]
     #: Declared npm package names as written, less our workspace packages, sorted.
     npm_dependencies: list[str]
+    #: Every other fact a pack declares, by `ingest_state` key (step 7, H3).
+    extra: dict[str, object] = field(default_factory=dict)
 
     def differ_from(self, store: "SQLiteStore") -> bool:
         """Whether the stored graph was resolved against different names.
@@ -60,6 +63,7 @@ class ImportNames:
             or (store.get_tsconfig_paths() or {}) != self.path_aliases
             or (store.get_python_dependencies() or []) != self.python_dependencies
             or (store.get_npm_dependencies() or []) != self.npm_dependencies
+            or any(store.get_state(key) != value for key, value in self.extra.items())
         )
 
     @classmethod
@@ -83,6 +87,7 @@ class ImportNames:
             path_aliases=cast("dict[str, dict[str, list[str]]]", state.get("tsconfig_paths", {})),
             python_dependencies=cast("list[str]", state.get("python_dependencies", [])),
             npm_dependencies=cast("list[str]", state.get("npm_dependencies", [])),
+            extra={k: v for k, v in state.items() if k not in _FACT_SHAPES},
         )
 
     def record(self, store: "SQLiteStore") -> None:
@@ -91,18 +96,35 @@ class ImportNames:
         store.record_tsconfig_paths(self.path_aliases)
         store.record_python_dependencies(self.python_dependencies)
         store.record_npm_dependencies(self.npm_dependencies)
+        for key, value in self.extra.items():
+            store.record_state(key, value)
 
 
 def _check_shapes(state: Mapping[str, object]) -> None:
-    """Refuse a fact the collector cannot store, or one that would never read back equal."""
-    unknown = sorted(state.keys() - _FACT_SHAPES.keys())
-    if unknown:
-        msg = f"no collector support for ingest_state key(s): {unknown}"
-        raise ValueError(msg)
+    """Refuse a fact that would never read back equal from `ingest_state`.
+
+    A built-in must have its declared shape; a pack's own fact must survive the
+    JSON round trip unchanged (a tuple comes back a list), or `differ_from` would
+    see a change on every run and rebuild.
+    """
     for key, value in state.items():
+        if key not in _FACT_SHAPES:
+            if _json_round_trip(key, value) != value:
+                msg = f"{key} does not read back equal from JSON: {type(value).__name__}"
+                raise TypeError(msg)
+            continue
         if not isinstance(value, _FACT_SHAPES[key]):
             msg = f"{key} must be a {_FACT_SHAPES[key].__name__}, not {type(value).__name__}"
             raise TypeError(msg)
+
+
+def _json_round_trip(key: str, value: object) -> object:
+    """`value` written to JSON and read back; a value with no JSON form names its key."""
+    try:
+        return json.loads(json.dumps(value, sort_keys=True))
+    except (TypeError, ValueError) as exc:
+        msg = f"{key} has no JSON form: {exc}"
+        raise TypeError(msg) from exc
 
 
 def _enclosing_directories(root: Path) -> tuple[list[Path], bool]:
