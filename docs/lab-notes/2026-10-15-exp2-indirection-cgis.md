@@ -141,3 +141,55 @@ Pair 3 now exceeds the ±4 tolerance by 1, because its direct side lost the wrap
 did not. It stays, and it is flagged: the analysis is reported with and without pair 3.
 The descriptive tasks are `_relative` (47/14), `specifier_fqn` (47/13) and `_record_usage` (29/11).
 The table above supersedes the earlier pairs table.
+
+## Result (full run, 2026-10-15)
+
+51 sessions, all billed to the organisation key (`apiKeySource: ANTHROPIC_API_KEY` ×51), 0 errors,
+0 contaminated, $4.79. Model `claude-sonnet-5-5`, control arm, 3 runs per task.
+
+| # | direct | cost | recall | indirect | cost | recall | ratio |
+|---|---|---|---|---|---|---|---|
+| 1 | reject_metrics_path | $0.073 | 1.00 | _finder_pass | $0.078 | 1.00 | 1.06 |
+| 2 | extractors | $0.074 | 1.00 | get_edge_stats | $0.057 | 1.00 | 0.77 |
+| 3 | build_ladder | $0.065 | 1.00 | _sanitize_finder_result | $0.098 | 0.93 | 1.52 |
+| 4 | resolve_fqn | $0.060 | 1.00 | _as_terms | $0.083 | 1.00 | 1.39 |
+| 5 | visible_findings | $0.071 | 1.00 | get_incoming_edges | $0.077 | 1.00 | 1.08 |
+| 6 | _loc | $0.078 | 1.00 | fit_templates | $0.081 | 1.00 | 1.04 |
+| 7 | effective_prefix | $0.073 | 1.00 | _fit_config | $0.099 | 1.00 | 1.35 |
+
+| gate | all 7 pairs | without pair 3 |
+|---|---|---|
+| G1 cost | median ratio **1.08** (bootstrap 95% CI 1.04–1.39); indirect costs more in 6 of 7 → **refuted** by the registered rule (≤ 1.1) | 1.07 (CI 0.90–1.37); 5 of 6 → refuted |
+| G2 recall | median Δ +0.00 → not met | +0.00 → not met |
+| G4 ceiling | per run 40/42 at 1.00 (min 0.93); per pair-task median 13/14 at 1.00 | — |
+
+Descriptive tasks with dynamic hops (polymorphic, callback, registry), unpaired:
+
+| task | required symbols / files | cost | recall |
+|---|---|---|---|
+| `_record_usage` | 28/11 | $0.128 | 0.93 |
+| `_relative` | 46/14 | $0.203 | 0.97 |
+| `specifier_fqn` | 46/13 | $0.192 | 0.97 |
+
+### Reading
+
+- **H2 as registered is refuted.** At matched radius and answer size, a held-object or parameter hop
+  (`attr_dep` / `param_obj`) does not raise cost by ≥30%. The median is +8%.
+- **The direction is consistent.** The indirect task costs more in 6 of 7 pairs (a two-sided sign test
+  gives about p = 0.13). So a small effect, in the 5–10% range, stays plausible. Its size is the point:
+  it is small next to exp1's ×1.5–1.7.
+- **Together with exp1:** exp1's large indirection ratio came mostly from answer size and radius,
+  which were confounded with indirection in owner-api. Matched, the held-object indirection that
+  dominates both corpora costs little.
+- **Recall stays at the ceiling** in both corpora once the gold is right. Read-only "who calls X" does
+  not separate structures by correctness for this model.
+- **Dynamic hops are not tested by the pairs.** The three dynamic tasks are about 2.5× dearer and
+  recall 0.93–0.97, but their answers are 28–46 symbols, so size explains as much as the hops do.
+- **Gold derivation was again the weakest link.** One adjudication rule (the decorator) was wrong, and
+  the 5-session pilot caught it before the full run.
+
+### Next
+
+Read-only impact questions are saturated. To test whether structure matters for correctness, the
+next experiment needs **edits with hidden tests** (exp1's H3–H5). Dynamic dispatch needs its own
+pairs, matched on answer size, which requires a corpus with small polymorphic chains.
