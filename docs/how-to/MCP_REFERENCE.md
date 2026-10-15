@@ -55,8 +55,9 @@ Reachability/authorization audit — which sources never reach a checkpoint.
     NOT transitively reach an ownership check. Reachability follows behavioral edges
     (CALLS *and* FastAPI ``Depends()`` DEPENDS_ON), so a guard wired via DI counts.
 
-    Select sources with ``from_type`` (a NodeType like ``ROUTE_HANDLER`` /
-    ``API_ENDPOINT`` / ``FUNCTION``) and/or ``from_prefix`` (FQN prefix) — at least
+    Select sources with ``from_type`` (the ``ROUTE_HANDLER`` role — FastAPI handlers on
+    a router built in the same module — or a NodeType like ``FUNCTION``) and/or
+    ``from_prefix`` (FQN prefix) — at least
     one is required. Returns JSON ``{target, covered, gaps}`` where each gap carries
     ``fqn``/``file``/``line``. Generalizes to validators, event tracking, or
     service-layer-boundary rules by pointing ``target`` at the required node.
@@ -68,7 +69,7 @@ Reachability/authorization audit — which sources never reach a checkpoint.
 | :--- | :--- | :---: | :--- |
 | `target` | `string` | ✓ | FQN of the checkpoint every source must reach, e.g. an ownership check. A unique dot-boundary suffix also resolves. |
 | `db_path` | `string` |  | SQLite graph built by cgis_ingest. A relative path resolves against the MCP server's working directory, not the agent's — prefer an absolute path. |
-| `from_type` | `any` |  | NodeType of the sources to audit, e.g. ROUTE_HANDLER, API_ENDPOINT or FUNCTION (any case). Give this, from_prefix, or both. |
+| `from_type` | `any` |  | NodeType or role of the sources to audit (any case): ROUTE_HANDLER selects FastAPI handlers on a router built in the same module; a structural type such as FUNCTION selects by type. Give this, from_prefix, or both. |
 | `from_prefix` | `any` |  | Only audit sources at or under this FQN prefix, matched on whole dot-segments. A selection matching no source is an error naming the whole-segment prefixes it may have meant. Combined with from_type when both are given. |
 | `depth` | `integer` |  | Maximum reachability depth; a longer path is reported as a gap. |
 

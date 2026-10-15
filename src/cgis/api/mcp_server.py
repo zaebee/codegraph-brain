@@ -1281,8 +1281,9 @@ def cgis_audit_reachability(
     from_type: Annotated[
         str | None,
         Field(
-            description="NodeType of the sources to audit, e.g. ROUTE_HANDLER, API_ENDPOINT or "
-            "FUNCTION (any case). Give this, from_prefix, or both."
+            description="NodeType or role of the sources to audit (any case): ROUTE_HANDLER "
+            "selects FastAPI handlers on a router built in the same module; a structural type "
+            "such as FUNCTION selects by type. Give this, from_prefix, or both."
         ),
     ] = None,
     from_prefix: Annotated[
@@ -1305,8 +1306,9 @@ def cgis_audit_reachability(
     NOT transitively reach an ownership check. Reachability follows behavioral edges
     (CALLS *and* FastAPI ``Depends()`` DEPENDS_ON), so a guard wired via DI counts.
 
-    Select sources with ``from_type`` (a NodeType like ``ROUTE_HANDLER`` /
-    ``API_ENDPOINT`` / ``FUNCTION``) and/or ``from_prefix`` (FQN prefix) — at least
+    Select sources with ``from_type`` (the ``ROUTE_HANDLER`` role — FastAPI handlers on
+    a router built in the same module — or a NodeType like ``FUNCTION``) and/or
+    ``from_prefix`` (FQN prefix) — at least
     one is required. Returns JSON ``{target, covered, gaps}`` where each gap carries
     ``fqn``/``file``/``line``. Generalizes to validators, event tracking, or
     service-layer-boundary rules by pointing ``target`` at the required node.

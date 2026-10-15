@@ -172,3 +172,24 @@ class Edge(BaseModel):
     #: question — but not a runtime dependency, so the cycle query skips it: the
     #: standard way to *break* an import cycle was being reported as one (#499).
     type_only: bool = False
+
+
+# Roles: what a node is for, beside what it structurally is (#566). A FastAPI
+# handler is a FUNCTION — every index, impact walk and orphan query reads it as
+# one — that also plays the ROUTE_HANDLER role, recorded by its extractor as
+# `metadata["route"]`. Queries that select by type (`cgis audit --from-type`) and
+# the ontology uplift ask `answers_to`, so a role selects and classifies like a
+# type without moving the node out of the type every other reader relies on.
+
+#: Role type -> the metadata key that marks a node as playing it.
+_ROLE_MARKERS: dict[NodeType, str] = {NodeType.ROUTE_HANDLER: "route"}
+
+
+def role_of(node: Node) -> NodeType | None:
+    """The role a node plays, by its markers, or None."""
+    return next((role for role, key in _ROLE_MARKERS.items() if key in node.metadata), None)
+
+
+def answers_to(node: Node, node_type: NodeType) -> bool:
+    """Whether `node` is of `node_type`, structurally or by the role it plays."""
+    return node.type == node_type or role_of(node) == node_type

@@ -1563,7 +1563,8 @@ def audit(
     from_type: NodeType | None = typer.Option(
         None,
         "--from-type",
-        help="Only audit nodes of this type (e.g. ROUTE_HANDLER, API_ENDPOINT).",
+        help="Only audit nodes of this type or role: ROUTE_HANDLER (FastAPI handlers on a "
+        "router built in the same module), or a structural type such as FUNCTION.",
     ),
     from_prefix: str | None = typer.Option(
         None, "--from-prefix", help="Only audit nodes under this FQN prefix (whole dot-segments)."
