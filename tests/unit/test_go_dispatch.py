@@ -167,24 +167,47 @@ def test_a_shallower_method_shadows_the_embedded_one() -> None:
     )
     assert ("a.Doer.Do", "a.Outer.Do") in d
     assert ("a.Doer.Do", "a.Inner.Do") in d  # Inner satisfies Doer on its own
-    targets_for_outer = {c for s, c in d if s == "a.Doer.Do"}
-    assert targets_for_outer == {"a.Outer.Do", "a.Inner.Do"}
+    targets_of_doer = {c for s, c in d if s == "a.Doer.Do"}
+    assert targets_of_doer == {"a.Outer.Do", "a.Inner.Do"}
 
 
-def test_test_code_neither_implements_nor_declares() -> None:
+def test_a_test_file_method_does_not_complete_a_production_type() -> None:
+    """`Extra` exists only in a _test.go file, so Impl does not satisfy Doer2."""
     d = _dispatch_of(
         {
-            "a/d.go": _DOER,
+            "a/d.go": "package a\ntype Doer2 interface {\n\tDo()\n\tExtra()\n}\n",
             "a/impl.go": "package a\ntype Impl struct{}\nfunc (i *Impl) Do() {}\n",
-            "a/d_test.go": (
-                "package a\n"
-                "type fakeDoer struct{}\nfunc (f *fakeDoer) Do() {}\n"
-                "type testOnly interface{ Do() }\n"
-                "func (i *Impl) Extra() {}\n"
-            ),
+            "a/d_test.go": "package a\nfunc (i *Impl) Extra() {}\n",
         }
     )
-    assert d == {("a.Doer.Do", "a.Impl.Do")}
+    assert d == set()
+
+
+def test_a_test_type_does_not_implement() -> None:
+    """A fake embedding X and Y would be the only AB; production has none."""
+    d = _dispatch_of(
+        {
+            "a/ab.go": (
+                "package a\n"
+                "type AB interface {\n\tA()\n\tB()\n}\n"
+                "type X struct{}\nfunc (x *X) A() {}\n"
+                "type Y struct{}\nfunc (y *Y) B() {}\n"
+            ),
+            "a/ab_test.go": "package a\ntype fake struct{\n\tX\n\tY\n}\n",
+        }
+    )
+    assert d == set()
+
+
+def test_a_struct_embedding_an_interface_redispatches_to_it() -> None:
+    """Wrap holds a Doer, so a call through Other runs Doer's dynamic method."""
+    d = _dispatch_of(
+        {
+            "a/d.go": _DOER + "type Other interface{ Do() }\n",
+            "a/w.go": "package a\ntype Wrap struct{ Doer }\n",
+        }
+    )
+    assert ("a.Other.Do", "a.Doer.Do") in d
 
 
 def test_an_interface_embedding_one_outside_the_graph_matches_on_what_is_seen() -> None:
