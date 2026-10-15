@@ -109,3 +109,26 @@ route (1 run). **Gate 4 (ceiling) is all but certain**, so the full run answers 
 - Every gold set is adjudicated as in the pilot, now also searching for callers both tools miss. A
   task whose adjudicated chain changes cell (gains an indirect hop, or its file count crosses a
   boundary) moves to the cell it belongs in. It is not dropped.
+
+## Final cells, after adjudication (before any full-run session)
+
+The candidate classifier counted only `self.<attr>.<method>(...)` as indirect. Adjudication found that
+a FastAPI route receiving a service through `Depends` is indirect too, and almost every big-radius chain
+in owner-api ends in such a route. Under the rule above, tasks moved to the cells they belong in:
+
+| cell | tasks | moved in |
+|---|---|---|
+| big × indirect | 11 | 6 pilot; live_dispute_clause, credit_document, extra_options_filter, calculate_average_rating (route `Depends`); `_thread_for` (9 files, `getattr` hook dispatch) |
+| big × direct | 2 | vehicle_by_id_query, calculate_pagination |
+| small × direct | 4 | — |
+| small × indirect | 3 | `_counterparty_cards` (`ChatServiceDep`) |
+
+- **H2 cannot be tested as designed.** In this codebase, indirection is the norm at big radius and
+  rare at small radius, so the 2×2 collapses: big × direct has n=2. H2 is reported descriptively.
+  That collapse is itself a finding about the corpus.
+- **H1 runs as designed:** big row n=13, small row n=7.
+- **`_thread_for`:** the adjudicator enumerated all 31 callers both tools miss (a callback through
+  `_guarded`, and `getattr(self.chat_lifecycle, hook)` driven by the reservation state machine), so
+  they are required gold here, not a lower bound. This is the one task where a correctness
+  difference is likely.
+- The full run is 20 tasks × 3 runs, all fresh. Pilot sessions are not reused.

@@ -1,0 +1,36 @@
+id: owner-exp1-small-ind-search-by-owner
+repo: owner-api
+sha: 8de22452b5d91242dd742a666ef2cd7b1eb7c1ff
+src_root: ownima-backend/app
+type: impact
+question: 'In this repository, the method `ExtraOptionSearchClient.search_by_owner` in
+
+  `ownima-backend/app/storage/extra_option.py` is about to change. Which code under
+
+  `ownima-backend/app/` (not tests, not scripts) can end up calling it, directly or
+
+  transitively? Follow every chain up to its entry point (an HTTP route, a worker task,
+
+  or a function nothing else calls) and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - VehicleEnrichmentService.fetch_extra_options_by_owner
+  files:
+  - ownima-backend/app/domains/vehicle/enrichment.py
+  - ownima-backend/app/storage/extra_option.py
+  allowed_symbols:
+  - ExtraOptionSearchClient.search_by_owner
+  allowed_files:
+  - ownima-backend/app/worker/base.py
+notes: 'Exp1 (docs/lab-notes/2026-10-15-exp1-radius-indirection.md), cell small-ind, files 2.
+
+  Gold: cgis closure + AST name closure, every difference adjudicated with file:line.
+
+  Only call: domains/vehicle/enrichment.py:234 `self.extra_option_client.search_by_owner(owner_id)` in
+  VehicleEnrichmentService.fetch_extra_options_by_owner (:220). fetch_extra_options_by_owner has no caller
+  anywhere in app/ or tests (grep for extra_options_by_owner and getattr/''fetch_'' strings) - dead code,
+  so the chain stops at 1. INDIRECT via attribute-held client.
+
+  '

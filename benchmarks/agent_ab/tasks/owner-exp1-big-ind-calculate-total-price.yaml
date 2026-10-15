@@ -53,7 +53,7 @@ gold:
   - PricingService.calculate_total_price
   allowed_files:
   - ownima-backend/app/worker/base.py
-notes: 'Exp1 (docs/lab-notes/2026-10-15-exp1-radius-indirection.md), cell big x indirect.
+notes: 'Exp1 (docs/lab-notes/2026-10-15-exp1-radius-indirection.md), cell big-ind, files >=5.
 
   Gold: cgis closure + AST name closure, every difference adjudicated with file:line.
 

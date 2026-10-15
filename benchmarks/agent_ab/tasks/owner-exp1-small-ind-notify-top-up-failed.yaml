@@ -1,0 +1,43 @@
+id: owner-exp1-small-ind-notify-top-up-failed
+repo: owner-api
+sha: 8de22452b5d91242dd742a666ef2cd7b1eb7c1ff
+src_root: ownima-backend/app
+type: impact
+question: 'In this repository, the method `TopUpNotifier.notify_top_up_failed` in
+
+  `ownima-backend/app/domains/finance/top_up_service.py` is about to change. Which code under
+
+  `ownima-backend/app/` (not tests, not scripts) can end up calling it, directly or
+
+  transitively? Follow every chain up to its entry point (an HTTP route, a worker task,
+
+  or a function nothing else calls) and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - TopUpService._settle_unpaid
+  - TopUpService.fulfill
+  - TopUpService.get_status
+  - TopUpService.handle_webhook_event
+  - finance.routes.get_top_up
+  - finance.routes.stripe_webhook
+  files:
+  - ownima-backend/app/domains/finance/routes.py
+  - ownima-backend/app/domains/finance/top_up_service.py
+  allowed_symbols:
+  - TopUpNotifier.notify_top_up_failed
+  allowed_files:
+  - ownima-backend/app/worker/base.py
+notes: 'Exp1 (docs/lab-notes/2026-10-15-exp1-radius-indirection.md), cell small-ind, files 2.
+
+  Gold: cgis closure + AST name closure, every difference adjudicated with file:line.
+
+  Target is a Protocol stub (top_up_service.py:83,:103 `...`); runtime impl is notifications/handlers/top_up.py:55
+  TopUpNotificationHandler.notify_top_up_failed (the same_name=2). Call: top_up_service.py:377 `self._notifier.notify_top_up_failed`
+  in _settle_unpaid; fulfill :267 -> _settle_unpaid; get_status :294 and handle_webhook_event :305 ->
+  self.fulfill; finance/routes.py:232 get_top_up and :344 stripe_webhook via TopUpServiceDep (finance/dependencies.py:112).
+  No other TopUpService user (start :221 does not reach). All 6 valid. INDIRECT via self._notifier and
+  TopUpServiceDep.
+
+  '

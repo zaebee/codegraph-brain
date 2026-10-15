@@ -1,0 +1,71 @@
+id: owner-exp1-big-ind-calculate-average-rating
+repo: owner-api
+sha: 8de22452b5d91242dd742a666ef2cd7b1eb7c1ff
+src_root: ownima-backend/app
+type: impact
+question: 'In this repository, the module-level function `calculate_average_rating` in
+
+  `ownima-backend/app/domains/rating/calculator.py` is about to change. Which code under
+
+  `ownima-backend/app/` (not tests, not scripts) can end up calling it, directly or
+
+  transitively? Follow every chain up to its entry point (an HTTP route, a worker task,
+
+  or a function nothing else calls) and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - RatingService._refresh_recipient_rating
+  - RatingService._update_user_rating_statistics
+  - RatingService.create_rating
+  - RatingService.create_rider_review
+  - id: RatingService.create_rider_review._row
+    any_of:
+    - RatingService.create_rider_review._row
+    - service.RatingService._row
+  - RatingService.delete_rating
+  - RatingService.get_user_rating_summary
+  - RatingService.refresh_aggregate
+  - RatingService.update_rating
+  - Worker._run_reset
+  - Worker.reindex_vehicle_rating
+  - Worker.reset_showcase_data
+  - rating.routes.delete_rating
+  - rating.routes.update_rating
+  - reservation.routes.complete_reservation
+  - rider.routes.submit_review
+  - id: routes.complete_reservation._try_create_rating
+    any_of:
+    - routes.complete_reservation._try_create_rating
+    - reservation.routes._try_create_rating
+  - worker.catalog._load_vehicle_rating
+  - worker.showcase_ratings.seed_showcase_ratings
+  files:
+  - ownima-backend/app/domains/rating/calculator.py
+  - ownima-backend/app/domains/rating/routes.py
+  - ownima-backend/app/domains/rating/service.py
+  - ownima-backend/app/domains/reservation/routes.py
+  - ownima-backend/app/domains/rider/routes.py
+  - ownima-backend/app/worker/catalog.py
+  - ownima-backend/app/worker/showcase.py
+  - ownima-backend/app/worker/showcase_ratings.py
+  allowed_symbols:
+  - rating.calculator.calculate_average_rating
+  allowed_files:
+  - ownima-backend/app/worker/base.py
+notes: 'Exp1 (docs/lab-notes/2026-10-15-exp1-radius-indirection.md), cell big-ind, files 8.
+
+  Gold: cgis closure + AST name closure, every difference adjudicated with file:line.
+
+  cgis callers verified: worker/catalog.py:166 _load_vehicle_rating, :364 reindex_vehicle_rating; rating/service.py:744
+  _update_user_rating_statistics, :843 get_user_rating_summary (no callers itself), :690, :239/:589/:623/:655
+  self._refresh_recipient_rating, :300 _row->self.create_rating, :311/:315; rating/routes.py:344/:389;
+  rider/routes.py:1693 submit_review; worker/showcase_ratings.py:191/:227; worker/showcase.py:511 _run_reset.
+  ADDED (ast_only confirmed): reservation/routes.py:1070 _try_create_rating calls rating_service.create_rating
+  (rating_service: RatingServiceDep at :1029, the only create_rating def is RatingService.create_rating
+  rating/service.py:170), called from complete_reservation at :1088; worker/showcase.py:214 reset_showcase_data
+  calls cls._run_reset (same class, direct). INDIRECT: rating/routes, rider/routes, reservation/routes
+  edges go through RatingServiceDep-injected rating_service.
+
+  '
