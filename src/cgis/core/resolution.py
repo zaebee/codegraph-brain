@@ -33,8 +33,8 @@ class ResolutionView(Protocol):
         """Each pack's index facts, by pack name."""
         ...
 
-    def map_to_node_fqn(self, imported_fqn: str) -> str | None:
-        """An imported FQN reconciled to a node id, or None."""
+    def map_to_node_fqn(self, imported_fqn: str, source_file: str | None = None) -> str | None:
+        """An imported FQN reconciled to a node id, or None; classified as `source_file` reads."""
         ...
 
     def strip_layout_prefixes(self, fqn: str) -> str | None:

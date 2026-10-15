@@ -200,7 +200,7 @@ class SymbolResolver:
         file_path = self.index.normalized_file_path(source_fqn, edge_file_path)
 
         if source_node:
-            result = self._resolve_local_type_call(name, source_node)
+            result = self._resolve_local_type_call(name, source_node, file_path)
             if result:
                 return result
 
@@ -268,18 +268,23 @@ class SymbolResolver:
 
         if name in file_import_map:
             target_fqn = file_import_map[name]
-            return self.index.map_to_node_fqn(target_fqn) or target_fqn
+            return self.index.map_to_node_fqn(target_fqn, file_path) or target_fqn
 
         first_part = name.split(".", maxsplit=1)[0]
         if first_part in file_import_map and "." in name:
             rest = name[len(first_part) + 1 :]
             target_fqn = f"{file_import_map[first_part]}.{rest}"
-            return self.index.map_to_node_fqn(target_fqn) or target_fqn
+            return self.index.map_to_node_fqn(target_fqn, file_path) or target_fqn
 
         return None
 
-    def _resolve_local_type_call(self, name: str, source_node: Node) -> str | None:
-        """Resolve `var.method` using local_types metadata on the source node."""
+    def _resolve_local_type_call(
+        self, name: str, source_node: Node, file_path: str | None
+    ) -> str | None:
+        """Resolve `var.method` using local_types metadata on the source node.
+
+        `file_path` is the source's: the type is classified as its language reads it.
+        """
         if "." not in name:
             return None
         var_name, method_name = name.split(".", maxsplit=1)
@@ -289,14 +294,17 @@ class SymbolResolver:
             return None
         class_fqn = _normalized(self.index, class_fqn)
         candidate = f"{class_fqn}.{method_name}"
-        resolved = self.index.map_to_node_fqn(candidate)
+        resolved = self.index.map_to_node_fqn(candidate, file_path)
         if resolved:
             return resolved
         # No node for `Class.method`. Keep it only when the type is external/stdlib
         # — that is a real call into a library (it becomes an EXTERNAL/STDLIB virtual
         # node). For an internal/unknown type it is a phantom method: drop it rather
         # than fabricate a node that does not exist (#183).
-        if self.index.classify_fqn(candidate) in (NodeNamespace.EXTERNAL, NodeNamespace.STDLIB):
+        if self.index.classify_fqn(candidate, file_path) in (
+            NodeNamespace.EXTERNAL,
+            NodeNamespace.STDLIB,
+        ):
             return candidate
         return None
 
