@@ -40,6 +40,12 @@ from cgis.languages.go._syntax import (
 from cgis.languages.go.naming import GO_LANG, file_node_id, is_test, scope_of
 
 _RAW_CALL = "raw_call:"
+#: A name bound to two different types in one function: no type is recorded for
+#: it, since one dict serves every block (#608 review I1).
+_CONFLICT = ""
+#: Hops of `x := y.M()` a call-result marker follows; past it the name stays
+#: untyped, so markers stay short and expanding one never recurses deep (I2).
+_MAX_CHAIN = 8
 _RAW_CLASS = "raw_class:"
 
 
@@ -258,7 +264,8 @@ def _callable(
     body = node.child_by_field_name("body")
     if body is not None:
         _body(ctx, body, fqn, receiver, types, edges)
-    metadata: dict[str, object] = {"local_types": types} if types else {}
+    known = {name: fqn for name, fqn in types.items() if fqn != _CONFLICT}
+    metadata: dict[str, object] = {"local_types": known} if known else {}
     returns = result_types(node, ctx.scope, ctx.import_map)
     if returns:
         metadata["returns"] = returns
@@ -269,7 +276,16 @@ def _record(ctx: _File, types: dict[str, str], names: list[str], type_node: TSNo
     """Note each of `names` as having the type `type_node` names, when it is a named type."""
     fqn = type_fqn(type_node, ctx.scope, ctx.import_map)
     if fqn:
-        types.update(dict.fromkeys(names, fqn))
+        for name in names:
+            _bind(types, name, fqn)
+
+
+def _bind(types: dict[str, str], name: str, fqn: str) -> None:
+    """Type `name`; a second, different type for it marks it a conflict for good."""
+    if name == "_":
+        return
+    held = types.get(name)
+    types[name] = fqn if held is None or held == fqn else _CONFLICT
 
 
 def _body(
@@ -317,8 +333,8 @@ def _assigned(ctx: _File, names: list[str], values: TSNode | None, types: dict[s
 def _hold_result(ctx: _File, types: dict[str, str], name: str, call: TSNode, index: int) -> None:
     """Record that `name` holds result `index` of `call`, when the callee can be named."""
     callee = _callee(ctx, call.child_by_field_name("function"), types)
-    if name != "_" and callee:
-        types[name] = f"{CALL_RESULT}{index}:{callee}"
+    if callee:
+        _bind(types, name, f"{CALL_RESULT}{index}:{callee}")
 
 
 def _callee(ctx: _File, function: TSNode | None, types: dict[str, str]) -> str | None:
@@ -329,10 +345,10 @@ def _callee(ctx: _File, function: TSNode | None, types: dict[str, str]) -> str |
     if len(chain) != 2:
         return None
     head, method = chain
-    if head in ctx.import_map:
-        return f"{ctx.import_map[head]}.{method}"
-    held = types.get(head)
+    held = types.get(head)  # a local shadows an import, as the resolver reads it (M1)
     if held is None:
+        return f"{ctx.import_map[head]}.{method}" if head in ctx.import_map else None
+    if held == _CONFLICT or held.count("|") >= _MAX_CHAIN:
         return None
     return f"{held}|{method}" if held.startswith(CALL_RESULT) else f"{held}.{method}"
 

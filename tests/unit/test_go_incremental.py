@@ -39,6 +39,22 @@ SCENARIOS: dict[str, tuple[dict[str, str], dict[str, str]]] = {
         },
         {"a/new.go": "package a\nfunc New() *Slow { return nil }\n"},
     ),
+    "re-type a field another file calls through": (
+        {
+            "go.mod": _GO_MOD,
+            "a/types.go": _TYPES,
+            "a/holder.go": "package a\ntype Holder struct{ C *Fast }\n",
+            "a/use.go": "package a\nfunc (h *Holder) Use() { h.C.Get() }\n",
+        },
+        {"a/holder.go": "package a\ntype Holder struct{ C *Slow }\n"},
+    ),
+}
+
+#: The edge each scenario's edit must produce, so a scenario that stops exercising
+#: its metadata fails rather than passes on an empty difference.
+_EXPECTED = {
+    "re-type a result another file calls through": ("b.Result", "a.Slow.Get", "CALLS"),
+    "re-type a field another file calls through": ("a.Holder.Use", "a.Slow.Get", "CALLS"),
 }
 
 
@@ -73,9 +89,7 @@ def test_incremental_go_graph_equals_full_ingest(scenario: str, tmp_path: Path) 
     _ingest(work, full)
     inc_edges, inc_nodes = _graph(incremental)
     full_edges, full_nodes = _graph(full)
-    assert ("b.Result", "a.Slow.Get", "CALLS") in full_edges, (
-        "the scenario no longer exercises #608"
-    )
+    assert _EXPECTED[scenario] in full_edges, "the scenario no longer exercises #608"
     assert inc_nodes == full_nodes
     assert inc_edges - full_edges == set(), "stale edges survived the incremental run"
     assert full_edges - inc_edges == set(), "edges a full ingest has are missing"

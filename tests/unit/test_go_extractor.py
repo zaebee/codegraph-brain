@@ -366,3 +366,43 @@ def test_a_variable_assigned_a_call_records_which_result_it_holds() -> None:
     assert types["r"] == "go-returns:0:go-returns:0:internal.server.Server.Parser|Parse"
     assert types["q"] == "go-returns:0:internal.server.New"
     assert "_" not in types
+
+
+def test_a_name_bound_to_two_types_keeps_neither() -> None:
+    """#608 review I1: one dict per function; the later binding must not type the earlier call."""
+    code = (
+        "package server\n"
+        "func Run() {\n"
+        "\t{\n\t\tty := &ArrayType{}\n\t\tty.Merge()\n\t}\n"
+        "\t{\n\t\tty := NewObjectType()\n\t\tty.Merge()\n\t}\n"
+        "\tok := New()\n"
+        "\tok = New()\n"
+        "}\n"
+    )
+    nodes, _ = _parse(code)
+    types = nodes["internal.server.Run"].metadata["local_types"]
+    assert "ty" not in types
+    assert types["ok"] == "go-returns:0:internal.server.New"
+
+
+def test_a_local_shadowing_an_import_is_the_local() -> None:
+    """#608 review M1: `store := New(); x := store.Open()` calls the local's method."""
+    code = (
+        "package server\n"
+        'import "example.com/app/store"\n'
+        "func Run() {\n\tstore := New()\n\tx := store.Open()\n\t_ = x\n}\n"
+    )
+    nodes, _ = _parse(code)
+    types = nodes["internal.server.Run"].metadata["local_types"]
+    assert types["x"] == "go-returns:0:go-returns:0:internal.server.New|Open"
+
+
+def test_a_chain_of_results_stops_at_a_bounded_depth() -> None:
+    """#608 review I2: each marker inlined its predecessor — quadratic, then RecursionError."""
+    hops = "".join(f"\tx{i + 1} := x{i}.Next()\n" for i in range(50))
+    code = f"package server\nfunc Run() {{\n\tx0 := New()\n{hops}}}\n"
+    nodes, _ = _parse(code)
+    types = nodes["internal.server.Run"].metadata["local_types"]
+    assert types["x3"].count("|") == 3  # short chains are kept whole
+    assert "x50" not in types
+    assert max(len(v) for v in types.values()) < 400
