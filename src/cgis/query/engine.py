@@ -601,7 +601,7 @@ class QueryEngine:
                     new, verdict, len(discovered_ids), max_nodes, at_depth
                 )
                 discovered_ids.update(admitted)
-                # Both ends: a cut may keep an override whose base it left out.
+                # The near end is in `batch`, already admitted; the far end may be cut.
                 visited_edges.update(
                     (e.id, e)
                     for e in hops

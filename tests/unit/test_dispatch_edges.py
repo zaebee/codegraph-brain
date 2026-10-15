@@ -329,6 +329,7 @@ def test_a_dispatch_fan_out_from_the_root_respects_the_node_budget() -> None:
 
     assert len(result.nodes) <= 3
     assert result.truncation is not None
+    assert result.truncation.depth == 0  # the root's own level was cut
 
 
 def test_a_cut_leaves_no_dangling_dispatch_edge() -> None:
@@ -354,3 +355,11 @@ def test_reading_one_edge_type_uses_an_index(tmp_path: Path) -> None:
         ).fetchall()
 
     assert "idx_edges_type" in " ".join(str(tuple(row)) for row in plan)
+
+
+def test_a_confidence_floor_above_dispatch_closes_nothing() -> None:
+    with SQLiteStore(":memory:") as store:
+        _fan_out(store, 3)
+        nodes, _ = QueryEngine(store).get_flow_graph("b.Base.m", max_depth=1, min_confidence=0.6)
+
+    assert {n.id for n in nodes} == {"b.Base.m"}
