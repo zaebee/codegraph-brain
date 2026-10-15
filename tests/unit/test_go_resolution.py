@@ -389,3 +389,60 @@ def test_a_method_called_on_another_call_s_result_resolves() -> None:
     """#608: `p := s.Parser(); rows := p.Parse(); rows.Next()` — two hops of results."""
     calls, _ = _receivers()
     assert "store.Rows.Next" in calls
+
+
+def test_err_from_two_calls_is_still_an_error() -> None:
+    """#608 delta review: two markers that both resolve to `error` keep `err` typed."""
+    files = {
+        "a/a.go": (
+            "package a\n"
+            "func Open() (int, error) { return 0, nil }\n"
+            "func Stat() (int, error) { return 0, nil }\n"
+            "func Run() {\n"
+            "\t_, err := Open()\n"
+            "\tif _, err := Stat(); err != nil { err.Error() }\n"
+            "\terr.Error()\n"
+            "}\n"
+        )
+    }
+    edges, _ = _go_graph(files, {"path": "example.com/app"})
+    assert "error.Error" in _calls_from(edges, "a.Run")
+
+
+def test_sibling_blocks_never_lend_each_other_a_type() -> None:
+    """#608 delta review: the second `b.Run()` is RB's or nothing — never RA's."""
+    files = {
+        "a/a.go": (
+            "package a\n"
+            "type A struct{}\nfunc (x *A) Get() *RA { return nil }\n"
+            "type RA struct{}\nfunc (r *RA) Run() {}\n"
+            "type B struct{}\nfunc NewB() *B { return nil }\nfunc (x *B) Get() *RB { return nil }\n"
+            "type RB struct{}\nfunc (r *RB) Run() {}\n"
+            "func Use() {\n"
+            "\t{ a := &A{}; b := a.Get(); b.Run() }\n"
+            "\t{ a := NewB(); b := a.Get(); b.Run() }\n"
+            "}\n"
+        )
+    }
+    edges, _ = _go_graph(files, {"path": "example.com/app"})
+    assert "a.RA.Run" not in _calls_from(edges, "a.Use")
+
+
+def test_types_that_disagree_resolve_to_neither() -> None:
+    """#608 review I1: `ty` is an ArrayType in one block and an ObjectType in another."""
+    files = {
+        "a/a.go": (
+            "package a\n"
+            "type ArrayType struct{}\nfunc (t *ArrayType) Merge() {}\n"
+            "type ObjectType struct{}\nfunc (t *ObjectType) Merge() {}\n"
+            "func NewObjectType() *ObjectType { return nil }\n"
+            "func Use() {\n"
+            "\t{ ty := &ArrayType{}; ty.Merge() }\n"
+            "\t{ ty := NewObjectType(); ty.Merge() }\n"
+            "}\n"
+        )
+    }
+    edges, _ = _go_graph(files, {"path": "example.com/app"})
+    calls = _calls_from(edges, "a.Use")
+    assert "a.ArrayType.Merge" not in calls
+    assert "a.ObjectType.Merge" not in calls

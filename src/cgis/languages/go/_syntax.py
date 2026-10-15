@@ -186,6 +186,9 @@ def declared_names(node: TSNode) -> list[str]:
 #: `go-returns:<i>:<callee>`, where the callee is an FQN, or `<marker>|<method>`
 #: for a method called on another call's result (#608).
 CALL_RESULT = "go-returns:"
+#: A name bound to several known types in one function: `go-any:<t1>;<t2>…`. One
+#: dict serves every block, so the resolver keeps the type only if all agree (#608).
+ANY_OF = "go-any:"
 
 
 def result_type_name(node: TSNode | None, scope: str, import_map: Mapping[str, str]) -> str:

@@ -10,7 +10,7 @@ the import edge and every reference through it (`reconciles_references`).
 from typing import cast
 
 from cgis.core.resolution import AFTER_IMPORT_MAP, ResolutionRules, ResolutionView
-from cgis.languages.go._syntax import BUILTINS, CALL_RESULT
+from cgis.languages.go._syntax import ANY_OF, BUILTINS, CALL_RESULT
 from cgis.languages.go.index import GoIndexFacts
 from cgis.languages.go.naming import GO_LANG
 
@@ -84,6 +84,8 @@ def call_result(type_fqn: str, view: ResolutionView) -> str:
     else passes through untouched; an unknown callee leaves the marker, which
     resolves to nothing.
     """
+    if type_fqn.startswith(ANY_OF):
+        return _agreed(type_fqn, view)
     if not type_fqn.startswith(CALL_RESULT):
         return type_fqn
     position, _, callee = type_fqn.removeprefix(CALL_RESULT).partition(":")
@@ -95,6 +97,13 @@ def call_result(type_fqn: str, view: ResolutionView) -> str:
     returns: list[str] = node.metadata.get("returns") or [] if node else []
     index = int(position) if position.isdigit() else len(returns)
     return returns[index] if index < len(returns) and returns[index] else type_fqn
+
+
+def _agreed(type_fqn: str, view: ResolutionView) -> str:
+    """The one type every binding of a `go-any:` name resolves to; else the marker itself."""
+    resolved = {call_result(t, view) for t in type_fqn.removeprefix(ANY_OF).split(";")}
+    (only,) = resolved if len(resolved) == 1 else (type_fqn,)
+    return type_fqn if only.startswith((CALL_RESULT, ANY_OF)) else only
 
 
 RULES = ResolutionRules(

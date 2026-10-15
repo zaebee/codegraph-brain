@@ -368,21 +368,52 @@ def test_a_variable_assigned_a_call_records_which_result_it_holds() -> None:
     assert "_" not in types
 
 
-def test_a_name_bound_to_two_types_keeps_neither() -> None:
-    """#608 review I1: one dict per function; the later binding must not type the earlier call."""
-    code = (
-        "package server\n"
-        "func Run() {\n"
-        "\t{\n\t\tty := &ArrayType{}\n\t\tty.Merge()\n\t}\n"
-        "\t{\n\t\tty := NewObjectType()\n\t\tty.Merge()\n\t}\n"
-        "\tok := New()\n"
-        "\tok = New()\n"
-        "}\n"
+def _local_types(body: str) -> dict[str, str]:
+    """The local types of `func Run()` with `body`, in package `server`."""
+    nodes, _ = _parse(f"package server\nfunc Run() {{\n{body}}}\n")
+    types: dict[str, str] = nodes["internal.server.Run"].metadata.get("local_types", {})
+    return types
+
+
+def test_a_name_bound_to_different_types_holds_all_of_them() -> None:
+    """#608 review: one dict per function; the resolver keeps a type only if all agree."""
+    types = _local_types("\t{ ty := &ArrayType{} }\n\t{ ty := NewObjectType() }\n")
+    assert (
+        types["ty"] == "go-any:internal.server.ArrayType;go-returns:0:internal.server.NewObjectType"
     )
-    nodes, _ = _parse(code)
-    types = nodes["internal.server.Run"].metadata["local_types"]
-    assert "ty" not in types
-    assert types["ok"] == "go-returns:0:internal.server.New"
+
+
+def test_a_name_bound_once_to_something_untyped_stays_untyped() -> None:
+    """#608 delta review: `x := m[k]` in one block must not inherit `&A{}` from another."""
+    for body in (
+        "\t{ x := m[k] }\n\t{ x := &A{} }\n",
+        "\t{ x := &A{} }\n\t{ x := m[k] }\n",
+        "\t{ a := &A{}; b := a.Get() }\n\t{ a := NewB(); b := a.Get() }\n",
+        "\tx := &A{}\n\tfor _, x := range xs { _ = x }\n",
+        "\tx := &A{}\n\tswitch x := v.(type) { default: _ = x }\n",
+        "\tx := &A{}\n\tgo func(x int) {}(1)\n",
+    ):
+        types = _local_types(body)
+        assert "x" not in types, body
+        assert "b" not in types, body
+
+
+def test_a_closure_parameter_of_the_same_type_keeps_the_name() -> None:
+    """`t.Run(name, func(t *testing.T) {...})`: the closure's `t` is the outer `t`'s type."""
+    nodes, _ = _parse(
+        'package server\nimport "testing"\n'
+        'func TestRun(t *testing.T) {\n\tt.Run("x", func(t *testing.T) { t.Fatal() })\n}\n',
+        "internal/server/server_test.go",
+    )
+    assert nodes["internal.server.TestRun"].metadata["local_types"] == {"t": "testing.T"}
+
+
+def test_the_same_type_bound_twice_is_kept() -> None:
+    assert _local_types("\t{ t := &T{} }\n\t{ t := &T{} }\n")["t"] == "internal.server.T"
+
+
+def test_the_blank_identifier_is_never_typed() -> None:
+    assert "_" not in _local_types("\t_ := New()\n\t_, err := Open()\n\t_ = err\n")
 
 
 def test_a_local_shadowing_an_import_is_the_local() -> None:
@@ -400,9 +431,7 @@ def test_a_local_shadowing_an_import_is_the_local() -> None:
 def test_a_chain_of_results_stops_at_a_bounded_depth() -> None:
     """#608 review I2: each marker inlined its predecessor — quadratic, then RecursionError."""
     hops = "".join(f"\tx{i + 1} := x{i}.Next()\n" for i in range(50))
-    code = f"package server\nfunc Run() {{\n\tx0 := New()\n{hops}}}\n"
-    nodes, _ = _parse(code)
-    types = nodes["internal.server.Run"].metadata["local_types"]
-    assert types["x3"].count("|") == 3  # short chains are kept whole
-    assert "x50" not in types
+    types = _local_types(f"\tx0 := New()\n{hops}")
+    assert types["x8"].count("|") == 8  # the last hop kept
+    assert "x9" not in types
     assert max(len(v) for v in types.values()) < 400
