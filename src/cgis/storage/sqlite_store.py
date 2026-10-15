@@ -163,6 +163,7 @@ class SQLiteStore:
         CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(type);
         CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source);
         CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target);
+        CREATE INDEX IF NOT EXISTS idx_edges_type ON edges(type);
         CREATE INDEX IF NOT EXISTS idx_nodes_file_path ON nodes(file_path);
         CREATE INDEX IF NOT EXISTS idx_edges_file_path ON edges(file_path);
         """

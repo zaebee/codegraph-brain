@@ -4,6 +4,7 @@ A call through a base-typed receiver resolves to the base method. Without these
 edges, impact on an override never reaches the callers that go through the base.
 """
 
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -338,3 +339,18 @@ def test_a_cut_leaves_no_dangling_dispatch_edge() -> None:
 
     ids = {n.id for n in result.nodes}
     assert all(e.source in ids and e.target in ids for e in result.edges)
+
+
+def test_reading_one_edge_type_uses_an_index(tmp_path: Path) -> None:
+    """Every walk reads DISPATCHES whole: a scan of 95k edges for 49 rows on owner-api
+    cost 33 ms a query, the index 0.24 ms (#645 measurement)."""
+    db = str(tmp_path / "g.db")
+    with SQLiteStore(db):
+        pass  # creates the schema
+    with sqlite3.connect(db) as conn:
+        plan = conn.execute(
+            "EXPLAIN QUERY PLAN SELECT * FROM edges WHERE type = ? ORDER BY rowid",
+            (EdgeType.DISPATCHES.value,),
+        ).fetchall()
+
+    assert "idx_edges_type" in " ".join(str(tuple(row)) for row in plan)
