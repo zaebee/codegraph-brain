@@ -1,0 +1,68 @@
+id: owner-exp1-big-dir-vehicle-by-id-query
+repo: owner-api
+sha: 8de22452b5d91242dd742a666ef2cd7b1eb7c1ff
+src_root: ownima-backend/app
+type: impact
+question: 'In this repository, the method `OpenSearchQueryBuilder.vehicle_by_id_query` in
+
+  `ownima-backend/app/storage/query_builders.py` is about to change. Which code under
+
+  `ownima-backend/app/` (not tests, not scripts) can end up calling it, directly or
+
+  transitively? Follow every chain up to its entry point (an HTTP route, a worker task,
+
+  or a function nothing else calls) and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - reservation.conflict_views._fetch_vehicle_details
+  - reservation.conflict_views.pending_booking_groups
+  - reservation.routes.pending_booking_groups
+  - rider.routes._book
+  - rider.routes._booked_once
+  - rider.routes._load_priced_vehicle
+  - rider.routes._load_vehicle_unscoped
+  - rider.routes._price_quote
+  - rider.routes.calculate_pricing
+  - rider.routes.check_vehicle_availability
+  - rider.routes.create_marketplace_reservation
+  - rider.routes.create_reservation
+  - rider.routes.get_vehicle
+  - id: routes._price_quote._calculate_pricing_internal
+    any_of:
+    - routes._price_quote._calculate_pricing_internal
+    - rider.routes._calculate_pricing_internal
+  - id: routes.check_vehicle_availability._check_availability
+    any_of:
+    - routes.check_vehicle_availability._check_availability
+    - rider.routes._check_availability
+  - id: routes.get_vehicle._get_vehicle_details
+    any_of:
+    - routes.get_vehicle._get_vehicle_details
+    - rider.routes._get_vehicle_details
+  - vehicle.query.owner_vehicle_by_id
+  files:
+  - ownima-backend/app/domains/reservation/conflict_views.py
+  - ownima-backend/app/domains/reservation/routes.py
+  - ownima-backend/app/domains/rider/routes.py
+  - ownima-backend/app/domains/vehicle/query.py
+  - ownima-backend/app/storage/query_builders.py
+  allowed_symbols:
+  - OpenSearchQueryBuilder.vehicle_by_id_query
+  allowed_files:
+  - ownima-backend/app/worker/base.py
+notes: 'Exp1 (docs/lab-notes/2026-10-15-exp1-radius-indirection.md), cell big-dir, files 5.
+
+  Gold: cgis closure + AST name closure, every difference adjudicated with file:line.
+
+  All 17 cgis callers verified: rider/routes.py:468 (_get_vehicle_details), :572 (_check_availability),
+  :642 (_load_priced_vehicle), :1144 (_load_vehicle_unscoped), :776/:911/:1056/:1428/:1403/:1311/:1215/:1258
+  chain; vehicle/query.py:196 owner_vehicle_by_id; reservation/conflict_views.py:174 (module-alias call
+  vehicle_query_module.owner_vehicle_by_id) and :123; reservation/routes.py:487 conflict_views.pending_booking_groups.
+  ast_only domains.vehicle.routes.get_vehicle is a name collision with rider get_vehicle: vehicle/routes.py:61
+  calls vehicle_service.get_vehicle -> VehicleService.get_vehicle (vehicle/service.py:427) which does
+  vehicle_client.read, never vehicle_by_id_query. All edges are plain function / module-attribute / Class.staticmethod
+  calls -> direct. Files: query_builders, rider/routes, vehicle/query, reservation/conflict_views, reservation/routes.
+
+  '

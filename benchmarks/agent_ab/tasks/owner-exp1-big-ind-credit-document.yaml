@@ -1,0 +1,54 @@
+id: owner-exp1-big-ind-credit-document
+repo: owner-api
+sha: 8de22452b5d91242dd742a666ef2cd7b1eb7c1ff
+src_root: ownima-backend/app
+type: impact
+question: 'In this repository, the module-level function `credit_document` in
+
+  `ownima-backend/app/domains/finance/top_up_service.py` is about to change. Which code under
+
+  `ownima-backend/app/` (not tests, not scripts) can end up calling it, directly or
+
+  transitively? Follow every chain up to its entry point (an HTTP route, a worker task,
+
+  or a function nothing else calls) and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - TopUpService._credit
+  - TopUpService._publish
+  - TopUpService.fulfill
+  - TopUpService.get_status
+  - TopUpService.handle_webhook_event
+  - VehicleBonusCreditor.credit
+  - VehicleBonusCreditor.index_history
+  - VehicleBonusWorker.credit
+  - VehicleBonusWorker.reconcile
+  - Worker.index_top_up
+  - finance.routes.get_top_up
+  - finance.routes.stripe_webhook
+  - finance.top_up_service.reindex_top_up
+  - worker.vehicle_bonus.reconcile_vehicle_bonus
+  files:
+  - ownima-backend/app/domains/finance/routes.py
+  - ownima-backend/app/domains/finance/top_up_service.py
+  - ownima-backend/app/domains/finance/vehicle_bonus_credit.py
+  - ownima-backend/app/worker/transactions.py
+  - ownima-backend/app/worker/vehicle_bonus.py
+  allowed_symbols:
+  - finance.top_up_service.credit_document
+  allowed_files:
+  - ownima-backend/app/worker/base.py
+notes: 'Exp1 (docs/lab-notes/2026-10-15-exp1-radius-indirection.md), cell big-ind, files 5.
+
+  Gold: cgis closure + AST name closure, every difference adjudicated with file:line.
+
+  Verified: top_up_service.py:250 fulfill, :397 _publish, :509 reindex_top_up, :348 _credit->self._publish,
+  :266 fulfill->self._credit, :294/:305 get_status/handle_webhook_event->self.fulfill; vehicle_bonus_credit.py:265
+  index_history, :139/:144 credit->self.index_history; worker/vehicle_bonus.py:106/130/151 on locally
+  constructed VehicleBonusCreditor, :177 reconcile->reconcile_vehicle_bonus; worker/transactions.py:181
+  index_top_up. INDIRECT: finance/routes.py:232 get_top_up and :344 stripe_webhook call top_up_service.*
+  with top_up_service: TopUpServiceDep (Depends-injected).
+
+  '

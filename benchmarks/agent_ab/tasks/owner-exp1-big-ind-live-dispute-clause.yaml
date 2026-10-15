@@ -1,0 +1,54 @@
+id: owner-exp1-big-ind-live-dispute-clause
+repo: owner-api
+sha: 8de22452b5d91242dd742a666ef2cd7b1eb7c1ff
+src_root: ownima-backend/app
+type: impact
+question: 'In this repository, the module-level function `live_dispute_clause` in
+
+  `ownima-backend/app/domains/chat/service.py` is about to change. Which code under
+
+  `ownima-backend/app/` (not tests, not scripts) can end up calling it, directly or
+
+  transitively? Follow every chain up to its entry point (an HTTP route, a worker task,
+
+  or a function nothing else calls) and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - AdminChatReader._counts
+  - AdminChatReader._structural_clauses
+  - AdminChatReader.list_conversations
+  - ChatService.list_conversations
+  - ChatService.total_unread
+  - ChatWorker.sweep_expired_threads
+  - admin.chat.list_admin_chat_conversations
+  - admin.chat_service._status_clause
+  - chat.routes.conversations
+  - chat.routes.unread_count
+  - chat.service.archived_thread_clause
+  - chat.service.expired_thread_clause
+  - chat.service.listable_clause
+  - chat.service.open_thread_clause
+  files:
+  - ownima-backend/app/domains/admin/chat.py
+  - ownima-backend/app/domains/admin/chat_service.py
+  - ownima-backend/app/domains/chat/routes.py
+  - ownima-backend/app/domains/chat/service.py
+  - ownima-backend/app/worker/chat.py
+  allowed_symbols:
+  - chat.service.live_dispute_clause
+  allowed_files:
+  - ownima-backend/app/worker/base.py
+notes: 'Exp1 (docs/lab-notes/2026-10-15-exp1-radius-indirection.md), cell big-ind, files 5.
+
+  Gold: cgis closure + AST name closure, every difference adjudicated with file:line.
+
+  Verified: chat/service.py:235 open_thread_clause, :267 archived_thread_clause; :250/:253 listable_clause;
+  :288 expired_thread_clause; :1106 ChatService.list_conversations; :937 total_unread; admin/chat_service.py:124-127
+  _status_clause, :857 _counts, :282 _structural_clauses, :327/:343 list_conversations (self.*); admin/chat.py:254-255
+  local AdminChatReader(...).list_conversations; worker/chat.py:263 sweep_expired_threads (registered
+  in worker/base.py:209,287 at module level, no function caller). INDIRECT: chat/routes.py:172 conversations
+  and :378 unread_count call chat_service.* where chat_service is a ChatServiceDep (Depends-injected).
+
+  '

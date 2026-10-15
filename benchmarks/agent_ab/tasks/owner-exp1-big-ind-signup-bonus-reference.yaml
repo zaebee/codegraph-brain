@@ -1,0 +1,59 @@
+id: owner-exp1-big-ind-signup-bonus-reference
+repo: owner-api
+sha: 8de22452b5d91242dd742a666ef2cd7b1eb7c1ff
+src_root: ownima-backend/app
+type: impact
+question: 'In this repository, the module-level function `signup_bonus_reference` in
+
+  `ownima-backend/app/domains/finance/bonus.py` is about to change. Which code under
+
+  `ownima-backend/app/` (not tests, not scripts) can end up calling it, directly or
+
+  transitively? Follow every chain up to its entry point (an HTTP route, a worker task,
+
+  or a function nothing else calls) and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - FinanceService.grant_signup_bonus
+  - VehicleBonusCreditor._pay
+  - VehicleBonusCreditor.credit
+  - VehicleBonusService.dismiss
+  - VehicleBonusService.enroll
+  - VehicleBonusService.get_view
+  - VehicleBonusService.received_signup_bonus
+  - VehicleBonusWorker.credit
+  - VehicleBonusWorker.reconcile
+  - auth.routes._grant_owner_signup_bonus
+  - auth.routes._mark_owner_verified
+  - auth.routes._mark_user_verified
+  - auth.routes.verify_code
+  - finance.routes.dismiss_vehicle_bonus
+  - finance.routes.get_vehicle_bonus
+  - users.routes.register_user
+  - worker.vehicle_bonus.reconcile_vehicle_bonus
+  files:
+  - ownima-backend/app/domains/auth/routes.py
+  - ownima-backend/app/domains/finance/bonus.py
+  - ownima-backend/app/domains/finance/routes.py
+  - ownima-backend/app/domains/finance/service.py
+  - ownima-backend/app/domains/finance/vehicle_bonus.py
+  - ownima-backend/app/domains/finance/vehicle_bonus_credit.py
+  - ownima-backend/app/domains/users/routes.py
+  - ownima-backend/app/worker/vehicle_bonus.py
+  allowed_symbols:
+  - finance.bonus.signup_bonus_reference
+  allowed_files:
+  - ownima-backend/app/worker/base.py
+notes: 'Exp1 (docs/lab-notes/2026-10-15-exp1-radius-indirection.md), cell big-ind, files >=5.
+
+  Gold: cgis closure + AST name closure, every difference adjudicated with file:line.
+
+  Rejected dismiss_onboarding: it calls onboarding.dismiss (domains/users/routes.py:396, module app.domains.users.onboarding:83),
+  not VehicleBonusService.dismiss (domains/finance/vehicle_bonus.py:223). All 17 cgis callers verified
+  (finance_service injected into auth/users routes -> FinanceService.grant_signup_bonus service.py:410;
+  VehicleBonusServiceDep in finance/routes.py:287,304; VehicleBonusCreditor.self.bonus vehicle_bonus_credit.py:105,125,185;
+  worker creditor.credit worker/vehicle_bonus.py:106,151). Indirect: yes.
+
+  '

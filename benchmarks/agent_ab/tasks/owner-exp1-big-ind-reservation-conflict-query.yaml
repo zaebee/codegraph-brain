@@ -1,0 +1,132 @@
+id: owner-exp1-big-ind-reservation-conflict-query
+repo: owner-api
+sha: 8de22452b5d91242dd742a666ef2cd7b1eb7c1ff
+src_root: ownima-backend/app
+type: impact
+question: 'In this repository, the method `OpenSearchQueryBuilder.reservation_conflict_query` in
+
+  `ownima-backend/app/storage/query_builders.py` is about to change. Which code under
+
+  `ownima-backend/app/` (not tests, not scripts) can end up calling it, directly or
+
+  transitively? Follow every chain up to its entry point (an HTTP route, a worker task,
+
+  or a function nothing else calls) and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - ReservationConflictService._check_conflicts_internal
+  - ReservationConflictService._clusters
+  - ReservationConflictService._get_other_reservations
+  - ReservationConflictService._pending_for
+  - ReservationConflictService.get_pending_booking_groups
+  - ReservationConflictService.get_pending_booking_view
+  - ReservationConflictService.get_pending_conflicts_for_reservation
+  - id: ReservationCore.cancel_conflicting_pending_reservations
+    any_of:
+    - ReservationCore.cancel_conflicting_pending_reservations
+    - ReservationCreation.cancel_conflicting_pending_reservations
+    - ReservationService.cancel_conflicting_pending_reservations
+    - ReservationTransitions.cancel_conflicting_pending_reservations
+  - id: ReservationCreation.create_confirmed_reservation
+    any_of:
+    - ReservationCreation.create_confirmed_reservation
+    - ReservationService.create_confirmed_reservation
+  - ReservationFilter.opts
+  - id: ReservationTransitions._cancel_conflicting_after_confirm
+    any_of:
+    - ReservationTransitions._cancel_conflicting_after_confirm
+    - ReservationService._cancel_conflicting_after_confirm
+  - id: ReservationTransitions.advance_confirmation
+    any_of:
+    - ReservationTransitions.advance_confirmation
+    - ReservationService.advance_confirmation
+  - id: ReservationTransitions.force_confirmation
+    any_of:
+    - ReservationTransitions.force_confirmation
+    - ReservationService.force_confirmation
+  - reservation.confirmation_batch.advance_each
+  - reservation.confirmation_batch.advance_owned
+  - reservation.conflict_views.pending_booking_groups
+  - reservation.routes.batch_confirmation_reservation
+  - reservation.routes.confirm_reservation
+  - reservation.routes.confirmation_reservation
+  - reservation.routes.force_confirmation_reservation
+  - reservation.routes.get_pending_conflicts
+  - reservation.routes.pending_booking_groups
+  files:
+  - ownima-backend/app/api/dependencies/filters.py
+  - ownima-backend/app/domains/reservation/confirmation_batch.py
+  - ownima-backend/app/domains/reservation/conflict_views.py
+  - ownima-backend/app/domains/reservation/core.py
+  - ownima-backend/app/domains/reservation/creation.py
+  - ownima-backend/app/domains/reservation/routes.py
+  - ownima-backend/app/domains/reservation/transitions.py
+  - ownima-backend/app/services/reservation_conflict_service.py
+  - ownima-backend/app/storage/query_builders.py
+  allowed_symbols:
+  - FavoritesService._apply_availability
+  - FavoritesService._hydrate
+  - FavoritesService.list_page
+  - OpenSearchQueryBuilder.reservation_conflict_query
+  - ReservationConflictService.check_conflicts
+  - ReservationConflictService.get_conflict_message
+  - ReservationConflictService.has_conflicts
+  - ReservationCore._refuse_if_vehicle_taken
+  - ReservationCreation._persist_under_lock
+  - ReservationCreation._refuse_if_vehicle_taken
+  - ReservationCreation._validate_no_conflicts
+  - ReservationCreation.check_booking_window
+  - ReservationCreation.create_confirmed_reservation
+  - ReservationCreation.first_free_pickup_time
+  - ReservationService._confirm_under_lock
+  - ReservationService._persist_under_lock
+  - ReservationService._refuse_if_vehicle_taken
+  - ReservationService._validate_no_conflicts
+  - ReservationService.check_booking_window
+  - ReservationService.create_confirmed_reservation
+  - ReservationService.first_free_pickup_time
+  - ReservationTransitions._confirm_under_lock
+  - ReservationTransitions._refuse_if_vehicle_taken
+  - VehicleService._set_is_booked_vehicles_by_date
+  - VehicleService.list_vehicles
+  - favorites.routes.list_favorites
+  - reservation.routes.validate_reservation
+  - rider.routes._book
+  - rider.routes._booked_once
+  - rider.routes._filter_available_vehicles_by_date
+  - rider.routes.calculate_pricing
+  - rider.routes.check_vehicle_availability
+  - rider.routes.create_marketplace_reservation
+  - rider.routes.create_reservation
+  - rider.routes.search_vehicles
+  - time_table.routes.list_time_slots_by_vehicle
+  - vehicle.routes.list_vehicles
+  allowed_files:
+  - ownima-backend/app/domains/favorites/routes.py
+  - ownima-backend/app/domains/favorites/service.py
+  - ownima-backend/app/domains/rider/routes.py
+  - ownima-backend/app/domains/time_table/routes.py
+  - ownima-backend/app/domains/vehicle/routes.py
+  - ownima-backend/app/domains/vehicle/service.py
+  - ownima-backend/app/worker/base.py
+notes: 'Exp1 (docs/lab-notes/2026-10-15-exp1-radius-indirection.md), cell big-ind, files >=5.
+
+  Gold: cgis closure + AST name closure, every difference adjudicated with file:line.
+
+  Accepted all 6. confirmation_batch.advance_owned -> reservation_service.advance_confirmation (confirmation_batch.py:62);
+  ReservationService(ReservationCreation, ReservationTransitions) (reservation/service.py:58) inherits
+  ReservationTransitions.advance_confirmation (transitions.py:209), the only def of that name. advance_each
+  -> advance_owned (confirmation_batch.py:117). Routes via ReservationServiceDep (reservation/dependencies.py:40):
+  confirmation_reservation -> advance_owned (routes.py:857), batch_confirmation_reservation -> advance_each
+  (routes.py:916), force_confirmation_reservation -> force_confirmation (routes.py:954; transitions.py:573
+  -> advance_confirmation), confirm_reservation -> create_confirmed_reservation (routes.py:421; creation.py:1025,
+  cancel_conflicting_pending_reservations at creation.py:~1133 -> self.conflict_service.get_pending_conflicts_for_reservation
+  core.py:283). All 16 cgis callers verified. GAP missed by BOTH cgis and AST: ReservationConflictService.check_conflicts
+  passes self._check_conflicts_internal as a callable to self._execute_with_metrics (reservation_conflict_service.py:183-185),
+  a reference, not a call. Every caller of check_conflicts therefore reaches the target too; see missed_by_both
+  (the cgis closure from check_conflicts, a lower bound: callers cgis itself misses there, e.g. via injected
+  conflict_service in creation.py:785, are not chased). Not folded into gold, per the gold definition.
+
+  '

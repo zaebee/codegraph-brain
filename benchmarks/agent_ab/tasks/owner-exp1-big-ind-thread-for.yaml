@@ -1,0 +1,177 @@
+id: owner-exp1-big-ind-thread-for
+repo: owner-api
+sha: 8de22452b5d91242dd742a666ef2cd7b1eb7c1ff
+src_root: ownima-backend/app
+type: impact
+question: 'In this repository, the method `ChatLifecycle._thread_for` in
+
+  `ownima-backend/app/domains/chat/lifecycle.py` is about to change. Which code under
+
+  `ownima-backend/app/` (not tests, not scripts) can end up calling it, directly or
+
+  transitively? Follow every chain up to its entry point (an HTTP route, a worker task,
+
+  or a function nothing else calls) and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - ChatLifecycle._announce
+  - ChatLifecycle._announce_and_close
+  - ChatLifecycle._guarded
+  - ChatLifecycle._open
+  - ChatLifecycle._open_and_announce
+  - ChatLifecycle.on_cancelled
+  - ChatLifecycle.on_collected
+  - ChatLifecycle.on_completed
+  - ChatLifecycle.on_confirmed
+  - id: ReservationCore._cancel_reservation
+    any_of:
+    - ReservationCore._cancel_reservation
+    - ReservationCreation._cancel_reservation
+    - ReservationService._cancel_reservation
+    - ReservationTransitions._cancel_reservation
+  - id: ReservationCore.cancel_conflicting_pending_reservations
+    any_of:
+    - ReservationCore.cancel_conflicting_pending_reservations
+    - ReservationCreation.cancel_conflicting_pending_reservations
+    - ReservationService.cancel_conflicting_pending_reservations
+    - ReservationTransitions.cancel_conflicting_pending_reservations
+  - id: ReservationCreation.create_confirmed_reservation
+    any_of:
+    - ReservationCreation.create_confirmed_reservation
+    - ReservationService.create_confirmed_reservation
+  - id: ReservationEffects._apply_transition
+    any_of:
+    - ReservationEffects._apply_transition
+    - ReservationCore._apply_transition
+    - ReservationCreation._apply_transition
+    - ReservationService._apply_transition
+    - ReservationTransitions._apply_transition
+  - id: ReservationEffects._run_effect
+    any_of:
+    - ReservationEffects._run_effect
+    - ReservationCore._run_effect
+    - ReservationCreation._run_effect
+    - ReservationService._run_effect
+    - ReservationTransitions._run_effect
+  - id: ReservationTransitions._cancel_conflicting_after_confirm
+    any_of:
+    - ReservationTransitions._cancel_conflicting_after_confirm
+    - ReservationService._cancel_conflicting_after_confirm
+  - id: ReservationTransitions.advance_confirmation
+    any_of:
+    - ReservationTransitions.advance_confirmation
+    - ReservationService.advance_confirmation
+  - id: ReservationTransitions.cancel_reservation
+    any_of:
+    - ReservationTransitions.cancel_reservation
+    - ReservationService.cancel_reservation
+  - id: ReservationTransitions.collect_reservation
+    any_of:
+    - ReservationTransitions.collect_reservation
+    - ReservationService.collect_reservation
+  - id: ReservationTransitions.complete_reservation
+    any_of:
+    - ReservationTransitions.complete_reservation
+    - ReservationService.complete_reservation
+  - id: ReservationTransitions.force_confirmation
+    any_of:
+    - ReservationTransitions.force_confirmation
+    - ReservationService.force_confirmation
+  - Worker.auto_cancel_no_response
+  - Worker.cancel
+  - reservation.confirmation_batch.advance_each
+  - reservation.confirmation_batch.advance_owned
+  - reservation.routes.batch_confirmation_reservation
+  - reservation.routes.cancel_reservation
+  - reservation.routes.collect_reservation
+  - reservation.routes.complete_reservation
+  - reservation.routes.confirm_reservation
+  - reservation.routes.confirmation_reservation
+  - reservation.routes.force_confirmation_reservation
+  files:
+  - ownima-backend/app/domains/chat/lifecycle.py
+  - ownima-backend/app/domains/reservation/confirmation_batch.py
+  - ownima-backend/app/domains/reservation/core.py
+  - ownima-backend/app/domains/reservation/creation.py
+  - ownima-backend/app/domains/reservation/effects.py
+  - ownima-backend/app/domains/reservation/routes.py
+  - ownima-backend/app/domains/reservation/transitions.py
+  - ownima-backend/app/worker/reservations.py
+  allowed_symbols:
+  - ChatLifecycle._guarded
+  - ChatLifecycle._thread_for
+  - ChatLifecycle.on_confirmed
+  - ReservationCore._apply_transition
+  - ReservationCore._cancel_reservation
+  - ReservationCore._run_effect
+  - ReservationCore.cancel_conflicting_pending_reservations
+  - ReservationCreation._apply_transition
+  - ReservationCreation._cancel_reservation
+  - ReservationCreation._run_effect
+  - ReservationCreation.cancel_conflicting_pending_reservations
+  - ReservationCreation.create_confirmed_reservation
+  - ReservationEffects._apply_transition
+  - ReservationEffects._run_effect
+  - ReservationService._apply_transition
+  - ReservationService._cancel_conflicting_after_confirm
+  - ReservationService._cancel_reservation
+  - ReservationService._run_effect
+  - ReservationService.advance_confirmation
+  - ReservationService.cancel_conflicting_pending_reservations
+  - ReservationService.cancel_reservation
+  - ReservationService.collect_reservation
+  - ReservationService.complete_reservation
+  - ReservationService.create_confirmed_reservation
+  - ReservationService.force_confirmation
+  - ReservationTransitions._apply_transition
+  - ReservationTransitions._cancel_conflicting_after_confirm
+  - ReservationTransitions._cancel_reservation
+  - ReservationTransitions._run_effect
+  - ReservationTransitions.advance_confirmation
+  - ReservationTransitions.cancel_conflicting_pending_reservations
+  - ReservationTransitions.cancel_reservation
+  - ReservationTransitions.collect_reservation
+  - ReservationTransitions.complete_reservation
+  - ReservationTransitions.force_confirmation
+  - reservation.confirmation_batch.advance_each
+  - reservation.confirmation_batch.advance_owned
+  - reservation.routes.batch_confirmation_reservation
+  - reservation.routes.cancel_reservation
+  - reservation.routes.collect_reservation
+  - reservation.routes.complete_reservation
+  - reservation.routes.confirm_reservation
+  - reservation.routes.confirmation_reservation
+  - reservation.routes.force_confirmation_reservation
+  allowed_files:
+  - ownima-backend/app/worker/base.py
+notes: 'Exp1 (docs/lab-notes/2026-10-15-exp1-radius-indirection.md), cell big-ind, files 9.
+
+  Gold: cgis closure + AST name closure, every difference adjudicated with file:line.
+
+  Direct: lifecycle.py:260 (_open), :297 (_announce), :322 (_announce_and_close); _open_and_announce->_open
+  :242; on_collected/on_completed/on_cancelled pass lambdas to _guarded :97/:104/:111; worker/reservations.py:268,:595
+  call ChatLifecycle(session).on_cancelled. All 9 cgis valid. MISSED BY BOTH: (a) callback - on_confirmed
+  passes bound self._open_and_announce to self._guarded :87-90, and _guarded invokes action(reservation)
+  :157; (b) registry/getattr - reservation/effects.py:277 `await getattr(self.chat_lifecycle, hook)(reservation)`
+  with hooks declared in reservation/machine.py Chat(''on_confirmed''|''on_collected''|''on_completed''|''on_cancelled'')
+  :486-727; chat_lifecycle injected via ChatLifecycleDep (reservation/dependencies.py:25-36, core.py:156).
+  From _run_effect: _apply_transition (graph) <- ReservationTransitions.{advance_confirmation,confirm_by_rider,cancel_reservation,collect_reservation,complete_reservation,mark_overdue},
+  ReservationCreation.{create_pending,create_confirmed}_reservation, ReservationCore._cancel_reservation
+  <- cancel_conflicting_pending_reservations (core.py:298) <- transitions.py:193 / creation.py:1133; force_confirmation->advance_confirmation
+  transitions.py:573. Through ReservationServiceDep: reservation/routes.py:421,954,983,1009,1044,1136;
+  confirmation_batch.py:63 advance_owned <- :113 advance_each; reservation/routes.py:857,916; rider/routes.py:1504
+  (_book -> create_pending_reservation, then _booked_once/create_reservation/create_marketplace_reservation),
+  :1927 (confirmation_reservation -> confirm_by_rider). rider/routes.py:1723 rider cancel goes to RiderService.cancel_reservation
+  (rider/service.py:303), which does not use the machine - excluded. worker Worker._cancel_reservation
+  (worker/reservations.py:178) is a different method. ast_only rejected: domains/ws/routes.py:152 `t.cancel()`
+  is asyncio.Task.cancel, not Worker.cancel.
+
+  Corrected after PR #633 review (C1): the CREATE_PENDING, CONFIRM_AS_RIDER and MARK_OVERDUE
+
+  transitions carry no Chat(...) effect (reservation/machine.py:446-450, 643, 672), so their callers
+
+  never reach _thread_for. 9 symbols and rider/routes.py were removed from gold.
+
+  '

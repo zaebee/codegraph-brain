@@ -1,0 +1,57 @@
+id: owner-exp1-big-ind-extra-options-filter
+repo: owner-api
+sha: 8de22452b5d91242dd742a666ef2cd7b1eb7c1ff
+src_root: ownima-backend/app
+type: impact
+question: 'In this repository, the module-level function `extra_options_filter` in
+
+  `ownima-backend/app/api/dependencies/filters.py` is about to change. Which code under
+
+  `ownima-backend/app/` (not tests, not scripts) can end up calling it, directly or
+
+  transitively? Follow every chain up to its entry point (an HTTP route, a worker task,
+
+  or a function nothing else calls) and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - CatalogService.search_vehicles
+  - VehicleService._build_vehicle_filters
+  - VehicleService.list_vehicles
+  - catalog.query._build_must_clauses
+  - catalog.query.build_catalog_query_body
+  - catalog.routes.search_catalog_vehicles
+  - reservation.query.reservation_filters
+  - reservation.routes.list_reservations
+  - time_table.routes.list_time_slots_by_vehicle
+  - vehicle.query.garage_filters
+  - vehicle.query.owner_garage
+  - vehicle.routes.list_vehicles
+  files:
+  - ownima-backend/app/api/dependencies/filters.py
+  - ownima-backend/app/domains/catalog/query.py
+  - ownima-backend/app/domains/catalog/routes.py
+  - ownima-backend/app/domains/catalog/service.py
+  - ownima-backend/app/domains/reservation/query.py
+  - ownima-backend/app/domains/reservation/routes.py
+  - ownima-backend/app/domains/time_table/routes.py
+  - ownima-backend/app/domains/vehicle/query.py
+  - ownima-backend/app/domains/vehicle/routes.py
+  - ownima-backend/app/domains/vehicle/service.py
+  allowed_symbols:
+  - dependencies.filters.extra_options_filter
+  allowed_files:
+  - ownima-backend/app/worker/base.py
+notes: 'Exp1 (docs/lab-notes/2026-10-15-exp1-radius-indirection.md), cell big-ind, files 10.
+
+  Gold: cgis closure + AST name closure, every difference adjudicated with file:line.
+
+  Verified: vehicle/query.py:100 garage_filters, :116 owner_garage; reservation/query.py:151 reservation_filters;
+  catalog/query.py:336 _build_must_clauses, :436 build_catalog_query_body; catalog/service.py:373 CatalogService.search_vehicles;
+  vehicle/service.py:793 _build_vehicle_filters (itself has no callers, still a caller), :875 list_vehicles;
+  reservation/routes.py:734 list_reservations (module call reservation_query.reservation_filters). INDIRECT:
+  catalog/routes.py:29 service.search_vehicles (CatalogServiceDep), vehicle/routes.py:141 and time_table/routes.py:205
+  vehicle_service.list_vehicles (VehicleServiceDep).
+
+  '
