@@ -36,7 +36,7 @@ gold:
   - src/cgis/guardian/runner.py
   allowed_symbols:
   - core._sanitize_finder_result
-notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), ind, pair 6, files 4, hop kinds [''direct'',
+notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), ind, pair 3, files 4, hop kinds [''direct'',
   ''param_obj''].
 
   core.py:65/74/97 finder_pass; core.py:124 GuardianReviewer._finder_pass <- :129 run_review <- chunked.py:108

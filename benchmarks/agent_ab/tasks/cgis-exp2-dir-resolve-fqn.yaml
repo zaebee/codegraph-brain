@@ -33,8 +33,13 @@ gold:
   - src/cgis/cli.py
   - src/cgis/query/fqn.py
   allowed_symbols:
+  - auto_refresh.refreshes_graph
+  - auto_refresh.refreshes_graph.wrapper
+  - auto_refresh.wrapper
   - fqn.resolve_fqn
-notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), dir, pair 4, files 3, hop kinds [''direct''].
+  allowed_files:
+  - src/cgis/api/auto_refresh.py
+notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), dir, pair 4, files 4, hop kinds [''direct''].
 
   mcp_server.py:558,642,710,1098,1338; cli.py:308 _resolve_cli_fqn (<- cli.py:444 trace, :575 impact,
   :850 structure), cli.py:1345 context, cli.py:1521 _resolve_checkpoint (<- cli.py:1612 audit). No FP.

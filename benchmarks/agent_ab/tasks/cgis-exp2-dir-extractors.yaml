@@ -27,7 +27,7 @@ gold:
   - src/cgis/languages/__init__.py
   allowed_symbols:
   - languages.extractors
-notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), dir, pair 5, files 4, hop kinds [''direct''].
+notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), dir, pair 2, files 4, hop kinds [''direct''].
 
   auto_refresh.py:81 _refresh, :57 refresh_if_stale, :107 wrapper; mcp_server.py:468 cgis_ingest (NOT
   @refreshes_graph, mcp_server.py:422, so no callback); cli.py:206 ingest. No FP. Rejected ast_only: refreshes_graph

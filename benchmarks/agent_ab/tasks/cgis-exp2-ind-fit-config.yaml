@@ -1,0 +1,52 @@
+id: cgis-exp2-ind-fit-config
+repo: cgis
+sha: a5e175e0152309f83fb3fee66fa008e0857e965c
+src_root: src
+type: impact
+question: 'In this repository, the function `_fit_config` in
+
+  `src/cgis/query/drift/drift.py` is about to change. Which code under `src/`
+
+  (not tests, not scripts) can end up calling it, directly or transitively? Follow every
+
+  chain up to its entry point (a CLI command, an MCP tool, or a function nothing else calls)
+
+  and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - mcp_server.cgis_drift
+  - mcp_server.cgis_init_ontology
+  - cli.drift
+  - cli.init_ontology
+  - DriftScorer.fit_templates
+  - DriftScorer.shape_residual
+  - drift_service._fit_quality
+  - drift_service.analyze_drift
+  - ontology_init._domain_entry
+  - ontology_init._fit_templates
+  - ontology_init.propose_ontology
+  files:
+  - src/cgis/api/mcp_server.py
+  - src/cgis/cli.py
+  - src/cgis/query/drift/drift.py
+  - src/cgis/query/drift/drift_service.py
+  - src/cgis/query/drift/ontology_init.py
+  allowed_symbols:
+  - auto_refresh.refreshes_graph
+  - auto_refresh.refreshes_graph.wrapper
+  - auto_refresh.wrapper
+  - drift._fit_config
+  allowed_files:
+  - src/cgis/api/auto_refresh.py
+notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), ind, pair 7, files 6, hop kinds [''direct'',
+  ''param_obj''].
+
+  drift.py:141 fit_templates, :167 shape_residual (direct); drift_service.py:48/52/58 _fit_quality `scorer.*`
+  and ontology_init.py:196 _fit_templates `scorer.fit_templates` (scorer is a DriftScorer parameter: param_obj);
+  drift_service.py:181 analyze_drift; ontology_init.py:357 _domain_entry, :522 propose_ontology; mcp_server.py:783
+  cgis_drift, :1045 cgis_init_ontology; cli.py:1209 drift, :1300 init_ontology. No FP, nothing missed;
+  cgis_drift and cgis_init_ontology are @refreshes_graph and the wrapper is plumbing (v2 rule).
+
+  '

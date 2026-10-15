@@ -18,7 +18,21 @@ gold:
   symbols:
   - auto_refresh._refresh
   - auto_refresh.refresh_if_stale
+  - mcp_server.cgis_analyze_impact
+  - mcp_server.cgis_audit_reachability
+  - mcp_server.cgis_context
+  - mcp_server.cgis_drift
+  - mcp_server.cgis_find_orphans
+  - mcp_server.cgis_find_symbol
+  - mcp_server.cgis_fractal
+  - mcp_server.cgis_get_structure
   - mcp_server.cgis_ingest
+  - mcp_server.cgis_init_ontology
+  - mcp_server.cgis_metrics
+  - mcp_server.cgis_overview
+  - mcp_server.cgis_suggest_packages
+  - mcp_server.cgis_trace_flow
+  - mcp_server.cgis_validate
   - cli.ingest
   - TypeScriptPack.classify
   - _bindings.bare_imports
@@ -53,7 +67,6 @@ gold:
   - src/cgis/api/mcp_server.py
   - src/cgis/cli.py
   - src/cgis/core/js_globals.py
-  - src/cgis/languages/python/resolution.py
   - src/cgis/languages/typescript/__init__.py
   - src/cgis/languages/typescript/_bindings.py
   - src/cgis/languages/typescript/extractor.py
@@ -64,8 +77,11 @@ gold:
   - src/cgis/resolver/indices.py
   - src/cgis/resolver/symbols.py
   allowed_symbols:
+  - auto_refresh.refreshes_graph
+  - auto_refresh.refreshes_graph.wrapper
+  - auto_refresh.wrapper
   - js_globals.specifier_fqn
-notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), desc, pair 0, files 14, hop kinds [''direct'',
+notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), desc, pair 0, files 13, hop kinds [''direct'',
   ''polymorphic'', ''param_obj'', ''attr_dep'', ''registry''].
 
   MISFITS DIRECT. cgis''s 8 are correct: extractor.py:268 _handle_import, :166 _walk, :116 parse->bare_imports
@@ -108,8 +124,5 @@ notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), desc, pair 0,
   project readers); cgis_drift/cli.drift (analyze_drift), cli.guardian_rate (rate_review); GoPack.classify
   / PythonPack.classify (go/__init__.py:62, python/__init__.py:64 call their own index.classify: sibling
   overrides, not callers).
-
-  Path-sensitive rule: the argument-infeasible callers (always given the Python pack, never reaching TS
-  code) are removed: _normalized, _resolved_import_edge, annotated_alias, follow_reexport.
 
   '

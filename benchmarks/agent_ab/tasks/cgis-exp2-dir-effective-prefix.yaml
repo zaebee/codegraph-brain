@@ -38,8 +38,13 @@ gold:
   - src/cgis/query/context/orphans.py
   - src/cgis/query/fqn.py
   allowed_symbols:
+  - auto_refresh.refreshes_graph
+  - auto_refresh.refreshes_graph.wrapper
+  - auto_refresh.wrapper
   - fqn.effective_prefix
-notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), dir, pair 8, files 6, hop kinds [''direct''].
+  allowed_files:
+  - src/cgis/api/auto_refresh.py
+notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), dir, pair 7, files 7, hop kinds [''direct''].
 
   fqn.py:102 effective_prefixes; mcp_server.py:983 cgis_find_symbol, :1179 cgis_metrics (effective_prefixes);
   cli.py:792 find, :1490 metrics; suggest_service.py:229 <- mcp_server.py:859, cli.py:1886; audit.py:208

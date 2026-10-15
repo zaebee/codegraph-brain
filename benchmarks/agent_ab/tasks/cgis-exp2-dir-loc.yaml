@@ -31,8 +31,13 @@ gold:
   - src/cgis/query/context/context_service.py
   - src/cgis/query/context/prompt.py
   allowed_symbols:
+  - auto_refresh.refreshes_graph
+  - auto_refresh.refreshes_graph.wrapper
+  - auto_refresh.wrapper
   - prompt._loc
-notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), dir, pair 6, files 4, hop kinds [''direct''].
+  allowed_files:
+  - src/cgis/api/auto_refresh.py
+notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), dir, pair 6, files 5, hop kinds [''direct''].
 
   prompt.py:79,84,110,139,145,178,180,181; context_service.py:127; mcp_server.py:1101 cgis_context; cli.py:1360
   context. All plain calls, no FP. refreshes_graph.wrapper (api/auto_refresh.py:108 `return tool(*args,

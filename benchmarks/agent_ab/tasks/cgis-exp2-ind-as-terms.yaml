@@ -32,8 +32,13 @@ gold:
   - src/cgis/cli.py
   - src/cgis/query/render/metrics.py
   allowed_symbols:
+  - auto_refresh.refreshes_graph
+  - auto_refresh.refreshes_graph.wrapper
+  - auto_refresh.wrapper
   - metrics._as_terms
-notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), ind, pair 4, files 3, hop kinds [''direct'',
+  allowed_files:
+  - src/cgis/api/auto_refresh.py
+notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), ind, pair 4, files 4, hop kinds [''direct'',
   ''param_obj''].
 
   metrics.py:77 _segment_exclusion, :103 _scope_restriction; those at :378/:379 resolution_metric, :404/:405

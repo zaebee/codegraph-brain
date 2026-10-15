@@ -21,9 +21,20 @@ gold:
   - mcp_server._render_subgraph
   - mcp_server._render_subgraph_with_freshness
   - mcp_server.cgis_analyze_impact
+  - mcp_server.cgis_audit_reachability
+  - mcp_server.cgis_context
+  - mcp_server.cgis_drift
+  - mcp_server.cgis_find_orphans
+  - mcp_server.cgis_find_symbol
+  - mcp_server.cgis_fractal
   - mcp_server.cgis_get_structure
   - mcp_server.cgis_ingest
+  - mcp_server.cgis_init_ontology
+  - mcp_server.cgis_metrics
+  - mcp_server.cgis_overview
+  - mcp_server.cgis_suggest_packages
   - mcp_server.cgis_trace_flow
+  - mcp_server.cgis_validate
   - cli._render_graph
   - cli.impact
   - cli.ingest
@@ -67,6 +78,9 @@ gold:
   - src/cgis/pipeline/__init__.py
   - src/cgis/query/render/mermaid.py
   allowed_symbols:
+  - auto_refresh.refreshes_graph
+  - auto_refresh.refreshes_graph.wrapper
+  - auto_refresh.wrapper
   - naming._relative
 notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), desc, pair 0, files 14, hop kinds [''direct'',
   ''polymorphic'', ''param_obj'', ''attr_dep''].

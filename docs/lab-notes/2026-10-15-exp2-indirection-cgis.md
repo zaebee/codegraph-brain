@@ -94,3 +94,38 @@ removed 4 argument-infeasible callers) and `_record_usage` (29/11).
 **Gold-check pilot (does not count):** pairs 1 and 8 plus `specifier_fqn`, 1 run each, to catch gold
 defects before the full run, as exp1's pilot did. Any gold change it causes is recorded here before
 the full run starts. The full run is all 19 tasks × 3 fresh runs.
+
+## Gold-check pilot: findings and corrections (before the full run)
+
+5 sessions, all on the organisation key; they do not count. Two gold defects:
+
+1. **The decorator ruling was wrong in one direction.** `@refreshes_graph`'s wrapper calls the tool,
+   and it also calls `refresh_if_stale` → `IngestionPipeline.run`, so all 14 decorated MCP tools really
+   reach the whole ingest chain. Agents named those tools, correctly. Corrected rulings:
+   - the wrapper and the refresh path are real callers in gold;
+   - for classification, a decorator hop counts as **direct**, because it is named at the decorated
+     definition, so no task changes class;
+   - the wrapper itself is **optional**: agents do not name it, and requiring it would measure
+     decorator awareness, not the indirection under test.
+2. **`specifier_fqn` file list.** It kept `python/resolution.py` after the argument-infeasible symbols
+   were removed. Files are now recomputed from the gold symbols.
+
+The refresh path enlarged `refresh_dispatch` (5 → 20 symbols) and `_first_top_level_arg` (12 → 27),
+which broke their pairs. **The pre-registered pairing algorithm was re-applied, unchanged, to the
+corrected pool.** It gives 7 pairs, at or above the minimum of 6:
+
+| # | direct (files/symbols) | indirect (files/symbols) |
+|---|---|---|
+| 1 | reject_metrics_path 3/5 | GuardianReviewer._finder_pass 3/5 |
+| 2 | languages.extractors 4/4 | SQLiteStore.get_edge_stats 5/6 |
+| 3 | build_ladder 4/6 | _sanitize_finder_result 4/10 |
+| 4 | resolve_fqn 4/13 | _as_terms 4/12 |
+| 5 | visible_findings 5/6 | SQLiteStore.get_incoming_edges 5/8 |
+| 6 | prompt._loc 5/10 | DriftScorer.fit_templates 6/10 |
+| 7 | effective_prefix 7/15 | drift._fit_config 6/12 |
+
+These counts include the wrapper, which the pairing saw. In the task files it is optional, so each
+required count drops by 1 where the wrapper applied. That holds on both sides of pairs 3–7 and on the
+direct side of pair 2's partner (get_edge_stats), so within-pair differences move by at most 1.
+The descriptive tasks are `_relative` (47/14), `specifier_fqn` (47/13) and `_record_usage` (29/11).
+The table above supersedes the earlier pairs table.

@@ -33,7 +33,12 @@ gold:
   - src/cgis/query/drift/ontology_init.py
   allowed_symbols:
   - DriftScorer.fit_templates
-notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), ind, pair 7, files 5, hop kinds [''param_obj'',
+  - auto_refresh.refreshes_graph
+  - auto_refresh.refreshes_graph.wrapper
+  - auto_refresh.wrapper
+  allowed_files:
+  - src/cgis/api/auto_refresh.py
+notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), ind, pair 6, files 6, hop kinds [''param_obj'',
   ''direct''].
 
   drift_service.py:48 `scorer.fit_templates` and ontology_init.py:196 `scorer.fit_templates` (scorer is

@@ -28,7 +28,12 @@ gold:
   - src/cgis/storage/sqlite_store.py
   allowed_symbols:
   - SQLiteStore.get_edge_stats
-notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), ind, pair 5, files 4, hop kinds [''param_obj'',
+  - auto_refresh.refreshes_graph
+  - auto_refresh.refreshes_graph.wrapper
+  - auto_refresh.wrapper
+  allowed_files:
+  - src/cgis/api/auto_refresh.py
+notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), ind, pair 2, files 5, hop kinds [''param_obj'',
   ''direct''].
 
   cli.py:713-714 and mcp_server.py:883-884 `with SQLiteStore(db) as store: store.get_edge_stats()` (param_obj,

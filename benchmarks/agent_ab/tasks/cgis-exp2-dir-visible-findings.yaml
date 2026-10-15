@@ -30,7 +30,7 @@ gold:
   - src/cgis/guardian/skeptic.py
   allowed_symbols:
   - skeptic.visible_findings
-notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), dir, pair 7, files 5, hop kinds [''direct''].
+notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), dir, pair 5, files 5, hop kinds [''direct''].
 
   bench.py:211 killed_ground_truth (no in-src caller); github_poster.py:82 build_review <- :118 post_inline_review;
   render.py:63 render_review_body, :86/:87 render_report <- render.py:64, github_poster.py:98, runner.py:500

@@ -26,8 +26,13 @@ gold:
   - src/cgis/cli.py
   - src/cgis/query/drift/fractal.py
   allowed_symbols:
+  - auto_refresh.refreshes_graph
+  - auto_refresh.refreshes_graph.wrapper
+  - auto_refresh.wrapper
   - fractal.build_ladder
-notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), dir, pair 3, files 3, hop kinds [''direct''].
+  allowed_files:
+  - src/cgis/api/auto_refresh.py
+notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), dir, pair 3, files 4, hop kinds [''direct''].
 
   fractal.py:192,275,292; mcp_server.py:1379 cgis_fractal; cli.py:1950 fractal. All direct, no FP. refreshes_graph.wrapper
   (api/auto_refresh.py:108 `return tool(*args, **kwargs)`) calls every @refreshes_graph-decorated MCP
