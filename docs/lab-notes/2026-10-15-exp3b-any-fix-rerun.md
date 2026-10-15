@@ -46,23 +46,34 @@ old graph. Fewer wrong edges in the graph is not evidence that answers improved.
 
 **Verdict: does not help, as expected.** `calculate-total-price` misses the same FavoritesService
 chain in 3/3 runs. The `opensearch-mget` clause is met (no session below 0.90), but with n=3 the
-missing 0.50 outlier cannot be attributed to the fix; all three runs miss only
-`Worker.reset_showcase_data` (the `cls._run_reset` gap, #637).
+missing 0.50 outlier cannot be attributed to the fix. All three runs miss only
+`Worker.reset_showcase_data` (the `cls._run_reset` gap, #637); exp3 run 0 had found it, so the
+maximum went down while the median stayed at 0.97.
 
-**Why the agent does not follow the gap: it is shown the name, not the place.** In all three
-`calculate-total-price` sessions, `cgis_analyze_impact` (text format) ended with:
+**What the agent was shown.** In all three `calculate-total-price` sessions, `cgis_analyze_impact`
+(text format) ended with this line (verbatim, one line, wrapped here):
 
 ```
 coverage: 10 of 53 calls unresolved (unresolved_calls_by_name); most often service.get_vehicle (3),
-service.list_vehicles (3), service.get_vehicle_detail (2), self.catalog_service.build_cards (1), ...
+service.list_vehicles (3), service.get_vehicle_detail (2), self.catalog_service.build_cards (1),
+service.search_vehicles (1)
 ```
 
-So after #638 the gap is visible: `self.catalog_service.build_cards` is listed. But the note gives no
-caller and no file:line. To follow it the agent must grep for `catalog_service.build_cards`, and none
-did; two of three read no file at all. It was also one name among five, with no sign that it matters
-more than `service.get_vehicle`.
+After #638 the gap is visible: `self.catalog_service.build_cards` is listed. But the line gives a
+name, not a place. And **9 of its 10 calls are test code** (`domains/*/tests/test_*.py`), which the
+tree above it leaves out ("26 test caller(s) left out"). The count (`unknown_calls_named`) does not
+apply the same screen. The one production call, `self.catalog_service.build_cards` in
+`FavoritesService._hydrate` (`favorites/service.py:383`), is exactly the missed chain, and it was
+shown fourth of five, among test noise. The JSON format would not have helped: its `top_unresolved`
+is also (name, count) pairs.
 
-**Next lever (from the criterion): the coverage note, not the resolver.** For each unresolved call
-whose name matches a method in the answer, say where it is made (`FavoritesService._hydrate`,
-`favorites/service.py:383`) and that its callers are not in the tree. That turns the note from a
-count into a lead the agent can follow with one read. Worth a probe of the same size after the change.
+None of the agents grepped for `catalog_service.build_cards`; their greps searched only
+`calculate_total_price|apply_vehicle_prices|_price_group_from_templates`. Two of three opened no
+file and saw only grep match lines.
+
+**Next lever (from the criterion): the coverage note, not the resolver.**
+(a) Screen the unresolved count the same way the traversal is screened, with no test callers. Here
+the line would have read `1 of 44 calls unresolved … self.catalog_service.build_cards (1)`.
+(b) Name each remaining call's caller and file:line; the store already holds `source`, `file_path`
+and `line_number`. This is a design diagnosis from three transcripts, not a demonstrated cause.
+The test is a probe of the same size after the change.
