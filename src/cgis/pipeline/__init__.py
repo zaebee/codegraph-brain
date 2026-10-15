@@ -118,10 +118,21 @@ def _fingerprint_of(root: Path) -> str | None:
     return digest.hexdigest()
 
 
+def _running_fingerprint() -> str | None:
+    """The fingerprint of this process's own code, or None when it cannot be read.
+
+    Silent: taken at import, where stdout is the MCP stdio stream and `--format
+    json` output. A read error (a file removed mid-install) gives None rather
+    than failing the import of every command; the ingest then says so.
+    """
+    try:
+        return _fingerprint_of(Path(__file__).resolve().parent.parent)
+    except OSError:
+        return None
+
+
 #: The fingerprint of the code this process runs, taken at import.
-_RUNNING = _fingerprint_of(Path(__file__).resolve().parent.parent)
-if _RUNNING is None:
-    logger.warning("No cgis sources to fingerprint — an upgrade will not rebuild stored graphs.")
+_RUNNING = _running_fingerprint()
 
 
 def _needs_rebuild(store: "SQLiteStore | None", rebuild: bool) -> bool:
@@ -135,7 +146,10 @@ def _needs_rebuild(store: "SQLiteStore | None", rebuild: bool) -> bool:
     if rebuild or store is None:
         return rebuild
     current = extraction_fingerprint()
-    if current is None or store.get_extraction_fingerprint() == current:
+    if current is None:
+        logger.warning("No cgis sources to fingerprint — an upgrade will not rebuild this graph.")
+        return rebuild
+    if store.get_extraction_fingerprint() == current:
         return rebuild
     # A warning, not info: alternating two cgis versions on one database rebuilds each time.
     logger.warning("The graph was built by other cgis extraction code — rebuilding it in full.")

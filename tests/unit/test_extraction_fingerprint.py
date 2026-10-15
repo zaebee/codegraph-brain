@@ -8,6 +8,8 @@ the handlers in them. `ingest_state` now records a fingerprint of the extraction
 code; a graph whose fingerprint differs is rebuilt once.
 """
 
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -148,24 +150,27 @@ def test_a_rebuild_that_keeps_the_stored_graph_does_not_bless_it(
         assert store.get_extraction_fingerprint() == "built-by-an-older-cgis"
 
 
-def test_the_running_code_s_fingerprint_is_taken_once_at_import(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_the_running_code_s_fingerprint_is_taken_at_import() -> None:
     """#617 delta review: a long-lived process records the hash of the code it runs.
 
-    Re-read from disk on each run, an MCP server whose package was upgraded in
-    place rebuilt with its old code in memory and recorded the new code's hash, so
-    the new code, once restarted, saw a match and never rebuilt.
+    Taken later — re-read on each run, or cached on first use — an MCP server
+    upgraded in place before (or between) its ingests recorded the new code's hash
+    over its old code's output, and the new code, once restarted, never rebuilt.
+    In a fresh interpreter: import, forbid reading files, and only then ask.
     """
-
-    def no_reading(*_args: object, **_kwargs: object) -> object:
-        msg = "the installed fingerprint was re-read from disk"
-        raise AssertionError(msg)
-
-    taken = extraction_fingerprint()
-    monkeypatch.setattr(Path, "rglob", no_reading)
-    monkeypatch.setattr(Path, "read_bytes", no_reading)
-    assert extraction_fingerprint() == taken
+    script = (
+        "from pathlib import Path\n"
+        "import cgis.pipeline as p\n"
+        "def no(*a, **k):\n"
+        "    raise SystemExit('re-read from disk')\n"
+        "Path.read_bytes = no\n"
+        "Path.rglob = no\n"
+        "assert p.extraction_fingerprint() is not None\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
 
 
 def test_without_a_fingerprint_nothing_is_rebuilt(
@@ -176,3 +181,32 @@ def test_without_a_fingerprint_nothing_is_rebuilt(
     parsed, recorded = _second_run(tmp_path, stored="built-by-an-older-cgis")
     assert parsed == []
     assert recorded == "built-by-an-older-cgis"
+
+
+def _import_with(patch: str) -> subprocess.CompletedProcess[str]:
+    """Import cgis.pipeline in a fresh interpreter after `patch`; print the fingerprint last."""
+    script = (
+        "from pathlib import Path\n"
+        f"{patch}\n"
+        "import cgis.pipeline as p\n"
+        "print(repr(p.extraction_fingerprint()))\n"
+    )
+    return subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, check=False
+    )
+
+
+def test_an_install_without_sources_imports_silently() -> None:
+    """#617 delta review: nothing on stdout at import — the MCP stdio stream, `--format json`."""
+    result = _import_with(
+        "Path.rglob = lambda *a, **k: iter(())\nPath.is_file = lambda self: False"
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "None\n"
+
+
+def test_a_source_that_cannot_be_read_does_not_break_the_import() -> None:
+    """#617 delta review: an OSError mid-install failed `import cgis.pipeline`, so the whole CLI."""
+    result = _import_with("def broken(self):\n    raise OSError('gone')\nPath.read_bytes = broken")
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().splitlines()[-1] == "None"
