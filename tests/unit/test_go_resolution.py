@@ -1,8 +1,13 @@
 """The Go pack's index facts, classification and resolution, end to end (step 7b, Task B4)."""
 
+from pathlib import Path
+
+import pytest
+
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace
 from cgis.languages import extractors
 from cgis.languages.go.extractor import GoExtractor
+from cgis.pipeline import IngestionPipeline
 from cgis.resolver.engine import ResolverEngine
 
 MODULE = {
@@ -178,3 +183,28 @@ def test_a_go_builtin_never_lands_on_another_language_s_function() -> None:
     calls = _calls_from(edges, "internal.server.Use")
     assert "tools.ops.make" not in calls
     assert "web.util.len" not in calls
+
+
+def test_a_definition_in_several_files_resolves_to_the_same_one_every_time(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """I3: build-tag variants share an FQN; the winner must not be the filesystem's order.
+
+    The walk is handed its names in reverse, as a filesystem may: the pipeline
+    sorts them, so the last name sorted wins on any machine.
+    """
+    tree = tmp_path / "tree" / "sys"
+    tree.mkdir(parents=True)
+    for name in ("aa_windows.go", "mm_darwin.go", "zz_linux.go"):
+        (tree / name).write_text("package sys\nfunc Open() {}\n", encoding="utf-8")
+    real_walk = Path.walk
+
+    def reversed_walk(self: Path, *args: object, **kwargs: object) -> object:
+        for root, dirs, files in real_walk(self, *args, **kwargs):  # type: ignore[arg-type]
+            files.sort(reverse=True)
+            yield root, dirs, files
+
+    monkeypatch.setattr(Path, "walk", reversed_walk)
+    nodes, _, _ = IngestionPipeline(extractors([])).run(str(tmp_path / "tree"))
+    winner = {n.id: n for n in nodes}["sys.Open"]
+    assert winner.file_path == "sys/zz_linux.go"

@@ -68,8 +68,7 @@ class GoExtractor(BaseExtractor):
         ctx = _File(
             path=file_path,
             node_id=file_node_id(file_path, source_root),
-            # A root file's definitions take the package clause's name (Review Focus).
-            scope=scope_of(file_path, source_root) or package,
+            scope=_package_scope(scope_of(file_path, source_root), package),
             is_test=is_test(file_path),
             import_map={
                 name: dotted(path) for name, path in imports(root) if name not in UNNAMED_IMPORTS
@@ -80,6 +79,18 @@ class GoExtractor(BaseExtractor):
         edges: list[Edge] = []
         _file(ctx, root, nodes, edges)
         return nodes, edges
+
+
+def _package_scope(directory: str, package: str) -> str:
+    """Where a file's definitions live: its directory, or the clause's name at the root.
+
+    An external test package (`package server_test` beside `package server`) is
+    another package in the same directory, so it gets `<directory>_test` — one
+    scope would let its `Helper` replace the production one (7b review I3).
+    """
+    if not directory:
+        return package  # A root file's definitions take the package clause's name.
+    return f"{directory}_test" if package.endswith("_test") else directory
 
 
 def _child(node: TSNode | None, kind: str) -> TSNode | None:
@@ -171,8 +182,12 @@ def _declare(
 
 
 def _function(ctx: _File, node: TSNode, nodes: list[Node], edges: list[Edge]) -> None:
+    """A FUNCTION in the package scope; `init` once per file, as Go allows several."""
     name = text(node.child_by_field_name("name"))
-    fqn = f"{ctx.scope}.{name}"
+    if name == "init":
+        fqn = f"{ctx.scope}.init_{ctx.node_id.rsplit('.', 1)[-1]}"
+    else:
+        fqn = f"{ctx.scope}.{name}"
     edges.append(_edge(ctx.node_id, fqn, EdgeType.CONTAINS))
     _callable(ctx, fqn, NodeType.FUNCTION, node, None, nodes, edges)
 
@@ -214,7 +229,7 @@ def _callable(
     if body is not None:
         _body(ctx, body, fqn, receiver, types, edges)
     metadata: dict[str, object] = {"local_types": types} if types else {}
-    nodes.append(_node(ctx, fqn, fqn.rsplit(".", 1)[-1], node_type, node, metadata))
+    nodes.append(_node(ctx, fqn, text(node.child_by_field_name("name")), node_type, node, metadata))
 
 
 def _record(ctx: _File, types: dict[str, str], names: list[str], type_node: TSNode | None) -> None:

@@ -200,3 +200,20 @@ def test_a_source_root_is_stripped() -> None:
         "package server\n", "src/internal/server/server.go"
     )
     assert [n.id for n in nodes] == ["internal.server.server_go"]
+
+
+def test_an_external_test_package_has_a_scope_of_its_own() -> None:
+    """I3: `package server_test` beside `package server` is another package (Go's rule)."""
+    code = "package server_test\nfunc Helper() {}\n"
+    nodes, _ = _parse(code, "internal/server/helper_test.go")
+    assert "internal.server_test.Helper" in nodes
+    assert nodes["internal.server.helper_test_go"].metadata["scope"] == "internal.server_test"
+
+
+def test_every_file_s_init_is_its_own_node() -> None:
+    """I3: a package may hold one `init` per file; one FQN would keep only the last."""
+    a, _ = _parse("package server\nfunc init() {}\n", "internal/server/a.go")
+    b, _ = _parse("package server\nfunc init() {}\n", "internal/server/b.go")
+    assert "internal.server.init_a_go" in a
+    assert "internal.server.init_b_go" in b
+    assert a["internal.server.init_a_go"].name == "init"
