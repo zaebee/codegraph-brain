@@ -129,3 +129,12 @@ def test_the_test_file_is_flagged_and_the_rest_is_not() -> None:
     flags = {n["id"]: n["is_test"] for n in _recorded()["nodes"] if n.get("file_path")}
     assert flags["internal.server.TestStart"]
     assert not flags["internal.server.Server.Start"]
+
+
+@pytest.mark.parametrize("root", ["go", "=."])
+def test_a_root_without_a_name_and_a_path_is_refused(root: str, tmp_path: Path) -> None:
+    """`--root go` used to read as `go=` — the whole corpus — and say nothing (delta review)."""
+    argv = ["snapshot", str(CORPUS), "--root", root, "--out", str(tmp_path / "s.json")]
+    with pytest.raises(SystemExit):
+        gi.main(argv)
+    assert not (tmp_path / "s.json").exists()

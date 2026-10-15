@@ -243,12 +243,15 @@ class _Broken:
 
 
 def test_a_selector_with_no_operand_reads_as_no_name() -> None:
-    """It recursed into itself forever (Gemini, PR #607)."""
+    """It recursed into itself forever.
+
+    Hypothetical: tree-sitter-go fills gaps with MISSING nodes, so this is a guard.
+    """
     assert selector_chain(_Broken("selector_expression")) == []  # type: ignore[arg-type]
 
 
 def test_a_pointer_with_nothing_under_it_names_no_type() -> None:
-    """A trailing `*` mid-edit raised IndexError and failed the whole file (Gemini, PR #607)."""
+    """It raised IndexError. A defensive guard: no malformed input tried produced this shape."""
     assert base_type(_Broken("pointer_type")) is None  # type: ignore[arg-type]
 
 
@@ -274,13 +277,21 @@ class _Fake:
 
 
 def test_an_empty_interface_element_embeds_nothing() -> None:
-    """`_embedded` indexed `named_children[0]` of an element with none (Gemini, PR #607)."""
+    """`_embedded` indexed `named_children[0]` of an element with none (hypothetical shape)."""
     assert _embedded(_Fake("interface_type", [_Fake("type_elem")])) == []  # type: ignore[arg-type]
 
 
 def test_a_receiver_with_no_type_declares_no_method() -> None:
-    """No receiver type: no `scope..Start` method (Gemini, PR #607)."""
-    ctx = _File("p/x.go", "p.x_go", "p", "p", False, {}, frozenset())
+    """No receiver type: no `scope..Start` method (hypothetical shape, defensive guard)."""
+    ctx = _File(
+        path="p/x.go",
+        node_id="p.x_go",
+        directory="p",
+        scope="p",
+        is_test=False,
+        import_map={},
+        own_types=frozenset(),
+    )
     receiver = _Fake("parameter_list", [_Fake("parameter_declaration")])
     method = _Fake("method_declaration", receiver=receiver, name=_Fake("field_identifier"))
     nodes: list[Node] = []

@@ -167,6 +167,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "snapshot":
         pairs = [r.partition("=") for r in args.root or []]
+        if any(not name or not sep for name, sep, _ in pairs):
+            parser.error("--root wants NAME=PATH")
         roots = {name: path for name, _, path in pairs} if pairs else SNAPSHOT_ROOTS
         text = json.dumps(
             snapshot(args.corpus, roots), indent=1, sort_keys=True, ensure_ascii=False
