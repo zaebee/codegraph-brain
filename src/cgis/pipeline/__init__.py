@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from collections.abc import Mapping
+from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -78,6 +79,59 @@ def _observe(observed: dict[str, float], directory: Path, workspace_root: Path) 
     observed[directory.relative_to(workspace_root).as_posix()] = mtime
 
 
+#: The code that decides what a stored graph holds: extraction, resolution and the
+#: build plane. A change to any of it leaves a stored graph built by other code.
+_EXTRACTION_PACKAGES = ("core", "languages", "resolver", "pipeline")
+_EXTRACTION_MODULES = ("import_names.py",)
+
+
+def extraction_fingerprint(package_root: Path | None = None) -> str:
+    """A hash of the code that builds the graph, so a graph built by other code is rebuilt.
+
+    An incremental run re-parses only the files whose text changed; after an
+    upgrade that changes extraction, unchanged files kept nodes and edges built
+    the old way, and nothing said so (#608's Go types, #566's route roles). Over
+    the installed package's sources, not its version: a release that leaves
+    extraction alone costs no rebuild, and an editable install's edits count.
+    """
+    if package_root is None:
+        return _installed_fingerprint()
+    return _fingerprint_of(package_root)
+
+
+@cache
+def _installed_fingerprint() -> str:
+    """The installed package's fingerprint, hashed once per process (every incremental
+    run reads it, MCP auto-refresh included)."""
+    return _fingerprint_of(Path(__file__).resolve().parent.parent)
+
+
+def _fingerprint_of(root: Path) -> str:
+    """The extraction fingerprint of the package at `root`."""
+    files = [p for d in _EXTRACTION_PACKAGES for p in (root / d).rglob("*.py")]
+    files += [root / m for m in _EXTRACTION_MODULES if (root / m).is_file()]
+    digest = hashlib.sha256()
+    for path in sorted(files, key=lambda p: p.relative_to(root).as_posix()):
+        digest.update(path.relative_to(root).as_posix().encode())
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def _needs_rebuild(store: "SQLiteStore | None", rebuild: bool) -> bool:
+    """`rebuild`, or True when the stored graph was built by other extraction code.
+
+    A graph from before fingerprints reads the same. So does a fresh store, whose
+    first run is then a rebuild — which is what a first run of an empty store does
+    anyway. Module-level: `run` is at its complexity limit (#603) and
+    `IngestionPipeline` at the god-object one.
+    """
+    if rebuild or store is None or store.get_extraction_fingerprint() == extraction_fingerprint():
+        return rebuild
+    logger.info("The graph was built by other extraction code — rebuilding it in full.")
+    return True
+
+
 class IngestionPipeline:
     """Orchestrates the full Extract → Resolve → Store pipeline over a source tree."""
 
@@ -149,6 +203,7 @@ class IngestionPipeline:
         path, an empty walk or a crash before that commit leaves the old graph
         intact.
         """
+        rebuild = _needs_rebuild(store, rebuild)
         all_nodes: list[Node] = []
         all_edges: list[Edge] = []
         # file_path -> new hash, only for files that were re-extracted
@@ -266,6 +321,7 @@ class IngestionPipeline:
             rebuild,
         )
         import_names.record(store)
+        store.record_extraction_fingerprint(extraction_fingerprint())
         refresh_dispatch(store)
         logger.info("Running semantic uplift...")
         SemanticUpliftEngine(store, self._domains_config).execute_uplift()

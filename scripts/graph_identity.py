@@ -31,7 +31,7 @@ _EDGE_COLUMNS = (
     "id", "source", "target", "type", "weight", "confidence", "context",
     "file_path", "line_number", "type_only",
 )  # fmt: skip
-_VOLATILE_STATE = frozenset({"ingested_at"})
+_VOLATILE_STATE = frozenset({"ingested_at", "extraction_fingerprint"})
 _DB_SUFFIXES = frozenset({".db", ".sqlite", ".sqlite3"})
 
 #: The corpus roots a snapshot ingests, by name. `sub` reads configs above its
