@@ -41,10 +41,6 @@ gold:
     any_of:
     - ReservationCreation.create_confirmed_reservation
     - ReservationService.create_confirmed_reservation
-  - id: ReservationCreation.create_pending_reservation
-    any_of:
-    - ReservationCreation.create_pending_reservation
-    - ReservationService.create_pending_reservation
   - id: ReservationEffects._apply_transition
     any_of:
     - ReservationEffects._apply_transition
@@ -79,18 +75,10 @@ gold:
     any_of:
     - ReservationTransitions.complete_reservation
     - ReservationService.complete_reservation
-  - id: ReservationTransitions.confirm_by_rider
-    any_of:
-    - ReservationTransitions.confirm_by_rider
-    - ReservationService.confirm_by_rider
   - id: ReservationTransitions.force_confirmation
     any_of:
     - ReservationTransitions.force_confirmation
     - ReservationService.force_confirmation
-  - id: ReservationTransitions.mark_overdue
-    any_of:
-    - ReservationTransitions.mark_overdue
-    - ReservationService.mark_overdue
   - Worker.auto_cancel_no_response
   - Worker.cancel
   - reservation.confirmation_batch.advance_each
@@ -102,12 +90,6 @@ gold:
   - reservation.routes.confirm_reservation
   - reservation.routes.confirmation_reservation
   - reservation.routes.force_confirmation_reservation
-  - reservation.routes.overdue_reservation
-  - rider.routes._book
-  - rider.routes._booked_once
-  - rider.routes.confirmation_reservation
-  - rider.routes.create_marketplace_reservation
-  - rider.routes.create_reservation
   files:
   - ownima-backend/app/domains/chat/lifecycle.py
   - ownima-backend/app/domains/reservation/confirmation_batch.py
@@ -116,7 +98,6 @@ gold:
   - ownima-backend/app/domains/reservation/effects.py
   - ownima-backend/app/domains/reservation/routes.py
   - ownima-backend/app/domains/reservation/transitions.py
-  - ownima-backend/app/domains/rider/routes.py
   - ownima-backend/app/worker/reservations.py
   allowed_symbols:
   - ChatLifecycle._guarded
@@ -131,7 +112,6 @@ gold:
   - ReservationCreation._run_effect
   - ReservationCreation.cancel_conflicting_pending_reservations
   - ReservationCreation.create_confirmed_reservation
-  - ReservationCreation.create_pending_reservation
   - ReservationEffects._apply_transition
   - ReservationEffects._run_effect
   - ReservationService._apply_transition
@@ -143,11 +123,8 @@ gold:
   - ReservationService.cancel_reservation
   - ReservationService.collect_reservation
   - ReservationService.complete_reservation
-  - ReservationService.confirm_by_rider
   - ReservationService.create_confirmed_reservation
-  - ReservationService.create_pending_reservation
   - ReservationService.force_confirmation
-  - ReservationService.mark_overdue
   - ReservationTransitions._apply_transition
   - ReservationTransitions._cancel_conflicting_after_confirm
   - ReservationTransitions._cancel_reservation
@@ -157,9 +134,7 @@ gold:
   - ReservationTransitions.cancel_reservation
   - ReservationTransitions.collect_reservation
   - ReservationTransitions.complete_reservation
-  - ReservationTransitions.confirm_by_rider
   - ReservationTransitions.force_confirmation
-  - ReservationTransitions.mark_overdue
   - reservation.confirmation_batch.advance_each
   - reservation.confirmation_batch.advance_owned
   - reservation.routes.batch_confirmation_reservation
@@ -169,12 +144,6 @@ gold:
   - reservation.routes.confirm_reservation
   - reservation.routes.confirmation_reservation
   - reservation.routes.force_confirmation_reservation
-  - reservation.routes.overdue_reservation
-  - rider.routes._book
-  - rider.routes._booked_once
-  - rider.routes.confirmation_reservation
-  - rider.routes.create_marketplace_reservation
-  - rider.routes.create_reservation
   allowed_files:
   - ownima-backend/app/worker/base.py
 notes: 'Exp1 (docs/lab-notes/2026-10-15-exp1-radius-indirection.md), cell big-ind, files 9.
@@ -198,5 +167,11 @@ notes: 'Exp1 (docs/lab-notes/2026-10-15-exp1-radius-indirection.md), cell big-in
   (rider/service.py:303), which does not use the machine - excluded. worker Worker._cancel_reservation
   (worker/reservations.py:178) is a different method. ast_only rejected: domains/ws/routes.py:152 `t.cancel()`
   is asyncio.Task.cancel, not Worker.cancel.
+
+  Corrected after PR #633 review (C1): the CREATE_PENDING, CONFIRM_AS_RIDER and MARK_OVERDUE
+
+  transitions carry no Chat(...) effect (reservation/machine.py:446-450, 643, 672), so their callers
+
+  never reach _thread_for. 9 symbols and rider/routes.py were removed from gold.
 
   '

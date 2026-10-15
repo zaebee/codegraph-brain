@@ -192,3 +192,57 @@ corrected gold.
 H2 needs a corpus where big-radius direct chains exist; FastAPI routes make every big chain indirect.
 A follow-up should vary indirection with radius held fixed, for example tasks built on cgis itself
 (no DI framework) set against owner-api.
+
+## Post-review corrections (PR #633 independent review; supersedes parts of "Reading")
+
+Every number above reproduces from the raw jsonl in an independent implementation, rescoring the 60
+transcripts gives 0 mismatches, and the gates and rulings were committed before the sessions they
+govern. But the review found a gold error and several overstated readings.
+
+**C1, retracted: "correctness drops where the edge is dynamic".** The `_thread_for` gold followed the
+hook dispatch `getattr(self.chat_lifecycle, hook)` to every caller of `_apply_transition`. Three
+transitions carry no `Chat(...)` effect: CREATE_PENDING (machine.py:643), CONFIRM_AS_RIDER (:672), and
+MARK_OVERDUE, where it is absent deliberately (:446–450). Nine required symbols and `rider/routes.py`
+therefore never reach the target. Runs 0 and 1 missed exactly those 10 items: the agents read the state
+machine correctly and the gold over-approximated. The task YAML is corrected (40 → 31 symbols,
+9 → 8 files). `results-exp1-full.jsonl` keeps the pre-correction scores. Rescored post hoc and declared
+as such: `_thread_for` recall is 1.00 / 1.00 / 0.95, and 11 of 60 runs fall below 1.00 instead of 13.
+G4 is still "not hit", but only barely. The claim that agent difficulty and static-analysis difficulty
+"largely coincide" loses its main evidence and is withdrawn.
+
+**I1.** `calculate_average_rating` at 0.93 is not a dynamic-edge miss. Every run misses a nested
+function (`create_rider_review._row`), and one run is penalised for the real import alias
+`CatalogWorker` (worker/base.py:19). The gold should accept alias spellings.
+
+**I2, answer size confounds radius.** Over the 20 tasks, Spearman of cost with required-symbol count is
++0.58, with radius +0.47, and the two predictors correlate at +0.74. The most expensive tasks are also
+the largest answers. G1's "radius" effect cannot be separated from answer size in this design.
+
+**I3–I5, uncertainty.**
+- A bootstrap over tasks and runs puts G1 at ×1.66, 95% interval [0.98, 2.09], with a 36% chance of
+  falling below ×1.5.
+- G3's partial ρ has a 95% interval of [−0.35, +0.51] over only 9 distinct drift values (9 domains, not
+  8). Read it as "no evidence that drift matters, at n=20 over a 0.24–0.37 range", not "adds nothing".
+- "Indirection moves cost more than radius" rests on a big × direct cell of n=2 whose costs fall inside
+  the indirect range. It remains a hypothesis only.
+
+**Minor.**
+- **M1, timing.** The gate-3 operationalisation was committed 4 s after the first full-run row was
+  written; drift does not depend on cost.
+- **M3, precision.** `notify_top_up_failed`'s 0.69 is only partly a gold-style question: agents also
+  name DI plumbing and a non-existent `TopUpHandler`.
+- **M4, answer size.** The small × indirect cell has 1, 6 and 8 required symbols, so it carries the
+  answer-size confound too.
+- **M5, pilot tuning.** The pilot tasks' gold was corrected from the same model's answers, which biases
+  those tasks' scores upward.
+
+### Revised reading
+
+1. On read-only impact questions in owner-api, Sonnet 5.5 is near the recall ceiling once the gold is
+   right. Its residual misses are nested functions and spelling, not dynamic dispatch.
+2. Cost rises with answer size and radius, which are collinear here. Template fit shows no measurable
+   effect, within a narrow range.
+3. Indirection may matter, but this corpus cannot say: FastAPI `Depends` makes every long chain
+   indirect.
+4. Exp2's design follows from these limits: hold radius **and answer size** fixed, vary indirection in
+   matched pairs, and derive gold path-sensitively for dynamic dispatch.
