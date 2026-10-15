@@ -46,3 +46,43 @@ Measured together, a rise could not be attributed to either change, so there are
   - whether the agent read `favorites/service.py`, or grepped `catalog_service.build_cards`, after its
     first cgis call;
   - cost and turns.
+
+## Result (added after the run; nothing above was changed)
+
+6 sessions, 0 errors, $0.67 ($0.33 arm A, $0.34 arm B). Every transcript shows
+`apiKeySource: ANTHROPIC_API_KEY`. Arm A ran at 0edeeb1, arm B at 8a09ee7. A first launch of
+arm A failed before any session started: `/tmp` was full and `cgis ingest` could not write the
+graph. Its three rows had no cost and no transcript, and were removed before the relaunch.
+
+| | recall | cost | turns |
+|---|---|---|---|
+| exp3b (baseline) | 0.83 / 0.83 / 0.83 | 0.099 median | — |
+| arm A, sites only | **1.00 / 1.00 / 1.00** | 0.126 / 0.103 / 0.098 | 6 / 6 / 6 |
+| arm B, sites + directive | **1.00 / 1.00 / 1.00** | 0.130 / 0.115 / 0.097 | 10 / 7 / 5 |
+
+**Verdict: both arms help (median recall 1.00 ≥ 0.95). By the pre-registered reading, the place is
+enough.** The directive is not needed for this task.
+
+**How the agent closed the gap: through the graph, not the file.** All three arm A sessions took
+the same four steps:
+
+1. `Grep calculate_total_price`.
+2. `cgis_analyze_impact(PricingService.calculate_total_price)`. Its coverage line now names
+   `self.catalog_service.build_cards (1) at FavoritesService._hydrate …/favorites/service.py:383`.
+3. `cgis_analyze_impact(FavoritesService._hydrate)`.
+4. `cgis_analyze_impact(CatalogService.build_cards)`.
+
+None opened `favorites/service.py`. The caller named in the site was enough to ask the graph again.
+Arm B took the same step in all three sessions. Two of them also grepped or read the favorites
+source, which is the directive at work, and spent more turns (10 / 7 / 5 against 6 / 6 / 6) at
+about the same cost.
+
+**Limits.**
+- n=3 per arm, on one task. This is the task where exp3 and exp3b failed, and the one #641 was
+  built from, so the result shows the mechanism works on its motivating case. It does not show
+  that it generalises.
+- The other exp3 misses come from different gaps, which this change only makes visible: the
+  decorator wrapper, `cls.` calls and polymorphic dispatch (#637).
+- Whether arm A's behaviour holds unforced, and across the exp3 primary set, needs the adoption
+  experiment.
+- Arm B's directive is not shown to be useless. This task did not need it.
