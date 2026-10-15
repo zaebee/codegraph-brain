@@ -38,7 +38,7 @@ Upstream subgraph of one FQN: everything that reaches it within ``depth`` hops.
 | :--- | :--- | :---: | :--- |
 | `fqn` | `string` | ✓ | Fully qualified name, e.g. pkg.module.Class.method. A unique dot-boundary suffix also resolves; an ambiguous one returns candidates. Use cgis_find_symbol to look a name up. |
 | `db_path` | `string` |  | SQLite graph built by cgis_ingest. A relative path resolves against the MCP server's working directory, not the agent's — prefer an absolute path. |
-| `depth` | `integer` |  | Maximum edge hops upstream, over callers, importers, subclasses, type references and DI dependents (plus the enclosing class or file with include_structure). |
+| `depth` | `integer` |  | Maximum edge hops upstream, over callers, importers, subclasses, type references and DI dependents (plus the enclosing class or file with include_structure). A hop from an override to the base or interface method it implements costs no depth, so a caller through the interface is at depth 1. |
 | `output_format` | `string` |  | "text" for an indented tree, one line per node — the cheapest to read; "mermaid" for a diagram; or "json" for a payload with real FQNs, to compute with (case-insensitive). Any other value returns an error. |
 | `include_structure` | `boolean` |  | Also follow containment (CONTAINS/DECLARES): a module's or class's own members, and the class or file enclosing a symbol. Off by default, as in the CLI; cgis_get_structure is the tool for members alone. |
 | `include_external` | `boolean` |  | Also return stdlib, third-party and unresolved call targets — calls on values whose type is decided at runtime. Off by default, as in the CLI, because they dominate the payload; in json, coverage/top_unresolved still counts what was dropped. |
@@ -451,7 +451,7 @@ Downstream subgraph of one FQN: everything it reaches within ``depth`` hops.
 | :--- | :--- | :---: | :--- |
 | `fqn` | `string` | ✓ | Fully qualified name, e.g. pkg.module.Class.method. A unique dot-boundary suffix also resolves; an ambiguous one returns candidates. Use cgis_find_symbol to look a name up. |
 | `db_path` | `string` |  | SQLite graph built by cgis_ingest. A relative path resolves against the MCP server's working directory, not the agent's — prefer an absolute path. |
-| `depth` | `integer` |  | Maximum edge hops downstream, over calls, imports, inheritance, DI dependencies and references (plus containment with include_structure). |
+| `depth` | `integer` |  | Maximum edge hops downstream, over calls, imports, inheritance, DI dependencies and references (plus containment with include_structure). A hop from a base or interface method to its overrides costs no depth. |
 | `output_format` | `string` |  | "text" for an indented tree, one line per node — the cheapest to read; "mermaid" for a diagram; or "json" for a payload with real FQNs, to compute with (case-insensitive). Any other value returns an error. |
 | `include_structure` | `boolean` |  | Also follow containment (CONTAINS/DECLARES): a module's or class's own members, and the class or file enclosing a symbol. Off by default, as in the CLI; cgis_get_structure is the tool for members alone. |
 | `include_external` | `boolean` |  | Also return stdlib, third-party and unresolved call targets — calls on values whose type is decided at runtime. Off by default, as in the CLI, because they dominate the payload; in json, coverage/top_unresolved still counts what was dropped. |

@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 
 from cgis.api.mcp_server import cgis_ingest
-from cgis.core.models import Edge, EdgeType
-from cgis.query.engine import QueryEngine
+from cgis.core.models import Edge, EdgeType, Node, NodeType
+from cgis.query.engine import QueryEngine, agent_screen
 from cgis.resolver.symbols import DISPATCH_CONFIDENCE
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -266,3 +266,75 @@ def test_a_dispatch_hop_does_not_make_depth_free_for_plain_calls(db: str) -> Non
 
     assert "use.report" not in at_one
     assert "use.report" in at_two
+
+
+def test_impact_on_an_override_does_not_reach_its_siblings(db: str) -> None:
+    """Up to `Base.area` and its callers; never back down to `Leaf.area`."""
+    with SQLiteStore(db) as store:
+        nodes, _ = QueryEngine(store).get_impact_graph("shapes.Square.area", max_depth=1)
+
+    assert "shapes.Leaf.area" not in {n.id for n in nodes}
+
+
+def test_trace_from_an_override_does_not_climb_to_its_base(db: str) -> None:
+    with SQLiteStore(db) as store:
+        nodes, _ = QueryEngine(store).get_flow_graph("shapes.Square.area", max_depth=1)
+
+    ids = {n.id for n in nodes}
+    assert "shapes.Base.area" not in ids
+    assert "shapes.Leaf.area" not in ids
+
+
+def test_impact_through_the_agent_screen_sees_the_caller_at_depth_one(db: str) -> None:
+    """The MCP path: `agent_screen`, a node budget, coverage."""
+    with SQLiteStore(db) as store:
+        screen = agent_screen(store, "shapes.Square.area", include_tests=False)
+        result = QueryEngine(store).get_impact_result(
+            "shapes.Square.area", max_depth=1, screen=screen, max_nodes=50
+        )
+
+    assert "use.measure" in {n.id for n in result.nodes}
+
+
+# --- the node budget with a dispatch fan-out (#645 review) -------------------
+
+
+def _fan_out(store: SQLiteStore, overrides: int, base: str = "b.Base.m") -> None:
+    """`base` dispatching to `overrides` subclasses, and a caller of the base."""
+
+    def fn(node_id: str) -> Node:
+        return Node(
+            id=node_id,
+            type=NodeType.METHOD,
+            name=node_id.rsplit(".", maxsplit=1)[-1],
+            file_path="b.py",
+            start_line=1,
+            end_line=2,
+        )
+
+    subs = [f"s{i:02d}.Sub.m" for i in range(overrides)]
+    edges = [
+        Edge(id=f"d{i}", source=base, target=s, type=EdgeType.DISPATCHES, confidence=0.5)
+        for i, s in enumerate(subs)
+    ]
+    edges.append(Edge(id="c", source="a.caller", target=base, type=EdgeType.CALLS))
+    store.save_graph([fn(base), fn("a.caller"), *map(fn, subs)], edges)
+
+
+def test_a_dispatch_fan_out_from_the_root_respects_the_node_budget() -> None:
+    with SQLiteStore(":memory:") as store:
+        _fan_out(store, 10)
+        result = QueryEngine(store).get_flow_result("b.Base.m", max_depth=1, max_nodes=3)
+
+    assert len(result.nodes) <= 3
+    assert result.truncation is not None
+
+
+def test_a_cut_leaves_no_dangling_dispatch_edge() -> None:
+    """The base sorts after its overrides, so an id-ordered cut would keep an override alone."""
+    with SQLiteStore(":memory:") as store:
+        _fan_out(store, 10, base="z.Base.m")
+        result = QueryEngine(store).get_flow_result("a.caller", max_depth=1, max_nodes=2)
+
+    ids = {n.id for n in result.nodes}
+    assert all(e.source in ids and e.target in ids for e in result.edges)

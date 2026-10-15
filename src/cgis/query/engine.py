@@ -511,37 +511,24 @@ class QueryEngine:
                 edges.extend(held_edges)
         return list(nodes.values()), edges
 
-    @staticmethod
-    def _dispatch_closure(
-        ids: list[str],
-        known: set[str],
-        get_edges_batch: Callable[[list[str]], list[Edge]],
-        get_neighbor_id: Callable[[Edge], str],
-        min_confidence: float | None,
-    ) -> list[Edge]:
-        """The DISPATCHES edges that tie `ids` to more nodes at the same level (#645).
+    def _dispatch_partners(
+        self, get_neighbor_id: Callable[[Edge], str], min_confidence: float | None
+    ) -> dict[str, list[Edge]]:
+        """Every DISPATCHES edge, keyed by the end a walk in this direction arrives at.
 
-        Follows DISPATCHES only, transitively (a chain of overrides is one level),
-        and returns the edges it crossed; their far ends are the nodes it added.
-        ``known`` nodes are not re-entered.
+        One query per walk: DISPATCHES is a small edge set (50 on cgis's own graph,
+        about 300 on a Go repository), so reading it whole is cheaper than asking
+        for each level's edges again (#645 review).
         """
-        crossed: list[Edge] = []
-        seen = set(known) | set(ids)
-        batch = ids
-        while batch:
-            new: set[str] = set()
-            for edge in get_edges_batch(batch):
-                if edge.type != EdgeType.DISPATCHES:
-                    continue
-                if min_confidence is not None and edge.confidence < min_confidence:
-                    continue
-                crossed.append(edge)
-                neighbor = get_neighbor_id(edge)
-                if neighbor not in seen:
-                    new.add(neighbor)
-            seen |= new
-            batch = sorted(new)
-        return crossed
+        partners: dict[str, list[Edge]] = {}
+        for edge in self.store.get_edges_of_type(EdgeType.DISPATCHES):
+            if min_confidence is not None and edge.confidence < min_confidence:
+                continue
+            far = get_neighbor_id(edge)
+            near = edge.target if far == edge.source else edge.source
+            if near != far:
+                partners.setdefault(near, []).append(edge)
+        return partners
 
     def _bfs_traverse(
         self,
@@ -574,6 +561,11 @@ class QueryEngine:
         but not expanded (see ``agent_screen``). ``max_nodes`` caps the answer,
         nearest levels first: a level that does not fit is cut to the room left
         (see ``_admit``) and the walk stops there.
+
+        A DISPATCHES edge costs no depth (#645): each level, the root's included,
+        is closed over the DISPATCHES edges (read once per walk) in the walk's
+        direction, through the same screen and budget. A trace from a base or
+        interface method so expands its overrides at depth 0's step.
         """
         discovered_ids: set[str] = {start_id}
         visited_edges: dict[str, Edge] = {}
@@ -587,20 +579,42 @@ class QueryEngine:
 
         # A DISPATCHES edge puts both its ends on one level (#645): a caller of
         # `Base.m`, or of an interface method, is a direct caller of whatever it
-        # dispatches to. So each level is closed over DISPATCHES before it is
-        # screened — the root's included.
+        # dispatches to. The edges are read once per walk; each level, the root's
+        # included, is then closed over them in the walk's direction, through the
+        # same screen and node budget as the level itself.
         follows_dispatch = allowed_edge_types is None or EdgeType.DISPATCHES in allowed_edge_types
-        if follows_dispatch:
-            hops = self._dispatch_closure(
-                [start_id], discovered_ids, get_edges_batch, get_neighbor_id, min_confidence
-            )
-            partners = sorted({get_neighbor_id(e) for e in hops} - {start_id})
-            verdict = screen(partners)
-            dropped |= verdict.dropped
-            kept = [n for n in partners if n not in verdict.dropped]
-            discovered_ids.update(kept)
-            visited_edges.update((e.id, e) for e in hops if get_neighbor_id(e) in discovered_ids)
-            current_frontier = [start_id, *(n for n in kept if n not in verdict.leaves)]
+        partners_of = (
+            self._dispatch_partners(get_neighbor_id, min_confidence) if follows_dispatch else {}
+        )
+
+        def close_over_dispatch(
+            batch: list[str], at_depth: int
+        ) -> tuple[list[str], Truncation | None]:
+            """Admit what DISPATCHES ties to `batch`; return the part to expand, and any cut."""
+            expandable: list[str] = []
+            while batch:
+                hops = [e for node in batch for e in partners_of.get(node, [])]
+                new = sorted({get_neighbor_id(e) for e in hops} - discovered_ids)
+                verdict = screen(new) if new else _Verdict()
+                dropped.update(verdict.dropped)
+                admitted, frontier, cut = _admit(
+                    new, verdict, len(discovered_ids), max_nodes, at_depth
+                )
+                discovered_ids.update(admitted)
+                # Both ends: a cut may keep an override whose base it left out.
+                visited_edges.update(
+                    (e.id, e)
+                    for e in hops
+                    if e.source in discovered_ids and e.target in discovered_ids
+                )
+                expandable.extend(frontier)
+                if cut is not None:
+                    return expandable, cut
+                batch = admitted
+            return expandable, None
+
+        extra, truncation = close_over_dispatch([start_id], 0)
+        current_frontier = [start_id, *extra]
 
         while current_frontier and depth < max_depth and truncation is None:
             expanded.update(current_frontier)
@@ -608,27 +622,21 @@ class QueryEngine:
             for edge in get_edges_batch(current_frontier):
                 if count_calls and edge.type == EdgeType.CALLS:
                     calls[edge.id] = edge
+                if follows_dispatch and edge.type == EdgeType.DISPATCHES:
+                    continue  # its far end was put on this level by the closure
                 if _edge_accepted(edge, allowed_edge_types, min_confidence):
                     level.append(edge)
-            first_reached = set(map(get_neighbor_id, level)) - discovered_ids
-            if follows_dispatch:
-                level.extend(
-                    self._dispatch_closure(
-                        sorted(first_reached),
-                        discovered_ids | first_reached,
-                        get_edges_batch,
-                        get_neighbor_id,
-                        min_confidence,
-                    )
-                )
             reached = sorted(set(map(get_neighbor_id, level)) - discovered_ids)
             verdict = screen(reached)
-            dropped |= verdict.dropped
+            dropped.update(verdict.dropped)
             depth += 1
             admitted, current_frontier, truncation = _admit(
                 reached, verdict, len(discovered_ids), max_nodes, depth
             )
             discovered_ids.update(admitted)
             visited_edges.update((e.id, e) for e in level if get_neighbor_id(e) in discovered_ids)
+            if truncation is None:
+                extra, truncation = close_over_dispatch(admitted, depth)
+                current_frontier = [*current_frontier, *extra]
 
         return _Walk(discovered_ids, visited_edges, expanded, calls, frozenset(dropped), truncation)
