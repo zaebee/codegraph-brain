@@ -310,7 +310,8 @@ def test_directories_are_walked_in_sorted_order(
         for root, dirs, files in real_walk(self, *args, **kwargs):  # type: ignore[arg-type]
             dirs.sort(reverse=True)
             yield root, dirs, files
-            visited.append(root.name)
+            if root.is_relative_to(tmp_path):  # not the extraction fingerprint's own walk
+                visited.append(root.name)
 
     monkeypatch.setattr(Path, "walk", reversed_walk)
     IngestionPipeline(extractors([])).run(str(tmp_path / "tree"))

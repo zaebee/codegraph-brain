@@ -78,6 +78,84 @@ def _observe(observed: dict[str, float], directory: Path, workspace_root: Path) 
     observed[directory.relative_to(workspace_root).as_posix()] = mtime
 
 
+#: The code that decides what a stored graph holds: extraction, resolution, the
+#: build plane, and how rows are written. A change to any of it leaves a stored
+#: graph built by other code.
+_EXTRACTION_PACKAGES = ("core", "languages", "resolver", "pipeline")
+_EXTRACTION_MODULES = ("import_names.py", "storage/sqlite_store.py")
+
+
+def extraction_fingerprint(package_root: Path | None = None) -> str | None:
+    """A hash of the code that builds the graph, so a graph built by other code is rebuilt.
+
+    An incremental run re-parses only the files whose text changed; after an
+    upgrade that changes extraction, unchanged files kept nodes and edges built
+    the old way, and nothing said so (#608's Go types, #566's route roles). Over
+    the package's sources, not its version: a release that leaves extraction
+    alone costs no rebuild, and an editable install's edits count.
+
+    The running code's own fingerprint is taken once, at import (`package_root`
+    None): a long-lived process — an MCP server, auto-refresh — upgraded in place
+    must record the hash of the code it runs, not of what is now on disk, or the
+    new code, once restarted, would find a match and never rebuild (#617 review).
+    None when there are no sources to hash (a .pyc-only install, a zipapp): the
+    hash of nothing is a constant, under which the check would pass forever.
+    """
+    return _RUNNING if package_root is None else _fingerprint_of(package_root)
+
+
+def _fingerprint_of(root: Path) -> str | None:
+    """The extraction fingerprint of the package at `root`, or None with no sources."""
+    files = [p for d in _EXTRACTION_PACKAGES for p in (root / d).rglob("*.py")]
+    files += [root / m for m in _EXTRACTION_MODULES if (root / m).is_file()]
+    if not files:
+        return None
+    digest = hashlib.sha256()
+    for path in sorted(files, key=lambda p: p.relative_to(root).as_posix()):
+        digest.update(path.relative_to(root).as_posix().encode())
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def _running_fingerprint() -> str | None:
+    """The fingerprint of this process's own code, or None when it cannot be read.
+
+    Silent: taken at import, where stdout is the MCP stdio stream and `--format
+    json` output. A read error (a file removed mid-install) gives None rather
+    than failing the import of every command; the ingest then says so.
+    """
+    try:
+        return _fingerprint_of(Path(__file__).resolve().parent.parent)
+    except OSError:
+        return None
+
+
+#: The fingerprint of the code this process runs, taken at import.
+_RUNNING = _running_fingerprint()
+
+
+def _needs_rebuild(store: "SQLiteStore | None", rebuild: bool) -> bool:
+    """`rebuild`, or True when the stored graph was built by other extraction code.
+
+    A graph from before fingerprints reads the same. So does a fresh store, whose
+    first run is then a rebuild — which is what a first run of an empty store does
+    anyway. Module-level: `run` is at its complexity limit (#603) and
+    `IngestionPipeline` at the god-object one.
+    """
+    if rebuild or store is None:
+        return rebuild
+    current = extraction_fingerprint()
+    if current is None:
+        logger.warning("No cgis sources to fingerprint — an upgrade will not rebuild this graph.")
+        return rebuild
+    if store.get_extraction_fingerprint() == current:
+        return rebuild
+    # A warning, not info: alternating two cgis versions on one database rebuilds each time.
+    logger.warning("The graph was built by other cgis extraction code — rebuilding it in full.")
+    return True
+
+
 class IngestionPipeline:
     """Orchestrates the full Extract → Resolve → Store pipeline over a source tree."""
 
@@ -149,6 +227,7 @@ class IngestionPipeline:
         path, an empty walk or a crash before that commit leaves the old graph
         intact.
         """
+        rebuild = _needs_rebuild(store, rebuild)
         all_nodes: list[Node] = []
         all_edges: list[Edge] = []
         # file_path -> new hash, only for files that were re-extracted
@@ -439,6 +518,11 @@ class IngestionPipeline:
             replace_all=rebuild,
             virtual_nodes=virtual_nodes,
         )
+        # Only once a graph was written: a rebuild that extracted nothing kept the
+        # stored graph, which recording the current code would bless (#617 review).
+        fingerprint = extraction_fingerprint()
+        if fingerprint is not None:
+            store.record_extraction_fingerprint(fingerprint)
 
         for file_path in changed_files:
             logger.info("Re-ingested changed file", file_path=file_path)

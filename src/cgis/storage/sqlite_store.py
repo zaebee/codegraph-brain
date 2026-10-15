@@ -31,6 +31,8 @@ _PYTHON_DEPENDENCIES_KEY = "python_dependencies"
 _NPM_DEPENDENCIES_KEY = "npm_dependencies"
 #: `ingest_state` key for the options a graph was ingested with (#175).
 _INGEST_OPTIONS_KEY = "ingest_options"
+#: `ingest_state` key for the fingerprint of the code that built the graph.
+_EXTRACTION_FINGERPRINT_KEY = "extraction_fingerprint"
 #: Keys `record_state` refuses (step 7, H3): those the store writes for itself, and
 #: the built-in facts, which have typed recorders.
 _RESERVED_STATE_KEYS = frozenset(
@@ -38,6 +40,7 @@ _RESERVED_STATE_KEYS = frozenset(
         "root",
         "ingested_at",
         _INGEST_OPTIONS_KEY,
+        _EXTRACTION_FINGERPRINT_KEY,
         _WORKSPACE_PACKAGES_KEY,
         _TSCONFIG_PATHS_KEY,
         _PYTHON_DEPENDENCIES_KEY,
@@ -1248,6 +1251,15 @@ class SQLiteStore:
         """The recorded npm packages, or None on a graph that predates recording them."""
         loaded = self._state_json(_NPM_DEPENDENCIES_KEY)
         return [str(name) for name in loaded] if isinstance(loaded, list) else None
+
+    def record_extraction_fingerprint(self, fingerprint: str) -> None:
+        """Record the fingerprint of the code that built this graph."""
+        self._record_state_json(_EXTRACTION_FINGERPRINT_KEY, fingerprint)
+
+    def get_extraction_fingerprint(self) -> str | None:
+        """The fingerprint the graph was built with, or None on a graph that predates it."""
+        loaded = self._state_json(_EXTRACTION_FINGERPRINT_KEY)
+        return loaded if isinstance(loaded, str) else None
 
     def record_state(self, key: str, value: object) -> None:
         """Record a language pack's own project fact under `key` (step 7, H3).
