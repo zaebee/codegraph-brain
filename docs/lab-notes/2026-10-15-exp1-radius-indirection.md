@@ -130,7 +130,7 @@ in owner-api ends in such a route. Under the rule above, tasks moved to the cell
 - **[Retracted in part, see Post-review corrections C1: 9 of these 31 never reach the target; 22 do.]** **`_thread_for`:** the adjudicator enumerated all 31 callers both tools miss (a callback through
   `_guarded`, and `getattr(self.chat_lifecycle, hook)` driven by the reservation state machine), so
   they are required gold here, not a lower bound. This is the one task where a correctness
-  difference is likely.
+  difference is likely. [Retracted: the prediction did not hold; corrected recall is 1.00 / 1.00 / 0.95.]
 - The full run is 20 tasks × 3 runs, all fresh. Pilot sessions are not reused.
 
 ## Gate 3 operationalised (written while the full run is in flight, before any of its results were read)
@@ -167,8 +167,8 @@ corrected gold.
 |---|---|
 | G1 radius (H1) | **PASS.** Big row $0.189 (n=13) against small row $0.114 (n=7): ×1.66, threshold ×1.5. |
 | G2 indirection (H2) | Descriptive, as ruled above. Indirect costs ×1.68 in the big row and ×1.51 in the small row; recall is unchanged. |
-| G3 template irrelevant (H1) | **PASS.** Spearman cost~files +0.47, cost~drift −0.02; partial cost~drift given files +0.11, under the 0.2 limit. Caveat: drift spans only 0.24–0.37 over 8 domains (9 by the reviewer's count). |
-| G4 ceiling | **Not hit.** Recall is 1.00 in 47 of 60 runs, minimum 0.76; after the post-review correction, 49 of 60, minimum 0.77. |
+| G3 template irrelevant (H1) | **PASS.** Spearman cost~files +0.47, cost~drift −0.02; partial cost~drift given files +0.11, under the 0.2 limit. Caveat: drift spans only 0.24–0.37 over 9 domains. |
+| G4 ceiling | **Not hit per run; hit per cell median** (see Post-review corrections). Recall is 1.00 in 47 of 60 runs, minimum 0.76; after the post-review correction, 49 of 60, minimum 0.77. |
 
 ### Reading
 
