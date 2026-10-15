@@ -71,3 +71,25 @@ big row only, and that limit is stated in the result rather than patched afterwa
   is weaker independence between two tasks in the full set.
 - Gold for the 6 pilot tasks: 82 cgis callers checked, none a false positive. Of the 24 AST-only
   candidates, 21 were accepted and 3 rejected as same-name calls to other objects, each with file:line.
+
+## Pilot result and gold correction (after the pilot; the pilot therefore does not count)
+
+18 sessions, all billed to the organisation key (`apiKeySource: ANTHROPIC_API_KEY` in every transcript),
+$4.12 in total. Per-task median cost $0.16–$0.39.
+
+The pilot found defects in the gold, not in the agent:
+
+- **reservation-conflict-query.** All 3 runs named a chain of real callers above two resolver gaps (#632):
+  a bound method passed as an argument, and `ReservationService.check_booking_window` inherited from a
+  mixin. Neither cgis nor the AST closure nor the adjudicator had it. Every name the agents added lies
+  in the AST closure above the break, so the 15 names go into `allowed_symbols`. They are never required,
+  because the full set above the break is unknown.
+- **Inherited methods.** Agents spell `ReservationService.advance_confirmation`; gold had only the
+  definer, `ReservationTransitions.advance_confirmation`. Each gold method now also accepts every
+  subclass spelling, taken from the EXTENDS edges.
+- **Nested functions** accept the spelling without the enclosing function.
+- **`worker/base.py`** (task registration) is an allowed file, as in the older credit_wallet task.
+
+Rescored offline from the saved transcripts, with no new spend: median recall 0.97–1.00 and precision
+0.85–1.00. The remaining misses are real: a nested function left unnamed (2 runs) and one catalog
+route (1 run). **Gate 4 (ceiling) is all but certain**, so the full run answers H1 and H2 on cost only.

@@ -44,6 +44,8 @@ gold:
   - ownima-backend/app/worker/vehicle_bonus.py
   allowed_symbols:
   - finance.bonus.signup_bonus_reference
+  allowed_files:
+  - ownima-backend/app/worker/base.py
 notes: 'Exp1 (docs/lab-notes/2026-10-15-exp1-radius-indirection.md), cell big x indirect.
 
   Gold: cgis closure + AST name closure, every difference adjudicated with file:line.

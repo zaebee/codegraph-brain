@@ -32,7 +32,10 @@ gold:
   - pricing.vehicles.apply_vehicle_prices
   - rider.routes.get_vehicle
   - rider.routes.search_vehicles
-  - routes.get_vehicle._get_vehicle_details
+  - id: routes.get_vehicle._get_vehicle_details
+    any_of:
+    - routes.get_vehicle._get_vehicle_details
+    - rider.routes._get_vehicle_details
   - time_table.routes.list_time_slots_by_vehicle
   - vehicle.routes.list_vehicles
   files:
@@ -48,6 +51,8 @@ gold:
   - ownima-backend/app/domains/vehicle/service.py
   allowed_symbols:
   - PricingService.calculate_total_price
+  allowed_files:
+  - ownima-backend/app/worker/base.py
 notes: 'Exp1 (docs/lab-notes/2026-10-15-exp1-radius-indirection.md), cell big x indirect.
 
   Gold: cgis closure + AST name closure, every difference adjudicated with file:line.

@@ -23,12 +23,29 @@ gold:
   - ReservationConflictService.get_pending_booking_groups
   - ReservationConflictService.get_pending_booking_view
   - ReservationConflictService.get_pending_conflicts_for_reservation
-  - ReservationCore.cancel_conflicting_pending_reservations
-  - ReservationCreation.create_confirmed_reservation
+  - id: ReservationCore.cancel_conflicting_pending_reservations
+    any_of:
+    - ReservationCore.cancel_conflicting_pending_reservations
+    - ReservationCreation.cancel_conflicting_pending_reservations
+    - ReservationService.cancel_conflicting_pending_reservations
+    - ReservationTransitions.cancel_conflicting_pending_reservations
+  - id: ReservationCreation.create_confirmed_reservation
+    any_of:
+    - ReservationCreation.create_confirmed_reservation
+    - ReservationService.create_confirmed_reservation
   - ReservationFilter.opts
-  - ReservationTransitions._cancel_conflicting_after_confirm
-  - ReservationTransitions.advance_confirmation
-  - ReservationTransitions.force_confirmation
+  - id: ReservationTransitions._cancel_conflicting_after_confirm
+    any_of:
+    - ReservationTransitions._cancel_conflicting_after_confirm
+    - ReservationService._cancel_conflicting_after_confirm
+  - id: ReservationTransitions.advance_confirmation
+    any_of:
+    - ReservationTransitions.advance_confirmation
+    - ReservationService.advance_confirmation
+  - id: ReservationTransitions.force_confirmation
+    any_of:
+    - ReservationTransitions.force_confirmation
+    - ReservationService.force_confirmation
   - reservation.confirmation_batch.advance_each
   - reservation.confirmation_batch.advance_owned
   - reservation.conflict_views.pending_booking_groups
@@ -49,23 +66,51 @@ gold:
   - ownima-backend/app/services/reservation_conflict_service.py
   - ownima-backend/app/storage/query_builders.py
   allowed_symbols:
+  - FavoritesService._apply_availability
+  - FavoritesService._hydrate
+  - FavoritesService.list_page
   - OpenSearchQueryBuilder.reservation_conflict_query
   - ReservationConflictService.check_conflicts
   - ReservationConflictService.get_conflict_message
   - ReservationConflictService.has_conflicts
   - ReservationCore._refuse_if_vehicle_taken
   - ReservationCreation._persist_under_lock
+  - ReservationCreation._refuse_if_vehicle_taken
   - ReservationCreation._validate_no_conflicts
   - ReservationCreation.check_booking_window
+  - ReservationCreation.create_confirmed_reservation
+  - ReservationCreation.first_free_pickup_time
+  - ReservationService._confirm_under_lock
+  - ReservationService._persist_under_lock
+  - ReservationService._refuse_if_vehicle_taken
+  - ReservationService._validate_no_conflicts
+  - ReservationService.check_booking_window
+  - ReservationService.create_confirmed_reservation
+  - ReservationService.first_free_pickup_time
   - ReservationTransitions._confirm_under_lock
+  - ReservationTransitions._refuse_if_vehicle_taken
   - VehicleService._set_is_booked_vehicles_by_date
   - VehicleService.list_vehicles
+  - favorites.routes.list_favorites
+  - reservation.routes.validate_reservation
+  - rider.routes._book
+  - rider.routes._booked_once
+  - rider.routes._filter_available_vehicles_by_date
+  - rider.routes.calculate_pricing
+  - rider.routes.check_vehicle_availability
+  - rider.routes.create_marketplace_reservation
+  - rider.routes.create_reservation
+  - rider.routes.search_vehicles
   - time_table.routes.list_time_slots_by_vehicle
   - vehicle.routes.list_vehicles
   allowed_files:
+  - ownima-backend/app/domains/favorites/routes.py
+  - ownima-backend/app/domains/favorites/service.py
+  - ownima-backend/app/domains/rider/routes.py
   - ownima-backend/app/domains/time_table/routes.py
   - ownima-backend/app/domains/vehicle/routes.py
   - ownima-backend/app/domains/vehicle/service.py
+  - ownima-backend/app/worker/base.py
 notes: 'Exp1 (docs/lab-notes/2026-10-15-exp1-radius-indirection.md), cell big x indirect.
 
   Gold: cgis closure + AST name closure, every difference adjudicated with file:line.

@@ -16,8 +16,14 @@ question: 'In this repository, the method `S3Client.get_presigned_url` in
   '
 gold:
   symbols:
-  - AttachmentReader.for_messages
-  - AttachmentReader.to_read
+  - id: AttachmentReader.for_messages
+    any_of:
+    - AttachmentReader.for_messages
+    - ChatAttachmentService.for_messages
+  - id: AttachmentReader.to_read
+    any_of:
+    - AttachmentReader.to_read
+    - ChatAttachmentService.to_read
   - ChatAttachmentService.upload
   - SupplierService.get_document_url
   - admin.chat.get_admin_chat_messages
@@ -35,6 +41,8 @@ gold:
   - ownima-backend/app/domains/supplier/service.py
   allowed_symbols:
   - S3Client.get_presigned_url
+  allowed_files:
+  - ownima-backend/app/worker/base.py
 notes: 'Exp1 (docs/lab-notes/2026-10-15-exp1-radius-indirection.md), cell big x indirect.
 
   Gold: cgis closure + AST name closure, every difference adjudicated with file:line.
