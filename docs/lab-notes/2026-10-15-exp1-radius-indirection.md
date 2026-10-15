@@ -118,7 +118,7 @@ in owner-api ends in such a route. Under the rule above, tasks moved to the cell
 
 | cell | tasks | moved in |
 |---|---|---|
-| big × indirect | 11 | 6 pilot; live_dispute_clause, credit_document, extra_options_filter, calculate_average_rating (route `Depends`); `_thread_for` (9 files, `getattr` hook dispatch) |
+| big × indirect | 11 | 6 pilot; live_dispute_clause, credit_document, extra_options_filter, calculate_average_rating (route `Depends`); `_thread_for` (9 files as adjudicated, 8 after the post-review correction; `getattr` hook dispatch) |
 | big × direct | 2 | vehicle_by_id_query, calculate_pagination |
 | small × direct | 4 | — |
 | small × indirect | 3 | `_counterparty_cards` (`ChatServiceDep`) |
@@ -127,7 +127,7 @@ in owner-api ends in such a route. Under the rule above, tasks moved to the cell
   rare at small radius, so the 2×2 collapses: big × direct has n=2. H2 is reported descriptively.
   That collapse is itself a finding about the corpus.
 - **H1 runs as designed:** big row n=13, small row n=7.
-- **`_thread_for`:** the adjudicator enumerated all 31 callers both tools miss (a callback through
+- **[Retracted in part, see Post-review corrections C1: 9 of these 31 never reach the target; 22 do.]** **`_thread_for`:** the adjudicator enumerated all 31 callers both tools miss (a callback through
   `_guarded`, and `getattr(self.chat_lifecycle, hook)` driven by the reservation state machine), so
   they are required gold here, not a lower bound. This is the one task where a correctness
   difference is likely.
@@ -167,18 +167,19 @@ corrected gold.
 |---|---|
 | G1 radius (H1) | **PASS.** Big row $0.189 (n=13) against small row $0.114 (n=7): ×1.66, threshold ×1.5. |
 | G2 indirection (H2) | Descriptive, as ruled above. Indirect costs ×1.68 in the big row and ×1.51 in the small row; recall is unchanged. |
-| G3 template irrelevant (H1) | **PASS.** Spearman cost~files +0.47, cost~drift −0.02; partial cost~drift given files +0.11, under the 0.2 limit. Caveat: drift spans only 0.24–0.37 over 8 domains. |
-| G4 ceiling | **Not hit.** Recall is 1.00 in 47 of 60 runs, minimum 0.76. |
+| G3 template irrelevant (H1) | **PASS.** Spearman cost~files +0.47, cost~drift −0.02; partial cost~drift given files +0.11, under the 0.2 limit. Caveat: drift spans only 0.24–0.37 over 8 domains (9 by the reviewer's count). |
+| G4 ceiling | **Not hit.** Recall is 1.00 in 47 of 60 runs, minimum 0.76; after the post-review correction, 49 of 60, minimum 0.77. |
 
 ### Reading
 
 - **H1 holds as registered.** Cost scales with radius, and how well the domain fits a template adds
-  nothing once radius is known.
+  nothing once radius is known. [Reframed post-review (I2–I5): radius is confounded with answer size, and the
+  intervals are wide; read G3 as "no evidence that drift matters".]
 - **The registered G1 overstates radius.** The big row is 11/13 indirect and the small row 3/7. Within
   one call type, radius alone gives ×1.14 (direct, n=2/4) and ×1.26 (indirect, n=11/3), while indirection
   gives ×1.5–1.7 in both rows. Descriptively, indirection moves cost more than radius does. The big ×
   direct cell is too small to claim it, so this is the hypothesis for the next experiment.
-- **Correctness drops where the edge is dynamic.** `_thread_for` (a `getattr` hook dispatch plus a
+- **[Retracted, see Post-review corrections C1.]** **Correctness drops where the edge is dynamic.** `_thread_for` (a `getattr` hook dispatch plus a
   callback) recalls 0.80 and `calculate_average_rating` 0.93. The two most expensive tasks
   (`_thread_for`, `reservation_conflict_query`, about $0.35) are the two whose chains run through
   callback or dynamic hops, the same class of edge cgis does not see (#632). What is hard for the agent
@@ -207,7 +208,9 @@ therefore never reach the target. Runs 0 and 1 missed exactly those 10 items: th
 machine correctly and the gold over-approximated. The task YAML is corrected (40 → 31 symbols,
 9 → 8 files). `results-exp1-full.jsonl` keeps the pre-correction scores. Rescored post hoc and declared
 as such: `_thread_for` recall is 1.00 / 1.00 / 0.95, and 11 of 60 runs fall below 1.00 instead of 13.
-G4 is still "not hit", but only barely. The claim that agent difficulty and static-analysis difficulty
+Gate 4 did not say whether "every cell at 1.00" means every run or each cell's median. Per run it is not
+hit: 11 of 60 runs fall below 1.00. Per cell median it is hit: every cell's median recall is 1.00. Both readings
+are stated here because the pre-registration fixed neither. The claim that agent difficulty and static-analysis difficulty
 "largely coincide" loses its main evidence and is withdrawn.
 
 **I1.** `calculate_average_rating` at 0.93 is not a dynamic-edge miss. Every run misses a nested
@@ -215,7 +218,8 @@ function (`create_rider_review._row`), and one run is penalised for the real imp
 `CatalogWorker` (worker/base.py:19). The gold should accept alias spellings.
 
 **I2, answer size confounds radius.** Over the 20 tasks, Spearman of cost with required-symbol count is
-+0.58, with radius +0.47, and the two predictors correlate at +0.74. The most expensive tasks are also
++0.58, with radius +0.47, and the two predictors correlate at +0.74. On the corrected gold the figures are
++0.58, +0.45 and +0.73. The most expensive tasks are also
 the largest answers. G1's "radius" effect cannot be separated from answer size in this design.
 
 **I3–I5, uncertainty.**
