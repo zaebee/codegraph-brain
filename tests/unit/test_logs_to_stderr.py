@@ -146,3 +146,16 @@ def test_every_script_entry_point_logs_to_stderr() -> None:
         and "log_to_stderr()" not in text
     ]
     assert not missing, f"scripts that print while cgis logs to stdout: {missing}"
+
+
+def test_with_no_stderr_logs_never_reach_stdout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Gemini on #622: pythonw has no stderr, and `PrintLogger(None)` writes to stdout."""
+    log_to_stderr()
+    try:
+        monkeypatch.setattr(sys, "stderr", None)
+        captured = io.StringIO()
+        monkeypatch.setattr(sys, "stdout", captured)
+        structlog.get_logger("probe").info("no-stderr-line")
+        assert "no-stderr-line" not in captured.getvalue()
+    finally:
+        structlog.reset_defaults()

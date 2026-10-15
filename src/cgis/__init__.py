@@ -1,5 +1,6 @@
 """Top-level package for Cgis app."""
 
+import io
 from importlib.metadata import PackageNotFoundError, version
 
 __app_name__ = "cgis"
@@ -8,6 +9,14 @@ try:
     __version__ = version("codegraph-brain")
 except PackageNotFoundError:  # source checkout without an install
     __version__ = "0.0.0+dev"
+
+
+class _Discard(io.StringIO):
+    """A text stream that keeps nothing: where logs go when there is no stderr."""
+
+    def write(self, text: str) -> int:
+        """Drop a line, reporting it written."""
+        return len(text)
 
 
 def log_to_stderr() -> None:
@@ -39,8 +48,12 @@ def log_to_stderr() -> None:
     # sys.stderr later (a test's capture, a host) is written to, never a closed one.
     # Uncached, so a module-level `structlog.getLogger(__name__)` made at import
     # reaches the factory — and the current sys.stderr — on every call.
+    # No stderr at all (pythonw): drop the lines. `PrintLogger(None)` would write them
+    # to stdout, the one stream they must never reach (Gemini on #622).
     structlog.configure(
         processors=processors,
-        logger_factory=lambda *_args: structlog.PrintLogger(sys.stderr),
+        logger_factory=lambda *_args: structlog.PrintLogger(
+            sys.stderr if sys.stderr is not None else _Discard()
+        ),
         cache_logger_on_first_use=False,
     )
