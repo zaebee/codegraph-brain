@@ -16,7 +16,19 @@ from cgis.core.models import Node, NodeType
 _ROUTER_CLASSES = frozenset({"fastapi.FastAPI", "fastapi.APIRouter", "fastapi.routing.APIRouter"})
 #: The decorator attributes that register a handler.
 _VERBS = frozenset(
-    {"get", "post", "put", "patch", "delete", "head", "options", "trace", "api_route", "websocket"}
+    {
+        "get",
+        "post",
+        "put",
+        "patch",
+        "delete",
+        "head",
+        "options",
+        "trace",
+        "api_route",
+        "websocket",
+        "websocket_route",
+    }
 )
 
 

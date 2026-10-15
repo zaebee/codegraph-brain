@@ -214,3 +214,17 @@ def test_an_empty_role_selection_says_what_the_role_detects(tmp_path: Path) -> N
         IngestionPipeline(extractors([])).run(str(tmp_path), store=store)
         with pytest.raises(NoAuditSourcesError, match="same module"):
             audit_reachability(store, target_fqn="app.plain.g", from_type=NodeType.ROUTE_HANDLER)
+
+
+def test_a_websocket_route_is_a_route() -> None:
+    """Starlette's `websocket_route`, which an APIRouter carries too (Gemini on #616)."""
+    code = (
+        "from fastapi import APIRouter\n"
+        "router = APIRouter()\n"
+        "@router.websocket_route('/ws')\n"
+        "async def stream(websocket) -> None: ...\n"
+    )
+    assert _nodes(code)["stream"].metadata["route"] == {
+        "verb": "websocket_route",
+        "router": "router",
+    }
