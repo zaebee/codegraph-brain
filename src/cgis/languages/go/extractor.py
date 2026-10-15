@@ -171,7 +171,9 @@ def _embedded(body: TSNode | None) -> list[str]:
             if f.type == "field_declaration" and f.child_by_field_name("name") is None
         ]
     elif body.type == "interface_type":
-        types = [c.named_children[0] for c in body.children if c.type == "type_elem"]
+        types = [
+            c.named_children[0] for c in body.children if c.type == "type_elem" and c.named_children
+        ]
     else:
         return []
     return [r for r in map(type_reference, types) if r]
@@ -204,6 +206,8 @@ def _method(ctx: _File, node: TSNode, nodes: list[Node], edges: list[Edge]) -> N
     if receiver is None:
         return
     type_name = text(base_type(receiver.child_by_field_name("type")))
+    if not type_name:
+        return  # incomplete code: a method with no type to hang under
     owner = f"{ctx.scope}.{type_name}"
     fqn = f"{owner}.{text(node.child_by_field_name('name'))}"
     edges.append(_edge(owner, fqn, EdgeType.DECLARES))

@@ -2,7 +2,7 @@
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.languages.go._syntax import base_type, selector_chain
-from cgis.languages.go.extractor import GoExtractor
+from cgis.languages.go.extractor import GoExtractor, _embedded, _File, _method
 
 SERVER = "internal/server/server.go"
 
@@ -250,3 +250,41 @@ def test_a_selector_with_no_operand_reads_as_no_name() -> None:
 def test_a_pointer_with_nothing_under_it_names_no_type() -> None:
     """A trailing `*` mid-edit raised IndexError and failed the whole file (Gemini, PR #607)."""
     assert base_type(_Broken("pointer_type")) is None  # type: ignore[arg-type]
+
+
+class _Fake:
+    """A syntax node with chosen children and fields, for shapes the parser can leave."""
+
+    def __init__(
+        self, node_type: str, children: list["_Fake"] | None = None, **fields: "_Fake"
+    ) -> None:
+        self.type = node_type
+        self.children = children or []
+        self.named_children = self.children
+        self.text = b""
+        self.start_point = self.end_point = (0, 0)
+        self._fields = fields
+
+    def child_by_field_name(self, name: str) -> "_Fake | None":
+        return self._fields.get(name)
+
+    def children_by_field_name(self, name: str) -> list["_Fake"]:
+        found = self._fields.get(name)
+        return [found] if found else []
+
+
+def test_an_empty_interface_element_embeds_nothing() -> None:
+    """`_embedded` indexed `named_children[0]` of an element with none (Gemini, PR #607)."""
+    assert _embedded(_Fake("interface_type", [_Fake("type_elem")])) == []  # type: ignore[arg-type]
+
+
+def test_a_receiver_with_no_type_declares_no_method() -> None:
+    """No receiver type: no `scope..Start` method (Gemini, PR #607)."""
+    ctx = _File("p/x.go", "p.x_go", "p", "p", False, {}, frozenset())
+    receiver = _Fake("parameter_list", [_Fake("parameter_declaration")])
+    method = _Fake("method_declaration", receiver=receiver, name=_Fake("field_identifier"))
+    nodes: list[Node] = []
+    edges: list[Edge] = []
+    _method(ctx, method, nodes, edges)  # type: ignore[arg-type]
+    assert nodes == []
+    assert edges == []
