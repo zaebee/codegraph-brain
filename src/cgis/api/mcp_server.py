@@ -18,7 +18,7 @@ from cgis import __version__, log_to_stderr
 from cgis.api.auto_refresh import refreshes_graph
 from cgis.api.server_instructions import SERVER_INSTRUCTIONS
 from cgis.api.tool_allowlist import TOOLS_ENV, CgisServer
-from cgis.core.coverage import TraversalCoverage
+from cgis.core.coverage import TraversalCoverage, UnresolvedSite
 from cgis.core.freshness import Freshness, FreshnessState
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.languages import extractors
@@ -289,8 +289,23 @@ def _render_subgraph(
 
 
 def _coverage_text(coverage: TraversalCoverage) -> str:
-    """Coverage as one line: how many calls resolved to nothing, and the commonest names."""
-    top = ", ".join(f"{name} ({count})" for name, count in coverage.top_unresolved[:5])
+    """Coverage as one line: how many calls resolved to nothing, the commonest, and where.
+
+    Each name carries its first call site, so the gap is a place to read rather
+    than a name to grep for (#641).
+    """
+    first_site: dict[str, UnresolvedSite] = {}
+    for site in coverage.sites:
+        first_site.setdefault(site.target, site)
+
+    def named(name: str, count: int) -> str:
+        site = first_site.get(name)
+        if site is None:
+            return f"{name} ({count})"
+        where = f" {site.file_path}:{site.line}" if site.file_path and site.line else ""
+        return f"{name} ({count}) at {site.caller}{where}"
+
+    top = ", ".join(named(name, count) for name, count in coverage.top_unresolved[:5])
     return (
         f"coverage: {coverage.calls_unresolved} of {coverage.calls_examined} calls unresolved"
         f" ({coverage.basis})" + (f"; most often {top}" if top else "")

@@ -4,7 +4,7 @@ from collections import Counter
 from collections.abc import Callable
 from typing import NamedTuple
 
-from cgis.core.coverage import TraversalCoverage, rank_unresolved
+from cgis.core.coverage import TraversalCoverage, rank_unresolved, unresolved_sites
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
 from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 
@@ -99,6 +99,11 @@ def _admit(
 #: Decides, one batch per BFS level, which newly reached ids leave the answer
 #: (``dropped``) and which stay in it without being expanded (``leaves``).
 Screen = Callable[[list[str]], _Verdict]
+
+
+def _call_sites(calls: list[Edge]) -> list[tuple[str, str, str | None, int | None]]:
+    """(target, caller, file, line) of each call, as `unresolved_sites` takes them."""
+    return [(e.target, e.source, e.file_path, e.line_number) for e in calls]
 
 
 def agent_screen(
@@ -338,13 +343,21 @@ class QueryEngine:
             and n.namespace == NodeNamespace.INTERNAL
             and n.type in _CALLABLE_TYPES
         }
-        hidden = self.store.unknown_calls_named(names)
-        total_hidden = sum(hidden.values())
+        hidden_calls = self.store.unknown_call_edges(names)
+        # The line under the tree counts what the tree could show: a caller the
+        # screen left out of the answer (a test) leaves the count too, resolved or
+        # not. Unscreened, 36 of 53 calls on owner-api were tests (#641).
+        callers = sorted({e.source for e in walk.calls.values()} | {e.source for e in hidden_calls})
+        left_out = screen(callers).dropped
+        examined = [e for e in walk.calls.values() if e.source not in left_out]
+        hidden = [e for e in hidden_calls if e.source not in left_out]
+        top = rank_unresolved(Counter(e.target for e in hidden))
         coverage = TraversalCoverage(
             basis="unresolved_calls_by_name",
-            calls_examined=len(walk.calls) + total_hidden,
-            calls_unresolved=total_hidden,
-            top_unresolved=rank_unresolved(hidden),
+            calls_examined=len(examined) + len(hidden),
+            calls_unresolved=len(hidden),
+            top_unresolved=top,
+            sites=unresolved_sites(_call_sites(hidden), top),
         )
         return TraversalResult(*subgraph, coverage, len(walk.dropped), walk.truncation)
 
@@ -411,12 +424,14 @@ class QueryEngine:
         call_targets = [e.target for e in walk.calls.values()]
         known = {n.id: n for n in self.store.get_nodes([*walk.discovered, *call_targets])}
         nodes = [n for n in known.values() if n.id in walk.discovered]
-        unresolved = Counter(t for t in call_targets if is_unresolved(t, known))
+        unresolved_calls = [e for e in walk.calls.values() if is_unresolved(e.target, known)]
+        top = rank_unresolved(Counter(e.target for e in unresolved_calls))
         coverage = TraversalCoverage(
             basis="unresolved_calls_made",
             calls_examined=len(call_targets),
-            calls_unresolved=unresolved.total(),
-            top_unresolved=rank_unresolved(unresolved),
+            calls_unresolved=len(unresolved_calls),
+            top_unresolved=top,
+            sites=unresolved_sites(_call_sites(unresolved_calls), top),
         )
         return TraversalResult(
             *_finish(start_node_id, nodes, walk, _target, show_external), coverage, *omitted

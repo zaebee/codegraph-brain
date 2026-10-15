@@ -1,6 +1,6 @@
 """Unit tests for the JSON graph serializer (#171)."""
 
-from cgis.core.coverage import TraversalCoverage
+from cgis.core.coverage import TraversalCoverage, UnresolvedSite
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.query.render.graph_json import graph_to_json
 
@@ -71,6 +71,7 @@ def test_graph_to_json_carries_coverage_when_given() -> None:
         calls_examined=4,
         calls_unresolved=1,
         top_unresolved=[("logger.info", 1)],
+        sites=[UnresolvedSite(target="logger.info", caller="pkg.a", file_path="a.py", line=3)],
     )
 
     payload = graph_to_json("pkg.a", [_make_node("pkg.a")], [], coverage=coverage)
@@ -80,6 +81,7 @@ def test_graph_to_json_carries_coverage_when_given() -> None:
         "calls_examined": 4,
         "calls_unresolved": 1,
         "top_unresolved": [("logger.info", 1)],
+        "sites": [{"target": "logger.info", "caller": "pkg.a", "file_path": "a.py", "line": 3}],
         "unresolved_ratio": 0.25,
     }
 

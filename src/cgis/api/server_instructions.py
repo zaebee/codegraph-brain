@@ -50,7 +50,10 @@ relying on it.
 - coverage / top_unresolved (json): calls on values whose type is decided at runtime \
 (an injected client, logger.info) resolve to nothing. An empty impact result means \
 "no static callers found", not "safe to delete": dispatch through a registry, a \
-decorator or a framework is invisible. Name the gap rather than assert safety.
+decorator or a framework is invisible. Each unresolved name comes with where it is \
+made ("at <caller> <file:line>" in text, coverage.sites in json). When one could reach \
+the symbol you asked about, read that line and follow it before answering; naming the \
+gap is not enough.
 - cgis_analyze_impact and cgis_trace_flow leave out test code (counted) and cap the \
 answer at max_nodes, nearest first; a cut is reported. Ask for output_format="text" to \
 read an answer — an indented tree, a fifth the size of json; use json to compute with it.
