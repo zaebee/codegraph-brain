@@ -77,6 +77,8 @@ def _node_slug(node: Node) -> str:
         # not `Node.language`: a directory row (`cgis structure`) and a TS node
         # stored before #513 both carry the "python" default, and neither should
         # get the Python rule.
+        # `scope_of`, not `file_node_id`: the slug peels a definition's namespace,
+        # which is the scope — a Go file's FILE node is `<scope>.<stem>_go`.
         pack = pack_for_path(node.file_path)
         if pack is not None:
             path_fqn = pack.scope_of(node.file_path, None)

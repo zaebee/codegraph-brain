@@ -85,6 +85,10 @@ class LanguagePack(Protocol):
         """The namespace unit this file's definitions live in — its module FQN for py/ts."""
         ...
 
+    def file_node_id(self, path: str, source_root: str | None) -> str:
+        """The id of this file's FILE node. Equal to `scope_of` where a file is its own scope."""
+        ...
+
     def extractor(self, extension: str, source_roots: list[str]) -> BaseExtractor:
         """A new extractor for files of `extension`."""
         ...

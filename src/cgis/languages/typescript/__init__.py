@@ -37,6 +37,11 @@ class TypeScriptPack(LanguagePack):
         return file_path_to_module_fqn(path, source_root)
 
     @override
+    def file_node_id(self, path: str, source_root: str | None) -> str:
+        """A file is its own scope here, so its FILE node is its module (step 7, H1)."""
+        return self.scope_of(path, source_root)
+
+    @override
     def extractor(self, extension: str, source_roots: list[str]) -> BaseExtractor:
         """The TSX grammar for `.tsx`, the TypeScript one otherwise — loaded here, on first use."""
         from cgis.languages.typescript.extractor import TypeScriptExtractor  # noqa: PLC0415

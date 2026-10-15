@@ -37,7 +37,7 @@ from cgis.core.coverage import TraversalCoverage
 from cgis.core.freshness import FreshnessState
 from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeNamespace, NodeType
 from cgis.guardian.metrics import load_reviews, rate_review
-from cgis.languages import extractors, is_supported, scope_of
+from cgis.languages import extractors, file_node_id, is_supported
 from cgis.pipeline import IngestionPipeline
 from cgis.query.analysis.analyzer import AnalyzerEngine
 from cgis.query.analysis.anomaly import AnomalyType, ArchitecturalAnomaly
@@ -836,10 +836,10 @@ def structure(
     # Normalize file path → FQN. Per-language, because the rules disagree:
     # the Python one strips ".py" and collapses "/__init__", so it would turn
     # "src/app/foo.ts" into "src.app.foo.ts" — an id no extractor emits (#344).
-    # A path no pack reads gets the Python slash-to-dot rewrite (`scope_of`).
+    # A path no pack reads gets the Python slash-to-dot rewrite (`file_node_id`).
     if "/" in target or "\\" in target or is_supported(target):
         normalized = target.replace("\\", "/").removeprefix("./")
-        target = scope_of(normalized, None)
+        target = file_node_id(normalized, None)
         console.print(f"[dim]→ FQN: {escape(target)}[/dim]")
 
     with SQLiteStore(db) as store:

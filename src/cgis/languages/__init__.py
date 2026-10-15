@@ -125,6 +125,12 @@ def scope_of(path: str, source_root: str | None) -> str:
     return pack.scope_of(path, source_root)
 
 
+def file_node_id(path: str, source_root: str | None) -> str:
+    """The id of a path's FILE node, by its own pack; a path no pack reads gets the Python rule."""
+    pack = pack_for_path(path) or _load("python")
+    return pack.file_node_id(path, source_root)
+
+
 def project_readers(root: Path, extractors: Mapping[str, BaseExtractor]) -> list[ProjectReader]:
     """Every pack's project reader, in manifest order — imports each pack, loads no grammar."""
     return [_load(m.name).project_reader(root, extractors) for m in MANIFESTS]

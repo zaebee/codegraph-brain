@@ -216,7 +216,7 @@ class GraphContextCollector:
                     # Callers filter, so this means one stopped doing so.
                     log.warning("No extractor for changed file.", path=rel_path)
                     continue
-                module_fqn = pack.scope_of(rel_path, self.source_root)
+                module_fqn = pack.file_node_id(rel_path, self.source_root)
                 nodes, edges = engine.get_impact_graph(module_fqn, max_depth=2)
                 title = "Impact graph"
                 if not nodes and flow:
