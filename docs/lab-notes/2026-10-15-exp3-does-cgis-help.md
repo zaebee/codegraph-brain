@@ -77,21 +77,21 @@ PRIMARY precision: control 1.00, cgis-forced 1.00
 **Verdict: the primary gate passes.** On the 14 big-radius indirect/dynamic tasks, forced cgis cuts
 median cost to ×0.63 (CI 0.50–0.76, entirely below 0.80) at median Δrecall 0.00. The positioning
 stays, as pre-committed. An independent recomputation reproduced the numbers (geometric mean 0.631,
-pooled-cost ratio 0.649). Forced rows ran at cgis_sha 729834a, which differs from the pre-registered
+ratio of summed per-task medians 0.649, pooled over runs 0.640). Forced rows ran at cgis_sha 729834a, which differs from the pre-registered
 c74c90d only in docs and the analysis script.
 
 Over all 37 tasks the ratio is ×0.74, lower on indirect cells (×0.59–0.67) than direct ones
 (×0.80–0.92). That is consistent with a graph helping more on indirect chains, but it is
 **confounded with task size**: across tasks the ratio falls as control cost rises (Spearman −0.50),
 because cheap tasks carry the forced arm's fixed overhead (a ToolSearch call in 107/111 sessions,
-129 native calls refused by the guard before the first cgis call, a longer prompt). Big-direct has
+129 calls refused by the cgis-first guard, a longer prompt). Big-direct has
 n=2, and per-task direct ratios (0.65–1.16) overlap the indirect ones. Median turns fell from 8 to 5;
 the median forced session made 1 cgis call. Ingest is not in `cost_usd` (owner-api ~21 s, cgis ~3 s).
 
 **The median hides a heavier tail, and it sits where the graph is wrong or blind.** The control also
 missed gold in 21/111 sessions, but the forced misses are larger: total recall deficit 3.72 vs 1.67,
 11 vs 3 sessions below 0.90, primary-set mean Δrecall −0.04 against the median 0.00 (5 of 14 tasks
-negative; the median comes from 8 tasks where both arms score 1.00).
+negative; 8 tasks have Δ 0.00, 7 of them at 1.00 in both arms).
 
 - Two of the three `desc` tasks lose recall (relative −0.15, specifier-fqn −0.27; record-usage
   *gains* +0.05). Their misses are the MCP tools reached only through the `@refreshes_graph`
@@ -106,9 +106,10 @@ negative; the median comes from 8 tasks where both arms score 1.00).
 - `Worker.reset_showcase_data` is a real `cls._run_reset` resolver gap (forced missed it 4 times,
   control 2). `Worker.index_top_up` is a **gold spelling defect** (alias `TransactionWorker`, exp1
   I1), not a graph miss; it penalised the control too.
-- 99 of 111 sessions never used Read, but 61 of 111 inspected source with Grep or Bash after their
-  first cgis call. Agents did look at source in most sessions. They did not recover the chains the
-  graph lacks, and none named the gap.
+- 99 of 111 sessions never read a file with Read, but 61 of 111 inspected source with Grep or Bash after their
+  first cgis call. Agents did look at source in most sessions, and several named the gap in their answer
+  (unresolved `wrapper`, `pack.classify`, `cls._run_reset`), but did not follow it to recover the
+  chain. None flagged the `typing.Any.*` edges, which look confident and so are invisible to them.
 
 So the gate says cgis saves money at equal *median* recall. Where dispatch is dynamic, or where the
 graph is confidently wrong, the cheaper answer is less complete. That is the remaining risk of the
