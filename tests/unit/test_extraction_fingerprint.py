@@ -12,7 +12,6 @@ from pathlib import Path
 
 import pytest
 
-import cgis.pipeline as pipeline_module
 from cgis.core.models import Edge, Node
 from cgis.languages.python.extractor import PythonExtractor
 from cgis.pipeline import IngestionPipeline, extraction_fingerprint
@@ -29,7 +28,12 @@ def _package(root: Path, files: dict[str, str]) -> Path:
 def test_the_fingerprint_follows_the_extraction_code_only(tmp_path: Path) -> None:
     pkg = _package(
         tmp_path / "cgis",
-        {"languages/py.py": "a = 1\n", "resolver/r.py": "b = 1\n", "query/q.py": "c = 1\n"},
+        {
+            "languages/py.py": "a = 1\n",
+            "resolver/r.py": "b = 1\n",
+            "query/q.py": "c = 1\n",
+            "storage/sqlite_store.py": "d = 1\n",
+        },
     )
     before = extraction_fingerprint(pkg)
     assert extraction_fingerprint(pkg) == before  # stable
@@ -40,6 +44,9 @@ def test_the_fingerprint_follows_the_extraction_code_only(tmp_path: Path) -> Non
     (pkg / "languages/py.py").write_text("a = 1\n", encoding="utf-8")
     (pkg / "resolver/r.py").write_text("b = 2\n", encoding="utf-8")
     assert extraction_fingerprint(pkg) != before  # the resolver decides stored edges too
+    (pkg / "resolver/r.py").write_text("b = 1\n", encoding="utf-8")
+    (pkg / "storage/sqlite_store.py").write_text("d = 2\n", encoding="utf-8")
+    assert extraction_fingerprint(pkg) != before  # so does how rows are written (#617 review)
 
 
 def test_the_store_owns_the_fingerprint_key(tmp_path: Path) -> None:
@@ -100,7 +107,27 @@ def test_a_graph_from_before_fingerprints_is_rebuilt(tmp_path: Path) -> None:
     assert recorded == extraction_fingerprint()
 
 
-def test_the_fingerprint_is_computed_once() -> None:
-    """Read on every incremental run (MCP auto-refresh): hashing the sources each time is waste."""
-    assert extraction_fingerprint() is extraction_fingerprint()
-    assert pipeline_module._installed_fingerprint.cache_info().hits > 0  # noqa: SLF001
+def test_an_install_without_sources_has_no_fingerprint(tmp_path: Path) -> None:
+    """A .pyc-only install or a zipapp: no fingerprint, not the hash of nothing.
+
+    The hash of nothing is a constant, so the check would pass forever and say nothing.
+    """
+    assert extraction_fingerprint(tmp_path / "cgis") is None
+
+
+def test_a_rebuild_that_keeps_the_stored_graph_does_not_bless_it(tmp_path: Path) -> None:
+    """#617 review: an empty walk keeps the old graph, which must not be recorded as current.
+
+    A mistyped path (or an extractor that fails on every file) extracts nothing, so
+    the rebuild keeps the stored graph; recording the current fingerprint then would
+    leave a graph built by older code that no later run rebuilds.
+    """
+    work = _package(tmp_path / "w", {"a.py": "def f():\n    pass\n"})
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    db = str(tmp_path / "g.db")
+    with SQLiteStore(db) as store:
+        IngestionPipeline({".py": PythonExtractor()}).run(str(work), store=store)
+        store.record_extraction_fingerprint("built-by-an-older-cgis")
+        IngestionPipeline({".py": PythonExtractor()}).run(str(empty), store=store)
+        assert store.get_extraction_fingerprint() == "built-by-an-older-cgis"
