@@ -95,3 +95,51 @@ def test_a_concrete_annotation_still_resolves() -> None:
     assert "pkg.catalog.CatalogService.build_cards" in _calls_from(
         code, "pkg.user.Favorites.hydrate"
     )
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "    def __init__(self, c) -> None:\n        self.catalog: Any = c\n",
+        "    catalog: 'Any'\n",
+        "    def __init__(self, catalog: AnyDep) -> None:\n        self.catalog = catalog\n",
+    ],
+    ids=["annotated-self-assignment", "string-annotation", "annotated-di-alias"],
+)
+def test_other_any_spellings_declare_no_type(body: str) -> None:
+    code = (
+        "from typing import Annotated, Any\n"
+        "from fastapi import Depends\n"
+        "AnyDep = Annotated[Any, Depends(make)]\n"
+        f"class Favorites:\n{body}"
+        "    def hydrate(self):\n"
+        "        return self.catalog.build_cards()\n"
+    )
+    targets = _calls_from(code, "pkg.user.Favorites.hydrate")
+    assert not any(t.startswith("typing.") for t in targets), targets
+
+
+def test_an_any_parameter_does_not_overwrite_a_declared_attribute_type() -> None:
+    """`catalog: CatalogService` in the class body survives `self.catalog = <Any param>`."""
+    code = (
+        "from typing import Any\n"
+        "from pkg.catalog import CatalogService\n"
+        "class Favorites:\n"
+        "    catalog: CatalogService\n"
+        "    def __init__(self, catalog: Any) -> None:\n"
+        "        self.catalog = catalog\n"
+        "    def hydrate(self):\n"
+        "        return self.catalog.build_cards()\n"
+    )
+    assert "pkg.catalog.CatalogService.build_cards" in _calls_from(
+        code, "pkg.user.Favorites.hydrate"
+    )
+
+
+def test_a_with_bound_any_declares_no_type() -> None:
+    """The constructor/`with` path guards None too (no one writes `Any()`, but the guard exists)."""
+    code = (
+        "from typing import Any\ndef run():\n    with Any() as c:\n        return c.build_cards()\n"
+    )
+    # `Any()` itself is a real call to typing.Any; only a method *on* it is wrong.
+    assert not any(t.startswith("typing.Any.") for t in _calls_from(code, "pkg.user.run"))
