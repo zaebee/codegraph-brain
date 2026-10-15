@@ -4,6 +4,10 @@ from collections.abc import Callable
 
 from cgis.languages.python._syntax import file_path_to_module_fqn
 
+#: Annotations that say "no static type". A receiver typed with one of these is
+#: as unknown as an unannotated one, and is recorded the same way: not at all.
+_OPAQUE_TYPES: frozenset[str] = frozenset({"typing.Any", "typing_extensions.Any"})
+
 
 class TypeResolver:
     """Resolves Python type annotations to fully qualified names.
@@ -26,8 +30,25 @@ class TypeResolver:
         type_name: str,
         import_map: dict[str, str] | None,
         file_path: str,
+    ) -> str | None:
+        """Resolve a type name (possibly module-prefixed) to a FQN, or None for `Any`.
+
+        `Any` declares that the value has no static type. Recording it as one made
+        every call on such a value resolve to `typing.Any.<method>` — a stdlib
+        target, so it was kept at confidence 1.0, and a confident wrong edge is
+        invisible to the coverage note, which counts only unresolved calls (#636).
+        The check is on the resolved FQN, so `t.Any` and `Any as A` are caught too.
+        """
+        fqn = self._lookup_type_fqn(type_name, import_map, file_path)
+        return None if fqn in _OPAQUE_TYPES else fqn
+
+    def _lookup_type_fqn(
+        self,
+        type_name: str,
+        import_map: dict[str, str] | None,
+        file_path: str,
     ) -> str:
-        """Resolve a type name (possibly module-prefixed) to a FQN."""
+        """The FQN a type name refers to: through the import map, else the file's module."""
         if import_map:
             if type_name in import_map:
                 return import_map[type_name]
