@@ -88,7 +88,7 @@ MANIFESTS: tuple[Manifest, ...] = (
         load=_go,
         extensions=(".go",),
         # `_test.go` files are ingested and flagged `is_test`, never skipped.
-        never_ingested=re.compile(r"(?!)"),
+        never_ingested=re.compile(r"\b\B"),  # matches nowhere
         cross_file_metadata={NodeType.FILE: ("import_map",)},
     ),
 )
