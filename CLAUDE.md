@@ -48,7 +48,8 @@ The pipeline runs in three phases: **Extract → Resolve → Store**.
 IngestionPipeline (pipeline/__init__.py)
   ├── cgis.languages (registry)                ← lazy: a pack is imported when its first file is met
   │     ├── languages/python/                  ← PythonExtractor + PACK
-  │     └── languages/typescript/              ← TypeScriptExtractor (.ts/.tsx) + PACK
+  │     ├── languages/typescript/              ← TypeScriptExtractor (.ts/.tsx) + PACK
+  │     └── languages/go/                      ← GoExtractor (.go) + go.mod reader + PACK (pilot)
   ├── ResolverEngine (resolver/engine.py)      ← raw_call: targets → resolved FQN edges
   ├── SQLiteStore (storage/sqlite_store.py)    ← persists graph; WAL mode
   └── post-write passes (pipeline/)            ← refresh_dispatch, SemanticUpliftEngine (pipeline/uplift.py)

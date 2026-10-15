@@ -477,6 +477,36 @@ made there, not worked around in Go.
 >   `index_facts` reads. It may not shadow a built-in or a key the store owns,
 >   and must read back equal from JSON.
 
+> **Implementation note (step 7b):** the pilot as built.
+>
+> - **H4 — import paths reach node ids through the module path.** Imports are
+>   recorded dotted (`example.com.app.internal.server`), and the module path's
+>   segments are `layout_prefixes`, so the generic strip maps a call to
+>   `internal.server.Run`. That needed one more contract fix: layout
+>   reconciliation classified a target with no source file (the Python
+>   reading), which calls a Go import of the project's own module EXTERNAL;
+>   the import-map and local-type paths now pass the source file through.
+>   Graph-identical for Python/TypeScript.
+> - **H5 — a package import names the package's first FILE node.** No node per
+>   package, no new `NodeType`.
+> - **H6 — receiver calls are `raw_call:self.<name>`.** Parameter, `var` and
+>   `T{}`/`&T{}` types are recorded as `local_types` FQNs with the pointer
+>   already stripped, so the planned `*T` normalizer was not needed.
+> - **cgo needs no rule of its own:** a file calling `C.malloc` imports `"C"`,
+>   which the no-dot stdlib rule already classifies.
+> - **No `go.mod`, no key.** The Go reader declares nothing rather than `{}`,
+>   so a Go-free graph's `ingest_state` is unchanged; a key that vanishes still
+>   rebuilds, because the collector now compares the packs' whole recorded set.
+> - **Acceptance diff, as built:** besides `languages/go/`, the manifest, the
+>   dependency and Go tests, the PR touches the two contract fixes above,
+>   tests that enumerate packs, the drift domain, the pre-commit mypy
+>   environment, `graph_identity.py snapshot --root`, and the calibration band.
+>
+> Follow-ups: implicit interface satisfaction; generics beyond extraction; cgo
+> beyond classification; `go.work`; the global layout-prefix set (H4); struct
+> field types as `self_types`; a replace whose path shares no prefix with the
+> module.
+
 ## Risks and open questions
 
 - **Behaviour hidden in Python-only paths that Go also reaches.** For
