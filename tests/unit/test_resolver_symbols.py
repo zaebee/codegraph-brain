@@ -45,6 +45,32 @@ def test_resolve_global_call_prefers_same_file() -> None:
     assert resolver.resolve_global_call("helper", "a.caller") == "a.helper"
 
 
+def _scoped_file(fqn: str, file_path: str, scope: str) -> Node:
+    """A FILE node that declares a scope wider than itself, as a Go file does."""
+    return Node(
+        id=fqn,
+        type=NodeType.FILE,
+        name=fqn.rsplit(".", maxsplit=1)[-1],
+        file_path=file_path,
+        start_line=1,
+        end_line=1,
+        metadata={"scope": scope},
+    )
+
+
+def test_resolve_global_call_prefers_the_same_scope() -> None:
+    """Step 7 H2: the candidate in a sibling file of the caller's package wins."""
+    nodes = [
+        _scoped_file("srv.a_go", "srv/a.go", "srv"),
+        _scoped_file("srv.b_go", "srv/b.go", "srv"),
+        _node("srv.helper", NodeType.FUNCTION, file_path="srv/b.go"),
+        _node("other.helper", NodeType.FUNCTION, file_path="other/x.go"),
+        _node("srv.caller", NodeType.FUNCTION, file_path="srv/a.go"),
+    ]
+    resolver = _resolver(nodes)
+    assert resolver.resolve_global_call("helper", "srv.caller") == "srv.helper"
+
+
 def test_resolve_dep_candidate_import_is_authoritative() -> None:
     """An explicitly imported non-VARIABLE symbol returns None (no global fallback)."""
     file_node = Node(

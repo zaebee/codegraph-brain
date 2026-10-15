@@ -486,3 +486,26 @@ def test_an_index_cannot_be_built_without_its_packs_facts() -> None:
     facts = next(f for f in dataclasses.fields(SymbolIndex) if f.name == "facts")
     assert facts.default is dataclasses.MISSING
     assert facts.default_factory is dataclasses.MISSING
+
+
+def test_a_file_without_a_declared_scope_keys_by_its_path() -> None:
+    """Python/TS: no FILE declares a scope, so the tiebreak key is the path, as before (step 7 H2).
+
+    Not the FILE node id: `components/index.tsx` and `components.tsx` share the id
+    `components`, and keying by it would merge two files' tiebreaks.
+    """
+    file_node = _node("pkg.mod", node_type=NodeType.FILE, file_path="pkg/mod.py")
+    index = IndexBuilder().build([file_node, _node("pkg.mod.f", file_path="pkg/mod.py")])
+    assert index.file_scopes == {}
+    assert index.file_global_symbols[("pkg/mod.py", "f")] == ["pkg.mod.f"]
+
+
+def test_a_file_can_declare_a_wider_scope() -> None:
+    """Go: two files of one package share a tiebreak key through FILE metadata."""
+    a = _node("srv.a_go", node_type=NodeType.FILE, file_path="srv/a.go", metadata={"scope": "srv"})
+    b = _node("srv.b_go", node_type=NodeType.FILE, file_path="srv/b.go", metadata={"scope": "srv"})
+    # The definition comes before its FILE node: the scopes are read in a first pass.
+    run = _node("srv.Run", file_path="srv/b.go")
+    index = IndexBuilder().build([run, a, b, _node("other.Run", file_path="other/x.go")])
+    assert index.file_scopes == {"srv/a.go": "srv", "srv/b.go": "srv"}
+    assert index.file_global_symbols[("srv", "Run")] == ["srv.Run"]

@@ -34,7 +34,8 @@ class SymbolIndex:
     nodes: Mapping[str, Node]
     # name -> list of FQNs
     global_symbols: Mapping[str, list[str]]
-    # (file_path, name) -> list of FQNs (list handles conditional redefinitions)
+    # (scope key, name) -> list of FQNs (list handles conditional redefinitions); the
+    # key is `file_scopes.get(path, path)`, so sibling files of one Go package share it.
     file_global_symbols: Mapping[tuple[str, str], list[str]]
     # class_fqn -> {method_name -> method_fqn}
     class_methods: Mapping[str, dict[str, str]]
@@ -58,6 +59,10 @@ class SymbolIndex:
     # external and dependency roots, TypeScript's npm packages and bare imports.
     # Required: classification reads it, so an index without it fails where made.
     facts: Mapping[str, IndexFacts]
+    # normalized file_path -> the scope its FILE node declares (`metadata["scope"]`),
+    # only where it is wider than the file: a Go package. Python/TS declare none, so
+    # their tiebreak key stays the path (step 7, H2). Required, like `facts`.
+    file_scopes: Mapping[str, str]
     # prefixes the sources write but the node ids do not carry, because the ingest
     # root was inside the package: `app.` when `cgis ingest app/`. Learned from the
     # import maps, never guessed — kept apart from `internal_roots` so a target can
@@ -277,6 +282,18 @@ class SymbolIndex:
 _ROOT_PACKAGE = "__init__"
 
 
+def _declared_scopes(nodes: Iterable[Node]) -> dict[str, str]:
+    """Normalized path -> the scope its FILE node declares, for files that declare one.
+
+    A first pass of its own: a definition can be met before its file's FILE node.
+    """
+    return {
+        os.path.normpath(n.file_path): str(n.metadata["scope"])
+        for n in nodes
+        if n.type == NodeType.FILE and n.metadata.get("scope")
+    }
+
+
 def _merged_reexports(facts: Mapping[str, IndexFacts]) -> dict[str, dict[str, str]]:
     """Every pack's forwarded names; a module two packs both forward is an error."""
     merged: dict[str, dict[str, str]] = {}
@@ -324,6 +341,7 @@ class IndexBuilder:
         suffix_map: dict[str, list[str]] = {}
         internal_roots: set[str] = set()
 
+        file_scopes = _declared_scopes(nodes_by_id.values())
         for node in nodes_by_id.values():
             # Maps the extractor attached to FILE and CLASS nodes.
             self._index_metadata(
@@ -334,7 +352,7 @@ class IndexBuilder:
 
             # Index global functions/symbols
             if node.type in (NodeType.FUNCTION, NodeType.CLASS):
-                self._index_by_name(node, global_symbols, file_global_symbols)
+                self._index_by_name(node, global_symbols, file_global_symbols, file_scopes)
 
             # Index methods within classes
             if node.type == NodeType.METHOD:
@@ -344,7 +362,7 @@ class IndexBuilder:
 
             # Index DI aliases for raw_dep: candidate resolution
             if node.type == NodeType.VARIABLE:
-                self._index_by_name(node, variable_symbols, file_variable_symbols)
+                self._index_by_name(node, variable_symbols, file_variable_symbols, file_scopes)
 
             # Build suffix map for src/-layout prefix normalization:
             # "src.cgis.pipeline.X" → suffix "cgis.pipeline.X" also points to the node
@@ -377,6 +395,7 @@ class IndexBuilder:
             internal_roots=roots,
             layout_prefixes=prefixes,
             facts=MappingProxyType(facts),
+            file_scopes=MappingProxyType(file_scopes),
         )
 
     @staticmethod
@@ -406,16 +425,17 @@ class IndexBuilder:
         node: Node,
         by_name: dict[str, list[str]],
         by_file_and_name: dict[tuple[str, str], list[str]],
+        file_scopes: Mapping[str, str],
     ) -> None:
-        """Record a node under its bare name, and under (file, name).
+        """Record a node under its bare name, and under (scope key, name).
 
         The global-symbol and DI-alias indices are the same shape over
         different node types, and were the same four lines written twice.
         """
         by_name.setdefault(node.name, []).append(node.id)
-        by_file_and_name.setdefault((os.path.normpath(node.file_path), node.name), []).append(
-            node.id
-        )
+        path = os.path.normpath(node.file_path)
+        key = file_scopes.get(path, path)
+        by_file_and_name.setdefault((key, node.name), []).append(node.id)
 
     def _add_node_to_suffix_map(
         self, node_id: str, suffix_map: dict[str, list[str]], internal_roots: set[str]

@@ -233,7 +233,9 @@ class SymbolResolver:
         if len(candidates) == 1:
             return candidates[0]
         if candidates and file_path:
-            same_file = self.index.file_variable_symbols.get((file_path, name), [])
+            same_file = self.index.file_variable_symbols.get(
+                (self.index.file_scopes.get(file_path, file_path), name), []
+            )
             if len(same_file) == 1:
                 return same_file[0]
         return None
@@ -300,7 +302,9 @@ class SymbolResolver:
         if len(candidates) == 1:
             return candidates[0]
         if file_path:
-            same_file = self.index.file_global_symbols.get((file_path, name), [])
+            same_file = self.index.file_global_symbols.get(
+                (self.index.file_scopes.get(file_path, file_path), name), []
+            )
             if len(same_file) == 1:
                 return same_file[0]
         return None
