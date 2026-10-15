@@ -470,8 +470,9 @@ already enforced: `docs/ontology/tolerances.lock` and
   > Interfaces are marked `metadata["interface"]` on their CLASS node. Three
   > boundaries:
   >
-  > - An interface embedding one outside the graph (`io.Reader`) is skipped,
-  >   because its method set is partly unseen.
+  > - An interface embedding one outside the graph (`io.Reader`) is matched on
+  >   its visible methods. That is an upper bound; on raft, skipping such
+  >   interfaces lost 9 true edges and prevented none.
   > - Test code neither implements nor declares.
   > - A struct embedding an interface "implements" with the interface's own
   >   declaration. An edge to another interface's method is kept, since it

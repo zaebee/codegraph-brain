@@ -14,11 +14,15 @@ concrete method.
 Satisfaction is decided by method names alone. Signatures are not compared, and
 neither is a value against a pointer receiver. That makes it an upper bound, like
 class hierarchy analysis, hence the same lower confidence. Interfaces outside the
-graph (`io.Writer`) have no methods here and are left alone, and so is an interface
-that embeds one: its method set is partly unseen, so satisfaction cannot be decided.
-So is an interface with no methods (`any`), which every type satisfies, and anything
-declared in test code (a fake implementing a production interface is not a caller's
-concern; impact leaves tests out).
+graph (`io.Writer`) have no methods here and are left alone. An interface that embeds
+one is matched on the methods the graph can see, which over-matches when those are few
+(`interface{ io.Reader; Close() }` is "satisfied" by any type with `Close`). On
+hashicorp/raft, skipping such interfaces lost 9 true edges (`SnapshotSink`,
+`StreamLayer`) and prevented no false one, so they stay.
+
+Left alone: an interface with no methods (`any`), which every type satisfies, and
+anything declared in test code (a fake implementing a production interface is not a
+caller's concern; impact leaves tests out).
 
 A struct may embed an interface: it then holds the interface's methods as its own.
 Its "implementation" of an interface method is a declaration that re-dispatches, so
@@ -55,8 +59,6 @@ def interface_dispatch(
             holders.setdefault(name, []).append(type_id)
     edges: dict[str, Edge] = {}
     for interface in sorted(interfaces):
-        if not _fully_seen(interface, inheritance, interfaces):
-            continue
         needed = _method_set(interface, declared, embeds_interfaces)
         if not needed:
             continue
@@ -121,17 +123,3 @@ def _method_set(
                     next_level.append(embedded)
         level = next_level
     return found
-
-
-def _fully_seen(interface: str, inheritance: Mapping[str, list[str]], interfaces: set[str]) -> bool:
-    """Whether every interface `interface` embeds, transitively, is one in the graph."""
-    seen = {interface}
-    stack = [interface]
-    while stack:
-        for embedded in inheritance.get(stack.pop(), []):
-            if embedded not in interfaces:
-                return False
-            if embedded not in seen:
-                seen.add(embedded)
-                stack.append(embedded)
-    return True

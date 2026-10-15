@@ -187,15 +187,18 @@ def test_test_code_neither_implements_nor_declares() -> None:
     assert d == {("a.Doer.Do", "a.Impl.Do")}
 
 
-def test_an_interface_embedding_one_outside_the_graph_is_left_alone() -> None:
-    """`RC` needs io.Reader's methods too, which the graph cannot see: do not guess."""
+def test_an_interface_embedding_one_outside_the_graph_matches_on_what_is_seen() -> None:
+    """`RC` needs io.Reader's methods too, which the graph cannot see: an upper bound.
+
+    Skipping such interfaces lost 9 true edges on hashicorp/raft and prevented none.
+    """
     d = _dispatch_of(
         {
             "a/rc.go": 'package a\nimport "io"\ntype RC interface {\n\tio.Reader\n\tClose()\n}\n',
             "a/c.go": "package a\ntype C struct{}\nfunc (c *C) Close() {}\n",
         }
     )
-    assert not {s for s, _ in d if s.startswith("a.RC.")}
+    assert ("a.RC.Close", "a.C.Close") in d
 
 
 def test_dispatch_survives_an_incremental_body_edit(tmp_path: Path) -> None:
