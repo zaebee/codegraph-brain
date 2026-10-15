@@ -531,7 +531,8 @@ def cgis_trace_flow(
         int,
         Field(
             description="Maximum edge hops downstream, over calls, imports, inheritance, DI "
-            "dependencies and references (plus containment with include_structure)."
+            "dependencies and references (plus containment with include_structure). A hop "
+            "from a base or interface method to its overrides costs no depth."
         ),
     ] = 3,
     output_format: OutputFormat = "mermaid",
@@ -615,7 +616,8 @@ def cgis_analyze_impact(
         Field(
             description="Maximum edge hops upstream, over callers, importers, subclasses, "
             "type references and DI dependents (plus the enclosing class or file with "
-            "include_structure)."
+            "include_structure). A hop from an override to the base or interface method "
+            "it implements costs no depth, so a caller through the interface is at depth 1."
         ),
     ] = 3,
     output_format: OutputFormat = "mermaid",
