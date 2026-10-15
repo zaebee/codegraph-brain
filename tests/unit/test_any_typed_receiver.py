@@ -137,7 +137,12 @@ def test_an_any_parameter_does_not_overwrite_a_declared_attribute_type() -> None
 
 
 def test_a_with_bound_any_declares_no_type() -> None:
-    """The constructor/`with` path guards None too (no one writes `Any()`, but the guard exists)."""
+    """A method on a `with Any() as c` binding is not resolved into typing.Any.
+
+    The None guards in `_functions.py` are enforced by mypy (the maps are
+    `dict[str, str]`), not by this test: without them resolution is unchanged and
+    only a `None` would be stored in `local_types`.
+    """
     code = (
         "from typing import Any\ndef run():\n    with Any() as c:\n        return c.build_cards()\n"
     )
