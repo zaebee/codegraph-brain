@@ -17,6 +17,7 @@ from cgis.languages.python._functions import (
     emit_name_reference_edges,
 )
 from cgis.languages.python._imports import ImportHandler
+from cgis.languages.python._routes import mark_routes, routers
 from cgis.languages.python._syntax import (
     enclosing_class_fqn,
     extract_decorator_names,
@@ -324,6 +325,8 @@ class PythonExtractor(BaseExtractor):
                     update={"metadata": {**nodes[i].metadata, "self_types": st}}
                 )
 
+        # FastAPI handlers carry a `route` role (#566); the import map is complete here.
+        nodes = mark_routes(nodes, routers(root_node, code_bytes, import_map))
         reexports = find_reexports(root_node, code_bytes, import_map)
 
         file_node = Node(

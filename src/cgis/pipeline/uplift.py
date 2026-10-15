@@ -17,6 +17,7 @@ from cgis.core.models import (
     Node,
     NodeNamespace,
     NodeType,
+    role_of,
 )
 
 if TYPE_CHECKING:
@@ -131,7 +132,7 @@ def _phase1_map_ontology_classes(nodes_map: dict[str, Node]) -> dict[str, Node]:
     """Assign ontology_class to every node based on its NodeType."""
     result: dict[str, Node] = {}
     for node_id, node in nodes_map.items():
-        ontology_class = _ONTOLOGY_CLASS.get(node.type)
+        ontology_class = _ONTOLOGY_CLASS.get(role_of(node) or node.type)
         if ontology_class is not None and node.ontology_class != ontology_class:
             result[node_id] = node.model_copy(update={"ontology_class": ontology_class})
         else:

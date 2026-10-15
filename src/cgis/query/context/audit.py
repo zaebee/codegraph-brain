@@ -21,7 +21,7 @@ as a gap.
 
 from dataclasses import dataclass
 
-from cgis.core.models import EdgeType, Node, NodeNamespace, NodeType
+from cgis.core.models import EdgeType, Node, NodeNamespace, NodeType, answers_to
 from cgis.query.engine import QueryEngine
 from cgis.query.fqn import effective_prefix
 from cgis.storage.sqlite_store import SQLiteStore
@@ -82,7 +82,7 @@ def _is_candidate(node: Node, from_type: NodeType | None, target_fqn: str) -> bo
     """An INTERNAL node of the requested type that is not the checkpoint — a possible source."""
     return (
         node.namespace == NodeNamespace.INTERNAL
-        and (from_type is None or node.type == from_type)
+        and (from_type is None or answers_to(node, from_type))
         and node.id != target_fqn
     )
 
