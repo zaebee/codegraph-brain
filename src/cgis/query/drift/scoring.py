@@ -252,7 +252,8 @@ def _weighted_constraint_drift(
 
 
 def _unreported(violations: list[str], hygiene: HygieneOutcome) -> list[str]:
-    """Drop constraint violations for hygiene keys the hygiene gate already reported.
+    """Drop constraint violations for hygiene keys the hygiene gate already reported;
+    mark the rest on a hygiene key as the template's soft bound.
 
     Suppresses double-reporting ("cycle_ratio 0.07 > max 0.0" beside "hygiene
     cycle_ratio 0.07 violates max 0.0"). Only keys that produced a breach or an
@@ -263,7 +264,16 @@ def _unreported(violations: list[str], hygiene: HygieneOutcome) -> list[str]:
     reported = {
         k for k in hygiene.keys if any(k in msg for msg in hygiene.breaches + hygiene.acknowledged)
     }
-    return [v for v in violations if not any(v.startswith(k + " ") for k in reported)]
+    kept = [v for v in violations if not any(v.startswith(k + " ") for k in reported)]
+    # A template bound on a key the global gate also bounds is the softer of the two:
+    # it adds to the score, never fails the gate. Say so, or "unresolved_ratio 0.185 >
+    # max 0.1" beside a clean status reads as a gate that did not fire (self-audit).
+    return [
+        f"{v} (template bound: scored, not gated)"
+        if any(v.startswith(k + " ") for k in hygiene.keys)
+        else v
+        for v in kept
+    ]
 
 
 def score_v1(

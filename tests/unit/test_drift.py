@@ -1570,6 +1570,39 @@ def test_breaching_domain_has_exactly_one_hygiene_breach_string(
     )
 
 
+def test_a_template_bound_on_a_hygiene_key_says_it_is_scored_not_gated(
+    scorer: DriftScorer,
+) -> None:
+    """pure_utility's own unresolved_ratio max 0.1 is soft; the global 0.2 is the gate.
+
+    The self-audit read "unresolved_ratio 0.185 > max 0.1" beside status clean on
+    cgis.storage and took it for a gate that did not fire. The template bound only
+    adds to the score, and now says so.
+    """
+    domain = DomainConfig(
+        name="soft",
+        fqn_prefix="cgis.storage",
+        expected_pattern="pure_utility",
+        drift_tolerance=0.5,
+    )
+    fp = PatternFingerprint(
+        domain="cgis.storage",
+        hub_count=0,
+        star_count=0,
+        chain_len=0.0,
+        dag_depth=0,
+        router_count=0,
+        cycle_ratio=0.0,
+        unresolved_ratio=0.15,  # over the template's 0.1, under the global 0.2
+        node_count=20,
+        edge_count=10,
+    )
+    report = scorer.score(fp, domain)
+    assert report.status != "gate_failed"
+    entries = [v for v in report.violations if v.startswith("unresolved_ratio")]
+    assert entries == ["unresolved_ratio 0.15 > max 0.1 (template bound: scored, not gated)"]
+
+
 # ── fit_templates: canonical distance-to-template ranking (#177) ──────────────
 
 

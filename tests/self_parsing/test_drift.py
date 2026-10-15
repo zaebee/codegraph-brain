@@ -11,6 +11,7 @@ import dataclasses
 
 from cgis.core.models import Edge, Node
 from cgis.query.drift.drift import DomainConfig, DriftScorer
+from cgis.query.drift.drift_service import _uncovered_prefixes
 from cgis.query.drift.fingerprint import FingerprintExtractor
 from cgis.query.drift.quotient import QUOTIENT_PREFIX, build_quotient, quotient_call_tally
 from cgis.storage.sqlite_store import SQLiteStore
@@ -100,6 +101,24 @@ def test_py_self_drift_within_tolerance(
     """Every cgis domain's drift score stays within its declared ratchet tolerance."""
     store, _, _ = root_graph_data
     _assert_within_tolerance(store, _PATTERNS, graph="python")
+
+
+def test_py_every_package_is_bound_to_a_domain(
+    root_graph_data: tuple[SQLiteStore, list[Node], list[Edge]],
+) -> None:
+    """No cgis code sits outside every domain, where drift would silently skip it.
+
+    The self-audit found cgis.bench, cgis.import_names and cgis.__main__ bound
+    by nothing. The one exemption is what cgis/__init__.py defines itself
+    (log_to_stderr): a prefix covering the package root would cover everything.
+    """
+    _, nodes, _ = root_graph_data
+    scorer = DriftScorer(_PATTERNS)
+    uncovered = _uncovered_prefixes(
+        nodes, [d.fqn_prefix for d in _selected_domains(scorer, "python")]
+    )
+    package_root = {n.id for n in nodes if n.file_path.endswith("cgis/__init__.py")}
+    assert [p for p in uncovered if p not in package_root] == []
 
 
 # ---------------------------------------------------------------------------

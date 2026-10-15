@@ -1,23 +1,12 @@
 """Per-node health metrics: fan_in, fan_out, depth, in_cycle."""
 
 from collections import deque
-from dataclasses import dataclass
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.query.drift._scc import build_adjacency, tarjan_scc
 
 _BEHAVIORAL = frozenset({EdgeType.CALLS, EdgeType.IMPORTS, EdgeType.REFERENCES, EdgeType.USES})
 _STRUCTURAL = frozenset({EdgeType.CONTAINS, EdgeType.DECLARES})
-
-
-@dataclass(frozen=True)
-class NodeHealth:
-    """Health metrics for a single node."""
-
-    fan_in: int
-    fan_out: int
-    depth: int
-    in_cycle: bool
 
 
 class HealthScorer:
