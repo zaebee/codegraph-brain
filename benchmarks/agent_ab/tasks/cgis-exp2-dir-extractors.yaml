@@ -20,12 +20,29 @@ gold:
   - auto_refresh.refresh_if_stale
   - mcp_server.cgis_ingest
   - cli.ingest
+  - mcp_server.cgis_trace_flow
+  - mcp_server.cgis_analyze_impact
+  - mcp_server.cgis_get_structure
+  - mcp_server.cgis_drift
+  - mcp_server.cgis_suggest_packages
+  - mcp_server.cgis_validate
+  - mcp_server.cgis_overview
+  - mcp_server.cgis_find_symbol
+  - mcp_server.cgis_init_ontology
+  - mcp_server.cgis_context
+  - mcp_server.cgis_metrics
+  - mcp_server.cgis_find_orphans
+  - mcp_server.cgis_audit_reachability
+  - mcp_server.cgis_fractal
   files:
   - src/cgis/api/auto_refresh.py
   - src/cgis/api/mcp_server.py
   - src/cgis/cli.py
   - src/cgis/languages/__init__.py
   allowed_symbols:
+  - auto_refresh.refreshes_graph
+  - auto_refresh.refreshes_graph.wrapper
+  - auto_refresh.wrapper
   - languages.extractors
 notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), dir, pair 2, files 4, hop kinds [''direct''].
 
@@ -35,5 +52,8 @@ notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), dir, pair 2, 
   (pipeline/__init__.py:181, languages/__init__.py:160, typescript/*). [v2] Decorator rule changed: refreshes_graph.wrapper
   is framework plumbing, not a caller or a callback hop; removed from gold. files 4->4; hop_kinds [''direct'']->[''direct''];
   indirect False->False.
+
+  Corrected after PR #634 review (C1): _refresh calls extractors() directly (auto_refresh.py:81), so the
+  14 @refreshes_graph MCP tools reach it through the wrapper; added as required, wrapper optional.
 
   '

@@ -167,23 +167,23 @@ Descriptive tasks with dynamic hops (polymorphic, callback, registry), unpaired:
 
 | task | required symbols / files | cost | recall |
 |---|---|---|---|
-| `_record_usage` | 28/11 | $0.128 | 0.93 |
+| `_record_usage` | 29/11 | $0.128 | 0.93 |
 | `_relative` | 46/14 | $0.203 | 0.97 |
 | `specifier_fqn` | 46/13 | $0.192 | 0.97 |
 
 ### Reading
 
-- **H2 as registered is refuted.** At matched radius and answer size, a held-object or parameter hop
+- **[Superseded: the verdict is INCONCLUSIVE; see Post-review corrections C1.]** **H2 as registered is refuted.** At matched radius and answer size, a held-object or parameter hop
   (`attr_dep` / `param_obj`) does not raise cost by ≥30%. The median is +8%.
-- **The direction is consistent.** The indirect task costs more in 6 of 7 pairs (a two-sided sign test
+- **[Softened post-review (I1): three pairs show +35–52%, so the data do not exclude an effect of 30% or more.]** **The direction is consistent.** The indirect task costs more in 6 of 7 pairs (a two-sided sign test
   gives about p = 0.13). So a small effect, in the 5–10% range, stays plausible. Its size is the point:
   it is small next to exp1's ×1.5–1.7.
-- **Together with exp1:** exp1's large indirection ratio came mostly from answer size and radius,
+- **[Overreach, softened post-review (I4): "consistent with" at most.]** **Together with exp1:** exp1's large indirection ratio came mostly from answer size and radius,
   which were confounded with indirection in owner-api. Matched, the held-object indirection that
   dominates both corpora costs little.
 - **Recall stays at the ceiling** in both corpora once the gold is right. Read-only "who calls X" does
   not separate structures by correctness for this model.
-- **Dynamic hops are not tested by the pairs.** The three dynamic tasks are about 2.5× dearer and
+- **Dynamic hops are not tested by the pairs.** The three dynamic tasks are 1.7–2.7× dearer than the paired median and
   recall 0.93–0.97, but their answers are 28–46 symbols, so size explains as much as the hops do.
 - **Gold derivation was again the weakest link.** One adjudication rule (the decorator) was wrong, and
   the 5-session pilot caught it before the full run.
@@ -193,3 +193,69 @@ Descriptive tasks with dynamic hops (polymorphic, callback, registry), unpaired:
 Read-only impact questions are saturated. To test whether structure matters for correctness, the
 next experiment needs **edits with hidden tests** (exp1's H3–H5). Dynamic dispatch needs its own
 pairs, matched on answer size, which requires a corpus with small polymorphic chains.
+
+## Post-review corrections (PR #634 independent review; supersedes the verdict above)
+
+Every number above reproduces. All 51 transcripts rescore with 0 mismatches against the YAML as run,
+commit order is clean, and the registered algorithm reproduces the pairs, given an alphabetical
+tie-break by FQN that was not registered. One gold defect changes the verdict, though.
+
+**C1: `dir-extractors` missed the refresh path.** `_refresh` calls `extractors(source_roots)` directly
+(auto_refresh.py:81). So the 14 `@refreshes_graph` MCP tools reach it through the wrapper, as they reach
+`refresh_dispatch`. My post-pilot correction added the refresh path only where gold contained
+`IngestionPipeline.run`, and `extractors` sits beside `run`, not under it. All 3 runs named those 14
+tools and scored precision 0.36–0.38: once again the agents were right. With the YAML corrected
+(18 required symbols), they score 1.00 / 1.00.
+
+Pair 2 is then not a matched pair: 18 symbols against `get_edge_stats`'s 6, beyond ±4. It was also the
+one pair where the indirect side was cheaper, and the reason was the 14 extra tools in the direct
+answer. Dropping it leaves 6 pairs, the registered minimum
+(`benchmarks/agent_ab/analysis/exp2_post_review.py`):
+
+| | value |
+|---|---|
+| pair ratios | 1.06, 1.52, 1.39, 1.08, 1.04, 1.35 |
+| median ratio | **1.22** (bootstrap 95% CI 1.05–1.45; geometric mean 1.22) |
+| indirect dearer | 6 of 6 |
+| G1 verdict | **INCONCLUSIVE**: between the registered ≤ 1.1 (refute) and ≥ 1.3 (pass) |
+
+Re-running the registered algorithm on the corrected pool instead pairs `extractors` with
+`refresh_dispatch`, which never ran, and reshuffles pairs 5–6, so no verdict can be computed from the
+sessions that exist. That option was not taken.
+
+**I1, the ratios are bimodal:** 1.04–1.08 against 1.35–1.52. A hierarchical bootstrap over pairs and
+runs puts P(median ≥ 1.3) ≈ 0.36 and P(median ≤ 1.1) ≈ 0.34. The data neither exclude nor show a
+≥ 30% effect.
+
+**I2, pairing on wrapper-inclusive counts:** the pairing saw counts that include the optional wrapper.
+Re-pairing on the required counts as run would give 8 pairs, 5 of them different. That choice was
+made after the pilot. It was disclosed but not registered.
+
+**I3, a weak manipulation in 3 pairs:** `_finder_pass`, `_sanitize_finder_result` and `_as_terms`
+are "indirect" only through a local object (`reviewer = GuardianReviewer(...)`, or
+`with DuckDBAnalyzer(...) as analyzer`). Grep finds those call sites as easily as direct calls. Two of
+the three high-ratio pairs (3 and 4) are local-object pairs, which argues against reading the high
+ratios as an indirection effect at all.
+
+**I4:** the exp1 comparison overreached, as marked inline.
+
+**Minor:**
+- The adjudicated pool sizes existed (18:31–18:37) before the pre-registration commit (18:38). No
+  outcome data existed yet.
+- Task notes saying "wrapper removed" are stale.
+- The pair-3 recall miss is a nested closure reached by a direct call, so it is not an indirection signal.
+- The experiment cost $5.38 including the $0.58 pilot.
+- The gate scripts are now committed verbatim in `benchmarks/agent_ab/analysis/`.
+
+### Revised reading
+
+- **H2 is unresolved on cgis.** With 6 valid pairs, the indirect side is dearer in all 6, by a median
+  of 22%. That sits between the registered thresholds, and the split looks driven by a few pairs, two of
+  them weak manipulations.
+- **Recall is at the ceiling** in both experiments. On read-only impact questions this model does not
+  separate structures by correctness.
+- **Gold derivation failed in every round** of both experiments, each time caught by a pilot or a
+  reviewer, and every time the agents were right and the gold was wrong. That is the strongest finding
+  of this series. An LLM agent reading the code produced better impact sets than our static tools plus
+  an adjudicator. Building gold for agent benchmarks needs its own validation step: for example, score
+  the gold against several independent agent runs before freezing it.
