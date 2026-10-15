@@ -78,7 +78,7 @@ PRIMARY precision: control 1.00, cgis-forced 1.00
 median cost to ×0.63 (CI 0.50–0.76, entirely below 0.80) at median Δrecall 0.00. The positioning
 stays, as pre-committed. An independent recomputation reproduced the numbers (geometric mean 0.631,
 pooled-cost ratio 0.649). Forced rows ran at cgis_sha 729834a, which differs from the pre-registered
-c08aff6..c74c90d only in docs and the analysis script.
+c74c90d only in docs and the analysis script.
 
 Over all 37 tasks the ratio is ×0.74, lower on indirect cells (×0.59–0.67) than direct ones
 (×0.80–0.92). That is consistent with a graph helping more on indirect chains, but it is
