@@ -5,7 +5,7 @@ from collections.abc import Iterable, Mapping
 
 from cgis.core.models import RAW_CLASS_PREFIX, Edge, EdgeType, Node, NodeNamespace
 from cgis.core.resolution import AFTER_IMPORT_MAP
-from cgis.languages import rules_for, type_normalizers
+from cgis.languages import dispatcher_for, rules_for, type_normalizers
 from cgis.resolver.indices import IndexBuilder, SymbolIndex
 
 
@@ -360,7 +360,34 @@ class SymbolResolver:
 DISPATCH_CONFIDENCE = 0.5
 
 
-def dispatch_edges(methods: Iterable[Node], inheritance: Mapping[str, list[str]]) -> list[Edge]:
+def dispatch_edges(
+    methods: Iterable[Node], inheritance: Mapping[str, list[str]], classes: Iterable[Node] = ()
+) -> list[Edge]:
+    """Every DISPATCHES edge, each language's types under its own pack's rule (#609).
+
+    A pack whose rules name no `dispatch` gets class hierarchy analysis
+    (`_hierarchy_dispatch`). Types of different languages never dispatch to each
+    other, so methods and classes are split by `Node.language` first.
+    """
+    methods_by: dict[str, list[Node]] = {}
+    for method in methods:
+        methods_by.setdefault(method.language, []).append(method)
+    classes_by: dict[str, list[Node]] = {}
+    for cls in classes:
+        classes_by.setdefault(cls.language, []).append(cls)
+    edges: list[Edge] = []
+    for language, own in methods_by.items():
+        rule = dispatcher_for(language)
+        if rule is None:
+            edges.extend(_hierarchy_dispatch(own, inheritance))
+        else:
+            edges.extend(rule(own, classes_by.get(language, []), inheritance))
+    return edges
+
+
+def _hierarchy_dispatch(
+    methods: Iterable[Node], inheritance: Mapping[str, list[str]]
+) -> list[Edge]:
     """One DISPATCHES edge from each overridden method to its override.
 
     The source is the nearest definition up each parent's line, so a chain of

@@ -47,7 +47,8 @@ def refresh_dispatch(store: "SQLiteStore") -> None:
     for edge in store.get_edges_of_type(EdgeType.EXTENDS):
         inheritance.setdefault(edge.source, []).append(edge.target)
     methods = store.get_nodes_of_type(NodeType.METHOD)
-    store.replace_edges_of_type(EdgeType.DISPATCHES, dispatch_edges(methods, inheritance))
+    classes = store.get_nodes_of_type(NodeType.CLASS)
+    store.replace_edges_of_type(EdgeType.DISPATCHES, dispatch_edges(methods, inheritance, classes))
 
 
 def _resolution_signature(nodes: list[Node], edges: list[Edge]) -> frozenset[str]:

@@ -11,6 +11,7 @@ from typing import cast
 
 from cgis.core.resolution import AFTER_IMPORT_MAP, ResolutionRules, ResolutionView
 from cgis.languages.go._syntax import ANY_OF, BUILTINS, CALL_RESULT
+from cgis.languages.go.dispatch import interface_dispatch
 from cgis.languages.go.index import GoIndexFacts
 from cgis.languages.go.naming import GO_LANG
 
@@ -112,4 +113,5 @@ RULES = ResolutionRules(
     steps=((AFTER_IMPORT_MAP, builtin_call),),
     reconcile_import=reconcile_import,
     reconciles_references=True,
+    dispatch=interface_dispatch,
 )

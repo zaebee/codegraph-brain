@@ -2,6 +2,18 @@
  "go": {
   "edges": [
    {
+    "confidence": 0.5,
+    "context": "internal.server.Server satisfies internal.server.Handler",
+    "file_path": "internal/server/server.go",
+    "id": "dispatch:internal.server.Handler.Serve->internal.server.Server.Serve",
+    "line_number": 17,
+    "source": "internal.server.Handler.Serve",
+    "target": "internal.server.Server.Serve",
+    "type": "DISPATCHES",
+    "type_only": 0,
+    "weight": 1.0
+   },
+   {
     "confidence": 0.6,
     "context": null,
     "file_path": null,
@@ -758,7 +770,9 @@
     "is_generated": 0,
     "is_test": 0,
     "language": "go",
-    "metadata": {},
+    "metadata": {
+     "interface": true
+    },
     "name": "Handler",
     "namespace": "INTERNAL",
     "ontology_class": "Class",

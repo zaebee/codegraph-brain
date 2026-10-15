@@ -141,8 +141,10 @@ class ResolverEngine:
                 resolved_edges.append(call_edge)
                 self._ensure_virtual_node(call_edge, virtual_nodes)
 
-        methods = (n for n in self._index.nodes.values() if n.type == NodeType.METHOD)
-        resolved_edges.extend(dispatch_edges(methods, self._resolver.inheritance_tree))
+        nodes = self._index.nodes.values()
+        methods = [n for n in nodes if n.type == NodeType.METHOD]
+        classes = [n for n in nodes if n.type == NodeType.CLASS]
+        resolved_edges.extend(dispatch_edges(methods, self._resolver.inheritance_tree, classes))
         return _agree_on_confidence(resolved_edges, virtual_nodes), list(virtual_nodes.values())
 
     def _reconciled_layout_edge(self, edge: Edge) -> Edge:
