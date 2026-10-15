@@ -61,6 +61,15 @@ class NoAuditSourcesError(ValueError):
 
 
 _SUGGESTION_LIMIT = 5
+#: What a role selection detects, said when it matched nothing: a role is set by
+#: an extractor rule, and the rule's limits are why a real source can be missing.
+_ROLE_LIMITS = {
+    NodeType.ROUTE_HANDLER: (
+        "ROUTE_HANDLER is a role: FastAPI handlers decorated by an app or router built "
+        "in the same module (`router = APIRouter()`). A router imported from another "
+        "module, built by a factory or a subclass is not detected."
+    ),
+}
 
 
 def _describe_selection(from_type: NodeType | None, from_prefix: str | None) -> str:
@@ -142,8 +151,11 @@ def _no_sources_error(
 ) -> NoAuditSourcesError:
     """Build the error for an empty selection, with a hint when one can be given."""
     msg = f"No sources matched {_describe_selection(from_type, from_prefix)} — nothing was audited."
-    hint = _empty_selection_hint(nodes, target_fqn, from_type, from_prefix)
-    return NoAuditSourcesError(f"{msg} {hint}" if hint else msg)
+    hints = [
+        _empty_selection_hint(nodes, target_fqn, from_type, from_prefix),
+        _ROLE_LIMITS.get(from_type, "") if from_type is not None else "",
+    ]
+    return NoAuditSourcesError(" ".join([msg, *(h for h in hints if h)]))
 
 
 def _ref(node: Node) -> NodeRef:

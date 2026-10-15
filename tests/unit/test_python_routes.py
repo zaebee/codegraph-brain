@@ -5,11 +5,13 @@ which every index and query reads as one.
 
 from pathlib import Path
 
+import pytest
+
 from cgis.core.models import Node, NodeType
 from cgis.languages import extractors
 from cgis.languages.python.extractor import PythonExtractor
 from cgis.pipeline import IngestionPipeline
-from cgis.query.context.audit import audit_reachability
+from cgis.query.context.audit import NoAuditSourcesError, audit_reachability
 from cgis.storage.sqlite_store import SQLiteStore
 
 ROUTES = """\
@@ -150,3 +152,65 @@ def test_a_handler_s_ontology_class_is_route_handler(tmp_path: Path) -> None:
     assert plain is not None
     assert handler.ontology_class == "RouteHandler"
     assert plain.ontology_class == "Function"
+
+
+def _routed(code: str) -> set[str]:
+    return {name for name, node in _nodes(code).items() if "route" in node.metadata}
+
+
+def test_a_router_bound_inside_module_level_blocks_still_counts() -> None:
+    """#566 review: `if`/`try`/`with` at module level, tuple and chained assignment."""
+    code = (
+        "from fastapi import APIRouter\n"
+        "if True:\n    a = APIRouter()\n"
+        "try:\n    b = APIRouter()\nexcept Exception:\n    b = APIRouter()\n"
+        "c, d = APIRouter(), APIRouter()\n"
+        "e = f = APIRouter()\n"
+        "@a.get('/a')\ndef ha() -> None: ...\n"
+        "@b.get('/b')\ndef hb() -> None: ...\n"
+        "@c.get('/c')\ndef hc() -> None: ...\n"
+        "@d.get('/d')\ndef hd() -> None: ...\n"
+        "@e.get('/e')\ndef he() -> None: ...\n"
+        "@f.get('/f')\ndef hf() -> None: ...\n"
+    )
+    assert _routed(code) == {"ha", "hb", "hc", "hd", "he", "hf"}
+
+
+def test_a_router_built_inside_a_function_is_not_a_module_router() -> None:
+    code = (
+        "from fastapi import APIRouter\n"
+        "def setup():\n    r = APIRouter()\n    @r.get('/x')\n    def x() -> None: ...\n"
+    )
+    assert _routed(code) == set()
+
+
+def test_a_method_handler_and_a_router_from_fastapi_routing() -> None:
+    """#566 review M1: a METHOD handler, `fastapi.routing`, a route under another decorator."""
+    code = (
+        "from fastapi.routing import APIRouter\n"
+        "import functools\n"
+        "router = APIRouter()\n"
+        "class Views:\n"
+        "    @router.get('/v')\n"
+        "    def view(self) -> None: ...\n"
+        "@functools.cache\n"
+        "@router.post('/p')\n"
+        "def stacked() -> None: ...\n"
+    )
+    nodes = _nodes(code)
+    assert nodes["view"].type is NodeType.METHOD
+    assert nodes["view"].metadata["route"] == {"verb": "get", "router": "router"}
+    assert nodes["stacked"].metadata["route"] == {"verb": "post", "router": "router"}
+
+
+def test_an_empty_role_selection_says_what_the_role_detects(tmp_path: Path) -> None:
+    """#566 review M3: "none of type ROUTE_HANDLER" hid that only same-module routers count."""
+    db = str(tmp_path / "g.db")
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "plain.py").write_text(
+        "def f() -> None:\n    g()\n\n\ndef g() -> None:\n    pass\n", encoding="utf-8"
+    )
+    with SQLiteStore(db) as store:
+        IngestionPipeline(extractors([])).run(str(tmp_path), store=store)
+        with pytest.raises(NoAuditSourcesError, match="same module"):
+            audit_reachability(store, target_fqn="app.plain.g", from_type=NodeType.ROUTE_HANDLER)

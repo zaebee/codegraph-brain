@@ -34,24 +34,72 @@ def _constructed_class(value: BaseNode | None, code: bytes, import_map: dict[str
     return f"{resolved}{dot}{rest}"
 
 
+#: Module-level compound statements whose bodies still bind module names.
+_MODULE_BLOCKS = frozenset(
+    {
+        "if_statement",
+        "elif_clause",
+        "else_clause",
+        "try_statement",
+        "except_clause",
+        "finally_clause",
+        "with_statement",
+        "block",
+    }
+)
+
+
 def routers(root: BaseNode, code: bytes, import_map: dict[str, str]) -> set[str]:
-    """Module-level names bound to a FastAPI app or router: `router = APIRouter()`."""
+    """Module-level names bound to a FastAPI app or router: `router = APIRouter()`.
+
+    Through module-level `if`/`try`/`with` blocks, which still bind module names,
+    and tuple or chained assignment; never into a function or class body.
+    """
     names: set[str] = set()
-    for statement in root.children:
-        assignment = (
-            statement.named_children[0] if statement.type == "expression_statement" else None
-        )
-        if assignment is None or assignment.type != "assignment":
-            continue
-        target = assignment.child_by_field_name("left")
-        value = assignment.child_by_field_name("right")
-        if (
-            target is not None
-            and target.type == "identifier"
-            and _constructed_class(value, code, import_map) in _ROUTER_CLASSES
-        ):
-            names.add(_text(target, code))
+    for statement in _module_statements(root):
+        for assignment in (c for c in statement.named_children if c.type == "assignment"):
+            names |= _bound_routers(assignment, code, import_map)
     return names
+
+
+def _module_statements(node: BaseNode) -> list[BaseNode]:
+    """Every statement that runs at module level, nested blocks flattened."""
+    statements: list[BaseNode] = []
+    for child in node.named_children:
+        if child.type in _MODULE_BLOCKS:
+            statements += _module_statements(child)
+        elif child.type == "expression_statement":
+            statements.append(child)
+    return statements
+
+
+def _bound_routers(assignment: BaseNode, code: bytes, import_map: dict[str, str]) -> set[str]:
+    """The names an assignment binds to a router: `a = R()`, `a, b = R(), R()`, `a = b = R()`."""
+    left = assignment.child_by_field_name("left")
+    right = assignment.child_by_field_name("right")
+    if right is not None and right.type == "assignment":  # `a = b = R()`
+        inner = _bound_routers(right, code, import_map)
+        target = _text(left, code)
+        return (
+            inner | {target} if inner and left is not None and left.type == "identifier" else inner
+        )
+    if left is None or right is None:
+        return set()
+    if left.type == "identifier":
+        built = _constructed_class(right, code, import_map) in _ROUTER_CLASSES
+        return {_text(left, code)} if built else set()
+    if left.type in ("pattern_list", "tuple_pattern") and right.type in (
+        "expression_list",
+        "tuple",
+    ):
+        pairs = zip(left.named_children, right.named_children, strict=False)
+        return {
+            _text(name, code)
+            for name, value in pairs
+            if name.type == "identifier"
+            and _constructed_class(value, code, import_map) in _ROUTER_CLASSES
+        }
+    return set()
 
 
 def _route(decorators: list[str], router_names: set[str]) -> dict[str, str] | None:
