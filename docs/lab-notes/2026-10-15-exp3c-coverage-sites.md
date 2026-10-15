@@ -65,12 +65,12 @@ coverage-line change is enough on this task and the directive was not needed. Th
 that change are **not separated**. Arm A differs from exp3b in two ways. Test callers are screened
 out, so the line went from `10 of 53 …` (build_cards fourth of five, among test noise) to
 `1 of 17 …`, with build_cards the only name. And the caller is named. Which of the two did it
-cannot be told: the pre-registration bundled both into arm A. No agent used the file:line part;
-the caller name was what they used. With 3/3 against 3/3 at identical recall, this says nothing
+cannot be told: the pre-registration bundled both into arm A. No agent went to the cited line (383);
+the caller name was what they followed. With 3/3 against 3/3 at identical recall, this says nothing
 about the size of the effect.
 
 **What the agents saw and did.** Every session's impact answer on `calculate_total_price` ended
-with:
+with (verbatim, one line, wrapped here):
 
 ```
 coverage: 1 of 17 calls unresolved (unresolved_calls_by_name); most often
@@ -90,7 +90,9 @@ the named caller.
 In arm B, two sessions asked the graph about `_hydrate`. B-2 reached recall 1.00 with two cgis
 calls, so arm A's step 4 was not needed. The third session, B-0, asked about `build_cards` first,
 then found `_hydrate` with grep and `sed` on `favorites/service.py` and `routes.py`. Only B-0 read
-the favorites source. B-1 grepped the pricing chain across the repo. Whether either is the
+the favorites source. B-1 grepped the chain across the repo, `build_cards` included, and listed
+function definitions in `catalog/service.py` and `vehicle/service.py` with awk. Both B-0 and B-1
+grepped `build_cards`, the pre-registered descriptive signal; no arm A session did. Whether either is the
 directive at work cannot be told at n=3. B-0 and B-1 spent more turns (10 and 7, against 6) and
 more money (0.130 and 0.115, against an arm A median of 0.103). B-2 spent less: 5 turns, 0.097.
 
