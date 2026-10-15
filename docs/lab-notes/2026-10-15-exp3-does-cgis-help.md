@@ -76,30 +76,48 @@ PRIMARY precision: control 1.00, cgis-forced 1.00
 
 **Verdict: the primary gate passes.** On the 14 big-radius indirect/dynamic tasks, forced cgis cuts
 median cost to ×0.63 (CI 0.50–0.76, entirely below 0.80) at median Δrecall 0.00. The positioning
-stays, as pre-committed. Over all 37 tasks the ratio is ×0.74; the saving is largest where the
-chain is indirect (×0.59–0.67) and smallest on direct chains (×0.80–0.92), the shape a graph
-predicts. Median turns fell from 8 (control) to 5; the median forced session made 1 cgis call and
-read 0 files. Ingest (median 20 s) is not in `cost_usd` and would add wall time unforced.
+stays, as pre-committed. An independent recomputation reproduced the numbers (geometric mean 0.631,
+pooled-cost ratio 0.649). Forced rows ran at cgis_sha 729834a, which differs from the pre-registered
+c08aff6..c74c90d only in docs and the analysis script.
 
-**The median hides a systematic tail, and it is where the graph is blind.** 21 of 111 sessions
-missed gold, and the misses are not random:
+Over all 37 tasks the ratio is ×0.74, lower on indirect cells (×0.59–0.67) than direct ones
+(×0.80–0.92). That is consistent with a graph helping more on indirect chains, but it is
+**confounded with task size**: across tasks the ratio falls as control cost rises (Spearman −0.50),
+because cheap tasks carry the forced arm's fixed overhead (a ToolSearch call in 107/111 sessions,
+129 native calls refused by the guard before the first cgis call, a longer prompt). Big-direct has
+n=2, and per-task direct ratios (0.65–1.16) overlap the indirect ones. Median turns fell from 8 to 5;
+the median forced session made 1 cgis call. Ingest is not in `cost_usd` (owner-api ~21 s, cgis ~3 s).
 
-- The 3 `desc` tasks (dynamic dispatch) lose recall: −0.05, −0.15, −0.27. All three miss the same
-  shape: the `@refreshes_graph` wrapper that runs the whole ingest from 14 MCP tools, and
-  `BaseProvider._retry`. Exp2's control found these by reading code; the forced arm took the graph's
-  answer and in most of those sessions read no file.
-- `owner-exp1-big-ind-calculate-total-price` misses the `FavoritesService` chain in 3/3 runs
-  (Δrecall −0.14), and `Worker.*` SAQ tasks recur across tasks. These look like resolver gaps of the
-  #632 kind; not yet confirmed per edge.
-- 99 of 111 sessions read no file at all. The MCP server instructions say "trust the answer for what it
-  covers; do not re-grep to confirm a resolved edge". The agent obeyed, including on edges the graph
-  does not cover. The instructions do also say to name the gap. The agents did not do that.
+**The median hides a heavier tail, and it sits where the graph is wrong or blind.** The control also
+missed gold in 21/111 sessions, but the forced misses are larger: total recall deficit 3.72 vs 1.67,
+11 vs 3 sessions below 0.90, primary-set mean Δrecall −0.04 against the median 0.00 (5 of 14 tasks
+negative; the median comes from 8 tasks where both arms score 1.00).
 
-So the gate says cgis saves money at equal *median* recall. It does not say the answer is safe to
-trust where dispatch is dynamic: there, the cheaper answer is a less complete one. That is the
-remaining risk of the positioning. It argues for (a) closing the resolver gaps behind the misses and
-(b) making the server's coverage note actionable (say *which* gap applies to this answer), before an
-unforced adoption experiment.
+- Two of the three `desc` tasks lose recall (relative −0.15, specifier-fqn −0.27; record-usage
+  *gains* +0.05). Their misses are the MCP tools reached only through the `@refreshes_graph`
+  wrapper, which the graph does not link to the tools, and chains behind polymorphic
+  `pack.classify` / `pack.scope_of` dispatch. record-usage misses only `BaseProvider._retry` (a thunk
+  callback with no edge). The control mostly found these chains, though not always (relative run 0
+  missed the same 11 tools).
+- `calculate-total-price` misses the FavoritesService chain 3/3 because the graph resolves a call on
+  an `Any`-typed attribute to `typing.Any.build_cards` **at confidence 1.0**. The same defect causes
+  opensearch-mget run 1 (recall 0.50, `typing.Any.mget`). owner-api has 195 such edges. They are
+  confident wrong edges, invisible to the coverage note, and a different defect from #632.
+- `Worker.reset_showcase_data` is a real `cls._run_reset` resolver gap (forced missed it 4 times,
+  control 2). `Worker.index_top_up` is a **gold spelling defect** (alias `TransactionWorker`, exp1
+  I1), not a graph miss; it penalised the control too.
+- 99 of 111 sessions never used Read, but 61 of 111 inspected source with Grep or Bash after their
+  first cgis call. Agents did look at source in most sessions. They did not recover the chains the
+  graph lacks, and none named the gap.
 
-**Limits.** The control is not concurrent (same day, same model and harness; stored). Forced use is
-an upper bound, not adoption. n=14 primary tasks over two codebases, one of them cgis itself.
+So the gate says cgis saves money at equal *median* recall. Where dispatch is dynamic, or where the
+graph is confidently wrong, the cheaper answer is less complete. That is the remaining risk of the
+positioning. Before an unforced adoption experiment it argues for: (a) fixing the `typing.Any.*`
+edges, which are resolved at confidence 1.0, so no coverage note can surface them; (b) linking
+decorator wrappers and `cls.` calls; (c) making the server's coverage note name the gap that applies
+to this answer.
+
+**Limits.** The control is not concurrent (same day, same model and harness; stored; transcripts not
+kept, so no per-transcript comparison). Forced use is an upper bound, not adoption. The bootstrap is
+over tasks and ignores run-to-run variance. Control precision for dir-extractors is the stored 0.36
+(secondary table only). n=14 primary tasks over two codebases, one of them cgis itself.
