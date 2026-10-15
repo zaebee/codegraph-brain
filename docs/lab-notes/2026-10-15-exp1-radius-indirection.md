@@ -132,3 +132,20 @@ in owner-api ends in such a route. Under the rule above, tasks moved to the cell
   they are required gold here, not a lower bound. This is the one task where a correctness
   difference is likely.
 - The full run is 20 tasks × 3 runs, all fresh. Pilot sessions are not reused.
+
+## Gate 3 operationalised (written while the full run is in flight, before any of its results were read)
+
+The pre-registration said "drift score of the target's domain" without defining the domain.
+owner-api's own `patterns.yaml` leaves several packages the targets live in undeclared (rider, rating,
+pricing, admin). So, uniformly for every task:
+
+- **domain:** the package `app.domains.<x>`, or `app.<x>` outside `domains/`, that contains the
+  target, read from a graph ingested at `ownima-backend/` so FQNs carry `app.`;
+- **drift:** the gate-free `shape_residual` to the nearest template of cgis's alphabet, under the
+  `python` profile. This is the "how well does the domain fit a template" that H1 claims does not
+  matter;
+- **radius:** the gold file count (target plus required callers);
+- **cost:** the per-task median `cost_usd` over its 3 runs.
+
+The partial Spearman correlation of cost with drift, controlling for radius, is taken over the 20
+task medians.
