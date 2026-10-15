@@ -176,9 +176,10 @@ def test_local_and_parameter_types_are_recorded_as_fqns() -> None:
     }
 
 
-def test_builtin_types_are_not_local_types() -> None:
+def test_builtin_types_are_not_local_types_but_error_is() -> None:
+    """`error` is the one predeclared type with a method to resolve: `err.Error()` (#608)."""
     nodes, _ = _parse("package server\nfunc Run(s string, n int, e error) {}\n")
-    assert "local_types" not in nodes["internal.server.Run"].metadata
+    assert nodes["internal.server.Run"].metadata["local_types"] == {"e": "error"}
 
 
 def test_every_node_of_a_test_file_is_flagged() -> None:
@@ -435,3 +436,26 @@ def test_a_chain_of_results_stops_at_a_bounded_depth() -> None:
     assert types["x8"].count("|") == 8  # the last hop kept
     assert "x9" not in types
     assert max(len(v) for v in types.values()) < 400
+
+
+def test_an_error_declared_by_name_keeps_err_typed() -> None:
+    """#608 delta review: `var err error`, then `_, err = F()`, then `err.Error()`."""
+    types = _local_types("\tvar err error\n\t{ _, err := Open(); _ = err }\n")
+    assert types["err"].startswith("go-any:")
+    assert _local_types("\tvar err error\n")["err"] == "error"
+
+
+def test_named_results_bind_like_parameters() -> None:
+    """#608 delta review: `func F() (x *A)` — a block's `x := &B{}` must not lend B to `x`."""
+    nodes, _ = _parse(
+        "package server\nfunc F() (x *A, err error) {\n\t{ x := &B{}; _ = x }\n\treturn\n}\n"
+    )
+    types = nodes["internal.server.F"].metadata["local_types"]
+    assert types["x"] == "go-any:internal.server.A;internal.server.B"
+    assert types["err"] == "error"
+
+
+def test_a_select_receive_binds_an_untyped_name() -> None:
+    """#608 delta review: `case v := <-ch` is a binding the walk must see."""
+    types = _local_types("\t{ v := &A{}; _ = v }\n\tselect {\n\tcase v := <-ch:\n\t\t_ = v\n\t}\n")
+    assert "v" not in types

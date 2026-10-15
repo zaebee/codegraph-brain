@@ -262,6 +262,7 @@ def _callable(
     # The receiver's type is its method's owner: `s.Parser()` qualifies like `x.M()`.
     bindings: Bindings = {receiver: [owner]} if receiver and owner else {}
     _parameters(ctx, node.child_by_field_name("parameters"), bindings)
+    _parameters(ctx, node.child_by_field_name("result"), bindings)  # named results bind too
     body = node.child_by_field_name("body")
     if body is not None:
         _body(ctx, body, fqn, receiver, bindings, edges)
@@ -295,8 +296,13 @@ def _settled(bindings: Bindings) -> dict[str, str]:
 
 
 def _record(ctx: _File, bindings: Bindings, names: list[str], type_node: TSNode | None) -> None:
-    """Bind each of `names` to the named type `type_node` gives, or to unknown."""
-    fqn = type_fqn(type_node, ctx.scope, ctx.import_map) or _UNKNOWN
+    """Bind each of `names` to the named type `type_node` gives, or to unknown.
+
+    Of the predeclared types only `error` binds, by name: the one with a method a
+    call can reach (`err.Error()`); `int` or `string` would type nothing.
+    """
+    predeclared = "error" if text(base_type(type_node)) == "error" else _UNKNOWN
+    fqn = type_fqn(type_node, ctx.scope, ctx.import_map) or predeclared
     for name in names:
         _bind(bindings, name, fqn)
 
@@ -320,6 +326,15 @@ def _unknown(bindings: Bindings, names: TSNode | None) -> None:
             _bind(bindings, text(name), _UNKNOWN)
 
 
+#: Statements that bind names to a value of no nameable type, by the field
+#: holding the names: range variables, a type switch's alias, a select receive.
+_UNTYPED_BINDINGS = {
+    "range_clause": "left",
+    "type_switch_statement": "alias",
+    "receive_statement": "left",
+}
+
+
 def _body(
     ctx: _File,
     node: TSNode,
@@ -334,7 +349,15 @@ def _body(
         name = call_name(function, receiver) if function is not None else ""
         if name:
             edges.append(_call(source, name, node))
-    elif node.type == "var_spec" and node.child_by_field_name("type") is not None:
+    else:
+        _bindings_of(ctx, node, bindings)
+    for child in node.children:
+        _body(ctx, child, source, receiver, bindings, edges)
+
+
+def _bindings_of(ctx: _File, node: TSNode, bindings: Bindings) -> None:
+    """The names `node` binds, if it is a statement that binds any."""
+    if node.type == "var_spec" and node.child_by_field_name("type") is not None:
         _record(ctx, bindings, declared_names(node), node.child_by_field_name("type"))
     elif node.type == "var_spec":
         _assigned(ctx, declared_names(node), node.child_by_field_name("value"), bindings)
@@ -342,16 +365,13 @@ def _body(
         left = node.child_by_field_name("left")
         names = [text(t) for t in left.named_children] if left else []
         _assigned(ctx, names, node.child_by_field_name("right"), bindings)
-    elif node.type == "range_clause":
-        _unknown(bindings, node.child_by_field_name("left"))
-    elif node.type == "type_switch_statement":
-        _unknown(bindings, node.child_by_field_name("alias"))
+    elif node.type in _UNTYPED_BINDINGS:
+        _unknown(bindings, node.child_by_field_name(_UNTYPED_BINDINGS[node.type]))
     elif node.type == "func_literal":
-        # A closure's parameters are bindings like any other: `t.Run(..., func(t
-        # *testing.T) {...})` binds `t` to the same type, and so keeps it.
+        # A closure's parameters and named results bind their declared types, so
+        # `t.Run(..., func(t *testing.T) {...})` keeps `t`.
         _parameters(ctx, node.child_by_field_name("parameters"), bindings)
-    for child in node.children:
-        _body(ctx, child, source, receiver, bindings, edges)
+        _parameters(ctx, node.child_by_field_name("result"), bindings)
 
 
 def _assigned(ctx: _File, names: list[str], values: TSNode | None, bindings: Bindings) -> None:

@@ -446,3 +446,11 @@ def test_types_that_disagree_resolve_to_neither() -> None:
     calls = _calls_from(edges, "a.Use")
     assert "a.ArrayType.Merge" not in calls
     assert "a.ObjectType.Merge" not in calls
+
+
+def test_a_parameter_of_type_error_resolves_its_method() -> None:
+    """#608 delta review: `func f(err error) { err.Error() }` (as actionlint's YAML handler)."""
+    files = {"a/a.go": "package a\nfunc F(err error) {\n\terr.Error()\n}\n"}
+    edges, nodes = _go_graph(files, {"path": "example.com/app"})
+    assert "error.Error" in _calls_from(edges, "a.F")
+    assert nodes["error.Error"].namespace is NodeNamespace.STDLIB
