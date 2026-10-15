@@ -13,6 +13,7 @@ import argparse
 import subprocess
 from pathlib import Path
 
+import cgis
 from cgis.core.models import VIRTUAL_FILE_PATH, NodeNamespace
 from cgis.query.engine import BEHAVIORAL_EDGE_TYPES, QueryEngine
 from cgis.storage.sqlite_store import SQLiteStore
@@ -111,6 +112,7 @@ def inject_graph(
 
 
 if __name__ == "__main__":
+    cgis.log_to_stderr()  # stdout is the script's output (#619)
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", default=None, help="SQLite DB for node table")
     parser.add_argument(

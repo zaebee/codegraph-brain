@@ -44,6 +44,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
+import cgis
 from cgis.bench.agent_task import AgentTask, extract_answer, load_tasks, score_answer
 from cgis.bench.guard import CGIS_FIRST_FLAG
 from cgis.bench.transcript import parse_transcript, run_metrics
@@ -566,4 +567,5 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 if __name__ == "__main__":  # pragma: no cover
+    cgis.log_to_stderr()  # stdout is the script's output (#619)
     sys.exit(main())

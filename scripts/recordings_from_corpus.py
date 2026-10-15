@@ -36,6 +36,7 @@ from typing import Any
 
 import yaml
 
+import cgis
 from cgis.guardian.findings import Finding, ReviewResult
 from cgis.guardian.recording import save_finder_recording
 
@@ -204,4 +205,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    cgis.log_to_stderr()  # stdout is the script's output (#619)
     sys.exit(main())

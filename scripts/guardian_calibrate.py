@@ -26,6 +26,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import cgis
 from cgis.guardian.bench import GroundTruth, load_ground_truth
 from cgis.guardian.calibrate import (
     DEFAULT_JUDGE_CONCURRENCY,
@@ -630,4 +631,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    cgis.log_to_stderr()  # stdout is the script's output (#619)
     sys.exit(main())

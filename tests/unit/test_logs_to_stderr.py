@@ -69,17 +69,13 @@ def test_logs_follow_stderr_as_it_is_when_they_are_written(
         structlog.reset_defaults()
 
 
-_LOG_ONE_LINE = (
-    "import cgis, structlog\ncgis.log_to_stderr()\nstructlog.get_logger('p').info('line')\n"
-)
-
-
 def test_log_colours_follow_stderr_not_stdout() -> None:
     """#622 review: structlog picks colours from stdout; with logs on stderr that put ANSI
     escapes into `cgis ingest 2>ingest.log` run from a terminal. Here stdout is a terminal
     and stderr a pipe: no escapes."""
     import os  # noqa: PLC0415
-    import pty  # noqa: PLC0415
+
+    pty = pytest.importorskip("pty")  # no pty on Windows
 
     leader, follower = pty.openpty()
     env = {k: v for k, v in os.environ.items() if k not in ("FORCE_COLOR", "NO_COLOR")}
@@ -135,3 +131,18 @@ def test_a_logger_made_before_the_swap_follows_it_too(monkeypatch: pytest.Monkey
         assert "after-swap" in swapped.getvalue()
     finally:
         structlog.reset_defaults()
+
+
+def test_every_script_entry_point_logs_to_stderr() -> None:
+    """#622 review: the same bug in a third script (guardian_review prints its review to
+    stdout, where guardian logs landed). Made structural: a script that runs as a program
+    and imports cgis configures logging first."""
+    scripts = Path(__file__).resolve().parent.parent.parent / "scripts"
+    missing = [
+        path.name
+        for path in sorted(scripts.glob("*.py"))
+        if '__name__ == "__main__"' in (text := path.read_text(encoding="utf-8"))
+        and ("from cgis" in text or "import cgis" in text)
+        and "log_to_stderr()" not in text
+    ]
+    assert not missing, f"scripts that print while cgis logs to stdout: {missing}"

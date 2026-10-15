@@ -13,6 +13,7 @@ import argparse
 import math
 from collections.abc import Iterable
 
+import cgis
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.query.drift.triads import TRIAD_ORDER, normalized_census, tangle_mass, triad_census
 from cgis.storage.sqlite_store import SQLiteStore
@@ -225,4 +226,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    cgis.log_to_stderr()  # stdout is the script's output (#619)
     main()

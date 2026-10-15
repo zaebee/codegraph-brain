@@ -35,6 +35,7 @@ from typing import TextIO
 
 from pydantic import ValidationError
 
+import cgis
 from cgis.guardian.calibrate import (
     DEFAULT_JUDGE_CONCURRENCY,
     assign_matches,
@@ -1268,4 +1269,5 @@ def ensure_graph(checkout: Path, db_path: Path, head_sha: str) -> None:
 
 
 if __name__ == "__main__":
+    cgis.log_to_stderr()  # stdout is the script's output (#619)
     sys.exit(main())

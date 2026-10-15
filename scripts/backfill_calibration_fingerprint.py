@@ -44,6 +44,7 @@ from backfill_review_fingerprint import (
     safe_corpus_path,
 )
 
+import cgis
 from cgis.guardian.review_fingerprint import compute_fingerprint, resolve_active_providers
 
 #: Fields a calibration record copies from the results row it judges.
@@ -243,4 +244,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    cgis.log_to_stderr()  # stdout is the script's output (#619)
     main()

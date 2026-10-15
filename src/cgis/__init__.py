@@ -26,7 +26,8 @@ def log_to_stderr() -> None:
     # at its import, which put escapes into `cgis ingest 2>log` (#622 review).
     # NO_COLOR and FORCE_COLOR keep the meaning structlog gives them.
     colours = not os.environ.get("NO_COLOR") and (
-        bool(os.environ.get("FORCE_COLOR")) or sys.stderr.isatty()
+        bool(os.environ.get("FORCE_COLOR"))
+        or (sys.stderr is not None and hasattr(sys.stderr, "isatty") and sys.stderr.isatty())
     )
     processors = [
         structlog.dev.ConsoleRenderer(colors=colours)

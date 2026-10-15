@@ -20,6 +20,7 @@ import math
 import random
 import statistics
 
+import cgis
 from cgis.core.models import Edge, EdgeType, Node
 from cgis.query.drift.catalog import DomainConfig
 from cgis.query.drift.ontology_init import discover_domains
@@ -266,4 +267,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    cgis.log_to_stderr()  # stdout is the script's output (#619)
     main()
