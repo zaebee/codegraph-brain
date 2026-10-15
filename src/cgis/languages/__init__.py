@@ -27,7 +27,7 @@ from cgis.core.extractor import BaseExtractor, LanguagePack
 from cgis.core.index import IndexFacts
 from cgis.core.models import Node, NodeType
 from cgis.core.project import ProjectReader
-from cgis.core.resolution import ResolutionRules, TypeNormalizer
+from cgis.core.resolution import Dispatcher, ResolutionRules, TypeNormalizer
 
 
 @dataclass(frozen=True)
@@ -190,6 +190,11 @@ def cross_file_metadata() -> dict[NodeType, tuple[str, ...]]:
 @cache
 def _rules(name: str) -> ResolutionRules:
     return _load(name).resolution()
+
+
+def dispatcher_for(language: str) -> Dispatcher | None:
+    """The dispatch rule of the pack named `language`; None for class hierarchy or no pack."""
+    return _rules(language).dispatch if language in _BY_NAME else None
 
 
 def rules_for(source_file: str | None) -> ResolutionRules | None:

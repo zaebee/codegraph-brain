@@ -450,6 +450,24 @@ already enforced: `docs/ontology/tolerances.lock` and
 
 - **Implicit interface satisfaction.** It needs a method-set pass, which
   would add an optional `implementations()` contract element.
+
+  > **Implemented in #609 (with #642).** The contract element became
+  > `ResolutionRules.dispatch`, a `(methods, classes, inheritance) → DISPATCHES`
+  > rule. A separate `implementations()` method on the pack was not needed.
+  > `dispatch_edges` splits methods and classes by `Node.language`. A pack whose
+  > rules name no `dispatch` keeps class hierarchy analysis (Python, TypeScript:
+  > unchanged).
+  >
+  > The Go pack's rule (`languages/go/dispatch.py`) does two things:
+  >
+  > - It links each interface method to the method every satisfying type would
+  >   run, own or promoted. Satisfaction is by method names, without signatures or
+  >   receiver kind, at confidence 0.5.
+  > - It emits nothing for embedding. The pilot's line above was wrong: embedding
+  >   promotes, it does not dispatch, and reading it as inheritance produced false
+  >   DISPATCHES (`raftState.setState → Raft.setState`).
+  >
+  > Interfaces are marked `metadata["interface"]` on their CLASS node.
 - **Generics beyond plain extraction.**
 - **cgo beyond classification.**
 

@@ -7,12 +7,12 @@ source file's pack at each of those points. A rule reads the index through
 `cgis.resolver` (language-packs step 4).
 """
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
 from cgis.core.index import IndexFacts
-from cgis.core.models import Node
+from cgis.core.models import Edge, Node
 
 #: The only position the engine runs pack steps at today: after the import map,
 #: before the global symbol index (TS `_package_call`).
@@ -50,6 +50,8 @@ TypeNormalizer = Callable[[str, ResolutionView], str]
 CallStep = Callable[[str, str, ResolutionView], str | None]
 Fallback = Callable[[str, str, ResolutionView], tuple[str, float] | None]
 ImportReconciler = Callable[[str, str | None, ResolutionView], str | None]
+#: (methods, classes, inheritance) → DISPATCHES edges, for one pack's types (#609).
+Dispatcher = Callable[[Sequence[Node], Sequence[Node], Mapping[str, list[str]]], list[Edge]]
 
 
 @dataclass(frozen=True)
@@ -69,6 +71,11 @@ class ResolutionRules:
     #: node. Go's import paths name directories of a module, which only the pack can
     #: map; Python and TypeScript keep their references to layout rules (step 7b).
     reconciles_references: bool = False
+    #: Which methods a call through another type's method may run, as DISPATCHES
+    #: edges. None means class hierarchy: an override in a subclass (Python,
+    #: TypeScript). Go has no inheritance: embedding promotes, it does not
+    #: dispatch, and an interface is satisfied by any type with its methods (#609).
+    dispatch: Dispatcher | None = None
 
     def __post_init__(self) -> None:
         """Refuse a step at a position the engine never runs."""

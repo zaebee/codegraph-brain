@@ -159,15 +159,19 @@ def _types(ctx: _File, declaration: TSNode, nodes: list[Node], edges: list[Edge]
         fqn = f"{ctx.scope}.{name}"
         body = spec.child_by_field_name("type")
         fields = _field_types(ctx, body)
-        nodes.append(
-            _node(ctx, fqn, name, NodeType.CLASS, spec, {"self_types": fields} if fields else None)
+        is_interface = body is not None and body.type == "interface_type"
+        # An interface is satisfied, not inherited: the dispatch rule needs to know which
+        # types are interfaces (#609). A struct carries its field types instead.
+        metadata: dict[str, object] | None = (
+            {"interface": True} if is_interface else {"self_types": fields} if fields else None
         )
+        nodes.append(_node(ctx, fqn, name, NodeType.CLASS, spec, metadata))
         edges.append(_edge(ctx.node_id, fqn, EdgeType.CONTAINS))
         edges.extend(
             _edge(fqn, f"{_RAW_CLASS}{reference}", EdgeType.EXTENDS)
             for reference in _embedded(body)
         )
-        if body is not None and body.type == "interface_type":
+        if is_interface and body is not None:
             for elem in body.children:
                 if elem.type == "method_elem":
                     _declare(ctx, fqn, elem, nodes, edges)
