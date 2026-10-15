@@ -54,3 +54,52 @@ Per task: cost ratio = median cost (forced) / median cost (control); recall diff
 ## Analysis
 
 A script committed verbatim under `benchmarks/agent_ab/analysis/exp3_gates.py` before the run.
+
+## Result (added after the run; nothing above was changed)
+
+111 forced sessions, 0 errors, 0 contaminated, every session made at least one cgis call, $10.71.
+All 111 transcripts show `apiKeySource: ANTHROPIC_API_KEY`; served model `claude-sonnet-5-5`.
+Output of `exp3_gates.py`, unedited where quoted:
+
+```
+PRIMARY (n=14): median cost ratio 0.631 (95% CI 0.50-0.76), median Δrecall +0.000 -> HELPS (keep positioning)
+PRIMARY precision: control 1.00, cgis-forced 1.00
+  cgis-exp2-desc     n= 3 median ratio 0.59  Δrecall -0.15
+  cgis-exp2-dir      n= 7 median ratio 0.80  Δrecall +0.00
+  cgis-exp2-ind      n= 7 median ratio 0.65  Δrecall +0.00
+  owner-exp1-big-dir n= 2 median ratio 0.91  Δrecall +0.00
+  owner-exp1-big-ind n=11 median ratio 0.67  Δrecall +0.00
+  owner-exp1-small-dir n= 4 median ratio 0.92  Δrecall +0.00
+  owner-exp1-small-ind n= 3 median ratio 0.65  Δrecall +0.00
+  ALL n=37 median ratio 0.74
+```
+
+**Verdict: the primary gate passes.** On the 14 big-radius indirect/dynamic tasks, forced cgis cuts
+median cost to ×0.63 (CI 0.50–0.76, entirely below 0.80) at median Δrecall 0.00. The positioning
+stays, as pre-committed. Over all 37 tasks the ratio is ×0.74; the saving is largest where the
+chain is indirect (×0.59–0.67) and smallest on direct chains (×0.80–0.92), the shape a graph
+predicts. Median turns fell from 8 (control) to 5; the median forced session made 1 cgis call and
+read 0 files. Ingest (median 20 s) is not in `cost_usd` and would add wall time unforced.
+
+**The median hides a systematic tail, and it is where the graph is blind.** 21 of 111 sessions
+missed gold, and the misses are not random:
+
+- The 3 `desc` tasks (dynamic dispatch) lose recall: −0.05, −0.15, −0.27. All three miss the same
+  shape: the `@refreshes_graph` wrapper that runs the whole ingest from 14 MCP tools, and
+  `BaseProvider._retry`. Exp2's control found these by reading code; the forced arm took the graph's
+  answer and in most of those sessions read no file.
+- `owner-exp1-big-ind-calculate-total-price` misses the `FavoritesService` chain in 3/3 runs
+  (Δrecall −0.14), and `Worker.*` SAQ tasks recur across tasks. These look like resolver gaps of the
+  #632 kind; not yet confirmed per edge.
+- 99 of 111 sessions read no file at all. The MCP server instructions say "trust the answer for what it
+  covers; do not re-grep to confirm a resolved edge". The agent obeyed, including on edges the graph
+  does not cover. The instructions do also say to name the gap. The agents did not do that.
+
+So the gate says cgis saves money at equal *median* recall. It does not say the answer is safe to
+trust where dispatch is dynamic: there, the cheaper answer is a less complete one. That is the
+remaining risk of the positioning. It argues for (a) closing the resolver gaps behind the misses and
+(b) making the server's coverage note actionable (say *which* gap applies to this answer), before an
+unforced adoption experiment.
+
+**Limits.** The control is not concurrent (same day, same model and harness; stored). Forced use is
+an upper bound, not adoption. n=14 primary tasks over two codebases, one of them cgis itself.
