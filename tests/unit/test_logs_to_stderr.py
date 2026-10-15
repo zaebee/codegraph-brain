@@ -117,3 +117,21 @@ def test_a_snapshot_on_stdout_is_json() -> None:
     )
     assert result.returncode == 0, result.stderr
     assert "go" in json.loads(result.stdout)
+
+
+def test_a_logger_made_before_the_swap_follows_it_too(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Gemini on #622: a module-level `structlog.getLogger(__name__)` made at import.
+
+    It is a lazy proxy and loggers are not cached, so the factory — and with it
+    sys.stderr — is read again on every call.
+    """
+    log_to_stderr()
+    try:
+        made_at_import = structlog.getLogger("probe")
+        made_at_import.info("before-swap")  # a cached logger would keep this stream
+        swapped = io.StringIO()
+        monkeypatch.setattr(sys, "stderr", swapped)
+        made_at_import.info("after-swap")
+        assert "after-swap" in swapped.getvalue()
+    finally:
+        structlog.reset_defaults()

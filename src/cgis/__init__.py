@@ -36,7 +36,10 @@ def log_to_stderr() -> None:
     ]
     # The stream as it is when a line is logged, not when this runs: whoever swaps
     # sys.stderr later (a test's capture, a host) is written to, never a closed one.
+    # Uncached, so a module-level `structlog.getLogger(__name__)` made at import
+    # reaches the factory — and the current sys.stderr — on every call.
     structlog.configure(
         processors=processors,
         logger_factory=lambda *_args: structlog.PrintLogger(sys.stderr),
+        cache_logger_on_first_use=False,
     )
