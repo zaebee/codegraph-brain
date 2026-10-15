@@ -84,6 +84,10 @@
 - **7b: a `main.go` at the module root.** It gets a unique FILE id, and its definitions take the package clause's name (Task B3, `test_root_package_takes_its_clause_name`).
 - **7b: a Python-only or TS-only repository.** It never imports `tree_sitter_go`: the Go pack's `__init__` loads no grammar, as step 2's S2 requires, and the existing `_cli_ingest_loads` tests get a Go-free assertion (Task B4).
 
+- **7b: the three `file_node_id` call sites (7a review I3).** For Python/TS `file_node_id == scope_of`, so 7a cannot tell them apart. 7b gets one Go assertion per site: `cgis` target normalization (`cli.py`), the guardian collector's impact lookup, and `guardian_martian`'s node count. Each must find a Go file's `<scope>.<stem>_go` node.
+- **7b: the Go reader always emits `go_module`, `{}` without a `go.mod` (7a review M1).** `differ_from` compares only the keys present, so a key that comes and goes leaves a mixed graph. B2's test pins the always-present key.
+- **7b: a Go FILE node's mermaid slug (7a review M8).** `<scope>.<stem>_go` matches the definition branch and slugs `<pkgdir>_<stem>_go`. Assert the slug, or special-case FILE nodes.
+
 ---
 
 ## Phase A — contract fixes (PR 7a; graph-identical)

@@ -133,3 +133,16 @@ def test_unresolved_parent_does_not_false_resolve_via_bare_name() -> None:
     resolver = _resolver(nodes, [extends])
     # "Ghost" never resolved (no Ghost class) → handle must NOT bind to Ghost.handle.
     assert resolver.resolve_self_call("app.Child.run", "handle") is None
+
+
+def test_resolve_dep_candidate_prefers_the_same_scope() -> None:
+    """Step 7 H2, the DI-alias half: a sibling file's VARIABLE of the caller's package wins."""
+    nodes = [
+        _scoped_file("srv.a_go", "srv/a.go", "srv"),
+        _scoped_file("srv.b_go", "srv/b.go", "srv"),
+        _node("srv.Dep", NodeType.VARIABLE, file_path="srv/b.go"),
+        _node("other.Dep", NodeType.VARIABLE, file_path="other/x.go"),
+        _node("srv.handler", NodeType.FUNCTION, file_path="srv/a.go"),
+    ]
+    resolver = _resolver(nodes)
+    assert resolver.resolve_dep_candidate("Dep", "srv.handler", "srv/a.go") == "srv.Dep"

@@ -1,5 +1,6 @@
 """Per-pack project readers and the collector that merges their facts (language-packs step 2)."""
 
+import dataclasses
 import json
 from collections.abc import Mapping
 from pathlib import Path
@@ -13,6 +14,7 @@ from cgis.languages import extractors, project_readers
 from cgis.languages.python.dependencies import declared_import_roots
 from cgis.languages.python.project import PythonFacts, PythonProjectReader
 from cgis.languages.typescript.project import TypeScriptFacts, TypeScriptProjectReader
+from cgis.pipeline import IngestionPipeline
 from cgis.storage.sqlite_store import SQLiteStore
 
 _STORE_KEYS = {"workspace_packages", "tsconfig_paths", "python_dependencies", "npm_dependencies"}
@@ -159,3 +161,30 @@ def test_a_fact_of_the_wrong_shape_fails() -> None:
     facts = [_Facts({"npm_dependencies": ("react",)})]
     with pytest.raises(TypeError, match="npm_dependencies"):
         ImportNames.from_facts(facts)
+
+
+def test_pack_state_travels_from_the_collector_to_index_facts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The whole H3 chain: collector -> pipeline -> ResolverEngine -> SymbolResolver -> index.
+
+    `test_pack_state_reaches_index_facts` calls the builder directly; this one
+    catches a link of the chain that stops passing `project_state` on.
+    """
+    seen: dict[str, object] = {}
+    real_facts = indices.pack_index_facts
+    real_collect = ImportNameCollector.collect
+
+    def recording(nodes: Mapping[str, Node], state: Mapping[str, object]) -> object:
+        seen.update(state)
+        return real_facts(nodes, state)
+
+    def with_extra(self: ImportNameCollector) -> ImportNames:
+        names = real_collect(self)
+        return dataclasses.replace(names, extra={"go_module": {"path": "example.com/app"}})
+
+    monkeypatch.setattr(indices, "pack_index_facts", recording)
+    monkeypatch.setattr(ImportNameCollector, "collect", with_extra)
+    (tmp_path / "mod.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    IngestionPipeline(extractors([])).run(str(tmp_path))
+    assert seen["go_module"] == {"path": "example.com/app"}
