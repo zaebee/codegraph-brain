@@ -68,6 +68,10 @@ from shapes import Base
 
 def measure(shape: Base):
     return shape.area()
+
+
+def report(shape: Base):
+    return measure(shape)
 """,
     "tests/fakes.py": """
 from shapes import Base
@@ -221,3 +225,44 @@ def test_a_body_edit_keeps_every_dispatch_edge(hierarchy: tuple[Path, str], edit
     cgis_ingest(str(root), db)
 
     assert set(_dispatches(db)) == _LINKS
+
+
+# --- a dispatch hop costs no depth (#645) ------------------------------------
+#
+# A caller of `Base.area` is a direct caller of whatever `area` runs. Counting the
+# DISPATCHES hop as a level put every such caller one level deeper, so at depth 1
+# impact showed none of them (raft: 57% of functions with a complete caller set,
+# 77% with the hop free).
+
+
+def test_impact_at_depth_one_shows_a_caller_through_the_base(db: str) -> None:
+    with SQLiteStore(db) as store:
+        nodes, _ = QueryEngine(store).get_impact_graph("shapes.Square.area", max_depth=1)
+
+    assert "use.measure" in {n.id for n in nodes}
+
+
+def test_impact_through_a_chain_of_overrides_costs_no_depth(db: str) -> None:
+    """`Tuned.area` ← `Square.area` ← `Base.area` ← `measure`: still depth 1."""
+    with SQLiteStore(db) as store:
+        nodes, _ = QueryEngine(store).get_impact_graph("shapes.Tuned.area", max_depth=1)
+
+    assert "use.measure" in {n.id for n in nodes}
+
+
+def test_trace_at_depth_one_reaches_the_override(db: str) -> None:
+    with SQLiteStore(db) as store:
+        nodes, _ = QueryEngine(store).get_flow_graph("use.measure", max_depth=1)
+
+    assert "shapes.Square.area" in {n.id for n in nodes}
+
+
+def test_a_dispatch_hop_does_not_make_depth_free_for_plain_calls(db: str) -> None:
+    """Only DISPATCHES is free: `report` calls `measure`, a level further out."""
+    with SQLiteStore(db) as store:
+        engine = QueryEngine(store)
+        at_one = {n.id for n in engine.get_impact_graph("shapes.Square.area", max_depth=1)[0]}
+        at_two = {n.id for n in engine.get_impact_graph("shapes.Square.area", max_depth=2)[0]}
+
+    assert "use.report" not in at_one
+    assert "use.report" in at_two

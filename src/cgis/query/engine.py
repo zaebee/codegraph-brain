@@ -511,6 +511,38 @@ class QueryEngine:
                 edges.extend(held_edges)
         return list(nodes.values()), edges
 
+    @staticmethod
+    def _dispatch_closure(
+        ids: list[str],
+        known: set[str],
+        get_edges_batch: Callable[[list[str]], list[Edge]],
+        get_neighbor_id: Callable[[Edge], str],
+        min_confidence: float | None,
+    ) -> list[Edge]:
+        """The DISPATCHES edges that tie `ids` to more nodes at the same level (#645).
+
+        Follows DISPATCHES only, transitively (a chain of overrides is one level),
+        and returns the edges it crossed; their far ends are the nodes it added.
+        ``known`` nodes are not re-entered.
+        """
+        crossed: list[Edge] = []
+        seen = set(known) | set(ids)
+        batch = ids
+        while batch:
+            new: set[str] = set()
+            for edge in get_edges_batch(batch):
+                if edge.type != EdgeType.DISPATCHES:
+                    continue
+                if min_confidence is not None and edge.confidence < min_confidence:
+                    continue
+                crossed.append(edge)
+                neighbor = get_neighbor_id(edge)
+                if neighbor not in seen:
+                    new.add(neighbor)
+            seen |= new
+            batch = sorted(new)
+        return crossed
+
     def _bfs_traverse(
         self,
         start_id: str,
@@ -553,6 +585,23 @@ class QueryEngine:
         current_frontier = [start_id]
         depth = 0
 
+        # A DISPATCHES edge puts both its ends on one level (#645): a caller of
+        # `Base.m`, or of an interface method, is a direct caller of whatever it
+        # dispatches to. So each level is closed over DISPATCHES before it is
+        # screened — the root's included.
+        follows_dispatch = allowed_edge_types is None or EdgeType.DISPATCHES in allowed_edge_types
+        if follows_dispatch:
+            hops = self._dispatch_closure(
+                [start_id], discovered_ids, get_edges_batch, get_neighbor_id, min_confidence
+            )
+            partners = sorted({get_neighbor_id(e) for e in hops} - {start_id})
+            verdict = screen(partners)
+            dropped |= verdict.dropped
+            kept = [n for n in partners if n not in verdict.dropped]
+            discovered_ids.update(kept)
+            visited_edges.update((e.id, e) for e in hops if get_neighbor_id(e) in discovered_ids)
+            current_frontier = [start_id, *(n for n in kept if n not in verdict.leaves)]
+
         while current_frontier and depth < max_depth and truncation is None:
             expanded.update(current_frontier)
             level: list[Edge] = []
@@ -561,6 +610,17 @@ class QueryEngine:
                     calls[edge.id] = edge
                 if _edge_accepted(edge, allowed_edge_types, min_confidence):
                     level.append(edge)
+            first_reached = set(map(get_neighbor_id, level)) - discovered_ids
+            if follows_dispatch:
+                level.extend(
+                    self._dispatch_closure(
+                        sorted(first_reached),
+                        discovered_ids | first_reached,
+                        get_edges_batch,
+                        get_neighbor_id,
+                        min_confidence,
+                    )
+                )
             reached = sorted(set(map(get_neighbor_id, level)) - discovered_ids)
             verdict = screen(reached)
             dropped |= verdict.dropped
