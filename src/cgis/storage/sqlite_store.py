@@ -1261,6 +1261,31 @@ class SQLiteStore:
             raise ValueError(msg)
         self._record_state_json(key, value)
 
+    def pack_state(self) -> dict[str, object]:
+        """Every language pack's own recorded fact: the rows under no reserved key."""
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        rows = self._conn.execute("SELECT key, value FROM ingest_state").fetchall()
+        return {
+            row["key"]: json.loads(row["value"])
+            for row in rows
+            if row["key"] not in _RESERVED_STATE_KEYS
+        }
+
+    def record_pack_state(self, state: Mapping[str, object]) -> None:
+        """Make `state` the whole of the packs' recorded facts: write it, drop any other.
+
+        A key recorded once and no longer declared (a `go.mod` deleted) would
+        otherwise stay, and read as a difference on every later run.
+        """
+        vanished = self.pack_state().keys() - state.keys()
+        for key, value in state.items():
+            self.record_state(key, value)
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        self._conn.executemany("DELETE FROM ingest_state WHERE key = ?", [(k,) for k in vanished])
+        self._conn.commit()
+
     def get_state(self, key: str) -> object:
         """The project fact recorded under `key`, or None when there is none."""
         return self._state_json(key)
