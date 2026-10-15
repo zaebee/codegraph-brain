@@ -17,7 +17,7 @@ from typing import cast
 
 from cgis.core.index import ClassifyContext
 from cgis.core.models import Node, NodeNamespace, NodeType
-from cgis.languages.go._syntax import dotted
+from cgis.languages.go._syntax import BUILTINS, dotted
 from cgis.languages.go.naming import GO_LANG
 from cgis.languages.go.project import GO_MODULE_KEY
 
@@ -39,6 +39,8 @@ class GoIndexFacts:
     file_imports: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
     #: package scope -> its FILE node ids, sorted (step 7, H5).
     package_files: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    #: normalized file_path -> its package scope.
+    file_scopes: Mapping[str, str] = field(default_factory=dict)
 
 
 def index_facts(nodes: Mapping[str, Node], state: Mapping[str, object]) -> GoIndexFacts:
@@ -67,6 +69,9 @@ def index_facts(nodes: Mapping[str, Node], state: Mapping[str, object]) -> GoInd
             }
         ),
         package_files=MappingProxyType({s: tuple(sorted(ids)) for s, ids in packages.items()}),
+        file_scopes=MappingProxyType(
+            {os.path.normpath(f.file_path): str(f.metadata.get("scope", "")) for f in files}
+        ),
     )
 
 
@@ -92,10 +97,12 @@ def import_namespace(import_path: str, facts: GoIndexFacts) -> NodeNamespace:
 
 
 def classify(fqn: str, ctx: ClassifyContext) -> NodeNamespace:
-    """Own module, then the source file's imports (cgo's `C` among them), then our roots."""
+    """Own module, builtins, the source file's imports (cgo's `C` among them), our roots."""
     facts = cast("GoIndexFacts", ctx.facts)
     if _under(fqn, facts.module) or any(_under(fqn, m) for m in facts.replaces):
         return NodeNamespace.INTERNAL
+    if fqn in BUILTINS:
+        return NodeNamespace.STDLIB
     imported = facts.file_imports.get(ctx.source_file or "", {})
     under = [d for d in imported if _under(fqn, d)]
     if under:

@@ -7,7 +7,8 @@ take it to `internal.server.Run` (H4). What is left is the import edge itself.
 
 from typing import cast
 
-from cgis.core.resolution import ResolutionRules, ResolutionView
+from cgis.core.resolution import AFTER_IMPORT_MAP, ResolutionRules, ResolutionView
+from cgis.languages.go._syntax import BUILTINS
 from cgis.languages.go.index import GoIndexFacts
 from cgis.languages.go.naming import GO_LANG
 
@@ -37,4 +38,21 @@ def reconcile_import(fqn: str, _source_file: str | None, view: ResolutionView) -
     return files[0] if files else None
 
 
-RULES = ResolutionRules(reconcile_import=reconcile_import)
+def builtin_call(name: str, file_path: str, view: ResolutionView) -> str | None:
+    """`len`, `append`, `string(...)`: the language's own, before any global symbol (I4).
+
+    Before the global index, which would otherwise hand a Go `make` to a Python
+    `make` in the same repository. A function of the caller's own package with
+    the builtin's name shadows it, as in Go: left to the same-scope tiebreak.
+    """
+    if name not in BUILTINS:
+        return None
+    facts = view.facts.get(GO_LANG)
+    scope = cast("GoIndexFacts", facts).file_scopes.get(file_path, "") if facts else ""
+    return None if f"{scope}.{name}" in view.nodes else name
+
+
+RULES = ResolutionRules(
+    steps=((AFTER_IMPORT_MAP, builtin_call),),
+    reconcile_import=reconcile_import,
+)

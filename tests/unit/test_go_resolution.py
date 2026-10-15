@@ -1,6 +1,7 @@
 """The Go pack's index facts, classification and resolution, end to end (step 7b, Task B4)."""
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace
+from cgis.languages import extractors
 from cgis.languages.go.extractor import GoExtractor
 from cgis.resolver.engine import ResolverEngine
 
@@ -127,3 +128,53 @@ def test_without_a_go_mod_a_domain_path_is_external() -> None:
     calls = _calls_from(edges, "cmd.app.main")
     assert nodes["github.com.undeclared.z.Do"].namespace is NodeNamespace.EXTERNAL
     assert "fmt.Println" in calls
+
+
+BUILTINS = (
+    "package server\n"
+    "func max(a, b int) int { return a }\n"
+    "func Use(xs []int) {\n"
+    "\t_ = len(xs)\n"
+    "\txs = append(xs, 1)\n"
+    "\t_ = make([]int, 3)\n"
+    "\t_ = string(rune(65))\n"
+    "\t_ = max(1, 2)\n"
+    "}\n"
+)
+
+
+def _resolve_with(files: dict[str, tuple[str, str]]) -> tuple[list[Edge], dict[str, Node]]:
+    """Ingest `{path: (language, code)}` with the real extractors of each language."""
+    by_ext = extractors([])
+    nodes: list[Node] = []
+    edges: list[Edge] = []
+    for path, (ext, code) in files.items():
+        n, e = by_ext[ext].parse(code, path)
+        nodes += n
+        edges += e
+    resolved, virtual = ResolverEngine(nodes, edges, project_state=MODULE).resolve()
+    return resolved, {n.id: n for n in [*nodes, *virtual]}
+
+
+def test_go_builtins_are_stdlib_and_a_package_function_shadows_one() -> None:
+    """I4: `len`/`append`/conversions are the language's; `max` here is the package's own."""
+    edges, nodes = _resolve_with({"internal/server/use.go": (".go", BUILTINS)})
+    calls = _calls_from(edges, "internal.server.Use")
+    for builtin in ("len", "append", "make", "string", "rune"):
+        assert builtin in calls
+        assert nodes[builtin].namespace is NodeNamespace.STDLIB
+    assert "internal.server.max" in calls
+
+
+def test_a_go_builtin_never_lands_on_another_language_s_function() -> None:
+    """I4: a Python `make` and a TypeScript `len` are not what a Go `make(...)` calls."""
+    edges, _ = _resolve_with(
+        {
+            "internal/server/use.go": (".go", BUILTINS),
+            "tools/ops.py": (".py", "def make():\n    pass\n"),
+            "web/util.ts": (".ts", "export function len() {}\n"),
+        }
+    )
+    calls = _calls_from(edges, "internal.server.Use")
+    assert "tools.ops.make" not in calls
+    assert "web.util.len" not in calls

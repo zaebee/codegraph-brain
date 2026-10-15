@@ -32,6 +32,31 @@ _PREDECLARED = frozenset(
         "uintptr",
     }
 )
+#: Go's predeclared functions. With the predeclared types (conversions such as
+#: `string(b)`), the names a call can reach without any declaration (I4).
+_BUILTIN_FUNCTIONS = frozenset(
+    {
+        "append",
+        "cap",
+        "clear",
+        "close",
+        "complex",
+        "copy",
+        "delete",
+        "imag",
+        "len",
+        "make",
+        "max",
+        "min",
+        "new",
+        "panic",
+        "print",
+        "println",
+        "real",
+        "recover",
+    }
+)
+BUILTINS = _BUILTIN_FUNCTIONS | _PREDECLARED
 _MAJOR_VERSION = re.compile(r"v\d+")
 #: Import names that bring a package in without a name to call it by.
 UNNAMED_IMPORTS = frozenset({"_", "."})
