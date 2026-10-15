@@ -10,7 +10,7 @@ the import edge and every reference through it (`reconciles_references`).
 from typing import cast
 
 from cgis.core.resolution import AFTER_IMPORT_MAP, ResolutionRules, ResolutionView
-from cgis.languages.go._syntax import BUILTINS
+from cgis.languages.go._syntax import ANY_OF, BUILTINS, CALL_RESULT
 from cgis.languages.go.index import GoIndexFacts
 from cgis.languages.go.naming import GO_LANG
 
@@ -74,7 +74,41 @@ def builtin_call(name: str, file_path: str, view: ResolutionView) -> str | None:
     return None if f"{scope}.{name}" in view.nodes else name
 
 
+def call_result(type_fqn: str, view: ResolutionView) -> str:
+    """The type a call's result marker names: the callee's recorded result (#608).
+
+    The extractor records `x := f()` as `go-returns:<i>:<callee>`, the callee an
+    FQN or `<marker>|<method>` for a method on another call's result, since its
+    file alone cannot know what `f` returns. Here the callee's node — mapped
+    through the module like any Go reference — says, in its `returns`. Anything
+    else passes through untouched; an unknown callee leaves the marker, which
+    resolves to nothing.
+    """
+    if type_fqn.startswith(ANY_OF):
+        return _agreed(type_fqn, view)
+    if not type_fqn.startswith(CALL_RESULT):
+        return type_fqn
+    position, _, callee = type_fqn.removeprefix(CALL_RESULT).partition(":")
+    if "|" in callee:
+        held, _, method = callee.rpartition("|")
+        callee = f"{call_result(held, view)}.{method}"
+    node_id = callee if callee in view.nodes else reconcile_import(callee, None, view)
+    node = view.nodes.get(node_id) if node_id else None
+    returns: list[str] = node.metadata.get("returns") or [] if node else []
+    index = int(position) if position.isdigit() else len(returns)
+    result = next(iter(returns[index : index + 1]), "")  # past the end: no such result
+    return result or type_fqn
+
+
+def _agreed(type_fqn: str, view: ResolutionView) -> str:
+    """The one type every binding of a `go-any:` name resolves to; else the marker itself."""
+    resolved = {call_result(t, view) for t in type_fqn.removeprefix(ANY_OF).split(";")}
+    (only,) = resolved if len(resolved) == 1 else (type_fqn,)
+    return type_fqn if only.startswith((CALL_RESULT, ANY_OF)) else only
+
+
 RULES = ResolutionRules(
+    type_normalizers=(call_result,),
     steps=((AFTER_IMPORT_MAP, builtin_call),),
     reconcile_import=reconcile_import,
     reconciles_references=True,

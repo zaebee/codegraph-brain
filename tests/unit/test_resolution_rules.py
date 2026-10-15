@@ -84,10 +84,13 @@ def test_js_builtins_are_the_typescript_packs_fallback() -> None:
 
 
 def test_the_annotated_alias_is_pythons_normalizer() -> None:
-    rules = rules_for("app/x.py")
-    assert rules is not None
-    assert len(rules.type_normalizers) == 1
-    assert type_normalizers() == rules.type_normalizers
+    """Python's one normalizer, then Go's call-result one (#608): manifest order."""
+    python = rules_for("app/x.py")
+    go = rules_for("app/x.go")
+    assert python is not None
+    assert go is not None
+    assert len(python.type_normalizers) == 1
+    assert type_normalizers() == python.type_normalizers + go.type_normalizers
 
 
 def test_a_normalizer_applies_without_a_source() -> None:
@@ -110,8 +113,10 @@ def test_a_normalizer_applies_without_a_source() -> None:
         end_line=1,
     )
     index = IndexBuilder().build([alias, service])
-    (normalize,) = type_normalizers()
-    assert normalize("app.deps.ServiceDep", index) == "app.svc.Service"
+    declared = "app.deps.ServiceDep"
+    for normalize in type_normalizers():  # every pack's, in order, as the resolver applies them
+        declared = normalize(declared, index)
+    assert declared == "app.svc.Service"
 
 
 def test_the_normalizers_are_collected_once() -> None:

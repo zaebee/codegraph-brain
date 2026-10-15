@@ -22,6 +22,9 @@ from tree_sitter import Node as TSNode
 from cgis.core.extractor import BaseExtractor
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
 from cgis.languages.go._syntax import (
+    ANY_OF,
+    BUILTINS,
+    CALL_RESULT,
     UNNAMED_IMPORTS,
     base_type,
     call_name,
@@ -29,6 +32,8 @@ from cgis.languages.go._syntax import (
     dotted,
     imports,
     literal_type,
+    result_types,
+    selector_chain,
     text,
     type_fqn,
     type_reference,
@@ -36,6 +41,12 @@ from cgis.languages.go._syntax import (
 from cgis.languages.go.naming import GO_LANG, file_node_id, is_test, scope_of
 
 _RAW_CALL = "raw_call:"
+#: A binding whose type cannot be named (`x := m[k]`, a range variable): one per
+#: name makes it untyped, since one dict serves every block (#608 review).
+_UNKNOWN = "?"
+#: Hops of `x := y.M()` a call-result marker follows; past it the name stays
+#: untyped, so markers stay short and expanding one never recurses deep (I2).
+_MAX_CHAIN = 8
 _RAW_CLASS = "raw_class:"
 
 
@@ -146,9 +157,12 @@ def _types(ctx: _File, declaration: TSNode, nodes: list[Node], edges: list[Edge]
             continue
         name = text(spec.child_by_field_name("name"))
         fqn = f"{ctx.scope}.{name}"
-        nodes.append(_node(ctx, fqn, name, NodeType.CLASS, spec))
-        edges.append(_edge(ctx.node_id, fqn, EdgeType.CONTAINS))
         body = spec.child_by_field_name("type")
+        fields = _field_types(ctx, body)
+        nodes.append(
+            _node(ctx, fqn, name, NodeType.CLASS, spec, {"self_types": fields} if fields else None)
+        )
+        edges.append(_edge(ctx.node_id, fqn, EdgeType.CONTAINS))
         edges.extend(
             _edge(fqn, f"{_RAW_CLASS}{reference}", EdgeType.EXTENDS)
             for reference in _embedded(body)
@@ -157,6 +171,17 @@ def _types(ctx: _File, declaration: TSNode, nodes: list[Node], edges: list[Edge]
             for elem in body.children:
                 if elem.type == "method_elem":
                     _declare(ctx, fqn, elem, nodes, edges)
+
+
+def _field_types(ctx: _File, body: TSNode | None) -> dict[str, str]:
+    """A struct's named fields of a named type: its `self_types`, as Python's (#608)."""
+    fields = _child(body, "field_declaration_list") if body and body.type == "struct_type" else None
+    types: dict[str, str] = {}
+    for field in fields.children if fields else []:
+        fqn = type_fqn(field.child_by_field_name("type"), ctx.scope, ctx.import_map)
+        if field.type == "field_declaration" and fqn:
+            types.update(dict.fromkeys(declared_names(field), fqn))
+    return types
 
 
 def _embedded(body: TSNode | None) -> list[str]:
@@ -215,7 +240,12 @@ def _method(ctx: _File, node: TSNode, nodes: list[Node], edges: list[Edge]) -> N
         # The type lives in another file: this file still holds the method.
         edges.append(_edge(ctx.node_id, fqn, EdgeType.CONTAINS))
     names = declared_names(receiver)
-    _callable(ctx, fqn, NodeType.METHOD, node, names[0] if names else None, nodes, edges)
+    receiver_name = names[0] if names else None
+    _callable(ctx, fqn, NodeType.METHOD, node, receiver_name, nodes, edges, owner)
+
+
+Bindings = dict[str, list[str]]
+"""Every type each local name is bound to in one function, in order (#608 review)."""
 
 
 def _callable(
@@ -226,27 +256,83 @@ def _callable(
     receiver: str | None,
     nodes: list[Node],
     edges: list[Edge],
+    owner: str | None = None,
 ) -> None:
-    """The node, with its parameter and local types, and the CALLS edges of its body."""
-    types: dict[str, str] = {}
-    parameters = node.child_by_field_name("parameters")
-    for declaration in parameters.children if parameters else []:
-        if declaration.type == "parameter_declaration":
-            _record(
-                ctx, types, declared_names(declaration), declaration.child_by_field_name("type")
-            )
+    """The node, with its parameter, local and result types, and its body's CALLS edges."""
+    # The receiver's type is its method's owner: `s.Parser()` qualifies like `x.M()`.
+    bindings: Bindings = {receiver: [owner]} if receiver and owner else {}
+    _parameters(ctx, node.child_by_field_name("parameters"), bindings)
+    _parameters(ctx, node.child_by_field_name("result"), bindings)  # named results bind too
     body = node.child_by_field_name("body")
     if body is not None:
-        _body(ctx, body, fqn, receiver, types, edges)
-    metadata: dict[str, object] = {"local_types": types} if types else {}
+        _body(ctx, body, fqn, receiver, bindings, edges)
+    settled = _settled(bindings)
+    metadata: dict[str, object] = {"local_types": settled} if settled else {}
+    returns = result_types(node, ctx.scope, ctx.import_map)
+    if returns:
+        metadata["returns"] = returns
     nodes.append(_node(ctx, fqn, text(node.child_by_field_name("name")), node_type, node, metadata))
 
 
-def _record(ctx: _File, types: dict[str, str], names: list[str], type_node: TSNode | None) -> None:
-    """Note each of `names` as having the type `type_node` names, when it is a named type."""
-    fqn = type_fqn(type_node, ctx.scope, ctx.import_map)
-    if fqn:
-        types.update(dict.fromkeys(names, fqn))
+def _parameters(ctx: _File, parameters: TSNode | None, bindings: Bindings) -> None:
+    for declaration in parameters.children if parameters else []:
+        if declaration.type == "parameter_declaration":
+            _record(
+                ctx, bindings, declared_names(declaration), declaration.child_by_field_name("type")
+            )
+
+
+def _settled(bindings: Bindings) -> dict[str, str]:
+    """One type per name: its only binding, or `go-any:` of all when every one is known.
+
+    A name with any binding of no nameable type records nothing — unresolved
+    rather than lent a type from a sibling block.
+    """
+    return {
+        name: types[0] if len(types) == 1 else ANY_OF + ";".join(types)
+        for name, types in bindings.items()
+        if _UNKNOWN not in types
+    }
+
+
+def _record(ctx: _File, bindings: Bindings, names: list[str], type_node: TSNode | None) -> None:
+    """Bind each of `names` to the named type `type_node` gives, or to unknown.
+
+    Of the predeclared types only `error` binds, by name: the one with a method a
+    call can reach (`err.Error()`); `int` or `string` would type nothing.
+    """
+    predeclared = "error" if text(base_type(type_node)) == "error" else _UNKNOWN
+    fqn = type_fqn(type_node, ctx.scope, ctx.import_map) or predeclared
+    for name in names:
+        _bind(bindings, name, fqn)
+
+
+def _bind(bindings: Bindings, name: str, fqn: str) -> None:
+    """Add a binding of `name`; the blank identifier binds nothing."""
+    if name != "_" and fqn not in bindings.setdefault(name, []):
+        bindings[name].append(fqn)
+
+
+def _held(bindings: Bindings, name: str) -> str | None:
+    """The one known type `name` holds while walking, or None when it has several or none."""
+    types = bindings.get(name, [])
+    return types[0] if len(types) == 1 and types[0] != _UNKNOWN else None
+
+
+def _unknown(bindings: Bindings, names: TSNode | None) -> None:
+    """Bind every identifier under `names` (a range's or a type switch's left side) to unknown."""
+    for name in names.named_children if names else []:
+        if name.type == "identifier":
+            _bind(bindings, text(name), _UNKNOWN)
+
+
+#: Statements that bind names to a value of no nameable type, by the field
+#: holding the names: range variables, a type switch's alias, a select receive.
+_UNTYPED_BINDINGS = {
+    "range_clause": "left",
+    "type_switch_statement": "alias",
+    "receive_statement": "left",
+}
 
 
 def _body(
@@ -254,7 +340,7 @@ def _body(
     node: TSNode,
     source: str,
     receiver: str | None,
-    types: dict[str, str],
+    bindings: Bindings,
     edges: list[Edge],
 ) -> None:
     """CALLS edges and local variable types, through nested blocks and closures."""
@@ -263,22 +349,66 @@ def _body(
         name = call_name(function, receiver) if function is not None else ""
         if name:
             edges.append(_call(source, name, node))
-    elif node.type == "var_spec":
-        _record(ctx, types, declared_names(node), node.child_by_field_name("type"))
-    elif node.type == "short_var_declaration":
-        _short_var(ctx, node, types)
+    else:
+        _bindings_of(ctx, node, bindings)
     for child in node.children:
-        _body(ctx, child, source, receiver, types, edges)
+        _body(ctx, child, source, receiver, bindings, edges)
 
 
-def _short_var(ctx: _File, node: TSNode, types: dict[str, str]) -> None:
-    """`x := T{}` / `x := &T{}`: x has type T. Anything else says nothing."""
-    left = node.child_by_field_name("left")
-    right = node.child_by_field_name("right")
-    if left is None or right is None:
+def _bindings_of(ctx: _File, node: TSNode, bindings: Bindings) -> None:
+    """The names `node` binds, if it is a statement that binds any."""
+    if node.type == "var_spec" and node.child_by_field_name("type") is not None:
+        _record(ctx, bindings, declared_names(node), node.child_by_field_name("type"))
+    elif node.type == "var_spec":
+        _assigned(ctx, declared_names(node), node.child_by_field_name("value"), bindings)
+    elif node.type == "short_var_declaration":
+        left = node.child_by_field_name("left")
+        names = [text(t) for t in left.named_children] if left else []
+        _assigned(ctx, names, node.child_by_field_name("right"), bindings)
+    elif node.type in _UNTYPED_BINDINGS:
+        _unknown(bindings, node.child_by_field_name(_UNTYPED_BINDINGS[node.type]))
+    elif node.type == "func_literal":
+        # A closure's parameters and named results bind their declared types, so
+        # `t.Run(..., func(t *testing.T) {...})` keeps `t`.
+        _parameters(ctx, node.child_by_field_name("parameters"), bindings)
+        _parameters(ctx, node.child_by_field_name("result"), bindings)
+
+
+def _assigned(ctx: _File, names: list[str], values: TSNode | None, bindings: Bindings) -> None:
+    """`x := T{}` gives T; `x := f()` gives f's result, `a, err := f()` each its own (#608)."""
+    right = values.named_children if values is not None else []
+    if len(right) == 1 and right[0].type == "call_expression" and len(names) > 1:
+        for index, name in enumerate(names):
+            _hold_result(ctx, bindings, name, right[0], index)
         return
-    for target, value in zip(left.named_children, right.named_children, strict=False):
-        _record(ctx, types, [text(target)], literal_type(value))
+    for position, name in enumerate(names):
+        value = right[position] if position < len(right) else None
+        if value is not None and value.type == "call_expression":
+            _hold_result(ctx, bindings, name, value, 0)
+        else:
+            _record(ctx, bindings, [name], literal_type(value) if value is not None else None)
+
+
+def _hold_result(ctx: _File, bindings: Bindings, name: str, call: TSNode, index: int) -> None:
+    """Bind `name` to result `index` of `call`, or to unknown when the callee has no name."""
+    callee = _callee(ctx, call.child_by_field_name("function"), bindings)
+    _bind(bindings, name, f"{CALL_RESULT}{index}:{callee}" if callee else _UNKNOWN)
+
+
+def _callee(ctx: _File, function: TSNode | None, bindings: Bindings) -> str | None:
+    """What a call names, qualified: `f`, `pkg.F`, or `M` on a variable of known type."""
+    chain = selector_chain(function) if function is not None else []
+    if len(chain) == 1:
+        return None if chain[0] in BUILTINS else f"{ctx.scope}.{chain[0]}"
+    if len(chain) != 2:
+        return None
+    head, method = chain
+    if head not in bindings:  # a local shadows an import, as the resolver reads it (M1)
+        return f"{ctx.import_map[head]}.{method}" if head in ctx.import_map else None
+    held = _held(bindings, head)
+    if held is None or held.count("|") >= _MAX_CHAIN:
+        return None
+    return f"{held}|{method}" if held.startswith(CALL_RESULT) else f"{held}.{method}"
 
 
 def _call(source: str, name: str, node: TSNode) -> Edge:

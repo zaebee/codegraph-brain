@@ -315,3 +315,142 @@ def test_directories_are_walked_in_sorted_order(
     monkeypatch.setattr(Path, "walk", reversed_walk)
     IngestionPipeline(extractors([])).run(str(tmp_path / "tree"))
     assert visited == ["tree", "aa", "mm", "zz"]
+
+
+RECEIVERS = {
+    "store/store.go": (
+        "package store\n"
+        "type Store struct{}\n"
+        "func Open() (*Store, error) { return nil, nil }\n"
+        "func (s *Store) Save() {}\n"
+        "func (s *Store) Query() *Rows { return nil }\n"
+        "type Rows struct{}\n"
+        "func (r *Rows) Next() {}\n"
+    ),
+    "server/server.go": (
+        "package server\n"
+        'import (\n\t"sync"\n\t"example.com/app/store"\n)\n'
+        "type Server struct {\n\tdb *store.Store\n\tmu sync.Mutex\n}\n"
+        "func New() *Server { return &Server{} }\n"
+        "func (s *Server) Parser() *Parser { return nil }\n"
+        "type Parser struct{}\n"
+        "func (p *Parser) Parse() *store.Rows { return nil }\n"
+        "func (s *Server) Start() {\n"
+        "\ts.db.Save()\n"
+        "\ts.mu.Lock()\n"
+        "\tdb, err := store.Open()\n"
+        "\tdb.Save()\n"
+        "\terr.Error()\n"
+        "\tp := s.Parser()\n"
+        "\trows := p.Parse()\n"
+        "\trows.Next()\n"
+        "}\n"
+        "func Run() {\n"
+        "\tsrv := New()\n"
+        "\tsrv.Start()\n"
+        "}\n"
+    ),
+}
+
+
+def _receivers() -> tuple[set[str], dict[str, Node]]:
+    edges, nodes = _go_graph(RECEIVERS, {"path": "example.com/app"})
+    calls = _calls_from(edges, "server.Server.Start") | _calls_from(edges, "server.Run")
+    return calls, nodes
+
+
+def test_a_field_s_declared_type_resolves_its_method_across_packages() -> None:
+    """#608: `s.db.Save()` with `db *store.Store` — the field's type from another package.
+
+    Checked on the field call's own edge: `db.Save()` below reaches the same method
+    through a call's result, and would hide this one staying unresolved.
+    """
+    edges, _ = _go_graph(RECEIVERS, {"path": "example.com/app"})
+    through_field = [e.target for e in edges if "raw_call:self.db.Save" in e.id]
+    assert through_field == ["store.Store.Save"]
+
+
+def test_a_field_of_a_stdlib_type_is_a_stdlib_call() -> None:
+    calls, nodes = _receivers()
+    assert "sync.Mutex.Lock" in calls
+    assert nodes["sync.Mutex.Lock"].namespace is NodeNamespace.STDLIB
+
+
+def test_a_call_s_results_type_the_variables_it_assigns() -> None:
+    """#608: `db, err := store.Open()`; `srv := New()`."""
+    calls, nodes = _receivers()
+    assert "store.Store.Save" in calls
+    assert "server.Server.Start" in calls
+    assert "error.Error" in calls
+    assert nodes["error.Error"].namespace is NodeNamespace.STDLIB
+
+
+def test_a_method_called_on_another_call_s_result_resolves() -> None:
+    """#608: `p := s.Parser(); rows := p.Parse(); rows.Next()` — two hops of results."""
+    calls, _ = _receivers()
+    assert "store.Rows.Next" in calls
+
+
+def test_err_from_two_calls_is_still_an_error() -> None:
+    """#608 delta review: two markers that both resolve to `error` keep `err` typed."""
+    files = {
+        "a/a.go": (
+            "package a\n"
+            "func Open() (int, error) { return 0, nil }\n"
+            "func Stat() (int, error) { return 0, nil }\n"
+            "func Run() {\n"
+            "\t_, err := Open()\n"
+            "\tif _, err := Stat(); err != nil { err.Error() }\n"
+            "\terr.Error()\n"
+            "}\n"
+        )
+    }
+    edges, _ = _go_graph(files, {"path": "example.com/app"})
+    assert "error.Error" in _calls_from(edges, "a.Run")
+
+
+def test_sibling_blocks_never_lend_each_other_a_type() -> None:
+    """#608 delta review: the second `b.Run()` is RB's or nothing — never RA's."""
+    files = {
+        "a/a.go": (
+            "package a\n"
+            "type A struct{}\nfunc (x *A) Get() *RA { return nil }\n"
+            "type RA struct{}\nfunc (r *RA) Run() {}\n"
+            "type B struct{}\nfunc NewB() *B { return nil }\nfunc (x *B) Get() *RB { return nil }\n"
+            "type RB struct{}\nfunc (r *RB) Run() {}\n"
+            "func Use() {\n"
+            "\t{ a := &A{}; b := a.Get(); b.Run() }\n"
+            "\t{ a := NewB(); b := a.Get(); b.Run() }\n"
+            "}\n"
+        )
+    }
+    edges, _ = _go_graph(files, {"path": "example.com/app"})
+    assert "a.RA.Run" not in _calls_from(edges, "a.Use")
+
+
+def test_types_that_disagree_resolve_to_neither() -> None:
+    """#608 review I1: `ty` is an ArrayType in one block and an ObjectType in another."""
+    files = {
+        "a/a.go": (
+            "package a\n"
+            "type ArrayType struct{}\nfunc (t *ArrayType) Merge() {}\n"
+            "type ObjectType struct{}\nfunc (t *ObjectType) Merge() {}\n"
+            "func NewObjectType() *ObjectType { return nil }\n"
+            "func Use() {\n"
+            "\t{ ty := &ArrayType{}; ty.Merge() }\n"
+            "\t{ ty := NewObjectType(); ty.Merge() }\n"
+            "}\n"
+        )
+    }
+    edges, _ = _go_graph(files, {"path": "example.com/app"})
+    calls = _calls_from(edges, "a.Use")
+    assert "a.ArrayType.Merge" not in calls
+    assert "a.ObjectType.Merge" not in calls
+
+
+def test_a_parameter_of_type_error_resolves_its_method() -> None:
+    """#608 delta review: `func f(err error) { err.Error() }` (as actionlint's YAML handler)."""
+    files = {"a/a.go": "package a\nfunc F(err error) {\n\terr.Error()\n}\n"}
+    edges, nodes = _go_graph(files, {"path": "example.com/app"})
+    assert "error.Error" in _calls_from(edges, "a.F")
+    assert nodes["error.Error"].namespace is NodeNamespace.STDLIB

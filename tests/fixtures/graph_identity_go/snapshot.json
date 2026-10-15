@@ -122,13 +122,13 @@
     "weight": 1.0
    },
    {
-    "confidence": 0.8,
+    "confidence": 0.6,
     "context": null,
     "file_path": null,
     "id": "internal.server.Server.Start->raw_call:self.db.Save@12:1",
     "line_number": null,
     "source": "internal.server.Server.Start",
-    "target": "self.db.Save",
+    "target": "internal.store.Store.Save",
     "type": "CALLS",
     "type_only": 0,
     "weight": 1.0
@@ -314,13 +314,13 @@
     "weight": 1.0
    },
    {
-    "confidence": 0.8,
+    "confidence": 0.6,
     "context": null,
     "file_path": null,
     "id": "internal.store.Base.Lock->raw_call:self.mu.Lock@10:1",
     "line_number": null,
     "source": "internal.store.Base.Lock",
-    "target": "self.mu.Lock",
+    "target": "sync.Mutex.Lock",
     "type": "CALLS",
     "type_only": 0,
     "weight": 1.0
@@ -446,13 +446,13 @@
     "weight": 1.0
    },
    {
-    "confidence": 0.8,
+    "confidence": 0.6,
     "context": null,
     "file_path": null,
     "id": "main.main->raw_call:s.Start@14:1",
     "line_number": null,
     "source": "main.main",
-    "target": "s.Start",
+    "target": "internal.server.Server.Start",
     "type": "CALLS",
     "type_only": 0,
     "weight": 1.0
@@ -806,7 +806,11 @@
     "is_generated": 0,
     "is_test": 0,
     "language": "go",
-    "metadata": {},
+    "metadata": {
+     "local_types": {
+      "l": "internal.server.Logger"
+     }
+    },
     "name": "Log",
     "namespace": "INTERNAL",
     "ontology_class": "Method",
@@ -825,7 +829,10 @@
     "metadata": {
      "local_types": {
       "db": "example.com.shop.internal.store.Store"
-     }
+     },
+     "returns": [
+      "internal.server.Server"
+     ]
     },
     "name": "New",
     "namespace": "INTERNAL",
@@ -842,7 +849,11 @@
     "is_generated": 0,
     "is_test": 0,
     "language": "go",
-    "metadata": {},
+    "metadata": {
+     "self_types": {
+      "db": "example.com.shop.internal.store.Store"
+     }
+    },
     "name": "Server",
     "namespace": "INTERNAL",
     "ontology_class": "Class",
@@ -858,7 +869,14 @@
     "is_generated": 0,
     "is_test": 0,
     "language": "go",
-    "metadata": {},
+    "metadata": {
+     "local_types": {
+      "s": "internal.server.Server"
+     },
+     "returns": [
+      "error"
+     ]
+    },
     "name": "Serve",
     "namespace": "INTERNAL",
     "ontology_class": "Method",
@@ -874,7 +892,11 @@
     "is_generated": 0,
     "is_test": 0,
     "language": "go",
-    "metadata": {},
+    "metadata": {
+     "local_types": {
+      "s": "internal.server.Server"
+     }
+    },
     "name": "Start",
     "namespace": "INTERNAL",
     "ontology_class": "Method",
@@ -986,7 +1008,11 @@
     "is_generated": 0,
     "is_test": 0,
     "language": "go",
-    "metadata": {},
+    "metadata": {
+     "returns": [
+      "bool"
+     ]
+    },
     "name": "validate",
     "namespace": "INTERNAL",
     "ontology_class": "Function",
@@ -1023,7 +1049,11 @@
     "is_generated": 0,
     "is_test": 0,
     "language": "go",
-    "metadata": {},
+    "metadata": {
+     "self_types": {
+      "mu": "sync.Mutex"
+     }
+    },
     "name": "Base",
     "namespace": "INTERNAL",
     "ontology_class": "Class",
@@ -1039,7 +1069,11 @@
     "is_generated": 0,
     "is_test": 0,
     "language": "go",
-    "metadata": {},
+    "metadata": {
+     "local_types": {
+      "b": "internal.store.Base"
+     }
+    },
     "name": "Lock",
     "namespace": "INTERNAL",
     "ontology_class": "Method",
@@ -1071,7 +1105,11 @@
     "is_generated": 0,
     "is_test": 0,
     "language": "go",
-    "metadata": {},
+    "metadata": {
+     "local_types": {
+      "s": "internal.store.Store"
+     }
+    },
     "name": "Save",
     "namespace": "INTERNAL",
     "ontology_class": "Method",
@@ -1112,7 +1150,11 @@
     "is_generated": 0,
     "is_test": 0,
     "language": "go",
-    "metadata": {},
+    "metadata": {
+     "returns": [
+      "bool"
+     ]
+    },
     "name": "validate",
     "namespace": "INTERNAL",
     "ontology_class": "Function",
@@ -1130,7 +1172,8 @@
     "language": "go",
     "metadata": {
      "local_types": {
-      "db": "example.com.shop.internal.store.Store"
+      "db": "example.com.shop.internal.store.Store",
+      "s": "go-returns:0:example.com.shop.internal.server.New"
      }
     },
     "name": "main",
@@ -1181,7 +1224,11 @@
     "is_generated": 0,
     "is_test": 0,
     "language": "go",
-    "metadata": {},
+    "metadata": {
+     "returns": [
+      "string"
+     ]
+    },
     "name": "Format",
     "namespace": "INTERNAL",
     "ontology_class": "Function",
@@ -1212,54 +1259,6 @@
     "ontology_class": "File",
     "start_line": 1,
     "type": "FILE"
-   },
-   {
-    "confidence_score": 0.8,
-    "domains": [],
-    "end_line": 0,
-    "file_path": "EXTERNAL",
-    "id": "s.Start",
-    "is_generated": 0,
-    "is_test": 0,
-    "language": "python",
-    "metadata": {},
-    "name": "Start",
-    "namespace": "UNKNOWN",
-    "ontology_class": "Function",
-    "start_line": 0,
-    "type": "FUNCTION"
-   },
-   {
-    "confidence_score": 0.8,
-    "domains": [],
-    "end_line": 0,
-    "file_path": "EXTERNAL",
-    "id": "self.db.Save",
-    "is_generated": 0,
-    "is_test": 0,
-    "language": "python",
-    "metadata": {},
-    "name": "Save",
-    "namespace": "UNKNOWN",
-    "ontology_class": "Function",
-    "start_line": 0,
-    "type": "FUNCTION"
-   },
-   {
-    "confidence_score": 0.8,
-    "domains": [],
-    "end_line": 0,
-    "file_path": "EXTERNAL",
-    "id": "self.mu.Lock",
-    "is_generated": 0,
-    "is_test": 0,
-    "language": "python",
-    "metadata": {},
-    "name": "Lock",
-    "namespace": "UNKNOWN",
-    "ontology_class": "Function",
-    "start_line": 0,
-    "type": "FUNCTION"
    },
    {
     "confidence_score": 0.8,
@@ -1304,6 +1303,22 @@
     "language": "python",
     "metadata": {},
     "name": "sync",
+    "namespace": "STDLIB",
+    "ontology_class": "Function",
+    "start_line": 0,
+    "type": "FUNCTION"
+   },
+   {
+    "confidence_score": 0.8,
+    "domains": [],
+    "end_line": 0,
+    "file_path": "EXTERNAL",
+    "id": "sync.Mutex.Lock",
+    "is_generated": 0,
+    "is_test": 0,
+    "language": "python",
+    "metadata": {},
+    "name": "Lock",
     "namespace": "STDLIB",
     "ontology_class": "Function",
     "start_line": 0,

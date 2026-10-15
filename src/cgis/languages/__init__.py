@@ -89,7 +89,13 @@ MANIFESTS: tuple[Manifest, ...] = (
         extensions=(".go",),
         # `_test.go` files are ingested and flagged `is_test`, never skipped.
         never_ingested=re.compile(r"\b\B"),  # matches nowhere
-        cross_file_metadata={NodeType.FILE: ("import_map",)},
+        cross_file_metadata={
+            NodeType.FILE: ("import_map",),
+            # A field's type and a function's results type calls in other files (#608).
+            NodeType.CLASS: ("self_types",),
+            NodeType.FUNCTION: ("returns",),
+            NodeType.METHOD: ("returns",),
+        },
     ),
 )
 

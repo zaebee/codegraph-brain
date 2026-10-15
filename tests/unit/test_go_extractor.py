@@ -176,9 +176,10 @@ def test_local_and_parameter_types_are_recorded_as_fqns() -> None:
     }
 
 
-def test_builtin_types_are_not_local_types() -> None:
+def test_builtin_types_are_not_local_types_but_error_is() -> None:
+    """`error` is the one predeclared type with a method to resolve: `err.Error()` (#608)."""
     nodes, _ = _parse("package server\nfunc Run(s string, n int, e error) {}\n")
-    assert "local_types" not in nodes["internal.server.Run"].metadata
+    assert nodes["internal.server.Run"].metadata["local_types"] == {"e": "error"}
 
 
 def test_every_node_of_a_test_file_is_flagged() -> None:
@@ -299,3 +300,162 @@ def test_a_receiver_with_no_type_declares_no_method() -> None:
     _method(ctx, method, nodes, edges)  # type: ignore[arg-type]
     assert nodes == []
     assert edges == []
+
+
+def test_struct_fields_are_the_type_s_self_types() -> None:
+    """#608: `s.db.Save()` needs the field's type, as Python's `self.x: T` records it."""
+    code = (
+        "package server\n"
+        'import "example.com/app/internal/store"\n'
+        "type Server struct {\n"
+        "\tBase\n"
+        "\tdb *store.Store\n"
+        "\tcache, spare Cache\n"
+        "\tname string\n"
+        "\titems []Item\n"
+        "}\n"
+    )
+    nodes, _ = _parse(code)
+    assert nodes["internal.server.Server"].metadata["self_types"] == {
+        "db": "example.com.app.internal.store.Store",
+        "cache": "internal.server.Cache",
+        "spare": "internal.server.Cache",
+    }
+
+
+def test_a_function_records_its_result_types() -> None:
+    """#608: what `x := f()` gets; predeclared `error` kept by name so `err.Error()` classifies."""
+    code = (
+        "package server\n"
+        'import "example.com/app/internal/store"\n'
+        "func New() *Server { return nil }\n"
+        "func Open() (*store.Store, error) { return nil, nil }\n"
+        "func Named() (n int, err error) { return }\n"
+        "func Nothing() {}\n"
+    )
+    nodes, _ = _parse(code)
+    assert nodes["internal.server.New"].metadata["returns"] == ["internal.server.Server"]
+    assert nodes["internal.server.Open"].metadata["returns"] == [
+        "example.com.app.internal.store.Store",
+        "error",
+    ]
+    assert nodes["internal.server.Named"].metadata["returns"] == ["int", "error"]
+    assert "returns" not in nodes["internal.server.Nothing"].metadata
+
+
+def test_a_variable_assigned_a_call_records_which_result_it_holds() -> None:
+    """#608: `x := f()` -> a marker the Go type normalizer turns into f's result type."""
+    code = (
+        "package server\n"
+        'import "example.com/app/internal/store"\n'
+        "type Server struct{}\n"
+        "func (s *Server) Run() {\n"
+        "\ta := New()\n"
+        "\tdb, err := store.Open()\n"
+        "\tp := s.Parser()\n"
+        "\tr := p.Parse()\n"
+        "\tvar q = New()\n"
+        "\t_ = len(a)\n"
+        "}\n"
+    )
+    nodes, _ = _parse(code)
+    types = nodes["internal.server.Server.Run"].metadata["local_types"]
+    assert types["a"] == "go-returns:0:internal.server.New"
+    assert types["db"] == "go-returns:0:example.com.app.internal.store.Open"
+    assert types["err"] == "go-returns:1:example.com.app.internal.store.Open"
+    assert types["p"] == "go-returns:0:internal.server.Server.Parser"
+    assert types["r"] == "go-returns:0:go-returns:0:internal.server.Server.Parser|Parse"
+    assert types["q"] == "go-returns:0:internal.server.New"
+    assert "_" not in types
+
+
+def _local_types(body: str) -> dict[str, str]:
+    """The local types of `func Run()` with `body`, in package `server`."""
+    nodes, _ = _parse(f"package server\nfunc Run() {{\n{body}}}\n")
+    types: dict[str, str] = nodes["internal.server.Run"].metadata.get("local_types", {})
+    return types
+
+
+def test_a_name_bound_to_different_types_holds_all_of_them() -> None:
+    """#608 review: one dict per function; the resolver keeps a type only if all agree."""
+    types = _local_types("\t{ ty := &ArrayType{} }\n\t{ ty := NewObjectType() }\n")
+    assert (
+        types["ty"] == "go-any:internal.server.ArrayType;go-returns:0:internal.server.NewObjectType"
+    )
+
+
+def test_a_name_bound_once_to_something_untyped_stays_untyped() -> None:
+    """#608 delta review: `x := m[k]` in one block must not inherit `&A{}` from another."""
+    for body in (
+        "\t{ x := m[k] }\n\t{ x := &A{} }\n",
+        "\t{ x := &A{} }\n\t{ x := m[k] }\n",
+        "\t{ a := &A{}; b := a.Get() }\n\t{ a := NewB(); b := a.Get() }\n",
+        "\tx := &A{}\n\tfor _, x := range xs { _ = x }\n",
+        "\tx := &A{}\n\tswitch x := v.(type) { default: _ = x }\n",
+        "\tx := &A{}\n\tgo func(x int) {}(1)\n",
+    ):
+        types = _local_types(body)
+        assert "x" not in types, body
+        assert "b" not in types, body
+
+
+def test_a_closure_parameter_of_the_same_type_keeps_the_name() -> None:
+    """`t.Run(name, func(t *testing.T) {...})`: the closure's `t` is the outer `t`'s type."""
+    nodes, _ = _parse(
+        'package server\nimport "testing"\n'
+        'func TestRun(t *testing.T) {\n\tt.Run("x", func(t *testing.T) { t.Fatal() })\n}\n',
+        "internal/server/server_test.go",
+    )
+    assert nodes["internal.server.TestRun"].metadata["local_types"] == {"t": "testing.T"}
+
+
+def test_the_same_type_bound_twice_is_kept() -> None:
+    assert _local_types("\t{ t := &T{} }\n\t{ t := &T{} }\n")["t"] == "internal.server.T"
+
+
+def test_the_blank_identifier_is_never_typed() -> None:
+    assert "_" not in _local_types("\t_ := New()\n\t_, err := Open()\n\t_ = err\n")
+
+
+def test_a_local_shadowing_an_import_is_the_local() -> None:
+    """#608 review M1: `store := New(); x := store.Open()` calls the local's method."""
+    code = (
+        "package server\n"
+        'import "example.com/app/store"\n'
+        "func Run() {\n\tstore := New()\n\tx := store.Open()\n\t_ = x\n}\n"
+    )
+    nodes, _ = _parse(code)
+    types = nodes["internal.server.Run"].metadata["local_types"]
+    assert types["x"] == "go-returns:0:go-returns:0:internal.server.New|Open"
+
+
+def test_a_chain_of_results_stops_at_a_bounded_depth() -> None:
+    """#608 review I2: each marker inlined its predecessor — quadratic, then RecursionError."""
+    hops = "".join(f"\tx{i + 1} := x{i}.Next()\n" for i in range(50))
+    types = _local_types(f"\tx0 := New()\n{hops}")
+    assert types["x8"].count("|") == 8  # the last hop kept
+    assert "x9" not in types
+    assert max(len(v) for v in types.values()) < 400
+
+
+def test_an_error_declared_by_name_keeps_err_typed() -> None:
+    """#608 delta review: `var err error`, then `_, err = F()`, then `err.Error()`."""
+    types = _local_types("\tvar err error\n\t{ _, err := Open(); _ = err }\n")
+    assert types["err"].startswith("go-any:")
+    assert _local_types("\tvar err error\n")["err"] == "error"
+
+
+def test_named_results_bind_like_parameters() -> None:
+    """#608 delta review: `func F() (x *A)` — a block's `x := &B{}` must not lend B to `x`."""
+    nodes, _ = _parse(
+        "package server\nfunc F() (x *A, err error) {\n\t{ x := &B{}; _ = x }\n\treturn\n}\n"
+    )
+    types = nodes["internal.server.F"].metadata["local_types"]
+    assert types["x"] == "go-any:internal.server.A;internal.server.B"
+    assert types["err"] == "error"
+
+
+def test_a_select_receive_binds_an_untyped_name() -> None:
+    """#608 delta review: `case v := <-ch` is a binding the walk must see."""
+    types = _local_types("\t{ v := &A{}; _ = v }\n\tselect {\n\tcase v := <-ch:\n\t\t_ = v\n\t}\n")
+    assert "v" not in types
