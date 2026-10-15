@@ -93,3 +93,19 @@ The pilot found defects in the gold, not in the agent:
 Rescored offline from the saved transcripts, with no new spend: median recall 0.97–1.00 and precision
 0.85–1.00. The remaining misses are real: a nested function left unnamed (2 runs) and one catalog
 route (1 run). **Gate 4 (ceiling) is all but certain**, so the full run answers H1 and H2 on cost only.
+
+## Rulings for the remaining cells (before any of their sessions)
+
+- **Small × direct: 4–12 callers, not 1.** The first draw sorted small-radius candidates by fewest
+  callers and returned targets with one caller. That confounds radius (files) with answer size
+  (symbols). The cell now draws targets with 4–12 transitive callers in 1–2 files and at most 2
+  definitions sharing the target's name. Cost if wrong: the small row's answers have 8–12 symbols
+  against the big row's 10–22, so part of any cost gap is answer size.
+- **Small × indirect has 2 usable tasks, not 6.** Of the 3 candidates left after the diversity
+  filter, `OpenSearchClient.close` has 464 same-name call sites, so no clean gold exists. As stated
+  above, H2 is therefore tested in the big row only. The 2 small × indirect tasks run and are
+  reported descriptively.
+- **Big × direct:** the 6 candidates with the fewest AST-only differences and no cgis-only callers.
+- Every gold set is adjudicated as in the pilot, now also searching for callers both tools miss. A
+  task whose adjudicated chain changes cell (gains an indirect hop, or its file count crosses a
+  boundary) moves to the cell it belongs in. It is not dropped.
