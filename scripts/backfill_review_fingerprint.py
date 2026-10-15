@@ -17,6 +17,7 @@ import re
 import subprocess
 from pathlib import Path
 
+import cgis
 from cgis.guardian.review_fingerprint import (
     ReadFile,
     compute_fingerprint,
@@ -311,4 +312,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    cgis.log_to_stderr()  # stdout is the script's output (#619)
     main()

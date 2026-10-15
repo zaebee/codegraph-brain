@@ -18,6 +18,7 @@ from contextlib import closing
 from pathlib import Path
 from typing import cast
 
+import cgis
 from cgis.languages import extractors
 from cgis.pipeline import IngestionPipeline
 from cgis.storage.sqlite_store import SQLiteStore
@@ -184,4 +185,5 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    cgis.log_to_stderr()  # stdout carries the snapshot JSON (#619)
     sys.exit(main())

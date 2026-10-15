@@ -20,6 +20,7 @@ from pathlib import Path
 
 import structlog
 
+import cgis
 from cgis.guardian.bench import (
     FinderRecording,
     GroundTruth,
@@ -399,4 +400,5 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
+    cgis.log_to_stderr()  # stdout is the script's output (#619)
     asyncio.run(main())

@@ -45,6 +45,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import cgis
 from cgis.guardian.bench import (
     GroundTruth,
     killed_ground_truth,
@@ -397,4 +398,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    cgis.log_to_stderr()  # stdout is the script's output (#619)
     raise SystemExit(main())

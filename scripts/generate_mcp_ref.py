@@ -12,6 +12,7 @@ from typing import Any
 
 from mcp.types import Tool
 
+import cgis
 from cgis.api.mcp_server import mcp  # registers tools as a side-effect
 from cgis.api.tool_allowlist import TOOLS_ENV
 
@@ -73,4 +74,5 @@ def generate_reference() -> None:
 
 
 if __name__ == "__main__":
+    cgis.log_to_stderr()  # stdout is the script's output (#619)
     generate_reference()

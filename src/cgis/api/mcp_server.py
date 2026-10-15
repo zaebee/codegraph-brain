@@ -1,7 +1,7 @@
 """MCP Server — exposes cgis graph operations as agentic tools.
 
 STDIO transport: stdout is strictly reserved for JSON-RPC.
-All logging goes to stderr via structlog.
+All logging goes to stderr: `log_to_stderr` configures structlog at import.
 """
 
 import dataclasses
@@ -14,7 +14,7 @@ from typing import Annotated, Any, NamedTuple
 import structlog
 from pydantic import Field
 
-from cgis import __version__
+from cgis import __version__, log_to_stderr
 from cgis.api.auto_refresh import refreshes_graph
 from cgis.api.server_instructions import SERVER_INSTRUCTIONS
 from cgis.api.tool_allowlist import TOOLS_ENV, CgisServer
@@ -51,6 +51,8 @@ from cgis.query.render.text import graph_to_text
 from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
 
 print("CGIS MCP Server starting…", file=sys.stderr)
+# stdout is the JSON-RPC channel; the SDK diverts fd 1 only during a stdio session (#619).
+log_to_stderr()
 
 logger = structlog.getLogger(__name__)
 

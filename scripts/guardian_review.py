@@ -7,6 +7,7 @@ from pathlib import Path
 
 import structlog
 
+import cgis
 from cgis.guardian.collector import ContextCollector, parse_features
 from cgis.guardian.metrics import reject_metrics_path
 from cgis.guardian.review_fingerprint import (
@@ -132,4 +133,5 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
+    cgis.log_to_stderr()  # stdout is the script's output (#619)
     asyncio.run(main())

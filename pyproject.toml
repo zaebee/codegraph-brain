@@ -247,3 +247,9 @@ asyncio_mode = "auto"
 markers = [
     "slow: marks tests as slow — run with '-m slow' or skip with '-m \"not slow\"'",
 ]
+
+[tool.coverage.report]
+# A script's `if __name__ == "__main__":` block is entry-point glue — argv parsing,
+# `cgis.log_to_stderr()`, `sys.exit(main())` — that tests drive through `main()`, not
+# by running the file. Counting it made every new line there "uncovered" (#622).
+exclude_also = ['if __name__ == "__main__":']

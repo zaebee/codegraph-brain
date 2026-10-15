@@ -47,6 +47,7 @@ from collections import Counter
 from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
 
+import cgis
 from cgis.guardian.diff_index import split_diff_by_file
 from cgis.guardian.evidence import Evidence, collect_evidence
 from cgis.guardian.findings import Finding
@@ -379,4 +380,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    cgis.log_to_stderr()  # stdout is the script's output (#619)
     sys.exit(main())
