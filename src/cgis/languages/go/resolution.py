@@ -96,7 +96,8 @@ def call_result(type_fqn: str, view: ResolutionView) -> str:
     node = view.nodes.get(node_id) if node_id else None
     returns: list[str] = node.metadata.get("returns") or [] if node else []
     index = int(position) if position.isdigit() else len(returns)
-    return returns[index] if index < len(returns) and returns[index] else type_fqn
+    result = next(iter(returns[index : index + 1]), "")  # past the end: no such result
+    return result or type_fqn
 
 
 def _agreed(type_fqn: str, view: ResolutionView) -> str:
