@@ -226,6 +226,7 @@ class IngestionPipeline:
                 tsconfig_paths=import_names.path_aliases,
                 dependency_roots=import_names.python_dependencies,
                 npm_dependencies=import_names.npm_dependencies,
+                project_state=import_names.extra,
             )
             resolved_edges, virtual_nodes = resolver.resolve()
             all_nodes.extend(virtual_nodes)

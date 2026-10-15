@@ -31,6 +31,8 @@ _PYTHON_DEPENDENCIES_KEY = "python_dependencies"
 _NPM_DEPENDENCIES_KEY = "npm_dependencies"
 #: `ingest_state` key for the options a graph was ingested with (#175).
 _INGEST_OPTIONS_KEY = "ingest_options"
+#: Keys the store writes for itself; a pack's own state may not take them (step 7, H3).
+_STORE_OWNED_KEYS = frozenset({"root", "ingested_at", _INGEST_OPTIONS_KEY})
 
 RAW_CALL_PREFIX = "raw_call:"
 _DELETE_ALL_NODES = "DELETE FROM nodes"
@@ -1236,7 +1238,23 @@ class SQLiteStore:
         loaded = self._state_json(_NPM_DEPENDENCIES_KEY)
         return [str(name) for name in loaded] if isinstance(loaded, list) else None
 
-    def _record_state_json(self, key: str, value: Mapping[str, object] | list[str]) -> None:
+    def record_state(self, key: str, value: object) -> None:
+        """Record a language pack's own project fact under `key` (step 7, H3).
+
+        The four built-in facts have typed recorders above; this one is for the
+        rest. A key the store writes for itself is refused — `root` and
+        `ingested_at` drive the freshness probe.
+        """
+        if key in _STORE_OWNED_KEYS:
+            msg = f"ingest_state key {key!r} belongs to the store, not a language pack"
+            raise ValueError(msg)
+        self._record_state_json(key, value)
+
+    def get_state(self, key: str) -> object:
+        """The project fact recorded under `key`, or None when there is none."""
+        return self._state_json(key)
+
+    def _record_state_json(self, key: str, value: object) -> None:
         """Write `value` to `ingest_state` as key-sorted JSON, so equal values read back equal."""
         if not self._conn:
             raise RuntimeError(self._error_message)

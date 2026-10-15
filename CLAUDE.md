@@ -61,7 +61,7 @@ IngestionPipeline (pipeline/__init__.py)
 
 **`ResolverEngine` resolution order** for a call to `name`:
 1. `self.method` → look up `method` on the enclosing class via `_class_methods` index
-2. Unqualified call → `_global_symbols` by name; if ambiguous, prefer same-file candidate via `_file_global_symbols`
+2. Unqualified call → `_global_symbols` by name; if ambiguous, prefer the same-scope candidate via `file_global_symbols` (a file's scope is its path, or the `metadata["scope"]` its FILE node declares — a Go package)
 
 ## Core Models (`src/cgis/core/models.py`)
 
@@ -89,8 +89,11 @@ IngestionPipeline (pipeline/__init__.py)
 4. A pack never imports another pack or `cgis.storage` (`cross-pack`, `pack-isolation` gates).
 5. A pack's `__init__` imports no grammar: import the extractor inside `extractor()`. Config reading
    goes in a `ProjectReader` (`cgis.core.project`) whose facts are data keyed by `ingest_state`
-   key — the collector (`cgis.import_names`), not the pack, writes them. A key the collector does not
-   know (`_FACT_SHAPES`) is refused: a new fact needs store and resolver support first.
+   key — the collector (`cgis.import_names`), not the pack, writes them. A key other than the four
+   built-ins (`_FACT_SHAPES`) travels as `ImportNames.extra`: recorded, compared, and merged into the
+   `state` the pack's `index_facts` reads. Its value must read back equal from JSON (no tuples).
+6. A FILE node's id comes from `file_node_id`, its definitions' namespace from `scope_of`; they differ
+   only where several files share a scope (Go), which the FILE node declares as `metadata["scope"]`.
 
 ## Type Discipline
 

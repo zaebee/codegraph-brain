@@ -282,6 +282,15 @@ class SymbolIndex:
 _ROOT_PACKAGE = "__init__"
 
 
+def _pack_state(built_in: Mapping[str, object], extra: Mapping[str, object]) -> dict[str, object]:
+    """A pack's own project facts, refused where one would replace a built-in."""
+    shadowed = sorted(built_in.keys() & extra.keys())
+    if shadowed:
+        msg = f"project_state may not shadow built-in key(s): {shadowed}"
+        raise ValueError(msg)
+    return dict(extra)
+
+
 def _declared_scopes(nodes: Iterable[Node]) -> dict[str, str]:
     """Normalized path -> the scope its FILE node declares, for files that declare one.
 
@@ -321,6 +330,7 @@ class IndexBuilder:
         tsconfig_paths: Mapping[str, Mapping[str, list[str]]] | None = None,
         dependency_roots: Iterable[str] = (),
         npm_dependencies: Iterable[str] = (),
+        project_state: Mapping[str, object] | None = None,
     ) -> SymbolIndex:
         """Index all nodes for fast resolution and return the frozen index.
 
@@ -329,6 +339,8 @@ class IndexBuilder:
         `tsconfig_paths` maps a project directory to its dotted aliases (#508).
         `dependency_roots` are the import roots the project's manifests declare (#495).
         `npm_dependencies` are the npm packages they declare, as written (#556).
+        `project_state` is every other fact a pack declared (step 7, H3), merged
+        into the state its `index_facts` reads; it may not shadow a built-in.
         """
         nodes_by_id = {n.id: n for n in nodes}
         global_symbols: dict[str, list[str]] = {}
@@ -368,12 +380,13 @@ class IndexBuilder:
             # "src.cgis.pipeline.X" → suffix "cgis.pipeline.X" also points to the node
             self._add_node_to_suffix_map(node.id, suffix_map, internal_roots)
 
-        state = {
+        state: dict[str, object] = {
             "python_dependencies": list(dependency_roots),
             "npm_dependencies": list(npm_dependencies),
             "workspace_packages": dict(workspace_packages or {}),
             "tsconfig_paths": dict(tsconfig_paths or {}),
         }
+        state.update(_pack_state(state, project_state or {}))
         facts = pack_index_facts(MappingProxyType(nodes_by_id), state)
         roots = frozenset(internal_roots.union(*(f.internal_roots for f in facts.values())))
         prefixes = frozenset[str]().union(*(f.layout_prefixes for f in facts.values()))

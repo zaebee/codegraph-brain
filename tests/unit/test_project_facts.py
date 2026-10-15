@@ -1,10 +1,13 @@
 """Per-pack project readers and the collector that merges their facts (language-packs step 2)."""
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
 
+import cgis.resolver.indices as indices
+from cgis.core.models import Node
 from cgis.import_names import ImportNameCollector, ImportNames
 from cgis.languages import extractors, project_readers
 from cgis.languages.python.dependencies import declared_import_roots
@@ -100,11 +103,55 @@ class _Facts:
         return self._state
 
 
-def test_a_key_the_collector_cannot_store_fails() -> None:
-    """Accepted and dropped, a new pack's facts would never be stored, compared or resolved."""
-    facts = [_Facts({"go_modules": ["example.com/x"]})]
-    with pytest.raises(ValueError, match="go_modules"):
+def test_a_pack_owned_key_is_carried_recorded_and_compared(tmp_path: Path) -> None:
+    """Step 7 H3: a key the four built-ins do not cover travels as `extra`.
+
+    Replaces step 2's `test_a_key_the_collector_cannot_store_fails`: that refusal
+    stood in for store and resolver support, which `extra` now provides.
+    """
+    names = ImportNames.from_facts([_Facts({"go_module": {"path": "example.com/app"}})])
+    assert names.extra == {"go_module": {"path": "example.com/app"}}
+    with SQLiteStore(str(tmp_path / "g.db")) as store:
+        names.record(store)
+        assert names.differ_from(store) is False
+        changed = ImportNames.from_facts([_Facts({"go_module": {"path": "example.com/other"}})])
+        assert changed.differ_from(store) is True
+
+
+def test_a_pack_owned_value_that_would_not_read_back_equal_fails() -> None:
+    """A tuple stores as a JSON list: it would differ from itself and rebuild every run."""
+    facts = [_Facts({"go_module": ("example.com/app",)})]
+    with pytest.raises(TypeError, match="go_module"):
         ImportNames.from_facts(facts)
+
+
+def test_the_store_refuses_a_pack_key_it_owns(tmp_path: Path) -> None:
+    """`root` and `ingested_at` drive the freshness probe; a pack must not overwrite them."""
+    with SQLiteStore(str(tmp_path / "g.db")) as store:
+        with pytest.raises(ValueError, match="root"):
+            store.record_state("root", "/elsewhere")
+        assert store.get_state("root") is None
+
+
+def test_pack_state_reaches_index_facts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """IndexBuilder merges a pack's extra state into what index_facts receives (H3)."""
+    seen: dict[str, object] = {}
+    real = indices.pack_index_facts
+
+    def recording(nodes: Mapping[str, Node], state: Mapping[str, object]) -> object:
+        seen.update(state)
+        return real(nodes, state)
+
+    monkeypatch.setattr(indices, "pack_index_facts", recording)
+    indices.IndexBuilder().build([], project_state={"go_module": {"path": "example.com/app"}})
+    assert seen["go_module"] == {"path": "example.com/app"}
+    assert "python_dependencies" in seen  # the built-ins are still there
+
+
+def test_a_pack_key_that_shadows_a_built_in_fails() -> None:
+    builder = indices.IndexBuilder()
+    with pytest.raises(ValueError, match="npm_dependencies"):
+        builder.build([], project_state={"npm_dependencies": []})
 
 
 def test_a_fact_of_the_wrong_shape_fails() -> None:

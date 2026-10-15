@@ -112,10 +112,16 @@ class SymbolResolver:
         tsconfig_paths: Mapping[str, Mapping[str, list[str]]] | None = None,
         dependency_roots: Iterable[str] = (),
         npm_dependencies: Iterable[str] = (),
+        project_state: Mapping[str, object] | None = None,
     ) -> None:
         """Build the symbol index from nodes, then the inheritance tree from EXTENDS edges."""
         self.index: SymbolIndex = IndexBuilder().build(
-            nodes, workspace_packages, tsconfig_paths, dependency_roots, npm_dependencies
+            nodes,
+            workspace_packages,
+            tsconfig_paths,
+            dependency_roots,
+            npm_dependencies,
+            project_state,
         )
         # class_fqn -> [resolved parent FQNs] built from EXTENDS edges; read by the
         # DISPATCHES pass too (`dispatch_edges`, below).
