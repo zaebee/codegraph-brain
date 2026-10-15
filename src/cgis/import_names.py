@@ -109,13 +109,22 @@ def _check_shapes(state: Mapping[str, object]) -> None:
     """
     for key, value in state.items():
         if key not in _FACT_SHAPES:
-            if json.loads(json.dumps(value, sort_keys=True)) != value:
+            if _json_round_trip(key, value) != value:
                 msg = f"{key} does not read back equal from JSON: {type(value).__name__}"
                 raise TypeError(msg)
             continue
         if not isinstance(value, _FACT_SHAPES[key]):
             msg = f"{key} must be a {_FACT_SHAPES[key].__name__}, not {type(value).__name__}"
             raise TypeError(msg)
+
+
+def _json_round_trip(key: str, value: object) -> object:
+    """`value` written to JSON and read back; a value with no JSON form names its key."""
+    try:
+        return json.loads(json.dumps(value, sort_keys=True))
+    except (TypeError, ValueError) as exc:
+        msg = f"{key} has no JSON form: {exc}"
+        raise TypeError(msg) from exc
 
 
 def _enclosing_directories(root: Path) -> tuple[list[Path], bool]:

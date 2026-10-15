@@ -31,8 +31,19 @@ _PYTHON_DEPENDENCIES_KEY = "python_dependencies"
 _NPM_DEPENDENCIES_KEY = "npm_dependencies"
 #: `ingest_state` key for the options a graph was ingested with (#175).
 _INGEST_OPTIONS_KEY = "ingest_options"
-#: Keys the store writes for itself; a pack's own state may not take them (step 7, H3).
-_STORE_OWNED_KEYS = frozenset({"root", "ingested_at", _INGEST_OPTIONS_KEY})
+#: Keys `record_state` refuses (step 7, H3): those the store writes for itself, and
+#: the built-in facts, which have typed recorders.
+_RESERVED_STATE_KEYS = frozenset(
+    {
+        "root",
+        "ingested_at",
+        _INGEST_OPTIONS_KEY,
+        _WORKSPACE_PACKAGES_KEY,
+        _TSCONFIG_PATHS_KEY,
+        _PYTHON_DEPENDENCIES_KEY,
+        _NPM_DEPENDENCIES_KEY,
+    }
+)
 
 RAW_CALL_PREFIX = "raw_call:"
 _DELETE_ALL_NODES = "DELETE FROM nodes"
@@ -1242,11 +1253,11 @@ class SQLiteStore:
         """Record a language pack's own project fact under `key` (step 7, H3).
 
         The four built-in facts have typed recorders above; this one is for the
-        rest. A key the store writes for itself is refused — `root` and
-        `ingested_at` drive the freshness probe.
+        rest. Their keys are refused, and so are the ones the store writes for
+        itself — `root` and `ingested_at` drive the freshness probe.
         """
-        if key in _STORE_OWNED_KEYS:
-            msg = f"ingest_state key {key!r} belongs to the store, not a language pack"
+        if key in _RESERVED_STATE_KEYS:
+            msg = f"ingest_state key {key!r} is reserved: it has its own recorder"
             raise ValueError(msg)
         self._record_state_json(key, value)
 

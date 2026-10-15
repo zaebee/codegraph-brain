@@ -127,12 +127,31 @@ def test_a_pack_owned_value_that_would_not_read_back_equal_fails() -> None:
         ImportNames.from_facts(facts)
 
 
-def test_the_store_refuses_a_pack_key_it_owns(tmp_path: Path) -> None:
-    """`root` and `ingested_at` drive the freshness probe; a pack must not overwrite them."""
+@pytest.mark.parametrize(
+    "key",
+    [
+        "root",
+        "ingested_at",
+        "ingest_options",
+        "workspace_packages",
+        "tsconfig_paths",
+        "python_dependencies",
+        "npm_dependencies",
+    ],
+)
+def test_the_store_refuses_a_key_with_its_own_recorder(tmp_path: Path, key: str) -> None:
+    """The store's own keys drive the freshness probe; the built-ins have typed recorders."""
     with SQLiteStore(str(tmp_path / "g.db")) as store:
-        with pytest.raises(ValueError, match="root"):
-            store.record_state("root", "/elsewhere")
-        assert store.get_state("root") is None
+        with pytest.raises(ValueError, match=key):
+            store.record_state(key, ["x"])
+        assert store.get_state(key) is None
+
+
+def test_a_pack_value_json_cannot_write_names_its_key() -> None:
+    """A set has no JSON form: the error says which fact, not just which type (PR #606)."""
+    facts = [_Facts({"go_module": {"example.com/app"}})]
+    with pytest.raises(TypeError, match="go_module"):
+        ImportNames.from_facts(facts)
 
 
 def test_pack_state_reaches_index_facts(monkeypatch: pytest.MonkeyPatch) -> None:
