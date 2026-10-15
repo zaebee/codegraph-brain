@@ -123,6 +123,11 @@ def test_the_snapshot_holds_what_the_pilot_promises() -> None:
     assert _namespace("C.malloc") == "STDLIB"
     assert _namespace("fmt.Println") == "STDLIB"
     assert _namespace("github.com.google.uuid.NewString") == "EXTERNAL"
+    # #608: a field's type, a stdlib field's type, a call's result type.
+    assert ("internal.server.Server.Start", "internal.store.Store.Save") in calls
+    assert ("internal.store.Base.Lock", "sync.Mutex.Lock") in calls
+    assert _namespace("sync.Mutex.Lock") == "STDLIB"
+    assert ("main.main", "internal.server.Server.Start") in calls
 
 
 def test_the_test_file_is_flagged_and_the_rest_is_not() -> None:

@@ -22,6 +22,8 @@ from tree_sitter import Node as TSNode
 from cgis.core.extractor import BaseExtractor
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
 from cgis.languages.go._syntax import (
+    BUILTINS,
+    CALL_RESULT,
     UNNAMED_IMPORTS,
     base_type,
     call_name,
@@ -29,6 +31,8 @@ from cgis.languages.go._syntax import (
     dotted,
     imports,
     literal_type,
+    result_types,
+    selector_chain,
     text,
     type_fqn,
     type_reference,
@@ -146,9 +150,12 @@ def _types(ctx: _File, declaration: TSNode, nodes: list[Node], edges: list[Edge]
             continue
         name = text(spec.child_by_field_name("name"))
         fqn = f"{ctx.scope}.{name}"
-        nodes.append(_node(ctx, fqn, name, NodeType.CLASS, spec))
-        edges.append(_edge(ctx.node_id, fqn, EdgeType.CONTAINS))
         body = spec.child_by_field_name("type")
+        fields = _field_types(ctx, body)
+        nodes.append(
+            _node(ctx, fqn, name, NodeType.CLASS, spec, {"self_types": fields} if fields else None)
+        )
+        edges.append(_edge(ctx.node_id, fqn, EdgeType.CONTAINS))
         edges.extend(
             _edge(fqn, f"{_RAW_CLASS}{reference}", EdgeType.EXTENDS)
             for reference in _embedded(body)
@@ -157,6 +164,16 @@ def _types(ctx: _File, declaration: TSNode, nodes: list[Node], edges: list[Edge]
             for elem in body.children:
                 if elem.type == "method_elem":
                     _declare(ctx, fqn, elem, nodes, edges)
+
+
+def _field_types(ctx: _File, body: TSNode | None) -> dict[str, str]:
+    """A struct's named fields of a named type: its `self_types`, as Python's (#608)."""
+    fields = _child(body, "field_declaration_list") if body and body.type == "struct_type" else None
+    types: dict[str, str] = {}
+    for field in fields.children if fields else []:
+        if field.type == "field_declaration":
+            _record(ctx, types, declared_names(field), field.child_by_field_name("type"))
+    return types
 
 
 def _embedded(body: TSNode | None) -> list[str]:
@@ -215,7 +232,8 @@ def _method(ctx: _File, node: TSNode, nodes: list[Node], edges: list[Edge]) -> N
         # The type lives in another file: this file still holds the method.
         edges.append(_edge(ctx.node_id, fqn, EdgeType.CONTAINS))
     names = declared_names(receiver)
-    _callable(ctx, fqn, NodeType.METHOD, node, names[0] if names else None, nodes, edges)
+    receiver_name = names[0] if names else None
+    _callable(ctx, fqn, NodeType.METHOD, node, receiver_name, nodes, edges, owner)
 
 
 def _callable(
@@ -226,9 +244,11 @@ def _callable(
     receiver: str | None,
     nodes: list[Node],
     edges: list[Edge],
+    owner: str | None = None,
 ) -> None:
-    """The node, with its parameter and local types, and the CALLS edges of its body."""
-    types: dict[str, str] = {}
+    """The node, with its parameter, local and result types, and its body's CALLS edges."""
+    # The receiver's type is its method's owner: `s.Parser()` qualifies like `x.M()`.
+    types: dict[str, str] = {receiver: owner} if receiver and owner else {}
     parameters = node.child_by_field_name("parameters")
     for declaration in parameters.children if parameters else []:
         if declaration.type == "parameter_declaration":
@@ -239,6 +259,9 @@ def _callable(
     if body is not None:
         _body(ctx, body, fqn, receiver, types, edges)
     metadata: dict[str, object] = {"local_types": types} if types else {}
+    returns = result_types(node, ctx.scope, ctx.import_map)
+    if returns:
+        metadata["returns"] = returns
     nodes.append(_node(ctx, fqn, text(node.child_by_field_name("name")), node_type, node, metadata))
 
 
@@ -263,22 +286,55 @@ def _body(
         name = call_name(function, receiver) if function is not None else ""
         if name:
             edges.append(_call(source, name, node))
-    elif node.type == "var_spec":
+    elif node.type == "var_spec" and node.child_by_field_name("type") is not None:
         _record(ctx, types, declared_names(node), node.child_by_field_name("type"))
+    elif node.type == "var_spec":
+        _assigned(ctx, declared_names(node), node.child_by_field_name("value"), types)
     elif node.type == "short_var_declaration":
-        _short_var(ctx, node, types)
+        left = node.child_by_field_name("left")
+        names = [text(t) for t in left.named_children] if left else []
+        _assigned(ctx, names, node.child_by_field_name("right"), types)
     for child in node.children:
         _body(ctx, child, source, receiver, types, edges)
 
 
-def _short_var(ctx: _File, node: TSNode, types: dict[str, str]) -> None:
-    """`x := T{}` / `x := &T{}`: x has type T. Anything else says nothing."""
-    left = node.child_by_field_name("left")
-    right = node.child_by_field_name("right")
-    if left is None or right is None:
+def _assigned(ctx: _File, names: list[str], values: TSNode | None, types: dict[str, str]) -> None:
+    """`x := T{}` gives T; `x := f()` gives f's result, `a, err := f()` each its own (#608)."""
+    if values is None:
         return
-    for target, value in zip(left.named_children, right.named_children, strict=False):
-        _record(ctx, types, [text(target)], literal_type(value))
+    right = values.named_children
+    if len(right) == 1 and right[0].type == "call_expression" and len(names) > 1:
+        for index, name in enumerate(names):
+            _hold_result(ctx, types, name, right[0], index)
+        return
+    for name, value in zip(names, right, strict=False):
+        if value.type == "call_expression":
+            _hold_result(ctx, types, name, value, 0)
+        else:
+            _record(ctx, types, [name], literal_type(value))
+
+
+def _hold_result(ctx: _File, types: dict[str, str], name: str, call: TSNode, index: int) -> None:
+    """Record that `name` holds result `index` of `call`, when the callee can be named."""
+    callee = _callee(ctx, call.child_by_field_name("function"), types)
+    if name != "_" and callee:
+        types[name] = f"{CALL_RESULT}{index}:{callee}"
+
+
+def _callee(ctx: _File, function: TSNode | None, types: dict[str, str]) -> str | None:
+    """What a call names, qualified: `f`, `pkg.F`, or `M` on a variable of known type."""
+    chain = selector_chain(function) if function is not None else []
+    if len(chain) == 1:
+        return None if chain[0] in BUILTINS else f"{ctx.scope}.{chain[0]}"
+    if len(chain) != 2:
+        return None
+    head, method = chain
+    if head in ctx.import_map:
+        return f"{ctx.import_map[head]}.{method}"
+    held = types.get(head)
+    if held is None:
+        return None
+    return f"{held}|{method}" if held.startswith(CALL_RESULT) else f"{held}.{method}"
 
 
 def _call(source: str, name: str, node: TSNode) -> Edge:

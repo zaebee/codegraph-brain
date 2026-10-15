@@ -315,3 +315,77 @@ def test_directories_are_walked_in_sorted_order(
     monkeypatch.setattr(Path, "walk", reversed_walk)
     IngestionPipeline(extractors([])).run(str(tmp_path / "tree"))
     assert visited == ["tree", "aa", "mm", "zz"]
+
+
+RECEIVERS = {
+    "store/store.go": (
+        "package store\n"
+        "type Store struct{}\n"
+        "func Open() (*Store, error) { return nil, nil }\n"
+        "func (s *Store) Save() {}\n"
+        "func (s *Store) Query() *Rows { return nil }\n"
+        "type Rows struct{}\n"
+        "func (r *Rows) Next() {}\n"
+    ),
+    "server/server.go": (
+        "package server\n"
+        'import (\n\t"sync"\n\t"example.com/app/store"\n)\n'
+        "type Server struct {\n\tdb *store.Store\n\tmu sync.Mutex\n}\n"
+        "func New() *Server { return &Server{} }\n"
+        "func (s *Server) Parser() *Parser { return nil }\n"
+        "type Parser struct{}\n"
+        "func (p *Parser) Parse() *store.Rows { return nil }\n"
+        "func (s *Server) Start() {\n"
+        "\ts.db.Save()\n"
+        "\ts.mu.Lock()\n"
+        "\tdb, err := store.Open()\n"
+        "\tdb.Save()\n"
+        "\terr.Error()\n"
+        "\tp := s.Parser()\n"
+        "\trows := p.Parse()\n"
+        "\trows.Next()\n"
+        "}\n"
+        "func Run() {\n"
+        "\tsrv := New()\n"
+        "\tsrv.Start()\n"
+        "}\n"
+    ),
+}
+
+
+def _receivers() -> tuple[set[str], dict[str, Node]]:
+    edges, nodes = _go_graph(RECEIVERS, {"path": "example.com/app"})
+    calls = _calls_from(edges, "server.Server.Start") | _calls_from(edges, "server.Run")
+    return calls, nodes
+
+
+def test_a_field_s_declared_type_resolves_its_method_across_packages() -> None:
+    """#608: `s.db.Save()` with `db *store.Store` — the field's type from another package.
+
+    Checked on the field call's own edge: `db.Save()` below reaches the same method
+    through a call's result, and would hide this one staying unresolved.
+    """
+    edges, _ = _go_graph(RECEIVERS, {"path": "example.com/app"})
+    through_field = [e.target for e in edges if "raw_call:self.db.Save" in e.id]
+    assert through_field == ["store.Store.Save"]
+
+
+def test_a_field_of_a_stdlib_type_is_a_stdlib_call() -> None:
+    calls, nodes = _receivers()
+    assert "sync.Mutex.Lock" in calls
+    assert nodes["sync.Mutex.Lock"].namespace is NodeNamespace.STDLIB
+
+
+def test_a_call_s_results_type_the_variables_it_assigns() -> None:
+    """#608: `db, err := store.Open()`; `srv := New()`."""
+    calls, nodes = _receivers()
+    assert "store.Store.Save" in calls
+    assert "server.Server.Start" in calls
+    assert "error.Error" in calls
+    assert nodes["error.Error"].namespace is NodeNamespace.STDLIB
+
+
+def test_a_method_called_on_another_call_s_result_resolves() -> None:
+    """#608: `p := s.Parser(); rows := p.Parse(); rows.Next()` — two hops of results."""
+    calls, _ = _receivers()
+    assert "store.Rows.Next" in calls

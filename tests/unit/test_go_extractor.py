@@ -299,3 +299,70 @@ def test_a_receiver_with_no_type_declares_no_method() -> None:
     _method(ctx, method, nodes, edges)  # type: ignore[arg-type]
     assert nodes == []
     assert edges == []
+
+
+def test_struct_fields_are_the_type_s_self_types() -> None:
+    """#608: `s.db.Save()` needs the field's type, as Python's `self.x: T` records it."""
+    code = (
+        "package server\n"
+        'import "example.com/app/internal/store"\n'
+        "type Server struct {\n"
+        "\tBase\n"
+        "\tdb *store.Store\n"
+        "\tcache, spare Cache\n"
+        "\tname string\n"
+        "\titems []Item\n"
+        "}\n"
+    )
+    nodes, _ = _parse(code)
+    assert nodes["internal.server.Server"].metadata["self_types"] == {
+        "db": "example.com.app.internal.store.Store",
+        "cache": "internal.server.Cache",
+        "spare": "internal.server.Cache",
+    }
+
+
+def test_a_function_records_its_result_types() -> None:
+    """#608: what `x := f()` gets; predeclared `error` kept by name so `err.Error()` classifies."""
+    code = (
+        "package server\n"
+        'import "example.com/app/internal/store"\n'
+        "func New() *Server { return nil }\n"
+        "func Open() (*store.Store, error) { return nil, nil }\n"
+        "func Named() (n int, err error) { return }\n"
+        "func Nothing() {}\n"
+    )
+    nodes, _ = _parse(code)
+    assert nodes["internal.server.New"].metadata["returns"] == ["internal.server.Server"]
+    assert nodes["internal.server.Open"].metadata["returns"] == [
+        "example.com.app.internal.store.Store",
+        "error",
+    ]
+    assert nodes["internal.server.Named"].metadata["returns"] == ["int", "error"]
+    assert "returns" not in nodes["internal.server.Nothing"].metadata
+
+
+def test_a_variable_assigned_a_call_records_which_result_it_holds() -> None:
+    """#608: `x := f()` -> a marker the Go type normalizer turns into f's result type."""
+    code = (
+        "package server\n"
+        'import "example.com/app/internal/store"\n'
+        "type Server struct{}\n"
+        "func (s *Server) Run() {\n"
+        "\ta := New()\n"
+        "\tdb, err := store.Open()\n"
+        "\tp := s.Parser()\n"
+        "\tr := p.Parse()\n"
+        "\tvar q = New()\n"
+        "\t_ = len(a)\n"
+        "}\n"
+    )
+    nodes, _ = _parse(code)
+    types = nodes["internal.server.Server.Run"].metadata["local_types"]
+    assert types["a"] == "go-returns:0:internal.server.New"
+    assert types["db"] == "go-returns:0:example.com.app.internal.store.Open"
+    assert types["err"] == "go-returns:1:example.com.app.internal.store.Open"
+    assert types["p"] == "go-returns:0:internal.server.Server.Parser"
+    assert types["r"] == "go-returns:0:go-returns:0:internal.server.Server.Parser|Parse"
+    assert types["q"] == "go-returns:0:internal.server.New"
+    assert "_" not in types

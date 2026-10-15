@@ -368,11 +368,17 @@ def test_a_source_no_pack_reads_gets_the_generic_tail(source: str) -> None:
 
 
 def test_cross_file_metadata_is_the_old_table() -> None:
-    """The pipeline's incremental signature reads exactly what it read before step 4."""
+    """The pipeline's incremental signature reads what it read before step 4, plus Go's.
+
+    Go adds `returns` on functions and methods (#608); Python and TypeScript nodes
+    never carry it, so their signatures read the same.
+    """
     assert cross_file_metadata() == {
         NodeType.FILE: ("import_map", "reexports", "star_imports"),
         NodeType.CLASS: ("self_types",),
         NodeType.VARIABLE: ("annotated_type",),
+        NodeType.FUNCTION: ("returns",),
+        NodeType.METHOD: ("returns",),
     }
 
 

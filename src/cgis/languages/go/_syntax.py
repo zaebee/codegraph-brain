@@ -6,7 +6,7 @@ from collections.abc import Iterator, Mapping
 from tree_sitter import Node as TSNode
 
 #: Go's predeclared types: never a type of ours to look methods up on.
-_PREDECLARED = frozenset(
+PREDECLARED = frozenset(
     {
         "any",
         "bool",
@@ -56,7 +56,7 @@ _BUILTIN_FUNCTIONS = frozenset(
         "recover",
     }
 )
-BUILTINS = _BUILTIN_FUNCTIONS | _PREDECLARED
+BUILTINS = _BUILTIN_FUNCTIONS | PREDECLARED
 _MAJOR_VERSION = re.compile(r"v\d+")
 #: Import names that bring a package in without a name to call it by.
 UNNAMED_IMPORTS = frozenset({"_", "."})
@@ -135,7 +135,7 @@ def type_fqn(node: TSNode | None, scope: str, import_map: Mapping[str, str]) -> 
         return None
     if named.type == "type_identifier":
         name = text(named)
-        return None if name in _PREDECLARED else f"{scope}.{name}"
+        return None if name in PREDECLARED else f"{scope}.{name}"
     if named.type == "qualified_type":
         package = text(named.child_by_field_name("package"))
         name = text(named.child_by_field_name("name"))
@@ -180,3 +180,33 @@ def literal_type(value: TSNode) -> TSNode | None:
 def declared_names(node: TSNode) -> list[str]:
     """The names a parameter or var spec declares: `a, b T` -> ['a', 'b']."""
     return [text(c) for c in node.children_by_field_name("name")]
+
+
+#: Marks a local type that is a call's result, for the Go type normalizer:
+#: `go-returns:<i>:<callee>`, where the callee is an FQN, or `<marker>|<method>`
+#: for a method called on another call's result (#608).
+CALL_RESULT = "go-returns:"
+
+
+def result_type_name(node: TSNode | None, scope: str, import_map: Mapping[str, str]) -> str:
+    """A result's type: a named type's FQN, a predeclared type by name (`error`), else ''."""
+    fqn = type_fqn(node, scope, import_map)
+    if fqn:
+        return fqn
+    named = base_type(node)
+    return text(named) if named is not None and text(named) in PREDECLARED else ""
+
+
+def result_types(declaration: TSNode, scope: str, import_map: Mapping[str, str]) -> list[str]:
+    """One entry per result of a function or method, in order (#608)."""
+    result = declaration.child_by_field_name("result")
+    if result is None:
+        return []
+    if result.type != "parameter_list":
+        return [result_type_name(result, scope, import_map)]
+    types: list[str] = []
+    for item in result.named_children:
+        if item.type == "parameter_declaration":
+            name = result_type_name(item.child_by_field_name("type"), scope, import_map)
+            types.extend([name] * max(1, len(declared_names(item))))
+    return types

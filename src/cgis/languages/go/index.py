@@ -17,7 +17,7 @@ from typing import cast
 
 from cgis.core.index import ClassifyContext
 from cgis.core.models import Node, NodeNamespace, NodeType
-from cgis.languages.go._syntax import BUILTINS, dotted
+from cgis.languages.go._syntax import BUILTINS, PREDECLARED, dotted
 from cgis.languages.go.naming import GO_LANG
 from cgis.languages.go.project import GO_MODULE_KEY
 
@@ -134,6 +134,8 @@ def classify(fqn: str, ctx: ClassifyContext) -> NodeNamespace:
     under = [d for d in imported if _under(fqn, d)]
     if under:
         return import_namespace(imported[max(under, key=len)], facts)
+    if fqn.split(".", maxsplit=1)[0] in PREDECLARED:
+        return NodeNamespace.STDLIB  # a method of a predeclared type: `error.Error` (#608)
     if fqn.split(".", maxsplit=1)[0] in ctx.internal_roots:
         return NodeNamespace.INTERNAL
     return NodeNamespace.UNKNOWN

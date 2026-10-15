@@ -1,5 +1,6 @@
 """Symbol resolution strategies over a SymbolIndex."""
 
+import os
 from collections.abc import Iterable, Mapping
 
 from cgis.core.models import RAW_CLASS_PREFIX, Edge, EdgeType, Node, NodeNamespace
@@ -55,9 +56,18 @@ def receiver_type_fqn(index: SymbolIndex, owner_fqn: str, attr: str) -> str | No
     declared = index.self_types.get(owner_fqn, {}).get(attr)
     if declared is None:
         return None
+    # Reconciled as the class's own file reads it: a Go field of an imported type
+    # names an import path only the Go pack maps (#608). Python reads as before.
+    source_file = _file_of(index, owner_fqn)
     # `self.svc = svc` with `svc: ServiceDep` declares the alias, not the service
     # behind it — the same gap as a parameter's own calls (#550 review).
-    return _normalized(index, index.map_to_node_fqn(declared) or declared)
+    return _normalized(index, index.map_to_node_fqn(declared, source_file) or declared)
+
+
+def _file_of(index: SymbolIndex, fqn: str) -> str | None:
+    """The normalized file a node was extracted from, or None for no such node."""
+    node = index.nodes.get(fqn)
+    return os.path.normpath(node.file_path) if node is not None else None
 
 
 def _declaring_class(
@@ -188,7 +198,11 @@ class SymbolResolver:
         # phantom method and must not be fabricated: that is the call #414 was
         # filed to expose. Same policy as _resolve_local_type_call (spec D7).
         candidate = f"{receiver}.{method}"
-        if self.index.classify_fqn(candidate) in (NodeNamespace.EXTERNAL, NodeNamespace.STDLIB):
+        source_file = _file_of(self.index, source_fqn)
+        if self.index.classify_fqn(candidate, source_file) in (
+            NodeNamespace.EXTERNAL,
+            NodeNamespace.STDLIB,
+        ):
             return candidate
         return None
 
