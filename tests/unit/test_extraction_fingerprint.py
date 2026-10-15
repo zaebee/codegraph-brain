@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+import cgis.pipeline as pipeline_module
 from cgis.core.models import Edge, Node
 from cgis.languages.python.extractor import PythonExtractor
 from cgis.pipeline import IngestionPipeline, extraction_fingerprint
@@ -115,7 +116,18 @@ def test_an_install_without_sources_has_no_fingerprint(tmp_path: Path) -> None:
     assert extraction_fingerprint(tmp_path / "cgis") is None
 
 
-def test_a_rebuild_that_keeps_the_stored_graph_does_not_bless_it(tmp_path: Path) -> None:
+class _Failing(PythonExtractor):
+    """An upgraded extractor that fails on every file."""
+
+    def parse(self, code: str, file_path: str) -> tuple[list[Node], list[Edge]]:  # noqa: ARG002
+        msg = "broken extractor"
+        raise RuntimeError(msg)
+
+
+@pytest.mark.parametrize("second", ["empty walk", "failing extractor"])
+def test_a_rebuild_that_keeps_the_stored_graph_does_not_bless_it(
+    tmp_path: Path, second: str
+) -> None:
     """#617 review: an empty walk keeps the old graph, which must not be recorded as current.
 
     A mistyped path (or an extractor that fails on every file) extracts nothing, so
@@ -129,5 +141,38 @@ def test_a_rebuild_that_keeps_the_stored_graph_does_not_bless_it(tmp_path: Path)
     with SQLiteStore(db) as store:
         IngestionPipeline({".py": PythonExtractor()}).run(str(work), store=store)
         store.record_extraction_fingerprint("built-by-an-older-cgis")
-        IngestionPipeline({".py": PythonExtractor()}).run(str(empty), store=store)
+        if second == "empty walk":
+            IngestionPipeline({".py": PythonExtractor()}).run(str(empty), store=store)
+        else:
+            IngestionPipeline({".py": _Failing()}).run(str(work), store=store)
         assert store.get_extraction_fingerprint() == "built-by-an-older-cgis"
+
+
+def test_the_running_code_s_fingerprint_is_taken_once_at_import(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#617 delta review: a long-lived process records the hash of the code it runs.
+
+    Re-read from disk on each run, an MCP server whose package was upgraded in
+    place rebuilt with its old code in memory and recorded the new code's hash, so
+    the new code, once restarted, saw a match and never rebuilt.
+    """
+
+    def no_reading(*_args: object, **_kwargs: object) -> object:
+        msg = "the installed fingerprint was re-read from disk"
+        raise AssertionError(msg)
+
+    taken = extraction_fingerprint()
+    monkeypatch.setattr(Path, "rglob", no_reading)
+    monkeypatch.setattr(Path, "read_bytes", no_reading)
+    assert extraction_fingerprint() == taken
+
+
+def test_without_a_fingerprint_nothing_is_rebuilt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A .pyc-only install has no fingerprint: the check is skipped, never a rebuild every run."""
+    monkeypatch.setattr(pipeline_module, "extraction_fingerprint", lambda *_a: None)
+    parsed, recorded = _second_run(tmp_path, stored="built-by-an-older-cgis")
+    assert parsed == []
+    assert recorded == "built-by-an-older-cgis"

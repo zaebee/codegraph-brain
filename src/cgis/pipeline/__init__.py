@@ -91,14 +91,21 @@ def extraction_fingerprint(package_root: Path | None = None) -> str | None:
     An incremental run re-parses only the files whose text changed; after an
     upgrade that changes extraction, unchanged files kept nodes and edges built
     the old way, and nothing said so (#608's Go types, #566's route roles). Over
-    the installed package's sources, not its version: a release that leaves
-    extraction alone costs no rebuild, and an editable install's edits count.
-    Not cached: it hashes ~400 KB in milliseconds, and a cache filled late let a
-    process upgraded in place record the new code's hash for the old (#617 review).
+    the package's sources, not its version: a release that leaves extraction
+    alone costs no rebuild, and an editable install's edits count.
+
+    The running code's own fingerprint is taken once, at import (`package_root`
+    None): a long-lived process — an MCP server, auto-refresh — upgraded in place
+    must record the hash of the code it runs, not of what is now on disk, or the
+    new code, once restarted, would find a match and never rebuild (#617 review).
     None when there are no sources to hash (a .pyc-only install, a zipapp): the
     hash of nothing is a constant, under which the check would pass forever.
     """
-    root = package_root or Path(__file__).resolve().parent.parent
+    return _RUNNING if package_root is None else _fingerprint_of(package_root)
+
+
+def _fingerprint_of(root: Path) -> str | None:
+    """The extraction fingerprint of the package at `root`, or None with no sources."""
     files = [p for d in _EXTRACTION_PACKAGES for p in (root / d).rglob("*.py")]
     files += [root / m for m in _EXTRACTION_MODULES if (root / m).is_file()]
     if not files:
@@ -111,6 +118,12 @@ def extraction_fingerprint(package_root: Path | None = None) -> str | None:
     return digest.hexdigest()
 
 
+#: The fingerprint of the code this process runs, taken at import.
+_RUNNING = _fingerprint_of(Path(__file__).resolve().parent.parent)
+if _RUNNING is None:
+    logger.warning("No cgis sources to fingerprint — an upgrade will not rebuild stored graphs.")
+
+
 def _needs_rebuild(store: "SQLiteStore | None", rebuild: bool) -> bool:
     """`rebuild`, or True when the stored graph was built by other extraction code.
 
@@ -119,10 +132,10 @@ def _needs_rebuild(store: "SQLiteStore | None", rebuild: bool) -> bool:
     anyway. Module-level: `run` is at its complexity limit (#603) and
     `IngestionPipeline` at the god-object one.
     """
+    if rebuild or store is None:
+        return rebuild
     current = extraction_fingerprint()
-    if current is None:
-        logger.warning("No cgis sources to fingerprint — an upgrade will not rebuild the graph.")
-    if rebuild or store is None or current is None or store.get_extraction_fingerprint() == current:
+    if current is None or store.get_extraction_fingerprint() == current:
         return rebuild
     # A warning, not info: alternating two cgis versions on one database rebuilds each time.
     logger.warning("The graph was built by other cgis extraction code — rebuilding it in full.")
