@@ -354,9 +354,9 @@ class FunctionHandler:
         clean_type = self._types.clean_python_type_string(raw_type)
         if not clean_type:
             return
-        acc.setdefault(func_node.id, {})[var_name] = self._types.resolve_type_fqn(
-            clean_type, import_map, func_node.file_path
-        )
+        type_fqn = self._types.resolve_type_fqn(clean_type, import_map, func_node.file_path)
+        if type_fqn is not None:
+            acc.setdefault(func_node.id, {})[var_name] = type_fqn
 
     def collect_self_type(
         self,
@@ -798,6 +798,6 @@ def _record_constructed_type(
         module_part, _, _ = class_name.partition(".")
         if not import_map or module_part not in import_map:
             return
-    acc.setdefault(func_node.id, {})[var_name] = types.resolve_type_fqn(
-        class_name, import_map, func_node.file_path
-    )
+    type_fqn = types.resolve_type_fqn(class_name, import_map, func_node.file_path)
+    if type_fqn is not None:
+        acc.setdefault(func_node.id, {})[var_name] = type_fqn
