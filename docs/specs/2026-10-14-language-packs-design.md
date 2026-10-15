@@ -477,6 +477,47 @@ made there, not worked around in Go.
 >   `index_facts` reads. It may not shadow a built-in or a key the store owns,
 >   and must read back equal from JSON.
 
+> **Implementation note (step 7b):** the pilot as built.
+>
+> - **H4 — import paths reach node ids through the module, mapped by the pack.**
+>   Imports are recorded dotted (`example.com.app.internal.server`). The plan
+>   put the module path's segments into the global `layout_prefixes`; review
+>   showed that strips Python imports too (#319's collision), misses a root
+>   package named unlike the module's last segment, and breaks an ingest below
+>   the module root. As built, the Go pack's `reconcile_import` strips the
+>   module path (or a replace), the ingest root's offset under the module, and
+>   finds the package directory, whose scope is the clause's at the root. A new
+>   contract flag, `ResolutionRules.reconciles_references`, lets it map call
+>   targets and local types too, not only import edges; Python and TypeScript
+>   leave it off. Layout reconciliation also classifies a target as its source
+>   file reads it now, not with the Python reading. Graph-identical for
+>   Python/TypeScript.
+> - **One FQN, one definition.** An external test package (`package x_test`)
+>   gets `<directory>_test`; each file's `init` is `<scope>.init_<file>`; the
+>   walk is sorted, so build-tag variants sharing an FQN resolve the same way
+>   on every machine on a full ingest. An incremental run re-writes only the
+>   changed file, which then wins until the next full ingest. Go builtins are STDLIB, claimed before the global index.
+> - **H5 — a package import names the package's first FILE node.** No node per
+>   package, no new `NodeType`.
+> - **H6 — receiver calls are `raw_call:self.<name>`.** Parameter, `var` and
+>   `T{}`/`&T{}` types are recorded as `local_types` FQNs with the pointer
+>   already stripped, so the planned `*T` normalizer was not needed.
+> - **cgo needs no rule of its own:** a file calling `C.malloc` imports `"C"`,
+>   which the no-dot stdlib rule already classifies.
+> - **No `go.mod`, no key.** The Go reader declares nothing rather than `{}`,
+>   so a Go-free graph's `ingest_state` is unchanged; a key that vanishes still
+>   rebuilds, because the collector now compares the packs' whole recorded set.
+> - **Acceptance diff, as built:** besides `languages/go/`, the manifest, the
+>   dependency and Go tests, the PR touches the two contract fixes above,
+>   tests that enumerate packs, the drift domain, the pre-commit mypy
+>   environment, `graph_identity.py snapshot --root`, and the calibration band.
+>
+> Follow-ups: implicit interface satisfaction; generics beyond extraction; cgo
+> beyond classification; `go.work`; struct field types as `self_types`; types
+> inferred from a function's return value; a replace nested under the module
+> path (`example.com/app/sdk => ./third_party/sdk`), which the module prefix
+> shadows; `--source-root` with Go.
+
 ## Risks and open questions
 
 - **Behaviour hidden in Python-only paths that Go also reaches.** For

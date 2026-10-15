@@ -137,6 +137,7 @@ _PLANES = {
             "languages",
             "languages.python",
             "languages.typescript",
+            "languages.go",
             "resolution",
             "storage",
         ),

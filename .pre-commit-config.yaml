@@ -40,6 +40,7 @@ repos:
           - tree-sitter>=0.25.2
           - tree-sitter-python>=0.25.0
           - tree-sitter-typescript>=0.23.2
+          - tree-sitter-go>=0.25.0
           - pytest>=9.0.3
           - "mcp[cli]>=2"  # must match the pyproject bound
           - duckdb>=1.1.0

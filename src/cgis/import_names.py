@@ -63,7 +63,7 @@ class ImportNames:
             or (store.get_tsconfig_paths() or {}) != self.path_aliases
             or (store.get_python_dependencies() or []) != self.python_dependencies
             or (store.get_npm_dependencies() or []) != self.npm_dependencies
-            or any(store.get_state(key) != value for key, value in self.extra.items())
+            or store.pack_state() != self.extra
         )
 
     @classmethod
@@ -96,8 +96,7 @@ class ImportNames:
         store.record_tsconfig_paths(self.path_aliases)
         store.record_python_dependencies(self.python_dependencies)
         store.record_npm_dependencies(self.npm_dependencies)
-        for key, value in self.extra.items():
-            store.record_state(key, value)
+        store.record_pack_state(self.extra)
 
 
 def _check_shapes(state: Mapping[str, object]) -> None:

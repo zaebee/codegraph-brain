@@ -33,8 +33,8 @@ class ResolutionView(Protocol):
         """Each pack's index facts, by pack name."""
         ...
 
-    def map_to_node_fqn(self, imported_fqn: str) -> str | None:
-        """An imported FQN reconciled to a node id, or None."""
+    def map_to_node_fqn(self, imported_fqn: str, source_file: str | None = None) -> str | None:
+        """An imported FQN reconciled to a node id, or None; classified as `source_file` reads."""
         ...
 
     def strip_layout_prefixes(self, fqn: str) -> str | None:
@@ -64,6 +64,11 @@ class ResolutionRules:
     fallback: Fallback | None = None
     #: An import target with no node of that name: the node it means, or None.
     reconcile_import: ImportReconciler | None = None
+    #: Whether `reconcile_import` also maps a reference through an import (a call
+    #: target, a local variable's type) that layout reconciliation left without a
+    #: node. Go's import paths name directories of a module, which only the pack can
+    #: map; Python and TypeScript keep their references to layout rules (step 7b).
+    reconciles_references: bool = False
 
     def __post_init__(self) -> None:
         """Refuse a step at a position the engine never runs."""

@@ -170,10 +170,14 @@ class IngestionPipeline:
             extract_task = progress.add_task(description="Extracting code entities...", total=None)
 
             for root, dirs, files in workspace_root.walk():
-                dirs[:] = [d for d in dirs if not d.startswith(".") and d not in self._excluded]
+                # Sorted: a definition two files share (Go build-tag variants) is
+                # stored last-writer-wins, and the filesystem's order is no order.
+                dirs[:] = sorted(
+                    d for d in dirs if not d.startswith(".") and d not in self._excluded
+                )
                 for d in dirs:
                     _observe(self.observed_mtimes, root / d, workspace_root)
-                for file in files:
+                for file in sorted(files):
                     import_configs.note(root / file)
                     extractor = self._get_extractor(file)
                     if not extractor:

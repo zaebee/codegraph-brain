@@ -125,7 +125,7 @@ class SymbolIndex:
                 return candidate
         return None
 
-    def map_to_node_fqn(self, imported_fqn: str) -> str | None:
+    def map_to_node_fqn(self, imported_fqn: str, source_file: str | None = None) -> str | None:
         """Resolve an imported FQN to an actual node in the graph.
 
         Handles two common prefix-mismatch patterns:
@@ -146,8 +146,13 @@ class SymbolIndex:
         `api/__init__.py`, `from pytest import mark` an IMPORTS_SYMBOL into a
         module named `mark`, and `self.c: httpx.client.Client` a confident call
         into our own `Client.get` (#435).
+
+        `source_file`, the file the reference comes from, picks whose reading
+        that classification is: without it the Python one, which calls a Go
+        import of the project's own module (`example.com.app.x`) third-party
+        (step 7b).
         """
-        direct = self.resolve_layout(imported_fqn)
+        direct = self.resolve_layout(imported_fqn, source_file)
         if direct is not None:
             return direct
         parts = imported_fqn.split(".")
@@ -163,12 +168,12 @@ class SymbolIndex:
         for i in range(len(parts) - 1):
             forwarded = self.follow_reexport(".".join(parts[i:]))
             if forwarded is not None:
-                resolved = self.resolve_layout(forwarded)
+                resolved = self.resolve_layout(forwarded, source_file)
                 if resolved is not None:
                     return resolved
-        return None
+        return _pack_reconciled(self, imported_fqn, source_file)
 
-    def resolve_layout(self, fqn: str) -> str | None:
+    def resolve_layout(self, fqn: str, source_file: str | None = None) -> str | None:
         """Match an FQN to a node id, reconciling layout prefixes. No re-exports.
 
         Three shapes, most precise first: the id verbatim; a node whose id has an
@@ -185,7 +190,7 @@ class SymbolIndex:
         candidates = self.suffix_map.get(fqn, [])
         if len(candidates) == 1:
             return candidates[0]
-        if self.classify_fqn(fqn) in (NodeNamespace.EXTERNAL, NodeNamespace.STDLIB):
+        if self.classify_fqn(fqn, source_file) in (NodeNamespace.EXTERNAL, NodeNamespace.STDLIB):
             return None
         return self.strip_layout_prefixes(fqn)
 
@@ -280,6 +285,14 @@ class SymbolIndex:
 
 #: The head a relative import in the ingest root's own `__init__.py` carries (#319).
 _ROOT_PACKAGE = "__init__"
+
+
+def _pack_reconciled(index: "SymbolIndex", fqn: str, source_file: str | None) -> str | None:
+    """The node the source's pack maps `fqn` to, for a pack that maps references (Go)."""
+    rules = rules_for(source_file)
+    if rules is None or not rules.reconciles_references or rules.reconcile_import is None:
+        return None
+    return rules.reconcile_import(fqn, source_file, index)
 
 
 def _pack_state(built_in: Mapping[str, object], extra: Mapping[str, object]) -> dict[str, object]:

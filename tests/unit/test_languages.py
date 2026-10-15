@@ -128,9 +128,12 @@ class TestPacks:
         ["tests/a.py", "src/test_a.py", "src/a.py", "tests/a.ts", "src/a.test.ts", "contest/a.ts"],
     )
     def test_is_test_is_the_core_rule_for_both_packs(self, path: str) -> None:
-        """Ruling R1: the flag stays `is_test_path`; the Node validator still calls it."""
-        for manifest in MANIFESTS:
-            pack = pack_named(manifest.name)
+        """Ruling R1: the flag stays `is_test_path`; the Node validator still calls it.
+
+        Python and TypeScript only: Go's rule is its own (`_test.go`), passed explicitly.
+        """
+        for name in ("python", "typescript"):
+            pack = pack_named(name)
             assert pack is not None
             assert pack.is_test(path) is is_test_path(path)
 
@@ -172,7 +175,7 @@ class TestExtractors:
             "import sys\n"
             "from cgis.languages import extractors\n"
             "m = extractors([])\n"
-            "assert '.ts' in m and '.tsx' in m and len(list(m)) == 3\n"
+            "assert '.ts' in m and '.tsx' in m and '.go' in m and len(list(m)) == 4\n"
             "print(sorted(x for x in sys.modules if x.startswith('tree_sitter_')))\n"
         )
         out = subprocess.run(
@@ -296,7 +299,7 @@ def test_importing_the_packs_loads_no_grammar() -> None:
     script = (
         "import json, sys\n"
         "from cgis.languages import pack_named\n"
-        "for name in ('python', 'typescript'):\n"
+        "for name in ('python', 'typescript', 'go'):\n"
         "    pack = pack_named(name)\n"
         "    pack.scope_of('src/app/x.tsx', 'src')\n"
         "    pack.code_fence('a.py')\n"
@@ -314,6 +317,22 @@ def test_a_typescript_only_ingest_never_loads_the_python_grammar(tmp_path: Path)
     """Every pack's reader exists from the first file now; the Python grammar must still wait."""
     files = {"app/h.ts": TS_SOURCE, "README.md": "# demo\n"}
     assert _cli_ingest_loads(tmp_path, files) == ["tree_sitter_typescript"]
+
+
+def test_a_go_only_ingest_loads_only_the_go_grammar(tmp_path: Path) -> None:
+    """Step 7b: the third pack is as lazy as the other two, its go.mod reader included."""
+    files = {
+        "go.mod": "module example.com/app\n",
+        "main.go": "package main\nfunc main() {}\n",
+        "README.md": "# demo\n",
+    }
+    assert _cli_ingest_loads(tmp_path, files) == ["tree_sitter_go"]
+
+
+def test_a_go_file_does_load_its_grammar_beside_python(tmp_path: Path) -> None:
+    """The control for the Go-free cases above: the probe does see the Go grammar."""
+    loaded = _cli_ingest_loads(tmp_path, {"pkg/a.py": PY_SOURCE, "cmd/main.go": "package main\n"})
+    assert loaded == ["tree_sitter_go", "tree_sitter_python"]
 
 
 def test_a_root_package_json_does_not_load_the_typescript_grammar(tmp_path: Path) -> None:

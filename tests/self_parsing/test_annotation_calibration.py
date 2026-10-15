@@ -58,8 +58,15 @@ _GraphData = tuple[SQLiteStore, list[Node], list[Edge]]
 # index modules (+6 each), their __init__s (+4 each), core/extractor.py (+4), the
 # registry (+3), core/index.py (+2), less resolver/indices.py (-2). Both re-centred on
 # the branch measurement.
-_EXPECTED_ANNOTATION_REFERENCES = 841
-_EXPECTED_NAME_REFERENCES = 258
+#
+# Re-measured 2026-10-15 on the language-packs step-7b branch (fresh `cgis ingest src
+# --source-root src`): origin/main d0c5fc2 held 859 annotation / 260 name references —
+# steps 4-7a grew the band to 841+18 — and the Go pack adds 47 / 17, every one in the
+# signatures of its new modules (the extractor's module-level handlers take `_File`,
+# `TSNode`, `Node` and `Edge` lists; `_syntax`, `project`, `index`, the pack). Both
+# re-centred on the branch measurement.
+_EXPECTED_ANNOTATION_REFERENCES = 906
+_EXPECTED_NAME_REFERENCES = 277
 _TOLERANCE = 60  # ~10% of the annotation band: ordinary code churn, not a lost source
 _NAME_REF_TOLERANCE = 25  # the name-reference band is smaller, so its band is too
 

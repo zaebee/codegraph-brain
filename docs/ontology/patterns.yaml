@@ -137,6 +137,14 @@ project_domains:
     hygiene_baseline:
       unresolved_ratio: 0.31 # measured 0.295 at step 6
 
+  - name: "languages.go"
+    fqn_prefix: "cgis.languages.go"
+    expected_pattern: layered_dag
+    profile: python
+    drift_tolerance: 0.42
+    hygiene_baseline:
+      unresolved_ratio: 0.26 # measured 0.242 at step 7b (drift 0.285)
+
   # The pack contract and the model (spec: Core). layered_dag, not the spec's
   # pure_utility — measured 0.215 vs 0.554 at step 6: since steps 1-4 the contract
   # is layered (extractor/index/resolution/project -> models) (ruling G1).

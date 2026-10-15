@@ -126,8 +126,11 @@ def _ingest(root: Path, db: Path) -> None:
         store.record_ingest_options([], None)
 
 
-def snapshot(corpus: Path) -> dict[str, object]:
+def snapshot(corpus: Path, roots: Mapping[str, str] = SNAPSHOT_ROOTS) -> dict[str, object]:
     """Every snapshot root, ingested from a temp copy of `corpus` with a `.git` marker.
+
+    `roots` names each ingest root, relative to the corpus: the Python/TS corpus's
+    by default, `{"go": "."}` for the Go one (step 7b).
 
     The copy keeps the checked-in corpus free of `.git` (which git cannot hold)
     and makes the repository boundary of the upward config search (#555) the
@@ -138,7 +141,7 @@ def snapshot(corpus: Path) -> dict[str, object]:
         shutil.copytree(corpus, copy, ignore=shutil.ignore_patterns("__pycache__"))
         (copy / ".git").mkdir()
         dumps: dict[str, object] = {}
-        for name, relative in SNAPSHOT_ROOTS.items():
+        for name, relative in roots.items():
             db = Path(tmp) / f"{name}.db"
             _ingest(copy / relative, db)
             dumps[name] = dump(db, copy)
@@ -155,9 +158,21 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("snapshot")
     s.add_argument("corpus", type=Path)
     s.add_argument("--out", type=Path)
+    s.add_argument(
+        "--root",
+        action="append",
+        metavar="NAME=PATH",
+        help="an ingest root relative to the corpus; repeatable (default: the Python/TS roots)",
+    )
     args = parser.parse_args(argv)
     if args.command == "snapshot":
-        text = json.dumps(snapshot(args.corpus), indent=1, sort_keys=True, ensure_ascii=False)
+        pairs = [r.partition("=") for r in args.root or []]
+        if any(not name or not sep for name, sep, _ in pairs):
+            parser.error("--root wants NAME=PATH")
+        roots = {name: path for name, _, path in pairs} if pairs else SNAPSHOT_ROOTS
+        text = json.dumps(
+            snapshot(args.corpus, roots), indent=1, sort_keys=True, ensure_ascii=False
+        )
         if args.out:
             args.out.write_text(text + "\n", encoding="utf-8")
         else:

@@ -11,6 +11,7 @@ import cgis.resolver.indices as indices
 from cgis.core.models import Node
 from cgis.import_names import ImportNameCollector, ImportNames
 from cgis.languages import extractors, project_readers
+from cgis.languages.go.project import GoProjectReader
 from cgis.languages.python.dependencies import declared_import_roots
 from cgis.languages.python.project import PythonFacts, PythonProjectReader
 from cgis.languages.typescript.project import TypeScriptFacts, TypeScriptProjectReader
@@ -38,7 +39,11 @@ def _repo(tmp_path: Path) -> Path:
 
 def test_every_pack_contributes_a_reader_in_manifest_order(tmp_path: Path) -> None:
     readers = project_readers(tmp_path, extractors([]))
-    assert [type(r) for r in readers] == [PythonProjectReader, TypeScriptProjectReader]
+    assert [type(r) for r in readers] == [
+        PythonProjectReader,
+        TypeScriptProjectReader,
+        GoProjectReader,
+    ]
 
 
 def test_the_packs_own_exactly_the_store_keys() -> None:
@@ -207,3 +212,25 @@ def test_pack_state_travels_from_the_collector_to_index_facts(
     (tmp_path / "mod.py").write_text("def f():\n    return 1\n", encoding="utf-8")
     IngestionPipeline(extractors([])).run(str(tmp_path))
     assert seen["go_module"] == {"path": "example.com/app"}
+
+
+def test_a_pack_key_that_vanishes_calls_for_a_rebuild(tmp_path: Path) -> None:
+    """Recorded once, then gone (a `go.mod` deleted): resolution against it is stale (M1)."""
+    with SQLiteStore(str(tmp_path / "g.db")) as store:
+        ImportNames.from_facts([_Facts({"go_module": {"path": "example.com/app"}})]).record(store)
+        gone = ImportNames.from_facts([_Facts({})])
+        assert gone.differ_from(store) is True
+
+
+def test_recording_drops_a_pack_key_that_vanished(tmp_path: Path) -> None:
+    """Else the stale row would read as a difference on every later run, and rebuild each time."""
+    with SQLiteStore(str(tmp_path / "g.db")) as store:
+        store.record_ingest(str(tmp_path))
+        ImportNames.from_facts([_Facts({"go_module": {"path": "example.com/app"}})]).record(store)
+        gone = ImportNames.from_facts([_Facts({})])
+        gone.record(store)
+        assert store.get_state("go_module") is None
+        assert gone.differ_from(store) is False
+        recorded = store.get_ingest_state()  # the store's own keys are not pack state
+        assert recorded is not None
+        assert recorded[0] == str(tmp_path.resolve())

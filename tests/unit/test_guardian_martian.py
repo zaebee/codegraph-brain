@@ -149,15 +149,15 @@ class TestSliceOf:
 
     @pytest.mark.parametrize(
         "files",
-        [("src/a.py",), ("app/x.ts",), ("app/X.tsx",), ("go/main.go", "web/x.ts")],
+        [("src/a.py",), ("app/x.ts",), ("app/X.tsx",), ("go/main.go", "web/x.ts"), ("main.go",)],
     )
     def test_any_supported_file_makes_it_graph_enabled(self, files: tuple[str, ...]) -> None:
-        """The mixed case is grafana: a Go project whose PR touches one .ts file."""
+        """The mixed case is grafana, a Go project; Go alone is graph-enabled since step 7b."""
         assert slice_of(_pr(changed_files=files)) == "graph"
 
     @pytest.mark.parametrize(
         "files",
-        [("a.rb", "b.erb"), ("A.java",), ("main.go",), ("x.es6", "y.js"), ()],
+        [("a.rb", "b.erb"), ("A.java",), ("main.rs",), ("x.es6", "y.js"), ()],
     )
     def test_everything_else_is_diff_only(self, files: tuple[str, ...]) -> None:
         """`.es6`/`.js` included: discourse uses them and no extractor parses them."""
