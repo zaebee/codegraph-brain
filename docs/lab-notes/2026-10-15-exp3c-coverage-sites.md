@@ -56,33 +56,59 @@ graph. Its three rows had no cost and no transcript, and were removed before the
 
 | | recall | cost | turns |
 |---|---|---|---|
-| exp3b (baseline) | 0.83 / 0.83 / 0.83 | 0.099 median | — |
-| arm A, sites only | **1.00 / 1.00 / 1.00** | 0.126 / 0.103 / 0.098 | 6 / 6 / 6 |
-| arm B, sites + directive | **1.00 / 1.00 / 1.00** | 0.130 / 0.115 / 0.097 | 10 / 7 / 5 |
+| exp3b (baseline) | 0.83 / 0.83 / 0.83 | 0.209 / 0.098 / 0.099 | 7 / 5 / 5 |
+| arm A, coverage change only | **1.00 / 1.00 / 1.00** | 0.126 / 0.103 / 0.098 | 6 / 6 / 6 |
+| arm B, coverage change + directive | **1.00 / 1.00 / 1.00** | 0.130 / 0.115 / 0.097 | 10 / 7 / 5 |
 
-**Verdict: both arms help (median recall 1.00 ≥ 0.95). By the pre-registered reading, the place is
-enough.** The directive is not needed for this task.
+**Verdict: both arms help (median recall 1.00 ≥ 0.95).** By the pre-registered reading, the
+coverage-line change is enough on this task and the directive was not needed. The two halves of
+that change are **not separated**. Arm A differs from exp3b in two ways. Test callers are screened
+out, so the line went from `10 of 53 …` (build_cards fourth of five, among test noise) to
+`1 of 17 …`, with build_cards the only name. And the caller is named. Which of the two did it
+cannot be told: the pre-registration bundled both into arm A. No agent used the file:line part;
+the caller name was what they used. With 3/3 against 3/3 at identical recall, this says nothing
+about the size of the effect.
 
-**How the agent closed the gap: through the graph, not the file.** All three arm A sessions took
-the same four steps:
+**What the agents saw and did.** Every session's impact answer on `calculate_total_price` ended
+with:
+
+```
+coverage: 1 of 17 calls unresolved (unresolved_calls_by_name); most often
+self.catalog_service.build_cards (1) at FavoritesService._hydrate domains/favorites/service.py:383
+```
+
+All three arm A sessions took the same four steps:
 
 1. `Grep calculate_total_price`.
-2. `cgis_analyze_impact(PricingService.calculate_total_price)`. Its coverage line now names
-   `self.catalog_service.build_cards (1) at FavoritesService._hydrate …/favorites/service.py:383`.
+2. `cgis_analyze_impact(PricingService.calculate_total_price)`.
 3. `cgis_analyze_impact(FavoritesService._hydrate)`.
 4. `cgis_analyze_impact(CatalogService.build_cards)`.
 
-None opened `favorites/service.py`. The caller named in the site was enough to ask the graph again.
-Arm B took the same step in all three sessions. Two of them also grepped or read the favorites
-source, which is the directive at work, and spent more turns (10 / 7 / 5 against 6 / 6 / 6) at
-about the same cost.
+None opened a file: no Read, no Bash, one grep. They closed the gap by asking the graph again about
+the named caller.
+
+In arm B, two sessions asked the graph about `_hydrate`. B-2 reached recall 1.00 with two cgis
+calls, so arm A's step 4 was not needed. The third session, B-0, asked about `build_cards` first,
+then found `_hydrate` with grep and `sed` on `favorites/service.py` and `routes.py`. Only B-0 read
+the favorites source. B-1 grepped the pricing chain across the repo. Whether either is the
+directive at work cannot be told at n=3. B-0 and B-1 spent more turns (10 and 7, against 6) and
+more money (0.130 and 0.115, against an arm A median of 0.103). B-2 spent less: 5 turns, 0.097.
+
+B-0's last two impact answers said "⚠ Graph is stale: 1 changed, 0 missing since ingest". Its
+shell calls look read-only, so the cause is unknown. Recall was unaffected.
 
 **Limits.**
-- n=3 per arm, on one task. This is the task where exp3 and exp3b failed, and the one #641 was
-  built from, so the result shows the mechanism works on its motivating case. It does not show
-  that it generalises.
-- The other exp3 misses come from different gaps, which this change only makes visible: the
-  decorator wrapper, `cls.` calls and polymorphic dispatch (#637).
-- Whether arm A's behaviour holds unforced, and across the exp3 primary set, needs the adoption
-  experiment.
-- Arm B's directive is not shown to be useless. This task did not need it.
+- The MCP server instructions are not recorded in the transcripts: the init event has no
+  instructions field. The arm difference is inferred from each row's `cgis_sha` (0edeeb1 vs
+  8a09ee7), from the harness starting `cgis-mcp` beside the running interpreter, and from arm A's
+  editable install pointing at its own worktree. It was not observed.
+- The three removed failed rows were not kept, so that claim cannot be audited. They were written
+  by `failure_row` (`is_error` and `failed`, no cost, no transcript), and their tail was the ingest
+  log ending at "Resolution complete". Keeping them would have cost nothing; next time they stay.
+- n=3 per arm, on one task. This is the task where exp3 and exp3b failed, and the one #641 was built
+  from. The result shows the change works on its motivating case. It does not show that it
+  generalises.
+- The other exp3 misses come from gaps this change only makes visible: the decorator wrapper,
+  `cls.` calls and polymorphic dispatch (#637).
+- Whether this holds unforced, and across the exp3 primary set, needs the adoption experiment.
+- The directive is not shown to be useless. This task did not need it.
