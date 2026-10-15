@@ -32,7 +32,7 @@ from rich.markup import escape
 from rich.table import Table
 from rich.tree import Tree
 
-from cgis import __app_name__, __version__
+from cgis import __app_name__, __version__, log_to_stderr
 from cgis.core.coverage import TraversalCoverage
 from cgis.core.freshness import FreshnessState
 from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeNamespace, NodeType
@@ -144,6 +144,7 @@ def main(
     ),
 ) -> None:
     """CGIS — Code Graph Intelligence System CLI."""
+    log_to_stderr()  # stdout is the command's output; logs never mix into it (#619)
 
 
 def _write_json_graph(
