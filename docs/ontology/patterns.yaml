@@ -233,6 +233,30 @@ project_domains:
     profile: python
     drift_tolerance: 0.03 # hygiene-only; measured 0.00
 
+  # bench, import_names and __main__ are single-module packages outside every
+  # other domain (the self-audit found them uncovered). Hygiene-only for the
+  # reason cli and api are: one file has no intra-domain IMPORTS layer.
+  - name: "bench"
+    fqn_prefix: "cgis.bench"
+    profile: python
+    drift_tolerance: 0.05 # hygiene-only; measured 0.0383
+    hygiene_baseline:
+      unresolved_ratio: 0.32 # measured 0.3022 (self-audit)
+
+  - name: "import_names"
+    fqn_prefix: "cgis.import_names"
+    profile: python
+    drift_tolerance: 0.06 # hygiene-only; measured 0.0422
+    hygiene_baseline:
+      unresolved_ratio: 0.33 # measured 0.3125 (self-audit)
+
+  - name: "__main__"
+    fqn_prefix: "cgis.__main__"
+    profile: python
+    drift_tolerance: 0.06 # hygiene-only; measured 0.0500
+    hygiene_baseline:
+      unresolved_ratio: 0.34 # measured 0.3333: one of three edges (self-audit)
+
   # TypeScript graph (ingest root: ui/src → components/Foo.tsx = components.Foo)
   - name: "components"
     fqn_prefix: "components"

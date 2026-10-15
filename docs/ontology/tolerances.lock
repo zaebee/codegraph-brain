@@ -22,6 +22,9 @@ project_domains:
   guardian: 0.26
   cli: 0.03
   api: 0.03
+  bench: 0.05
+  import_names: 0.06
+  __main__: 0.06
   components: 0.24
   layout: 0.50
   hooks: 0.22

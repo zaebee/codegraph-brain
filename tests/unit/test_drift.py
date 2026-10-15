@@ -1570,6 +1570,59 @@ def test_breaching_domain_has_exactly_one_hygiene_breach_string(
     )
 
 
+def test_a_template_bound_on_a_hygiene_key_says_it_is_scored_not_gated(
+    scorer: DriftScorer,
+) -> None:
+    """pure_utility's own unresolved_ratio max 0.1 is soft; the global 0.2 is the gate.
+
+    The self-audit read "unresolved_ratio 0.185 > max 0.1" beside status clean on
+    cgis.storage and took it for a gate that did not fire. The template bound only
+    adds to the score, and now says so.
+    """
+    domain = DomainConfig(
+        name="soft",
+        fqn_prefix="cgis.storage",
+        expected_pattern="pure_utility",
+        drift_tolerance=0.5,
+    )
+    fp = PatternFingerprint(
+        domain="cgis.storage",
+        hub_count=0,
+        star_count=0,
+        chain_len=0.0,
+        dag_depth=0,
+        router_count=0,
+        cycle_ratio=0.0,
+        unresolved_ratio=0.15,  # over the template's 0.1, under the global 0.2
+        node_count=20,
+        edge_count=10,
+    )
+    report = scorer.score(fp, domain)
+    assert report.status != "gate_failed"
+    entries = [v for v in report.violations if v.startswith("unresolved_ratio")]
+    assert entries == ["unresolved_ratio 0.15 > max 0.1 (template bound: scored, not gated)"]
+
+
+def test_every_v2_template_bound_says_it_is_scored_not_gated(tmp_path: Path) -> None:
+    """A v2 template bound never sets the status, whatever key it is on (#626 review).
+
+    Marking only the hygiene keys left "dag_depth 0 < min 3" beside a clean status
+    looking like the one enforced bound that did not fire.
+    """
+    yaml_text = _YAML_V2.replace(
+        '    description: "chain"\n', '    description: "chain"\n    dag_depth: {min: 3}\n'
+    )
+    assert yaml_text != _YAML_V2, "replace failed: pipeline_stage description not found"
+    p = tmp_path / "patterns.yaml"
+    p.write_text(yaml_text)
+    scorer = DriftScorer(str(p))
+    domain = scorer.load_project_domains()[0]
+    report = scorer.score(_v2_fp(_unit("021C"), _unit("021C")), domain)
+    assert report.status == "clean"
+    entries = [v for v in report.violations if v.startswith("dag_depth")]
+    assert entries == ["dag_depth 0.0 < min 3.0 (template bound: scored, not gated)"]
+
+
 # ── fit_templates: canonical distance-to-template ranking (#177) ──────────────
 
 

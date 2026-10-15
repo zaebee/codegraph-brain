@@ -252,7 +252,8 @@ def _weighted_constraint_drift(
 
 
 def _unreported(violations: list[str], hygiene: HygieneOutcome) -> list[str]:
-    """Drop constraint violations for hygiene keys the hygiene gate already reported.
+    """Drop constraint violations for hygiene keys the hygiene gate already reported;
+    mark the rest as template bounds, which are scored and never gate.
 
     Suppresses double-reporting ("cycle_ratio 0.07 > max 0.0" beside "hygiene
     cycle_ratio 0.07 violates max 0.0"). Only keys that produced a breach or an
@@ -263,7 +264,12 @@ def _unreported(violations: list[str], hygiene: HygieneOutcome) -> list[str]:
     reported = {
         k for k in hygiene.keys if any(k in msg for msg in hygiene.breaches + hygiene.acknowledged)
     }
-    return [v for v in violations if not any(v.startswith(k + " ") for k in reported)]
+    kept = [v for v in violations if not any(v.startswith(k + " ") for k in reported)]
+    # Status comes from the hygiene breaches alone (score_v1, score_v2): a template
+    # bound only adds to the score. Say so on every one, or "unresolved_ratio 0.185 >
+    # max 0.1" or "dag_depth 0 < min 3" beside a clean status reads as a gate that
+    # did not fire (self-audit, #626 review).
+    return [f"{v} (template bound: scored, not gated)" for v in kept]
 
 
 def score_v1(
@@ -344,13 +350,12 @@ def score_v2(
     hygiene: HygieneOutcome,
     tolerance_eff: float,
 ) -> DriftReport:
-    """Fingerprint v2 drift: layered TV distance + hard gates (spec §3.3).
+    """Fingerprint v2 drift: layered TV distance + scored template gates (spec §3.3).
 
     ``shape`` is (ideal triads, layer weights, triad weights), all resolved by
-    the catalog. Every constraint reaching this path is treated as a hard gate
-    — the topological shape itself is measured by the TV terms, not
-    constraints. Hygiene gate violations take precedence over score-driven
-    classification (spec §2.2).
+    the catalog. Template constraints form the ``gates`` layer of the score;
+    despite the name they never set the status — only hygiene breaches do
+    (spec §2.2). The topological shape itself is measured by the TV terms.
     """
     ideal, layers, triad_w = shape
     discount = clip_discount(actual)
