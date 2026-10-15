@@ -1603,6 +1603,26 @@ def test_a_template_bound_on_a_hygiene_key_says_it_is_scored_not_gated(
     assert entries == ["unresolved_ratio 0.15 > max 0.1 (template bound: scored, not gated)"]
 
 
+def test_every_v2_template_bound_says_it_is_scored_not_gated(tmp_path: Path) -> None:
+    """A v2 template bound never sets the status, whatever key it is on (#626 review).
+
+    Marking only the hygiene keys left "dag_depth 0 < min 3" beside a clean status
+    looking like the one enforced bound that did not fire.
+    """
+    yaml_text = _YAML_V2.replace(
+        '    description: "chain"\n', '    description: "chain"\n    dag_depth: {min: 3}\n'
+    )
+    assert yaml_text != _YAML_V2, "replace failed: pipeline_stage description not found"
+    p = tmp_path / "patterns.yaml"
+    p.write_text(yaml_text)
+    scorer = DriftScorer(str(p))
+    domain = scorer.load_project_domains()[0]
+    report = scorer.score(_v2_fp(_unit("021C"), _unit("021C")), domain)
+    assert report.status == "clean"
+    entries = [v for v in report.violations if v.startswith("dag_depth")]
+    assert entries == ["dag_depth 0.0 < min 3.0 (template bound: scored, not gated)"]
+
+
 # ── fit_templates: canonical distance-to-template ranking (#177) ──────────────
 
 
