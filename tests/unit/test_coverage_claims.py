@@ -26,9 +26,9 @@ CLAIMS = [
 
 
 def test_the_instructions_name_every_language_and_extension() -> None:
-    coverage = next(
-        line for line in SERVER_INSTRUCTIONS.splitlines() if line.startswith("Coverage:")
-    )
+    lines = [line for line in SERVER_INSTRUCTIONS.splitlines() if line.startswith("Coverage:")]
+    assert lines, "the instructions have no Coverage: line"
+    coverage = lines[0]
     for manifest in MANIFESTS:
         assert manifest.title in coverage, manifest.name
         for extension in manifest.extensions:
@@ -55,6 +55,6 @@ def test_no_claim_calls_a_covered_language_invisible(path: str) -> None:
         if "invisible to the graph" not in line:
             continue
         clause = line.split("invisible to the graph")[0].rsplit(". ", 1)[-1]
-        named = [m.title for m in MANIFESTS if m.title in clause.split()]
-        named += [m.title for m in MANIFESTS if f"{m.title}," in clause]
+        # A whole word, whatever wraps it: `**Go**`, `Go,` and `Go` alike.
+        named = [m.title for m in MANIFESTS if re.search(rf"\b{re.escape(m.title)}\b", clause)]
         assert not named, f"{path}: {clause.strip()[:120]}"
