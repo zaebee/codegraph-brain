@@ -6,6 +6,7 @@ the SDK diverting fd 1 during a stdio session to keep JSON-RPC clean.
 """
 
 import io
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -66,3 +67,53 @@ def test_logs_follow_stderr_as_it_is_when_they_are_written(
         assert "late-line" in swapped.getvalue()
     finally:
         structlog.reset_defaults()
+
+
+_LOG_ONE_LINE = (
+    "import cgis, structlog\ncgis.log_to_stderr()\nstructlog.get_logger('p').info('line')\n"
+)
+
+
+def test_log_colours_follow_stderr_not_stdout() -> None:
+    """#622 review: structlog picks colours from stdout; with logs on stderr that put ANSI
+    escapes into `cgis ingest 2>ingest.log` run from a terminal. Here stdout is a terminal
+    and stderr a pipe: no escapes."""
+    import os  # noqa: PLC0415
+    import pty  # noqa: PLC0415
+
+    leader, follower = pty.openpty()
+    env = {k: v for k, v in os.environ.items() if k not in ("FORCE_COLOR", "NO_COLOR")}
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import cgis, structlog\n"
+            "cgis.log_to_stderr()\n"
+            "structlog.get_logger('p').info('line')\n",
+        ],
+        stdout=follower,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+        check=False,
+    )
+    os.close(follower)
+    os.close(leader)
+    assert result.returncode == 0, result.stderr
+    assert "line" in result.stderr
+    assert "\x1b[" not in result.stderr
+
+
+def test_a_snapshot_on_stdout_is_json() -> None:
+    """#622 review: `graph_identity.py snapshot` without --out mixed JSON with pipeline logs."""
+    repo = Path(__file__).resolve().parent.parent.parent
+    corpus = repo / "tests" / "fixtures" / "graph_identity_go" / "corpus"
+    script = repo / "scripts" / "graph_identity.py"
+    result = subprocess.run(
+        [sys.executable, str(script), "snapshot", str(corpus), "--root", "go=."],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "go" in json.loads(result.stdout)

@@ -15,6 +15,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+import cgis
 from cgis.languages import extractors
 from cgis.pipeline import IngestionPipeline
 from cgis.storage.sqlite_store import SQLiteStore
@@ -103,6 +104,7 @@ def generate_health(db: str | None = None) -> None:
 
 
 if __name__ == "__main__":
+    cgis.log_to_stderr()  # stdout carries the report (#619)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--db",
