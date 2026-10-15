@@ -672,23 +672,30 @@ class SQLiteStore:
         an upstream traversal estimates the callers it cannot see (#201); keying
         the counts by target lets the report name them.
         """
+        return dict(Counter(edge.target for edge in self.unknown_call_edges(names)))
+
+    def unknown_call_edges(self, names: set[str]) -> list[Edge]:
+        """The CALLS edges into UNKNOWN virtual nodes named one of ``names``.
+
+        The edges themselves, not only their count: the caller and line say where
+        each unresolved call is made, and the caller lets a traversal screen it
+        the way it screens its own answer (#641).
+        """
         if not self._conn:
             raise RuntimeError(self._error_message)
         unique = sorted(names)
         chunk_size = 999 - 2  # two parameters go to the type and namespace
-        counts: dict[str, int] = {}
+        edges: list[Edge] = []
         for i in range(0, len(unique), chunk_size):
             chunk = unique[i : i + chunk_size]
             placeholders = ", ".join(["?"] * len(chunk))
             rows = self._conn.execute(
-                "SELECT e.target, COUNT(*) FROM edges e JOIN nodes n ON e.target = n.id"
-                f" WHERE e.type = ? AND n.namespace = ? AND n.name IN ({placeholders})"
-                " GROUP BY e.target",
+                "SELECT e.* FROM edges e JOIN nodes n ON e.target = n.id"
+                f" WHERE e.type = ? AND n.namespace = ? AND n.name IN ({placeholders})",
                 [EdgeType.CALLS.value, NodeNamespace.UNKNOWN.value, *chunk],
             ).fetchall()
-            for row in rows:
-                counts[row[0]] = counts.get(row[0], 0) + row[1]
-        return counts
+            edges.extend(self._row_to_edge(row) for row in rows)
+        return edges
 
     def _get_edges_batch(self, node_ids: list[str], column: str) -> list[Edge]:
         """Fetch edges for many nodes at once, chunked to respect SQLite's 999-param limit."""
