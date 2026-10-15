@@ -1,0 +1,54 @@
+id: cgis-exp2-dir-effective-prefix
+repo: cgis
+sha: a5e175e0152309f83fb3fee66fa008e0857e965c
+src_root: src
+type: impact
+question: 'In this repository, the function `effective_prefix` in
+
+  `src/cgis/query/fqn.py` is about to change. Which code under `src/`
+
+  (not tests, not scripts) can end up calling it, directly or transitively? Follow every
+
+  chain up to its entry point (a CLI command, an MCP tool, or a function nothing else calls)
+
+  and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - mcp_server.cgis_audit_reachability
+  - mcp_server.cgis_find_orphans
+  - mcp_server.cgis_find_symbol
+  - mcp_server.cgis_metrics
+  - mcp_server.cgis_suggest_packages
+  - cli.audit
+  - cli.find
+  - cli.metrics
+  - cli.orphans
+  - cli.suggest_packages_cmd
+  - suggest_service.suggest_packages
+  - audit.audit_reachability
+  - orphans.find_orphan_classes
+  - fqn.effective_prefixes
+  files:
+  - src/cgis/api/mcp_server.py
+  - src/cgis/cli.py
+  - src/cgis/query/analysis/suggest_service.py
+  - src/cgis/query/context/audit.py
+  - src/cgis/query/context/orphans.py
+  - src/cgis/query/fqn.py
+  allowed_symbols:
+  - fqn.effective_prefix
+notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), dir, pair 8, files 6, hop kinds [''direct''].
+
+  fqn.py:102 effective_prefixes; mcp_server.py:983 cgis_find_symbol, :1179 cgis_metrics (effective_prefixes);
+  cli.py:792 find, :1490 metrics; suggest_service.py:229 <- mcp_server.py:859, cli.py:1886; audit.py:208
+  <- mcp_server.py:1341, cli.py:1614; orphans.py:165 <- mcp_server.py:1260, cli.py:1766. All plain calls,
+  no FP, no further callers (audit_reachability / find_orphan_classes / suggest_packages have no other
+  in-src caller). All ast_only rejected: name collisions on find/union (chunker.build_chunks.union, metrics._lcom4,
+  findings.extract_json `str.find`, audit._empty_selection_hint node.id.find@134), extract_json/judge_*
+  guardian chain, super().__init__ (providers, extractors, CgisServer), IndexBuilder.build (internal_roots.union@404)
+  and SymbolResolver.__init__ (IndexBuilder().build@128). The five MCP tools are @refreshes_graph; the
+  wrapper is plumbing (v2 rule).
+
+  '

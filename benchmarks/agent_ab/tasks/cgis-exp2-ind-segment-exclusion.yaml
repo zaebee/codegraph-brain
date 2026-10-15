@@ -1,0 +1,46 @@
+id: cgis-exp2-ind-segment-exclusion
+repo: cgis
+sha: a5e175e0152309f83fb3fee66fa008e0857e965c
+src_root: src
+type: impact
+question: 'In this repository, the function `_segment_exclusion` in
+
+  `src/cgis/query/render/metrics.py` is about to change. Which code under `src/`
+
+  (not tests, not scripts) can end up calling it, directly or transitively? Follow every
+
+  chain up to its entry point (a CLI command, an MCP tool, or a function nothing else calls)
+
+  and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - mcp_server.cgis_metrics
+  - cli.metrics
+  - DuckDBAnalyzer.architecture_report
+  - DuckDBAnalyzer.get_coupling_metrics
+  - DuckDBAnalyzer.get_god_classes
+  - DuckDBAnalyzer.get_pagerank
+  - metrics.class_cohesion_metrics
+  - metrics.file_coupling_metrics
+  - metrics.resolution_metric
+  files:
+  - src/cgis/api/mcp_server.py
+  - src/cgis/cli.py
+  - src/cgis/query/render/metrics.py
+  allowed_symbols:
+  - metrics._segment_exclusion
+notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), ind, pair 2, files 3, hop kinds [''direct'',
+  ''param_obj''].
+
+  metrics.py:378,404,486,590,607,655 (direct); :726-731 architecture_report -> self.get_* and module functions
+  (direct); mcp_server.py:1171-1172 and cli.py:1482-1483 `analyzer = DuckDBAnalyzer(...)`; `analyzer.architecture_report()`
+  (param_obj). No FP. refreshes_graph.wrapper (api/auto_refresh.py:108 `return tool(*args, **kwargs)`)
+  calls every @refreshes_graph-decorated MCP tool: callback via decorator. Only non-direct hop for this
+  target. cgis_metrics decorated at mcp_server.py:1110. cli.py:977 `a.metrics` is an attribute, not a
+  call. [v2] Decorator rule changed: refreshes_graph.wrapper is framework plumbing, not a caller or a
+  callback hop; removed from gold. files 4->3; hop_kinds [''direct'', ''param_obj'', ''callback'']->[''direct'',
+  ''param_obj'']; indirect True->True.
+
+  '

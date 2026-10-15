@@ -1,0 +1,37 @@
+id: cgis-exp2-dir-render-finding
+repo: cgis
+sha: a5e175e0152309f83fb3fee66fa008e0857e965c
+src_root: src
+type: impact
+question: 'In this repository, the function `render_finding` in
+
+  `src/cgis/guardian/render.py` is about to change. Which code under `src/`
+
+  (not tests, not scripts) can end up calling it, directly or transitively? Follow every
+
+  chain up to its entry point (a CLI command, an MCP tool, or a function nothing else calls)
+
+  and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - github_poster.build_review
+  - github_poster.post_inline_review
+  - render.render_report
+  - render.render_review_body
+  - runner.run_guardian
+  files:
+  - src/cgis/guardian/github_poster.py
+  - src/cgis/guardian/render.py
+  - src/cgis/guardian/runner.py
+  allowed_symbols:
+  - render.render_finding
+notes: 'Exp2 (docs/lab-notes/2026-10-15-exp2-indirection-cgis.md), dir, pair 2, files 3, hop kinds [''direct''].
+
+  render.py:68/107 (inside join/list comprehension, still plain calls); render.py:64 render_review_body->render_report;
+  github_poster.py:98,118; runner.py:500 run_guardian->render_report. Redundant callback edge: runner.py:516-517
+  asyncio.to_thread(post_inline_review, ...) - cgis has no run_guardian->post_inline_review edge, but
+  run_guardian is already reached directly, so the gold set and class are unchanged.
+
+  '

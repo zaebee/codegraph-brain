@@ -72,3 +72,25 @@ A bootstrap 95% interval over pairs is reported for gate 1.
   `param_obj` and/or `attr_dep` only. Polymorphic, callback and registry hops occur only in the large,
   out-of-band tasks. So gate 3 (dynamic against held-object) cannot be tested on pairs.
 - **Seen before pairing:** I saw files and symbol counts per target, and nothing else.
+
+## Pairs (algorithm applied as registered) and the gold-check pilot
+
+8 pairs, at or above the minimum of 6. Δfiles ≤ 1 and Δsymbols ≤ 4 in every pair:
+
+| # | direct (files/symbols) | indirect (files/symbols) |
+|---|---|---|
+| 1 | reject_metrics_path 3/5 | GuardianReviewer._finder_pass 3/5 |
+| 2 | render_finding 3/5 | _segment_exclusion 3/9 |
+| 3 | build_ladder 3/5 | refresh_dispatch 4/5 |
+| 4 | resolve_fqn 3/12 | _as_terms 3/11 |
+| 5 | languages.extractors 4/4 | SQLiteStore.get_edge_stats 4/5 |
+| 6 | prompt._loc 4/9 | _sanitize_finder_result 4/10 |
+| 7 | visible_findings 5/6 | DriftScorer.fit_templates 5/9 |
+| 8 | effective_prefix 6/14 | TypeResolver._first_top_level_arg 7/12 |
+
+Descriptive, unpaired: `_relative` (35/14), `specifier_fqn` (32/14 after the path-sensitive rule
+removed 4 argument-infeasible callers) and `_record_usage` (29/11).
+
+**Gold-check pilot (does not count):** pairs 1 and 8 plus `specifier_fqn`, 1 run each, to catch gold
+defects before the full run, as exp1's pilot did. Any gold change it causes is recorded here before
+the full run starts. The full run is all 19 tasks × 3 fresh runs.
