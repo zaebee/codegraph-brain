@@ -14,11 +14,19 @@ concrete method.
 Satisfaction is decided by method names alone. Signatures are not compared, and
 neither is a value against a pointer receiver. That makes it an upper bound, like
 class hierarchy analysis, hence the same lower confidence. Interfaces outside the
-graph (`io.Writer`) have no methods here and are left alone. So is an interface with
-no methods (`any`), which every type satisfies.
+graph (`io.Writer`) have no methods here and are left alone, and so is an interface
+that embeds one: its method set is partly unseen, so satisfaction cannot be decided.
+So is an interface with no methods (`any`), which every type satisfies, and anything
+declared in test code (a fake implementing a production interface is not a caller's
+concern; impact leaves tests out).
+
+A struct may embed an interface: it then holds the interface's methods as its own.
+Its "implementation" of an interface method is a declaration that re-dispatches, so
+an edge to another interface's method is kept (the chain continues from there). A
+method dispatching to itself is not an edge.
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 
 from cgis.core.models import Edge, EdgeType, Node
 
@@ -31,8 +39,11 @@ def interface_dispatch(
     methods: Sequence[Node], classes: Sequence[Node], inheritance: Mapping[str, list[str]]
 ) -> list[Edge]:
     """One DISPATCHES edge from each interface method to each implementation of it."""
-    declared = _methods_by_owner(methods)
-    interfaces = {c.id for c in classes if c.metadata.get("interface")}
+    declared = _methods_by_owner(m for m in methods if not m.is_test)
+    interfaces = {c.id for c in classes if c.metadata.get("interface") and not c.is_test}
+    embeds_interfaces = {
+        i: [e for e in inheritance.get(i, []) if e in interfaces] for i in interfaces
+    }
     method_sets = {
         c.id: _method_set(c.id, declared, inheritance)
         for c in classes
@@ -44,7 +55,9 @@ def interface_dispatch(
             holders.setdefault(name, []).append(type_id)
     edges: dict[str, Edge] = {}
     for interface in sorted(interfaces):
-        needed = _interface_methods(interface, declared, inheritance, interfaces)
+        if not _fully_seen(interface, inheritance, interfaces):
+            continue
+        needed = _method_set(interface, declared, embeds_interfaces)
         if not needed:
             continue
         # Only a type with the interface's rarest method can satisfy it.
@@ -53,6 +66,8 @@ def interface_dispatch(
             method_set = method_sets[type_id]
             if all(name in method_set for name in needed):
                 for name, declaration in sorted(needed.items()):
+                    if method_set[name].id == declaration.id:
+                        continue
                     edge = _edge(declaration, method_set[name], type_id, interface)
                     edges[edge.id] = edge
     return list(edges.values())
@@ -73,7 +88,7 @@ def _edge(declaration: Node, implementation: Node, type_id: str, interface: str)
     )
 
 
-def _methods_by_owner(methods: Sequence[Node]) -> dict[str, dict[str, Node]]:
+def _methods_by_owner(methods: Iterable[Node]) -> dict[str, dict[str, Node]]:
     """Methods keyed by the type that declares them, then by name."""
     owners: dict[str, dict[str, Node]] = {}
     for method in methods:
@@ -108,12 +123,15 @@ def _method_set(
     return found
 
 
-def _interface_methods(
-    interface: str,
-    declared: Mapping[str, Mapping[str, Node]],
-    inheritance: Mapping[str, list[str]],
-    interfaces: set[str],
-) -> dict[str, Node]:
-    """An interface's methods, with those of the interfaces it embeds."""
-    embedded_interfaces = {i: [e for e in v if e in interfaces] for i, v in inheritance.items()}
-    return _method_set(interface, declared, embedded_interfaces)
+def _fully_seen(interface: str, inheritance: Mapping[str, list[str]], interfaces: set[str]) -> bool:
+    """Whether every interface `interface` embeds, transitively, is one in the graph."""
+    seen = {interface}
+    stack = [interface]
+    while stack:
+        for embedded in inheritance.get(stack.pop(), []):
+            if embedded not in interfaces:
+                return False
+            if embedded not in seen:
+                seen.add(embedded)
+                stack.append(embedded)
+    return True

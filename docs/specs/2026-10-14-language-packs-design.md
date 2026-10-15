@@ -467,7 +467,15 @@ already enforced: `docs/ontology/tolerances.lock` and
   >   promotes, it does not dispatch, and reading it as inheritance produced false
   >   DISPATCHES (`raftState.setState → Raft.setState`).
   >
-  > Interfaces are marked `metadata["interface"]` on their CLASS node.
+  > Interfaces are marked `metadata["interface"]` on their CLASS node. Three
+  > boundaries:
+  >
+  > - An interface embedding one outside the graph (`io.Reader`) is skipped,
+  >   because its method set is partly unseen.
+  > - Test code neither implements nor declares.
+  > - A struct embedding an interface "implements" with the interface's own
+  >   declaration. An edge to another interface's method is kept, since it
+  >   re-dispatches. A self-loop is dropped.
 - **Generics beyond plain extraction.**
 - **cgo beyond classification.**
 

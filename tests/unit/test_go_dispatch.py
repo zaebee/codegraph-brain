@@ -133,3 +133,86 @@ def test_dispatch_survives_the_stored_graph_refresh(tmp_path: Path) -> None:
         d = {(e.source, e.target) for e in store.get_edges_of_type(EdgeType.DISPATCHES)}
     assert ("store.LogStore.StoreLogs", "store.InmemStore.StoreLogs") in d
     assert ("raft.raftState.setState", "raft.Raft.setState") not in d
+
+
+def _dispatch_of(files: dict[str, str]) -> set[tuple[str, str]]:
+    nodes: list[Node] = []
+    edges: list[Edge] = []
+    for path, code in files.items():
+        n, e = GoExtractor().parse(code, path)
+        nodes += n
+        edges += e
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+    return _dispatches(resolved)
+
+
+_DOER = "package a\ntype Doer interface{ Do() }\n"
+
+
+def test_a_struct_embedding_an_interface_makes_no_self_loop() -> None:
+    d = _dispatch_of({"a/d.go": _DOER, "a/w.go": "package a\ntype Wrap struct{ Doer }\n"})
+    assert ("a.Doer.Do", "a.Doer.Do") not in d
+
+
+def test_a_shallower_method_shadows_the_embedded_one() -> None:
+    d = _dispatch_of(
+        {
+            "a/d.go": _DOER,
+            "a/o.go": (
+                "package a\n"
+                "type Inner struct{}\nfunc (i *Inner) Do() {}\n"
+                "type Outer struct{ Inner }\nfunc (o *Outer) Do() {}\n"
+            ),
+        }
+    )
+    assert ("a.Doer.Do", "a.Outer.Do") in d
+    assert ("a.Doer.Do", "a.Inner.Do") in d  # Inner satisfies Doer on its own
+    targets_for_outer = {c for s, c in d if s == "a.Doer.Do"}
+    assert targets_for_outer == {"a.Outer.Do", "a.Inner.Do"}
+
+
+def test_test_code_neither_implements_nor_declares() -> None:
+    d = _dispatch_of(
+        {
+            "a/d.go": _DOER,
+            "a/impl.go": "package a\ntype Impl struct{}\nfunc (i *Impl) Do() {}\n",
+            "a/d_test.go": (
+                "package a\n"
+                "type fakeDoer struct{}\nfunc (f *fakeDoer) Do() {}\n"
+                "type testOnly interface{ Do() }\n"
+                "func (i *Impl) Extra() {}\n"
+            ),
+        }
+    )
+    assert d == {("a.Doer.Do", "a.Impl.Do")}
+
+
+def test_an_interface_embedding_one_outside_the_graph_is_left_alone() -> None:
+    """`RC` needs io.Reader's methods too, which the graph cannot see: do not guess."""
+    d = _dispatch_of(
+        {
+            "a/rc.go": 'package a\nimport "io"\ntype RC interface {\n\tio.Reader\n\tClose()\n}\n',
+            "a/c.go": "package a\ntype C struct{}\nfunc (c *C) Close() {}\n",
+        }
+    )
+    assert not {s for s, _ in d if s.startswith("a.RC.")}
+
+
+def test_dispatch_survives_an_incremental_body_edit(tmp_path: Path) -> None:
+    """A body edit re-extracts one file; the edge into it is recomputed from the store."""
+    root = tmp_path / "repo"
+    files = {
+        "a/d.go": _DOER,
+        "a/impl.go": "package a\ntype Impl struct{}\nfunc (i *Impl) Do() {}\n",
+    }
+    for path, code in files.items():
+        (root / path).parent.mkdir(parents=True, exist_ok=True)
+        (root / path).write_text(code)
+    with SQLiteStore(str(tmp_path / "g.db")) as store:
+        IngestionPipeline(extractors([])).run(str(root), store=store)
+        (root / "a/impl.go").write_text(
+            "package a\ntype Impl struct{}\nfunc (i *Impl) Do() { _ = 1 }\n"
+        )
+        IngestionPipeline(extractors([])).run(str(root), store=store)
+        d = {(e.source, e.target) for e in store.get_edges_of_type(EdgeType.DISPATCHES)}
+    assert d == {("a.Doer.Do", "a.Impl.Do")}
