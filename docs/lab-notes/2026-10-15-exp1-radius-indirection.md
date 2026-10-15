@@ -149,3 +149,46 @@ pricing, admin). So, uniformly for every task:
 
 The partial Spearman correlation of cost with drift, controlling for radius, is taken over the 20
 task medians.
+
+## Result (full run, 2026-10-15)
+
+60 sessions, all billed to the organisation key (`apiKeySource: ANTHROPIC_API_KEY` ×60), none failed and
+none contaminated; $10.29. Model `claude-sonnet-5-5`, control arm, 3 runs per task, scored with the
+corrected gold.
+
+| cell | n | median cost | median recall |
+|---|---|---|---|
+| big × direct | 2 | $0.123 | 1.00 |
+| big × indirect | 11 | $0.206 | 1.00 |
+| small × direct | 4 | $0.108 | 1.00 |
+| small × indirect | 3 | $0.163 | 1.00 |
+
+| gate | result |
+|---|---|
+| G1 radius (H1) | **PASS.** Big row $0.189 (n=13) against small row $0.114 (n=7): ×1.66, threshold ×1.5. |
+| G2 indirection (H2) | Descriptive, as ruled above. Indirect costs ×1.68 in the big row and ×1.51 in the small row; recall is unchanged. |
+| G3 template irrelevant (H1) | **PASS.** Spearman cost~files +0.47, cost~drift −0.02; partial cost~drift given files +0.11, under the 0.2 limit. Caveat: drift spans only 0.24–0.37 over 8 domains. |
+| G4 ceiling | **Not hit.** Recall is 1.00 in 47 of 60 runs, minimum 0.76. |
+
+### Reading
+
+- **H1 holds as registered.** Cost scales with radius, and how well the domain fits a template adds
+  nothing once radius is known.
+- **The registered G1 overstates radius.** The big row is 11/13 indirect and the small row 3/7. Within
+  one call type, radius alone gives ×1.14 (direct, n=2/4) and ×1.26 (indirect, n=11/3), while indirection
+  gives ×1.5–1.7 in both rows. Descriptively, indirection moves cost more than radius does. The big ×
+  direct cell is too small to claim it, so this is the hypothesis for the next experiment.
+- **Correctness drops where the edge is dynamic.** `_thread_for` (a `getattr` hook dispatch plus a
+  callback) recalls 0.80 and `calculate_average_rating` 0.93. The two most expensive tasks
+  (`_thread_for`, `reservation_conflict_query`, about $0.35) are the two whose chains run through
+  callback or dynamic hops, the same class of edge cgis does not see (#632). What is hard for the agent
+  and what is hard for static analysis largely coincide.
+- **Low precision is mostly a gold-style question, not agent error.** `notify_top_up_failed` scores
+  0.69 because agents also name the concrete `TopUpNotificationHandler` behind the Protocol stub, which
+  is defensible. That was not re-ruled after the results, so the number stands as scored.
+
+### Next
+
+H2 needs a corpus where big-radius direct chains exist; FastAPI routes make every big chain indirect.
+A follow-up should vary indirection with radius held fixed, for example tasks built on cgis itself
+(no DI framework) set against owner-api.
