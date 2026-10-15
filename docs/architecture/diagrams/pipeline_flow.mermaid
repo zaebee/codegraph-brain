@@ -17,30 +17,32 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
         import_names_ImportNameCollector_note["note (import_names.py:163)"]:::methodNode
     end
     subgraph sg_init["__init__.py"]
-        pipeline_IngestionPipeline_cross_file_inputs_changed["_cross_file_inputs_changed (__init__.py:315)"]:::methodNode
-        pipeline_IngestionPipeline_get_extractor["_get_extractor (__init__.py:448)"]:::methodNode
-        pipeline_IngestionPipeline_is_noop_incremental["_is_noop_incremental (__init__.py:376)"]:::methodNode
-        pipeline_IngestionPipeline_persist_incremental["_persist_incremental (__init__.py:400)"]:::methodNode
-        pipeline_IngestionPipeline_process_file["_process_file (__init__.py:275)"]:::methodNode
-        pipeline_IngestionPipeline_run["run (__init__.py:131)"]:::methodNode
-        pipeline_IngestionPipeline_workspace_root["workspace_root (__init__.py:114)"]:::methodNode
+        pipeline_IngestionPipeline_cross_file_inputs_changed["_cross_file_inputs_changed (__init__.py:394)"]:::methodNode
+        pipeline_IngestionPipeline_get_extractor["_get_extractor (__init__.py:532)"]:::methodNode
+        pipeline_IngestionPipeline_is_noop_incremental["_is_noop_incremental (__init__.py:455)"]:::methodNode
+        pipeline_IngestionPipeline_persist_incremental["_persist_incremental (__init__.py:479)"]:::methodNode
+        pipeline_IngestionPipeline_process_file["_process_file (__init__.py:354)"]:::methodNode
+        pipeline_IngestionPipeline_run["run (__init__.py:209)"]:::methodNode
+        pipeline_IngestionPipeline_workspace_root["workspace_root (__init__.py:192)"]:::methodNode
+        pipeline_needs_rebuild["_needs_rebuild (__init__.py:138)"]:::funcNode
         pipeline_observe["_observe (__init__.py:72)"]:::funcNode
         pipeline_refresh_dispatch["refresh_dispatch (__init__.py:36)"]:::funcNode
     end
     subgraph sg_uplift["uplift.py"]
-        uplift_SemanticUpliftEngine["SemanticUpliftEngine (uplift.py:66)"]:::classNode
-        uplift_SemanticUpliftEngine_execute_uplift["execute_uplift (uplift.py:91)"]:::methodNode
+        uplift_SemanticUpliftEngine["SemanticUpliftEngine (uplift.py:67)"]:::classNode
+        uplift_SemanticUpliftEngine_execute_uplift["execute_uplift (uplift.py:92)"]:::methodNode
     end
     subgraph sg_engine["engine.py"]
         engine_ResolverEngine["ResolverEngine (engine.py:63)"]:::classNode
         engine_ResolverEngine_resolve["resolve (engine.py:109)"]:::methodNode
     end
     subgraph sg_sqlite_store["sqlite_store.py"]
-        sqlite_store_SQLiteStore["SQLiteStore (sqlite_store.py:78)"]:::classNode
+        sqlite_store_SQLiteStore["SQLiteStore (sqlite_store.py:81)"]:::classNode
     end
     pipeline_IngestionPipeline_run -->|REFERENCES| models_Node
     pipeline_IngestionPipeline_run -->|REFERENCES| models_Edge
     pipeline_IngestionPipeline_run -->|REFERENCES| sqlite_store_SQLiteStore
+    pipeline_IngestionPipeline_run -->|CALLS| pipeline_needs_rebuild
     pipeline_IngestionPipeline_run -->|CALLS| pipeline_IngestionPipeline_workspace_root
     pipeline_IngestionPipeline_run -->|CALLS| import_names_ImportNameCollector
     pipeline_IngestionPipeline_run -->|CALLS| pipeline_observe
