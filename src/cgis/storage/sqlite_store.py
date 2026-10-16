@@ -520,6 +520,19 @@ class SQLiteStore:
         ).fetchone()
         return int(row[0]) if row else 0
 
+    def build_excluded_files(self) -> list[tuple[str, str]]:
+        """(file path, why) of each FILE node its pack's default build leaves out (#657)."""
+        if not self._conn:
+            raise RuntimeError(self._error_message)
+        rows = self._conn.execute(
+            """
+            SELECT file_path, json_extract(metadata, '$.build_excluded') FROM nodes
+            WHERE type = 'FILE' AND json_extract(metadata, '$.build_excluded') IS NOT NULL
+            ORDER BY file_path
+            """
+        ).fetchall()
+        return [(str(path), str(reason)) for path, reason in rows]
+
     def package_census(self, depth: int) -> tuple[list[tuple[str, int]], list[tuple[str, int]]]:
         """Internal symbols grouped by their first `depth` FQN segments, production and test.
 
