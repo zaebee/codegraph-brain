@@ -158,6 +158,13 @@ def test_no_excluded_file_adds_nothing_to_the_overview(tmp_path: Path) -> None:
         ("/* x */ // c\n//go:build windows\n\npackage p\n", False),  # comment after /* */
         ("/* a */ /* b\n*/\n//go:build windows\n\npackage p\n", False),
         ("//go:build\n\npackage p\n", False),  # no expression: an error
+        ("//go:build\vwindows\n\npackage p\n", False),  # any space after the prefix
+        ("//go:build\u00a0windows\n\npackage p\n", False),
+        ("//go:build !!linux\n\npackage p\n", False),  # double negation: an error
+        ("// +build !!linux\n\npackage p\n", False),
+        ("// +build linux&&amd64\n\npackage p\n", False),  # not +build syntax
+        ("// +build (linux)\n\npackage p\n", False),
+        ("//go:buildx windows\n\npackage p\n", True),  # not a constraint line
         ("//go:build goexperiment.greenteagc\n\npackage p\n", True),  # go1.26's defaults
         ("//go:build amd64.v1\n\npackage p\n", True),
         ("//go:build !goexperiment.greenteagc\n\npackage p\n", False),

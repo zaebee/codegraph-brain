@@ -88,9 +88,9 @@ _KNOWN_ARCH = frozenset(
         "wasm",
     ]
 )
-#: `//go:build` followed by nothing or by a space or tab, as `go/build` reads it.
-_GO_BUILD = re.compile(r"//go:build(?:[ \t]|$)")
-_TOKEN = re.compile(r"\s*+(\|\||&&|[!()]|[^\s|&!()]++)")
+#: What a `// +build` option may be: one optional `!`, then a tag.
+_PLUS_OPTION = re.compile(r"!?[A-Za-z0-9_.]+")
+_GO_BUILD_PREFIX = "//go:build"
 
 
 def excluded(code: str, file_name: str) -> str | None:
@@ -133,13 +133,19 @@ def _header(code: str) -> tuple[list[str], list[str]]:
             end = index + 1  # the most recent blank line before the first non-comment
             continue
         ended = ended or not line.startswith("//")
-        if not in_block and _GO_BUILD.match(line):
-            go_build.append(line[len("//go:build") :].strip())
+        if not in_block and _is_go_build(line):
+            go_build.append(line[len(_GO_BUILD_PREFIX) :].strip())
         in_block, code_found = _after_comments(line, in_block)
         if code_found:
             break
     plus = [p for p in map(_plus_options, lines[:end]) if p is not None]
     return go_build, plus
+
+
+def _is_go_build(line: str) -> bool:
+    """`//go:build` followed by nothing or by any space, as `go/build` reads it."""
+    rest = line.removeprefix(_GO_BUILD_PREFIX)
+    return rest != line and (not rest or rest[0].isspace())
 
 
 def _after_comments(line: str, in_block: bool) -> tuple[bool, bool]:
@@ -169,8 +175,15 @@ def _plus_options(raw: str) -> str | None:
 
 
 def _plus_line(options: str) -> str:
-    """`// +build a,!b c` is `(a && !b) || c`: spaces are OR, commas AND."""
-    terms = [" && ".join(option.split(",")) for option in options.split()]
+    """`// +build a,!b c` is `(a && !b) || c`: spaces are OR, commas AND.
+
+    An option outside `+build`'s grammar (`!!a`, `a&&b`, `(a)`) makes the line an
+    error to the go command; it reads as a tag nothing sets.
+    """
+    terms = [
+        " && ".join(atoms) if all(_PLUS_OPTION.fullmatch(a) for a in atoms) else "invalid+build"
+        for atoms in (option.split(",") for option in options.split())
+    ]
     return f"({' || '.join(terms)})"
 
 
@@ -180,12 +193,32 @@ def satisfied(expression: str) -> bool:
     Unknown or malformed syntax holds nothing: a file the build cannot place is
     left out and named, rather than read as part of every build.
     """
-    tokens = [t for t in _TOKEN.findall(expression) if t]
+    tokens = _tokens(expression)
     try:
         value, rest = _or(tokens)
     except IndexError:
         return False
     return value and not rest
+
+
+def _tokens(expression: str) -> list[str]:
+    """`a && !(b || c)` as ['a', '&&', '!', '(', 'b', '||', 'c', ')']."""
+    tokens: list[str] = []
+    word = ""
+    index = 0
+    while index < len(expression):
+        pair = expression[index : index + 2]
+        char = expression[index]
+        if pair in ("&&", "||") or char in "!()" or char.isspace():
+            tokens += [word] if word else []
+            word = ""
+            symbol = pair if pair in ("&&", "||") else char
+            tokens += [] if symbol.isspace() else [symbol]
+            index += len(symbol)
+        else:
+            word += char
+            index += 1
+    return tokens + ([word] if word else [])
 
 
 def _or(tokens: list[str]) -> tuple[bool, list[str]]:
@@ -207,6 +240,8 @@ def _and(tokens: list[str]) -> tuple[bool, list[str]]:
 def _not(tokens: list[str]) -> tuple[bool, list[str]]:
     head = tokens[0]
     if head == "!":
+        if tokens[1:2] == ["!"]:
+            raise IndexError(head)  # `!!a` is not //go:build syntax
         value, rest = _not(tokens[1:])
         return not value, rest
     if head == "(":
