@@ -395,3 +395,12 @@ def test_a_method_expression_on_a_predeclared_type_records_no_site() -> None:
     code = "package app\nfunc F(e error) { _ = error.Error(e) }\n"
     nodes, _ = GoExtractor().parse(code, "app/a.go")
     assert "site_types" not in next(n for n in nodes if n.id == "app.F").metadata
+
+
+def test_a_predeclared_type_s_method_expression_is_not_a_sibling_block_s_local() -> None:
+    """`{ error := T{} }` then `error.Error(e)`: the call is the predeclared type's."""
+    code = (
+        'package app\ntype T struct{}\nfunc (t T) Error() string { return "" }\n'
+        "func F(e error) {\n\t{\n\t\terror := T{}\n\t\t_ = error\n\t}\n\t_ = error.Error(e)\n}\n"
+    )
+    assert "app.T.Error" not in _resolve(code, "F")

@@ -545,12 +545,10 @@ def _site(
     if not chain or (len(chain) > 1 and chain[0] == receiver):
         return
     head = chain[0]
-    if head in PREDECLARED and head not in bindings:
-        return  # `error.Error(e)`: a method expression on a predeclared type, no variable
     if head in bindings:
         held = bindings.here(head) or _UNKNOWN  # a local, typed or not: never the import
-    elif len(chain) == 1 or head in ctx.import_map:
-        held = ""
+    elif len(chain) == 1 or head in ctx.import_map or head in PREDECLARED:
+        held = ""  # not a local here: `error.Error(e)` is the predeclared type's
     else:
         held = f"{GLOBAL}{ctx.scope}.{head}"
     bindings.sites[position] = (head, held)
