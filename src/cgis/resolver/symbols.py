@@ -70,6 +70,10 @@ def _file_of(index: SymbolIndex, fqn: str) -> str | None:
     return os.path.normpath(node.file_path) if node is not None else None
 
 
+#: A hit on a field, not a method: it stops the search and resolves nothing.
+_SHADOWED = "\x00field"
+
+
 def _declaring_class(
     index: SymbolIndex, owner_fqn: str, attr: str, inheritance: Mapping[str, list[str]]
 ) -> str | None:
@@ -82,13 +86,16 @@ def _declaring_class(
     *method* on the receiver; this walks the same tree to find the *attribute*
     on the owner.
     """
-    return _find_above(
-        index, inheritance, owner_fqn, lambda c: c if attr in index.self_types.get(c, {}) else None
-    )
 
+    def found(fqn: str) -> str | None:
+        if attr in index.self_types.get(fqn, {}):
+            return fqn
+        node = index.nodes.get(fqn)
+        # A Go field of no named type (`X struct{...}`) still hides a deeper `X`.
+        return _SHADOWED if node is not None and attr in node.metadata.get("fields", ()) else None
 
-#: A hit on a field, not a method: it stops the search and resolves nothing.
-_SHADOWED = "\x00field"
+    hit = _find_above(index, inheritance, owner_fqn, found)
+    return None if hit == _SHADOWED else hit
 
 
 def _method_in_hierarchy(
@@ -122,6 +129,11 @@ def _find_above(
     rules = rules_for(node.file_path) if node is not None else None
     if rules is not None and rules.shallowest_member:
         return _shallowest(inheritance, start, found)
+    mro = _c3(start, inheritance)
+    if mro is not None:
+        return next((hit for hit in map(found, mro) if hit), None)
+    # No consistent linearisation (a cycle, or bases Python would reject): the
+    # depth-first order Python's MRO matches outside a diamond.
     seen: set[str] = set()
     stack = [start]
     while stack:
@@ -137,6 +149,49 @@ def _find_above(
         # Right's member where Python's MRO uses Left's.
         stack.extend(reversed(inheritance.get(current, [])))
     return None
+
+
+def _c3(start: str, inheritance: Mapping[str, list[str]]) -> list[str] | None:
+    """Python's method resolution order for `start` (C3), or None when it has none (#658).
+
+    Iterative, so a deep hierarchy cannot exhaust the stack: each class is
+    linearised once its bases are.
+    """
+    memo: dict[str, list[str]] = {}
+    on_path: set[str] = set()
+    stack = [(start, False)]
+    while stack:
+        current, expanded = stack.pop()
+        if current in memo:
+            continue
+        bases = inheritance.get(current, [])
+        if not expanded:
+            if current in on_path:
+                return None  # an inheritance cycle
+            on_path.add(current)
+            stack.append((current, True))
+            stack.extend((b, False) for b in reversed(bases) if b not in memo)
+            continue
+        on_path.discard(current)
+        merged = _merge([list(memo[b]) for b in bases] + [list(bases)])
+        if merged is None:
+            return None
+        memo[current] = [current, *merged]
+    return memo[start]
+
+
+def _merge(sequences: list[list[str]]) -> list[str] | None:
+    """C3's merge: the next head no other sequence holds in its tail; None when stuck."""
+    merged: list[str] = []
+    while sequences := [s for s in sequences if s]:
+        head = next((s[0] for s in sequences if not any(s[0] in t[1:] for t in sequences)), None)
+        if head is None:
+            return None
+        merged.append(head)
+        for s in sequences:
+            if s[0] == head:
+                del s[0]
+    return merged
 
 
 def _shallowest(

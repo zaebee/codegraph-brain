@@ -2502,3 +2502,32 @@ def main():
     nodes, edges = PythonExtractor().parse(code, "src/mod.py")
     result, _ = ResolverEngine(nodes, edges).resolve()
     assert any(e.source == "src.mod.main" and e.target == "httpx.Client.a.b.get" for e in result)
+
+
+def test_a_diamond_resolves_along_python_s_mro() -> None:
+    """`D(B, C)` with B, C on A and `m` on A and C: Python runs C.m, not A.m (#658)."""
+    code = """
+class A:
+    def m(self):
+        pass
+
+class B(A):
+    pass
+
+class C(A):
+    def m(self):
+        pass
+
+class D(B, C):
+    def own(self):
+        self.m()
+
+def main():
+    d = D()
+    d.m()
+"""
+    nodes, edges = PythonExtractor().parse(code, "src/mod.py")
+    result, _ = ResolverEngine(nodes, edges).resolve()
+    targets = {(e.source, e.target) for e in result if e.type is EdgeType.CALLS}
+    assert ("src.mod.main", "src.mod.C.m") in targets
+    assert ("src.mod.D.own", "src.mod.C.m") in targets

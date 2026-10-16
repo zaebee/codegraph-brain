@@ -1,8 +1,12 @@
 """Calls through a receiver whose type is known: promotion and field hops (#643 A1-A4)."""
 
+from pathlib import Path
+
 from cgis.core.models import Edge, EdgeType
 from cgis.languages.go.extractor import GoExtractor
+from cgis.pipeline import IngestionPipeline
 from cgis.resolver.engine import ResolverEngine
+from cgis.storage.sqlite_store import SQLiteStore
 
 TYPES = (
     "package app\n"
@@ -219,3 +223,64 @@ def test_an_embedding_cycle_ends() -> None:
     )
     assert all(not t.startswith("app.") for t in _resolve({"app/a.go": code}, "app.Missing"))
     assert _resolve({"app/a.go": code}, "app.Found") == {"app.B.M"}
+
+
+def test_an_embedded_type_s_name_shadows_a_deeper_method() -> None:
+    """An embedded `*Log` is a field named Log: `s.Log()` is not Inner's method."""
+    code = (
+        "package app\n"
+        "type Log struct{}\n"
+        "type Inner struct{}\n"
+        "func (i *Inner) Log() {}\n"
+        "type Mid struct{ Inner }\n"
+        "type S struct {\n"
+        "\tMid\n"
+        "\t*Log\n"
+        "}\n"
+        "func Use(s *S) { s.Log() }\n"
+    )
+    assert all(not t.startswith("app.") for t in _resolve({"app/a.go": code}, "app.Use"))
+
+
+def test_a_shallower_untyped_field_shadows_a_deeper_typed_one() -> None:
+    """`X struct{...}` has no named type, yet it is the X that `s.X` reads."""
+    code = (
+        "package app\n"
+        "type Foo struct{}\n"
+        "func (f *Foo) Bar() {}\n"
+        "type Foo2 struct{}\n"
+        "func (f *Foo2) Bar() {}\n"
+        "type Inner struct{ X *Foo2 }\n"
+        "type S struct {\n"
+        "\tInner\n"
+        "\tX struct{ *Foo }\n"
+        "}\n"
+        "func Use(s *S) { s.X.Bar() }\n"
+    )
+    assert "app.Foo2.Bar" not in _resolve({"app/a.go": code}, "app.Use")
+
+
+def test_an_incremental_ingest_sees_a_new_shadowing_field_in_another_file(tmp_path: Path) -> None:
+    """The field lives in a.go, the call in unchanged b.go: `fields` must cross files."""
+    root = tmp_path / "repo"
+    (root / "app").mkdir(parents=True)
+    (root / "go.mod").write_text("module example.com/m\n\ngo 1.22\n")
+    a = root / "app" / "a.go"
+    a.write_text(
+        "package app\ntype Inner struct{}\nfunc (i *Inner) Log() {}\ntype S struct{ Inner }\n"
+    )
+    (root / "app" / "b.go").write_text("package app\nfunc Use(s *S) { s.Log() }\n")
+    db = str(tmp_path / "g.db")
+
+    def calls() -> set[str]:
+        with SQLiteStore(db) as store:
+            IngestionPipeline({".go": GoExtractor()}).run(str(root), store=store)
+            edges = store.get_edges_of_type(EdgeType.CALLS)
+            return {e.target for e in edges if e.source == "app.Use"}
+
+    assert calls() == {"app.Inner.Log"}
+    a.write_text(
+        "package app\ntype Inner struct{}\nfunc (i *Inner) Log() {}\n"
+        "type S struct {\n\tInner\n\tLog func()\n}\n"
+    )
+    assert "app.Inner.Log" not in calls()

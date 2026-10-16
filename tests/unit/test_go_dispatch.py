@@ -348,3 +348,42 @@ def test_a_node_without_arity_matches_on_the_name() -> None:
         {},
     )
     assert {(e.source, e.target) for e in edges} == {("a.I.M", "a.T.M")}
+
+
+def test_a_field_shadowing_a_promoted_method_keeps_the_type_from_satisfying() -> None:
+    """`Log func()` hides Inner.Log, so S has no Log method and is no `I` (#656 review)."""
+    code = (
+        "package app\n"
+        "type I interface {\n"
+        "\tLog()\n"
+        "\tRun()\n"
+        "}\n"
+        "type Inner struct{}\n"
+        "func (i *Inner) Log() {}\n"
+        "type S struct {\n"
+        "\tInner\n"
+        "\tLog func()\n"
+        "}\n"
+        "func (s *S) Run() {}\n"
+    )
+    assert _dispatch_of({"app/a.go": code}) == set()
+
+
+def test_a_field_and_a_method_at_one_depth_leave_the_name_out() -> None:
+    """A's Log method and B's Log field are both at depth 1: `s.Log` is ambiguous."""
+    code = (
+        "package app\n"
+        "type I interface {\n"
+        "\tLog()\n"
+        "\tRun()\n"
+        "}\n"
+        "type A struct{}\n"
+        "func (a *A) Log() {}\n"
+        "type B struct{ Log func() }\n"
+        "type S struct {\n"
+        "\tA\n"
+        "\tB\n"
+        "}\n"
+        "func (s *S) Run() {}\n"
+    )
+    assert _dispatch_of({"app/a.go": code}) == set()

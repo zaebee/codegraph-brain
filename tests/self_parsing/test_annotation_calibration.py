@@ -68,9 +68,8 @@ _GraphData = tuple[SQLiteStore, list[Node], list[Edge]]
 #
 # Re-measured 2026-10-16 on #656 (fresh ingest of `src`, same pipeline as the fixture):
 # main 3eccec7 held 963 annotation / 290 name references — #609-#653 grew the band by
-# 57 / 13 inside the tolerance — and #656 adds 4 / 0, every one in a signature it adds:
-# `_find_above`, `_shallowest` and `_resolve_on_type` in resolver/symbols.py (+3), the
-# Go extractor's `_struct_metadata` (+1). Both re-centred on the branch measurement.
+# 57 / 13 inside the tolerance — and #656 adds 4 / 0, every one in a signature it adds
+# (resolver/symbols.py +3, the Go extractor +1). Both re-centred on the branch measurement.
 _EXPECTED_ANNOTATION_REFERENCES = 967
 _EXPECTED_NAME_REFERENCES = 290
 _TOLERANCE = 60  # ~10% of the annotation band: ordinary code churn, not a lost source
