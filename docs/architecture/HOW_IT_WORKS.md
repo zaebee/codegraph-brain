@@ -58,8 +58,8 @@ The resolver operates on the complete set of raw edges emitted by Phase 1. It bu
 **Resolution order** for a `raw_call:<name>` edge from source FQN `A`:
 
 1. If `name` starts with `self.`, look up the method on the enclosing class via `_class_methods`
-2. Look up `name` in `_global_symbols`; if ambiguous, prefer same-file candidate via `_file_global_symbols`
-3. If unresolved: keep target as `raw_call:<name>`, set `confidence=0.1`
+2. Look up `name` in `_global_symbols`, among the caller's own language only; if ambiguous, prefer same-file candidate via `_file_global_symbols`
+3. A resolved call scores `confidence=1.0` in every language. If unresolved, the target becomes the bare `<name>`, an UNKNOWN placeholder node, at `confidence=0.8`
 
 Unresolved calls are **first-class citizens** — they appear in the graph explicitly rather than being silently discarded.
 

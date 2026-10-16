@@ -58,16 +58,16 @@ IngestionPipeline (pipeline/__init__.py)
 
 **Node FQN format**: `module.ClassName.method_name` — fully dot-separated, derived from the file path (e.g., `src/cgis/pipeline.py` → `src.cgis.pipeline.IngestionPipeline.run`). Use `cgis.languages.scope_of(path, source_root)` to convert paths (it picks the file's own pack; the Python rule lives in `languages/python/extractor.py`). `__init__.py` strips the `/__init__` suffix.
 
-**Raw call convention**: Extractors emit edges with `target = "raw_call:<name>"`. The `ResolverEngine` then resolves these to actual FQNs or leaves them unresolved (keeps the `raw_call:` prefix in output).
+**Raw call convention**: Extractors emit edges with `target = "raw_call:<name>"`. The `ResolverEngine` then resolves these to actual FQNs, or leaves them unresolved: the target becomes the bare raw name, an UNKNOWN placeholder node (#661).
 
 **`ResolverEngine` resolution order** for a call to `name`:
 1. `self.method` → look up `method` on the enclosing class via `_class_methods` index
-2. Unqualified call → `_global_symbols` by name; if ambiguous, prefer the same-scope candidate via `file_global_symbols` (a file's scope is its path, or the `metadata["scope"]` its FILE node declares — a Go package)
+2. Unqualified call → `_global_symbols` by name, among the caller's own language only (#675); if ambiguous, prefer the same-scope candidate via `file_global_symbols` (a file's scope is its path, or the `metadata["scope"]` its FILE node declares — a Go package)
 
 ## Core Models (`src/cgis/core/models.py`)
 
 - `Node` — immutable (frozen Pydantic). `id` is the FQN. Key fields: `type: NodeType`, `file_path`, `start_line`, `end_line`, `confidence_score`, `domains`, `ontology_class`.
-- `Edge` — immutable (frozen Pydantic). `source`/`target` are FQNs. Key fields: `type: EdgeType`, `weight`, `confidence`. A call leaves the extractor as target `raw_call:<name>`; after resolution a resolved call scores 1.0 in every language, an unresolved one 0.8 with its bare raw name as target (#661), and a DISPATCHES edge 0.5 (#674).
+- `Edge` — immutable (frozen Pydantic). `source`/`target` are FQNs. Key fields: `type: EdgeType`, `weight`, `confidence`. A call leaves the extractor as target `raw_call:<name>`; after resolution a resolved call scores 1.0 in every language, an unresolved one 0.8 with its bare raw name as target (#661) (#674); a DISPATCHES edge scores 0.5.
 - `NodeType` — structural (`FILE`, `MODULE`, `CLASS`, `FUNCTION`, `METHOD`…), runtime (`API_ENDPOINT`, `DB_TABLE`…), semantic (`DOMAIN_CONCEPT`).
 - `EdgeType` — structural (`CONTAINS`, `DECLARES`, `IMPORTS`), behavioral (`CALLS`, `REFERENCES`), semantic (`HANDLES`, `PERSISTS`, `AUTHORIZES`).
 

@@ -2674,3 +2674,38 @@ def test_a_bare_name_still_resolves_within_its_language() -> None:
     ]
     resolved, _ = ResolverEngine(nodes, edges).resolve()
     assert next(e for e in resolved if e.type == EdgeType.CALLS).target == "web.tools.makeWidget"
+
+
+def test_a_class_reference_never_resolves_into_another_language() -> None:
+    # #675 review: an embedded `Widget` in Go bound to a uniquely named Python class.
+    nodes = [
+        Node(
+            id="py.tools.Widget",
+            type=NodeType.CLASS,
+            name="Widget",
+            file_path="py/tools.py",
+            start_line=1,
+            end_line=2,
+            language="python",
+        ),
+        Node(
+            id="pkg.Frame",
+            type=NodeType.CLASS,
+            name="Frame",
+            file_path="pkg/frame.x",
+            start_line=1,
+            end_line=2,
+            language="go",
+        ),
+    ]
+    edges = [
+        Edge(
+            id="pkg/frame.x:extends:Widget",
+            source="pkg.Frame",
+            target="raw_class:Widget",
+            type=EdgeType.EXTENDS,
+            confidence=1.0,
+        ),
+    ]
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+    assert all(e.target != "py.tools.Widget" for e in resolved)

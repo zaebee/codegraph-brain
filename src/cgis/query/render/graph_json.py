@@ -22,8 +22,8 @@ def graph_to_json(
 
     ``root`` is the resolved FQN the traversal started from. Node entries carry
     ``fqn``/``type``/``file``/``line``; edge entries carry ``src``/``dst``/
-    ``type``/``confidence``. Unresolved targets keep their ``raw_call:`` prefix
-    so consumers can tell a resolved edge from a dangling one.
+    ``type``/``confidence``. A resolved call scores 1.0; an unresolved one targets
+    its bare raw name, an UNKNOWN placeholder, at 0.8, so confidence tells them apart.
 
     ``coverage`` is the traversal's local resolution coverage (#201). A
     structure query follows no calls and passes none, so the key is omitted
