@@ -98,6 +98,8 @@ MANIFESTS: tuple[Manifest, ...] = (
             # A field's type and a function's results type calls in other files (#608);
             # a field's name shadows a method promoted from an embedding (#656).
             NodeType.CLASS: ("self_types", "fields"),
+            # A package variable's type types calls through it in other files (#643 B6).
+            NodeType.VARIABLE: ("var_type",),
             NodeType.FUNCTION: ("returns",),
             NodeType.METHOD: ("returns",),
         },

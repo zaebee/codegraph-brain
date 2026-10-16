@@ -189,7 +189,10 @@ class ResolverEngine:
                 edge.source, raw_name.removeprefix(SELF_PREFIX)
             )
         else:
-            new_target = self._resolver.resolve_global_call(raw_name, edge.source, edge.file_path)
+            site = edge.id.rpartition("@")[2] if "@" in edge.id else None
+            new_target = self._resolver.resolve_global_call(
+                raw_name, edge.source, edge.file_path, site
+            )
         if new_target is None:
             # Fallback only: a project symbol named like a global has already won above.
             # Confidence stays at the unresolved 0.8, the value a Python builtin gets.

@@ -80,6 +80,11 @@ class ResolutionRules:
     #: Python's approximation of its MRO. True: Go's promotion rule — the shallowest
     #: depth wins, and two at the same depth are ambiguous, so nothing (#656 review).
     shallowest_member: bool = False
+    #: Whether a call through a local name stops at the local's type. True: when the
+    #: type does not resolve the call, nothing does — the name is not the import or
+    #: package symbol it shadows (Go, #660 review). False: the import map and the
+    #: global symbols are tried next.
+    locals_shadow: bool = False
 
     def __post_init__(self) -> None:
         """Refuse a step at a position the engine never runs."""

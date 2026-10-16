@@ -11,6 +11,15 @@ from cgis.languages import dispatcher_for, rules_for, type_normalizers
 from cgis.resolver.indices import IndexBuilder, SymbolIndex
 
 
+def _is_local(name: str, source: Node, site: str | None) -> bool:
+    """Whether the call's receiver name is a local of the source at the call's site."""
+    sites: dict[str, str] = source.metadata.get("site_types") or {}
+    if site in sites:
+        return bool(sites[site])
+    local_types: dict[str, str] = source.metadata.get("local_types") or {}
+    return name.split(".", maxsplit=1)[0] in local_types
+
+
 def _owning_class(index: SymbolIndex, source_fqn: str) -> str | None:
     """The nearest enclosing class of source_fqn that the index knows methods for.
 
@@ -339,16 +348,27 @@ class SymbolResolver:
         return _resolve_on_type(self.index, self.inheritance_tree, owner, method_name, source_file)
 
     def resolve_global_call(
-        self, name: str, source_fqn: str, edge_file_path: str | None = None
+        self,
+        name: str,
+        source_fqn: str,
+        edge_file_path: str | None = None,
+        site: str | None = None,
     ) -> str | None:
-        """Resolve a global call using local types, import map, then global symbol index."""
+        """Resolve a global call using local types, import map, then global symbol index.
+
+        `site` is the call's position in its edge id; a source's `site_types` may
+        say what the receiver name is there, over its `local_types` (#643 B8).
+        """
         source_node = self.index.nodes.get(source_fqn)
         file_path = self.index.normalized_file_path(source_fqn, edge_file_path)
 
         if source_node:
-            result = self._resolve_local_type_call(name, source_node, file_path)
+            result = self._resolve_local_type_call(name, source_node, file_path, site)
             if result:
                 return result
+            rules = rules_for(file_path)
+            if rules is not None and rules.locals_shadow and _is_local(name, source_node, site):
+                return None
 
         if file_path:
             result = self._resolve_via_import_map(name, file_path) or _positioned(
@@ -409,17 +429,20 @@ class SymbolResolver:
         return None
 
     def _resolve_local_type_call(
-        self, name: str, source_node: Node, file_path: str | None
+        self, name: str, source_node: Node, file_path: str | None, site: str | None = None
     ) -> str | None:
         """Resolve `var.method` using local_types metadata on the source node.
 
         `file_path` is the source's: the type is classified as its language reads it.
+        A `site_types` entry for the call's position wins over `local_types`: the
+        name's binding in that block, or "" where it is not a local at all.
         """
         if "." not in name:
             return None
         var_name, method_name = name.split(".", maxsplit=1)
         local_types: dict[str, str] = source_node.metadata.get("local_types") or {}
-        class_fqn = local_types.get(var_name)
+        sites: dict[str, str] = source_node.metadata.get("site_types") or {}
+        class_fqn = sites[site] if site in sites else local_types.get(var_name)
         if not class_fqn:
             return None
         class_fqn = _normalized(self.index, class_fqn)

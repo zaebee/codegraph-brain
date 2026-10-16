@@ -9,8 +9,9 @@ the import edge and every reference through it (`reconciles_references`).
 
 from typing import cast
 
+from cgis.core.models import Node
 from cgis.core.resolution import AFTER_IMPORT_MAP, ResolutionRules, ResolutionView
-from cgis.languages.go._syntax import ANY_OF, BUILTINS, CALL_RESULT
+from cgis.languages.go._syntax import ANY_OF, BUILTINS, CALL_RESULT, ELEM, FIELD, GLOBAL, TAKE
 from cgis.languages.go.dispatch import interface_dispatch
 from cgis.languages.go.index import GoIndexFacts
 from cgis.languages.go.naming import GO_LANG
@@ -75,37 +76,127 @@ def builtin_call(name: str, file_path: str, view: ResolutionView) -> str | None:
     return None if f"{scope}.{name}" in view.nodes else name
 
 
-def call_result(type_fqn: str, view: ResolutionView) -> str:
-    """The type a call's result marker names: the callee's recorded result (#608).
+#: How deep one marker may expand: they nest only as far as the extractor bounds
+#: them, but a package variable initialised from another one could loop.
+_MAX_EXPANSION = 32
 
-    The extractor records `x := f()` as `go-returns:<i>:<callee>`, the callee an
-    FQN or `<marker>|<method>` for a method on another call's result, since its
-    file alone cannot know what `f` returns. Here the callee's node — mapped
-    through the module like any Go reference — says, in its `returns`. Anything
-    else passes through untouched; an unknown callee leaves the marker, which
-    resolves to nothing.
+
+def call_result(type_fqn: str, view: ResolutionView) -> str:
+    """The type a Go marker names, or the marker itself when it names none (#608, #643).
+
+    The extractor records what its file alone cannot know as a marker:
+    - `go-returns:<i>:<callee>`: result i of a call. The callee is an FQN, or
+      `<marker>|<method>` for a method on another marker's type; its node's
+      `returns` says.
+    - `go-take:<elem|key>:<value>`: an element received, indexed or ranged from a
+      value whose type is a `go-elem:` container.
+    - `go-field:<f1.f2>:<value>`: a field chain, through each struct's `self_types`.
+    - `go-global:<id>`: a package variable, through its node's `var_type`.
+    - `go-any:<t1>;<t2>`: the one type every binding agrees on.
+    Anything else passes through untouched. A marker left unexpanded resolves to
+    nothing.
     """
-    if type_fqn.startswith(ANY_OF):
-        return _agreed(type_fqn, view)
-    if not type_fqn.startswith(CALL_RESULT):
+    return _expand(type_fqn, view, _MAX_EXPANSION)
+
+
+def _expand(type_fqn: str, view: ResolutionView, budget: int) -> str:
+    if budget <= 0 or not type_fqn.startswith("go-"):
         return type_fqn
-    position, _, callee = type_fqn.removeprefix(CALL_RESULT).partition(":")
+    kind, _, rest = type_fqn.partition(":")
+    expand = _EXPANDERS.get(f"{kind}:")
+    return expand(type_fqn, rest, view, budget - 1) if expand else type_fqn
+
+
+def _returned(marker: str, rest: str, view: ResolutionView, budget: int) -> str:
+    position, _, callee = rest.partition(":")
     if "|" in callee:
         held, _, method = callee.rpartition("|")
-        callee = f"{call_result(held, view)}.{method}"
-    node_id = callee if callee in view.nodes else reconcile_import(callee, None, view)
-    node = view.nodes.get(node_id) if node_id else None
+        callee = f"{_expand(held, view, budget)}.{method}"
+    node = _node_of(callee, view)
     returns: list[str] = node.metadata.get("returns") or [] if node else []
     index = int(position) if position.isdigit() else len(returns)
     result = next(iter(returns[index : index + 1]), "")  # past the end: no such result
-    return result or type_fqn
+    return _expand(result, view, budget) if result else marker
 
 
-def _agreed(type_fqn: str, view: ResolutionView) -> str:
+def _taken(marker: str, rest: str, view: ResolutionView, budget: int) -> str:
+    taken, _, source = rest.partition(":")
+    container = _expand(source, view, budget)
+    if not container.startswith(ELEM):
+        return marker
+    kind, _, element = container.removeprefix(ELEM).partition(":")
+    value, _, key = element.partition(",")
+    if kind == "chan" or (taken == "elem" and kind == "seq"):
+        return element
+    if kind == "map":
+        return (value if taken == "elem" else key) or marker
+    return marker
+
+
+def _fielded(marker: str, rest: str, view: ResolutionView, budget: int) -> str:
+    fields, _, source = rest.partition(":")
+    current = _expand(source, view, budget)
+    for name in fields.split("."):
+        declared = _field_type(current, name, view)
+        if declared is None:
+            return marker
+        current = _expand(declared, view, budget)
+    return current
+
+
+def _field_type(type_fqn: str, name: str, view: ResolutionView) -> str | None:
+    """A struct's field `name`, its own or promoted, shallowest first; None when none."""
+    level, seen = [type_fqn], {type_fqn}
+    while level:
+        found, below = _level_fields(level, name, view)
+        if found:
+            return found.pop() if len(found) == 1 else None
+        below = [t for t in below if t not in seen]
+        seen.update(below)
+        level = below
+    return None
+
+
+def _level_fields(level: list[str], name: str, view: ResolutionView) -> tuple[set[str], list[str]]:
+    """The types of field `name` on one depth's structs, and the structs they embed."""
+    found: set[str] = set()
+    below: list[str] = []
+    for current in level:
+        node = _node_of(current, view)
+        fields: dict[str, str] = node.metadata.get("self_types") or {} if node else {}
+        if name in fields:
+            found.add(fields[name])
+        # An embedded field is named after its type (#656).
+        below += [t for f, t in fields.items() if t.rsplit(".", 1)[-1] == f]
+    return found, below
+
+
+def _global(marker: str, rest: str, view: ResolutionView, budget: int) -> str:
+    node = _node_of(rest, view)
+    declared = node.metadata.get("var_type") if node is not None else None
+    return _expand(declared, view, budget) if isinstance(declared, str) else marker
+
+
+def _node_of(fqn: str, view: ResolutionView) -> Node | None:
+    """The node an FQN names, mapped through the module like any Go reference."""
+    node_id = fqn if fqn in view.nodes else reconcile_import(fqn, None, view)
+    return view.nodes.get(node_id) if node_id else None
+
+
+def _agreed(type_fqn: str, rest: str, view: ResolutionView, budget: int) -> str:
     """The one type every binding of a `go-any:` name resolves to; else the marker itself."""
-    resolved = {call_result(t, view) for t in type_fqn.removeprefix(ANY_OF).split(";")}
+    resolved = {_expand(t, view, budget) for t in rest.split(";")}
     (only,) = resolved if len(resolved) == 1 else (type_fqn,)
-    return type_fqn if only.startswith((CALL_RESULT, ANY_OF)) else only
+    return type_fqn if only.startswith("go-") else only
+
+
+_EXPANDERS = {
+    CALL_RESULT: _returned,
+    TAKE: _taken,
+    FIELD: _fielded,
+    GLOBAL: _global,
+    ANY_OF: _agreed,
+}
 
 
 RULES = ResolutionRules(
@@ -115,4 +206,5 @@ RULES = ResolutionRules(
     reconciles_references=True,
     dispatch=interface_dispatch,
     shallowest_member=True,
+    locals_shadow=True,
 )
