@@ -90,6 +90,15 @@ def test_delete_task_paths_refuses_a_path_through_a_symlink_out_of_the_worktree(
     assert outside.exists()
 
 
+def test_delete_task_paths_unlinks_a_symlink_to_a_directory_inside(tmp_path: Path) -> None:
+    (tmp_path / "real").mkdir()
+    (tmp_path / "real" / "keep.go").touch()
+    (tmp_path / "alias").symlink_to(tmp_path / "real")
+    ab.delete_task_paths(tmp_path, ["alias"])
+    assert not (tmp_path / "alias").is_symlink()
+    assert (tmp_path / "real" / "keep.go").exists()
+
+
 def test_delete_task_paths_refuses_a_path_the_worktree_lacks(tmp_path: Path) -> None:
     # A misspelt path must not leave the nested module in place silently.
     with pytest.raises(FileNotFoundError, match="delete_paths: websit is not in the worktree"):

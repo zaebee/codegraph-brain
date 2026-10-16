@@ -356,6 +356,10 @@ func loadStandard() (*ssa.Program, []*types.Package) {
 }
 
 func main() {
+	if len(os.Args) < 3 {
+		fmt.Fprintln(os.Stderr, "usage: exp4cg <moduleDir> <modulePath> [-fakecgo]")
+		os.Exit(2)
+	}
 	modDir, modPath = os.Args[1], os.Args[2]
 	modDir, _ = filepath.Abs(modDir)
 	goos, goarch := os.Getenv("GOOS"), os.Getenv("GOARCH")

@@ -130,7 +130,7 @@ def delete_task_paths(root: Path, paths: list[str]) -> None:
         if not target.exists():
             msg = f"delete_paths: {rel} is not in the worktree"
             raise FileNotFoundError(msg)
-        if target.is_dir():
+        if target.is_dir() and not target.is_symlink():
             shutil.rmtree(target)
         else:
             target.unlink()

@@ -13,6 +13,10 @@ import (
 )
 
 func main() {
+	if len(os.Args) < 3 {
+		fmt.Fprintln(os.Stderr, "usage: ifc <moduleDir> <modulePath>")
+		os.Exit(2)
+	}
 	dir, mod := os.Args[1], os.Args[2]
 	cfg := &packages.Config{Mode: packages.LoadAllSyntax, Dir: dir, Tests: false}
 	pkgs, err := packages.Load(cfg, "./...")
