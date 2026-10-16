@@ -199,4 +199,5 @@ RULES = ResolutionRules(
     reconciles_references=True,
     dispatch=interface_dispatch,
     shallowest_member=True,
+    locals_shadow=True,
 )

@@ -411,7 +411,10 @@ def test_err_from_two_calls_is_still_an_error() -> None:
 
 
 def test_sibling_blocks_never_lend_each_other_a_type() -> None:
-    """#608 delta review: the second `b.Run()` is RB's or nothing — never RA's."""
+    """#608 delta review: the second `b.Run()` is RB's or nothing — never RA's.
+
+    Since #643 B8 each block keeps its own binding, so it is RB's, and the first RA's.
+    """
     files = {
         "a/a.go": (
             "package a\n"
@@ -426,11 +429,17 @@ def test_sibling_blocks_never_lend_each_other_a_type() -> None:
         )
     }
     edges, _ = _go_graph(files, {"path": "example.com/app"})
-    assert "a.RA.Run" not in _calls_from(edges, "a.Use")
+    runs = sorted(
+        (e.id, e.target) for e in edges if e.source == "a.Use" and e.target.endswith(".Run")
+    )
+    assert [target for _, target in runs] == ["a.RA.Run", "a.RB.Run"]
 
 
 def test_types_that_disagree_resolve_to_neither() -> None:
-    """#608 review I1: `ty` is an ArrayType in one block and an ObjectType in another."""
+    """#608 review I1: `ty` is an ArrayType in one block and an ObjectType in another.
+
+    Neither lends its type to the other; since #643 B8 each block resolves its own.
+    """
     files = {
         "a/a.go": (
             "package a\n"
@@ -444,9 +453,11 @@ def test_types_that_disagree_resolve_to_neither() -> None:
         )
     }
     edges, _ = _go_graph(files, {"path": "example.com/app"})
-    calls = _calls_from(edges, "a.Use")
-    assert "a.ArrayType.Merge" not in calls
-    assert "a.ObjectType.Merge" not in calls
+    merges = sorted((e.id, e.target) for e in edges if e.source == "a.Use")
+    assert [target for _, target in merges if target.endswith("Merge")] == [
+        "a.ArrayType.Merge",
+        "a.ObjectType.Merge",
+    ]
 
 
 def test_a_parameter_of_type_error_resolves_its_method() -> None:

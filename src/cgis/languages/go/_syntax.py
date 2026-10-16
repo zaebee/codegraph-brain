@@ -266,6 +266,8 @@ def container_type(node: TSNode | None, scope: str, import_map: Mapping[str, str
 
     A map also names its key: `go-elem:map:<V>,<K>`, either side empty when unnamed.
     """
+    while node is not None and node.type == "pointer_type":  # `*[3]T` ranges and indexes too
+        node = node.named_children[0] if node.named_children else None
     if node is None or node.type not in _CONTAINERS:
         return None
     kind, field = _CONTAINERS[node.type]

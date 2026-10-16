@@ -265,3 +265,127 @@ def test_the_comma_ok_flag_takes_no_type() -> None:
 def test_a_local_named_new_is_not_the_builtin() -> None:
     code = _T + "func F(new func(any) *T) {\n\tp := new(K{})\n\tp.M()\n}\n"
     assert "app.K.M" not in _resolve(code, "F")
+
+
+_SCOPED = (
+    "package app\n"
+    'import (\n\t"log"\n\t"strings"\n)\n'
+    "type Logger struct{}\n"
+    "func (l *Logger) Printf(f string, a ...any) {}\n"
+    "func (l *Logger) Println(a ...any) {}\n"
+    "type Builder struct{}\n"
+    "func (b *Builder) Contains(s, t string) bool { return false }\n"
+    "type A struct{}\n"
+    "func (a *A) Run() {}\n"
+    "type B struct{}\n"
+    "func (b *B) Run() {}\n"
+    "var it *B\n"
+    "func Loop(loggers []*Logger) {\n"
+    '\tfor _, log := range loggers {\n\t\tlog.Println("x")\n\t}\n'
+    '\tlog.Printf("after")\n'
+    "}\n"
+    "func Recv(ch chan *Logger) {\n"
+    "\tselect {\n\tcase log := <-ch:\n\t\tlog.Println()\n\tdefault:\n\t}\n"
+    '\tlog.Println("std")\n'
+    "}\n"
+    "func Idx(m map[string]*Builder) {\n"
+    '\tif strings := m["a"]; strings != nil {\n\t\t_ = strings.Contains("a", "b")\n\t}\n'
+    '\t_ = strings.Contains("a", "b")\n'
+    "}\n"
+    "func Global(items []*A) {\n"
+    "\tfor _, it := range items {\n\t\tit.Run()\n\t}\n"
+    "\tit.Run()\n"
+    "}\n"
+    "func Cases(a chan *A, b chan *B) {\n"
+    "\tselect {\n\tcase c := <-a:\n\t\tc.Run()\n\tcase c := <-b:\n\t\tc.Run()\n\t}\n"
+    "}\n"
+    "func Switch(w any) {\n"
+    "\tswitch v := w.(type) {\n\tcase *A:\n\t\tv.Run()\n\tcase *B:\n\t\tv.Run()\n"
+    "\tcase *A, *B:\n\t\t_ = v\n\t}\n"
+    "}\n"
+)
+
+
+def _scoped_calls(source: str) -> list[str]:
+    nodes, edges = GoExtractor().parse(_SCOPED, "app/a.go")
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+    calls = [e for e in resolved if e.type is EdgeType.CALLS and e.source == f"app.{source}"]
+    return [e.target for e in sorted(calls, key=lambda e: e.id)]
+
+
+def test_a_range_variable_does_not_type_the_import_it_shadows_after_the_loop() -> None:
+    targets = _scoped_calls("Loop")
+    assert "app.Logger.Println" in targets
+    assert "app.Logger.Printf" not in targets
+
+
+def test_a_select_case_variable_does_not_type_the_import_after_the_select() -> None:
+    assert _scoped_calls("Recv").count("app.Logger.Println") == 1
+
+
+def test_an_if_initialiser_does_not_type_the_import_after_the_if() -> None:
+    assert _scoped_calls("Idx").count("app.Builder.Contains") == 1
+
+
+def test_a_range_variable_does_not_type_the_package_variable_it_shadows() -> None:
+    assert sorted(_scoped_calls("Global")) == ["app.A.Run", "app.B.Run"]
+
+
+def test_one_name_in_two_select_cases_keeps_each_case_s_type() -> None:
+    assert sorted(_scoped_calls("Cases")) == ["app.A.Run", "app.B.Run"]
+
+
+def test_a_type_switch_alias_takes_its_case_s_type() -> None:
+    assert sorted(_scoped_calls("Switch")) == ["app.A.Run", "app.B.Run"]
+
+
+def _resolve_with_lib(lib: str, app: str) -> set[str]:
+    """`app/a.go` importing `example.com/m/lib` as `q`: a resolved import reads `lib.*`."""
+    nodes, edges = [], []
+    for path, code in (("lib/lib.go", lib), ("app/a.go", app)):
+        n, e = GoExtractor().parse(code, path)
+        nodes += n
+        edges += e
+    state: dict[str, object] = {"go_module": {"path": "example.com/m"}}
+    resolved, _ = ResolverEngine(nodes, edges, project_state=state).resolve()
+    return {e.target for e in resolved if e.source == "app.F"}
+
+
+_IMPORT_Q = 'package app\nimport q "example.com/m/lib"\n'
+
+
+def test_a_declaration_s_value_sees_the_name_it_shadows() -> None:
+    """`q := q.Get()`: the call is the import's; the name is declared after its value."""
+    lib = "package lib\ntype T struct{}\nfunc (t *T) Get() {}\nfunc Get() *T { return nil }\n"
+    app = _IMPORT_Q + "func F() {\n\tq := q.Get()\n\tq.Get()\n}\n"
+    assert _resolve_with_lib(lib, app) == {"lib.Get", "lib.T.Get"}
+
+
+def test_an_untyped_local_never_falls_back_to_the_import_it_shadows() -> None:
+    """`q := g()` of an unknown result is a local: `q.Run()` is not the package's Run."""
+    app = _IMPORT_Q + "func F(g func() int) {\n\tq := g()\n\tq.Run()\n}\n"
+    assert "lib.Run" not in _resolve_with_lib("package lib\nfunc Run() {}\n", app)
+
+
+def test_an_index_through_a_pointer_to_an_array_takes_its_element() -> None:
+    code = _T + (
+        "func F(parr *[3]*T) {\n\tx := (*parr)[1]\n\tx.M()\n"
+        "\tfor _, y := range parr {\n\t\ty.M()\n\t}\n}\n"
+    )
+    assert _resolve(code, "F") == {"app.T.M"}
+
+
+def test_a_local_of_no_nameable_type_never_falls_back_to_the_import() -> None:
+    """`q := w.(interface{ Run() })` has no named type, yet it hides the import `q`."""
+    app = _IMPORT_Q + "func F(w any) {\n\tq := w.(interface{ Run() })\n\tq.Run()\n}\n"
+    assert "lib.Run" not in _resolve_with_lib("package lib\nfunc Run() {}\n", app)
+
+
+def test_a_multi_type_case_alias_has_the_switch_value_s_type() -> None:
+    """In `case *A, *B:` and `default:` the alias is the switched value's type, as Go says."""
+    code = _T + (
+        "type Runner interface{ M() }\n"
+        "func F(w Runner) {\n"
+        "\tswitch v := w.(type) {\n\tcase *T, *K:\n\t\tv.M()\n\tdefault:\n\t\tv.M()\n\t}\n}\n"
+    )
+    assert _resolve(code, "F") == {"app.Runner.M"}
