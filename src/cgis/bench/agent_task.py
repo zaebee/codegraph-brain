@@ -40,7 +40,10 @@ _GO_FILE_END = re.compile(r"\.go$")
 #: `(*M[K, V])`. Only where a receiver can stand — at the start or after `.`, `/`, `:`,
 #: with a `.` after it — and only a pointer or a capitalised type, so a call argument
 #: (`get_user(id)`), a Next.js route group (`(app)`), a Python `a.(b).c` or a Go type
-#: assertion (`x.(int)`) is never one.
+#: assertion (`x.(int)`) is never one. Two edges of that trade: a value receiver on
+#: an unexported type (`(raftState).m`) does not fold, though its pointer and `func`
+#: spellings do; and a capitalised route group (`(Marketing)`) would, in a dotted
+#: answer only. Neither occurs in any gold.
 _GO_RECEIVER = re.compile(
     r"(?:(?<=[./:])|^)\((?:\*([A-Za-z_][\w.]*)|([A-Z][\w.]*))(?:\[[^\]]*\])?\)(?=\.)"
 )
