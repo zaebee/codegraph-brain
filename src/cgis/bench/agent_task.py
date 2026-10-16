@@ -32,10 +32,13 @@ ANSWER_FORMAT = (
 _CALL_PARENS = re.compile(r"\(.*\)$")
 _LINE_SUFFIX = re.compile(r":\d+(?:-\d+)?$")
 #: A Go method declaration as an agent may quote it: `func (r *Raft) setState`.
-_GO_FUNC_DECL = re.compile(r"^func\s*\(\s*(?:\w+\s+)?\*?\s*([\w.]+)(?:\[[^\]]*\])?\s*\)\s*(\w+).*$")
-#: A `.go` file extension before its `:`/`::`; at the end only in a path (see below).
-_GO_FILE_EXT = re.compile(r"\.go(?=::|:)")
-_GO_FILE_END = re.compile(r"\.go$")
+#: Possessive quantifiers: nothing is given back, so the match is linear (Sonar S8786;
+#: a backtracking form took 1.2 s on a 5000-char `func (` input).
+_GO_FUNC_DECL = re.compile(
+    r"^func\s*+\(\s*+(?:\w++\s++)?\*?\s*+([\w.]++)(?:\[[^\]]*+\])?\s*+\)\s*+(\w++).*+$"
+)
+#: A `.go` file extension before its `:`/`::` or at the end — applied to paths only.
+_GO_FILE_EXT = re.compile(r"\.go(?=::|:|$)")
 #: A Go receiver in a qualified name: `(*Raft)`, `(*raftState)`, `(Raft)`, `(*raft.Raft)`,
 #: `(*M[K, V])`. Only where a receiver can stand — at the start or after `.`, `/`, `:`,
 #: with a `.` after it — and only a pointer or a capitalised type, so a call argument
@@ -189,10 +192,9 @@ def normalize_symbol(name: str) -> str:
     """
     s = name.strip().strip("`").strip()
     s = _GO_FUNC_DECL.sub(r"\1.\2", s)
-    s = _GO_RECEIVER.sub(lambda m: m.group(1) or m.group(2), s)
-    s = _GO_FILE_EXT.sub("", s)
+    s = _GO_RECEIVER.sub(r"\1\2", s)  # one arm matches; the other is empty
     if "/" in s:  # `raft/api.go`, never the dotted module `cgis.languages.go`
-        s = _GO_FILE_END.sub("", s)
+        s = _GO_FILE_EXT.sub("", s)
     s = _CALL_PARENS.sub("", s)
     s = s.replace("::", ".").replace(":", ".").replace("/", ".").replace("\\", ".")
     for ext in (".py.", ".tsx.", ".ts.", ".jsx.", ".js."):
