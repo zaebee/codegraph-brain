@@ -36,10 +36,14 @@ _GO_FUNC_DECL = re.compile(r"^func\s*\(\s*\w*\s*\*?\s*([\w.]+)(?:\[[^\]]*\])?\s*
 #: A `.go` file extension before its `:`/`::`; at the end only in a path (see below).
 _GO_FILE_EXT = re.compile(r"\.go(?=::|:)")
 _GO_FILE_END = re.compile(r"\.go$")
-#: A Go receiver in a qualified name: `(*Raft)`, `(Raft)`, `(*raft.Raft)`, `(*M[K, V])`.
-#: Only where a receiver can stand — at the start or after `.`, `/`, `:`, and with a
-#: `.` after it — so a call argument (`get_user(id)`, `Class.method(self)`) is not one.
-_GO_RECEIVER = re.compile(r"(?:(?<=[./:])|^)\(\*?([A-Za-z_][\w.]*)(?:\[[^\]]*\])?\)(?=\.)")
+#: A Go receiver in a qualified name: `(*Raft)`, `(*raftState)`, `(Raft)`, `(*raft.Raft)`,
+#: `(*M[K, V])`. Only where a receiver can stand — at the start or after `.`, `/`, `:`,
+#: with a `.` after it — and only a pointer or a capitalised type, so a call argument
+#: (`get_user(id)`), a Next.js route group (`(app)`), a Python `a.(b).c` or a Go type
+#: assertion (`x.(int)`) is never one.
+_GO_RECEIVER = re.compile(
+    r"(?:(?<=[./:])|^)\((?:\*([A-Za-z_][\w.]*)|([A-Z][\w.]*))(?:\[[^\]]*\])?\)(?=\.)"
+)
 
 
 class GoldSymbol(BaseModel, frozen=True):
@@ -182,7 +186,7 @@ def normalize_symbol(name: str) -> str:
     """
     s = name.strip().strip("`").strip()
     s = _GO_FUNC_DECL.sub(r"\1.\2", s)
-    s = _GO_RECEIVER.sub(r"\1", s)
+    s = _GO_RECEIVER.sub(lambda m: m.group(1) or m.group(2), s)
     s = _GO_FILE_EXT.sub("", s)
     if "/" in s:  # `raft/api.go`, never the dotted module `cgis.languages.go`
         s = _GO_FILE_END.sub("", s)

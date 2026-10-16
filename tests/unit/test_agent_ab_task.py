@@ -311,3 +311,27 @@ def test_a_call_argument_is_never_read_as_a_go_receiver(raw: str, expected: str)
 )
 def test_go_declarations_with_results_and_dotted_names(raw: str, expected: str) -> None:
     assert normalize_symbol(raw) == expected
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("foo(x).bar", "foo(x).bar"),
+        ("pkg.(x)", "pkg"),  # a trailing call, as on main; never `pkg.x`
+        ("a.(b).c", "a.(b).c"),
+        ("x.(int).y", "x.(int).y"),
+        ("raft/(*Raft).setState", "raft.Raft.setState"),
+        ("raft/api.go", "raft.api"),
+        ("NewThing(Config).Run", "NewThing(Config).Run"),  # an argument, not a receiver
+        ("pkg.(*T)", "pkg"),  # no method after it: a trailing call, as on main
+    ],
+)
+def test_only_a_go_receiver_folds(raw: str, expected: str) -> None:
+    """`(*x)` or a capitalised `(T)` before a `.`; nothing else in parentheses."""
+    assert normalize_symbol(raw) == expected
+
+
+def test_a_route_group_matches_in_either_spelling() -> None:
+    """A dotted answer names the same Next.js page as the gold path (#653 delta review)."""
+    gold = "src/app/(app)/dashboard/page.tsx::DashboardPage"
+    assert symbol_matches("src.app.(app).dashboard.page.DashboardPage", gold)
