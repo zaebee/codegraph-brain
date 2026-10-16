@@ -144,3 +144,51 @@ The searches ran at 2026-10-16T14:09:57Z, after the pre-registration commit 1a10
   only if its required caller closure is identical under `GOOS=linux` and `GOOS=darwin` (both
   `GOARCH=amd64`), and gold is the linux closure. Any target that fails this is dropped before the
   draw, and the count is reported.
+
+## Amendment 2: function values end a chain (2026-10-16, before any gold is frozen)
+
+Committed before the gold is rebuilt, before the pilot, and before any cgis command has run on lima.
+
+**What happened under the rules above.** The draw ran once on lima, exactly as written. It produced
+0 iface tasks and 3 static tasks. F2 (gold size) left 627 targets; F3 (no function-value reference
+in the caller closure) left 46, none of them iface; the platform check left 9 static. The primary
+gate cannot be evaluated on that.
+
+**Why.** F3 came from kafka-go, a library. lima is a command-line application, and nearly every
+chain in it ends in a framework that holds a function value: cobra's `RunE: startAction`, gRPC
+handler tables, `http.HandlerFunc`. F3 therefore excluded every target in the most common kind of
+Go program. That is a fault in the rule, not in the repository, so the repository stays.
+
+**The amended rule.** It replaces the last sentence of *Function values* and the F3 eligibility
+line:
+- A function-value reference is not an edge, and the chain is not followed through it. The
+  referenced function is an entry point, like a function nothing calls. In the closure walk this
+  means `R` records are not traversed. Before the amendment the tooling traversed them, and F3
+  made that moot.
+- The function that takes the reference (`newStartCommand` for `RunE: startAction`) is
+  **allowed**: naming it is not penalised, and it is not required. Its own callers are not
+  allowed.
+- A target is no longer excluded for a function-value reference in its closure.
+- The question gains one clause, identical in both arms: a function that the code only passes as a
+  value, such as a cobra `RunE` handler, counts as an entry point.
+
+**Shortfall and surplus rules**, which the protocol lacked:
+- **More than 12 iface picks.** A fresh `random.Random(4).sample` over the picks, in draw order,
+  keeps 12.
+- **8 to 11 iface picks.** The run goes ahead with all of them, and the primary gate is evaluated on
+  that n.
+- **Fewer than 8 iface picks.** The primary gate is not evaluable on lima. The seeded walk then
+  continues to the next candidate under these amended rules, and lima's counts are reported.
+- **Fewer than 6 static picks.** All are taken. The static cell is descriptive only.
+
+**Readings the protocol left open, now fixed:**
+- "Drawn with the same seed" means a fresh `random.Random(4)`, not the generator left over from the
+  iface draw.
+- "Distinct method names and receiver types" means both must differ from every earlier pick in the
+  family.
+- Package initialisers, test helpers, third-party interfaces and goroutine launchers are ruled as in
+  `benchmarks/agent_ab/analysis/exp4/gold/README.md`.
+
+**Harness.** `scripts/agent_ab.py` builds each session's worktree with `git worktree add`, which
+restored `website/` and `hack/tools/` in both arms. A task now lists `delete_paths`. They are
+deleted before ingest and before the agent starts, and a missing path fails the session.
