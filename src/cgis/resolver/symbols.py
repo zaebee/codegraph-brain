@@ -87,13 +87,28 @@ def _declaring_class(
     )
 
 
+#: A hit on a field, not a method: it stops the search and resolves nothing.
+_SHADOWED = "\x00field"
+
+
 def _method_in_hierarchy(
     index: SymbolIndex, inheritance: Mapping[str, list[str]], class_fqn: str, method_name: str
 ) -> str | None:
-    """The method `method_name` on class_fqn or the nearest type above it that has one."""
-    return _find_above(
-        index, inheritance, class_fqn, lambda c: index.class_methods.get(c, {}).get(method_name)
-    )
+    """The method `method_name` on class_fqn or the nearest type above it that has one.
+
+    A Go field of that name at a depth shadows any method below it (`fields`); a
+    call through the field is to a function value, so nothing resolves.
+    """
+
+    def found(fqn: str) -> str | None:
+        method = index.class_methods.get(fqn, {}).get(method_name)
+        node = index.nodes.get(fqn)
+        if method is None and node is not None and method_name in node.metadata.get("fields", ()):
+            return _SHADOWED
+        return method
+
+    hit = _find_above(index, inheritance, class_fqn, found)
+    return None if hit == _SHADOWED else hit
 
 
 def _find_above(

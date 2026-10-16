@@ -175,3 +175,47 @@ def test_an_embedded_type_from_another_package_is_named_without_its_package() ->
         ),
     }
     assert _resolve(files, "app.Use") == {"other.Thing.Do"}
+
+
+def test_a_field_of_the_same_name_shadows_a_promoted_method() -> None:
+    """`s.Log()` calls the func field, not the embedded type's Log (one namespace per depth)."""
+    code = (
+        "package app\n"
+        "type Inner struct{}\n"
+        "func (i *Inner) Log() {}\n"
+        "type S struct {\n"
+        "\tInner\n"
+        "\tLog func()\n"
+        "}\n"
+        "func Use(s *S) { s.Log() }\n"
+    )
+    assert all(not t.startswith("app.") for t in _resolve({"app/a.go": code}, "app.Use"))
+
+
+def test_a_shallower_field_shadows_a_deeper_method() -> None:
+    code = (
+        "package app\n"
+        "type A struct{ M func() }\n"
+        "type C struct{}\n"
+        "func (c *C) M() {}\n"
+        "type B struct{ C }\n"
+        "type S struct {\n"
+        "\tA\n"
+        "\tB\n"
+        "}\n"
+        "func Use(s *S) { s.M() }\n"
+    )
+    assert all(not t.startswith("app.") for t in _resolve({"app/a.go": code}, "app.Use"))
+
+
+def test_an_embedding_cycle_ends() -> None:
+    code = (
+        "package app\n"
+        "type A struct{ *B }\n"
+        "type B struct{ *A }\n"
+        "func (b *B) M() {}\n"
+        "func Missing(a *A) { a.Missing() }\n"
+        "func Found(a *A) { a.M() }\n"
+    )
+    assert all(not t.startswith("app.") for t in _resolve({"app/a.go": code}, "app.Missing"))
+    assert _resolve({"app/a.go": code}, "app.Found") == {"app.B.M"}
