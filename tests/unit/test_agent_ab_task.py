@@ -261,6 +261,8 @@ def test_the_fence_language_is_case_insensitive() -> None:
         ("store.(*Stack[T]).Push", "store.Stack.Push"),
         ("raft.NewRaft()", "raft.NewRaft"),
         ("raft.NewRaft(arg)", "raft.NewRaft"),
+        ("func (Raft) setState", "Raft.setState"),  # an earlier regex gave `t.setState`
+        ("func ( r * Raft ) setState", "Raft.setState"),
     ],
 )
 def test_normalize_symbol_folds_go_spellings(raw: str, expected: str) -> None:
