@@ -7,8 +7,30 @@ Each function's calls in source order; "-" is a call that must stay unresolved
 import pytest
 
 from cgis.core.models import Edge, EdgeType
-from cgis.languages.go.extractor import GoExtractor
+from cgis.languages.go.extractor import GoExtractor, _label, _selector_parts
 from cgis.resolver.engine import ResolverEngine
+
+
+class _Fake:
+    """A syntax node with chosen fields, for shapes incomplete code can leave."""
+
+    def __init__(self, node_type: str, **fields: object) -> None:
+        self.type = node_type
+        self.text = b""
+        self.named_children: list[object] = []
+        self._fields = fields
+
+    def child_by_field_name(self, name: str) -> object:
+        return self._fields.get(name)
+
+
+class _Named(_Fake):
+    """A leaf with text."""
+
+    def __init__(self, name: str, node_type: str = "field_identifier") -> None:
+        super().__init__(node_type)
+        self.text = name.encode()
+
 
 APP = (
     "package app\n"
@@ -121,3 +143,12 @@ def test_every_link_of_a_chain_has_its_own_edge_id() -> None:
 def test_a_call_of_a_call_s_result_is_extracted() -> None:
     """`mk()().M()` and `x := mk()()`: a function value called in turn, no selector to type."""
     assert "CallOfCall" in _calls()
+
+
+def test_a_selector_missing_its_field_is_named_with_a_placeholder() -> None:
+    """Gemini on #662: incomplete code can leave a selector with no field; no empty segment."""
+    call = _Fake("call_expression", function=_Named("f", "identifier"))
+    selector = _Fake("selector_expression", operand=call)  # `f().` with no field yet
+    root, names = _selector_parts(_Fake("selector_expression", operand=selector, field=_Named("M")))
+    assert (root, names) == (call, ["?", "M"])
+    assert _label(selector) == "f():?"

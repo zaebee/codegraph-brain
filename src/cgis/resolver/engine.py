@@ -16,6 +16,7 @@ from cgis.core.resolution import ResolutionView
 from cgis.languages import rules_for
 from cgis.resolver.symbols import SymbolResolver, dispatch_edges
 
+RAW_CALL_PREFIX = "raw_call:"
 RAW_DEP_PREFIX = "raw_dep:"
 RAW_IMPORT_PREFIX = "raw_import:"
 
@@ -132,7 +133,7 @@ class ResolverEngine:
                 if import_edge is not None:
                     resolved_edges.append(import_edge)
                 # no _ensure_virtual_node: target exists on hit, edge dies on miss
-            elif not edge.target.startswith("raw_call:"):
+            elif not edge.target.startswith(RAW_CALL_PREFIX):
                 final_edge = self._reconciled_layout_edge(edge)
                 resolved_edges.append(final_edge)
                 self._ensure_virtual_node(final_edge, virtual_nodes)
@@ -183,14 +184,14 @@ class ResolverEngine:
         the edge with the resolved target and adjusted confidence:
         min(edge.confidence + 0.5, 1.0) on success, 0.8 on failure.
         """
-        raw_name = edge.target.removeprefix("raw_call:")
+        raw_name = edge.target.removeprefix(RAW_CALL_PREFIX)
         if raw_name.startswith(SELF_PREFIX):
             new_target = self._resolver.resolve_self_call(
                 edge.source, raw_name.removeprefix(SELF_PREFIX)
             )
         else:
             # `<raw name>@<row>:<col>`: the key a source's `site_types` uses (#643).
-            site = edge.id.partition("raw_call:")[2] or None
+            site = edge.id.partition(RAW_CALL_PREFIX)[2] or None
             new_target = self._resolver.resolve_global_call(
                 raw_name, edge.source, edge.file_path, site
             )

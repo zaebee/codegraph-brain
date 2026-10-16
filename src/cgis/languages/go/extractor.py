@@ -530,24 +530,36 @@ def _typed(ctx: _File, node: TSNode | None, bindings: Bindings) -> str | None:
     A type parameter or a type defined in the function names nothing; a local
     alias (`type A = B`) names its target (#662 review).
     """
-    named = base_type(node)
-    if named is not None and named.type == "type_identifier":
-        local = bindings.type_here(text(named))
-        if local is not None:
-            return local or None
+    local = _local_type(node, bindings)
+    if local is not None:
+        return local or None
     container = node
     while container is not None and container.type == "pointer_type":
         container = container.named_children[0] if container.named_children else None
     if container is not None and container.type in CONTAINERS:
-        # The element goes through the same local names: `xs []A` with `[A any]` is not
-        # a slice of the package's `A` (#662 review).
-        kind, field = CONTAINERS[container.type]
-        element = _element(ctx, container.child_by_field_name(field), bindings)
-        if kind == "map":
-            key = _element(ctx, container.child_by_field_name("key"), bindings)
-            return f"{ELEM}map:{element},{key}" if element or key else None
-        return f"{ELEM}{kind}:{element}" if element else None
+        return _container_marker(ctx, container, bindings)
     return type_fqn(node, ctx.scope, ctx.import_map)
+
+
+def _local_type(node: TSNode | None, bindings: Bindings) -> str | None:
+    """A bare type name declared in the function: its target, "" for none; None if not local."""
+    named = base_type(node)
+    if named is None or named.type != "type_identifier":
+        return None
+    return bindings.type_here(text(named))
+
+
+def _container_marker(ctx: _File, container: TSNode, bindings: Bindings) -> str | None:
+    """`go-elem:` for a container, its element and key read through the local type names.
+
+    `xs []A` with `[A any]` is not a slice of the package's `A` (#662 review).
+    """
+    kind, field = CONTAINERS[container.type]
+    element = _element(ctx, container.child_by_field_name(field), bindings)
+    if kind == "map":
+        key = _element(ctx, container.child_by_field_name("key"), bindings)
+        return f"{ELEM}map:{element},{key}" if element or key else None
+    return f"{ELEM}{kind}:{element}" if element else None
 
 
 def _element(ctx: _File, node: TSNode | None, bindings: Bindings) -> str:
@@ -939,7 +951,7 @@ def _selector_parts(function: TSNode) -> tuple[TSNode, list[str]]:
     names: list[str] = []
     node = function
     while node.type == "selector_expression":
-        names.insert(0, text(node.child_by_field_name("field")))
+        names.insert(0, _field_name(node))
         operand = node.child_by_field_name("operand")
         if operand is None:
             break
@@ -963,25 +975,42 @@ def _label(node: TSNode) -> str:
     chain = selector_chain(node)
     if chain:
         return chain[-1]
-    operand = node.child_by_field_name("operand")
-    if node.type == "call_expression":
-        function = node.child_by_field_name("function")
-        return f"{_label(function) if function is not None else '?'}()"
-    if node.type == "type_assertion_expression":
-        reference = type_reference(node.child_by_field_name("type"))
-        return f"({reference.rsplit('.', 1)[-1] or '?'})"
-    if node.type == "index_expression":
-        return f"{_label(operand) if operand is not None else '?'}[]"
-    if node.type == "parenthesized_expression" and node.named_children:
-        return f"({_label(node.named_children[0])})"
-    if node.type == "unary_expression" and operand is not None:
-        return f"{text(node.child_by_field_name('operator'))}{_label(operand)}"
-    if node.type == "selector_expression":  # a field of a call's result: `a.B().f`
-        # `:` keeps each link distinct and dot-free: `a.Get().Get()` is `Get():Get()`,
-        # so two links named alike never share an edge id (#662 review).
-        field = text(node.child_by_field_name("field"))
-        return f"{_label(operand)}:{field}" if operand is not None else field
-    return "?"
+    labeller = _LABELLERS.get(node.type)
+    return labeller(node) if labeller is not None else "?"
+
+
+def _field_name(selector: TSNode) -> str:
+    """A selector's field; "?" in incomplete code, so a name never has an empty segment."""
+    return text(selector.child_by_field_name("field")) or "?"
+
+
+def _labelled(node: TSNode | None) -> str:
+    """`_label` of an optional child; "?" when the syntax lacks it."""
+    return _label(node) if node is not None else "?"
+
+
+def _assertion_label(node: TSNode) -> str:
+    reference = type_reference(node.child_by_field_name("type"))
+    return f"({reference.rsplit('.', 1)[-1] or '?'})"
+
+
+def _selector_label(node: TSNode) -> str:
+    # `:` keeps each link distinct and dot-free: `a.Get().Get()` is `Get():Get()`,
+    # so two links named alike never share an edge id (#662 review).
+    return f"{_labelled(node.child_by_field_name('operand'))}:{_field_name(node)}"
+
+
+_LABELLERS: dict[str, Callable[[TSNode], str]] = {
+    "call_expression": lambda n: f"{_labelled(n.child_by_field_name('function'))}()",
+    "type_assertion_expression": _assertion_label,
+    "index_expression": lambda n: f"{_labelled(n.child_by_field_name('operand'))}[]",
+    "parenthesized_expression": lambda n: f"({_labelled(next(iter(n.named_children), None))})",
+    "unary_expression": lambda n: (
+        f"{text(n.child_by_field_name('operator'))}{_labelled(n.child_by_field_name('operand'))}"
+    ),
+    "selector_expression": _selector_label,
+}
+"""Labels of the values a chain can start from, by node type."""
 
 
 def _site_key(edge: Edge) -> str:
