@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.32.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.31.0...codegraph-brain-v0.32.0) (2026-10-16)
+
+
+### Features
+
+* **go:** calls on a call's result, an assertion or an index get an edge ([#662](https://github.com/zaebee/codegraph-brain/issues/662)) ([79b1e0a](https://github.com/zaebee/codegraph-brain/commit/79b1e0a8135a0b41f292bd434148abf6d0f7a1a3))
+* **go:** read Go files for one build, linux/amd64, and name the rest ([#667](https://github.com/zaebee/codegraph-brain/issues/667)) ([3711351](https://github.com/zaebee/codegraph-brain/commit/37113516c4932a5dc4cc30bb139bcac041de5480))
+* **go:** type channel, range, index, assertion and package-variable bindings, with block scope ([#660](https://github.com/zaebee/codegraph-brain/issues/660)) ([604d76d](https://github.com/zaebee/codegraph-brain/commit/604d76d14a4cfe9d60f4cead8dc8b80b7712d317))
+* **resolver:** typed receivers reach promoted methods and follow field hops ([#656](https://github.com/zaebee/codegraph-brain/issues/656)) ([b957aba](https://github.com/zaebee/codegraph-brain/commit/b957aba3c16daaa62bd48f50fbced39ece6e6c31))
+
+
+### Bug Fixes
+
+* **go:** CALLS edges carry their file and line ([#663](https://github.com/zaebee/codegraph-brain/issues/663)) ([#665](https://github.com/zaebee/codegraph-brain/issues/665)) ([8739aa0](https://github.com/zaebee/codegraph-brain/commit/8739aa00e17def9e14c54c3a8c3240f085b3e568))
+
+
+### Documentation
+
+* auto-sync architecture graph and MCP reference ([#664](https://github.com/zaebee/codegraph-brain/issues/664)) ([67e01f5](https://github.com/zaebee/codegraph-brain/commit/67e01f581c7f66222a021d3600ed4e084343d070))
+
 ## [0.31.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.30.0...codegraph-brain-v0.31.0) (2026-10-16)
 
 
