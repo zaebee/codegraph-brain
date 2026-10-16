@@ -189,6 +189,9 @@ notes: 'exp4 cell iface (ssh.MultiAlgorithmSigner), drawn by benchmarks/agent_ab
   interface dispatch by VTA only; a function-value reference is not walked: the referenced function is an entry
   point and the function taking the value is allowed, not required (amendment 2).
 
+  Pilot corrections applied (pilot-corrections-crypto.json): function values the code calls at once are walked as
+  calls.
+
   Allowed referencers (0): none
 
   Platform: the required closure is identical under GOOS=linux and GOOS=darwin (GOARCH=amd64); gold is linux.

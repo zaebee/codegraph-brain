@@ -1,6 +1,6 @@
 """Gold and task YAMLs for the drawn exp4 targets.
 
-Usage: python3 -I build_tasks.py <linux.tsv> <adjudications.json> <helpers.json> <picks.json> <spec.json> <tasks_dir> <gold_record.json>
+Usage: python3 -I build_tasks.py <linux.tsv> <adjudications.json> <helpers.json> <picks.json> <spec.json> <tasks_dir> <gold_record.json> [<pilot-corrections.json>]
 
 spec.json: {"repo", "repo_tag", "sha", "src_root", "modpath", "nested_modules_deleted": [...]}.
 Writes <tasks_dir>/go-exp4-<repo_tag>-<cell>-<slug>.yaml and <gold_record.json>
@@ -28,7 +28,7 @@ from pathlib import Path
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # run with -I: only this directory
-from goldmodel import analyse, load  # noqa: E402
+from goldmodel import NOT_WALKED, analyse, closure, load  # noqa: E402
 
 QUESTION = (
     "In this repository, the {kind} `{name}` in `{file}` is about to change. Which functions and "
@@ -49,8 +49,9 @@ def split(n: str) -> tuple[str, str]:
 
 def main() -> None:
     dump, adj, helpers_p, picks_p, spec_p, tasks_dir, record_p = map(Path, sys.argv[1:8])
+    corr = Path(sys.argv[8]) if len(sys.argv) > 8 else None
     spec = json.loads(spec_p.read_text())
-    g = load(dump, adj, require_all=True)
+    g = load(dump, adj, require_all=True, corrections=corr)
     helper_pkgs = tuple(json.loads(helpers_p.read_text())["helper_packages"])
 
     def is_helper(n: str) -> bool:
@@ -95,13 +96,17 @@ def main() -> None:
         slug = rest.replace(".", "-").lower()
         tid = f"go-exp4-{spec['repo_tag']}-{cell}-{slug}"
         walk = {t} | c.members
+        # every test helper on a chain is allowed, not only the first one met (pre-registration:
+        # "Allowed: test helpers and the target itself"); the gold walk stops at the first
+        through_helpers, _ = closure(g, t, lambda _n: False, drop_kinds=NOT_WALKED)
+        helpers_all = sorted(n for n in through_helpers if is_helper(n) and not g.is_synth(n))
         cha_edges = sorted({(e.caller, b, e.site, e.iface) for b, e in c.used if e.cha_only})
         rejected_here = sorted({(e.caller, b, e.site, why) for e, b, why in g.rejected if b in walk and e.caller in walk})
         gold = {
             "symbols": [spellings(n) for n in c.required],
             "files": c.files,
-            "allowed_symbols": sorted({spellings(t)["id"]} | {spellings(n)["id"] for n in c.helpers + c.referencers}),
-            "allowed_files": sorted({g.file(n) for n in c.helpers + c.referencers} | ({tf} - set(c.files))
+            "allowed_symbols": sorted({spellings(t)["id"]} | {spellings(n)["id"] for n in helpers_all + c.referencers}),
+            "allowed_files": sorted({g.file(n) for n in helpers_all + c.referencers} | ({tf} - set(c.files))
                                     - set(c.files)),
         }
         ev = []
@@ -119,6 +124,8 @@ def main() -> None:
             f"({adj.name}); stdlib/third-party/anonymous interface dispatch by VTA only; a "
             "function-value reference is not walked: the referenced function is an entry point and the "
             "function taking the value is allowed, not required (amendment 2).",
+            *([f"Pilot corrections applied ({corr.name}): function values the code calls at once are walked as calls."]
+              if corr else []),
             f"Allowed referencers ({len(c.referencers)}): {', '.join(short(x) for x in c.referencers) or 'none'}",
             "Platform: the required closure is identical under GOOS=linux and GOOS=darwin (GOARCH=amd64); gold is linux.",
             f"Nested modules deleted from the worktree before both arms: {', '.join(spec['nested_modules_deleted'])}.",

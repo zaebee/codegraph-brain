@@ -249,7 +249,7 @@
   "family": "ssh.Channel",
   "target": "ssh.channel.Stderr",
   "target_file": "ssh/channel.go",
-  "n_required": 11,
+  "n_required": 17,
   "n_files": 4,
   "required": [
    "ssh.Client.Dial",
@@ -257,7 +257,13 @@
    "ssh.Client.DialTCP",
    "ssh.Client.dial",
    "ssh.Client.dialStreamLocal",
+   "ssh.Session.CombinedOutput",
+   "ssh.Session.Output",
+   "ssh.Session.Run",
+   "ssh.Session.Shell",
+   "ssh.Session.Start",
    "ssh.Session.StderrPipe",
+   "ssh.Session.start",
    "ssh.Session.stderr",
    "ssh.tcpListener.Accept",
    "ssh.unixListener.Accept",
@@ -270,16 +276,20 @@
    "ssh/streamlocal.go",
    "ssh/tcpip.go"
   ],
-  "referencers": [
-   "ssh.Session.start"
-  ],
+  "referencers": [],
   "dyn_only": [
    "ssh.Client.Dial",
    "ssh.Client.DialContext",
    "ssh.Client.DialTCP",
    "ssh.Client.dial",
    "ssh.Client.dialStreamLocal",
+   "ssh.Session.CombinedOutput",
+   "ssh.Session.Output",
+   "ssh.Session.Run",
+   "ssh.Session.Shell",
+   "ssh.Session.Start",
    "ssh.Session.StderrPipe",
+   "ssh.Session.start",
    "ssh.Session.stderr",
    "ssh.tcpListener.Accept",
    "ssh.unixListener.Accept",
@@ -540,27 +550,34 @@
   "family": "ssh.NewChannel",
   "target": "ssh.channel.ChannelType",
   "target_file": "ssh/channel.go",
-  "n_required": 5,
-  "n_files": 2,
+  "n_required": 10,
+  "n_files": 3,
   "required": [
+   "ssh.Client.Listen",
+   "ssh.Client.ListenTCP",
+   "ssh.Client.ListenUnix",
+   "ssh.Client.autoPortListenWorkaround",
    "ssh.Client.handleChannelOpens",
    "ssh.Client.handleForwards",
+   "ssh.Client.listenTCPInternal",
    "ssh.Dial",
    "ssh.NewClient",
    "ssh.forwardList.handleChannels"
   ],
   "files": [
    "ssh/client.go",
+   "ssh/streamlocal.go",
    "ssh/tcpip.go"
   ],
-  "referencers": [
+  "referencers": [],
+  "dyn_only": [
+   "ssh.Client.Listen",
    "ssh.Client.ListenTCP",
    "ssh.Client.ListenUnix",
-   "ssh.Client.listenTCPInternal"
-  ],
-  "dyn_only": [
+   "ssh.Client.autoPortListenWorkaround",
    "ssh.Client.handleChannelOpens",
    "ssh.Client.handleForwards",
+   "ssh.Client.listenTCPInternal",
    "ssh.Dial",
    "ssh.NewClient",
    "ssh.forwardList.handleChannels"

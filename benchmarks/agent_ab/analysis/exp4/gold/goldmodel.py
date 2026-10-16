@@ -30,7 +30,7 @@ class In:
     """One incoming edge of the gold graph: `caller` reaches the callee at `site`."""
 
     caller: str
-    kind: str  # static | go | defer | invoke | launch | ref
+    kind: str  # static | go | defer | invoke | launch | ref | invoked (a ref the pilot showed is called)
     site: str
     iface: str = ""  # invoke: interface type
     scope: str = ""  # invoke: inmod | std | ext | anon
@@ -94,7 +94,8 @@ def adjudicate(rules: list[dict], caller: str, callee: str, iface: str, site: st
     return None
 
 
-def load(dump: Path, adjudications: Path | None = None, require_all: bool = False) -> Graph:
+def load(dump: Path, adjudications: Path | None = None, require_all: bool = False,
+         corrections: Path | None = None) -> Graph:
     """Read a dump into the gold graph, applying the CHA-only verdicts in `adjudications`.
 
     With `require_all`, every CHA-only edge must be matched by a rule (the linux gold build);
@@ -102,6 +103,10 @@ def load(dump: Path, adjudications: Path | None = None, require_all: bool = Fals
     whose darwin-only implementations have no rules: accepting them can only drop more targets).
     """
     rules = json.loads(adjudications.read_text())["rules"] if adjudications else []
+    # pilot corrections: R records the code invokes synchronously in the taker, walked as calls
+    invoked = {(c["taker"], c["callee"], c["site"]) for c in
+               (json.loads(corrections.read_text())["invoked"] if corrections else [])}
+    seen_invoked: set[tuple[str, str, str]] = set()
     g = Graph(goos="")
     static: set[tuple[str, str, str, str]] = set()
     inv: dict[tuple[str, str, str, str, str], set[str]] = defaultdict(set)
@@ -120,9 +125,14 @@ def load(dump: Path, adjudications: Path | None = None, require_all: bool = Fals
             _, graph, a, b, iface, scope, site = p
             inv[(a, b, iface, scope, site)].add(graph)
         elif p[0] == "R":
-            g.into[p[2]].append(In(p[1], "ref", p[3], iface=p[4]))
+            kind = "invoked" if (p[1], p[2], p[3]) in invoked else "ref"
+            if kind == "invoked":
+                seen_invoked.add((p[1], p[2], p[3]))
+            g.into[p[2]].append(In(p[1], kind, p[3], iface=p[4]))
         elif p[0] == "A":
             g.into[p[2]].append(In(p[1], "launch", p[3], iface=p[4]))
+    if invoked - seen_invoked:
+        raise ValueError(f"pilot corrections match no R record: {sorted(invoked - seen_invoked)}")
     for a, b, k, site in sorted(static):
         g.into[b].append(In(a, k, site))
     for (a, b, iface, scope, site), graphs in sorted(inv.items()):

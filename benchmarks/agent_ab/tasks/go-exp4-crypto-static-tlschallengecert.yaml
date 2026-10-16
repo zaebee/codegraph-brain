@@ -93,6 +93,10 @@ gold:
   - acme/autocert/renewal.go
   allowed_symbols:
   - Manager.TLSConfig
+  - acmeprobe.main
+  - prober.fulfill
+  - prober.runOrder
+  - prober.runPreauthz
   - prober.runTLSALPN01
   - tlsChallengeCert
   allowed_files:
@@ -107,6 +111,9 @@ notes: 'exp4 cell static, drawn by benchmarks/agent_ab/analysis/exp4/gold/draw.p
   interface dispatch by CHA with every CHA-only edge adjudicated (adjudications-crypto.json); stdlib/third-party/anonymous
   interface dispatch by VTA only; a function-value reference is not walked: the referenced function is an entry
   point and the function taking the value is allowed, not required (amendment 2).
+
+  Pilot corrections applied (pilot-corrections-crypto.json): function values the code calls at once are walked as
+  calls.
 
   Allowed referencers (1): autocert.Manager.TLSConfig
 

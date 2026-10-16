@@ -21,6 +21,30 @@ question: 'In this repository, the method `channel.ChannelType` in `ssh/channel.
   '
 gold:
   symbols:
+  - id: Client.Listen
+    any_of:
+    - Client.Listen
+    - ssh.Client.Listen
+    - ssh.Client.Listen
+    - ssh/tcpip.go:Client.Listen
+  - id: Client.ListenTCP
+    any_of:
+    - Client.ListenTCP
+    - ssh.Client.ListenTCP
+    - ssh.Client.ListenTCP
+    - ssh/tcpip.go:Client.ListenTCP
+  - id: Client.ListenUnix
+    any_of:
+    - Client.ListenUnix
+    - ssh.Client.ListenUnix
+    - ssh.Client.ListenUnix
+    - ssh/streamlocal.go:Client.ListenUnix
+  - id: Client.autoPortListenWorkaround
+    any_of:
+    - Client.autoPortListenWorkaround
+    - ssh.Client.autoPortListenWorkaround
+    - ssh.Client.autoPortListenWorkaround
+    - ssh/tcpip.go:Client.autoPortListenWorkaround
   - id: Client.handleChannelOpens
     any_of:
     - Client.handleChannelOpens
@@ -33,6 +57,12 @@ gold:
     - ssh.Client.handleForwards
     - ssh.Client.handleForwards
     - ssh/tcpip.go:Client.handleForwards
+  - id: Client.listenTCPInternal
+    any_of:
+    - Client.listenTCPInternal
+    - ssh.Client.listenTCPInternal
+    - ssh.Client.listenTCPInternal
+    - ssh/tcpip.go:Client.listenTCPInternal
   - id: Dial
     any_of:
     - Dial
@@ -52,16 +82,12 @@ gold:
     - ssh/tcpip.go:forwardList.handleChannels
   files:
   - ssh/client.go
+  - ssh/streamlocal.go
   - ssh/tcpip.go
   allowed_symbols:
-  - Client.ListenTCP
-  - Client.ListenUnix
-  - Client.listenTCPInternal
   - channel.ChannelType
   allowed_files:
   - ssh/channel.go
-  - ssh/streamlocal.go
-  - ssh/tcpip.go
 notes: 'exp4 cell iface (ssh.NewChannel), drawn by benchmarks/agent_ab/analysis/exp4/gold/draw.py (random.Random(4));
   no cgis input.
 
@@ -73,7 +99,10 @@ notes: 'exp4 cell iface (ssh.NewChannel), drawn by benchmarks/agent_ab/analysis/
   interface dispatch by VTA only; a function-value reference is not walked: the referenced function is an entry
   point and the function taking the value is allowed, not required (amendment 2).
 
-  Allowed referencers (3): ssh.Client.ListenTCP, ssh.Client.ListenUnix, ssh.Client.listenTCPInternal
+  Pilot corrections applied (pilot-corrections-crypto.json): function values the code calls at once are walked as
+  calls.
+
+  Allowed referencers (0): none
 
   Platform: the required closure is identical under GOOS=linux and GOOS=darwin (GOARCH=amd64); gold is linux.
 
@@ -83,8 +112,9 @@ notes: 'exp4 cell iface (ssh.NewChannel), drawn by benchmarks/agent_ab/analysis/
   Target''s direct callers: ssh.Client.handleChannelOpens@ssh/client.go:180 (invoke); ssh.Client.handleChannelOpens@ssh/client.go:186
   (invoke); ssh.forwardList.handleChannels@ssh/tcpip.go:235 (invoke)
 
-  Reached only through interface dispatch (5): ssh.Client.handleChannelOpens, ssh.Client.handleForwards, ssh.Dial,
-  ssh.NewClient, ssh.forwardList.handleChannels
+  Reached only through interface dispatch (10): ssh.Client.Listen, ssh.Client.ListenTCP, ssh.Client.ListenUnix,
+  ssh.Client.autoPortListenWorkaround, ssh.Client.handleChannelOpens, ssh.Client.handleForwards, ssh.Client.listenTCPInternal,
+  ssh.Dial, ssh.NewClient, ssh.forwardList.handleChannels
 
   CHA-only edge (accepted, *channel is the only NewChannel the module creates (ssh/mux.go:333 m.incomingChannels
   <- c); NewClientConn returns that Go channel (ssh/client.go:88) and the caller or Dial hands it to NewClient (ssh/client.go:53),
@@ -103,9 +133,21 @@ notes: 'exp4 cell iface (ssh.NewChannel), drawn by benchmarks/agent_ab/analysis/
 
   Evidence (callee <- caller@site):
 
+  ssh.Client.Listen [ssh/tcpip.go:29] <- (entry point)
+
+  ssh.Client.ListenTCP [ssh/tcpip.go:116] <- ssh.Client.autoPortListenWorkaround@ssh/tcpip.go:87 (static)
+
+  ssh.Client.ListenUnix [ssh/streamlocal.go:34] <- ssh.Client.Listen@ssh/tcpip.go:42 (static)
+
+  ssh.Client.autoPortListenWorkaround [ssh/tcpip.go:80] <- ssh.Client.ListenTCP@ssh/tcpip.go:119 (static)
+
   ssh.Client.handleChannelOpens [ssh/client.go:177] <- ssh.NewClient@ssh/client.go:60 (go)
 
-  ssh.Client.handleForwards [ssh/tcpip.go:105] <- (entry point)
+  ssh.Client.handleForwards [ssh/tcpip.go:105] <- ssh.Client.ListenTCP@ssh/tcpip.go:117 (invoked); ssh.Client.ListenUnix@ssh/streamlocal.go:35
+  (invoked); ssh.Client.listenTCPInternal@ssh/tcpip.go:126 (invoked)
+
+  ssh.Client.listenTCPInternal [ssh/tcpip.go:125] <- ssh.Client.Listen@ssh/tcpip.go:40 (static); ssh.Client.ListenTCP@ssh/tcpip.go:122
+  (static)
 
   ssh.Dial [ssh/client.go:203] <- (entry point)
 

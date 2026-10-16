@@ -251,3 +251,41 @@ draw is rerun with the same seed, and the first draw's picks are kept in the rec
   applications." A pass adds Go to the impact-question languages with that qualifier. Replication
   on an application is a separate experiment.
 - The gate, the draw and the tasks are unchanged.
+
+## Pilot and gold freeze (2026-10-16)
+
+- **Pilot.** 36 sessions, one per task per arm. Cost $2.24. Every transcript shows
+  `apiKeySource: ANTHROPIC_API_KEY`, none failed, and every answer parsed. The results are in
+  `benchmarks/agent_ab/results-exp4-pilot.jsonl`. They are not scored.
+- **Adjudication.** Every symbol a pilot named that gold lacked, and every gold symbol both pilots
+  missed, was read against the code.
+  - **Gold was wrong in 2 tasks, the same way.** A function value the code calls at once in the
+    function that takes it was treated as a reference (amendment 2) and not walked:
+    - `Session.start` calls `(*Session).stdin/stdout/stderr` from a local slice
+      (ssh/session.go:376-378);
+    - `ListenTCP`, `ListenUnix` and `listenTCPInternal` call
+      `c.handleForwardsOnce.Do(c.handleForwards)`, and `sync.Once.Do` calls its argument before
+      it returns.
+
+    These 6 sites are walked as calls (`gold/pilot-corrections-crypto.json`). As a result,
+    `channel-channeltype` gains 5 required symbols (through `Client.Listen`) and `channel-stderr`
+    gains 6 (through `Session.Start`, `Run`, `Output`, `Shell` and `CombinedOutput`).
+  - **Allowed helpers.** Gold's walk stopped at the first test helper, so `acmeprobe`'s callers of
+    that helper were unexpected. Every helper on a chain is now allowed, as the pre-registration's
+    "Allowed: test helpers" says. This affects `static-tlschallengecert`.
+  - **Not gold errors:**
+    - `tlsChallengeCert`'s `Manager.cert`, `startRenew` and `domainRenewal.start` were missed by
+      both arms, but they are right by the launcher rule (`time.AfterFunc(dr.renew)`).
+    - The `mux.loop` and auth chain named for `cbcCipher.readCipherPacket` does not reach it,
+      because `handshakeTransport.readPacket` only reads a Go channel (ssh/handshake.go:228).
+    - Interface-method names such as `ssh.Channel.Stderr` are declarations, not callers.
+    - The references held by `Manager.TLSConfig` (a tls hook) and `knownhosts.New` (a callback)
+      correctly end their chains.
+- **The draw is unchanged.** Eligibility is not recomputed after the pilot.
+- **Gold is frozen** at the commit that adds this entry.
+- **Reading caution, recorded before the main run.** In the pilot, most sessions cost
+  $0.04–0.17, and the control arm usually reached full recall with a few greps. The recall
+  condition is therefore likely to hold, and the gate will turn on the cost ratio of short
+  sessions. Fixed costs (system prompt, tool descriptions, the forced first cgis call) weigh
+  heavily in those. A fail means "no saving on easy questions in this library", not "the graph is
+  useless for Go". A pass carries the scope already recorded. The gate is unchanged.
