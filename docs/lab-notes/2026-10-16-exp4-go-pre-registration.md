@@ -229,3 +229,11 @@ allowed. That gold would misstate "production code only".
 What was seen is which targets were drawn. No cgis answer and no session was seen, so the change
 cannot favour either arm. The reason is a misclassification that is visible without the draw. The
 draw is rerun with the same seed, and the first draw's picks are kept in the record.
+
+## Before the pilot
+
+- **#661 collisions on the crypto graph: 0.** The graph is a full `cgis ingest` of the working
+  copy, with nested modules deleted. Of 20,754 CALLS edges, 1,609 are unresolved (confidence 0.8).
+  1,605 of those point to UNKNOWN placeholders and 4 to STDLIB ones. None has a target equal to an
+  INTERNAL function or method id.
+- **`benchmarks/agent_ab/analysis/exp4_gates.py`** is committed with this entry, before any session.
