@@ -159,12 +159,11 @@ def _types(ctx: _File, declaration: TSNode, nodes: list[Node], edges: list[Edge]
         name = text(spec.child_by_field_name("name"))
         fqn = f"{ctx.scope}.{name}"
         body = spec.child_by_field_name("type")
-        fields = _field_types(ctx, body)
         is_interface = body is not None and body.type == "interface_type"
         # An interface is satisfied, not inherited: the dispatch rule needs to know which
-        # types are interfaces (#609). A struct carries its field types instead.
+        # types are interfaces (#609). A struct carries its fields instead.
         metadata: dict[str, object] | None = (
-            {"interface": True} if is_interface else {"self_types": fields} if fields else None
+            {"interface": True} if is_interface else _struct_metadata(ctx, body)
         )
         nodes.append(_node(ctx, fqn, name, NodeType.CLASS, spec, metadata))
         edges.append(_edge(ctx.node_id, fqn, EdgeType.CONTAINS))
@@ -178,14 +177,48 @@ def _types(ctx: _File, declaration: TSNode, nodes: list[Node], edges: list[Edge]
                     _declare(ctx, fqn, elem, nodes, edges)
 
 
+def _struct_metadata(ctx: _File, body: TSNode | None) -> dict[str, object] | None:
+    """A struct's field types, and every field's name: a field shadows a promoted method.
+
+    Go keeps fields and methods in one namespace per depth, so `Log func()` beside
+    an embedded type with a `Log` method is what `s.Log()` calls (#656 review).
+    """
+    types = _field_types(ctx, body)
+    names = sorted(_field_names(body))
+    metadata: dict[str, object] = {"self_types": types} if types else {}
+    if names:
+        metadata["fields"] = names
+    return metadata or None
+
+
+def _field_names(body: TSNode | None) -> set[str]:
+    """Every field a struct declares, an embedded one by its type's name."""
+    fields = _child(body, "field_declaration_list") if body and body.type == "struct_type" else None
+    names: set[str] = set()
+    for field in fields.children if fields else []:
+        if field.type == "field_declaration":
+            reference = type_reference(field.child_by_field_name("type"))
+            names.update(declared_names(field) or [reference.rsplit(".", 1)[-1]])
+    names.discard("")
+    return names
+
+
 def _field_types(ctx: _File, body: TSNode | None) -> dict[str, str]:
-    """A struct's named fields of a named type: its `self_types`, as Python's (#608)."""
+    """A struct's fields of a named type: its `self_types`, as Python's (#608).
+
+    An embedded field is named after its type (`*pkg.Metric` is `Metric`), so
+    `s.Metric.Write()` reads it like any other field (#643 A4).
+    """
     fields = _child(body, "field_declaration_list") if body and body.type == "struct_type" else None
     types: dict[str, str] = {}
     for field in fields.children if fields else []:
-        fqn = type_fqn(field.child_by_field_name("type"), ctx.scope, ctx.import_map)
-        if field.type == "field_declaration" and fqn:
-            types.update(dict.fromkeys(declared_names(field), fqn))
+        type_node = field.child_by_field_name("type")
+        fqn = type_fqn(type_node, ctx.scope, ctx.import_map)
+        if field.type != "field_declaration" or not fqn:
+            continue
+        reference = type_reference(type_node)
+        names = declared_names(field) or [reference.rsplit(".", 1)[-1]]
+        types.update(dict.fromkeys(names, fqn))
     return types
 
 

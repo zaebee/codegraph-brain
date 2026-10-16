@@ -1,7 +1,9 @@
 """Symbol resolution strategies over a SymbolIndex."""
 
+import itertools
 import os
-from collections.abc import Iterable, Mapping
+from collections import Counter, deque
+from collections.abc import Callable, Iterable, Mapping
 
 from cgis.core.models import RAW_CLASS_PREFIX, Edge, EdgeType, Node, NodeNamespace
 from cgis.core.resolution import AFTER_IMPORT_MAP
@@ -70,8 +72,12 @@ def _file_of(index: SymbolIndex, fqn: str) -> str | None:
     return os.path.normpath(node.file_path) if node is not None else None
 
 
+#: A hit on a field, not a method: it stops the search and resolves nothing.
+_SHADOWED = "\x00field"
+
+
 def _declaring_class(
-    index: SymbolIndex, owner_fqn: str, attr: str, inheritance: dict[str, list[str]]
+    index: SymbolIndex, owner_fqn: str, attr: str, inheritance: Mapping[str, list[str]]
 ) -> str | None:
     """The class in owner_fqn's hierarchy that declares `self.<attr>`, if any.
 
@@ -82,21 +88,171 @@ def _declaring_class(
     *method* on the receiver; this walks the same tree to find the *attribute*
     on the owner.
     """
+
+    def found(fqn: str) -> str | None:
+        if attr in index.self_types.get(fqn, {}):
+            return fqn
+        node = index.nodes.get(fqn)
+        # A Go field of no named type (`X struct{...}`) still hides a deeper `X`.
+        return _SHADOWED if node is not None and attr in node.metadata.get("fields", ()) else None
+
+    hit = _find_above(index, inheritance, owner_fqn, found)
+    return None if hit == _SHADOWED else hit
+
+
+def _method_in_hierarchy(
+    index: SymbolIndex, inheritance: Mapping[str, list[str]], class_fqn: str, method_name: str
+) -> str | None:
+    """The method `method_name` on class_fqn or the nearest type above it that has one.
+
+    A Go field of that name at a depth shadows any method below it (`fields`); a
+    call through the field is to a function value, so nothing resolves.
+    """
+
+    def found(fqn: str) -> str | None:
+        method = index.class_methods.get(fqn, {}).get(method_name)
+        node = index.nodes.get(fqn)
+        if method is None and node is not None and method_name in node.metadata.get("fields", ()):
+            return _SHADOWED
+        return method
+
+    hit = _find_above(index, inheritance, class_fqn, found)
+    return None if hit == _SHADOWED else hit
+
+
+def _find_above(
+    index: SymbolIndex,
+    inheritance: Mapping[str, list[str]],
+    start: str,
+    found: Callable[[str], str | None],
+) -> str | None:
+    """The first hit of `found` on `start` or a type above it, in the start's language's order."""
+    node = index.nodes.get(start)
+    rules = rules_for(node.file_path) if node is not None else None
+    if rules is not None and rules.shallowest_member:
+        return _shallowest(inheritance, start, found)
+    mro = _c3(start, inheritance)
+    if mro is not None:
+        return next((hit for hit in map(found, mro) if hit), None)
+    # No consistent linearisation (a cycle, or bases Python would reject): the
+    # depth-first order Python's MRO matches outside a diamond.
     seen: set[str] = set()
-    stack = [owner_fqn]
+    stack = [start]
     while stack:
         current = stack.pop()
         if current in seen:
             continue
         seen.add(current)
-        if attr in index.self_types.get(current, {}):
-            return current
+        hit = found(current)
+        if hit:
+            return hit
         # Reversed because the stack is LIFO: extending in source order would pop
         # the *rightmost* base first, so `class C(Left, Right)` would answer with
-        # Right's declaration where Python's MRO uses Left's. The sibling
-        # _resolve_method_on_class_hierarchy recurses in source order and is
-        # already correct; this keeps the two consistent.
+        # Right's member where Python's MRO uses Left's.
         stack.extend(reversed(inheritance.get(current, [])))
+    return None
+
+
+def _c3(start: str, inheritance: Mapping[str, list[str]]) -> list[str] | None:
+    """Python's method resolution order for `start` (C3), or None when it has none (#658).
+
+    Iterative, so a deep hierarchy cannot exhaust the stack: each class is
+    linearised once its bases are.
+    """
+    memo: dict[str, list[str]] = {}
+    on_path: set[str] = set()
+    stack = [(start, False)]
+    while stack:
+        current, expanded = stack.pop()
+        if current in memo:
+            continue
+        bases = inheritance.get(current, [])
+        if not expanded:
+            if current in on_path:
+                return None  # an inheritance cycle
+            on_path.add(current)
+            stack.append((current, True))
+            stack.extend((b, False) for b in reversed(bases) if b not in memo)
+            continue
+        on_path.discard(current)
+        merged = _merge([list(memo[b]) for b in bases] + [list(bases)])
+        if merged is None:
+            return None
+        memo[current] = [current, *merged]
+    return memo[start]
+
+
+def _merge(sequences: list[list[str]]) -> list[str] | None:
+    """C3's merge: the next head no other sequence holds in its tail; None when stuck.
+
+    A count of tail occurrences answers "in any tail" in O(1), so a long chain
+    costs its length, not its length cubed (#656 review).
+    """
+    queues = [deque(s) for s in sequences if s]
+    in_tails = Counter(name for q in queues for name in itertools.islice(q, 1, None))
+    merged: list[str] = []
+    while queues:
+        head = next((q[0] for q in queues if not in_tails[q[0]]), None)
+        if head is None:
+            return None
+        merged.append(head)
+        for q in queues:
+            if q[0] == head:
+                q.popleft()
+                if q:
+                    in_tails[q[0]] -= 1
+        queues = [q for q in queues if q]
+    return merged
+
+
+def _shallowest(
+    inheritance: Mapping[str, list[str]], start: str, found: Callable[[str], str | None]
+) -> str | None:
+    """Go's selector rule: the one hit at the shallowest depth; two there are ambiguous."""
+    level, seen = [start], {start}
+    while level:
+        hits = {hit for hit in map(found, level) if hit}
+        if hits:
+            return hits.pop() if len(hits) == 1 else None
+        level = [p for c in level for p in inheritance.get(c, []) if p not in seen]
+        seen.update(level)
+    return None
+
+
+def _resolve_on_type(
+    index: SymbolIndex,
+    inheritance: Mapping[str, list[str]],
+    type_fqn: str,
+    path: str,
+    source_file: str | None,
+) -> str | None:
+    """`a.b.m` on a value of `type_fqn`: each attribute's declared type, then `m` (#643).
+
+    Attributes and the method are both looked up through the hierarchy: a base
+    class, or a Go struct an embedding promotes from, may hold either.
+    """
+    *attrs, method = path.split(".")
+    current = type_fqn
+    for attr in attrs:
+        declaring = _declaring_class(index, current, attr, inheritance)
+        receiver = receiver_type_fqn(index, declaring, attr) if declaring else None
+        if receiver is None:
+            return None
+        current = receiver
+    found = _method_in_hierarchy(index, inheritance, current, method)
+    if found:
+        return found
+    # No such method on the declared receiver. Keep it only when the receiver
+    # is genuinely a library type — a real call into a dependency, for which
+    # the engine mints an EXTERNAL/STDLIB node. On an internal type it is a
+    # phantom method and must not be fabricated: that is the call #414 was
+    # filed to expose. Same policy as _resolve_local_type_call (spec D7).
+    candidate = f"{current}.{method}"
+    if index.classify_fqn(candidate, source_file) in (
+        NodeNamespace.EXTERNAL,
+        NodeNamespace.STDLIB,
+    ):
+        return candidate
     return None
 
 
@@ -171,40 +327,16 @@ class SymbolResolver:
         "client.search": the receiver's declared type comes from `self_types`
         (spec D1), and the method is then searched on that class exactly as it
         would be on the owner — same walk, same inheritance rules (spec D7).
-
-        Only one dot is handled. `self.a.b.c()` is left alone: resolving it
-        would need the return type of `self.a.b`, which nothing records (D8).
+        `self.a.b.c()` takes each hop's declared type in turn (#643; D8 held
+        that nothing recorded them, which `self_types` on every class now does).
         """
         owner = _owning_class(self.index, source_fqn)
         if owner is None:
             return None
-        attr, sep, method = method_name.partition(".")
-        if not sep:
-            return self._resolve_method_on_class_hierarchy(owner, method_name, set())
-        if "." in method:
-            return None
-        declaring = _declaring_class(self.index, owner, attr, self.inheritance_tree)
-        if declaring is None:
-            return None
-        receiver = receiver_type_fqn(self.index, declaring, attr)
-        if receiver is None:
-            return None
-        found = self._resolve_method_on_class_hierarchy(receiver, method, set())
-        if found:
-            return found
-        # No such method on the declared receiver. Keep it only when the receiver
-        # is genuinely a library type — a real call into a dependency, for which
-        # the engine mints an EXTERNAL/STDLIB node. On an internal type it is a
-        # phantom method and must not be fabricated: that is the call #414 was
-        # filed to expose. Same policy as _resolve_local_type_call (spec D7).
-        candidate = f"{receiver}.{method}"
+        if "." not in method_name:
+            return _method_in_hierarchy(self.index, self.inheritance_tree, owner, method_name)
         source_file = _file_of(self.index, source_fqn)
-        if self.index.classify_fqn(candidate, source_file) in (
-            NodeNamespace.EXTERNAL,
-            NodeNamespace.STDLIB,
-        ):
-            return candidate
-        return None
+        return _resolve_on_type(self.index, self.inheritance_tree, owner, method_name, source_file)
 
     def resolve_global_call(
         self, name: str, source_fqn: str, edge_file_path: str | None = None
@@ -260,22 +392,6 @@ class SymbolResolver:
                 return same_file[0]
         return None
 
-    def _resolve_method_on_class_hierarchy(
-        self, class_fqn: str, method_name: str, visited: set[str]
-    ) -> str | None:
-        """DFS over EXTENDS edges to find method_name defined in class_fqn or any ancestor."""
-        if class_fqn in visited:
-            return None
-        visited.add(class_fqn)
-        direct = self.index.class_methods.get(class_fqn, {}).get(method_name)
-        if direct:
-            return direct
-        for parent_fqn in self.inheritance_tree.get(class_fqn, []):
-            result = self._resolve_method_on_class_hierarchy(parent_fqn, method_name, visited)
-            if result:
-                return result
-        return None
-
     def _resolve_via_import_map(self, name: str, file_path: str) -> str | None:
         """Look up name in the file's import map (direct and module-prefixed calls)."""
         file_import_map = self.index.file_imports.get(file_path, {})
@@ -311,6 +427,13 @@ class SymbolResolver:
         resolved = self.index.map_to_node_fqn(candidate, file_path)
         if resolved:
             return resolved
+        # Inherited or promoted, or reached through declared attributes (#643).
+        start = self.index.map_to_node_fqn(class_fqn, file_path) or class_fqn
+        walked = _resolve_on_type(self.index, self.inheritance_tree, start, method_name, file_path)
+        if walked:
+            return walked
+        # Reached only for `x.a.m` on a library type: the walk has no declared
+        # attribute to follow there (a one-dot call took the walk's own fallback).
         # No node for `Class.method`. Keep it only when the type is external/stdlib
         # — that is a real call into a library (it becomes an EXTERNAL/STDLIB virtual
         # node). For an internal/unknown type it is a phantom method: drop it rather

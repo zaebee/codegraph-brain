@@ -95,8 +95,9 @@ MANIFESTS: tuple[Manifest, ...] = (
         never_ingested=re.compile(r"\b\B"),  # matches nowhere
         cross_file_metadata={
             NodeType.FILE: ("import_map",),
-            # A field's type and a function's results type calls in other files (#608).
-            NodeType.CLASS: ("self_types",),
+            # A field's type and a function's results type calls in other files (#608);
+            # a field's name shadows a method promoted from an embedding (#656).
+            NodeType.CLASS: ("self_types", "fields"),
             NodeType.FUNCTION: ("returns",),
             NodeType.METHOD: ("returns",),
         },

@@ -5,6 +5,7 @@ import pytest
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.languages.python.extractor import PythonExtractor
 from cgis.resolver.engine import ResolverEngine
+from cgis.resolver.symbols import _c3
 
 
 def _file_node(file_path: str, import_map: dict[str, str]) -> Node:
@@ -2422,3 +2423,145 @@ def main():
     targets = {e.target for e in result if e.source == "src.mod.main"}
     assert "src.mod.B.who" in targets
     assert "src.mod.A.who" not in targets
+
+
+def test_local_type_resolution_reaches_an_inherited_method() -> None:
+    """`s = Sub(); s.close()` lands on Base.close, as `self.close()` would (#643 A1)."""
+    code = """
+class Base:
+    def close(self):
+        pass
+
+class Sub(Base):
+    pass
+
+def main():
+    s = Sub()
+    s.close()
+"""
+    nodes, edges = PythonExtractor().parse(code, "src/mod.py")
+    result, _ = ResolverEngine(nodes, edges).resolve()
+    assert any(e.source == "src.mod.main" and e.target == "src.mod.Base.close" for e in result)
+
+
+def test_local_type_resolution_follows_a_declared_attribute() -> None:
+    """`e.store.get()` on `e: Engine` uses Engine's declared `self.store` type (#643 A2)."""
+    code = """
+class Store:
+    def get(self):
+        pass
+
+class Engine:
+    def __init__(self, store: Store):
+        self.store = store
+
+def run(e: Engine):
+    e.store.get()
+"""
+    nodes, edges = PythonExtractor().parse(code, "src/mod.py")
+    result, _ = ResolverEngine(nodes, edges).resolve()
+    assert any(e.source == "src.mod.run" and e.target == "src.mod.Store.get" for e in result)
+
+
+def test_local_type_resolution_maps_the_type_through_the_layout() -> None:
+    """`Sub` imported as `pkg.base.Sub` is node `src.pkg.base.Sub`: the walk starts there."""
+    base = """
+class Base:
+    def close(self):
+        pass
+
+class Sub(Base):
+    pass
+"""
+    use = """
+from pkg.base import Sub
+
+def main():
+    s = Sub()
+    s.close()
+"""
+    nodes, edges = [], []
+    for code, path in ((base, "src/pkg/base.py"), (use, "src/pkg/use.py")):
+        n, e = PythonExtractor().parse(code, path)
+        nodes += n
+        edges += e
+    result, _ = ResolverEngine(nodes, edges).resolve()
+    assert any(
+        e.source == "src.pkg.use.main" and e.target == "src.pkg.base.Base.close" for e in result
+    )
+
+
+def test_a_field_chain_on_a_library_type_keeps_its_library_target() -> None:
+    """No declared attribute to follow on a library type: the call still names it."""
+    code = """
+import httpx
+
+def main():
+    c = httpx.Client()
+    c.a.b.get()
+"""
+    nodes, edges = PythonExtractor().parse(code, "src/mod.py")
+    result, _ = ResolverEngine(nodes, edges).resolve()
+    assert any(e.source == "src.mod.main" and e.target == "httpx.Client.a.b.get" for e in result)
+
+
+def test_a_diamond_resolves_along_python_s_mro() -> None:
+    """`D(B, C)` with B, C on A and `m` on A and C: Python runs C.m, not A.m (#658)."""
+    code = """
+class A:
+    def m(self):
+        pass
+
+class B(A):
+    pass
+
+class C(A):
+    def m(self):
+        pass
+
+class D(B, C):
+    def own(self):
+        self.m()
+
+def main():
+    d = D()
+    d.m()
+"""
+    nodes, edges = PythonExtractor().parse(code, "src/mod.py")
+    result, _ = ResolverEngine(nodes, edges).resolve()
+    targets = {(e.source, e.target) for e in result if e.type is EdgeType.CALLS}
+    assert ("src.mod.main", "src.mod.C.m") in targets
+    assert ("src.mod.D.own", "src.mod.C.m") in targets
+
+
+def test_a_hierarchy_c3_rejects_falls_back_to_depth_first() -> None:
+    """`C(A, B)` with `B(A)` has no MRO (Python raises); the depth-first order answers."""
+    code = """
+class Z:
+    def m(self):
+        pass
+
+class A(Z):
+    pass
+
+class B(A):
+    def m(self):
+        pass
+
+class C(A, B):
+    pass
+
+def main():
+    c = C()
+    c.m()
+"""
+    nodes, edges = PythonExtractor().parse(code, "src/mod.py")
+    result, _ = ResolverEngine(nodes, edges).resolve()
+    # Depth-first: C, A, Z (has m). A forced merge would read C, A, B and pick B.m.
+    assert ("src.mod.main", "src.mod.Z.m") in {(e.source, e.target) for e in result}
+
+
+def test_c3_of_a_cycle_is_none() -> None:
+    assert _c3("A", {"A": ["B"], "B": ["A"]}) is None
+    assert _c3("A", {"A": ["A"]}) is None
+    assert _c3("D", {"D": ["B", "C"], "B": ["A"], "C": ["A"]}) == ["D", "B", "C", "A"]

@@ -76,7 +76,7 @@ def _owning_class(source_fqn: str, by_id: dict[str, Node]) -> str | None:
 def _has_method(
     class_fqn: str, method: str, by_id: dict[str, Node], parents: dict[str, list[str]]
 ) -> bool:
-    """Direct or inherited, mirroring _resolve_method_on_class_hierarchy.
+    """Direct or inherited, mirroring _method_in_hierarchy.
 
     Checking only `f"{class_fqn}.{method}"` would treat every inherited method
     as a phantom — blinding the gate to precisely the inheritance path D7 asks

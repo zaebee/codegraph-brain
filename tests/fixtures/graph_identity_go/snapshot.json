@@ -873,7 +873,12 @@
     "is_test": 0,
     "language": "go",
     "metadata": {
+     "fields": [
+      "Logger",
+      "db"
+     ],
      "self_types": {
+      "Logger": "internal.server.Logger",
       "db": "example.com.shop.internal.store.Store"
      }
     },
@@ -1081,6 +1086,9 @@
     "is_test": 0,
     "language": "go",
     "metadata": {
+     "fields": [
+      "mu"
+     ],
      "self_types": {
       "mu": "sync.Mutex"
      }
@@ -1124,7 +1132,14 @@
     "is_generated": 0,
     "is_test": 0,
     "language": "go",
-    "metadata": {},
+    "metadata": {
+     "fields": [
+      "Base"
+     ],
+     "self_types": {
+      "Base": "internal.store.Base"
+     }
+    },
     "name": "Store",
     "namespace": "INTERNAL",
     "ontology_class": "Class",

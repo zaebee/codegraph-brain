@@ -31,7 +31,7 @@ an edge to another interface's method is kept (the chain continues from there). 
 method dispatching to itself is not an edge.
 """
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 
 from cgis.core.models import Edge, EdgeType, Node
 
@@ -49,8 +49,9 @@ def interface_dispatch(
     embeds_interfaces = {
         i: [e for e in inheritance.get(i, []) if e in interfaces] for i in interfaces
     }
+    fields = {c.id: frozenset(c.metadata.get("fields") or ()) for c in classes}
     method_sets = {
-        c.id: _method_set(c.id, declared, inheritance)
+        c.id: _method_set(c.id, declared, inheritance, fields)
         for c in classes
         if c.id not in interfaces and not c.is_test
     }
@@ -113,26 +114,38 @@ def _methods_by_owner(methods: Iterable[Node]) -> dict[str, dict[str, Node]]:
 
 
 def _method_set(
-    type_id: str, declared: Mapping[str, Mapping[str, Node]], inheritance: Mapping[str, list[str]]
+    type_id: str,
+    declared: Mapping[str, Mapping[str, Node]],
+    inheritance: Mapping[str, list[str]],
+    fields: Mapping[str, frozenset[str]] | None = None,
 ) -> dict[str, Node]:
     """A type's methods, own and promoted, each as the node that defines it.
 
     Breadth first through what the type embeds: a shallower method shadows a deeper
     one of the same name, as in Go. Two at the same depth are ambiguous in Go, and
     calling one does not compile. The first in source order is kept, so the method
-    still counts toward satisfaction.
+    still counts toward satisfaction. A field shadows too: fields and methods share
+    one namespace per depth, so a `Log` field hides every deeper `Log` method, and
+    one at the same depth leaves the name out (#656 review).
     """
     found: dict[str, Node] = {}
+    shadowed: set[str] = set()
+    for level in _depths(type_id, inheritance):
+        shadowed_here = shadowed | {f for t in level for f in (fields or {}).get(t, ())}
+        for current in level:
+            for name, method in declared.get(current, {}).items():
+                if name not in shadowed_here:
+                    found.setdefault(name, method)
+        shadowed = shadowed_here
+    return found
+
+
+def _depths(type_id: str, inheritance: Mapping[str, list[str]]) -> Iterator[list[str]]:
+    """The type, then what it embeds, level by level; each type once, at its shallowest."""
     seen = {type_id}
     level = [type_id]
     while level:
-        next_level: list[str] = []
-        for current in level:
-            for name, method in declared.get(current, {}).items():
-                found.setdefault(name, method)
-            for embedded in inheritance.get(current, []):
-                if embedded not in seen:
-                    seen.add(embedded)
-                    next_level.append(embedded)
-        level = next_level
-    return found
+        yield level
+        level = [e for t in level for e in inheritance.get(t, []) if e not in seen]
+        level = list(dict.fromkeys(level))
+        seen.update(level)

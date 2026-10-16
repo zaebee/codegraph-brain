@@ -76,6 +76,10 @@ class ResolutionRules:
     #: TypeScript). Go has no inheritance: embedding promotes, it does not
     #: dispatch, and an interface is satisfied by any type with its methods (#609).
     dispatch: Dispatcher | None = None
+    #: How a member is found above a type. False: depth-first in declaration order,
+    #: Python's approximation of its MRO. True: Go's promotion rule — the shallowest
+    #: depth wins, and two at the same depth are ambiguous, so nothing (#656 review).
+    shallowest_member: bool = False
 
     def __post_init__(self) -> None:
         """Refuse a step at a position the engine never runs."""
