@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.31.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.30.0...codegraph-brain-v0.31.0) (2026-10-16)
+
+
+### Features
+
+* **bench:** score Go method spellings ([#653](https://github.com/zaebee/codegraph-brain/issues/653)) ([3eccec7](https://github.com/zaebee/codegraph-brain/commit/3eccec74a01af9c128431714d47270badf739e7c))
+* **go:** interface satisfaction compares arity, not just names ([#651](https://github.com/zaebee/codegraph-brain/issues/651)) ([05a8dd2](https://github.com/zaebee/codegraph-brain/commit/05a8dd2b5d7486733d74d9c139519c873a43d523))
+* **go:** interface satisfaction dispatches; embedding no longer does ([#647](https://github.com/zaebee/codegraph-brain/issues/647)) ([ff785f7](https://github.com/zaebee/codegraph-brain/commit/ff785f7e40a91e159266d1c7cb38ed912a1ed676))
+* **query:** a DISPATCHES hop costs no traversal depth ([#649](https://github.com/zaebee/codegraph-brain/issues/649)) ([b5c9ed9](https://github.com/zaebee/codegraph-brain/commit/b5c9ed91bec8b7c857e17f974f5d351c0c745094))
+* **query:** coverage note screens test callers and says where each gap is ([#644](https://github.com/zaebee/codegraph-brain/issues/644)) ([814a679](https://github.com/zaebee/codegraph-brain/commit/814a67904f980048f9d699f14408b6f4a3732c4f))
+
+
+### Bug Fixes
+
+* **logging:** the CLI and the MCP server log to stderr ([#619](https://github.com/zaebee/codegraph-brain/issues/619)) ([#622](https://github.com/zaebee/codegraph-brain/issues/622)) ([3fc1db2](https://github.com/zaebee/codegraph-brain/commit/3fc1db20d5c8a1cdb5793d357550c7854f499161))
+* **resolver:** an Any-typed receiver declares no type ([#638](https://github.com/zaebee/codegraph-brain/issues/638)) ([4cb43b6](https://github.com/zaebee/codegraph-brain/commit/4cb43b676e43a82b3a9edf3a6175e34623b68bba))
+
+
+### Documentation
+
+* **lab-notes:** exp1 — change radius and indirection vs agent cost (pre-registered) ([#633](https://github.com/zaebee/codegraph-brain/issues/633)) ([b6c002c](https://github.com/zaebee/codegraph-brain/commit/b6c002c9522a863b2412c06ca5130f622887ee40))
+* **lab-notes:** exp2 — indirection at fixed radius and answer size, on cgis (pre-registered) ([#634](https://github.com/zaebee/codegraph-brain/issues/634)) ([c74c90d](https://github.com/zaebee/codegraph-brain/commit/c74c90d6dd4e13d5fcd52339ed7b699bce6fa535))
+* **lab-notes:** exp3 — does cgis help an agent (pre-registered, kill criterion) ([#635](https://github.com/zaebee/codegraph-brain/issues/635)) ([507ada5](https://github.com/zaebee/codegraph-brain/commit/507ada5561147b7ec94fab9e8a3a21eb673755eb))
+* **lab-notes:** exp3b — rerun after the [#636](https://github.com/zaebee/codegraph-brain/issues/636) fix (pre-registered) ([#640](https://github.com/zaebee/codegraph-brain/issues/640)) ([c5cb290](https://github.com/zaebee/codegraph-brain/commit/c5cb290eb993cbf7fcee78c092d7f6bb61aa22b0))
+
 ## [0.30.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.29.0...codegraph-brain-v0.30.0) (2026-10-15)
 
 
