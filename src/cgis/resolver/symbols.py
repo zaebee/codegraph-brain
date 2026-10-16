@@ -1,6 +1,8 @@
 """Symbol resolution strategies over a SymbolIndex."""
 
+import itertools
 import os
+from collections import Counter, deque
 from collections.abc import Callable, Iterable, Mapping
 
 from cgis.core.models import RAW_CLASS_PREFIX, Edge, EdgeType, Node, NodeNamespace
@@ -181,16 +183,25 @@ def _c3(start: str, inheritance: Mapping[str, list[str]]) -> list[str] | None:
 
 
 def _merge(sequences: list[list[str]]) -> list[str] | None:
-    """C3's merge: the next head no other sequence holds in its tail; None when stuck."""
+    """C3's merge: the next head no other sequence holds in its tail; None when stuck.
+
+    A count of tail occurrences answers "in any tail" in O(1), so a long chain
+    costs its length, not its length cubed (#656 review).
+    """
+    queues = [deque(s) for s in sequences if s]
+    in_tails = Counter(name for q in queues for name in itertools.islice(q, 1, None))
     merged: list[str] = []
-    while sequences := [s for s in sequences if s]:
-        head = next((s[0] for s in sequences if not any(s[0] in t[1:] for t in sequences)), None)
+    while queues:
+        head = next((q[0] for q in queues if not in_tails[q[0]]), None)
         if head is None:
             return None
         merged.append(head)
-        for s in sequences:
-            if s[0] == head:
-                del s[0]
+        for q in queues:
+            if q[0] == head:
+                q.popleft()
+                if q:
+                    in_tails[q[0]] -= 1
+        queues = [q for q in queues if q]
     return merged
 
 

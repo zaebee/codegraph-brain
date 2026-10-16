@@ -5,6 +5,7 @@ import pytest
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.languages.python.extractor import PythonExtractor
 from cgis.resolver.engine import ResolverEngine
+from cgis.resolver.symbols import _c3
 
 
 def _file_node(file_path: str, import_map: dict[str, str]) -> Node:
@@ -2531,3 +2532,36 @@ def main():
     targets = {(e.source, e.target) for e in result if e.type is EdgeType.CALLS}
     assert ("src.mod.main", "src.mod.C.m") in targets
     assert ("src.mod.D.own", "src.mod.C.m") in targets
+
+
+def test_a_hierarchy_c3_rejects_falls_back_to_depth_first() -> None:
+    """`C(A, B)` with `B(A)` has no MRO (Python raises); the depth-first order answers."""
+    code = """
+class Z:
+    def m(self):
+        pass
+
+class A(Z):
+    pass
+
+class B(A):
+    def m(self):
+        pass
+
+class C(A, B):
+    pass
+
+def main():
+    c = C()
+    c.m()
+"""
+    nodes, edges = PythonExtractor().parse(code, "src/mod.py")
+    result, _ = ResolverEngine(nodes, edges).resolve()
+    # Depth-first: C, A, Z (has m). A forced merge would read C, A, B and pick B.m.
+    assert ("src.mod.main", "src.mod.Z.m") in {(e.source, e.target) for e in result}
+
+
+def test_c3_of_a_cycle_is_none() -> None:
+    assert _c3("A", {"A": ["B"], "B": ["A"]}) is None
+    assert _c3("A", {"A": ["A"]}) is None
+    assert _c3("D", {"D": ["B", "C"], "B": ["A"], "C": ["A"]}) == ["D", "B", "C", "A"]
