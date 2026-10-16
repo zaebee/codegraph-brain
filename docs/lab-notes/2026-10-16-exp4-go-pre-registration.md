@@ -237,3 +237,17 @@ draw is rerun with the same seed, and the first draw's picks are kept in the rec
   1,605 of those point to UNKNOWN placeholders and 4 to STDLIB ones. None has a target equal to an
   INTERNAL function or method id.
 - **`benchmarks/agent_ab/analysis/exp4_gates.py`** is committed with this entry, before any session.
+
+## Scope of the conclusion (recorded during the pilot, before any pilot result was read)
+
+- **Concentration.** 8 of the 12 iface tasks come from `ssh` (7 in `ssh`, 1 in `ssh/agent`), 3 from
+  `pkcs12` and 1 from `acme/autocert`. The gate therefore measures mostly one subsystem of one
+  library. lima, an application, was not evaluable.
+- **Familiarity.** golang/crypto is widely known, and the model may know its structure from
+  training. That helps the control arm, which makes a pass conservative and a fail less clean: a
+  fail could partly reflect the model's prior knowledge rather than the graph.
+- **How the result will be worded, whichever way it goes.** The README and MCP text name the scope:
+  "measured on one repository, golang/crypto (mostly its ssh package), a library; not measured on
+  applications." A pass adds Go to the impact-question languages with that qualifier. Replication
+  on an application is a separate experiment.
+- The gate, the draw and the tasks are unchanged.
