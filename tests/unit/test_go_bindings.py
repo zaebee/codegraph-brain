@@ -389,3 +389,9 @@ def test_a_multi_type_case_alias_has_the_switch_value_s_type() -> None:
         "\tswitch v := w.(type) {\n\tcase *T, *K:\n\t\tv.M()\n\tdefault:\n\t\tv.M()\n\t}\n}\n"
     )
     assert _resolve(code, "F") == {"app.Runner.M"}
+
+
+def test_a_method_expression_on_a_predeclared_type_records_no_site() -> None:
+    code = "package app\nfunc F(e error) { _ = error.Error(e) }\n"
+    nodes, _ = GoExtractor().parse(code, "app/a.go")
+    assert "site_types" not in next(n for n in nodes if n.id == "app.F").metadata

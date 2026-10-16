@@ -545,6 +545,8 @@ def _site(
     if not chain or (len(chain) > 1 and chain[0] == receiver):
         return
     head = chain[0]
+    if head in PREDECLARED and head not in bindings:
+        return  # `error.Error(e)`: a method expression on a predeclared type, no variable
     if head in bindings:
         held = bindings.here(head) or _UNKNOWN  # a local, typed or not: never the import
     elif len(chain) == 1 or head in ctx.import_map:
@@ -617,12 +619,16 @@ def _assigned(ctx: _File, names: list[str], values: TSNode | None, bindings: Bin
             _hold_result(ctx, bindings, name, right[0], index)
         return
     for position, name in enumerate(names):
-        value = right[position] if position < len(right) else None
-        if value is not None and value.type == "call_expression":
-            _hold_result(ctx, bindings, name, value, 0)
-        else:
-            typed = _value_type(ctx, value, bindings) if value is not None else None
-            bindings.bind(name, typed or _UNKNOWN)
+        _bind_value(ctx, bindings, name, right[position] if position < len(right) else None)
+
+
+def _bind_value(ctx: _File, bindings: Bindings, name: str, value: TSNode | None) -> None:
+    """Bind `name` to one value: a call's first result, or what the expression gives."""
+    if value is not None and value.type == "call_expression":
+        _hold_result(ctx, bindings, name, value, 0)
+        return
+    typed = _value_type(ctx, value, bindings) if value is not None else None
+    bindings.bind(name, typed or _UNKNOWN)
 
 
 def _ranged(ctx: _File, clause: TSNode, bindings: Bindings) -> None:
