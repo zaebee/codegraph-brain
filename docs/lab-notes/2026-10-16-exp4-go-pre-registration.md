@@ -207,3 +207,25 @@ deleted before ingest and before the agent starts, and a missing path fails the 
   - no type parameters in its 128 files;
   - 32 interfaces, 22 of them with two or more in-module implementations.
 - **Gold and draw follow** under the amended rules. No cgis command has run on it.
+
+## Amendment 3: test helpers in a library (2026-10-16, before any gold is frozen)
+
+Committed after the golang/crypto task draw was seen, before the crypto gold is frozen, before the
+pilot, and before any cgis command has run on crypto.
+
+**What happened.** The test-helper rule (gold README: "imported by at least one `_test.go` file and
+by no non-test package") was written while working on lima, an application. In a library every
+public leaf package looks like that. On golang/crypto it marked 12 packages, and 10 of them are
+production API: `acme/autocert`, `ed25519`, `hkdf`, `md4`, `nacl/auth`, `nacl/box`, `scrypt`,
+`sha3`, `ssh/agent` and `ssh/terminal`. Their functions could not be targets and were never
+required callers. For example, `agent.Key.Verify` calls `rsaPublicKey.Verify` but was only
+allowed. That gold would misstate "production code only".
+
+**The amended rule.** A non-test package is a test helper when both hold:
+- no non-test package imports it, under any of GOOS linux, darwin and windows; and
+- its import path, relative to the module, has a segment that is `internal` or contains `test`.
+
+**Disclosure.** This rule changes after the draw was seen, which the protocol is meant to prevent.
+What was seen is which targets were drawn. No cgis answer and no session was seen, so the change
+cannot favour either arm. The reason is a misclassification that is visible without the draw. The
+draw is rerun with the same seed, and the first draw's picks are kept in the record.
