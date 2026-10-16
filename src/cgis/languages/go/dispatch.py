@@ -31,7 +31,7 @@ an edge to another interface's method is kept (the chain continues from there). 
 method dispatching to itself is not an edge.
 """
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 
 from cgis.core.models import Edge, EdgeType, Node
 
@@ -130,19 +130,22 @@ def _method_set(
     """
     found: dict[str, Node] = {}
     shadowed: set[str] = set()
+    for level in _depths(type_id, inheritance):
+        shadowed_here = shadowed | {f for t in level for f in (fields or {}).get(t, ())}
+        for current in level:
+            for name, method in declared.get(current, {}).items():
+                if name not in shadowed_here:
+                    found.setdefault(name, method)
+        shadowed = shadowed_here
+    return found
+
+
+def _depths(type_id: str, inheritance: Mapping[str, list[str]]) -> Iterator[list[str]]:
+    """The type, then what it embeds, level by level; each type once, at its shallowest."""
     seen = {type_id}
     level = [type_id]
     while level:
-        next_level: list[str] = []
-        at_depth = {f for current in level for f in (fields or {}).get(current, ())}
-        for current in level:
-            for name, method in declared.get(current, {}).items():
-                if name not in shadowed and name not in at_depth:
-                    found.setdefault(name, method)
-            for embedded in inheritance.get(current, []):
-                if embedded not in seen:
-                    seen.add(embedded)
-                    next_level.append(embedded)
-        shadowed |= at_depth
-        level = next_level
-    return found
+        yield level
+        level = [e for t in level for e in inheritance.get(t, []) if e not in seen]
+        level = list(dict.fromkeys(level))
+        seen.update(level)
