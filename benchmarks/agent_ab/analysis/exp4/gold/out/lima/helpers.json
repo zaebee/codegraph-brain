@@ -1,0 +1,15 @@
+{
+ "rule": "A test helper is a non-test package of the root module that at least one `_test.go` file imports and that no non-test package imports, under any of GOOS=linux, darwin and windows (GOARCH=amd64). Test files themselves (`*_test.go`) are never loaded by exp4cg, so they need no rule.",
+ "helper_packages": [],
+ "no_importers_at_all": [
+  "cmd/lima-driver-qemu",
+  "cmd/lima-driver-vz",
+  "cmd/lima-driver-wsl2",
+  "cmd/lima-guestagent",
+  "cmd/lima-privileged-block-device",
+  "cmd/lima-privileged-net",
+  "cmd/limactl",
+  "cmd/limactl-mcp",
+  "cmd/limactl-menu"
+ ]
+}

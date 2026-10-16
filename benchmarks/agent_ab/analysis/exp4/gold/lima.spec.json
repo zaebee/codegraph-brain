@@ -1,0 +1,8 @@
+{
+ "repo": "lima",
+ "repo_tag": "lima",
+ "sha": "f47461ed7d03f300297e01fd659e9aefc6c228b9",
+ "src_root": ".",
+ "modpath": "github.com/lima-vm/lima/v2",
+ "nested_modules_deleted": ["website/", "hack/tools/"]
+}
