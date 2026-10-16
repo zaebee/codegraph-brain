@@ -88,9 +88,9 @@ _KNOWN_ARCH = frozenset(
         "wasm",
     ]
 )
-_GO_BUILD = re.compile(r"^//go:build\s+(.+?)\s*$")
-_PLUS_BUILD = re.compile(r"^//\s*\+build\s+(.+?)\s*$")
-_TOKEN = re.compile(r"\s*(\|\||&&|!|\(|\)|[^\s|&!()]+)")
+#: `//go:build` followed by nothing or by a space or tab, as `go/build` reads it.
+_GO_BUILD = re.compile(r"//go:build(?:[ \t]|$)")
+_TOKEN = re.compile(r"\s*+(\|\||&&|[!()]|[^\s|&!()]++)")
 
 
 def excluded(code: str, file_name: str) -> str | None:
@@ -107,50 +107,65 @@ def excluded(code: str, file_name: str) -> str | None:
 def build_constraint(code: str) -> str | None:
     """The file's `//go:build` expression; else its `// +build` lines as one; else None.
 
-    Read from the header as `go/build` reads it: line comments up to the first
-    line that is not blank or a comment, skipping block comments. A `// +build`
-    line counts only above the header's last blank line, so one directly above
-    `package` is a plain comment (#667 review).
+    A port of `go/build`'s `parseFileHeader`: the header runs to the first line
+    of code (block comments skipped); a `//go:build` line counts unless it starts
+    inside a block comment; `// +build` lines count only above the last blank
+    line seen before the first line that is not a `//` comment (#667 review).
     """
-    lines, plus_end = _header(code)
-    go_build = [m.group(1) for m in map(_GO_BUILD.match, lines) if m]
+    go_build, plus = _header(code)
     if len(go_build) > 1:
         return "multiple //go:build lines"  # an error to the go command: no tag says so
     if go_build:
-        return go_build[0]
-    plus = [m.group(1) for m in map(_PLUS_BUILD.match, lines[:plus_end]) if m]
+        return go_build[0] or "empty //go:build line"
     return " && ".join(map(_plus_line, plus)) if plus else None
 
 
-def _header(code: str) -> tuple[list[str], int]:
-    """The header's line comments, and how many of them a `// +build` line may be among.
-
-    That is those above the last blank line, and above any block comment: `go/build`
-    stops reading `+build` lines at the first line that is not a line comment.
-    """
-    comments: list[str] = []
-    before_blank = 0
+def _header(code: str) -> tuple[list[str], list[str]]:
+    """The header's `//go:build` expressions, and its `// +build` options."""
+    lines = code.removeprefix("\ufeff").split("\n")
+    go_build: list[str] = []
+    end = 0
+    ended = False
     in_block = False
-    plus_open = True
-    for raw in code.removeprefix("\ufeff").splitlines():
+    for index, raw in enumerate(lines):
         line = raw.strip()
+        if not line and not ended:
+            end = index + 1  # the most recent blank line before the first non-comment
+            continue
+        ended = ended or not line.startswith("//")
+        if not in_block and _GO_BUILD.match(line):
+            go_build.append(line[len("//go:build") :].strip())
+        in_block, code_found = _after_comments(line, in_block)
+        if code_found:
+            break
+    plus = [p for p in map(_plus_options, lines[:end]) if p is not None]
+    return go_build, plus
+
+
+def _after_comments(line: str, in_block: bool) -> tuple[bool, bool]:
+    """Skip a line's comments: whether a block comment is still open, and whether code follows."""
+    while line:
         if in_block:
-            in_block, line = "*/" not in line, line.partition("*/")[2].strip()
-            if in_block or not line:
-                continue
-        if not line:
-            before_blank = len(comments) if plus_open else before_blank
+            closing = line.find("*/")
+            if closing < 0:
+                return True, False
+            in_block, line = False, line[closing + 2 :].strip()
         elif line.startswith("//"):
-            comments.append(line)
+            return False, False
         elif line.startswith("/*"):
-            plus_open = False
-            rest = line[2:]
-            in_block = "*/" not in rest
-            if not in_block and rest.partition("*/")[2].strip():
-                break  # code after a one-line block comment ends the header
+            in_block, line = True, line[2:].strip()
         else:
-            break  # `package`, or any other code
-    return comments, before_blank
+            return False, True
+    return in_block, False
+
+
+def _plus_options(raw: str) -> str | None:
+    """The options of a `// +build` line, or None for any other line."""
+    line = raw.strip()
+    if not line.startswith("//"):
+        return None
+    fields = line[2:].split()
+    return " ".join(fields[1:]) if fields and fields[0] == "+build" else None
 
 
 def _plus_line(options: str) -> str:

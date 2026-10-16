@@ -32,6 +32,7 @@ from cgis.storage.sqlite_store import SQLiteStore
         ("!go1.17", False),
         ("go1.21 && !go1.22", False),
         ("ignore", False),
+        ("go1", False),  # release tags start at go1.1 (go/build.MatchFile, go1.26)
         ("(linux || darwin) && !cgo", False),
         ("js && !wasm", False),
         ("!js || wasm", True),
@@ -153,6 +154,10 @@ def test_no_excluded_file_adds_nothing_to_the_overview(tmp_path: Path) -> None:
         ("\ufeff//go:build windows\n\npackage p\n", False),  # a byte-order mark first
         ("/*\npackage docs say\n*/\n// +build windows\n\npackage p\n", True),  # after /* */
         ("//go:build linux\n//go:build amd64\n\npackage p\n", False),  # two: an error
+        ("/* x\n*/ //go:build windows\n\npackage p\n", True),  # began inside a block
+        ("/* x */ // c\n//go:build windows\n\npackage p\n", False),  # comment after /* */
+        ("/* a */ /* b\n*/\n//go:build windows\n\npackage p\n", False),
+        ("//go:build\n\npackage p\n", False),  # no expression: an error
         ("//go:build goexperiment.greenteagc\n\npackage p\n", True),  # go1.26's defaults
         ("//go:build amd64.v1\n\npackage p\n", True),
         ("//go:build !goexperiment.greenteagc\n\npackage p\n", False),
