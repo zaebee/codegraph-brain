@@ -35,6 +35,9 @@ DEFAULT_LIMIT = 15
 #: `domains` alone is not a lead.
 DEFAULT_DEPTH = 2
 
+#: Excluded files named in the overview; the count says how many there are.
+_EXCLUDED_EXAMPLES = 5
+
 
 def _package_rows(census: list[tuple[str, int]], limit: int) -> tuple[list[dict[str, Any]], int]:
     """Cap a census, largest first, and report how many rows were dropped."""
@@ -75,6 +78,15 @@ def build_overview(
             "cgis_validate() — how much of the graph resolved",
         ],
     }
+    excluded = store.build_excluded_files()
+    if excluded:
+        # Files a language's default build leaves out (Go: linux/amd64): named, not
+        # silent, since their callers are not in the graph (#657).
+        report["build_excluded"] = {
+            "files": len(excluded),
+            "examples": [f"{path} ({why})" for path, why in excluded[:_EXCLUDED_EXAMPLES]],
+            "build": "linux/amd64",
+        }
     if omitted:
         report["packages_omitted"] = omitted
     if test_omitted:

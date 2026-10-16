@@ -53,10 +53,20 @@ class GoIndexFacts:
     file_scopes: Mapping[str, str] = field(default_factory=dict)
 
 
+def _build_excluded(file: Node) -> bool:
+    """Whether the default build leaves the file out: never a package's stand-in (#667)."""
+    return "build_excluded" in file.metadata
+
+
+def _representative_order(file: Node) -> tuple[bool, bool]:
+    """Production packages before `_test` ones, built files before excluded ones."""
+    return str(file.metadata.get("scope", "")).endswith("_test"), _build_excluded(file)
+
+
 def _package_dirs(files: list[Node]) -> dict[str, str]:
     """Directory -> package scope; an external `_test` package never stands for its directory."""
     dirs: dict[str, str] = {}
-    for file in sorted(files, key=lambda f: str(f.metadata.get("scope", "")).endswith("_test")):
+    for file in sorted(files, key=_representative_order):
         dirs.setdefault(
             str(file.metadata.get("package_dir", "")), str(file.metadata.get("scope", ""))
         )
@@ -69,7 +79,9 @@ def _package_files(files: list[Node]) -> dict[str, tuple[str, ...]]:
     for file in files:
         packages.setdefault(str(file.metadata.get("scope", "")), []).append(file)
     return {
-        scope: tuple(f.id for f in sorted(group, key=lambda f: (f.is_test, f.id)))
+        scope: tuple(
+            f.id for f in sorted(group, key=lambda f: (f.is_test, _build_excluded(f), f.id))
+        )
         for scope, group in packages.items()
     }
 

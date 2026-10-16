@@ -48,6 +48,7 @@ from cgis.languages.go._syntax import (
     type_fqn,
     type_reference,
 )
+from cgis.languages.go.build import excluded
 from cgis.languages.go.naming import GO_LANG, file_node_id, is_test, scope_of
 
 _RAW_CALL = "raw_call:"
@@ -102,6 +103,11 @@ class GoExtractor(BaseExtractor):
         )
         nodes: list[Node] = []
         edges: list[Edge] = []
+        reason = excluded(code, file_path)
+        if reason is not None:
+            # Not in the default build: the FILE node says why, nothing else is read (#657).
+            nodes.append(_file_node(ctx, root, {"build_excluded": reason}))
+            return nodes, edges
         _file(ctx, root, nodes, edges)
         return nodes, edges
 
@@ -134,8 +140,8 @@ def _declared_types(root: TSNode) -> list[str]:
     ]
 
 
-def _file(ctx: _File, root: TSNode, nodes: list[Node], edges: list[Edge]) -> None:
-    """The FILE node, the imports, then every top-level declaration."""
+def _file_node(ctx: _File, root: TSNode, extra: dict[str, object] | None = None) -> Node:
+    """The FILE node: the package it belongs to, and what it imports."""
     name = ctx.path.replace("\\", "/").rsplit("/", 1)[-1]
     metadata: dict[str, object] = {
         "scope": ctx.scope,
@@ -144,8 +150,14 @@ def _file(ctx: _File, root: TSNode, nodes: list[Node], edges: list[Edge]) -> Non
         "import_map": dict(ctx.import_map),
         # As written: a dotted path cannot say whether its first segment was a domain.
         "imports": sorted({path for _, path in imports(root)}),
+        **(extra or {}),
     }
-    nodes.append(_node(ctx, ctx.node_id, name, NodeType.FILE, root, metadata))
+    return _node(ctx, ctx.node_id, name, NodeType.FILE, root, metadata)
+
+
+def _file(ctx: _File, root: TSNode, nodes: list[Node], edges: list[Edge]) -> None:
+    """The FILE node, the imports, then every top-level declaration."""
+    nodes.append(_file_node(ctx, root))
     for _, path in imports(root):
         target = dotted(path)
         edges.append(
