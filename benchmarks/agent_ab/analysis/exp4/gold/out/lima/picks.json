@@ -1,0 +1,92 @@
+{
+ "seed": 4,
+ "wanted": {
+  "iface": 12,
+  "static": 6
+ },
+ "drawn": {
+  "iface": 7,
+  "static": 6
+ },
+ "iface_before_surplus_cut": 7,
+ "iface_evaluable": false,
+ "pool": {
+  "iface_families": {
+   "pkg/autostart.AutoStartManager": 3,
+   "pkg/copytool.CopyTool": 2,
+   "pkg/driver.Driver": 19,
+   "pkg/driver/external.DriverClient": 7,
+   "pkg/guestagent/api.GuestServiceClient": 5,
+   "pkg/imgutil.ImageDiskManager": 1
+  },
+  "static_candidates": 222,
+  "static_distinct_files": 63
+ },
+ "picks": [
+  {
+   "cell": "iface",
+   "family": "pkg/autostart.AutoStartManager",
+   "target": "pkg/autostart.TemplateFileBasedManager.AutoStartedIdentifier"
+  },
+  {
+   "cell": "iface",
+   "family": "pkg/copytool.CopyTool",
+   "target": "pkg/copytool.scpTool.Command"
+  },
+  {
+   "cell": "iface",
+   "family": "pkg/driver.Driver",
+   "target": "pkg/driver/external/client.DriverClient.Validate"
+  },
+  {
+   "cell": "iface",
+   "family": "pkg/driver.Driver",
+   "target": "pkg/driver/qemu.LimaQemuDriver.Start"
+  },
+  {
+   "cell": "iface",
+   "family": "pkg/driver/external.DriverClient",
+   "target": "pkg/driver/external.driverClient.Validate"
+  },
+  {
+   "cell": "iface",
+   "family": "pkg/guestagent/api.GuestServiceClient",
+   "target": "pkg/guestagent/api.guestServiceClient.GetEvents"
+  },
+  {
+   "cell": "iface",
+   "family": "pkg/imgutil.ImageDiskManager",
+   "target": "pkg/imgutil/proxyimgutil.ImageDiskManager.ResizeDisk"
+  },
+  {
+   "cell": "static",
+   "family": null,
+   "target": "pkg/hostagent.HostAgent.emitRequirementProgress"
+  },
+  {
+   "cell": "static",
+   "family": null,
+   "target": "pkg/hostagent.HostAgent.startTimeSync"
+  },
+  {
+   "cell": "static",
+   "family": null,
+   "target": "pkg/cidata.getCert"
+  },
+  {
+   "cell": "static",
+   "family": null,
+   "target": "pkg/portfwd.ClosableListeners.Forward"
+  },
+  {
+   "cell": "static",
+   "family": null,
+   "target": "pkg/instance.ShowMessage"
+  },
+  {
+   "cell": "static",
+   "family": null,
+   "target": "pkg/iso9660util.WriteFile"
+  }
+ ]
+}

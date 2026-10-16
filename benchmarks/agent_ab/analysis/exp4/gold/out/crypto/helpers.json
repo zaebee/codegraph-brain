@@ -1,0 +1,32 @@
+{
+ "rule": "A test helper is a non-test package of the root module that no non-test package imports, under any of GOOS=linux, darwin and windows (GOARCH=amd64), and whose path relative to the module has a segment that is `internal` or contains `test` (amendment 3: a public leaf package of a library is imported only by tests, yet it is production code). Test files themselves (`*_test.go`) are never loaded by exp4cg, so they need no rule.",
+ "helper_packages": [
+  "acme/autocert/internal/acmetest",
+  "acme/internal/acmeprobe",
+  "internal/testenv",
+  "ssh/test"
+ ],
+ "no_importers_at_all": [
+  "acme/internal/acmeprobe",
+  "argon2",
+  "bcrypt",
+  "blake2s",
+  "bn256",
+  "cast5",
+  "chacha20poly1305",
+  "nacl/sign",
+  "ocsp",
+  "otr",
+  "pkcs12",
+  "poly1305",
+  "ripemd160",
+  "salsa20",
+  "ssh/knownhosts",
+  "ssh/test",
+  "tea",
+  "twofish",
+  "x509roots/nss",
+  "xtea",
+  "xts"
+ ]
+}

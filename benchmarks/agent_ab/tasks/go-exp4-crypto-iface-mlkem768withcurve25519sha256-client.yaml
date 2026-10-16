@@ -1,0 +1,144 @@
+id: go-exp4-crypto-iface-mlkem768withcurve25519sha256-client
+repo: crypto
+sha: 0ae6809b7559060fe62abe65e26bd18b1fcaf6b7
+src_root: .
+type: impact
+delete_paths:
+- argon2/_asm
+- blake2b/_asm/AVX2
+- blake2b/_asm/standard
+- blake2s/_asm
+- chacha20poly1305/_asm
+- internal/poly1305/_asm
+- salsa20/salsa/_asm
+- x509roots/fallback
+question: 'In this repository, the method `mlkem768WithCurve25519sha256.Client` in `ssh/mlkem.go` is about to change.
+  Which functions and methods can end up calling it, directly or transitively? List every one, production code only:
+  non-test code in this repository''s root module (not `*_test.go` files). Follow every chain up to its entry point
+  (an exported API function, `main`, a function nothing else calls, or a function the code only passes as a value,
+  such as a cobra `RunE` handler) and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - id: Dial
+    any_of:
+    - Dial
+    - ssh.Dial
+    - ssh.Dial
+    - ssh/client.go:Dial
+  - id: NewClientConn
+    any_of:
+    - NewClientConn
+    - ssh.NewClientConn
+    - ssh.NewClientConn
+    - ssh/client.go:NewClientConn
+  - id: NewServerConn
+    any_of:
+    - NewServerConn
+    - ssh.NewServerConn
+    - ssh.NewServerConn
+    - ssh/server.go:NewServerConn
+  - id: connection.clientHandshake
+    any_of:
+    - connection.clientHandshake
+    - ssh.connection.clientHandshake
+    - ssh.connection.clientHandshake
+    - ssh/client.go:connection.clientHandshake
+  - id: connection.serverHandshake
+    any_of:
+    - connection.serverHandshake
+    - ssh.connection.serverHandshake
+    - ssh.connection.serverHandshake
+    - ssh/server.go:connection.serverHandshake
+  - id: handshakeTransport.client
+    any_of:
+    - handshakeTransport.client
+    - ssh.handshakeTransport.client
+    - ssh.handshakeTransport.client
+    - ssh/handshake.go:handshakeTransport.client
+  - id: handshakeTransport.enterKeyExchange
+    any_of:
+    - handshakeTransport.enterKeyExchange
+    - ssh.handshakeTransport.enterKeyExchange
+    - ssh.handshakeTransport.enterKeyExchange
+    - ssh/handshake.go:handshakeTransport.enterKeyExchange
+  - id: handshakeTransport.kexLoop
+    any_of:
+    - handshakeTransport.kexLoop
+    - ssh.handshakeTransport.kexLoop
+    - ssh.handshakeTransport.kexLoop
+    - ssh/handshake.go:handshakeTransport.kexLoop
+  - id: newClientTransport
+    any_of:
+    - newClientTransport
+    - ssh.newClientTransport
+    - ssh.newClientTransport
+    - ssh/handshake.go:newClientTransport
+  - id: newServerTransport
+    any_of:
+    - newServerTransport
+    - ssh.newServerTransport
+    - ssh.newServerTransport
+    - ssh/handshake.go:newServerTransport
+  files:
+  - ssh/client.go
+  - ssh/handshake.go
+  - ssh/server.go
+  allowed_symbols:
+  - mlkem768WithCurve25519sha256.Client
+  allowed_files:
+  - ssh/mlkem.go
+notes: 'exp4 cell iface (ssh.kexAlgorithm), drawn by benchmarks/agent_ab/analysis/exp4/gold/draw.py (random.Random(4));
+  no cgis input.
+
+  Target ssh.mlkem768WithCurve25519sha256.Client at ssh/mlkem.go:23.
+
+  Gold model (pre-registration, section Gold): go/ssa VTA static/go/defer calls; closures, $bound and $thunk folded
+  into their function; promoted wrappers and synthetic package initialisers traversed, never symbols; in-module
+  interface dispatch by CHA with every CHA-only edge adjudicated (adjudications-crypto.json); stdlib/third-party/anonymous
+  interface dispatch by VTA only; a function-value reference is not walked: the referenced function is an entry
+  point and the function taking the value is allowed, not required (amendment 2).
+
+  Pilot corrections applied (pilot-corrections-crypto.json): function values the code calls at once are walked as
+  calls.
+
+  Allowed referencers (0): none
+
+  Platform: the required closure is identical under GOOS=linux and GOOS=darwin (GOARCH=amd64); gold is linux.
+
+  Nested modules deleted from the worktree before both arms: argon2/_asm/, blake2b/_asm/AVX2/, blake2b/_asm/standard/,
+  blake2s/_asm/, chacha20poly1305/_asm/, internal/poly1305/_asm/, salsa20/salsa/_asm/, x509roots/fallback/.
+
+  Target''s direct callers: ssh.handshakeTransport.client@ssh/handshake.go:827 (invoke)
+
+  Reached only through interface dispatch (10): ssh.Dial, ssh.NewClientConn, ssh.NewServerConn, ssh.connection.clientHandshake,
+  ssh.connection.serverHandshake, ssh.handshakeTransport.client, ssh.handshakeTransport.enterKeyExchange, ssh.handshakeTransport.kexLoop,
+  ssh.newClientTransport, ssh.newServerTransport
+
+  Evidence (callee <- caller@site):
+
+  ssh.Dial [ssh/client.go:203] <- (entry point)
+
+  ssh.NewClientConn [ssh/client.go:71] <- ssh.Dial@ssh/client.go:208 (static)
+
+  ssh.NewServerConn [ssh/server.go:353] <- (entry point)
+
+  ssh.connection.clientHandshake [ssh/client.go:119] <- ssh.NewClientConn@ssh/client.go:83 (static)
+
+  ssh.connection.serverHandshake [ssh/server.go:394] <- ssh.NewServerConn@ssh/server.go:373 (static)
+
+  ssh.handshakeTransport.client [ssh/handshake.go:826] <- ssh.handshakeTransport.enterKeyExchange@ssh/handshake.go:717
+  (static)
+
+  ssh.handshakeTransport.enterKeyExchange [ssh/handshake.go:650] <- ssh.handshakeTransport.kexLoop@ssh/handshake.go:346
+  (static)
+
+  ssh.handshakeTransport.kexLoop [ssh/handshake.go:304] <- ssh.newClientTransport@ssh/handshake.go:171 (go); ssh.newServerTransport@ssh/handshake.go:180
+  (go)
+
+  ssh.newClientTransport [ssh/handshake.go:159] <- ssh.connection.clientHandshake@ssh/client.go:131 (static)
+
+  ssh.newServerTransport [ssh/handshake.go:175] <- ssh.connection.serverHandshake@ssh/server.go:416 (static)
+
+  '

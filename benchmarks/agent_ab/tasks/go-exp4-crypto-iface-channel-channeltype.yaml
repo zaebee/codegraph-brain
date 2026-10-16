@@ -1,0 +1,159 @@
+id: go-exp4-crypto-iface-channel-channeltype
+repo: crypto
+sha: 0ae6809b7559060fe62abe65e26bd18b1fcaf6b7
+src_root: .
+type: impact
+delete_paths:
+- argon2/_asm
+- blake2b/_asm/AVX2
+- blake2b/_asm/standard
+- blake2s/_asm
+- chacha20poly1305/_asm
+- internal/poly1305/_asm
+- salsa20/salsa/_asm
+- x509roots/fallback
+question: 'In this repository, the method `channel.ChannelType` in `ssh/channel.go` is about to change. Which functions
+  and methods can end up calling it, directly or transitively? List every one, production code only: non-test code
+  in this repository''s root module (not `*_test.go` files). Follow every chain up to its entry point (an exported
+  API function, `main`, a function nothing else calls, or a function the code only passes as a value, such as a
+  cobra `RunE` handler) and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - id: Client.Listen
+    any_of:
+    - Client.Listen
+    - ssh.Client.Listen
+    - ssh.Client.Listen
+    - ssh/tcpip.go:Client.Listen
+  - id: Client.ListenTCP
+    any_of:
+    - Client.ListenTCP
+    - ssh.Client.ListenTCP
+    - ssh.Client.ListenTCP
+    - ssh/tcpip.go:Client.ListenTCP
+  - id: Client.ListenUnix
+    any_of:
+    - Client.ListenUnix
+    - ssh.Client.ListenUnix
+    - ssh.Client.ListenUnix
+    - ssh/streamlocal.go:Client.ListenUnix
+  - id: Client.autoPortListenWorkaround
+    any_of:
+    - Client.autoPortListenWorkaround
+    - ssh.Client.autoPortListenWorkaround
+    - ssh.Client.autoPortListenWorkaround
+    - ssh/tcpip.go:Client.autoPortListenWorkaround
+  - id: Client.handleChannelOpens
+    any_of:
+    - Client.handleChannelOpens
+    - ssh.Client.handleChannelOpens
+    - ssh.Client.handleChannelOpens
+    - ssh/client.go:Client.handleChannelOpens
+  - id: Client.handleForwards
+    any_of:
+    - Client.handleForwards
+    - ssh.Client.handleForwards
+    - ssh.Client.handleForwards
+    - ssh/tcpip.go:Client.handleForwards
+  - id: Client.listenTCPInternal
+    any_of:
+    - Client.listenTCPInternal
+    - ssh.Client.listenTCPInternal
+    - ssh.Client.listenTCPInternal
+    - ssh/tcpip.go:Client.listenTCPInternal
+  - id: Dial
+    any_of:
+    - Dial
+    - ssh.Dial
+    - ssh.Dial
+    - ssh/client.go:Dial
+  - id: ssh.NewClient
+    any_of:
+    - ssh.NewClient
+    - ssh.NewClient
+    - ssh/client.go:NewClient
+  - id: forwardList.handleChannels
+    any_of:
+    - forwardList.handleChannels
+    - ssh.forwardList.handleChannels
+    - ssh.forwardList.handleChannels
+    - ssh/tcpip.go:forwardList.handleChannels
+  files:
+  - ssh/client.go
+  - ssh/streamlocal.go
+  - ssh/tcpip.go
+  allowed_symbols:
+  - channel.ChannelType
+  allowed_files:
+  - ssh/channel.go
+notes: 'exp4 cell iface (ssh.NewChannel), drawn by benchmarks/agent_ab/analysis/exp4/gold/draw.py (random.Random(4));
+  no cgis input.
+
+  Target ssh.channel.ChannelType at ssh/channel.go:727.
+
+  Gold model (pre-registration, section Gold): go/ssa VTA static/go/defer calls; closures, $bound and $thunk folded
+  into their function; promoted wrappers and synthetic package initialisers traversed, never symbols; in-module
+  interface dispatch by CHA with every CHA-only edge adjudicated (adjudications-crypto.json); stdlib/third-party/anonymous
+  interface dispatch by VTA only; a function-value reference is not walked: the referenced function is an entry
+  point and the function taking the value is allowed, not required (amendment 2).
+
+  Pilot corrections applied (pilot-corrections-crypto.json): function values the code calls at once are walked as
+  calls.
+
+  Allowed referencers (0): none
+
+  Platform: the required closure is identical under GOOS=linux and GOOS=darwin (GOARCH=amd64); gold is linux.
+
+  Nested modules deleted from the worktree before both arms: argon2/_asm/, blake2b/_asm/AVX2/, blake2b/_asm/standard/,
+  blake2s/_asm/, chacha20poly1305/_asm/, internal/poly1305/_asm/, salsa20/salsa/_asm/, x509roots/fallback/.
+
+  Target''s direct callers: ssh.Client.handleChannelOpens@ssh/client.go:180 (invoke); ssh.Client.handleChannelOpens@ssh/client.go:186
+  (invoke); ssh.forwardList.handleChannels@ssh/tcpip.go:235 (invoke)
+
+  Reached only through interface dispatch (10): ssh.Client.Listen, ssh.Client.ListenTCP, ssh.Client.ListenUnix,
+  ssh.Client.autoPortListenWorkaround, ssh.Client.handleChannelOpens, ssh.Client.handleForwards, ssh.Client.listenTCPInternal,
+  ssh.Dial, ssh.NewClient, ssh.forwardList.handleChannels
+
+  CHA-only edge (accepted, *channel is the only NewChannel the module creates (ssh/mux.go:333 m.incomingChannels
+  <- c); NewClientConn returns that Go channel (ssh/client.go:88) and the caller or Dial hands it to NewClient (ssh/client.go:53),
+  whose handleChannelOpens and HandleChannelOpen feed every listed site): ssh.Client.handleChannelOpens -> ssh.channel.ChannelType
+  @ssh/client.go:180 [ssh.NewChannel]
+
+  CHA-only edge (accepted, *channel is the only NewChannel the module creates (ssh/mux.go:333 m.incomingChannels
+  <- c); NewClientConn returns that Go channel (ssh/client.go:88) and the caller or Dial hands it to NewClient (ssh/client.go:53),
+  whose handleChannelOpens and HandleChannelOpen feed every listed site): ssh.Client.handleChannelOpens -> ssh.channel.ChannelType
+  @ssh/client.go:186 [ssh.NewChannel]
+
+  CHA-only edge (accepted, *channel is the only NewChannel the module creates (ssh/mux.go:333 m.incomingChannels
+  <- c); NewClientConn returns that Go channel (ssh/client.go:88) and the caller or Dial hands it to NewClient (ssh/client.go:53),
+  whose handleChannelOpens and HandleChannelOpen feed every listed site): ssh.forwardList.handleChannels -> ssh.channel.ChannelType
+  @ssh/tcpip.go:235 [ssh.NewChannel]
+
+  Evidence (callee <- caller@site):
+
+  ssh.Client.Listen [ssh/tcpip.go:29] <- (entry point)
+
+  ssh.Client.ListenTCP [ssh/tcpip.go:116] <- ssh.Client.autoPortListenWorkaround@ssh/tcpip.go:87 (static)
+
+  ssh.Client.ListenUnix [ssh/streamlocal.go:34] <- ssh.Client.Listen@ssh/tcpip.go:42 (static)
+
+  ssh.Client.autoPortListenWorkaround [ssh/tcpip.go:80] <- ssh.Client.ListenTCP@ssh/tcpip.go:119 (static)
+
+  ssh.Client.handleChannelOpens [ssh/client.go:177] <- ssh.NewClient@ssh/client.go:60 (go)
+
+  ssh.Client.handleForwards [ssh/tcpip.go:105] <- ssh.Client.ListenTCP@ssh/tcpip.go:117 (invoked); ssh.Client.ListenUnix@ssh/streamlocal.go:35
+  (invoked); ssh.Client.listenTCPInternal@ssh/tcpip.go:126 (invoked)
+
+  ssh.Client.listenTCPInternal [ssh/tcpip.go:125] <- ssh.Client.Listen@ssh/tcpip.go:40 (static); ssh.Client.ListenTCP@ssh/tcpip.go:122
+  (static)
+
+  ssh.Dial [ssh/client.go:203] <- (entry point)
+
+  ssh.NewClient [ssh/client.go:53] <- ssh.Dial@ssh/client.go:212 (static)
+
+  ssh.forwardList.handleChannels [ssh/tcpip.go:227] <- ssh.Client.handleForwards@ssh/tcpip.go:106 (go); ssh.Client.handleForwards@ssh/tcpip.go:107
+  (go)
+
+  '

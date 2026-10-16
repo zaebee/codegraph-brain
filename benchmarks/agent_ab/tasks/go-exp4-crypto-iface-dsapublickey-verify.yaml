@@ -1,0 +1,223 @@
+id: go-exp4-crypto-iface-dsapublickey-verify
+repo: crypto
+sha: 0ae6809b7559060fe62abe65e26bd18b1fcaf6b7
+src_root: .
+type: impact
+delete_paths:
+- argon2/_asm
+- blake2b/_asm/AVX2
+- blake2b/_asm/standard
+- blake2s/_asm
+- chacha20poly1305/_asm
+- internal/poly1305/_asm
+- salsa20/salsa/_asm
+- x509roots/fallback
+question: 'In this repository, the method `dsaPublicKey.Verify` in `ssh/keys.go` is about to change. Which functions
+  and methods can end up calling it, directly or transitively? List every one, production code only: non-test code
+  in this repository''s root module (not `*_test.go` files). Follow every chain up to its entry point (an exported
+  API function, `main`, a function nothing else calls, or a function the code only passes as a value, such as a
+  cobra `RunE` handler) and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - id: CertChecker.Authenticate
+    any_of:
+    - CertChecker.Authenticate
+    - ssh.CertChecker.Authenticate
+    - ssh.CertChecker.Authenticate
+    - ssh/certs.go:CertChecker.Authenticate
+  - id: CertChecker.CheckCert
+    any_of:
+    - CertChecker.CheckCert
+    - ssh.CertChecker.CheckCert
+    - ssh.CertChecker.CheckCert
+    - ssh/certs.go:CertChecker.CheckCert
+  - id: CertChecker.CheckHostKey
+    any_of:
+    - CertChecker.CheckHostKey
+    - ssh.CertChecker.CheckHostKey
+    - ssh.CertChecker.CheckHostKey
+    - ssh/certs.go:CertChecker.CheckHostKey
+  - id: Certificate.Verify
+    any_of:
+    - Certificate.Verify
+    - ssh.Certificate.Verify
+    - ssh.Certificate.Verify
+    - ssh/certs.go:Certificate.Verify
+  - id: Dial
+    any_of:
+    - Dial
+    - ssh.Dial
+    - ssh.Dial
+    - ssh/client.go:Dial
+  - id: NewClientConn
+    any_of:
+    - NewClientConn
+    - ssh.NewClientConn
+    - ssh.NewClientConn
+    - ssh/client.go:NewClientConn
+  - id: NewServerConn
+    any_of:
+    - NewServerConn
+    - ssh.NewServerConn
+    - ssh.NewServerConn
+    - ssh/server.go:NewServerConn
+  - id: connection.clientHandshake
+    any_of:
+    - connection.clientHandshake
+    - ssh.connection.clientHandshake
+    - ssh.connection.clientHandshake
+    - ssh/client.go:connection.clientHandshake
+  - id: connection.serverAuthenticate
+    any_of:
+    - connection.serverAuthenticate
+    - ssh.connection.serverAuthenticate
+    - ssh.connection.serverAuthenticate
+    - ssh/server.go:connection.serverAuthenticate
+  - id: connection.serverHandshake
+    any_of:
+    - connection.serverHandshake
+    - ssh.connection.serverHandshake
+    - ssh.connection.serverHandshake
+    - ssh/server.go:connection.serverHandshake
+  - id: handshakeTransport.client
+    any_of:
+    - handshakeTransport.client
+    - ssh.handshakeTransport.client
+    - ssh.handshakeTransport.client
+    - ssh/handshake.go:handshakeTransport.client
+  - id: handshakeTransport.enterKeyExchange
+    any_of:
+    - handshakeTransport.enterKeyExchange
+    - ssh.handshakeTransport.enterKeyExchange
+    - ssh.handshakeTransport.enterKeyExchange
+    - ssh/handshake.go:handshakeTransport.enterKeyExchange
+  - id: handshakeTransport.kexLoop
+    any_of:
+    - handshakeTransport.kexLoop
+    - ssh.handshakeTransport.kexLoop
+    - ssh.handshakeTransport.kexLoop
+    - ssh/handshake.go:handshakeTransport.kexLoop
+  - id: newClientTransport
+    any_of:
+    - newClientTransport
+    - ssh.newClientTransport
+    - ssh.newClientTransport
+    - ssh/handshake.go:newClientTransport
+  - id: newServerTransport
+    any_of:
+    - newServerTransport
+    - ssh.newServerTransport
+    - ssh.newServerTransport
+    - ssh/handshake.go:newServerTransport
+  - id: verifyHostKeySignature
+    any_of:
+    - verifyHostKeySignature
+    - ssh.verifyHostKeySignature
+    - ssh.verifyHostKeySignature
+    - ssh/client.go:verifyHostKeySignature
+  - id: Key.Verify
+    any_of:
+    - Key.Verify
+    - agent.Key.Verify
+    - ssh/agent.Key.Verify
+    - ssh/agent/client.go:Key.Verify
+  files:
+  - ssh/agent/client.go
+  - ssh/certs.go
+  - ssh/client.go
+  - ssh/handshake.go
+  - ssh/server.go
+  allowed_symbols:
+  - dsaPublicKey.Verify
+  - knownhosts.New
+  allowed_files:
+  - ssh/keys.go
+  - ssh/knownhosts/knownhosts.go
+notes: 'exp4 cell iface (ssh.PublicKey), drawn by benchmarks/agent_ab/analysis/exp4/gold/draw.py (random.Random(4));
+  no cgis input.
+
+  Target ssh.dsaPublicKey.Verify at ssh/keys.go:697.
+
+  Gold model (pre-registration, section Gold): go/ssa VTA static/go/defer calls; closures, $bound and $thunk folded
+  into their function; promoted wrappers and synthetic package initialisers traversed, never symbols; in-module
+  interface dispatch by CHA with every CHA-only edge adjudicated (adjudications-crypto.json); stdlib/third-party/anonymous
+  interface dispatch by VTA only; a function-value reference is not walked: the referenced function is an entry
+  point and the function taking the value is allowed, not required (amendment 2).
+
+  Pilot corrections applied (pilot-corrections-crypto.json): function values the code calls at once are walked as
+  calls.
+
+  Allowed referencers (1): knownhosts.New
+
+  Platform: the required closure is identical under GOOS=linux and GOOS=darwin (GOARCH=amd64); gold is linux.
+
+  Nested modules deleted from the worktree before both arms: argon2/_asm/, blake2b/_asm/AVX2/, blake2b/_asm/standard/,
+  blake2s/_asm/, chacha20poly1305/_asm/, internal/poly1305/_asm/, salsa20/salsa/_asm/, x509roots/fallback/.
+
+  Target''s direct callers: agent.Key.Verify@ssh/agent/client.go:280 (invoke); ssh.CertChecker.CheckCert@ssh/certs.go:467
+  (invoke); ssh.Certificate.Verify@ssh/certs.go:616 (invoke); ssh.connection.serverAuthenticate@ssh/server.go:886
+  (invoke); ssh.verifyHostKeySignature@ssh/client.go:155 (invoke)
+
+  Reached only through interface dispatch (17): ssh.CertChecker.Authenticate, ssh.CertChecker.CheckCert, ssh.CertChecker.CheckHostKey,
+  ssh.Certificate.Verify, ssh.Dial, ssh.NewClientConn, ssh.NewServerConn, ssh.connection.clientHandshake, ssh.connection.serverAuthenticate,
+  ssh.connection.serverHandshake, ssh.handshakeTransport.client, ssh.handshakeTransport.enterKeyExchange, ssh.handshakeTransport.kexLoop,
+  ssh.newClientTransport, ssh.newServerTransport, ssh.verifyHostKeySignature, agent.Key.Verify
+
+  CHA-only edge (accepted, the key is the caller''s: the key argument of the agent''s Remove and SignWithFlags,
+  FingerprintLegacyMD5/SHA256, MarshalAuthorizedKey, knownhosts.Line, FixedHostKey and a host-key callback the caller
+  may invoke, or the exported Key/SignatureKey fields of a Certificate; ParsePublicKey yields every listed ssh type
+  and agent List yields *agent.Key): ssh.Certificate.Verify -> agent.Key.Verify @ssh/certs.go:616 [ssh.PublicKey]
+
+  CHA-only edge rejected: ssh.verifyHostKeySignature -> agent.Key.Verify @ssh/client.go:155: the key here is made
+  inside the module and VTA has every type it can be: parsed from the wire or a file (agent server''s parse*Cert,
+  ParseKnownHosts, ParseAuthorizedKey, knownhosts parseLine, serverAuthenticate, verifyHostKeySignature), the pubKey
+  NewSignerFromSigner computes (wrappedSigner, ssh/keys.go:1232), dsaPrivateKey''s own key, an agentKeyringSigner''s
+  *agent.Key (ssh/agent/client.go:827), a keyring signer''s key (ssh/agent/keyring.go:168-175, never sk), or SignCert''s
+  :488, reached only by certificate keys
+
+  Evidence (callee <- caller@site):
+
+  ssh.CertChecker.Authenticate [ssh/certs.go:388] <- (entry point)
+
+  ssh.CertChecker.CheckCert [ssh/certs.go:420] <- ssh.CertChecker.Authenticate@ssh/certs.go:410 (static); ssh.CertChecker.CheckHostKey@ssh/certs.go:382
+  (static)
+
+  ssh.CertChecker.CheckHostKey [ssh/certs.go:358] <- (entry point)
+
+  ssh.Certificate.Verify [ssh/certs.go:615] <- agent.Key.Verify@ssh/agent/client.go:280 (invoke); ssh.CertChecker.CheckCert@ssh/certs.go:467
+  (invoke); ssh.connection.serverAuthenticate@ssh/server.go:886 (invoke); ssh.verifyHostKeySignature@ssh/client.go:155
+  (invoke)
+
+  ssh.Dial [ssh/client.go:203] <- (entry point)
+
+  ssh.NewClientConn [ssh/client.go:71] <- ssh.Dial@ssh/client.go:208 (static)
+
+  ssh.NewServerConn [ssh/server.go:353] <- (entry point)
+
+  ssh.connection.clientHandshake [ssh/client.go:119] <- ssh.NewClientConn@ssh/client.go:83 (static)
+
+  ssh.connection.serverAuthenticate [ssh/server.go:652] <- ssh.connection.serverHandshake@ssh/server.go:445 (static)
+
+  ssh.connection.serverHandshake [ssh/server.go:394] <- ssh.NewServerConn@ssh/server.go:373 (static)
+
+  ssh.handshakeTransport.client [ssh/handshake.go:826] <- ssh.handshakeTransport.enterKeyExchange@ssh/handshake.go:717
+  (static)
+
+  ssh.handshakeTransport.enterKeyExchange [ssh/handshake.go:650] <- ssh.handshakeTransport.kexLoop@ssh/handshake.go:346
+  (static)
+
+  ssh.handshakeTransport.kexLoop [ssh/handshake.go:304] <- ssh.newClientTransport@ssh/handshake.go:171 (go); ssh.newServerTransport@ssh/handshake.go:180
+  (go)
+
+  ssh.newClientTransport [ssh/handshake.go:159] <- ssh.connection.clientHandshake@ssh/client.go:131 (static)
+
+  ssh.newServerTransport [ssh/handshake.go:175] <- ssh.connection.serverHandshake@ssh/server.go:416 (static)
+
+  ssh.verifyHostKeySignature [ssh/client.go:145] <- ssh.handshakeTransport.client@ssh/handshake.go:837 (static)
+
+  agent.Key.Verify [ssh/agent/client.go:275] <- ssh.CertChecker.CheckCert@ssh/certs.go:467 (invoke); ssh.Certificate.Verify@ssh/certs.go:616
+  (invoke); ssh.connection.serverAuthenticate@ssh/server.go:886 (invoke)
+
+  '

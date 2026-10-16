@@ -1,0 +1,17 @@
+{
+ "about": "Gold corrections from the exp4 pilot (pre-registration, section Gold: a symbol a pilot names that gold lacks is adjudicated against the code). Each entry is an R record (a function value taken) that the code invokes synchronously in the taking function, so it is walked as a call by the taker.",
+ "invoked": [
+  {"taker": "ssh.Session.start", "callee": "ssh.Session.stdin", "site": "ssh/session.go:372",
+   "reason": "for _, setupFd := range []F{(*Session).stdin, (*Session).stdout, (*Session).stderr} { setupFd(s) } (ssh/session.go:376-378): a local slice of method expressions, each called at once"},
+  {"taker": "ssh.Session.start", "callee": "ssh.Session.stdout", "site": "ssh/session.go:372",
+   "reason": "as for stdin (ssh/session.go:376-378)"},
+  {"taker": "ssh.Session.start", "callee": "ssh.Session.stderr", "site": "ssh/session.go:372",
+   "reason": "as for stdin (ssh/session.go:376-378)"},
+  {"taker": "ssh.Client.ListenTCP", "callee": "ssh.Client.handleForwards", "site": "ssh/tcpip.go:117",
+   "reason": "c.handleForwardsOnce.Do(c.handleForwards): sync.Once.Do calls its argument before it returns"},
+  {"taker": "ssh.Client.ListenUnix", "callee": "ssh.Client.handleForwards", "site": "ssh/streamlocal.go:35",
+   "reason": "as for ListenTCP"},
+  {"taker": "ssh.Client.listenTCPInternal", "callee": "ssh.Client.handleForwards", "site": "ssh/tcpip.go:126",
+   "reason": "as for ListenTCP"}
+ ]
+}

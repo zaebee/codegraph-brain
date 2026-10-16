@@ -1,0 +1,115 @@
+id: go-exp4-crypto-static-curvepoint-put
+repo: crypto
+sha: 0ae6809b7559060fe62abe65e26bd18b1fcaf6b7
+src_root: .
+type: impact
+delete_paths:
+- argon2/_asm
+- blake2b/_asm/AVX2
+- blake2b/_asm/standard
+- blake2s/_asm
+- chacha20poly1305/_asm
+- internal/poly1305/_asm
+- salsa20/salsa/_asm
+- x509roots/fallback
+question: 'In this repository, the method `curvePoint.Put` in `bn256/curve.go` is about to change. Which functions
+  and methods can end up calling it, directly or transitively? List every one, production code only: non-test code
+  in this repository''s root module (not `*_test.go` files). Follow every chain up to its entry point (an exported
+  API function, `main`, a function nothing else calls, or a function the code only passes as a value, such as a
+  cobra `RunE` handler) and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - id: G1.ScalarBaseMult
+    any_of:
+    - G1.ScalarBaseMult
+    - bn256.G1.ScalarBaseMult
+    - bn256.G1.ScalarBaseMult
+    - bn256/bn256.go:G1.ScalarBaseMult
+  - id: G1.ScalarMult
+    any_of:
+    - G1.ScalarMult
+    - bn256.G1.ScalarMult
+    - bn256.G1.ScalarMult
+    - bn256/bn256.go:G1.ScalarMult
+  - id: Pair
+    any_of:
+    - Pair
+    - bn256.Pair
+    - bn256.Pair
+    - bn256/bn256.go:Pair
+  - id: RandomG1
+    any_of:
+    - RandomG1
+    - bn256.RandomG1
+    - bn256.RandomG1
+    - bn256/bn256.go:RandomG1
+  - id: curvePoint.Mul
+    any_of:
+    - curvePoint.Mul
+    - bn256.curvePoint.Mul
+    - bn256.curvePoint.Mul
+    - bn256/curve.go:curvePoint.Mul
+  - id: miller
+    any_of:
+    - miller
+    - bn256.miller
+    - bn256.miller
+    - bn256/optate.go:miller
+  - id: optimalAte
+    any_of:
+    - optimalAte
+    - bn256.optimalAte
+    - bn256.optimalAte
+    - bn256/optate.go:optimalAte
+  files:
+  - bn256/bn256.go
+  - bn256/curve.go
+  - bn256/optate.go
+  allowed_symbols:
+  - curvePoint.Put
+  allowed_files: []
+notes: 'exp4 cell static, drawn by benchmarks/agent_ab/analysis/exp4/gold/draw.py (random.Random(4)); no cgis input.
+
+  Target bn256.curvePoint.Put at bn256/curve.go:42.
+
+  Gold model (pre-registration, section Gold): go/ssa VTA static/go/defer calls; closures, $bound and $thunk folded
+  into their function; promoted wrappers and synthetic package initialisers traversed, never symbols; in-module
+  interface dispatch by CHA with every CHA-only edge adjudicated (adjudications-crypto.json); stdlib/third-party/anonymous
+  interface dispatch by VTA only; a function-value reference is not walked: the referenced function is an entry
+  point and the function taking the value is allowed, not required (amendment 2).
+
+  Pilot corrections applied (pilot-corrections-crypto.json): function values the code calls at once are walked as
+  calls.
+
+  Allowed referencers (0): none
+
+  Platform: the required closure is identical under GOOS=linux and GOOS=darwin (GOARCH=amd64); gold is linux.
+
+  Nested modules deleted from the worktree before both arms: argon2/_asm/, blake2b/_asm/AVX2/, blake2b/_asm/standard/,
+  blake2s/_asm/, chacha20poly1305/_asm/, internal/poly1305/_asm/, salsa20/salsa/_asm/, x509roots/fallback/.
+
+  Target''s direct callers: bn256.curvePoint.Mul@bn256/curve.go:243 (static); bn256.curvePoint.Mul@bn256/curve.go:244
+  (static); bn256.miller@bn256/optate.go:294 (static)
+
+  Reached only through interface dispatch (0): none
+
+  Evidence (callee <- caller@site):
+
+  bn256.G1.ScalarBaseMult [bn256/bn256.go:67] <- bn256.RandomG1@bn256/bn256.go:55 (static)
+
+  bn256.G1.ScalarMult [bn256/bn256.go:76] <- (entry point)
+
+  bn256.Pair [bn256/bn256.go:392] <- (entry point)
+
+  bn256.RandomG1 [bn256/bn256.go:41] <- (entry point)
+
+  bn256.curvePoint.Mul [bn256/curve.go:228] <- bn256.G1.ScalarBaseMult@bn256/bn256.go:71 (static); bn256.G1.ScalarMult@bn256/bn256.go:80
+  (static)
+
+  bn256.miller [bn256/optate.go:189] <- bn256.optimalAte@bn256/optate.go:386 (static)
+
+  bn256.optimalAte [bn256/optate.go:385] <- bn256.Pair@bn256/bn256.go:393 (static)
+
+  '

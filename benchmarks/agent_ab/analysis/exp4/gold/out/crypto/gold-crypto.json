@@ -1,0 +1,1034 @@
+[
+ {
+  "id": "go-exp4-crypto-iface-dircache-delete",
+  "cell": "iface",
+  "family": "acme/autocert.Cache",
+  "target": "acme/autocert.DirCache.Delete",
+  "target_file": "acme/autocert/cache.go",
+  "n_required": 12,
+  "n_files": 2,
+  "required": [
+   "acme/autocert.Manager.GetCertificate",
+   "acme/autocert.Manager.authorizedCert",
+   "acme/autocert.Manager.cert",
+   "acme/autocert.Manager.createCert",
+   "acme/autocert.Manager.deleteCertToken",
+   "acme/autocert.Manager.deleteHTTPToken",
+   "acme/autocert.Manager.fulfill",
+   "acme/autocert.Manager.startRenew",
+   "acme/autocert.Manager.verifyRFC",
+   "acme/autocert.domainRenewal.do",
+   "acme/autocert.domainRenewal.renew",
+   "acme/autocert.domainRenewal.start"
+  ],
+  "files": [
+   "acme/autocert/autocert.go",
+   "acme/autocert/renewal.go"
+  ],
+  "referencers": [
+   "acme/autocert.Manager.TLSConfig"
+  ],
+  "dyn_only": [
+   "acme/autocert.Manager.GetCertificate",
+   "acme/autocert.Manager.authorizedCert",
+   "acme/autocert.Manager.cert",
+   "acme/autocert.Manager.createCert",
+   "acme/autocert.Manager.deleteCertToken",
+   "acme/autocert.Manager.deleteHTTPToken",
+   "acme/autocert.Manager.fulfill",
+   "acme/autocert.Manager.startRenew",
+   "acme/autocert.Manager.verifyRFC",
+   "acme/autocert.domainRenewal.do",
+   "acme/autocert.domainRenewal.renew",
+   "acme/autocert.domainRenewal.start"
+  ],
+  "cha_only_edges": [
+   [
+    "acme/autocert.Manager.deleteCertToken",
+    "synth:(*acme/autocert.DirCache).Delete",
+    "acme/autocert/autocert.go:845",
+    "acme/autocert.Cache"
+   ],
+   [
+    "acme/autocert.Manager.deleteHTTPToken",
+    "synth:(*acme/autocert.DirCache).Delete",
+    "acme/autocert/autocert.go:889",
+    "acme/autocert.Cache"
+   ]
+  ],
+  "rejected_edges_in_closure": []
+ },
+ {
+  "id": "go-exp4-crypto-iface-encryptedcontentinfo-data",
+  "cell": "iface",
+  "family": "pkcs12.decryptable",
+  "target": "pkcs12.encryptedContentInfo.Data",
+  "target_file": "pkcs12/pkcs12.go",
+  "n_required": 6,
+  "n_files": 3,
+  "required": [
+   "pkcs12.Decode",
+   "pkcs12.ToPEM",
+   "pkcs12.convertBag",
+   "pkcs12.decodePkcs8ShroudedKeyBag",
+   "pkcs12.getSafeContents",
+   "pkcs12.pbDecrypt"
+  ],
+  "files": [
+   "pkcs12/crypto.go",
+   "pkcs12/pkcs12.go",
+   "pkcs12/safebags.go"
+  ],
+  "referencers": [],
+  "dyn_only": [
+   "pkcs12.Decode",
+   "pkcs12.ToPEM",
+   "pkcs12.convertBag",
+   "pkcs12.decodePkcs8ShroudedKeyBag",
+   "pkcs12.getSafeContents",
+   "pkcs12.pbDecrypt"
+  ],
+  "cha_only_edges": [],
+  "rejected_edges_in_closure": [
+   [
+    "pkcs12.pbDecrypt",
+    "synth:(*pkcs12.encryptedContentInfo).Data",
+    "pkcs12/crypto.go:104",
+    "pbDecrypt's info is a *encryptedPrivateKeyInfo (pkcs12/safebags.go:26-31) or an encryptedContentInfo value (pkcs12/pkcs12.go:349); decryptable is unexported, so no caller supplies one"
+   ]
+  ]
+ },
+ {
+  "id": "go-exp4-crypto-iface-shawith40bitrc2cbc-deriveiv",
+  "cell": "iface",
+  "family": "pkcs12.pbeCipher",
+  "target": "pkcs12.shaWith40BitRC2CBC.deriveIV",
+  "target_file": "pkcs12/crypto.go",
+  "n_required": 7,
+  "n_files": 3,
+  "required": [
+   "pkcs12.Decode",
+   "pkcs12.ToPEM",
+   "pkcs12.convertBag",
+   "pkcs12.decodePkcs8ShroudedKeyBag",
+   "pkcs12.getSafeContents",
+   "pkcs12.pbDecrypt",
+   "pkcs12.pbDecrypterFor"
+  ],
+  "files": [
+   "pkcs12/crypto.go",
+   "pkcs12/pkcs12.go",
+   "pkcs12/safebags.go"
+  ],
+  "referencers": [],
+  "dyn_only": [
+   "pkcs12.Decode",
+   "pkcs12.ToPEM",
+   "pkcs12.convertBag",
+   "pkcs12.decodePkcs8ShroudedKeyBag",
+   "pkcs12.getSafeContents",
+   "pkcs12.pbDecrypt",
+   "pkcs12.pbDecrypterFor"
+  ],
+  "cha_only_edges": [],
+  "rejected_edges_in_closure": [
+   [
+    "pkcs12.pbDecrypterFor",
+    "synth:(*pkcs12.shaWith40BitRC2CBC).deriveIV",
+    "pkcs12/crypto.go:88",
+    "cipherType is only ever shaWithTripleDESCBC{} or shaWith40BitRC2CBC{} by value (pkcs12/crypto.go:71,73)"
+   ]
+  ]
+ },
+ {
+  "id": "go-exp4-crypto-iface-shawithtripledescbc-create",
+  "cell": "iface",
+  "family": "pkcs12.pbeCipher",
+  "target": "pkcs12.shaWithTripleDESCBC.create",
+  "target_file": "pkcs12/crypto.go",
+  "n_required": 7,
+  "n_files": 3,
+  "required": [
+   "pkcs12.Decode",
+   "pkcs12.ToPEM",
+   "pkcs12.convertBag",
+   "pkcs12.decodePkcs8ShroudedKeyBag",
+   "pkcs12.getSafeContents",
+   "pkcs12.pbDecrypt",
+   "pkcs12.pbDecrypterFor"
+  ],
+  "files": [
+   "pkcs12/crypto.go",
+   "pkcs12/pkcs12.go",
+   "pkcs12/safebags.go"
+  ],
+  "referencers": [],
+  "dyn_only": [
+   "pkcs12.Decode",
+   "pkcs12.ToPEM",
+   "pkcs12.convertBag",
+   "pkcs12.decodePkcs8ShroudedKeyBag",
+   "pkcs12.getSafeContents",
+   "pkcs12.pbDecrypt",
+   "pkcs12.pbDecrypterFor"
+  ],
+  "cha_only_edges": [],
+  "rejected_edges_in_closure": [
+   [
+    "pkcs12.pbDecrypterFor",
+    "synth:(*pkcs12.shaWithTripleDESCBC).create",
+    "pkcs12/crypto.go:90",
+    "cipherType is only ever shaWithTripleDESCBC{} or shaWith40BitRC2CBC{} by value (pkcs12/crypto.go:71,73)"
+   ]
+  ]
+ },
+ {
+  "id": "go-exp4-crypto-iface-keyboardinteractivechallenge-auth",
+  "cell": "iface",
+  "family": "ssh.AuthMethod",
+  "target": "ssh.KeyboardInteractiveChallenge.auth",
+  "target_file": "ssh/client_auth.go",
+  "n_required": 5,
+  "n_files": 2,
+  "required": [
+   "ssh.Dial",
+   "ssh.NewClientConn",
+   "ssh.connection.clientAuthenticate",
+   "ssh.connection.clientHandshake",
+   "ssh.retryableAuthMethod.auth"
+  ],
+  "files": [
+   "ssh/client.go",
+   "ssh/client_auth.go"
+  ],
+  "referencers": [],
+  "dyn_only": [
+   "ssh.Dial",
+   "ssh.NewClientConn",
+   "ssh.connection.clientAuthenticate",
+   "ssh.connection.clientHandshake",
+   "ssh.retryableAuthMethod.auth"
+  ],
+  "cha_only_edges": [
+   [
+    "ssh.connection.clientAuthenticate",
+    "ssh.KeyboardInteractiveChallenge.auth",
+    "ssh/client_auth.go:80",
+    "ssh.AuthMethod"
+   ],
+   [
+    "ssh.connection.clientAuthenticate",
+    "ssh.retryableAuthMethod.auth",
+    "ssh/client_auth.go:80",
+    "ssh.AuthMethod"
+   ],
+   [
+    "ssh.connection.clientAuthenticate",
+    "synth:(*ssh.KeyboardInteractiveChallenge).auth",
+    "ssh/client_auth.go:80",
+    "ssh.AuthMethod"
+   ],
+   [
+    "ssh.retryableAuthMethod.auth",
+    "ssh.KeyboardInteractiveChallenge.auth",
+    "ssh/client_auth.go:689",
+    "ssh.AuthMethod"
+   ],
+   [
+    "ssh.retryableAuthMethod.auth",
+    "synth:(*ssh.KeyboardInteractiveChallenge).auth",
+    "ssh/client_auth.go:689",
+    "ssh.AuthMethod"
+   ]
+  ],
+  "rejected_edges_in_closure": []
+ },
+ {
+  "id": "go-exp4-crypto-iface-channel-stderr",
+  "cell": "iface",
+  "family": "ssh.Channel",
+  "target": "ssh.channel.Stderr",
+  "target_file": "ssh/channel.go",
+  "n_required": 17,
+  "n_files": 4,
+  "required": [
+   "ssh.Client.Dial",
+   "ssh.Client.DialContext",
+   "ssh.Client.DialTCP",
+   "ssh.Client.dial",
+   "ssh.Client.dialStreamLocal",
+   "ssh.Session.CombinedOutput",
+   "ssh.Session.Output",
+   "ssh.Session.Run",
+   "ssh.Session.Shell",
+   "ssh.Session.Start",
+   "ssh.Session.StderrPipe",
+   "ssh.Session.start",
+   "ssh.Session.stderr",
+   "ssh.tcpListener.Accept",
+   "ssh.unixListener.Accept",
+   "ssh/agent.ForwardToAgent",
+   "ssh/agent.ForwardToRemote"
+  ],
+  "files": [
+   "ssh/agent/forward.go",
+   "ssh/session.go",
+   "ssh/streamlocal.go",
+   "ssh/tcpip.go"
+  ],
+  "referencers": [],
+  "dyn_only": [
+   "ssh.Client.Dial",
+   "ssh.Client.DialContext",
+   "ssh.Client.DialTCP",
+   "ssh.Client.dial",
+   "ssh.Client.dialStreamLocal",
+   "ssh.Session.CombinedOutput",
+   "ssh.Session.Output",
+   "ssh.Session.Run",
+   "ssh.Session.Shell",
+   "ssh.Session.Start",
+   "ssh.Session.StderrPipe",
+   "ssh.Session.start",
+   "ssh.Session.stderr",
+   "ssh.tcpListener.Accept",
+   "ssh.unixListener.Accept",
+   "ssh/agent.ForwardToAgent",
+   "ssh/agent.ForwardToRemote"
+  ],
+  "cha_only_edges": [],
+  "rejected_edges_in_closure": [
+   [
+    "ssh.Client.dial",
+    "synth:(*ssh.chanConn).Stderr",
+    "ssh/tcpip.go:499",
+    "no exported function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn"
+   ],
+   [
+    "ssh.Client.dial",
+    "synth:(ssh.chanConn).Stderr",
+    "ssh/tcpip.go:499",
+    "no exported function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn"
+   ],
+   [
+    "ssh.Client.dialStreamLocal",
+    "synth:(*ssh.chanConn).Stderr",
+    "ssh/streamlocal.go:61",
+    "no exported function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn"
+   ],
+   [
+    "ssh.Client.dialStreamLocal",
+    "synth:(ssh.chanConn).Stderr",
+    "ssh/streamlocal.go:61",
+    "no exported function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn"
+   ],
+   [
+    "ssh.Session.StderrPipe",
+    "synth:(*ssh.chanConn).Stderr",
+    "ssh/session.go:586",
+    "no exported function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn"
+   ],
+   [
+    "ssh.Session.StderrPipe",
+    "synth:(ssh.chanConn).Stderr",
+    "ssh/session.go:586",
+    "no exported function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn"
+   ],
+   [
+    "ssh.Session.stderr",
+    "synth:(*ssh.chanConn).Stderr",
+    "ssh/session.go:527",
+    "no exported function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn"
+   ],
+   [
+    "ssh.Session.stderr",
+    "synth:(ssh.chanConn).Stderr",
+    "ssh/session.go:527",
+    "no exported function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn"
+   ],
+   [
+    "ssh.tcpListener.Accept",
+    "synth:(*ssh.chanConn).Stderr",
+    "ssh/tcpip.go:335",
+    "no exported function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn"
+   ],
+   [
+    "ssh.tcpListener.Accept",
+    "synth:(ssh.chanConn).Stderr",
+    "ssh/tcpip.go:335",
+    "no exported function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn"
+   ],
+   [
+    "ssh.unixListener.Accept",
+    "synth:(*ssh.chanConn).Stderr",
+    "ssh/streamlocal.go:83",
+    "no exported function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn"
+   ],
+   [
+    "ssh.unixListener.Accept",
+    "synth:(ssh.chanConn).Stderr",
+    "ssh/streamlocal.go:83",
+    "no exported function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn"
+   ],
+   [
+    "ssh/agent.ForwardToAgent",
+    "synth:(*ssh.chanConn).Stderr",
+    "ssh/agent/forward.go:44",
+    "no exported function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn"
+   ],
+   [
+    "ssh/agent.ForwardToAgent",
+    "synth:(ssh.chanConn).Stderr",
+    "ssh/agent/forward.go:44",
+    "no exported function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn"
+   ],
+   [
+    "ssh/agent.ForwardToRemote",
+    "synth:(*ssh.chanConn).Stderr",
+    "ssh/agent/forward.go:76",
+    "no exported function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn"
+   ],
+   [
+    "ssh/agent.ForwardToRemote",
+    "synth:(ssh.chanConn).Stderr",
+    "ssh/agent/forward.go:76",
+    "no exported function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn"
+   ],
+   [
+    "synth:(*ssh.chanConn).Stderr",
+    "synth:(*ssh.chanConn).Stderr",
+    ":0",
+    "no exported function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn"
+   ],
+   [
+    "synth:(*ssh.chanConn).Stderr",
+    "synth:(ssh.chanConn).Stderr",
+    ":0",
+    "no exported function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn"
+   ],
+   [
+    "synth:(ssh.chanConn).Stderr",
+    "synth:(*ssh.chanConn).Stderr",
+    ":0",
+    "no exported function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn"
+   ],
+   [
+    "synth:(ssh.chanConn).Stderr",
+    "synth:(ssh.chanConn).Stderr",
+    ":0",
+    "no exported function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn"
+   ]
+  ]
+ },
+ {
+  "id": "go-exp4-crypto-iface-dsaprivatekey-algorithms",
+  "cell": "iface",
+  "family": "ssh.MultiAlgorithmSigner",
+  "target": "ssh.dsaPrivateKey.Algorithms",
+  "target_file": "ssh/keys.go",
+  "n_required": 24,
+  "n_files": 8,
+  "required": [
+   "ssh.Certificate.SignCert",
+   "ssh.Dial",
+   "ssh.NewCertSigner",
+   "ssh.NewClientConn",
+   "ssh.NewServerConn",
+   "ssh.connection.clientAuthenticate",
+   "ssh.connection.clientHandshake",
+   "ssh.connection.serverHandshake",
+   "ssh.handshakeTransport.enterKeyExchange",
+   "ssh.handshakeTransport.kexLoop",
+   "ssh.handshakeTransport.sendKexInit",
+   "ssh.handshakeTransport.server",
+   "ssh.newClientTransport",
+   "ssh.newServerTransport",
+   "ssh.pickHostKey",
+   "ssh.pickSignatureAlgorithm",
+   "ssh.publicKeyCallback.auth",
+   "ssh.retryableAuthMethod.auth",
+   "ssh/agent.ForwardToAgent",
+   "ssh/agent.ServeAgent",
+   "ssh/agent.keyring.Add",
+   "ssh/agent.server.insertIdentity",
+   "ssh/agent.server.processRequest",
+   "ssh/agent.server.processRequestBytes"
+  ],
+  "files": [
+   "ssh/agent/forward.go",
+   "ssh/agent/keyring.go",
+   "ssh/agent/server.go",
+   "ssh/certs.go",
+   "ssh/client.go",
+   "ssh/client_auth.go",
+   "ssh/handshake.go",
+   "ssh/server.go"
+  ],
+  "referencers": [],
+  "dyn_only": [
+   "ssh.Certificate.SignCert",
+   "ssh.Dial",
+   "ssh.NewCertSigner",
+   "ssh.NewClientConn",
+   "ssh.NewServerConn",
+   "ssh.connection.clientAuthenticate",
+   "ssh.connection.clientHandshake",
+   "ssh.connection.serverHandshake",
+   "ssh.handshakeTransport.enterKeyExchange",
+   "ssh.handshakeTransport.kexLoop",
+   "ssh.handshakeTransport.sendKexInit",
+   "ssh.handshakeTransport.server",
+   "ssh.newClientTransport",
+   "ssh.newServerTransport",
+   "ssh.pickHostKey",
+   "ssh.pickSignatureAlgorithm",
+   "ssh.publicKeyCallback.auth",
+   "ssh.retryableAuthMethod.auth",
+   "ssh/agent.ForwardToAgent",
+   "ssh/agent.ServeAgent",
+   "ssh/agent.keyring.Add",
+   "ssh/agent.server.insertIdentity",
+   "ssh/agent.server.processRequest",
+   "ssh/agent.server.processRequestBytes"
+  ],
+  "cha_only_edges": [
+   [
+    "ssh.Certificate.SignCert",
+    "ssh.dsaPrivateKey.Algorithms",
+    "ssh/certs.go:493",
+    "ssh.MultiAlgorithmSigner"
+   ],
+   [
+    "ssh.Certificate.SignCert",
+    "ssh.dsaPrivateKey.Algorithms",
+    "ssh/certs.go:497",
+    "ssh.MultiAlgorithmSigner"
+   ],
+   [
+    "ssh.connection.clientAuthenticate",
+    "ssh.publicKeyCallback.auth",
+    "ssh/client_auth.go:80",
+    "ssh.AuthMethod"
+   ],
+   [
+    "ssh.connection.clientAuthenticate",
+    "ssh.retryableAuthMethod.auth",
+    "ssh/client_auth.go:80",
+    "ssh.AuthMethod"
+   ],
+   [
+    "ssh.retryableAuthMethod.auth",
+    "ssh.publicKeyCallback.auth",
+    "ssh/client_auth.go:689",
+    "ssh.AuthMethod"
+   ],
+   [
+    "ssh/agent.server.insertIdentity",
+    "ssh/agent.keyring.Add",
+    "ssh/agent/server.go:602",
+    "ssh/agent.Agent"
+   ]
+  ],
+  "rejected_edges_in_closure": [
+   [
+    "ssh.connection.clientAuthenticate",
+    "synth:(*ssh.publicKeyCallback).auth",
+    "ssh/client_auth.go:80",
+    "passwordCallback and publicKeyCallback are unexported and created only by value (ssh/client_auth.go:229,235,487,493); no pointer to one exists"
+   ],
+   [
+    "ssh.retryableAuthMethod.auth",
+    "synth:(*ssh.publicKeyCallback).auth",
+    "ssh/client_auth.go:689",
+    "passwordCallback and publicKeyCallback are unexported and created only by value (ssh/client_auth.go:229,235,487,493); no pointer to one exists"
+   ]
+  ]
+ },
+ {
+  "id": "go-exp4-crypto-iface-channel-channeltype",
+  "cell": "iface",
+  "family": "ssh.NewChannel",
+  "target": "ssh.channel.ChannelType",
+  "target_file": "ssh/channel.go",
+  "n_required": 10,
+  "n_files": 3,
+  "required": [
+   "ssh.Client.Listen",
+   "ssh.Client.ListenTCP",
+   "ssh.Client.ListenUnix",
+   "ssh.Client.autoPortListenWorkaround",
+   "ssh.Client.handleChannelOpens",
+   "ssh.Client.handleForwards",
+   "ssh.Client.listenTCPInternal",
+   "ssh.Dial",
+   "ssh.NewClient",
+   "ssh.forwardList.handleChannels"
+  ],
+  "files": [
+   "ssh/client.go",
+   "ssh/streamlocal.go",
+   "ssh/tcpip.go"
+  ],
+  "referencers": [],
+  "dyn_only": [
+   "ssh.Client.Listen",
+   "ssh.Client.ListenTCP",
+   "ssh.Client.ListenUnix",
+   "ssh.Client.autoPortListenWorkaround",
+   "ssh.Client.handleChannelOpens",
+   "ssh.Client.handleForwards",
+   "ssh.Client.listenTCPInternal",
+   "ssh.Dial",
+   "ssh.NewClient",
+   "ssh.forwardList.handleChannels"
+  ],
+  "cha_only_edges": [
+   [
+    "ssh.Client.handleChannelOpens",
+    "ssh.channel.ChannelType",
+    "ssh/client.go:180",
+    "ssh.NewChannel"
+   ],
+   [
+    "ssh.Client.handleChannelOpens",
+    "ssh.channel.ChannelType",
+    "ssh/client.go:186",
+    "ssh.NewChannel"
+   ],
+   [
+    "ssh.forwardList.handleChannels",
+    "ssh.channel.ChannelType",
+    "ssh/tcpip.go:235",
+    "ssh.NewChannel"
+   ]
+  ],
+  "rejected_edges_in_closure": []
+ },
+ {
+  "id": "go-exp4-crypto-iface-dsapublickey-verify",
+  "cell": "iface",
+  "family": "ssh.PublicKey",
+  "target": "ssh.dsaPublicKey.Verify",
+  "target_file": "ssh/keys.go",
+  "n_required": 17,
+  "n_files": 5,
+  "required": [
+   "ssh.CertChecker.Authenticate",
+   "ssh.CertChecker.CheckCert",
+   "ssh.CertChecker.CheckHostKey",
+   "ssh.Certificate.Verify",
+   "ssh.Dial",
+   "ssh.NewClientConn",
+   "ssh.NewServerConn",
+   "ssh.connection.clientHandshake",
+   "ssh.connection.serverAuthenticate",
+   "ssh.connection.serverHandshake",
+   "ssh.handshakeTransport.client",
+   "ssh.handshakeTransport.enterKeyExchange",
+   "ssh.handshakeTransport.kexLoop",
+   "ssh.newClientTransport",
+   "ssh.newServerTransport",
+   "ssh.verifyHostKeySignature",
+   "ssh/agent.Key.Verify"
+  ],
+  "files": [
+   "ssh/agent/client.go",
+   "ssh/certs.go",
+   "ssh/client.go",
+   "ssh/handshake.go",
+   "ssh/server.go"
+  ],
+  "referencers": [
+   "ssh/knownhosts.New"
+  ],
+  "dyn_only": [
+   "ssh.CertChecker.Authenticate",
+   "ssh.CertChecker.CheckCert",
+   "ssh.CertChecker.CheckHostKey",
+   "ssh.Certificate.Verify",
+   "ssh.Dial",
+   "ssh.NewClientConn",
+   "ssh.NewServerConn",
+   "ssh.connection.clientHandshake",
+   "ssh.connection.serverAuthenticate",
+   "ssh.connection.serverHandshake",
+   "ssh.handshakeTransport.client",
+   "ssh.handshakeTransport.enterKeyExchange",
+   "ssh.handshakeTransport.kexLoop",
+   "ssh.newClientTransport",
+   "ssh.newServerTransport",
+   "ssh.verifyHostKeySignature",
+   "ssh/agent.Key.Verify"
+  ],
+  "cha_only_edges": [
+   [
+    "ssh.Certificate.Verify",
+    "ssh/agent.Key.Verify",
+    "ssh/certs.go:616",
+    "ssh.PublicKey"
+   ]
+  ],
+  "rejected_edges_in_closure": [
+   [
+    "ssh.verifyHostKeySignature",
+    "ssh/agent.Key.Verify",
+    "ssh/client.go:155",
+    "the key here is made inside the module and VTA has every type it can be: parsed from the wire or a file (agent server's parse*Cert, ParseKnownHosts, ParseAuthorizedKey, knownhosts parseLine, serverAuthenticate, verifyHostKeySignature), the pubKey NewSignerFromSigner computes (wrappedSigner, ssh/keys.go:1232), dsaPrivateKey's own key, an agentKeyringSigner's *agent.Key (ssh/agent/client.go:827), a keyring signer's key (ssh/agent/keyring.go:168-175, never sk), or SignCert's :488, reached only by certificate keys"
+   ]
+  ]
+ },
+ {
+  "id": "go-exp4-crypto-iface-mlkem768withcurve25519sha256-client",
+  "cell": "iface",
+  "family": "ssh.kexAlgorithm",
+  "target": "ssh.mlkem768WithCurve25519sha256.Client",
+  "target_file": "ssh/mlkem.go",
+  "n_required": 10,
+  "n_files": 3,
+  "required": [
+   "ssh.Dial",
+   "ssh.NewClientConn",
+   "ssh.NewServerConn",
+   "ssh.connection.clientHandshake",
+   "ssh.connection.serverHandshake",
+   "ssh.handshakeTransport.client",
+   "ssh.handshakeTransport.enterKeyExchange",
+   "ssh.handshakeTransport.kexLoop",
+   "ssh.newClientTransport",
+   "ssh.newServerTransport"
+  ],
+  "files": [
+   "ssh/client.go",
+   "ssh/handshake.go",
+   "ssh/server.go"
+  ],
+  "referencers": [],
+  "dyn_only": [
+   "ssh.Dial",
+   "ssh.NewClientConn",
+   "ssh.NewServerConn",
+   "ssh.connection.clientHandshake",
+   "ssh.connection.serverHandshake",
+   "ssh.handshakeTransport.client",
+   "ssh.handshakeTransport.enterKeyExchange",
+   "ssh.handshakeTransport.kexLoop",
+   "ssh.newClientTransport",
+   "ssh.newServerTransport"
+  ],
+  "cha_only_edges": [],
+  "rejected_edges_in_closure": []
+ },
+ {
+  "id": "go-exp4-crypto-iface-cbccipher-readcipherpacket",
+  "cell": "iface",
+  "family": "ssh.packetCipher",
+  "target": "ssh.cbcCipher.readCipherPacket",
+  "target_file": "ssh/cipher.go",
+  "n_required": 25,
+  "n_files": 6,
+  "required": [
+   "ssh.Dial",
+   "ssh.NewClientConn",
+   "ssh.NewServerConn",
+   "ssh.connection.clientHandshake",
+   "ssh.connection.serverHandshake",
+   "ssh.connectionState.readPacket",
+   "ssh.curve25519sha256.Client",
+   "ssh.curve25519sha256.Server",
+   "ssh.dhGEXSHA.Client",
+   "ssh.dhGEXSHA.Server",
+   "ssh.dhGroup.Client",
+   "ssh.dhGroup.Server",
+   "ssh.ecdh.Client",
+   "ssh.ecdh.Server",
+   "ssh.handshakeTransport.client",
+   "ssh.handshakeTransport.enterKeyExchange",
+   "ssh.handshakeTransport.kexLoop",
+   "ssh.handshakeTransport.readLoop",
+   "ssh.handshakeTransport.readOnePacket",
+   "ssh.handshakeTransport.server",
+   "ssh.mlkem768WithCurve25519sha256.Client",
+   "ssh.mlkem768WithCurve25519sha256.Server",
+   "ssh.newClientTransport",
+   "ssh.newServerTransport",
+   "ssh.transport.readPacket"
+  ],
+  "files": [
+   "ssh/client.go",
+   "ssh/handshake.go",
+   "ssh/kex.go",
+   "ssh/mlkem.go",
+   "ssh/server.go",
+   "ssh/transport.go"
+  ],
+  "referencers": [],
+  "dyn_only": [
+   "ssh.Dial",
+   "ssh.NewClientConn",
+   "ssh.NewServerConn",
+   "ssh.connection.clientHandshake",
+   "ssh.connection.serverHandshake",
+   "ssh.connectionState.readPacket",
+   "ssh.curve25519sha256.Client",
+   "ssh.curve25519sha256.Server",
+   "ssh.dhGEXSHA.Client",
+   "ssh.dhGEXSHA.Server",
+   "ssh.dhGroup.Client",
+   "ssh.dhGroup.Server",
+   "ssh.ecdh.Client",
+   "ssh.ecdh.Server",
+   "ssh.handshakeTransport.client",
+   "ssh.handshakeTransport.enterKeyExchange",
+   "ssh.handshakeTransport.kexLoop",
+   "ssh.handshakeTransport.readLoop",
+   "ssh.handshakeTransport.readOnePacket",
+   "ssh.handshakeTransport.server",
+   "ssh.mlkem768WithCurve25519sha256.Client",
+   "ssh.mlkem768WithCurve25519sha256.Server",
+   "ssh.newClientTransport",
+   "ssh.newServerTransport",
+   "ssh.transport.readPacket"
+  ],
+  "cha_only_edges": [],
+  "rejected_edges_in_closure": [
+   [
+    "ssh.connectionState.readPacket",
+    "synth:(*ssh.connectionState).readCipherPacket",
+    "ssh/transport.go:141",
+    "connectionState's embedded packetCipher is set only from the cipher constructors and the pendingKeyChange channel they feed (ssh/transport.go:152,203,220; ssh/cipher.go); a connectionState is never itself stored as a packetCipher, and the interface is unexported"
+   ],
+   [
+    "ssh.connectionState.readPacket",
+    "synth:(ssh.connectionState).readCipherPacket",
+    "ssh/transport.go:141",
+    "connectionState's embedded packetCipher is set only from the cipher constructors and the pendingKeyChange channel they feed (ssh/transport.go:152,203,220; ssh/cipher.go); a connectionState is never itself stored as a packetCipher, and the interface is unexported"
+   ],
+   [
+    "synth:(*ssh.connectionState).readCipherPacket",
+    "synth:(*ssh.connectionState).readCipherPacket",
+    ":0",
+    "connectionState's embedded packetCipher is set only from the cipher constructors and the pendingKeyChange channel they feed (ssh/transport.go:152,203,220; ssh/cipher.go); a connectionState is never itself stored as a packetCipher, and the interface is unexported"
+   ],
+   [
+    "synth:(*ssh.connectionState).readCipherPacket",
+    "synth:(ssh.connectionState).readCipherPacket",
+    ":0",
+    "connectionState's embedded packetCipher is set only from the cipher constructors and the pendingKeyChange channel they feed (ssh/transport.go:152,203,220; ssh/cipher.go); a connectionState is never itself stored as a packetCipher, and the interface is unexported"
+   ],
+   [
+    "synth:(ssh.connectionState).readCipherPacket",
+    "synth:(*ssh.connectionState).readCipherPacket",
+    ":0",
+    "connectionState's embedded packetCipher is set only from the cipher constructors and the pendingKeyChange channel they feed (ssh/transport.go:152,203,220; ssh/cipher.go); a connectionState is never itself stored as a packetCipher, and the interface is unexported"
+   ],
+   [
+    "synth:(ssh.connectionState).readCipherPacket",
+    "synth:(ssh.connectionState).readCipherPacket",
+    ":0",
+    "connectionState's embedded packetCipher is set only from the cipher constructors and the pendingKeyChange channel they feed (ssh/transport.go:152,203,220; ssh/cipher.go); a connectionState is never itself stored as a packetCipher, and the interface is unexported"
+   ]
+  ]
+ },
+ {
+  "id": "go-exp4-crypto-iface-keyring-signwithflags",
+  "cell": "iface",
+  "family": "ssh/agent.ExtendedAgent",
+  "target": "ssh/agent.keyring.SignWithFlags",
+  "target_file": "ssh/agent/keyring.go",
+  "n_required": 5,
+  "n_files": 3,
+  "required": [
+   "ssh/agent.ForwardToAgent",
+   "ssh/agent.ServeAgent",
+   "ssh/agent.keyring.Sign",
+   "ssh/agent.server.processRequest",
+   "ssh/agent.server.processRequestBytes"
+  ],
+  "files": [
+   "ssh/agent/forward.go",
+   "ssh/agent/keyring.go",
+   "ssh/agent/server.go"
+  ],
+  "referencers": [],
+  "dyn_only": [
+   "ssh/agent.ForwardToAgent",
+   "ssh/agent.ServeAgent",
+   "ssh/agent.server.processRequest",
+   "ssh/agent.server.processRequestBytes"
+  ],
+  "cha_only_edges": [
+   [
+    "ssh/agent.server.processRequest",
+    "ssh/agent.keyring.Sign",
+    "ssh/agent/server.go:136",
+    "ssh/agent.Agent"
+   ],
+   [
+    "ssh/agent.server.processRequest",
+    "ssh/agent.keyring.SignWithFlags",
+    "ssh/agent/server.go:134",
+    "ssh/agent.ExtendedAgent"
+   ]
+  ],
+  "rejected_edges_in_closure": []
+ },
+ {
+  "id": "go-exp4-crypto-static-blamkasse4",
+  "cell": "static",
+  "family": null,
+  "target": "argon2.blamkaSSE4",
+  "target_file": "argon2/blamka_amd64.go",
+  "n_required": 7,
+  "n_files": 2,
+  "required": [
+   "argon2.IDKey",
+   "argon2.Key",
+   "argon2.deriveKey",
+   "argon2.processBlock",
+   "argon2.processBlockSSE",
+   "argon2.processBlockXOR",
+   "argon2.processBlocks"
+  ],
+  "files": [
+   "argon2/argon2.go",
+   "argon2/blamka_amd64.go"
+  ],
+  "referencers": [],
+  "dyn_only": [],
+  "cha_only_edges": [],
+  "rejected_edges_in_closure": []
+ },
+ {
+  "id": "go-exp4-crypto-static-curvepoint-put",
+  "cell": "static",
+  "family": null,
+  "target": "bn256.curvePoint.Put",
+  "target_file": "bn256/curve.go",
+  "n_required": 7,
+  "n_files": 3,
+  "required": [
+   "bn256.G1.ScalarBaseMult",
+   "bn256.G1.ScalarMult",
+   "bn256.Pair",
+   "bn256.RandomG1",
+   "bn256.curvePoint.Mul",
+   "bn256.miller",
+   "bn256.optimalAte"
+  ],
+  "files": [
+   "bn256/bn256.go",
+   "bn256/curve.go",
+   "bn256/optate.go"
+  ],
+  "referencers": [],
+  "dyn_only": [],
+  "cha_only_edges": [],
+  "rejected_edges_in_closure": []
+ },
+ {
+  "id": "go-exp4-crypto-static-tlschallengecert",
+  "cell": "static",
+  "family": null,
+  "target": "acme.tlsChallengeCert",
+  "target_file": "acme/acme.go",
+  "n_required": 11,
+  "n_files": 3,
+  "required": [
+   "acme.Client.TLSALPN01ChallengeCert",
+   "acme/autocert.Manager.GetCertificate",
+   "acme/autocert.Manager.authorizedCert",
+   "acme/autocert.Manager.cert",
+   "acme/autocert.Manager.createCert",
+   "acme/autocert.Manager.fulfill",
+   "acme/autocert.Manager.startRenew",
+   "acme/autocert.Manager.verifyRFC",
+   "acme/autocert.domainRenewal.do",
+   "acme/autocert.domainRenewal.renew",
+   "acme/autocert.domainRenewal.start"
+  ],
+  "files": [
+   "acme/acme.go",
+   "acme/autocert/autocert.go",
+   "acme/autocert/renewal.go"
+  ],
+  "referencers": [
+   "acme/autocert.Manager.TLSConfig"
+  ],
+  "dyn_only": [],
+  "cha_only_edges": [],
+  "rejected_edges_in_closure": []
+ },
+ {
+  "id": "go-exp4-crypto-static-sshconn-algorithms",
+  "cell": "static",
+  "family": null,
+  "target": "ssh.sshConn.Algorithms",
+  "target_file": "ssh/connection.go",
+  "n_required": 4,
+  "n_files": 2,
+  "required": [
+   "ssh.Dial",
+   "ssh.NewClientConn",
+   "ssh.connection.clientAuthenticate",
+   "ssh.connection.clientHandshake"
+  ],
+  "files": [
+   "ssh/client.go",
+   "ssh/client_auth.go"
+  ],
+  "referencers": [],
+  "dyn_only": [],
+  "cha_only_edges": [],
+  "rejected_edges_in_closure": []
+ },
+ {
+  "id": "go-exp4-crypto-static-gfp6-double",
+  "cell": "static",
+  "family": null,
+  "target": "bn256.gfP6.Double",
+  "target_file": "bn256/gfp6.go",
+  "n_required": 7,
+  "n_files": 3,
+  "required": [
+   "bn256.GT.ScalarMult",
+   "bn256.Pair",
+   "bn256.finalExponentiation",
+   "bn256.gfP12.Exp",
+   "bn256.gfP12.Square",
+   "bn256.miller",
+   "bn256.optimalAte"
+  ],
+  "files": [
+   "bn256/bn256.go",
+   "bn256/gfp12.go",
+   "bn256/optate.go"
+  ],
+  "referencers": [],
+  "dyn_only": [],
+  "cha_only_edges": [],
+  "rejected_edges_in_closure": []
+ },
+ {
+  "id": "go-exp4-crypto-static-twistpoint-setinfinity",
+  "cell": "static",
+  "family": null,
+  "target": "bn256.twistPoint.SetInfinity",
+  "target_file": "bn256/twist.go",
+  "n_required": 4,
+  "n_files": 2,
+  "required": [
+   "bn256.G2.ScalarBaseMult",
+   "bn256.G2.ScalarMult",
+   "bn256.RandomG2",
+   "bn256.twistPoint.Mul"
+  ],
+  "files": [
+   "bn256/bn256.go",
+   "bn256/twist.go"
+  ],
+  "referencers": [],
+  "dyn_only": [],
+  "cha_only_edges": [],
+  "rejected_edges_in_closure": []
+ }
+]

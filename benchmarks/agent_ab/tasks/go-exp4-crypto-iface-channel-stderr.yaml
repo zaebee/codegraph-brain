@@ -1,0 +1,286 @@
+id: go-exp4-crypto-iface-channel-stderr
+repo: crypto
+sha: 0ae6809b7559060fe62abe65e26bd18b1fcaf6b7
+src_root: .
+type: impact
+delete_paths:
+- argon2/_asm
+- blake2b/_asm/AVX2
+- blake2b/_asm/standard
+- blake2s/_asm
+- chacha20poly1305/_asm
+- internal/poly1305/_asm
+- salsa20/salsa/_asm
+- x509roots/fallback
+question: 'In this repository, the method `channel.Stderr` in `ssh/channel.go` is about to change. Which functions
+  and methods can end up calling it, directly or transitively? List every one, production code only: non-test code
+  in this repository''s root module (not `*_test.go` files). Follow every chain up to its entry point (an exported
+  API function, `main`, a function nothing else calls, or a function the code only passes as a value, such as a
+  cobra `RunE` handler) and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - id: Client.Dial
+    any_of:
+    - Client.Dial
+    - ssh.Client.Dial
+    - ssh.Client.Dial
+    - ssh/tcpip.go:Client.Dial
+  - id: Client.DialContext
+    any_of:
+    - Client.DialContext
+    - ssh.Client.DialContext
+    - ssh.Client.DialContext
+    - ssh/tcpip.go:Client.DialContext
+  - id: Client.DialTCP
+    any_of:
+    - Client.DialTCP
+    - ssh.Client.DialTCP
+    - ssh.Client.DialTCP
+    - ssh/tcpip.go:Client.DialTCP
+  - id: Client.dial
+    any_of:
+    - Client.dial
+    - ssh.Client.dial
+    - ssh.Client.dial
+    - ssh/tcpip.go:Client.dial
+  - id: Client.dialStreamLocal
+    any_of:
+    - Client.dialStreamLocal
+    - ssh.Client.dialStreamLocal
+    - ssh.Client.dialStreamLocal
+    - ssh/streamlocal.go:Client.dialStreamLocal
+  - id: Session.CombinedOutput
+    any_of:
+    - Session.CombinedOutput
+    - ssh.Session.CombinedOutput
+    - ssh.Session.CombinedOutput
+    - ssh/session.go:Session.CombinedOutput
+  - id: Session.Output
+    any_of:
+    - Session.Output
+    - ssh.Session.Output
+    - ssh.Session.Output
+    - ssh/session.go:Session.Output
+  - id: Session.Run
+    any_of:
+    - Session.Run
+    - ssh.Session.Run
+    - ssh.Session.Run
+    - ssh/session.go:Session.Run
+  - id: Session.Shell
+    any_of:
+    - Session.Shell
+    - ssh.Session.Shell
+    - ssh.Session.Shell
+    - ssh/session.go:Session.Shell
+  - id: Session.Start
+    any_of:
+    - Session.Start
+    - ssh.Session.Start
+    - ssh.Session.Start
+    - ssh/session.go:Session.Start
+  - id: Session.StderrPipe
+    any_of:
+    - Session.StderrPipe
+    - ssh.Session.StderrPipe
+    - ssh.Session.StderrPipe
+    - ssh/session.go:Session.StderrPipe
+  - id: Session.start
+    any_of:
+    - Session.start
+    - ssh.Session.start
+    - ssh.Session.start
+    - ssh/session.go:Session.start
+  - id: Session.stderr
+    any_of:
+    - Session.stderr
+    - ssh.Session.stderr
+    - ssh.Session.stderr
+    - ssh/session.go:Session.stderr
+  - id: tcpListener.Accept
+    any_of:
+    - tcpListener.Accept
+    - ssh.tcpListener.Accept
+    - ssh.tcpListener.Accept
+    - ssh/tcpip.go:tcpListener.Accept
+  - id: unixListener.Accept
+    any_of:
+    - unixListener.Accept
+    - ssh.unixListener.Accept
+    - ssh.unixListener.Accept
+    - ssh/streamlocal.go:unixListener.Accept
+  - id: ForwardToAgent
+    any_of:
+    - ForwardToAgent
+    - agent.ForwardToAgent
+    - ssh/agent.ForwardToAgent
+    - ssh/agent/forward.go:ForwardToAgent
+  - id: ForwardToRemote
+    any_of:
+    - ForwardToRemote
+    - agent.ForwardToRemote
+    - ssh/agent.ForwardToRemote
+    - ssh/agent/forward.go:ForwardToRemote
+  files:
+  - ssh/agent/forward.go
+  - ssh/session.go
+  - ssh/streamlocal.go
+  - ssh/tcpip.go
+  allowed_symbols:
+  - channel.Stderr
+  allowed_files:
+  - ssh/channel.go
+notes: 'exp4 cell iface (ssh.Channel), drawn by benchmarks/agent_ab/analysis/exp4/gold/draw.py (random.Random(4));
+  no cgis input.
+
+  Target ssh.channel.Stderr at ssh/channel.go:644.
+
+  Gold model (pre-registration, section Gold): go/ssa VTA static/go/defer calls; closures, $bound and $thunk folded
+  into their function; promoted wrappers and synthetic package initialisers traversed, never symbols; in-module
+  interface dispatch by CHA with every CHA-only edge adjudicated (adjudications-crypto.json); stdlib/third-party/anonymous
+  interface dispatch by VTA only; a function-value reference is not walked: the referenced function is an entry
+  point and the function taking the value is allowed, not required (amendment 2).
+
+  Pilot corrections applied (pilot-corrections-crypto.json): function values the code calls at once are walked as
+  calls.
+
+  Allowed referencers (0): none
+
+  Platform: the required closure is identical under GOOS=linux and GOOS=darwin (GOARCH=amd64); gold is linux.
+
+  Nested modules deleted from the worktree before both arms: argon2/_asm/, blake2b/_asm/AVX2/, blake2b/_asm/standard/,
+  blake2s/_asm/, chacha20poly1305/_asm/, internal/poly1305/_asm/, salsa20/salsa/_asm/, x509roots/fallback/.
+
+  Target''s direct callers: agent.ForwardToAgent@ssh/agent/forward.go:44 (invoke); agent.ForwardToRemote@ssh/agent/forward.go:76
+  (invoke); ssh.Client.dial@ssh/tcpip.go:499 (invoke); ssh.Client.dialStreamLocal@ssh/streamlocal.go:61 (invoke);
+  ssh.Session.StderrPipe@ssh/session.go:586 (invoke); ssh.Session.stderr@ssh/session.go:527 (invoke); ssh.tcpListener.Accept@ssh/tcpip.go:335
+  (invoke); ssh.unixListener.Accept@ssh/streamlocal.go:83 (invoke); synth:(*ssh.chanConn).Stderr@:0 (invoke); synth:(ssh.chanConn).Stderr@:0
+  (invoke)
+
+  Reached only through interface dispatch (17): ssh.Client.Dial, ssh.Client.DialContext, ssh.Client.DialTCP, ssh.Client.dial,
+  ssh.Client.dialStreamLocal, ssh.Session.CombinedOutput, ssh.Session.Output, ssh.Session.Run, ssh.Session.Shell,
+  ssh.Session.Start, ssh.Session.StderrPipe, ssh.Session.start, ssh.Session.stderr, ssh.tcpListener.Accept, ssh.unixListener.Accept,
+  agent.ForwardToAgent, agent.ForwardToRemote
+
+  CHA-only edge rejected: ssh.Client.dial -> synth:(*ssh.chanConn).Stderr @ssh/tcpip.go:499: no exported function
+  takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return *channel;
+  chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn
+
+  CHA-only edge rejected: ssh.Client.dial -> synth:(ssh.chanConn).Stderr @ssh/tcpip.go:499: no exported function
+  takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return *channel;
+  chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn
+
+  CHA-only edge rejected: ssh.Client.dialStreamLocal -> synth:(*ssh.chanConn).Stderr @ssh/streamlocal.go:61: no
+  exported function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which
+  return *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn
+
+  CHA-only edge rejected: ssh.Client.dialStreamLocal -> synth:(ssh.chanConn).Stderr @ssh/streamlocal.go:61: no exported
+  function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return
+  *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn
+
+  CHA-only edge rejected: ssh.Session.StderrPipe -> synth:(*ssh.chanConn).Stderr @ssh/session.go:586: no exported
+  function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return
+  *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn
+
+  CHA-only edge rejected: ssh.Session.StderrPipe -> synth:(ssh.chanConn).Stderr @ssh/session.go:586: no exported
+  function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return
+  *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn
+
+  CHA-only edge rejected: ssh.Session.stderr -> synth:(*ssh.chanConn).Stderr @ssh/session.go:527: no exported function
+  takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return *channel;
+  chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn
+
+  CHA-only edge rejected: ssh.Session.stderr -> synth:(ssh.chanConn).Stderr @ssh/session.go:527: no exported function
+  takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return *channel;
+  chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn
+
+  CHA-only edge rejected: ssh.tcpListener.Accept -> synth:(*ssh.chanConn).Stderr @ssh/tcpip.go:335: no exported
+  function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return
+  *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn
+
+  CHA-only edge rejected: ssh.tcpListener.Accept -> synth:(ssh.chanConn).Stderr @ssh/tcpip.go:335: no exported function
+  takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return *channel;
+  chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn
+
+  CHA-only edge rejected: ssh.unixListener.Accept -> synth:(*ssh.chanConn).Stderr @ssh/streamlocal.go:83: no exported
+  function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return
+  *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn
+
+  CHA-only edge rejected: ssh.unixListener.Accept -> synth:(ssh.chanConn).Stderr @ssh/streamlocal.go:83: no exported
+  function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return
+  *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn
+
+  CHA-only edge rejected: agent.ForwardToAgent -> synth:(*ssh.chanConn).Stderr @ssh/agent/forward.go:44: no exported
+  function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return
+  *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn
+
+  CHA-only edge rejected: agent.ForwardToAgent -> synth:(ssh.chanConn).Stderr @ssh/agent/forward.go:44: no exported
+  function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return
+  *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn
+
+  CHA-only edge rejected: agent.ForwardToRemote -> synth:(*ssh.chanConn).Stderr @ssh/agent/forward.go:76: no exported
+  function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return
+  *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn
+
+  CHA-only edge rejected: agent.ForwardToRemote -> synth:(ssh.chanConn).Stderr @ssh/agent/forward.go:76: no exported
+  function takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return
+  *channel; chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn
+
+  CHA-only edge rejected: synth:(*ssh.chanConn).Stderr -> synth:(*ssh.chanConn).Stderr @:0: no exported function
+  takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return *channel;
+  chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn
+
+  CHA-only edge rejected: synth:(*ssh.chanConn).Stderr -> synth:(ssh.chanConn).Stderr @:0: no exported function
+  takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return *channel;
+  chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn
+
+  CHA-only edge rejected: synth:(ssh.chanConn).Stderr -> synth:(*ssh.chanConn).Stderr @:0: no exported function
+  takes a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return *channel;
+  chanConn wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn
+
+  CHA-only edge rejected: synth:(ssh.chanConn).Stderr -> synth:(ssh.chanConn).Stderr @:0: no exported function takes
+  a Channel; every Channel in the module comes from OpenChannel or NewChannel.Accept, which return *channel; chanConn
+  wraps those (ssh/tcpip.go dial, ssh/streamlocal.go) and is handed out only as a net.Conn
+
+  Evidence (callee <- caller@site):
+
+  ssh.Client.Dial [ssh/tcpip.go:409] <- ssh.Client.DialContext@ssh/tcpip.go:390 (static)
+
+  ssh.Client.DialContext [ssh/tcpip.go:380] <- (entry point)
+
+  ssh.Client.DialTCP [ssh/tcpip.go:461] <- (entry point)
+
+  ssh.Client.dial [ssh/tcpip.go:487] <- ssh.Client.Dial@ssh/tcpip.go:422 (static); ssh.Client.DialTCP@ssh/tcpip.go:468
+  (static)
+
+  ssh.Client.dialStreamLocal [ssh/streamlocal.go:52] <- ssh.Client.Dial@ssh/tcpip.go:438 (static)
+
+  ssh.Session.CombinedOutput [ssh/session.go:341] <- (entry point)
+
+  ssh.Session.Output [ssh/session.go:318] <- (entry point)
+
+  ssh.Session.Run [ssh/session.go:309] <- ssh.Session.CombinedOutput@ssh/session.go:351 (static); ssh.Session.Output@ssh/session.go:324
+  (static)
+
+  ssh.Session.Shell [ssh/session.go:357] <- (entry point)
+
+  ssh.Session.Start [ssh/session.go:278] <- ssh.Session.Run@ssh/session.go:310 (static)
+
+  ssh.Session.StderrPipe [ssh/session.go:578] <- (entry point)
+
+  ssh.Session.start [ssh/session.go:372] <- ssh.Session.Shell@ssh/session.go:369 (static); ssh.Session.Start@ssh/session.go:293
+  (static)
+
+  ssh.Session.stderr [ssh/session.go:519] <- ssh.Session.start@ssh/session.go:372 (invoked)
+
+  ssh.tcpListener.Accept [ssh/tcpip.go:325] <- (entry point)
+
+  ssh.unixListener.Accept [ssh/streamlocal.go:73] <- (entry point)
+
+  agent.ForwardToAgent [ssh/agent/forward.go:31] <- (entry point)
+
+  agent.ForwardToRemote [ssh/agent/forward.go:58] <- (entry point)
+
+  '

@@ -1,0 +1,312 @@
+id: go-exp4-crypto-iface-cbccipher-readcipherpacket
+repo: crypto
+sha: 0ae6809b7559060fe62abe65e26bd18b1fcaf6b7
+src_root: .
+type: impact
+delete_paths:
+- argon2/_asm
+- blake2b/_asm/AVX2
+- blake2b/_asm/standard
+- blake2s/_asm
+- chacha20poly1305/_asm
+- internal/poly1305/_asm
+- salsa20/salsa/_asm
+- x509roots/fallback
+question: 'In this repository, the method `cbcCipher.readCipherPacket` in `ssh/cipher.go` is about to change. Which
+  functions and methods can end up calling it, directly or transitively? List every one, production code only: non-test
+  code in this repository''s root module (not `*_test.go` files). Follow every chain up to its entry point (an exported
+  API function, `main`, a function nothing else calls, or a function the code only passes as a value, such as a
+  cobra `RunE` handler) and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - id: Dial
+    any_of:
+    - Dial
+    - ssh.Dial
+    - ssh.Dial
+    - ssh/client.go:Dial
+  - id: NewClientConn
+    any_of:
+    - NewClientConn
+    - ssh.NewClientConn
+    - ssh.NewClientConn
+    - ssh/client.go:NewClientConn
+  - id: NewServerConn
+    any_of:
+    - NewServerConn
+    - ssh.NewServerConn
+    - ssh.NewServerConn
+    - ssh/server.go:NewServerConn
+  - id: connection.clientHandshake
+    any_of:
+    - connection.clientHandshake
+    - ssh.connection.clientHandshake
+    - ssh.connection.clientHandshake
+    - ssh/client.go:connection.clientHandshake
+  - id: connection.serverHandshake
+    any_of:
+    - connection.serverHandshake
+    - ssh.connection.serverHandshake
+    - ssh.connection.serverHandshake
+    - ssh/server.go:connection.serverHandshake
+  - id: connectionState.readPacket
+    any_of:
+    - connectionState.readPacket
+    - ssh.connectionState.readPacket
+    - ssh.connectionState.readPacket
+    - ssh/transport.go:connectionState.readPacket
+  - id: curve25519sha256.Client
+    any_of:
+    - curve25519sha256.Client
+    - ssh.curve25519sha256.Client
+    - ssh.curve25519sha256.Client
+    - ssh/kex.go:curve25519sha256.Client
+  - id: curve25519sha256.Server
+    any_of:
+    - curve25519sha256.Server
+    - ssh.curve25519sha256.Server
+    - ssh.curve25519sha256.Server
+    - ssh/kex.go:curve25519sha256.Server
+  - id: dhGEXSHA.Client
+    any_of:
+    - dhGEXSHA.Client
+    - ssh.dhGEXSHA.Client
+    - ssh.dhGEXSHA.Client
+    - ssh/kex.go:dhGEXSHA.Client
+  - id: dhGEXSHA.Server
+    any_of:
+    - dhGEXSHA.Server
+    - ssh.dhGEXSHA.Server
+    - ssh.dhGEXSHA.Server
+    - ssh/kex.go:dhGEXSHA.Server
+  - id: dhGroup.Client
+    any_of:
+    - dhGroup.Client
+    - ssh.dhGroup.Client
+    - ssh.dhGroup.Client
+    - ssh/kex.go:dhGroup.Client
+  - id: dhGroup.Server
+    any_of:
+    - dhGroup.Server
+    - ssh.dhGroup.Server
+    - ssh.dhGroup.Server
+    - ssh/kex.go:dhGroup.Server
+  - id: ecdh.Client
+    any_of:
+    - ecdh.Client
+    - ssh.ecdh.Client
+    - ssh.ecdh.Client
+    - ssh/kex.go:ecdh.Client
+  - id: ecdh.Server
+    any_of:
+    - ecdh.Server
+    - ssh.ecdh.Server
+    - ssh.ecdh.Server
+    - ssh/kex.go:ecdh.Server
+  - id: handshakeTransport.client
+    any_of:
+    - handshakeTransport.client
+    - ssh.handshakeTransport.client
+    - ssh.handshakeTransport.client
+    - ssh/handshake.go:handshakeTransport.client
+  - id: handshakeTransport.enterKeyExchange
+    any_of:
+    - handshakeTransport.enterKeyExchange
+    - ssh.handshakeTransport.enterKeyExchange
+    - ssh.handshakeTransport.enterKeyExchange
+    - ssh/handshake.go:handshakeTransport.enterKeyExchange
+  - id: handshakeTransport.kexLoop
+    any_of:
+    - handshakeTransport.kexLoop
+    - ssh.handshakeTransport.kexLoop
+    - ssh.handshakeTransport.kexLoop
+    - ssh/handshake.go:handshakeTransport.kexLoop
+  - id: handshakeTransport.readLoop
+    any_of:
+    - handshakeTransport.readLoop
+    - ssh.handshakeTransport.readLoop
+    - ssh.handshakeTransport.readLoop
+    - ssh/handshake.go:handshakeTransport.readLoop
+  - id: handshakeTransport.readOnePacket
+    any_of:
+    - handshakeTransport.readOnePacket
+    - ssh.handshakeTransport.readOnePacket
+    - ssh.handshakeTransport.readOnePacket
+    - ssh/handshake.go:handshakeTransport.readOnePacket
+  - id: handshakeTransport.server
+    any_of:
+    - handshakeTransport.server
+    - ssh.handshakeTransport.server
+    - ssh.handshakeTransport.server
+    - ssh/handshake.go:handshakeTransport.server
+  - id: mlkem768WithCurve25519sha256.Client
+    any_of:
+    - mlkem768WithCurve25519sha256.Client
+    - ssh.mlkem768WithCurve25519sha256.Client
+    - ssh.mlkem768WithCurve25519sha256.Client
+    - ssh/mlkem.go:mlkem768WithCurve25519sha256.Client
+  - id: mlkem768WithCurve25519sha256.Server
+    any_of:
+    - mlkem768WithCurve25519sha256.Server
+    - ssh.mlkem768WithCurve25519sha256.Server
+    - ssh.mlkem768WithCurve25519sha256.Server
+    - ssh/mlkem.go:mlkem768WithCurve25519sha256.Server
+  - id: newClientTransport
+    any_of:
+    - newClientTransport
+    - ssh.newClientTransport
+    - ssh.newClientTransport
+    - ssh/handshake.go:newClientTransport
+  - id: newServerTransport
+    any_of:
+    - newServerTransport
+    - ssh.newServerTransport
+    - ssh.newServerTransport
+    - ssh/handshake.go:newServerTransport
+  - id: transport.readPacket
+    any_of:
+    - transport.readPacket
+    - ssh.transport.readPacket
+    - ssh.transport.readPacket
+    - ssh/transport.go:transport.readPacket
+  files:
+  - ssh/client.go
+  - ssh/handshake.go
+  - ssh/kex.go
+  - ssh/mlkem.go
+  - ssh/server.go
+  - ssh/transport.go
+  allowed_symbols:
+  - cbcCipher.readCipherPacket
+  allowed_files:
+  - ssh/cipher.go
+notes: 'exp4 cell iface (ssh.packetCipher), drawn by benchmarks/agent_ab/analysis/exp4/gold/draw.py (random.Random(4));
+  no cgis input.
+
+  Target ssh.cbcCipher.readCipherPacket at ssh/cipher.go:515.
+
+  Gold model (pre-registration, section Gold): go/ssa VTA static/go/defer calls; closures, $bound and $thunk folded
+  into their function; promoted wrappers and synthetic package initialisers traversed, never symbols; in-module
+  interface dispatch by CHA with every CHA-only edge adjudicated (adjudications-crypto.json); stdlib/third-party/anonymous
+  interface dispatch by VTA only; a function-value reference is not walked: the referenced function is an entry
+  point and the function taking the value is allowed, not required (amendment 2).
+
+  Pilot corrections applied (pilot-corrections-crypto.json): function values the code calls at once are walked as
+  calls.
+
+  Allowed referencers (0): none
+
+  Platform: the required closure is identical under GOOS=linux and GOOS=darwin (GOARCH=amd64); gold is linux.
+
+  Nested modules deleted from the worktree before both arms: argon2/_asm/, blake2b/_asm/AVX2/, blake2b/_asm/standard/,
+  blake2s/_asm/, chacha20poly1305/_asm/, internal/poly1305/_asm/, salsa20/salsa/_asm/, x509roots/fallback/.
+
+  Target''s direct callers: ssh.connectionState.readPacket@ssh/transport.go:141 (invoke); synth:(*ssh.connectionState).readCipherPacket@:0
+  (invoke); synth:(ssh.connectionState).readCipherPacket@:0 (invoke)
+
+  Reached only through interface dispatch (25): ssh.Dial, ssh.NewClientConn, ssh.NewServerConn, ssh.connection.clientHandshake,
+  ssh.connection.serverHandshake, ssh.connectionState.readPacket, ssh.curve25519sha256.Client, ssh.curve25519sha256.Server,
+  ssh.dhGEXSHA.Client, ssh.dhGEXSHA.Server, ssh.dhGroup.Client, ssh.dhGroup.Server, ssh.ecdh.Client, ssh.ecdh.Server,
+  ssh.handshakeTransport.client, ssh.handshakeTransport.enterKeyExchange, ssh.handshakeTransport.kexLoop, ssh.handshakeTransport.readLoop,
+  ssh.handshakeTransport.readOnePacket, ssh.handshakeTransport.server, ssh.mlkem768WithCurve25519sha256.Client,
+  ssh.mlkem768WithCurve25519sha256.Server, ssh.newClientTransport, ssh.newServerTransport, ssh.transport.readPacket
+
+  CHA-only edge rejected: ssh.connectionState.readPacket -> synth:(*ssh.connectionState).readCipherPacket @ssh/transport.go:141:
+  connectionState''s embedded packetCipher is set only from the cipher constructors and the pendingKeyChange channel
+  they feed (ssh/transport.go:152,203,220; ssh/cipher.go); a connectionState is never itself stored as a packetCipher,
+  and the interface is unexported
+
+  CHA-only edge rejected: ssh.connectionState.readPacket -> synth:(ssh.connectionState).readCipherPacket @ssh/transport.go:141:
+  connectionState''s embedded packetCipher is set only from the cipher constructors and the pendingKeyChange channel
+  they feed (ssh/transport.go:152,203,220; ssh/cipher.go); a connectionState is never itself stored as a packetCipher,
+  and the interface is unexported
+
+  CHA-only edge rejected: synth:(*ssh.connectionState).readCipherPacket -> synth:(*ssh.connectionState).readCipherPacket
+  @:0: connectionState''s embedded packetCipher is set only from the cipher constructors and the pendingKeyChange
+  channel they feed (ssh/transport.go:152,203,220; ssh/cipher.go); a connectionState is never itself stored as a
+  packetCipher, and the interface is unexported
+
+  CHA-only edge rejected: synth:(*ssh.connectionState).readCipherPacket -> synth:(ssh.connectionState).readCipherPacket
+  @:0: connectionState''s embedded packetCipher is set only from the cipher constructors and the pendingKeyChange
+  channel they feed (ssh/transport.go:152,203,220; ssh/cipher.go); a connectionState is never itself stored as a
+  packetCipher, and the interface is unexported
+
+  CHA-only edge rejected: synth:(ssh.connectionState).readCipherPacket -> synth:(*ssh.connectionState).readCipherPacket
+  @:0: connectionState''s embedded packetCipher is set only from the cipher constructors and the pendingKeyChange
+  channel they feed (ssh/transport.go:152,203,220; ssh/cipher.go); a connectionState is never itself stored as a
+  packetCipher, and the interface is unexported
+
+  CHA-only edge rejected: synth:(ssh.connectionState).readCipherPacket -> synth:(ssh.connectionState).readCipherPacket
+  @:0: connectionState''s embedded packetCipher is set only from the cipher constructors and the pendingKeyChange
+  channel they feed (ssh/transport.go:152,203,220; ssh/cipher.go); a connectionState is never itself stored as a
+  packetCipher, and the interface is unexported
+
+  Evidence (callee <- caller@site):
+
+  ssh.Dial [ssh/client.go:203] <- (entry point)
+
+  ssh.NewClientConn [ssh/client.go:71] <- ssh.Dial@ssh/client.go:208 (static)
+
+  ssh.NewServerConn [ssh/server.go:353] <- (entry point)
+
+  ssh.connection.clientHandshake [ssh/client.go:119] <- ssh.NewClientConn@ssh/client.go:83 (static)
+
+  ssh.connection.serverHandshake [ssh/server.go:394] <- ssh.NewServerConn@ssh/server.go:373 (static)
+
+  ssh.connectionState.readPacket [ssh/transport.go:140] <- ssh.transport.readPacket@ssh/transport.go:124 (static)
+
+  ssh.curve25519sha256.Client [ssh/kex.go:485] <- ssh.handshakeTransport.client@ssh/handshake.go:827 (invoke)
+
+  ssh.curve25519sha256.Server [ssh/kex.go:532] <- ssh.handshakeTransport.server@ssh/handshake.go:822 (invoke)
+
+  ssh.dhGEXSHA.Client [ssh/kex.go:606] <- ssh.handshakeTransport.client@ssh/handshake.go:827 (invoke)
+
+  ssh.dhGEXSHA.Server [ssh/kex.go:698] <- ssh.handshakeTransport.server@ssh/handshake.go:822 (invoke)
+
+  ssh.dhGroup.Client [ssh/kex.go:102] <- ssh.handshakeTransport.client@ssh/handshake.go:827 (invoke)
+
+  ssh.dhGroup.Server [ssh/kex.go:155] <- ssh.handshakeTransport.server@ssh/handshake.go:822 (invoke)
+
+  ssh.ecdh.Client [ssh/kex.go:225] <- ssh.handshakeTransport.client@ssh/handshake.go:827 (invoke)
+
+  ssh.ecdh.Server [ssh/kex.go:318] <- ssh.handshakeTransport.server@ssh/handshake.go:822 (invoke)
+
+  ssh.handshakeTransport.client [ssh/handshake.go:826] <- ssh.handshakeTransport.enterKeyExchange@ssh/handshake.go:717
+  (static)
+
+  ssh.handshakeTransport.enterKeyExchange [ssh/handshake.go:650] <- ssh.handshakeTransport.kexLoop@ssh/handshake.go:346
+  (static)
+
+  ssh.handshakeTransport.kexLoop [ssh/handshake.go:304] <- ssh.newClientTransport@ssh/handshake.go:171 (go); ssh.newServerTransport@ssh/handshake.go:180
+  (go)
+
+  ssh.handshakeTransport.readLoop [ssh/handshake.go:235] <- ssh.newClientTransport@ssh/handshake.go:170 (go); ssh.newServerTransport@ssh/handshake.go:179
+  (go)
+
+  ssh.handshakeTransport.readOnePacket [ssh/handshake.go:421] <- ssh.handshakeTransport.readLoop@ssh/handshake.go:238
+  (static)
+
+  ssh.handshakeTransport.server [ssh/handshake.go:816] <- ssh.handshakeTransport.enterKeyExchange@ssh/handshake.go:715
+  (static)
+
+  ssh.mlkem768WithCurve25519sha256.Client [ssh/mlkem.go:23] <- ssh.handshakeTransport.client@ssh/handshake.go:827
+  (invoke)
+
+  ssh.mlkem768WithCurve25519sha256.Server [ssh/mlkem.go:94] <- ssh.handshakeTransport.server@ssh/handshake.go:822
+  (invoke)
+
+  ssh.newClientTransport [ssh/handshake.go:159] <- ssh.connection.clientHandshake@ssh/client.go:131 (static)
+
+  ssh.newServerTransport [ssh/handshake.go:175] <- ssh.connection.serverHandshake@ssh/server.go:416 (static)
+
+  ssh.transport.readPacket [ssh/transport.go:122] <- ssh.curve25519sha256.Client@ssh/kex.go:494 (invoke); ssh.curve25519sha256.Server@ssh/kex.go:533
+  (invoke); ssh.dhGEXSHA.Client@ssh/kex.go:618 (invoke); ssh.dhGEXSHA.Client@ssh/kex.go:654 (invoke); ssh.dhGEXSHA.Server@ssh/kex.go:700
+  (invoke); ssh.dhGEXSHA.Server@ssh/kex.go:737 (invoke); ssh.dhGroup.Client@ssh/kex.go:122 (invoke); ssh.dhGroup.Server@ssh/kex.go:156
+  (invoke); ssh.ecdh.Client@ssh/kex.go:240 (invoke); ssh.ecdh.Server@ssh/kex.go:319 (invoke); ssh.handshakeTransport.enterKeyExchange@ssh/handshake.go:703
+  (invoke); ssh.handshakeTransport.enterKeyExchange@ssh/handshake.go:759 (invoke); ssh.handshakeTransport.readOnePacket@ssh/handshake.go:422
+  (invoke); ssh.mlkem768WithCurve25519sha256.Client@ssh/mlkem.go:44 (invoke); ssh.mlkem768WithCurve25519sha256.Server@ssh/mlkem.go:95
+  (invoke)
+
+  '

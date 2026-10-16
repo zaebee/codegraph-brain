@@ -338,3 +338,17 @@ def test_a_route_group_matches_in_either_spelling() -> None:
     """A dotted answer names the same Next.js page as the gold path (#653 delta review)."""
     gold = "src/app/(app)/dashboard/page.tsx::DashboardPage"
     assert symbol_matches("src.app.(app).dashboard.page.DashboardPage", gold)
+
+
+def test_delete_paths_default_to_none() -> None:
+    assert load_task(TASKS_DIR / "cgis-impact-language-for.yaml").delete_paths == []
+
+
+@pytest.mark.parametrize("bad", ["/abs", "../up", "a/../../b", "", ".", "a/./."])
+def test_delete_paths_must_stay_inside_the_worktree(bad: str) -> None:
+    raw = {
+        **load_task(TASKS_DIR / "cgis-impact-language-for.yaml").model_dump(),
+        "delete_paths": [bad],
+    }
+    with pytest.raises(ValueError, match="delete_paths"):
+        AgentTask.model_validate(raw)

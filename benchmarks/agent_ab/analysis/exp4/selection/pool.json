@@ -1,0 +1,2108 @@
+{
+ "excluded_present": [
+  "uber-go/zap"
+ ],
+ "order": [
+  "OJ/gobuster",
+  "lima-vm/lima",
+  "cilium/cilium",
+  "HyNetworks/hysteria",
+  "ffuf/ffuf",
+  "srl-labs/containerlab",
+  "cheggaaa/pb",
+  "nsqio/nsq",
+  "lovoo/goka",
+  "muraenateam/muraena",
+  "hyperledger/fabric",
+  "golang/mobile",
+  "golang/tools",
+  "VictoriaMetrics/VictoriaMetrics",
+  "golang/crypto",
+  "bits-and-blooms/bitset",
+  "quay/clair",
+  "yetone/magpie",
+  "yorukot/superfile",
+  "sqlc-dev/sqlc",
+  "go-task/task",
+  "dapr/dapr",
+  "twpayne/chezmoi",
+  "IBM/sarama",
+  "solod-dev/solod",
+  "kubernetes/kops",
+  "kubernetes/kompose",
+  "dlvhdr/gh-dash",
+  "keybase/client",
+  "centrifugal/centrifugo",
+  "canopy-network/canopy",
+  "moonD4rk/HackBrowserData",
+  "google/gvisor",
+  "tilt-dev/tilt",
+  "amir20/dozzle",
+  "rakyll/hey",
+  "gocolly/colly",
+  "containerd/nerdctl",
+  "sourcegraph/conc",
+  "google/osv-scanner",
+  "prometheus/node_exporter",
+  "jetify-com/devbox",
+  "google/go-querystring",
+  "vitessio/vitess",
+  "kedacore/keda",
+  "temporalio/temporal",
+  "getarcaneapp/arcane",
+  "fullstorydev/grpcurl",
+  "ava-labs/avalanchego",
+  "jaegertracing/jaeger",
+  "pointlander/peg",
+  "TheAlgorithms/Go",
+  "gastownhall/beads",
+  "hajimehoshi/ebiten",
+  "anchore/grype",
+  "jackc/pgx",
+  "micro/go-micro",
+  "grpc/grpc-go",
+  "sirupsen/logrus",
+  "dtm-labs/dtm",
+  "moby/buildkit",
+  "google/ax",
+  "ethersphere/bee",
+  "larksuite/cli",
+  "openimsdk/open-im-server",
+  "mikefarah/yq",
+  "cloudflare/cloudflared",
+  "imgproxy/imgproxy",
+  "pinchtab/pinchtab",
+  "benbjohnson/litestream",
+  "adnanh/webhook",
+  "gopl-zh/gopl-zh.github.com",
+  "JanDeDobbeleer/oh-my-posh",
+  "nalgeon/redka",
+  "golang/snappy",
+  "projectdiscovery/katana",
+  "fyne-io/fyne",
+  "protocolbuffers/protobuf-go",
+  "FyshOS/tyde",
+  "jessevdk/go-flags",
+  "linkerd/linkerd2",
+  "blevesearch/bleve",
+  "keploy/keploy",
+  "yassinebenaid/bunster",
+  "isacikgoz/gitin",
+  "kubescape/kubescape",
+  "fish2018/pansou",
+  "cogentcore/core",
+  "maaslalani/slides",
+  "golang/sys",
+  "tidwall/gjson",
+  "talkgo/night",
+  "authelia/authelia",
+  "nezhahq/nezha",
+  "golang/oauth2",
+  "go-flutter-desktop/go-flutter",
+  "valyala/fasthttp",
+  "go-admin-team/go-admin",
+  "FerretDB/FerretDB",
+  "darccio/mergo",
+  "TwiN/gatus",
+  "pion/webrtc",
+  "google/capslock",
+  "google/gops",
+  "evanphx/json-patch",
+  "rook/rook",
+  "opencontainers/runc",
+  "mvdan/gofumpt",
+  "golang/net",
+  "loft-sh/vcluster",
+  "quii/learn-go-with-tests",
+  "cloudflare/gokey",
+  "projectdiscovery/httpx",
+  "rs/zerolog",
+  "rancher/rancher",
+  "crawlab-team/crawlab",
+  "bwmarrin/discordgo",
+  "rqlite/rqlite",
+  "majd/ipatool",
+  "nats-io/nats-server",
+  "chromedp/chromedp",
+  "hibiken/asynq",
+  "go-acme/lego",
+  "crowdsecurity/crowdsec",
+  "go-swagger/go-swagger",
+  "googleapis/google-api-go-client",
+  "ovh/cds",
+  "coredns/coredns",
+  "casdoor/casdoor",
+  "cavaliergopher/grab",
+  "quic-go/quic-go",
+  "jeessy2/ddns-go",
+  "OpenNHP/opennhp",
+  "burrowers/garble",
+  "twmb/franz-go",
+  "geektutu/7days-golang",
+  "cert-manager/cert-manager",
+  "go-delve/delve",
+  "wavetermdev/waveterm",
+  "taubyte/tau",
+  "fsnotify/fsnotify",
+  "tsuru/tsuru",
+  "rivo/tview",
+  "samber/lo",
+  "rakyll/gotest",
+  "go-redsync/redsync",
+  "infracost/infracost",
+  "google/go-github",
+  "cayleygraph/cayley",
+  "containerd/containerd",
+  "FiloSottile/age",
+  "antonmedv/fx",
+  "owncast/owncast",
+  "a-h/templ",
+  "goharbor/harbor",
+  "charmbracelet/gum",
+  "dexidp/dex",
+  "go-playground/validator",
+  "open-policy-agent/opa",
+  "google/go-cmp",
+  "claudiodangelis/qrcp",
+  "google/starlark-go",
+  "gwuhaolin/livego",
+  "livekit/livekit",
+  "googleapis/mcp-toolbox",
+  "tailscale/tailcat",
+  "golang/tour",
+  "cheat/cheat",
+  "Shopify/toxiproxy",
+  "refraction-networking/utls",
+  "GoogleCloudPlatform/microservices-demo",
+  "99designs/gqlgen",
+  "podman-container-tools/skopeo",
+  "flipped-aurora/gin-vue-admin",
+  "charmbracelet/lipgloss",
+  "cloudwego/eino",
+  "manifoldco/promptui",
+  "vektra/mockery",
+  "direnv/direnv",
+  "golang/vgo",
+  "micro-editor/micro",
+  "gonum/gonum",
+  "xo/usql",
+  "ginuerzh/gost",
+  "gogf/gf",
+  "acepanel/panel",
+  "go-chi/chi",
+  "isaacphi/mcp-language-server",
+  "juicedata/juicefs",
+  "swaggo/swag",
+  "joho/godotenv",
+  "panjf2000/ants",
+  "NHAS/reverse_ssh",
+  "go-kratos/kratos",
+  "gastownhall/gastown",
+  "thanos-io/thanos",
+  "golang/example",
+  "go-shiori/shiori",
+  "GoogleContainerTools/skaffold",
+  "influxdata/telegraf",
+  "gofr-dev/gofr",
+  "charmbracelet/vhs",
+  "dolthub/dolt",
+  "grpc-ecosystem/grpc-gateway",
+  "xpzouying/xiaohongshu-mcp",
+  "gotenberg/gotenberg",
+  "kubeshark/kubeshark",
+  "golang/protobuf",
+  "ory/kratos",
+  "ovh/utask",
+  "go-python/gopy",
+  "ponzu-cms/ponzu",
+  "distribution/distribution",
+  "cockroachdb/pebble",
+  "guptarohit/asciigraph",
+  "dgraph-io/dgraph",
+  "sashabaranov/go-openai",
+  "kgretzky/evilginx2",
+  "argoproj/argo-cd",
+  "shadow1ng/fscan",
+  "github/gh-ost",
+  "atotto/clipboard",
+  "mmcloughlin/avo",
+  "saljam/webwormhole",
+  "subtrace/subtrace",
+  "jpillora/chisel",
+  "kopia/kopia",
+  "fzipp/gocyclo",
+  "planetscale/vtprotobuf",
+  "openshift/osin",
+  "google/codesearch",
+  "pranshuparmar/witr",
+  "velero-io/velero",
+  "ahmetb/kubectx",
+  "dkorunic/betteralign",
+  "TecharoHQ/anubis",
+  "panjf2000/gnet",
+  "OrchestratorInc/agent-orchestrator",
+  "qualcomm/GenieX",
+  "greyireland/algorithm-pattern",
+  "graphql-go/graphql",
+  "elazarl/goproxy",
+  "go-webauthn/webauthn",
+  "apache/casbin",
+  "slimtoolkit/slim",
+  "dutchcoders/transfer.sh",
+  "heroiclabs/nakama",
+  "dgraph-io/badger",
+  "m1k1o/neko",
+  "bufbuild/buf",
+  "tsenart/vegeta",
+  "tailscale/golink",
+  "axllent/mailpit",
+  "stretchr/testify",
+  "dagger/dagger",
+  "bluenviron/mediamtx",
+  "putyy/res-downloader",
+  "php/frankenphp",
+  "mpolden/echoip",
+  "ccfos/nightingale",
+  "denandz/sourcemapper",
+  "golang/pkgsite",
+  "crossplane/crossplane",
+  "darrenburns/posting",
+  "henrygd/beszel",
+  "semaphoreui/semaphore",
+  "go-resty/resty",
+  "qax-os/excelize",
+  "PuerkitoBio/goquery",
+  "urfave/cli",
+  "salesforce/sloop",
+  "argoproj/argo-workflows",
+  "kataras/iris",
+  "oauth2-proxy/oauth2-proxy",
+  "ory/hydra",
+  "cloudflare/tableflip",
+  "projectdiscovery/subfinder",
+  "miekg/dns",
+  "kubernetes-sigs/kustomize",
+  "mvdan/sh",
+  "kubernetes-sigs/kind",
+  "pulumi/pulumi",
+  "AlexxIT/go2rtc",
+  "asdf-vm/asdf",
+  "dstotijn/hetty",
+  "apache/answer",
+  "gonum/plot",
+  "studygolang/studygolang",
+  "go-vgo/robotgo",
+  "stakater/Reloader",
+  "charmbracelet/glow",
+  "ent/ent",
+  "passteque/gluetun",
+  "goreleaser/goreleaser",
+  "throttled/throttled",
+  "mvdan/xurls",
+  "slackhq/nebula",
+  "u-root/u-root",
+  "cpmech/gosl"
+ ],
+ "meta": {
+  "micro-editor/micro": {
+   "name": "micro-editor/micro",
+   "stars": 29712,
+   "branch": "master",
+   "clone": "https://github.com/micro-editor/micro.git"
+  },
+  "gastownhall/beads": {
+   "name": "gastownhall/beads",
+   "stars": 27929,
+   "branch": "main",
+   "clone": "https://github.com/gastownhall/beads.git"
+  },
+  "charmbracelet/glow": {
+   "name": "charmbracelet/glow",
+   "stars": 27716,
+   "branch": "main",
+   "clone": "https://github.com/charmbracelet/glow.git"
+  },
+  "henrygd/beszel": {
+   "name": "henrygd/beszel",
+   "stars": 26261,
+   "branch": "main",
+   "clone": "https://github.com/henrygd/beszel.git"
+  },
+  "stretchr/testify": {
+   "name": "stretchr/testify",
+   "stars": 26232,
+   "branch": "master",
+   "clone": "https://github.com/stretchr/testify.git"
+  },
+  "go-kratos/kratos": {
+   "name": "go-kratos/kratos",
+   "stars": 25975,
+   "branch": "main",
+   "clone": "https://github.com/go-kratos/kratos.git"
+  },
+  "nsqio/nsq": {
+   "name": "nsqio/nsq",
+   "stars": 25771,
+   "branch": "master",
+   "clone": "https://github.com/nsqio/nsq.git"
+  },
+  "sirupsen/logrus": {
+   "name": "sirupsen/logrus",
+   "stars": 25765,
+   "branch": "master",
+   "clone": "https://github.com/sirupsen/logrus.git"
+  },
+  "asdf-vm/asdf": {
+   "name": "asdf-vm/asdf",
+   "stars": 25601,
+   "branch": "master",
+   "clone": "https://github.com/asdf-vm/asdf.git"
+  },
+  "tsenart/vegeta": {
+   "name": "tsenart/vegeta",
+   "stars": 25225,
+   "branch": "master",
+   "clone": "https://github.com/tsenart/vegeta.git"
+  },
+  "go-delve/delve": {
+   "name": "go-delve/delve",
+   "stars": 24949,
+   "branch": "master",
+   "clone": "https://github.com/go-delve/delve.git"
+  },
+  "uber-go/zap": {
+   "name": "uber-go/zap",
+   "stars": 24670,
+   "branch": "master",
+   "clone": "https://github.com/uber-go/zap.git"
+  },
+  "charmbracelet/gum": {
+   "name": "charmbracelet/gum",
+   "stars": 24513,
+   "branch": "main",
+   "clone": "https://github.com/charmbracelet/gum.git"
+  },
+  "urfave/cli": {
+   "name": "urfave/cli",
+   "stars": 24291,
+   "branch": "main",
+   "clone": "https://github.com/urfave/cli.git"
+  },
+  "quii/learn-go-with-tests": {
+   "name": "quii/learn-go-with-tests",
+   "stars": 23911,
+   "branch": "main",
+   "clone": "https://github.com/quii/learn-go-with-tests.git"
+  },
+  "yorukot/superfile": {
+   "name": "yorukot/superfile",
+   "stars": 23835,
+   "branch": "main",
+   "clone": "https://github.com/yorukot/superfile.git"
+  },
+  "temporalio/temporal": {
+   "name": "temporalio/temporal",
+   "stars": 23746,
+   "branch": "main",
+   "clone": "https://github.com/temporalio/temporal.git"
+  },
+  "JanDeDobbeleer/oh-my-posh": {
+   "name": "JanDeDobbeleer/oh-my-posh",
+   "stars": 23596,
+   "branch": "main",
+   "clone": "https://github.com/JanDeDobbeleer/oh-my-posh.git"
+  },
+  "valyala/fasthttp": {
+   "name": "valyala/fasthttp",
+   "stars": 23481,
+   "branch": "master",
+   "clone": "https://github.com/valyala/fasthttp.git"
+  },
+  "TecharoHQ/anubis": {
+   "name": "TecharoHQ/anubis",
+   "stars": 23454,
+   "branch": "main",
+   "clone": "https://github.com/TecharoHQ/anubis.git"
+  },
+  "go-chi/chi": {
+   "name": "go-chi/chi",
+   "stars": 22958,
+   "branch": "master",
+   "clone": "https://github.com/go-chi/chi.git"
+  },
+  "HyNetworks/hysteria": {
+   "name": "HyNetworks/hysteria",
+   "stars": 22670,
+   "branch": "master",
+   "clone": "https://github.com/HyNetworks/hysteria.git"
+  },
+  "twpayne/chezmoi": {
+   "name": "twpayne/chezmoi",
+   "stars": 21952,
+   "branch": "master",
+   "clone": "https://github.com/twpayne/chezmoi.git"
+  },
+  "samber/lo": {
+   "name": "samber/lo",
+   "stars": 21443,
+   "branch": "master",
+   "clone": "https://github.com/samber/lo.git"
+  },
+  "charmbracelet/vhs": {
+   "name": "charmbracelet/vhs",
+   "stars": 21128,
+   "branch": "main",
+   "clone": "https://github.com/charmbracelet/vhs.git"
+  },
+  "antonmedv/fx": {
+   "name": "antonmedv/fx",
+   "stars": 20683,
+   "branch": "master",
+   "clone": "https://github.com/antonmedv/fx.git"
+  },
+  "bluenviron/mediamtx": {
+   "name": "bluenviron/mediamtx",
+   "stars": 20434,
+   "branch": "main",
+   "clone": "https://github.com/bluenviron/mediamtx.git"
+  },
+  "go-playground/validator": {
+   "name": "go-playground/validator",
+   "stars": 20200,
+   "branch": "master",
+   "clone": "https://github.com/go-playground/validator.git"
+  },
+  "slackhq/nebula": {
+   "name": "slackhq/nebula",
+   "stars": 18442,
+   "branch": "master",
+   "clone": "https://github.com/slackhq/nebula.git"
+  },
+  "gastownhall/gastown": {
+   "name": "gastownhall/gastown",
+   "stars": 18386,
+   "branch": "main",
+   "clone": "https://github.com/gastownhall/gastown.git"
+  },
+  "sqlc-dev/sqlc": {
+   "name": "sqlc-dev/sqlc",
+   "stars": 18385,
+   "branch": "main",
+   "clone": "https://github.com/sqlc-dev/sqlc.git"
+  },
+  "ginuerzh/gost": {
+   "name": "ginuerzh/gost",
+   "stars": 18245,
+   "branch": "master",
+   "clone": "https://github.com/ginuerzh/gost.git"
+  },
+  "TheAlgorithms/Go": {
+   "name": "TheAlgorithms/Go",
+   "stars": 18233,
+   "branch": "master",
+   "clone": "https://github.com/TheAlgorithms/Go.git"
+  },
+  "influxdata/telegraf": {
+   "name": "influxdata/telegraf",
+   "stars": 17864,
+   "branch": "master",
+   "clone": "https://github.com/influxdata/telegraf.git"
+  },
+  "rqlite/rqlite": {
+   "name": "rqlite/rqlite",
+   "stars": 17794,
+   "branch": "master",
+   "clone": "https://github.com/rqlite/rqlite.git"
+  },
+  "larksuite/cli": {
+   "name": "larksuite/cli",
+   "stars": 17705,
+   "branch": "main",
+   "clone": "https://github.com/larksuite/cli.git"
+  },
+  "projectdiscovery/katana": {
+   "name": "projectdiscovery/katana",
+   "stars": 17680,
+   "branch": "dev",
+   "clone": "https://github.com/projectdiscovery/katana.git"
+  },
+  "jeessy2/ddns-go": {
+   "name": "jeessy2/ddns-go",
+   "stars": 17425,
+   "branch": "master",
+   "clone": "https://github.com/jeessy2/ddns-go.git"
+  },
+  "geektutu/7days-golang": {
+   "name": "geektutu/7days-golang",
+   "stars": 17028,
+   "branch": "master",
+   "clone": "https://github.com/geektutu/7days-golang.git"
+  },
+  "ffuf/ffuf": {
+   "name": "ffuf/ffuf",
+   "stars": 16892,
+   "branch": "master",
+   "clone": "https://github.com/ffuf/ffuf.git"
+  },
+  "pion/webrtc": {
+   "name": "pion/webrtc",
+   "stars": 16842,
+   "branch": "main",
+   "clone": "https://github.com/pion/webrtc.git"
+  },
+  "jpillora/chisel": {
+   "name": "jpillora/chisel",
+   "stars": 16659,
+   "branch": "master",
+   "clone": "https://github.com/jpillora/chisel.git"
+  },
+  "go-task/task": {
+   "name": "go-task/task",
+   "stars": 16257,
+   "branch": "main",
+   "clone": "https://github.com/go-task/task.git"
+  },
+  "mikefarah/yq": {
+   "name": "mikefarah/yq",
+   "stars": 16109,
+   "branch": "master",
+   "clone": "https://github.com/mikefarah/yq.git"
+  },
+  "goreleaser/goreleaser": {
+   "name": "goreleaser/goreleaser",
+   "stars": 16102,
+   "branch": "main",
+   "clone": "https://github.com/goreleaser/goreleaser.git"
+  },
+  "dutchcoders/transfer.sh": {
+   "name": "dutchcoders/transfer.sh",
+   "stars": 15901,
+   "branch": "main",
+   "clone": "https://github.com/dutchcoders/transfer.sh.git"
+  },
+  "passteque/gluetun": {
+   "name": "passteque/gluetun",
+   "stars": 15795,
+   "branch": "master",
+   "clone": "https://github.com/passteque/gluetun.git"
+  },
+  "tidwall/gjson": {
+   "name": "tidwall/gjson",
+   "stars": 15556,
+   "branch": "master",
+   "clone": "https://github.com/tidwall/gjson.git"
+  },
+  "direnv/direnv": {
+   "name": "direnv/direnv",
+   "stars": 15505,
+   "branch": "master",
+   "clone": "https://github.com/direnv/direnv.git"
+  },
+  "greyireland/algorithm-pattern": {
+   "name": "greyireland/algorithm-pattern",
+   "stars": 15462,
+   "branch": "master",
+   "clone": "https://github.com/greyireland/algorithm-pattern.git"
+  },
+  "oauth2-proxy/oauth2-proxy": {
+   "name": "oauth2-proxy/oauth2-proxy",
+   "stars": 15201,
+   "branch": "master",
+   "clone": "https://github.com/oauth2-proxy/oauth2-proxy.git"
+  },
+  "crowdsecurity/crowdsec": {
+   "name": "crowdsecurity/crowdsec",
+   "stars": 15197,
+   "branch": "master",
+   "clone": "https://github.com/crowdsecurity/crowdsec.git"
+  },
+  "fish2018/pansou": {
+   "name": "fish2018/pansou",
+   "stars": 14931,
+   "branch": "main",
+   "clone": "https://github.com/fish2018/pansou.git"
+  },
+  "canopy-network/canopy": {
+   "name": "canopy-network/canopy",
+   "stars": 14714,
+   "branch": "main",
+   "clone": "https://github.com/canopy-network/canopy.git"
+  },
+  "shadow1ng/fscan": {
+   "name": "shadow1ng/fscan",
+   "stars": 14686,
+   "branch": "main",
+   "clone": "https://github.com/shadow1ng/fscan.git"
+  },
+  "amir20/dozzle": {
+   "name": "amir20/dozzle",
+   "stars": 14650,
+   "branch": "main",
+   "clone": "https://github.com/amir20/dozzle.git"
+  },
+  "projectdiscovery/subfinder": {
+   "name": "projectdiscovery/subfinder",
+   "stars": 14605,
+   "branch": "dev",
+   "clone": "https://github.com/projectdiscovery/subfinder.git"
+  },
+  "moonD4rk/HackBrowserData": {
+   "name": "moonD4rk/HackBrowserData",
+   "stars": 14602,
+   "branch": "main",
+   "clone": "https://github.com/moonD4rk/HackBrowserData.git"
+  },
+  "panjf2000/ants": {
+   "name": "panjf2000/ants",
+   "stars": 14519,
+   "branch": "dev",
+   "clone": "https://github.com/panjf2000/ants.git"
+  },
+  "AlexxIT/go2rtc": {
+   "name": "AlexxIT/go2rtc",
+   "stars": 14392,
+   "branch": "master",
+   "clone": "https://github.com/AlexxIT/go2rtc.git"
+  },
+  "jackc/pgx": {
+   "name": "jackc/pgx",
+   "stars": 14331,
+   "branch": "master",
+   "clone": "https://github.com/jackc/pgx.git"
+  },
+  "semaphoreui/semaphore": {
+   "name": "semaphoreui/semaphore",
+   "stars": 14269,
+   "branch": "develop",
+   "clone": "https://github.com/semaphoreui/semaphore.git"
+  },
+  "rivo/tview": {
+   "name": "rivo/tview",
+   "stars": 14134,
+   "branch": "master",
+   "clone": "https://github.com/rivo/tview.git"
+  },
+  "yetone/magpie": {
+   "name": "yetone/magpie",
+   "stars": 14021,
+   "branch": "main",
+   "clone": "https://github.com/yetone/magpie.git"
+  },
+  "hibiken/asynq": {
+   "name": "hibiken/asynq",
+   "stars": 13771,
+   "branch": "master",
+   "clone": "https://github.com/hibiken/asynq.git"
+  },
+  "github/gh-ost": {
+   "name": "github/gh-ost",
+   "stars": 13604,
+   "branch": "master",
+   "clone": "https://github.com/github/gh-ost.git"
+  },
+  "cheat/cheat": {
+   "name": "cheat/cheat",
+   "stars": 13482,
+   "branch": "master",
+   "clone": "https://github.com/cheat/cheat.git"
+  },
+  "chromedp/chromedp": {
+   "name": "chromedp/chromedp",
+   "stars": 13313,
+   "branch": "main",
+   "clone": "https://github.com/chromedp/chromedp.git"
+  },
+  "gotenberg/gotenberg": {
+   "name": "gotenberg/gotenberg",
+   "stars": 13308,
+   "branch": "main",
+   "clone": "https://github.com/gotenberg/gotenberg.git"
+  },
+  "gogf/gf": {
+   "name": "gogf/gf",
+   "stars": 13287,
+   "branch": "master",
+   "clone": "https://github.com/gogf/gf.git"
+  },
+  "swaggo/swag": {
+   "name": "swaggo/swag",
+   "stars": 13053,
+   "branch": "master",
+   "clone": "https://github.com/swaggo/swag.git"
+  },
+  "fullstorydev/grpcurl": {
+   "name": "fullstorydev/grpcurl",
+   "stars": 12860,
+   "branch": "master",
+   "clone": "https://github.com/fullstorydev/grpcurl.git"
+  },
+  "go-admin-team/go-admin": {
+   "name": "go-admin-team/go-admin",
+   "stars": 12802,
+   "branch": "master",
+   "clone": "https://github.com/go-admin-team/go-admin.git"
+  },
+  "dlvhdr/gh-dash": {
+   "name": "dlvhdr/gh-dash",
+   "stars": 12628,
+   "branch": "main",
+   "clone": "https://github.com/dlvhdr/gh-dash.git"
+  },
+  "IBM/sarama": {
+   "name": "IBM/sarama",
+   "stars": 12526,
+   "branch": "main",
+   "clone": "https://github.com/IBM/sarama.git"
+  },
+  "rs/zerolog": {
+   "name": "rs/zerolog",
+   "stars": 12519,
+   "branch": "master",
+   "clone": "https://github.com/rs/zerolog.git"
+  },
+  "dstotijn/hetty": {
+   "name": "dstotijn/hetty",
+   "stars": 12512,
+   "branch": "main",
+   "clone": "https://github.com/dstotijn/hetty.git"
+  },
+  "Shopify/toxiproxy": {
+   "name": "Shopify/toxiproxy",
+   "stars": 12424,
+   "branch": "main",
+   "clone": "https://github.com/Shopify/toxiproxy.git"
+  },
+  "talkgo/night": {
+   "name": "talkgo/night",
+   "stars": 12282,
+   "branch": "master",
+   "clone": "https://github.com/talkgo/night.git"
+  },
+  "adnanh/webhook": {
+   "name": "adnanh/webhook",
+   "stars": 12186,
+   "branch": "master",
+   "clone": "https://github.com/adnanh/webhook.git"
+  },
+  "charmbracelet/lipgloss": {
+   "name": "charmbracelet/lipgloss",
+   "stars": 11933,
+   "branch": "main",
+   "clone": "https://github.com/charmbracelet/lipgloss.git"
+  },
+  "go-resty/resty": {
+   "name": "go-resty/resty",
+   "stars": 11815,
+   "branch": "v3",
+   "clone": "https://github.com/go-resty/resty.git"
+  },
+  "quic-go/quic-go": {
+   "name": "quic-go/quic-go",
+   "stars": 11809,
+   "branch": "master",
+   "clone": "https://github.com/quic-go/quic-go.git"
+  },
+  "majd/ipatool": {
+   "name": "majd/ipatool",
+   "stars": 11723,
+   "branch": "main",
+   "clone": "https://github.com/majd/ipatool.git"
+  },
+  "maaslalani/slides": {
+   "name": "maaslalani/slides",
+   "stars": 11686,
+   "branch": "main",
+   "clone": "https://github.com/maaslalani/slides.git"
+  },
+  "go-shiori/shiori": {
+   "name": "go-shiori/shiori",
+   "stars": 11668,
+   "branch": "master",
+   "clone": "https://github.com/go-shiori/shiori.git"
+  },
+  "owncast/owncast": {
+   "name": "owncast/owncast",
+   "stars": 11601,
+   "branch": "develop",
+   "clone": "https://github.com/owncast/owncast.git"
+  },
+  "php/frankenphp": {
+   "name": "php/frankenphp",
+   "stars": 11400,
+   "branch": "main",
+   "clone": "https://github.com/php/frankenphp.git"
+  },
+  "99designs/gqlgen": {
+   "name": "99designs/gqlgen",
+   "stars": 10769,
+   "branch": "master",
+   "clone": "https://github.com/99designs/gqlgen.git"
+  },
+  "axllent/mailpit": {
+   "name": "axllent/mailpit",
+   "stars": 10673,
+   "branch": "develop",
+   "clone": "https://github.com/axllent/mailpit.git"
+  },
+  "joho/godotenv": {
+   "name": "joho/godotenv",
+   "stars": 10663,
+   "branch": "main",
+   "clone": "https://github.com/joho/godotenv.git"
+  },
+  "a-h/templ": {
+   "name": "a-h/templ",
+   "stars": 10581,
+   "branch": "main",
+   "clone": "https://github.com/a-h/templ.git"
+  },
+  "claudiodangelis/qrcp": {
+   "name": "claudiodangelis/qrcp",
+   "stars": 10518,
+   "branch": "main",
+   "clone": "https://github.com/claudiodangelis/qrcp.git"
+  },
+  "projectdiscovery/httpx": {
+   "name": "projectdiscovery/httpx",
+   "stars": 10481,
+   "branch": "dev",
+   "clone": "https://github.com/projectdiscovery/httpx.git"
+  },
+  "sourcegraph/conc": {
+   "name": "sourcegraph/conc",
+   "stars": 10432,
+   "branch": "main",
+   "clone": "https://github.com/sourcegraph/conc.git"
+  },
+  "pinchtab/pinchtab": {
+   "name": "pinchtab/pinchtab",
+   "stars": 10393,
+   "branch": "main",
+   "clone": "https://github.com/pinchtab/pinchtab.git"
+  },
+  "gwuhaolin/livego": {
+   "name": "gwuhaolin/livego",
+   "stars": 10183,
+   "branch": "master",
+   "clone": "https://github.com/gwuhaolin/livego.git"
+  },
+  "xo/usql": {
+   "name": "xo/usql",
+   "stars": 10146,
+   "branch": "main",
+   "clone": "https://github.com/xo/usql.git"
+  },
+  "graphql-go/graphql": {
+   "name": "graphql-go/graphql",
+   "stars": 10141,
+   "branch": "master",
+   "clone": "https://github.com/graphql-go/graphql.git"
+  },
+  "go-acme/lego": {
+   "name": "go-acme/lego",
+   "stars": 9945,
+   "branch": "main",
+   "clone": "https://github.com/go-acme/lego.git"
+  },
+  "goharbor/harbor": {
+   "name": "goharbor/harbor",
+   "stars": 29559,
+   "branch": "main",
+   "clone": "https://github.com/goharbor/harbor.git"
+  },
+  "authelia/authelia": {
+   "name": "authelia/authelia",
+   "stars": 29280,
+   "branch": "master",
+   "clone": "https://github.com/authelia/authelia.git"
+  },
+  "dapr/dapr": {
+   "name": "dapr/dapr",
+   "stars": 26148,
+   "branch": "master",
+   "clone": "https://github.com/dapr/dapr.git"
+  },
+  "rancher/rancher": {
+   "name": "rancher/rancher",
+   "stars": 25983,
+   "branch": "main",
+   "clone": "https://github.com/rancher/rancher.git"
+  },
+  "pulumi/pulumi": {
+   "name": "pulumi/pulumi",
+   "stars": 25791,
+   "branch": "master",
+   "clone": "https://github.com/pulumi/pulumi.git"
+  },
+  "cilium/cilium": {
+   "name": "cilium/cilium",
+   "stars": 25670,
+   "branch": "main",
+   "clone": "https://github.com/cilium/cilium.git"
+  },
+  "gocolly/colly": {
+   "name": "gocolly/colly",
+   "stars": 25552,
+   "branch": "master",
+   "clone": "https://github.com/gocolly/colly.git"
+  },
+  "flipped-aurora/gin-vue-admin": {
+   "name": "flipped-aurora/gin-vue-admin",
+   "stars": 25075,
+   "branch": "main",
+   "clone": "https://github.com/flipped-aurora/gin-vue-admin.git"
+  },
+  "dolthub/dolt": {
+   "name": "dolthub/dolt",
+   "stars": 24649,
+   "branch": "main",
+   "clone": "https://github.com/dolthub/dolt.git"
+  },
+  "argoproj/argo-cd": {
+   "name": "argoproj/argo-cd",
+   "stars": 24416,
+   "branch": "master",
+   "clone": "https://github.com/argoproj/argo-cd.git"
+  },
+  "slimtoolkit/slim": {
+   "name": "slimtoolkit/slim",
+   "stars": 23430,
+   "branch": "master",
+   "clone": "https://github.com/slimtoolkit/slim.git"
+  },
+  "jaegertracing/jaeger": {
+   "name": "jaegertracing/jaeger",
+   "stars": 23299,
+   "branch": "main",
+   "clone": "https://github.com/jaegertracing/jaeger.git"
+  },
+  "grpc/grpc-go": {
+   "name": "grpc/grpc-go",
+   "stars": 23092,
+   "branch": "master",
+   "clone": "https://github.com/grpc/grpc-go.git"
+  },
+  "micro/go-micro": {
+   "name": "micro/go-micro",
+   "stars": 23087,
+   "branch": "master",
+   "clone": "https://github.com/micro/go-micro.git"
+  },
+  "pranshuparmar/witr": {
+   "name": "pranshuparmar/witr",
+   "stars": 22705,
+   "branch": "main",
+   "clone": "https://github.com/pranshuparmar/witr.git"
+  },
+  "wavetermdev/waveterm": {
+   "name": "wavetermdev/waveterm",
+   "stars": 22514,
+   "branch": "main",
+   "clone": "https://github.com/wavetermdev/waveterm.git"
+  },
+  "m1k1o/neko": {
+   "name": "m1k1o/neko",
+   "stars": 22506,
+   "branch": "master",
+   "clone": "https://github.com/m1k1o/neko.git"
+  },
+  "lima-vm/lima": {
+   "name": "lima-vm/lima",
+   "stars": 22104,
+   "branch": "master",
+   "clone": "https://github.com/lima-vm/lima.git"
+  },
+  "dgraph-io/dgraph": {
+   "name": "dgraph-io/dgraph",
+   "stars": 21808,
+   "branch": "main",
+   "clone": "https://github.com/dgraph-io/dgraph.git"
+  },
+  "livekit/livekit": {
+   "name": "livekit/livekit",
+   "stars": 21491,
+   "branch": "master",
+   "clone": "https://github.com/livekit/livekit.git"
+  },
+  "containerd/containerd": {
+   "name": "containerd/containerd",
+   "stars": 21422,
+   "branch": "main",
+   "clone": "https://github.com/containerd/containerd.git"
+  },
+  "vitessio/vitess": {
+   "name": "vitessio/vitess",
+   "stars": 21387,
+   "branch": "main",
+   "clone": "https://github.com/vitessio/vitess.git"
+  },
+  "GoogleCloudPlatform/microservices-demo": {
+   "name": "GoogleCloudPlatform/microservices-demo",
+   "stars": 21058,
+   "branch": "main",
+   "clone": "https://github.com/GoogleCloudPlatform/microservices-demo.git"
+  },
+  "nats-io/nats-server": {
+   "name": "nats-io/nats-server",
+   "stars": 20886,
+   "branch": "main",
+   "clone": "https://github.com/nats-io/nats-server.git"
+  },
+  "gofr-dev/gofr": {
+   "name": "gofr-dev/gofr",
+   "stars": 20851,
+   "branch": "development",
+   "clone": "https://github.com/gofr-dev/gofr.git"
+  },
+  "rakyll/hey": {
+   "name": "rakyll/hey",
+   "stars": 20704,
+   "branch": "master",
+   "clone": "https://github.com/rakyll/hey.git"
+  },
+  "putyy/res-downloader": {
+   "name": "putyy/res-downloader",
+   "stars": 20674,
+   "branch": "master",
+   "clone": "https://github.com/putyy/res-downloader.git"
+  },
+  "apache/casbin": {
+   "name": "apache/casbin",
+   "stars": 20457,
+   "branch": "master",
+   "clone": "https://github.com/apache/casbin.git"
+  },
+  "ahmetb/kubectx": {
+   "name": "ahmetb/kubectx",
+   "stars": 20047,
+   "branch": "master",
+   "clone": "https://github.com/ahmetb/kubectx.git"
+  },
+  "google/gvisor": {
+   "name": "google/gvisor",
+   "stars": 19694,
+   "branch": "master",
+   "clone": "https://github.com/google/gvisor.git"
+  },
+  "keploy/keploy": {
+   "name": "keploy/keploy",
+   "stars": 18590,
+   "branch": "main",
+   "clone": "https://github.com/keploy/keploy.git"
+  },
+  "VictoriaMetrics/VictoriaMetrics": {
+   "name": "VictoriaMetrics/VictoriaMetrics",
+   "stars": 17872,
+   "branch": "master",
+   "clone": "https://github.com/VictoriaMetrics/VictoriaMetrics.git"
+  },
+  "ory/hydra": {
+   "name": "ory/hydra",
+   "stars": 17614,
+   "branch": "master",
+   "clone": "https://github.com/ory/hydra.git"
+  },
+  "ent/ent": {
+   "name": "ent/ent",
+   "stars": 17207,
+   "branch": "master",
+   "clone": "https://github.com/ent/ent.git"
+  },
+  "argoproj/argo-workflows": {
+   "name": "argoproj/argo-workflows",
+   "stars": 17040,
+   "branch": "main",
+   "clone": "https://github.com/argoproj/argo-workflows.git"
+  },
+  "hyperledger/fabric": {
+   "name": "hyperledger/fabric",
+   "stars": 16741,
+   "branch": "main",
+   "clone": "https://github.com/hyperledger/fabric.git"
+  },
+  "openimsdk/open-im-server": {
+   "name": "openimsdk/open-im-server",
+   "stars": 16697,
+   "branch": "main",
+   "clone": "https://github.com/openimsdk/open-im-server.git"
+  },
+  "kubernetes/kops": {
+   "name": "kubernetes/kops",
+   "stars": 16691,
+   "branch": "master",
+   "clone": "https://github.com/kubernetes/kops.git"
+  },
+  "googleapis/mcp-toolbox": {
+   "name": "googleapis/mcp-toolbox",
+   "stars": 16670,
+   "branch": "main",
+   "clone": "https://github.com/googleapis/mcp-toolbox.git"
+  },
+  "dagger/dagger": {
+   "name": "dagger/dagger",
+   "stars": 16344,
+   "branch": "main",
+   "clone": "https://github.com/dagger/dagger.git"
+  },
+  "xpzouying/xiaohongshu-mcp": {
+   "name": "xpzouying/xiaohongshu-mcp",
+   "stars": 16315,
+   "branch": "main",
+   "clone": "https://github.com/xpzouying/xiaohongshu-mcp.git"
+  },
+  "cloudflare/cloudflared": {
+   "name": "cloudflare/cloudflared",
+   "stars": 16151,
+   "branch": "master",
+   "clone": "https://github.com/cloudflare/cloudflared.git"
+  },
+  "GoogleContainerTools/skaffold": {
+   "name": "GoogleContainerTools/skaffold",
+   "stars": 15900,
+   "branch": "main",
+   "clone": "https://github.com/GoogleContainerTools/skaffold.git"
+  },
+  "dgraph-io/badger": {
+   "name": "dgraph-io/badger",
+   "stars": 15783,
+   "branch": "main",
+   "clone": "https://github.com/dgraph-io/badger.git"
+  },
+  "apache/answer": {
+   "name": "apache/answer",
+   "stars": 15697,
+   "branch": "main",
+   "clone": "https://github.com/apache/answer.git"
+  },
+  "kubernetes-sigs/kind": {
+   "name": "kubernetes-sigs/kind",
+   "stars": 15553,
+   "branch": "main",
+   "clone": "https://github.com/kubernetes-sigs/kind.git"
+  },
+  "cayleygraph/cayley": {
+   "name": "cayleygraph/cayley",
+   "stars": 15063,
+   "branch": "master",
+   "clone": "https://github.com/cayleygraph/cayley.git"
+  },
+  "casdoor/casdoor": {
+   "name": "casdoor/casdoor",
+   "stars": 14590,
+   "branch": "master",
+   "clone": "https://github.com/casdoor/casdoor.git"
+  },
+  "juicedata/juicefs": {
+   "name": "juicedata/juicefs",
+   "stars": 14544,
+   "branch": "main",
+   "clone": "https://github.com/juicedata/juicefs.git"
+  },
+  "benbjohnson/litestream": {
+   "name": "benbjohnson/litestream",
+   "stars": 14498,
+   "branch": "main",
+   "clone": "https://github.com/benbjohnson/litestream.git"
+  },
+  "coredns/coredns": {
+   "name": "coredns/coredns",
+   "stars": 14374,
+   "branch": "master",
+   "clone": "https://github.com/coredns/coredns.git"
+  },
+  "kopia/kopia": {
+   "name": "kopia/kopia",
+   "stars": 14363,
+   "branch": "master",
+   "clone": "https://github.com/kopia/kopia.git"
+  },
+  "thanos-io/thanos": {
+   "name": "thanos-io/thanos",
+   "stars": 14238,
+   "branch": "main",
+   "clone": "https://github.com/thanos-io/thanos.git"
+  },
+  "OJ/gobuster": {
+   "name": "OJ/gobuster",
+   "stars": 14220,
+   "branch": "master",
+   "clone": "https://github.com/OJ/gobuster.git"
+  },
+  "cert-manager/cert-manager": {
+   "name": "cert-manager/cert-manager",
+   "stars": 14116,
+   "branch": "master",
+   "clone": "https://github.com/cert-manager/cert-manager.git"
+  },
+  "OpenNHP/opennhp": {
+   "name": "OpenNHP/opennhp",
+   "stars": 13937,
+   "branch": "main",
+   "clone": "https://github.com/OpenNHP/opennhp.git"
+  },
+  "ory/kratos": {
+   "name": "ory/kratos",
+   "stars": 13924,
+   "branch": "master",
+   "clone": "https://github.com/ory/kratos.git"
+  },
+  "prometheus/node_exporter": {
+   "name": "prometheus/node_exporter",
+   "stars": 13845,
+   "branch": "master",
+   "clone": "https://github.com/prometheus/node_exporter.git"
+  },
+  "google/ax": {
+   "name": "google/ax",
+   "stars": 13696,
+   "branch": "main",
+   "clone": "https://github.com/google/ax.git"
+  },
+  "rook/rook": {
+   "name": "rook/rook",
+   "stars": 13682,
+   "branch": "master",
+   "clone": "https://github.com/rook/rook.git"
+  },
+  "hajimehoshi/ebiten": {
+   "name": "hajimehoshi/ebiten",
+   "stars": 13565,
+   "branch": "main",
+   "clone": "https://github.com/hajimehoshi/ebiten.git"
+  },
+  "heroiclabs/nakama": {
+   "name": "heroiclabs/nakama",
+   "stars": 13516,
+   "branch": "master",
+   "clone": "https://github.com/heroiclabs/nakama.git"
+  },
+  "opencontainers/runc": {
+   "name": "opencontainers/runc",
+   "stars": 13489,
+   "branch": "main",
+   "clone": "https://github.com/opencontainers/runc.git"
+  },
+  "ccfos/nightingale": {
+   "name": "ccfos/nightingale",
+   "stars": 13364,
+   "branch": "main",
+   "clone": "https://github.com/ccfos/nightingale.git"
+  },
+  "cloudwego/eino": {
+   "name": "cloudwego/eino",
+   "stars": 13327,
+   "branch": "main",
+   "clone": "https://github.com/cloudwego/eino.git"
+  },
+  "OrchestratorInc/agent-orchestrator": {
+   "name": "OrchestratorInc/agent-orchestrator",
+   "stars": 13238,
+   "branch": "main",
+   "clone": "https://github.com/OrchestratorInc/agent-orchestrator.git"
+  },
+  "anchore/grype": {
+   "name": "anchore/grype",
+   "stars": 13033,
+   "branch": "main",
+   "clone": "https://github.com/anchore/grype.git"
+  },
+  "infracost/infracost": {
+   "name": "infracost/infracost",
+   "stars": 12565,
+   "branch": "master",
+   "clone": "https://github.com/infracost/infracost.git"
+  },
+  "darrenburns/posting": {
+   "name": "darrenburns/posting",
+   "stars": 12512,
+   "branch": "main",
+   "clone": "https://github.com/darrenburns/posting.git"
+  },
+  "jetify-com/devbox": {
+   "name": "jetify-com/devbox",
+   "stars": 12405,
+   "branch": "main",
+   "clone": "https://github.com/jetify-com/devbox.git"
+  },
+  "open-policy-agent/opa": {
+   "name": "open-policy-agent/opa",
+   "stars": 12371,
+   "branch": "main",
+   "clone": "https://github.com/open-policy-agent/opa.git"
+  },
+  "TwiN/gatus": {
+   "name": "TwiN/gatus",
+   "stars": 12324,
+   "branch": "master",
+   "clone": "https://github.com/TwiN/gatus.git"
+  },
+  "kubernetes-sigs/kustomize": {
+   "name": "kubernetes-sigs/kustomize",
+   "stars": 12183,
+   "branch": "master",
+   "clone": "https://github.com/kubernetes-sigs/kustomize.git"
+  },
+  "crossplane/crossplane": {
+   "name": "crossplane/crossplane",
+   "stars": 12156,
+   "branch": "main",
+   "clone": "https://github.com/crossplane/crossplane.git"
+  },
+  "kubeshark/kubeshark": {
+   "name": "kubeshark/kubeshark",
+   "stars": 12099,
+   "branch": "master",
+   "clone": "https://github.com/kubeshark/kubeshark.git"
+  },
+  "kubescape/kubescape": {
+   "name": "kubescape/kubescape",
+   "stars": 11805,
+   "branch": "master",
+   "clone": "https://github.com/kubescape/kubescape.git"
+  },
+  "linkerd/linkerd2": {
+   "name": "linkerd/linkerd2",
+   "stars": 11516,
+   "branch": "main",
+   "clone": "https://github.com/linkerd/linkerd2.git"
+  },
+  "bufbuild/buf": {
+   "name": "bufbuild/buf",
+   "stars": 11491,
+   "branch": "main",
+   "clone": "https://github.com/bufbuild/buf.git"
+  },
+  "loft-sh/vcluster": {
+   "name": "loft-sh/vcluster",
+   "stars": 11349,
+   "branch": "main",
+   "clone": "https://github.com/loft-sh/vcluster.git"
+  },
+  "podman-container-tools/skopeo": {
+   "name": "podman-container-tools/skopeo",
+   "stars": 11315,
+   "branch": "main",
+   "clone": "https://github.com/podman-container-tools/skopeo.git"
+  },
+  "panjf2000/gnet": {
+   "name": "panjf2000/gnet",
+   "stars": 11248,
+   "branch": "dev",
+   "clone": "https://github.com/panjf2000/gnet.git"
+  },
+  "blevesearch/bleve": {
+   "name": "blevesearch/bleve",
+   "stars": 11237,
+   "branch": "master",
+   "clone": "https://github.com/blevesearch/bleve.git"
+  },
+  "dexidp/dex": {
+   "name": "dexidp/dex",
+   "stars": 11194,
+   "branch": "master",
+   "clone": "https://github.com/dexidp/dex.git"
+  },
+  "google/osv-scanner": {
+   "name": "google/osv-scanner",
+   "stars": 11193,
+   "branch": "main",
+   "clone": "https://github.com/google/osv-scanner.git"
+  },
+  "imgproxy/imgproxy": {
+   "name": "imgproxy/imgproxy",
+   "stars": 11123,
+   "branch": "master",
+   "clone": "https://github.com/imgproxy/imgproxy.git"
+  },
+  "FerretDB/FerretDB": {
+   "name": "FerretDB/FerretDB",
+   "stars": 11099,
+   "branch": "main",
+   "clone": "https://github.com/FerretDB/FerretDB.git"
+  },
+  "quay/clair": {
+   "name": "quay/clair",
+   "stars": 11077,
+   "branch": "main",
+   "clone": "https://github.com/quay/clair.git"
+  },
+  "centrifugal/centrifugo": {
+   "name": "centrifugal/centrifugo",
+   "stars": 10872,
+   "branch": "master",
+   "clone": "https://github.com/centrifugal/centrifugo.git"
+  },
+  "go-vgo/robotgo": {
+   "name": "go-vgo/robotgo",
+   "stars": 10872,
+   "branch": "master",
+   "clone": "https://github.com/go-vgo/robotgo.git"
+  },
+  "sashabaranov/go-openai": {
+   "name": "sashabaranov/go-openai",
+   "stars": 10786,
+   "branch": "master",
+   "clone": "https://github.com/sashabaranov/go-openai.git"
+  },
+  "distribution/distribution": {
+   "name": "distribution/distribution",
+   "stars": 10651,
+   "branch": "main",
+   "clone": "https://github.com/distribution/distribution.git"
+  },
+  "kubernetes/kompose": {
+   "name": "kubernetes/kompose",
+   "stars": 10644,
+   "branch": "main",
+   "clone": "https://github.com/kubernetes/kompose.git"
+  },
+  "kedacore/keda": {
+   "name": "kedacore/keda",
+   "stars": 10643,
+   "branch": "main",
+   "clone": "https://github.com/kedacore/keda.git"
+  },
+  "stakater/Reloader": {
+   "name": "stakater/Reloader",
+   "stars": 10488,
+   "branch": "master",
+   "clone": "https://github.com/stakater/Reloader.git"
+  },
+  "containerd/nerdctl": {
+   "name": "containerd/nerdctl",
+   "stars": 10434,
+   "branch": "main",
+   "clone": "https://github.com/containerd/nerdctl.git"
+  },
+  "nezhahq/nezha": {
+   "name": "nezhahq/nezha",
+   "stars": 10356,
+   "branch": "master",
+   "clone": "https://github.com/nezhahq/nezha.git"
+  },
+  "velero-io/velero": {
+   "name": "velero-io/velero",
+   "stars": 10341,
+   "branch": "main",
+   "clone": "https://github.com/velero-io/velero.git"
+  },
+  "moby/buildkit": {
+   "name": "moby/buildkit",
+   "stars": 10326,
+   "branch": "master",
+   "clone": "https://github.com/moby/buildkit.git"
+  },
+  "tilt-dev/tilt": {
+   "name": "tilt-dev/tilt",
+   "stars": 10109,
+   "branch": "master",
+   "clone": "https://github.com/tilt-dev/tilt.git"
+  },
+  "go-swagger/go-swagger": {
+   "name": "go-swagger/go-swagger",
+   "stars": 10006,
+   "branch": "master",
+   "clone": "https://github.com/go-swagger/go-swagger.git"
+  },
+  "fyne-io/fyne": {
+   "name": "fyne-io/fyne",
+   "stars": 28755,
+   "branch": "develop",
+   "clone": "https://github.com/fyne-io/fyne.git"
+  },
+  "kataras/iris": {
+   "name": "kataras/iris",
+   "stars": 25555,
+   "branch": "main",
+   "clone": "https://github.com/kataras/iris.git"
+  },
+  "FiloSottile/age": {
+   "name": "FiloSottile/age",
+   "stars": 23941,
+   "branch": "main",
+   "clone": "https://github.com/FiloSottile/age.git"
+  },
+  "qax-os/excelize": {
+   "name": "qax-os/excelize",
+   "stars": 20996,
+   "branch": "master",
+   "clone": "https://github.com/qax-os/excelize.git"
+  },
+  "grpc-ecosystem/grpc-gateway": {
+   "name": "grpc-ecosystem/grpc-gateway",
+   "stars": 20007,
+   "branch": "main",
+   "clone": "https://github.com/grpc-ecosystem/grpc-gateway.git"
+  },
+  "kgretzky/evilginx2": {
+   "name": "kgretzky/evilginx2",
+   "stars": 15737,
+   "branch": "master",
+   "clone": "https://github.com/kgretzky/evilginx2.git"
+  },
+  "PuerkitoBio/goquery": {
+   "name": "PuerkitoBio/goquery",
+   "stars": 14989,
+   "branch": "master",
+   "clone": "https://github.com/PuerkitoBio/goquery.git"
+  },
+  "crawlab-team/crawlab": {
+   "name": "crawlab-team/crawlab",
+   "stars": 12279,
+   "branch": "main",
+   "clone": "https://github.com/crawlab-team/crawlab.git"
+  },
+  "google/go-github": {
+   "name": "google/go-github",
+   "stars": 11319,
+   "branch": "master",
+   "clone": "https://github.com/google/go-github.git"
+  },
+  "dtm-labs/dtm": {
+   "name": "dtm-labs/dtm",
+   "stars": 10919,
+   "branch": "main",
+   "clone": "https://github.com/dtm-labs/dtm.git"
+  },
+  "fsnotify/fsnotify": {
+   "name": "fsnotify/fsnotify",
+   "stars": 10795,
+   "branch": "main",
+   "clone": "https://github.com/fsnotify/fsnotify.git"
+  },
+  "golang/protobuf": {
+   "name": "golang/protobuf",
+   "stars": 10077,
+   "branch": "master",
+   "clone": "https://github.com/golang/protobuf.git"
+  },
+  "keybase/client": {
+   "name": "keybase/client",
+   "stars": 9256,
+   "branch": "master",
+   "clone": "https://github.com/keybase/client.git"
+  },
+  "mvdan/sh": {
+   "name": "mvdan/sh",
+   "stars": 9132,
+   "branch": "master",
+   "clone": "https://github.com/mvdan/sh.git"
+  },
+  "miekg/dns": {
+   "name": "miekg/dns",
+   "stars": 8782,
+   "branch": "master",
+   "clone": "https://github.com/miekg/dns.git"
+  },
+  "gonum/gonum": {
+   "name": "gonum/gonum",
+   "stars": 8443,
+   "branch": "master",
+   "clone": "https://github.com/gonum/gonum.git"
+  },
+  "qualcomm/GenieX": {
+   "name": "qualcomm/GenieX",
+   "stars": 8440,
+   "branch": "main",
+   "clone": "https://github.com/qualcomm/GenieX.git"
+  },
+  "tailscale/tailcat": {
+   "name": "tailscale/tailcat",
+   "stars": 8388,
+   "branch": "main",
+   "clone": "https://github.com/tailscale/tailcat.git"
+  },
+  "golang/tools": {
+   "name": "golang/tools",
+   "stars": 8005,
+   "branch": "master",
+   "clone": "https://github.com/golang/tools.git"
+  },
+  "getarcaneapp/arcane": {
+   "name": "getarcaneapp/arcane",
+   "stars": 7917,
+   "branch": "main",
+   "clone": "https://github.com/getarcaneapp/arcane.git"
+  },
+  "vektra/mockery": {
+   "name": "vektra/mockery",
+   "stars": 7171,
+   "branch": "v3",
+   "clone": "https://github.com/vektra/mockery.git"
+  },
+  "google/gops": {
+   "name": "google/gops",
+   "stars": 7019,
+   "branch": "master",
+   "clone": "https://github.com/google/gops.git"
+  },
+  "elazarl/goproxy": {
+   "name": "elazarl/goproxy",
+   "stars": 6764,
+   "branch": "master",
+   "clone": "https://github.com/elazarl/goproxy.git"
+  },
+  "manifoldco/promptui": {
+   "name": "manifoldco/promptui",
+   "stars": 6406,
+   "branch": "master",
+   "clone": "https://github.com/manifoldco/promptui.git"
+  },
+  "golang/mobile": {
+   "name": "golang/mobile",
+   "stars": 6224,
+   "branch": "master",
+   "clone": "https://github.com/golang/mobile.git"
+  },
+  "cockroachdb/pebble": {
+   "name": "cockroachdb/pebble",
+   "stars": 6057,
+   "branch": "master",
+   "clone": "https://github.com/cockroachdb/pebble.git"
+  },
+  "bwmarrin/discordgo": {
+   "name": "bwmarrin/discordgo",
+   "stars": 5989,
+   "branch": "master",
+   "clone": "https://github.com/bwmarrin/discordgo.git"
+  },
+  "go-flutter-desktop/go-flutter": {
+   "name": "go-flutter-desktop/go-flutter",
+   "stars": 5931,
+   "branch": "master",
+   "clone": "https://github.com/go-flutter-desktop/go-flutter.git"
+  },
+  "golang/oauth2": {
+   "name": "golang/oauth2",
+   "stars": 5904,
+   "branch": "master",
+   "clone": "https://github.com/golang/oauth2.git"
+  },
+  "burrowers/garble": {
+   "name": "burrowers/garble",
+   "stars": 5774,
+   "branch": "master",
+   "clone": "https://github.com/burrowers/garble.git"
+  },
+  "ponzu-cms/ponzu": {
+   "name": "ponzu-cms/ponzu",
+   "stars": 5759,
+   "branch": "master",
+   "clone": "https://github.com/ponzu-cms/ponzu.git"
+  },
+  "tsuru/tsuru": {
+   "name": "tsuru/tsuru",
+   "stars": 5320,
+   "branch": "main",
+   "clone": "https://github.com/tsuru/tsuru.git"
+  },
+  "taubyte/tau": {
+   "name": "taubyte/tau",
+   "stars": 5184,
+   "branch": "main",
+   "clone": "https://github.com/taubyte/tau.git"
+  },
+  "gopl-zh/gopl-zh.github.com": {
+   "name": "gopl-zh/gopl-zh.github.com",
+   "stars": 4994,
+   "branch": "master",
+   "clone": "https://github.com/gopl-zh/gopl-zh.github.com.git"
+  },
+  "ovh/cds": {
+   "name": "ovh/cds",
+   "stars": 4847,
+   "branch": "master",
+   "clone": "https://github.com/ovh/cds.git"
+  },
+  "google/go-cmp": {
+   "name": "google/go-cmp",
+   "stars": 4678,
+   "branch": "master",
+   "clone": "https://github.com/google/go-cmp.git"
+  },
+  "nalgeon/redka": {
+   "name": "nalgeon/redka",
+   "stars": 4562,
+   "branch": "main",
+   "clone": "https://github.com/nalgeon/redka.git"
+  },
+  "googleapis/google-api-go-client": {
+   "name": "googleapis/google-api-go-client",
+   "stars": 4487,
+   "branch": "main",
+   "clone": "https://github.com/googleapis/google-api-go-client.git"
+  },
+  "mpolden/echoip": {
+   "name": "mpolden/echoip",
+   "stars": 4355,
+   "branch": "master",
+   "clone": "https://github.com/mpolden/echoip.git"
+  },
+  "mvdan/gofumpt": {
+   "name": "mvdan/gofumpt",
+   "stars": 4098,
+   "branch": "master",
+   "clone": "https://github.com/mvdan/gofumpt.git"
+  },
+  "go-redsync/redsync": {
+   "name": "go-redsync/redsync",
+   "stars": 4050,
+   "branch": "master",
+   "clone": "https://github.com/go-redsync/redsync.git"
+  },
+  "google/codesearch": {
+   "name": "google/codesearch",
+   "stars": 4017,
+   "branch": "master",
+   "clone": "https://github.com/google/codesearch.git"
+  },
+  "cheggaaa/pb": {
+   "name": "cheggaaa/pb",
+   "stars": 3728,
+   "branch": "master",
+   "clone": "https://github.com/cheggaaa/pb.git"
+  },
+  "protocolbuffers/protobuf-go": {
+   "name": "protocolbuffers/protobuf-go",
+   "stars": 3361,
+   "branch": "master",
+   "clone": "https://github.com/protocolbuffers/protobuf-go.git"
+  },
+  "golang/crypto": {
+   "name": "golang/crypto",
+   "stars": 3351,
+   "branch": "master",
+   "clone": "https://github.com/golang/crypto.git"
+  },
+  "cloudflare/tableflip": {
+   "name": "cloudflare/tableflip",
+   "stars": 3217,
+   "branch": "master",
+   "clone": "https://github.com/cloudflare/tableflip.git"
+  },
+  "darccio/mergo": {
+   "name": "darccio/mergo",
+   "stars": 3108,
+   "branch": "master",
+   "clone": "https://github.com/darccio/mergo.git"
+  },
+  "twmb/franz-go": {
+   "name": "twmb/franz-go",
+   "stars": 3108,
+   "branch": "master",
+   "clone": "https://github.com/twmb/franz-go.git"
+  },
+  "subtrace/subtrace": {
+   "name": "subtrace/subtrace",
+   "stars": 3100,
+   "branch": "master",
+   "clone": "https://github.com/subtrace/subtrace.git"
+  },
+  "guptarohit/asciigraph": {
+   "name": "guptarohit/asciigraph",
+   "stars": 3099,
+   "branch": "master",
+   "clone": "https://github.com/guptarohit/asciigraph.git"
+  },
+  "u-root/u-root": {
+   "name": "u-root/u-root",
+   "stars": 3079,
+   "branch": "main",
+   "clone": "https://github.com/u-root/u-root.git"
+  },
+  "golang/net": {
+   "name": "golang/net",
+   "stars": 3045,
+   "branch": "master",
+   "clone": "https://github.com/golang/net.git"
+  },
+  "mmcloughlin/avo": {
+   "name": "mmcloughlin/avo",
+   "stars": 2990,
+   "branch": "master",
+   "clone": "https://github.com/mmcloughlin/avo.git"
+  },
+  "acepanel/panel": {
+   "name": "acepanel/panel",
+   "stars": 2989,
+   "branch": "main",
+   "clone": "https://github.com/acepanel/panel.git"
+  },
+  "golang/example": {
+   "name": "golang/example",
+   "stars": 2979,
+   "branch": "master",
+   "clone": "https://github.com/golang/example.git"
+  },
+  "gonum/plot": {
+   "name": "gonum/plot",
+   "stars": 2968,
+   "branch": "master",
+   "clone": "https://github.com/gonum/plot.git"
+  },
+  "srl-labs/containerlab": {
+   "name": "srl-labs/containerlab",
+   "stars": 2882,
+   "branch": "main",
+   "clone": "https://github.com/srl-labs/containerlab.git"
+  },
+  "google/starlark-go": {
+   "name": "google/starlark-go",
+   "stars": 2784,
+   "branch": "master",
+   "clone": "https://github.com/google/starlark-go.git"
+  },
+  "studygolang/studygolang": {
+   "name": "studygolang/studygolang",
+   "stars": 2727,
+   "branch": "master",
+   "clone": "https://github.com/studygolang/studygolang.git"
+  },
+  "jessevdk/go-flags": {
+   "name": "jessevdk/go-flags",
+   "stars": 2693,
+   "branch": "main",
+   "clone": "https://github.com/jessevdk/go-flags.git"
+  },
+  "yassinebenaid/bunster": {
+   "name": "yassinebenaid/bunster",
+   "stars": 2679,
+   "branch": "master",
+   "clone": "https://github.com/yassinebenaid/bunster.git"
+  },
+  "refraction-networking/utls": {
+   "name": "refraction-networking/utls",
+   "stars": 2601,
+   "branch": "master",
+   "clone": "https://github.com/refraction-networking/utls.git"
+  },
+  "lovoo/goka": {
+   "name": "lovoo/goka",
+   "stars": 2547,
+   "branch": "master",
+   "clone": "https://github.com/lovoo/goka.git"
+  },
+  "cloudflare/gokey": {
+   "name": "cloudflare/gokey",
+   "stars": 2439,
+   "branch": "main",
+   "clone": "https://github.com/cloudflare/gokey.git"
+  },
+  "ava-labs/avalanchego": {
+   "name": "ava-labs/avalanchego",
+   "stars": 2360,
+   "branch": "master",
+   "clone": "https://github.com/ava-labs/avalanchego.git"
+  },
+  "cogentcore/core": {
+   "name": "cogentcore/core",
+   "stars": 2351,
+   "branch": "main",
+   "clone": "https://github.com/cogentcore/core.git"
+  },
+  "go-python/gopy": {
+   "name": "go-python/gopy",
+   "stars": 2333,
+   "branch": "master",
+   "clone": "https://github.com/go-python/gopy.git"
+  },
+  "google/go-querystring": {
+   "name": "google/go-querystring",
+   "stars": 2144,
+   "branch": "master",
+   "clone": "https://github.com/google/go-querystring.git"
+  },
+  "saljam/webwormhole": {
+   "name": "saljam/webwormhole",
+   "stars": 2097,
+   "branch": "master",
+   "clone": "https://github.com/saljam/webwormhole.git"
+  },
+  "tailscale/golink": {
+   "name": "tailscale/golink",
+   "stars": 1959,
+   "branch": "main",
+   "clone": "https://github.com/tailscale/golink.git"
+  },
+  "openshift/osin": {
+   "name": "openshift/osin",
+   "stars": 1933,
+   "branch": "master",
+   "clone": "https://github.com/openshift/osin.git"
+  },
+  "cpmech/gosl": {
+   "name": "cpmech/gosl",
+   "stars": 1884,
+   "branch": "main",
+   "clone": "https://github.com/cpmech/gosl.git"
+  },
+  "isacikgoz/gitin": {
+   "name": "isacikgoz/gitin",
+   "stars": 1866,
+   "branch": "master",
+   "clone": "https://github.com/isacikgoz/gitin.git"
+  },
+  "golang/tour": {
+   "name": "golang/tour",
+   "stars": 1629,
+   "branch": "master",
+   "clone": "https://github.com/golang/tour.git"
+  },
+  "fzipp/gocyclo": {
+   "name": "fzipp/gocyclo",
+   "stars": 1613,
+   "branch": "main",
+   "clone": "https://github.com/fzipp/gocyclo.git"
+  },
+  "isaacphi/mcp-language-server": {
+   "name": "isaacphi/mcp-language-server",
+   "stars": 1609,
+   "branch": "main",
+   "clone": "https://github.com/isaacphi/mcp-language-server.git"
+  },
+  "throttled/throttled": {
+   "name": "throttled/throttled",
+   "stars": 1599,
+   "branch": "master",
+   "clone": "https://github.com/throttled/throttled.git"
+  },
+  "salesforce/sloop": {
+   "name": "salesforce/sloop",
+   "stars": 1585,
+   "branch": "master",
+   "clone": "https://github.com/salesforce/sloop.git"
+  },
+  "golang/snappy": {
+   "name": "golang/snappy",
+   "stars": 1575,
+   "branch": "master",
+   "clone": "https://github.com/golang/snappy.git"
+  },
+  "FyshOS/tyde": {
+   "name": "FyshOS/tyde",
+   "stars": 1514,
+   "branch": "develop",
+   "clone": "https://github.com/FyshOS/tyde.git"
+  },
+  "bits-and-blooms/bitset": {
+   "name": "bits-and-blooms/bitset",
+   "stars": 1514,
+   "branch": "master",
+   "clone": "https://github.com/bits-and-blooms/bitset.git"
+  },
+  "golang/vgo": {
+   "name": "golang/vgo",
+   "stars": 1510,
+   "branch": "master",
+   "clone": "https://github.com/golang/vgo.git"
+  },
+  "cavaliergopher/grab": {
+   "name": "cavaliergopher/grab",
+   "stars": 1486,
+   "branch": "main",
+   "clone": "https://github.com/cavaliergopher/grab.git"
+  },
+  "ethersphere/bee": {
+   "name": "ethersphere/bee",
+   "stars": 1481,
+   "branch": "master",
+   "clone": "https://github.com/ethersphere/bee.git"
+  },
+  "NHAS/reverse_ssh": {
+   "name": "NHAS/reverse_ssh",
+   "stars": 1479,
+   "branch": "main",
+   "clone": "https://github.com/NHAS/reverse_ssh.git"
+  },
+  "denandz/sourcemapper": {
+   "name": "denandz/sourcemapper",
+   "stars": 1466,
+   "branch": "master",
+   "clone": "https://github.com/denandz/sourcemapper.git"
+  },
+  "ovh/utask": {
+   "name": "ovh/utask",
+   "stars": 1410,
+   "branch": "master",
+   "clone": "https://github.com/ovh/utask.git"
+  },
+  "rakyll/gotest": {
+   "name": "rakyll/gotest",
+   "stars": 1390,
+   "branch": "master",
+   "clone": "https://github.com/rakyll/gotest.git"
+  },
+  "atotto/clipboard": {
+   "name": "atotto/clipboard",
+   "stars": 1379,
+   "branch": "master",
+   "clone": "https://github.com/atotto/clipboard.git"
+  },
+  "golang/sys": {
+   "name": "golang/sys",
+   "stars": 1360,
+   "branch": "master",
+   "clone": "https://github.com/golang/sys.git"
+  },
+  "go-webauthn/webauthn": {
+   "name": "go-webauthn/webauthn",
+   "stars": 1347,
+   "branch": "master",
+   "clone": "https://github.com/go-webauthn/webauthn.git"
+  },
+  "golang/pkgsite": {
+   "name": "golang/pkgsite",
+   "stars": 1327,
+   "branch": "master",
+   "clone": "https://github.com/golang/pkgsite.git"
+  },
+  "mvdan/xurls": {
+   "name": "mvdan/xurls",
+   "stars": 1266,
+   "branch": "master",
+   "clone": "https://github.com/mvdan/xurls.git"
+  },
+  "evanphx/json-patch": {
+   "name": "evanphx/json-patch",
+   "stars": 1231,
+   "branch": "master",
+   "clone": "https://github.com/evanphx/json-patch.git"
+  },
+  "google/capslock": {
+   "name": "google/capslock",
+   "stars": 1183,
+   "branch": "main",
+   "clone": "https://github.com/google/capslock.git"
+  },
+  "solod-dev/solod": {
+   "name": "solod-dev/solod",
+   "stars": 1172,
+   "branch": "main",
+   "clone": "https://github.com/solod-dev/solod.git"
+  },
+  "planetscale/vtprotobuf": {
+   "name": "planetscale/vtprotobuf",
+   "stars": 1124,
+   "branch": "main",
+   "clone": "https://github.com/planetscale/vtprotobuf.git"
+  },
+  "pointlander/peg": {
+   "name": "pointlander/peg",
+   "stars": 1118,
+   "branch": "main",
+   "clone": "https://github.com/pointlander/peg.git"
+  },
+  "muraenateam/muraena": {
+   "name": "muraenateam/muraena",
+   "stars": 1091,
+   "branch": "master",
+   "clone": "https://github.com/muraenateam/muraena.git"
+  },
+  "dkorunic/betteralign": {
+   "name": "dkorunic/betteralign",
+   "stars": 1088,
+   "branch": "main",
+   "clone": "https://github.com/dkorunic/betteralign.git"
+  }
+ }
+}

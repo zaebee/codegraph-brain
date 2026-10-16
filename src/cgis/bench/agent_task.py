@@ -11,6 +11,7 @@ so it needs no LLM judge and the same transcript always gets the same score.
 """
 
 import json
+import posixpath
 import re
 from pathlib import Path
 from typing import Literal
@@ -92,6 +93,19 @@ class AgentTask(BaseModel, frozen=True):
     question: str
     gold: Gold
     notes: str = ""
+    #: Paths deleted from each session's worktree before ingest and before the agent starts:
+    #: nested modules, which a fresh `git worktree add` would otherwise restore (exp4).
+    delete_paths: list[str] = Field(default_factory=list)
+
+    @field_validator("delete_paths")
+    @classmethod
+    def _inside_the_worktree(cls, paths: list[str]) -> list[str]:
+        """Each path is relative, canonical and below the worktree root."""
+        for p in paths:
+            if p in ("", ".", "..") or p.startswith(("/", "../")) or posixpath.normpath(p) != p:
+                msg = f"delete_paths: {p!r} is not a canonical path inside the worktree"
+                raise ValueError(msg)
+        return paths
 
     def prompt(self) -> str:
         """The exact text sent to the agent."""

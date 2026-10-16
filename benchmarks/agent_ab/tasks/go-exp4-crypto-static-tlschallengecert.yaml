@@ -1,0 +1,163 @@
+id: go-exp4-crypto-static-tlschallengecert
+repo: crypto
+sha: 0ae6809b7559060fe62abe65e26bd18b1fcaf6b7
+src_root: .
+type: impact
+delete_paths:
+- argon2/_asm
+- blake2b/_asm/AVX2
+- blake2b/_asm/standard
+- blake2s/_asm
+- chacha20poly1305/_asm
+- internal/poly1305/_asm
+- salsa20/salsa/_asm
+- x509roots/fallback
+question: 'In this repository, the function `tlsChallengeCert` in `acme/acme.go` is about to change. Which functions
+  and methods can end up calling it, directly or transitively? List every one, production code only: non-test code
+  in this repository''s root module (not `*_test.go` files). Follow every chain up to its entry point (an exported
+  API function, `main`, a function nothing else calls, or a function the code only passes as a value, such as a
+  cobra `RunE` handler) and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - id: Client.TLSALPN01ChallengeCert
+    any_of:
+    - Client.TLSALPN01ChallengeCert
+    - acme.Client.TLSALPN01ChallengeCert
+    - acme.Client.TLSALPN01ChallengeCert
+    - acme/acme.go:Client.TLSALPN01ChallengeCert
+  - id: Manager.GetCertificate
+    any_of:
+    - Manager.GetCertificate
+    - autocert.Manager.GetCertificate
+    - acme/autocert.Manager.GetCertificate
+    - acme/autocert/autocert.go:Manager.GetCertificate
+  - id: Manager.authorizedCert
+    any_of:
+    - Manager.authorizedCert
+    - autocert.Manager.authorizedCert
+    - acme/autocert.Manager.authorizedCert
+    - acme/autocert/autocert.go:Manager.authorizedCert
+  - id: Manager.cert
+    any_of:
+    - Manager.cert
+    - autocert.Manager.cert
+    - acme/autocert.Manager.cert
+    - acme/autocert/autocert.go:Manager.cert
+  - id: Manager.createCert
+    any_of:
+    - Manager.createCert
+    - autocert.Manager.createCert
+    - acme/autocert.Manager.createCert
+    - acme/autocert/autocert.go:Manager.createCert
+  - id: Manager.fulfill
+    any_of:
+    - Manager.fulfill
+    - autocert.Manager.fulfill
+    - acme/autocert.Manager.fulfill
+    - acme/autocert/autocert.go:Manager.fulfill
+  - id: Manager.startRenew
+    any_of:
+    - Manager.startRenew
+    - autocert.Manager.startRenew
+    - acme/autocert.Manager.startRenew
+    - acme/autocert/autocert.go:Manager.startRenew
+  - id: Manager.verifyRFC
+    any_of:
+    - Manager.verifyRFC
+    - autocert.Manager.verifyRFC
+    - acme/autocert.Manager.verifyRFC
+    - acme/autocert/autocert.go:Manager.verifyRFC
+  - id: domainRenewal.do
+    any_of:
+    - domainRenewal.do
+    - autocert.domainRenewal.do
+    - acme/autocert.domainRenewal.do
+    - acme/autocert/renewal.go:domainRenewal.do
+  - id: domainRenewal.renew
+    any_of:
+    - domainRenewal.renew
+    - autocert.domainRenewal.renew
+    - acme/autocert.domainRenewal.renew
+    - acme/autocert/renewal.go:domainRenewal.renew
+  - id: domainRenewal.start
+    any_of:
+    - domainRenewal.start
+    - autocert.domainRenewal.start
+    - acme/autocert.domainRenewal.start
+    - acme/autocert/renewal.go:domainRenewal.start
+  files:
+  - acme/acme.go
+  - acme/autocert/autocert.go
+  - acme/autocert/renewal.go
+  allowed_symbols:
+  - Manager.TLSConfig
+  - acmeprobe.main
+  - prober.fulfill
+  - prober.runOrder
+  - prober.runPreauthz
+  - prober.runTLSALPN01
+  - tlsChallengeCert
+  allowed_files:
+  - acme/autocert/autocert.go
+  - acme/internal/acmeprobe/prober.go
+notes: 'exp4 cell static, drawn by benchmarks/agent_ab/analysis/exp4/gold/draw.py (random.Random(4)); no cgis input.
+
+  Target acme.tlsChallengeCert at acme/acme.go:767.
+
+  Gold model (pre-registration, section Gold): go/ssa VTA static/go/defer calls; closures, $bound and $thunk folded
+  into their function; promoted wrappers and synthetic package initialisers traversed, never symbols; in-module
+  interface dispatch by CHA with every CHA-only edge adjudicated (adjudications-crypto.json); stdlib/third-party/anonymous
+  interface dispatch by VTA only; a function-value reference is not walked: the referenced function is an entry
+  point and the function taking the value is allowed, not required (amendment 2).
+
+  Pilot corrections applied (pilot-corrections-crypto.json): function values the code calls at once are walked as
+  calls.
+
+  Allowed referencers (1): autocert.Manager.TLSConfig
+
+  Platform: the required closure is identical under GOOS=linux and GOOS=darwin (GOARCH=amd64); gold is linux.
+
+  Nested modules deleted from the worktree before both arms: argon2/_asm/, blake2b/_asm/AVX2/, blake2b/_asm/standard/,
+  blake2s/_asm/, chacha20poly1305/_asm/, internal/poly1305/_asm/, salsa20/salsa/_asm/, x509roots/fallback/.
+
+  Target''s direct callers: acme.Client.TLSALPN01ChallengeCert@acme/acme.go:641 (static)
+
+  Reached only through interface dispatch (0): none
+
+  Evidence (callee <- caller@site):
+
+  acme.Client.TLSALPN01ChallengeCert [acme/acme.go:611] <- acmeprobe.prober.runTLSALPN01@acme/internal/acmeprobe/prober.go:302
+  (static); autocert.Manager.fulfill@acme/autocert/autocert.go:807 (static)
+
+  autocert.Manager.GetCertificate [acme/autocert/autocert.go:250] <- (entry point)
+
+  autocert.Manager.authorizedCert [acme/autocert/autocert.go:652] <- autocert.Manager.createCert@acme/autocert/autocert.go:583
+  (static); autocert.domainRenewal.do@acme/autocert/renewal.go:122 (static)
+
+  autocert.Manager.cert [acme/autocert/autocert.go:438] <- autocert.Manager.GetCertificate@acme/autocert/autocert.go:300
+  (static)
+
+  autocert.Manager.createCert [acme/autocert/autocert.go:566] <- autocert.Manager.GetCertificate@acme/autocert/autocert.go:309
+  (static)
+
+  autocert.Manager.fulfill [acme/autocert/autocert.go:804] <- autocert.Manager.verifyRFC@acme/autocert/autocert.go:738
+  (static)
+
+  autocert.Manager.startRenew [acme/autocert/autocert.go:907] <- autocert.Manager.cert@acme/autocert/autocert.go:464
+  (static); autocert.Manager.createCert@acme/autocert/autocert.go:607 (static)
+
+  autocert.Manager.verifyRFC [acme/autocert/autocert.go:688] <- autocert.Manager.authorizedCert@acme/autocert/autocert.go:670
+  (static)
+
+  autocert.domainRenewal.do [acme/autocert/renewal.go:103] <- autocert.domainRenewal.renew@acme/autocert/renewal.go:77
+  (static)
+
+  autocert.domainRenewal.renew [acme/autocert/renewal.go:65] <- autocert.domainRenewal.start@acme/autocert/renewal.go:36
+  (launch); autocert.domainRenewal.start@acme/autocert/renewal.go:36 (ref)
+
+  autocert.domainRenewal.start [acme/autocert/renewal.go:30] <- autocert.Manager.startRenew@acme/autocert/autocert.go:919
+  (static)
+
+  '

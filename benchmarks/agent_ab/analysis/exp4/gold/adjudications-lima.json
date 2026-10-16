@@ -1,0 +1,47 @@
+{
+ "about": "CHA-only dispatch edges on in-module interfaces in lima-vm/lima f47461ed (linux/amd64), adjudicated by reading the code before the draw. First matching rule wins; `sites` are files or file:line ('*' = any). Every CHA-only edge of the linux dump must match a rule (goldmodel.load require_all). Promoted-wrapper receivers are spelled (*pkg/x.T) / (pkg/x.T).",
+ "rules": [
+  {"iface": "pkg/bicopy.closeReader", "type": "pkg/portfwd.GrpcClientRW", "sites": ["*"], "verdict": "reject",
+   "reason": "Bicopy's only linux caller passes the driver's GuestAgentConn net.Conn and a unix-listener conn (pkg/driver/external/server/methods.go:113-122); GrpcClientRW is never handed to Bicopy"},
+  {"iface": "pkg/bicopy.closeReader", "type": "pkg/portfwdserver.GRPCServerRW", "sites": ["*"], "verdict": "reject",
+   "reason": "same as above: Bicopy(conn, proxyConn) at pkg/driver/external/server/methods.go:122 never receives a GRPCServerRW"},
+  {"iface": "pkg/bicopy.closeWriter", "type": "pkg/portfwd.GrpcClientRW", "sites": ["*"], "verdict": "reject",
+   "reason": "same as closeReader: pkg/driver/external/server/methods.go:113-122"},
+  {"iface": "pkg/bicopy.closeWriter", "type": "pkg/portfwdserver.GRPCServerRW", "sites": ["*"], "verdict": "reject",
+   "reason": "same as closeReader: pkg/driver/external/server/methods.go:113-122"},
+
+  {"iface": "pkg/driver/external.DriverServer", "type": "pkg/driver/external.UnimplementedDriverServer", "sites": ["*"], "verdict": "reject",
+   "reason": "the only registered DriverServer is &server.DriverServer (pkg/driver/external/server/server.go:96), which defines all 20 methods itself (server/methods.go), shadowing the embedded UnimplementedDriverServer's"},
+  {"iface": "pkg/driver/external.DriverServer", "type": "(*pkg/driver/external.UnimplementedDriverServer)", "sites": ["*"], "verdict": "reject",
+   "reason": "as above: a *UnimplementedDriverServer is never registered (server.go:96)"},
+  {"iface": "pkg/guestagent/api.GuestServiceServer", "type": "pkg/guestagent/api.UnimplementedGuestServiceServer", "sites": ["*"], "verdict": "reject",
+   "reason": "the only non-test registration is *GuestServer (pkg/guestagent/api/server/server.go:31), which defines all 5 methods (server.go:87-118)"},
+  {"iface": "pkg/guestagent/api.GuestServiceServer", "type": "(*pkg/guestagent/api.UnimplementedGuestServiceServer)", "sites": ["*"], "verdict": "reject",
+   "reason": "as above (pkg/guestagent/api/server/server.go:31)"},
+
+  {"iface": "pkg/guestagent/ticker.Ticker", "type": "pkg/guestagent/ticker.ebpfTicker", "sites": ["pkg/guestagent/guestagent_linux.go"], "verdict": "reject",
+   "reason": "a.ticker is the simple ticker or the compound one (cmd/lima-guestagent/daemon_linux.go:98-106); an ebpfTicker only ever sits in compoundTicker.t2"},
+  {"iface": "pkg/guestagent/ticker.Ticker", "type": "pkg/guestagent/ticker.ebpfTicker", "sites": ["pkg/guestagent/ticker/compound.go:29", "pkg/guestagent/ticker/compound.go:46"], "verdict": "reject",
+   "reason": "compoundTicker.t1 is always the simple ticker: NewCompoundTicker(simpleTicker, ebpfTicker) at cmd/lima-guestagent/daemon_linux.go:106"},
+  {"iface": "pkg/guestagent/ticker.Ticker", "type": "pkg/guestagent/ticker.simpleTicker", "sites": ["pkg/guestagent/ticker/compound.go:34", "pkg/guestagent/ticker/compound.go:47"], "verdict": "reject",
+   "reason": "compoundTicker.t2 is always the ebpf ticker (cmd/lima-guestagent/daemon_linux.go:106)"},
+
+  {"iface": "pkg/imgutil.ImageDiskManager", "type": "pkg/imgutil/nativeimgutil.NativeImageUtil", "sites": ["*"], "verdict": "reject",
+   "reason": "outside proxyimgutil every ImageDiskManager value is proxyimgutil.NewDiskUtil's *ImageDiskManager (cmd/limactl/disk.go:117,414; pkg/downloader/downloader.go:474; pkg/driverutil/disk.go:77; pkg/instance/start.go:615); inside it these sites call p.qemu, which is always a *QemuImageUtil (pkg/imgutil/proxyimgutil/proxyimgutil.go:28)"},
+  {"iface": "pkg/imgutil.ImageDiskManager", "type": "pkg/qemuimgutil.QemuImageUtil", "sites": ["*"], "verdict": "reject",
+   "reason": "outside proxyimgutil the value is the proxy (as above); inside it these sites call p.native, which is always a *NativeImageUtil (pkg/imgutil/proxyimgutil/proxyimgutil.go:29)"},
+
+  {"iface": "pkg/driver.Driver", "type": "(pkg/driver.ConfiguredDriver)", "sites": ["*"], "verdict": "reject",
+   "reason": "a ConfiguredDriver value is never converted to Driver: every Configure returns &driver.ConfiguredDriver{...} (pkg/driver/qemu/qemu_driver.go:89, pkg/driver/external/client/methods.go:326), so only the pointer's wrappers can be dispatched to"},
+  {"iface": "pkg/driver.Driver", "type": "(*pkg/driver.ConfiguredDriver)", "sites": ["pkg/cidata/cidata.go", "pkg/hostagent/hostagent.go", "pkg/instance/start.go:282"], "except": ["pkg/hostagent/hostagent.go:178"], "verdict": "accept",
+   "reason": "the Driver value is a *ConfiguredDriver: HostAgent.driver and GenerateISO9660's drv come from driverutil.CreateConfiguredDriver (pkg/hostagent/hostagent.go:169,202), Prepared.Driver from Prepare (pkg/instance/start.go:75)"},
+  {"iface": "pkg/driver.Driver", "type": "(*pkg/driver.ConfiguredDriver)", "sites": ["*"], "verdict": "reject",
+   "reason": "the dispatched value is never a *ConfiguredDriver here: a call on a *ConfiguredDriver variable (cmd/limactl, pkg/instance, pkg/snapshot, hostagent.go:178) is promoted through its embedded Driver field, which every Configure sets to the concrete driver; registry.Register, driverutil's intDriver and the external server hold the in-process driver itself (pkg/driver/qemu/register.go:15, cmd/lima-driver-qemu/main.go:15); a wrapper body (site :0) dispatches on the same embedded field"},
+  {"iface": "pkg/driver.Driver", "type": "pkg/driver/external/client.DriverClient", "sites": ["pkg/cidata/cidata.go", "pkg/hostagent/hostagent.go", "pkg/instance/start.go:282"], "verdict": "accept",
+   "reason": "the value is a *ConfiguredDriver, which wraps the external driver's *DriverClient when the VM type names an external driver (pkg/driverutil/instance.go:38 -> pkg/driver/external/client/methods.go:326)"},
+  {"iface": "pkg/driver.Driver", "type": "pkg/driver/external/client.DriverClient", "sites": ["*"], "verdict": "reject",
+   "reason": "the value is an in-process internal driver, never a client: registry.Register's argument and driverutil's intDriver come from the internal registry (pkg/registry/registry.go:191-196, filled by pkg/driver/qemu/register.go:15); the external server's driver is the one main passes to server.Serve (cmd/lima-driver-qemu/main.go:15, pkg/driver/external/server/server.go:97)"},
+  {"iface": "pkg/driver.Driver", "type": "pkg/driver/qemu.LimaQemuDriver", "sites": ["*"], "verdict": "accept",
+   "reason": "qemu is the internal driver registered on linux (pkg/driver/qemu/register.go:15) and wrapped by its Configure (pkg/driver/qemu/qemu_driver.go:89); every listed site dispatches on a *ConfiguredDriver or GenerateISO9660's drv, which can hold it"}
+ ]
+}

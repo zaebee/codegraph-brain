@@ -1,0 +1,125 @@
+{
+ "seed": 4,
+ "wanted": {
+  "iface": 12,
+  "static": 6
+ },
+ "drawn": {
+  "iface": 12,
+  "static": 6
+ },
+ "iface_before_surplus_cut": 19,
+ "iface_evaluable": true,
+ "pool": {
+  "iface_families": {
+   "acme/autocert.Cache": 3,
+   "pkcs12.decryptable": 2,
+   "pkcs12.pbeCipher": 6,
+   "ssh.AuthMethod": 12,
+   "ssh.Channel": 2,
+   "ssh.MultiAlgorithmSigner": 1,
+   "ssh.NewChannel": 3,
+   "ssh.PublicKey": 8,
+   "ssh.connTransport": 8,
+   "ssh.kexAlgorithm": 10,
+   "ssh.keyingTransport": 4,
+   "ssh.packetCipher": 4,
+   "ssh/agent.Agent": 13,
+   "ssh/agent.ExtendedAgent": 3
+  },
+  "static_candidates": 206,
+  "static_distinct_files": 42
+ },
+ "picks": [
+  {
+   "cell": "iface",
+   "family": "acme/autocert.Cache",
+   "target": "acme/autocert.DirCache.Delete"
+  },
+  {
+   "cell": "iface",
+   "family": "pkcs12.decryptable",
+   "target": "pkcs12.encryptedContentInfo.Data"
+  },
+  {
+   "cell": "iface",
+   "family": "pkcs12.pbeCipher",
+   "target": "pkcs12.shaWith40BitRC2CBC.deriveIV"
+  },
+  {
+   "cell": "iface",
+   "family": "pkcs12.pbeCipher",
+   "target": "pkcs12.shaWithTripleDESCBC.create"
+  },
+  {
+   "cell": "iface",
+   "family": "ssh.AuthMethod",
+   "target": "ssh.KeyboardInteractiveChallenge.auth"
+  },
+  {
+   "cell": "iface",
+   "family": "ssh.Channel",
+   "target": "ssh.channel.Stderr"
+  },
+  {
+   "cell": "iface",
+   "family": "ssh.MultiAlgorithmSigner",
+   "target": "ssh.dsaPrivateKey.Algorithms"
+  },
+  {
+   "cell": "iface",
+   "family": "ssh.NewChannel",
+   "target": "ssh.channel.ChannelType"
+  },
+  {
+   "cell": "iface",
+   "family": "ssh.PublicKey",
+   "target": "ssh.dsaPublicKey.Verify"
+  },
+  {
+   "cell": "iface",
+   "family": "ssh.kexAlgorithm",
+   "target": "ssh.mlkem768WithCurve25519sha256.Client"
+  },
+  {
+   "cell": "iface",
+   "family": "ssh.packetCipher",
+   "target": "ssh.cbcCipher.readCipherPacket"
+  },
+  {
+   "cell": "iface",
+   "family": "ssh/agent.ExtendedAgent",
+   "target": "ssh/agent.keyring.SignWithFlags"
+  },
+  {
+   "cell": "static",
+   "family": null,
+   "target": "argon2.blamkaSSE4"
+  },
+  {
+   "cell": "static",
+   "family": null,
+   "target": "bn256.curvePoint.Put"
+  },
+  {
+   "cell": "static",
+   "family": null,
+   "target": "acme.tlsChallengeCert"
+  },
+  {
+   "cell": "static",
+   "family": null,
+   "target": "ssh.sshConn.Algorithms"
+  },
+  {
+   "cell": "static",
+   "family": null,
+   "target": "bn256.gfP6.Double"
+  },
+  {
+   "cell": "static",
+   "family": null,
+   "target": "bn256.twistPoint.SetInfinity"
+  }
+ ]
+}

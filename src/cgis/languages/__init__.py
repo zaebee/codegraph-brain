@@ -43,6 +43,9 @@ class Manifest:
     #: one forces a rebuild of an incremental run. Declared here so collecting the
     #: union imports no pack (spec, Incremental ingest).
     cross_file_metadata: Mapping[NodeType, tuple[str, ...]] = field(default_factory=dict)
+    #: Said with every impact answer rooted in this language, and in the server
+    #: instructions: what an agent must not take on trust (exp4, for Go).
+    impact_caveat: str = ""
 
 
 def _python() -> LanguagePack:
@@ -103,6 +106,16 @@ MANIFESTS: tuple[Manifest, ...] = (
             NodeType.FUNCTION: ("returns",),
             NodeType.METHOD: ("returns",),
         },
+        # exp4 (docs/lab-notes/2026-10-16-exp4-go-pre-registration.md): the impact gate
+        # failed, and the graph misses function values that are called (sync.Once.Do,
+        # time.AfterFunc, a framework callback) and some interface dispatch.
+        impact_caveat=(
+            "Go is supported for structure and metrics only. Go callers are a lead, not a "
+            "list: confirm them by reading the code. A function handed over as a value "
+            "(sync.Once.Do, time.AfterFunc, a framework callback) has no edge, and some "
+            "interface dispatch is missing (exp4: measured on one library, golang/crypto, "
+            "mostly its ssh package; not measured on applications)."
+        ),
     ),
 )
 
@@ -118,6 +131,11 @@ def _suffix(path: str) -> str:
 def _load(name: str) -> LanguagePack:
     """Import a pack and return its `PACK` — once per process."""
     return _BY_NAME[name].load()
+
+
+def impact_caveat(language: str) -> str:
+    """The caveat an impact answer on `language` carries; empty when there is none."""
+    return next((m.impact_caveat for m in MANIFESTS if m.name == language), "")
 
 
 def is_supported(path: str) -> bool:

@@ -21,7 +21,7 @@ from cgis.api.tool_allowlist import TOOLS_ENV, CgisServer
 from cgis.core.coverage import TraversalCoverage, UnresolvedSite
 from cgis.core.freshness import Freshness, FreshnessState
 from cgis.core.models import Edge, EdgeType, Node, NodeType
-from cgis.languages import extractors
+from cgis.languages import extractors, impact_caveat
 from cgis.pipeline import IngestionPipeline
 from cgis.query.analysis.overview import DEFAULT_DEPTH, DEFAULT_LIMIT, build_overview
 from cgis.query.analysis.suggest_service import report_to_dict, suggest_packages
@@ -223,6 +223,7 @@ def _render_subgraph_with_freshness(
     excluded_tests: int = 0,
     truncation: Truncation | None = None,
     max_nodes: int = 0,
+    caveat: str = "",
 ) -> str:
     """`_render_subgraph`, with this database's freshness measured for it (#175)."""
     return _render_subgraph(
@@ -236,6 +237,7 @@ def _render_subgraph_with_freshness(
         coverage,
         _Omissions(excluded_tests, truncation, max_nodes),
         downstream=downstream,
+        caveat=caveat,
     )
 
 
@@ -251,6 +253,7 @@ def _render_subgraph(
     omissions: "_Omissions | None" = None,
     *,
     downstream: bool = True,
+    caveat: str = "",
 ) -> str:
     """Render a traversal result as a tree, a Mermaid diagram or joinable JSON (#171, #569).
 
@@ -267,11 +270,15 @@ def _render_subgraph(
     ``truncated`` keys in the JSON; the caller says them in ``note`` for the
     diagram. ``text`` is an indented tree (``graph_to_text``) under the same
     notes as the diagram, with coverage as a closing line; ``downstream`` says
-    which end of an edge is the child (False for impact).
+    which end of an edge is the child (False for impact). ``caveat`` is the root
+    language's impact caveat: a ``caveat`` key in the JSON; the caller puts it in
+    ``note`` for the other shapes.
     """
     fmt = output_format.strip().lower()
     if fmt == "json":
         payload = {**graph_to_json(root, nodes, edges, coverage), **_omission_keys(omissions)}
+        if caveat:
+            payload = {**payload, "caveat": caveat}
         if freshness is not None and freshness.state is not FreshnessState.FRESH:
             payload = {**payload, "freshness": freshness.model_dump()}
         return json.dumps(payload, indent=2)
@@ -676,6 +683,13 @@ def cgis_analyze_impact(
         return f"❌ {exc}"
 
     note = _traversal_note(fqn, res.resolved, res.via_suffix, result, max_nodes, "caller(s)")
+    # Any node's language, not only the root's: a stdlib or third-party root is a
+    # virtual node not tagged with the language of the callers it has here.
+    caveat = next(
+        (c for c in map(impact_caveat, sorted({n.language for n in result.nodes})) if c), ""
+    )
+    if caveat:
+        note += f"> {caveat}\n\n"
     return _render_subgraph_with_freshness(
         db_path,
         output_format,
@@ -689,6 +703,7 @@ def cgis_analyze_impact(
         excluded_tests=result.excluded,
         truncation=result.truncation,
         max_nodes=max_nodes,
+        caveat=caveat,
     )
 
 

@@ -1,0 +1,122 @@
+id: go-exp4-crypto-iface-shawith40bitrc2cbc-deriveiv
+repo: crypto
+sha: 0ae6809b7559060fe62abe65e26bd18b1fcaf6b7
+src_root: .
+type: impact
+delete_paths:
+- argon2/_asm
+- blake2b/_asm/AVX2
+- blake2b/_asm/standard
+- blake2s/_asm
+- chacha20poly1305/_asm
+- internal/poly1305/_asm
+- salsa20/salsa/_asm
+- x509roots/fallback
+question: 'In this repository, the method `shaWith40BitRC2CBC.deriveIV` in `pkcs12/crypto.go` is about to change.
+  Which functions and methods can end up calling it, directly or transitively? List every one, production code only:
+  non-test code in this repository''s root module (not `*_test.go` files). Follow every chain up to its entry point
+  (an exported API function, `main`, a function nothing else calls, or a function the code only passes as a value,
+  such as a cobra `RunE` handler) and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - id: Decode
+    any_of:
+    - Decode
+    - pkcs12.Decode
+    - pkcs12.Decode
+    - pkcs12/pkcs12.go:Decode
+  - id: ToPEM
+    any_of:
+    - ToPEM
+    - pkcs12.ToPEM
+    - pkcs12.ToPEM
+    - pkcs12/pkcs12.go:ToPEM
+  - id: convertBag
+    any_of:
+    - convertBag
+    - pkcs12.convertBag
+    - pkcs12.convertBag
+    - pkcs12/pkcs12.go:convertBag
+  - id: decodePkcs8ShroudedKeyBag
+    any_of:
+    - decodePkcs8ShroudedKeyBag
+    - pkcs12.decodePkcs8ShroudedKeyBag
+    - pkcs12.decodePkcs8ShroudedKeyBag
+    - pkcs12/safebags.go:decodePkcs8ShroudedKeyBag
+  - id: getSafeContents
+    any_of:
+    - getSafeContents
+    - pkcs12.getSafeContents
+    - pkcs12.getSafeContents
+    - pkcs12/pkcs12.go:getSafeContents
+  - id: pbDecrypt
+    any_of:
+    - pbDecrypt
+    - pkcs12.pbDecrypt
+    - pkcs12.pbDecrypt
+    - pkcs12/crypto.go:pbDecrypt
+  - id: pbDecrypterFor
+    any_of:
+    - pbDecrypterFor
+    - pkcs12.pbDecrypterFor
+    - pkcs12.pbDecrypterFor
+    - pkcs12/crypto.go:pbDecrypterFor
+  files:
+  - pkcs12/crypto.go
+  - pkcs12/pkcs12.go
+  - pkcs12/safebags.go
+  allowed_symbols:
+  - shaWith40BitRC2CBC.deriveIV
+  allowed_files: []
+notes: 'exp4 cell iface (pkcs12.pbeCipher), drawn by benchmarks/agent_ab/analysis/exp4/gold/draw.py (random.Random(4));
+  no cgis input.
+
+  Target pkcs12.shaWith40BitRC2CBC.deriveIV at pkcs12/crypto.go:57.
+
+  Gold model (pre-registration, section Gold): go/ssa VTA static/go/defer calls; closures, $bound and $thunk folded
+  into their function; promoted wrappers and synthetic package initialisers traversed, never symbols; in-module
+  interface dispatch by CHA with every CHA-only edge adjudicated (adjudications-crypto.json); stdlib/third-party/anonymous
+  interface dispatch by VTA only; a function-value reference is not walked: the referenced function is an entry
+  point and the function taking the value is allowed, not required (amendment 2).
+
+  Pilot corrections applied (pilot-corrections-crypto.json): function values the code calls at once are walked as
+  calls.
+
+  Allowed referencers (0): none
+
+  Platform: the required closure is identical under GOOS=linux and GOOS=darwin (GOARCH=amd64); gold is linux.
+
+  Nested modules deleted from the worktree before both arms: argon2/_asm/, blake2b/_asm/AVX2/, blake2b/_asm/standard/,
+  blake2s/_asm/, chacha20poly1305/_asm/, internal/poly1305/_asm/, salsa20/salsa/_asm/, x509roots/fallback/.
+
+  Target''s direct callers: pkcs12.pbDecrypterFor@pkcs12/crypto.go:88 (invoke); synth:(*pkcs12.shaWith40BitRC2CBC).deriveIV@:0
+  (static)
+
+  Reached only through interface dispatch (7): pkcs12.Decode, pkcs12.ToPEM, pkcs12.convertBag, pkcs12.decodePkcs8ShroudedKeyBag,
+  pkcs12.getSafeContents, pkcs12.pbDecrypt, pkcs12.pbDecrypterFor
+
+  CHA-only edge rejected: pkcs12.pbDecrypterFor -> synth:(*pkcs12.shaWith40BitRC2CBC).deriveIV @pkcs12/crypto.go:88:
+  cipherType is only ever shaWithTripleDESCBC{} or shaWith40BitRC2CBC{} by value (pkcs12/crypto.go:71,73)
+
+  Evidence (callee <- caller@site):
+
+  pkcs12.Decode [pkcs12/pkcs12.go:229] <- (entry point)
+
+  pkcs12.ToPEM [pkcs12/pkcs12.go:118] <- (entry point)
+
+  pkcs12.convertBag [pkcs12/pkcs12.go:142] <- pkcs12.ToPEM@pkcs12/pkcs12.go:132 (static)
+
+  pkcs12.decodePkcs8ShroudedKeyBag [pkcs12/safebags.go:25] <- pkcs12.Decode@pkcs12/pkcs12.go:272 (static); pkcs12.convertBag@pkcs12/pkcs12.go:169
+  (static)
+
+  pkcs12.getSafeContents [pkcs12/pkcs12.go:288] <- pkcs12.Decode@pkcs12/pkcs12.go:235 (static); pkcs12.ToPEM@pkcs12/pkcs12.go:124
+  (static)
+
+  pkcs12.pbDecrypt [pkcs12/crypto.go:98] <- pkcs12.decodePkcs8ShroudedKeyBag@pkcs12/safebags.go:31 (static); pkcs12.getSafeContents@pkcs12/pkcs12.go:349
+  (static)
+
+  pkcs12.pbDecrypterFor [pkcs12/crypto.go:66] <- pkcs12.pbDecrypt@pkcs12/crypto.go:99 (static)
+
+  '

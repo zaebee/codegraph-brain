@@ -19,6 +19,11 @@ def _coverage() -> str:
     return named[0] if len(named) == 1 else f"{', '.join(named[:-1])} and {named[-1]}"
 
 
+def _caveats() -> str:
+    """One line per language whose impact answers need confirming, from the registry."""
+    return "".join(f"\n{m.impact_caveat}" for m in MANIFESTS if m.impact_caveat)
+
+
 # An f-string for the coverage line: a literal brace in the prose must be doubled.
 SERVER_INSTRUCTIONS = f"""\
 cgis holds a deterministic graph of a codebase: every function, method and class, and \
@@ -59,5 +64,5 @@ answer at max_nodes, nearest first; a cut is reported. Ask for output_format="te
 read an answer — an indented tree, a fifth the size of json; use json to compute with it.
 
 Coverage: {_coverage()} only. Other languages are not in the graph — read those \
-files, and say which part of the answer the graph could not see.
+files, and say which part of the answer the graph could not see.{_caveats()}
 """
