@@ -31,6 +31,25 @@ ANSWER_FORMAT = (
 
 _CALL_PARENS = re.compile(r"\(.*\)$")
 _LINE_SUFFIX = re.compile(r":\d+(?:-\d+)?$")
+#: A Go method declaration as an agent may quote it: `func (r *Raft) setState`.
+#: Possessive quantifiers: nothing is given back, so the match is linear (Sonar S8786;
+#: a backtracking form took 1.2 s on a 5000-char `func (` input).
+_GO_FUNC_DECL = re.compile(
+    r"^func\s*+\(\s*+(?:\w++\s++)?\*?\s*+([\w.]++)(?:\[[^\]]*+\])?\s*+\)\s*+(\w++).*+$"
+)
+#: A `.go` file extension before its `:`/`::` or at the end — applied to paths only.
+_GO_FILE_EXT = re.compile(r"\.go(?=::|:|$)")
+#: A Go receiver in a qualified name: `(*Raft)`, `(*raftState)`, `(Raft)`, `(*raft.Raft)`,
+#: `(*M[K, V])`. Only where a receiver can stand — at the start or after `.`, `/`, `:`,
+#: with a `.` after it — and only a pointer or a capitalised type, so a call argument
+#: (`get_user(id)`), a Next.js route group (`(app)`), a Python `a.(b).c` or a Go type
+#: assertion (`x.(int)`) is never one. Two edges of that trade: a value receiver on
+#: an unexported type (`(raftState).m`) does not fold, though its pointer and `func`
+#: spellings do; and a capitalised route group (`(Marketing)`) would, in a dotted
+#: answer only. Neither occurs in any gold.
+_GO_RECEIVER = re.compile(
+    r"(?:(?<=[./:])|^)\((?:\*([A-Za-z_][\w.]*)|([A-Z][\w.]*))(?:\[[^\]]*\])?\)(?=\.)"
+)
 
 
 class GoldSymbol(BaseModel, frozen=True):
@@ -167,9 +186,15 @@ def normalize_symbol(name: str) -> str:
     """Fold the spellings agents use for a symbol into one dotted form.
 
     `src/cgis/cli.py::structure`, `cgis.cli.structure()` and `cgis/cli.py:structure`
-    all become a dotted path ending in `cli.structure`.
+    all become a dotted path ending in `cli.structure`. A Go receiver folds into
+    its type: `raft.(*Raft).setState` and `func (r *Raft) setState` name
+    `Raft.setState`.
     """
     s = name.strip().strip("`").strip()
+    s = _GO_FUNC_DECL.sub(r"\1.\2", s)
+    s = _GO_RECEIVER.sub(r"\1\2", s)  # one arm matches; the other is empty
+    if "/" in s:  # `raft/api.go`, never the dotted module `cgis.languages.go`
+        s = _GO_FILE_EXT.sub("", s)
     s = _CALL_PARENS.sub("", s)
     s = s.replace("::", ".").replace(":", ".").replace("/", ".").replace("\\", ".")
     for ext in (".py.", ".tsx.", ".ts.", ".jsx.", ".js."):

@@ -244,3 +244,97 @@ def test_the_fence_language_is_case_insensitive() -> None:
     answer = extract_answer('```JSON\n{"symbols": ["a"]}\n```')
     assert answer is not None
     assert answer.symbols == ["a"]
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("raft.(*Raft).setState", "raft.Raft.setState"),
+        ("(*Raft).setState", "Raft.setState"),
+        ("(Raft).setState", "Raft.setState"),
+        ("raft/api.go:(*Raft).Apply", "raft.api.Raft.Apply"),
+        (
+            "raft/net_transport.go::NetworkTransport.AppendEntries",
+            "raft.net_transport.NetworkTransport.AppendEntries",
+        ),
+        ("func (r *Raft) setState", "Raft.setState"),
+        ("store.(*Stack[T]).Push", "store.Stack.Push"),
+        ("raft.NewRaft()", "raft.NewRaft"),
+        ("raft.NewRaft(arg)", "raft.NewRaft"),
+        ("func (Raft) setState", "Raft.setState"),  # an earlier regex gave `t.setState`
+        ("func ( r * Raft ) setState", "Raft.setState"),
+    ],
+)
+def test_normalize_symbol_folds_go_spellings(raw: str, expected: str) -> None:
+    """Agents write Go methods with their receiver; gold names `Type.Method`."""
+    assert normalize_symbol(raw) == expected
+
+
+def test_a_go_receiver_spelling_matches_the_gold_method() -> None:
+    assert symbol_matches(
+        "raft.(*NetworkTransport).AppendEntries", "NetworkTransport.AppendEntries"
+    )
+    assert not symbol_matches(
+        "raft.(*NetworkTransport).AppendEntriesX", "NetworkTransport.AppendEntries"
+    )
+
+
+def test_a_directory_named_go_is_kept() -> None:
+    """Only a `.go` file extension folds; `languages/go/` is a package path."""
+    assert normalize_symbol("src/cgis/languages/go/dispatch.py::interface_dispatch") == (
+        "src.cgis.languages.go.dispatch.interface_dispatch"
+    )
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("get_user(id)", "get_user"),
+        ("Class.method(self)", "Class.method"),
+        ("Foo.__init__(self)", "Foo.__init__"),
+        ("fn(*args)", "fn"),
+        ("Component(props)", "Component"),
+        ("Raft.setState(s)", "Raft.setState"),
+    ],
+)
+def test_a_call_argument_is_never_read_as_a_go_receiver(raw: str, expected: str) -> None:
+    """`(x)` is a receiver only when a `.` follows it (#653 review)."""
+    assert normalize_symbol(raw) == expected
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("func (r *Raft) setState(s RaftState) error", "Raft.setState"),
+        ("func (m *M[K, V]) Get(k K) V", "M.Get"),
+        ("(*raft.Raft).setState", "raft.Raft.setState"),
+        ("cgis.languages.go.dispatch", "cgis.languages.go.dispatch"),
+        ("cgis.languages.go", "cgis.languages.go"),
+    ],
+)
+def test_go_declarations_with_results_and_dotted_names(raw: str, expected: str) -> None:
+    assert normalize_symbol(raw) == expected
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("foo(x).bar", "foo(x).bar"),
+        ("pkg.(x)", "pkg"),  # a trailing call, as on main; never `pkg.x`
+        ("a.(b).c", "a.(b).c"),
+        ("x.(int).y", "x.(int).y"),
+        ("raft/(*Raft).setState", "raft.Raft.setState"),
+        ("raft/api.go", "raft.api"),
+        ("NewThing(Config).Run", "NewThing(Config).Run"),  # an argument, not a receiver
+        ("pkg.(*T)", "pkg"),  # no method after it: a trailing call, as on main
+    ],
+)
+def test_only_a_go_receiver_folds(raw: str, expected: str) -> None:
+    """`(*x)` or a capitalised `(T)` before a `.`; nothing else in parentheses."""
+    assert normalize_symbol(raw) == expected
+
+
+def test_a_route_group_matches_in_either_spelling() -> None:
+    """A dotted answer names the same Next.js page as the gold path (#653 delta review)."""
+    gold = "src/app/(app)/dashboard/page.tsx::DashboardPage"
+    assert symbol_matches("src.app.(app).dashboard.page.DashboardPage", gold)
