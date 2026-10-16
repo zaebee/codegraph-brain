@@ -1,0 +1,122 @@
+# Exp4: does cgis help an agent answer impact questions in Go? Pre-registration
+
+Date: 2026-10-16. Committed before the repository is chosen, before any gold, and before any session.
+cgis is main at 3711351, which includes the Go work exp4 waited for: interface dispatch (#647, #649,
+#651), typed receivers, bindings, block scope and chained calls (#656, #660, #662, which close #643),
+call lines in the coverage note (#665), and one build configuration (#667).
+
+## Question and decision
+
+Exp3 found that forced cgis cuts the cost of a Python impact question to ×0.63 at equal recall
+(#635). Does that carry over to Go, where callers often arrive through interface dispatch?
+
+**The decision is fixed now.**
+- **If the primary gate passes,** the README and the MCP server instructions add Go to the languages
+  cgis answers impact questions for.
+- **If it fails,** they say Go is supported for structure and metrics only. The coverage line on a Go
+  graph then tells the agent to confirm callers by reading the code.
+
+## Repository: chosen blind, by a seeded rule
+
+Two kinds of repository are out:
+- **Tuned on:** hashicorp/raft, prometheus/client_golang and segmentio/kafka-go. The last was a held-out
+  candidate, but its cgis-vs-gold misses were seen during #643.
+- **Looked at during earlier selection:** nats.go, memberlist, go-kit/kit, zap and bbolt.
+
+1. **Pool.** Three GitHub searches, run once with their output saved:
+   `language:Go stars:1000..30000 pushed:>=2025-10-16 archived:false fork:false license:<L>`, with L =
+   `mit`, `apache-2.0` and `bsd-3-clause`. Each query keeps its first 100 results by stars. The pool is
+   the union of the three result sets, minus the exclusions above, sorted by `full_name`.
+2. **Order.** `random.Random(20261016).shuffle(pool)`.
+3. **Walk.** Candidates are taken in that order. Each is shallow-cloned at its default branch and its
+   sha is recorded. The first one that passes every check is chosen. Every check result is logged,
+   including the failures. No cgis command runs on a candidate before the choice.
+4. **Checks**, all mechanical, using the go1.26 toolchain on linux/amd64:
+   - a `go.mod` at the repository root;
+   - 15,000 to 60,000 lines of non-test Go in the root module (nested modules not counted);
+   - `go build ./...` succeeds in the root module;
+   - type parameters in at most 10% of non-test files;
+   - at least 10 in-module interfaces with at least 2 in-module implementations each, counted with
+     go/ssa CHA over non-test packages;
+   - not a code generator's output tree: at most 30% of non-test lines in files whose header says
+     `Code generated ... DO NOT EDIT`.
+5. **Nested modules.** Directories with their own `go.mod` are deleted from the worktree before both
+   arms run, and gold never includes them (#655).
+
+## Gold
+
+The model is the one drafted for kafka-go:
+- **Graphs.** go/ssa CHA and VTA over the root module's non-test packages.
+- **Static calls.** Static calls are edges, and so are `go` and `defer` calls.
+- **Closures.** Closures, bound methods and thunks fold into the function that encloses them.
+- **Synthetic wrappers.** Promoted-method wrappers are traversed but are never gold symbols.
+- **Interface dispatch.** A call on an in-module interface takes the CHA implementations. Each edge that
+  CHA has and VTA lacks is adjudicated by reading the code. A call on a stdlib or anonymous interface
+  takes only VTA edges.
+- **Function values.** A call through a function value is not an edge. A method value handed to a
+  goroutine launcher counts as a call by the function that hands it over. A target whose closure holds
+  any other function-value reference is not selected.
+- **Required vs allowed.** Required: every non-test, non-helper function in the target's transitive
+  caller closure. Allowed: test helpers and the target itself.
+
+**Gold is validated before it is frozen.** One pilot session per task in each arm is run. Any symbol a
+pilot names that gold lacks, or that gold has and both pilots miss, is adjudicated against the code.
+Gold is corrected and frozen before the main run. Pilot sessions are not scored. Every gold round in
+exp1–exp3 had errors that a pilot would have caught.
+
+## Tasks: drawn by rule, seeded
+
+Eligible targets:
+- a concrete, non-test, non-synthetic function or method;
+- gold of 4 to 25 symbols spread over 2 to 8 files;
+- no function-value reference in the caller closure;
+- no closure root that is a stdlib-protocol method (`Read`, `Write`, `Close`, `ReadFrom`, `WriteTo`,
+  `ReadAt`, `String`, `Error`).
+
+The tasks fall into two cells:
+- **iface (12 tasks).** The target has a direct caller through interface dispatch, and at least one
+  required caller is reachable only through dispatch. They are drawn with `random.Random(4)`, one
+  target per in-module interface family. Families with 6 or more candidates give up to 3 targets, with
+  distinct method names and receiver types.
+- **static (6 tasks).** No dispatch edge anywhere in the closure. They are drawn with the same seed
+  from 6 distinct files.
+
+The question is the exp1–exp3 wording: "Which functions and methods can end up calling `<target>`?
+List every one, production code only."
+
+## Arms and runs
+
+- **Arms.** `control` has no cgis. `cgis-forced` uses the exp3 guard: Read, Grep, Glob and Bash are
+  refused until the session makes one cgis call. The graph comes from a full `cgis ingest` of the
+  worktree, not an incremental one, because of #666.
+- **Runs.** 3 per task per arm: 18 tasks × 2 arms × 3 = 108 sessions.
+  - Model `claude-sonnet-5-5`, `--max-budget-usd 2.0`, organisation API key.
+  - Every transcript must show `apiKeySource: ANTHROPIC_API_KEY`.
+  - The two arms run interleaved by task, in the same hours.
+- **Before the run.** The count of #661 collisions on the chosen graph is reported: unresolved
+  edges whose raw name equals an INTERNAL function or method id.
+- **Budget.** The 108 main sessions cost about $11–14, and the pilot about $2. About $57 remains of $90.
+
+## Gates
+
+Per task:
+- **cost ratio:** median cost (cgis-forced) / median cost (control);
+- **recall difference:** median recall (cgis-forced) − median recall (control).
+
+1. **Primary (iface, n = 12).** The Go pack **helps** if the median cost ratio is ≤ 0.80 **and** the
+   median recall difference is ≥ −0.02. Otherwise it **does not help**, and the decision above
+   applies. A bootstrap 95% CI over tasks is reported, and the point estimate decides.
+2. **Secondary.** Descriptive only: the same two figures on the static cell and on all 18 tasks;
+   median precision per arm; cgis calls, files read, turns and wall time per session; whether the
+   answer used cgis output.
+3. **Known-miss check.** For each iface task, the gold symbols cgis's own impact answer lacks are
+   listed, so that a recall loss in the forced arm can be traced to the graph or to the agent.
+
+## Analysis
+
+`benchmarks/agent_ab/analysis/exp4_gates.py` is committed verbatim before the main run. The pick and
+gold tools are committed under `benchmarks/agent_ab/analysis/exp4/` before the pilot.
+
+## Choice log (filled in by the walk; nothing above changes)
+
+_Pending._
