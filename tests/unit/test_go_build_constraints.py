@@ -16,6 +16,7 @@ from cgis.languages.go.build import build_constraint, excluded, satisfied
 from cgis.languages.go.extractor import GoExtractor
 from cgis.pipeline import IngestionPipeline
 from cgis.query.analysis.overview import build_overview
+from cgis.resolver.engine import ResolverEngine
 from cgis.storage.sqlite_store import SQLiteStore
 
 
@@ -139,3 +140,42 @@ def test_no_excluded_file_adds_nothing_to_the_overview(tmp_path: Path) -> None:
         assert "build_excluded" not in build_overview(store)
     finally:
         store.disconnect()
+
+
+@pytest.mark.parametrize(
+    ("code", "kept"),
+    [
+        ("// +build windows\npackage p\n", True),  # +build needs a blank line after it
+        ("// +build windows\r\n\r\npackage p\r\n", False),
+        ("/*\n//go:build windows\n*/\npackage p\n", True),  # inside a block comment
+        ("/*\n// +build windows\n*/\n\npackage p\n", True),
+        ("/*\npackage x\n*/\n//go:build windows\n\npackage p\n", False),
+        ("\ufeff//go:build windows\n\npackage p\n", False),  # a byte-order mark first
+        ("/*\npackage docs say\n*/\n// +build windows\n\npackage p\n", True),  # after /* */
+        ("//go:build linux\n//go:build amd64\n\npackage p\n", False),  # two: an error
+        ("//go:build goexperiment.greenteagc\n\npackage p\n", True),  # go1.26's defaults
+        ("//go:build amd64.v1\n\npackage p\n", True),
+        ("//go:build !goexperiment.greenteagc\n\npackage p\n", False),
+    ],
+)
+def test_the_header_is_read_as_go_build_reads_it(code: str, kept: bool) -> None:
+    """Differential review of #667 against `go/build.MatchFile` (go1.26, linux/amd64)."""
+    assert (excluded(code, "p/x.go") is None) is kept
+
+
+def test_an_excluded_file_is_never_a_package_s_import_target() -> None:
+    """kafka-go: `fuzz.go` (`+build gofuzz`) sorted first and took the package's imports."""
+    files = {
+        "p/a.go": "//go:build windows\n\npackage p\nfunc Helper() {}\n",
+        "p/b.go": "package p\nfunc Helper() {}\n",
+        "main.go": 'package main\nimport "example.com/m/p"\nfunc main() { p.Helper() }\n',
+    }
+    nodes, edges = [], []
+    for path, code in files.items():
+        n, e = GoExtractor().parse(code, path)
+        nodes += n
+        edges += e
+    state: dict[str, object] = {"go_module": {"path": "example.com/m"}}
+    resolved, _ = ResolverEngine(nodes, edges, project_state=state).resolve()
+    imports = {e.target for e in resolved if e.type is EdgeType.IMPORTS and e.source == "main_go"}
+    assert imports == {"p.b_go"}

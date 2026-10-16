@@ -27,6 +27,13 @@ _TAGS = frozenset(
         "unix",
         "gc",
         "cgo",
+        # The toolchain's own defaults for amd64 in go1.26 (`go env` ToolTags).
+        "amd64.v1",
+        "goexperiment.regabiwrappers",
+        "goexperiment.regabiargs",
+        "goexperiment.dwarf5",
+        "goexperiment.greenteagc",
+        "goexperiment.randomizedheapbase64",
         *(f"go1.{minor}" for minor in range(1, _LATEST_GO_MINOR + 1)),
     }
 )
@@ -100,20 +107,50 @@ def excluded(code: str, file_name: str) -> str | None:
 def build_constraint(code: str) -> str | None:
     """The file's `//go:build` expression; else its `// +build` lines as one; else None.
 
-    Only lines above the package clause count, as for the go command.
+    Read from the header as `go/build` reads it: line comments up to the first
+    line that is not blank or a comment, skipping block comments. A `// +build`
+    line counts only above the header's last blank line, so one directly above
+    `package` is a plain comment (#667 review).
     """
-    plus: list[str] = []
-    for line in code.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("package ") or stripped == "package":
-            break
-        match = _GO_BUILD.match(stripped)
-        if match:
-            return match.group(1)
-        plus_match = _PLUS_BUILD.match(stripped)
-        if plus_match:
-            plus.append(_plus_line(plus_match.group(1)))
-    return " && ".join(plus) if plus else None
+    lines, plus_end = _header(code)
+    go_build = [m.group(1) for m in map(_GO_BUILD.match, lines) if m]
+    if len(go_build) > 1:
+        return "multiple //go:build lines"  # an error to the go command: no tag says so
+    if go_build:
+        return go_build[0]
+    plus = [m.group(1) for m in map(_PLUS_BUILD.match, lines[:plus_end]) if m]
+    return " && ".join(map(_plus_line, plus)) if plus else None
+
+
+def _header(code: str) -> tuple[list[str], int]:
+    """The header's line comments, and how many of them a `// +build` line may be among.
+
+    That is those above the last blank line, and above any block comment: `go/build`
+    stops reading `+build` lines at the first line that is not a line comment.
+    """
+    comments: list[str] = []
+    before_blank = 0
+    in_block = False
+    plus_open = True
+    for raw in code.removeprefix("\ufeff").splitlines():
+        line = raw.strip()
+        if in_block:
+            in_block, line = "*/" not in line, line.partition("*/")[2].strip()
+            if in_block or not line:
+                continue
+        if not line:
+            before_blank = len(comments) if plus_open else before_blank
+        elif line.startswith("//"):
+            comments.append(line)
+        elif line.startswith("/*"):
+            plus_open = False
+            rest = line[2:]
+            in_block = "*/" not in rest
+            if not in_block and rest.partition("*/")[2].strip():
+                break  # code after a one-line block comment ends the header
+        else:
+            break  # `package`, or any other code
+    return comments, before_blank
 
 
 def _plus_line(options: str) -> str:
