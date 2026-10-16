@@ -1,0 +1,8 @@
+{
+ "repo": "crypto",
+ "repo_tag": "crypto",
+ "sha": "0ae6809b7559060fe62abe65e26bd18b1fcaf6b7",
+ "src_root": ".",
+ "modpath": "golang.org/x/crypto",
+ "nested_modules_deleted": ["argon2/_asm/", "blake2b/_asm/AVX2/", "blake2b/_asm/standard/", "blake2s/_asm/", "chacha20poly1305/_asm/", "internal/poly1305/_asm/", "salsa20/salsa/_asm/", "x509roots/fallback/"]
+}

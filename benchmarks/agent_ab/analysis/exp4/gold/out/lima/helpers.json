@@ -1,5 +1,5 @@
 {
- "rule": "A test helper is a non-test package of the root module that at least one `_test.go` file imports and that no non-test package imports, under any of GOOS=linux, darwin and windows (GOARCH=amd64). Test files themselves (`*_test.go`) are never loaded by exp4cg, so they need no rule.",
+ "rule": "A test helper is a non-test package of the root module that no non-test package imports, under any of GOOS=linux, darwin and windows (GOARCH=amd64), and whose path relative to the module has a segment that is `internal` or contains `test` (amendment 3: a public leaf package of a library is imported only by tests, yet it is production code). Test files themselves (`*_test.go`) are never loaded by exp4cg, so they need no rule.",
  "helper_packages": [],
  "no_importers_at_all": [
   "cmd/lima-driver-qemu",

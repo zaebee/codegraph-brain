@@ -1,0 +1,124 @@
+{
+ "seed": 4,
+ "wanted": {
+  "iface": 12,
+  "static": 6
+ },
+ "drawn": {
+  "iface": 12,
+  "static": 6
+ },
+ "iface_before_surplus_cut": 18,
+ "iface_evaluable": true,
+ "pool": {
+  "iface_families": {
+   "pkcs12.decryptable": 2,
+   "pkcs12.pbeCipher": 6,
+   "ssh.AlgorithmSigner": 7,
+   "ssh.AuthMethod": 12,
+   "ssh.Channel": 1,
+   "ssh.MultiAlgorithmSigner": 2,
+   "ssh.NewChannel": 2,
+   "ssh.PublicKey": 7,
+   "ssh.Signer": 1,
+   "ssh.connTransport": 8,
+   "ssh.kexAlgorithm": 10,
+   "ssh.keyingTransport": 4,
+   "ssh.packetCipher": 4
+  },
+  "static_candidates": 152,
+  "static_distinct_files": 40
+ },
+ "picks": [
+  {
+   "cell": "iface",
+   "family": "pkcs12.decryptable",
+   "target": "pkcs12.encryptedContentInfo.Algorithm"
+  },
+  {
+   "cell": "iface",
+   "family": "pkcs12.pbeCipher",
+   "target": "pkcs12.shaWith40BitRC2CBC.create"
+  },
+  {
+   "cell": "iface",
+   "family": "pkcs12.pbeCipher",
+   "target": "pkcs12.shaWithTripleDESCBC.deriveIV"
+  },
+  {
+   "cell": "iface",
+   "family": "ssh.AlgorithmSigner",
+   "target": "ssh.algorithmOpenSSHCertSigner.SignWithAlgorithm"
+  },
+  {
+   "cell": "iface",
+   "family": "ssh.AlgorithmSigner",
+   "target": "ssh.dsaPrivateKey.Sign"
+  },
+  {
+   "cell": "iface",
+   "family": "ssh.AuthMethod",
+   "target": "ssh.KeyboardInteractiveChallenge.method"
+  },
+  {
+   "cell": "iface",
+   "family": "ssh.Channel",
+   "target": "ssh.channel.Stderr"
+  },
+  {
+   "cell": "iface",
+   "family": "ssh.NewChannel",
+   "target": "ssh.channel.Reject"
+  },
+  {
+   "cell": "iface",
+   "family": "ssh.PublicKey",
+   "target": "ssh.rsaPublicKey.Verify"
+  },
+  {
+   "cell": "iface",
+   "family": "ssh.Signer",
+   "target": "ssh.openSSHCertSigner.Sign"
+  },
+  {
+   "cell": "iface",
+   "family": "ssh.connTransport",
+   "target": "ssh.handshakeTransport.readPacket"
+  },
+  {
+   "cell": "iface",
+   "family": "ssh.packetCipher",
+   "target": "ssh.chacha20Poly1305Cipher.readCipherPacket"
+  },
+  {
+   "cell": "static",
+   "family": null,
+   "target": "bn256.gfP2.Square"
+  },
+  {
+   "cell": "static",
+   "family": null,
+   "target": "bn256.twistPoint.Add"
+  },
+  {
+   "cell": "static",
+   "family": null,
+   "target": "blake2b.New512"
+  },
+  {
+   "cell": "static",
+   "family": null,
+   "target": "pkcs12.unmarshal"
+  },
+  {
+   "cell": "static",
+   "family": null,
+   "target": "ssh.handshakeTransport.getWriteError"
+  },
+  {
+   "cell": "static",
+   "family": null,
+   "target": "bn256.curvePoint.Set"
+  }
+ ]
+}

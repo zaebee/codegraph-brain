@@ -2,7 +2,10 @@
 
 The tools that build gold and draw the exp4 tasks for the pre-registration
 `docs/lab-notes/2026-10-16-exp4-go-pre-registration.md`. Nothing here reads cgis output or runs
-cgis. The chosen repository is lima-vm/lima at `f47461ed7d03f300297e01fd659e9aefc6c228b9`.
+cgis. lima-vm/lima at `f47461ed7d03f300297e01fd659e9aefc6c228b9` was drawn first and is not
+evaluable (below); golang/crypto at `0ae6809b7559060fe62abe65e26bd18b1fcaf6b7` is the repository
+exp4 runs on. The tools take the repository as arguments (`<repo>.spec.json`,
+`adjudications-<repo>.json`, `out/<repo>/`); lima's candidates and picks reproduce byte for byte.
 
 | file | what it does |
 |---|---|
@@ -12,9 +15,9 @@ cgis. The chosen repository is lima-vm/lima at `f47461ed7d03f300297e01fd659e9aef
 | `candidates.py` | eligibility filters F1 to F5 with counts, platform check, cells, interface families |
 | `draw.py` | the seeded draw (`random.Random(4)`) |
 | `build_tasks.py` | gold symbols with their spellings, and the task YAMLs |
-| `adjudications-lima.json` | every CHA-only dispatch edge of the linux dump, with a verdict and a file:line reason |
-| `lima.spec.json` | repo, sha, src_root, and the nested modules that were deleted |
-| `out/lima/` | the outputs: `helpers.json`, `candidates.json`, `picks.json`, `gold-lima.json` |
+| `adjudications-<repo>.json` | every CHA-only dispatch edge of the linux dump, with a verdict and a file:line reason |
+| `<repo>.spec.json` | repo, sha, src_root, module path, and the nested modules that were deleted |
+| `out/<repo>/` | the outputs: `dumps.sha256`, `helpers.json`, `candidates.json`, `picks.json`, `gold-<repo>.json` |
 
 ## Reproduce
 
@@ -74,9 +77,11 @@ go/packages dump, even though net and os/user have no bodies in it.
 
 ## Rules the pre-registration left open (decided here, before the draw)
 
-- **Test helpers.** A non-test package of the root module counts as a test helper when at least one
-  `_test.go` file imports it and no non-test package imports it, under any of GOOS linux, darwin or
-  windows. lima has none, so `helper_packages` is empty. `*_test.go` files are never loaded.
+- **Test helpers (amendment 3).** A non-test package of the root module is a test helper when no
+  non-test package imports it, under any of GOOS linux, darwin or windows, and its module-relative
+  path has a segment that is `internal` or contains `test`. The first version also required a
+  `_test.go` importer and had no path condition, which made every public leaf package of a library
+  a helper. lima has none under either version. `*_test.go` files are never loaded.
 - **Package initialisers.** The synthetic package initialiser (`pkg.init`) stands for package-level
   `var x = f()` declarations and for the import-order calls to other packages' initialisers. It is
   traversed, like a promoted wrapper, but it is never a gold symbol. A user-written `func init()`
@@ -132,3 +137,35 @@ because dropping that spelling would score cgis's own spelling as a miss.
 GuestServiceClient, ImageDiskManager) and 6 static. 7 is below 8, so lima is not evaluable and no
 task YAMLs were written for it. Driver gives 2 of its 3, and DriverClient 1 of 3, because every
 member of DriverClient's family is a method of the one generated `driverClient` type.
+
+## golang/crypto under amendment 2
+
+Worktree: a clone of the walk's shallow clone at `0ae6809b`, with eight nested modules deleted
+(`crypto.spec.json`): seven `_asm/` generator modules (argon2, blake2b/AVX2, blake2b/standard,
+blake2s, chacha20poly1305, internal/poly1305, salsa20/salsa) and `x509roots/fallback/`. The task
+YAMLs list them as `delete_paths`. The commands are the lima ones with `crypto`,
+`golang.org/x/crypto`, `/home/zaebee/bench-corpora/crypto` and `/home/zaebee/bench-corpora/exp4-crypto-out`
+substituted. x/crypto has no cgo: `linux.tsv` and `linux-fakecgo.tsv` are identical, and
+`darwin.tsv` differs from them only in its header line, so the platform check drops nothing.
+
+**Adjudication in a library** (decided before the draw). lima's interfaces were filled by lima's
+own code; x/crypto's are mostly filled by its callers. VTA is sound for flows inside the module, so
+a CHA-only edge can only be real through code outside it. An edge is accepted when the site's value
+comes from a caller of the exported API (an argument, an exported field, a callback the caller
+supplies, or the caller's own implementation of an exported interface) and that caller can hold a
+value of that type without reflect or unsafe. Everything else is rejected. 914 CHA-only edges: 350
+accepted, 564 rejected. Rules can now name several receivers (`types`) and restrict to callers
+(`callers`), because every wrapper body has the site `:0`; lima's file uses neither.
+
+**Test helpers.** The first helper rule marked 12 packages, ten of them production API
+(`ssh/agent`, `sha3`, `acme/autocert`, ...). Amendment 3 replaced it. The new rule marks 4:
+`acme/autocert/internal/acmetest`, `acme/internal/acmeprobe`, `internal/testenv` and `ssh/test`.
+The first draw's record is kept in `out/crypto/picks-before-amendment3.json` and
+`helpers-before-amendment3.json`.
+
+**Result.** `out/crypto/picks.json`: 19 iface picks from 14 families, cut to 12 by the surplus rule
+(`iface_evaluable: true`), and 6 static picks from 206 candidates in 42 files. Filters: F1 1,292,
+F2 379, F4 347, F5 347 (79 iface, 206 static, 62 neither). Kept iface picks: acme/autocert.Cache,
+pkcs12.decryptable, pkcs12.pbeCipher ×2, ssh.AuthMethod, ssh.Channel, ssh.MultiAlgorithmSigner,
+ssh.NewChannel, ssh.PublicKey, ssh.kexAlgorithm, ssh.packetCipher and ssh/agent.ExtendedAgent. The
+18 YAMLs are `benchmarks/agent_ab/tasks/go-exp4-crypto-*.yaml`.

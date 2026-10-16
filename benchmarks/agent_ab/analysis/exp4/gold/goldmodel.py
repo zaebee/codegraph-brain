@@ -72,11 +72,19 @@ def _site_matches(site: str, pats: list[str]) -> bool:
     return any(site == p or site.rsplit(":", 1)[0] == p for p in pats)
 
 
+def _caller_matches(caller: str, pats: list[str]) -> bool:
+    return any(caller == p or (p.endswith("*") and caller.startswith(p[:-1])) for p in pats)
+
+
 def adjudicate(rules: list[dict], caller: str, callee: str, iface: str, site: str) -> dict | None:
-    """The first rule matching a CHA-only edge: same interface and receiver, and its site in
-    `sites` (a file, or file:line; `*` for any) and not in `except`."""
+    """The first rule matching a CHA-only edge: same interface and receiver (`type`, or any of
+    `types`), its site in `sites` (a file, or file:line; `*` for any) and not in `except`, and,
+    when the rule has `callers`, a caller among them (exact, or a prefix ending in `*`; wrapper
+    bodies all have the site `:0`, so only the caller tells them apart)."""
     for r in rules:
-        if r["iface"] != iface or r["type"] != typ_of(callee):
+        if r["iface"] != iface or typ_of(callee) not in (r["types"] if "types" in r else [r["type"]]):
+            continue
+        if "callers" in r and not _caller_matches(caller, r["callers"]):
             continue
         if r["sites"] != ["*"] and not _site_matches(site, r["sites"]):
             continue

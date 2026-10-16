@@ -116,7 +116,7 @@ def main() -> None:
             "Gold model (pre-registration, section Gold): go/ssa VTA static/go/defer calls; closures, $bound and "
             "$thunk folded into their function; promoted wrappers and synthetic package initialisers traversed, "
             "never symbols; in-module interface dispatch by CHA with every CHA-only edge adjudicated "
-            "(adjudications-lima.json); stdlib/third-party/anonymous interface dispatch by VTA only; a "
+            f"({adj.name}); stdlib/third-party/anonymous interface dispatch by VTA only; a "
             "function-value reference is not walked: the referenced function is an entry point and the "
             "function taking the value is allowed, not required (amendment 2).",
             f"Allowed referencers ({len(c.referencers)}): {', '.join(short(x) for x in c.referencers) or 'none'}",

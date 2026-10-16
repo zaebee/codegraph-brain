@@ -1,0 +1,111 @@
+id: go-exp4-crypto-static-blamkasse4
+repo: crypto
+sha: 0ae6809b7559060fe62abe65e26bd18b1fcaf6b7
+src_root: .
+type: impact
+delete_paths:
+- argon2/_asm
+- blake2b/_asm/AVX2
+- blake2b/_asm/standard
+- blake2s/_asm
+- chacha20poly1305/_asm
+- internal/poly1305/_asm
+- salsa20/salsa/_asm
+- x509roots/fallback
+question: 'In this repository, the function `blamkaSSE4` in `argon2/blamka_amd64.go` is about to change. Which functions
+  and methods can end up calling it, directly or transitively? List every one, production code only: non-test code
+  in this repository''s root module (not `*_test.go` files). Follow every chain up to its entry point (an exported
+  API function, `main`, a function nothing else calls, or a function the code only passes as a value, such as a
+  cobra `RunE` handler) and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - id: IDKey
+    any_of:
+    - IDKey
+    - argon2.IDKey
+    - argon2.IDKey
+    - argon2/argon2.go:IDKey
+  - id: argon2.Key
+    any_of:
+    - argon2.Key
+    - argon2.Key
+    - argon2/argon2.go:Key
+  - id: deriveKey
+    any_of:
+    - deriveKey
+    - argon2.deriveKey
+    - argon2.deriveKey
+    - argon2/argon2.go:deriveKey
+  - id: processBlock
+    any_of:
+    - processBlock
+    - argon2.processBlock
+    - argon2.processBlock
+    - argon2/blamka_amd64.go:processBlock
+  - id: processBlockSSE
+    any_of:
+    - processBlockSSE
+    - argon2.processBlockSSE
+    - argon2.processBlockSSE
+    - argon2/blamka_amd64.go:processBlockSSE
+  - id: processBlockXOR
+    any_of:
+    - processBlockXOR
+    - argon2.processBlockXOR
+    - argon2.processBlockXOR
+    - argon2/blamka_amd64.go:processBlockXOR
+  - id: processBlocks
+    any_of:
+    - processBlocks
+    - argon2.processBlocks
+    - argon2.processBlocks
+    - argon2/argon2.go:processBlocks
+  files:
+  - argon2/argon2.go
+  - argon2/blamka_amd64.go
+  allowed_symbols:
+  - blamkaSSE4
+  allowed_files: []
+notes: 'exp4 cell static, drawn by benchmarks/agent_ab/analysis/exp4/gold/draw.py (random.Random(4)); no cgis input.
+
+  Target argon2.blamkaSSE4 at argon2/blamka_amd64.go:22.
+
+  Gold model (pre-registration, section Gold): go/ssa VTA static/go/defer calls; closures, $bound and $thunk folded
+  into their function; promoted wrappers and synthetic package initialisers traversed, never symbols; in-module
+  interface dispatch by CHA with every CHA-only edge adjudicated (adjudications-crypto.json); stdlib/third-party/anonymous
+  interface dispatch by VTA only; a function-value reference is not walked: the referenced function is an entry
+  point and the function taking the value is allowed, not required (amendment 2).
+
+  Allowed referencers (0): none
+
+  Platform: the required closure is identical under GOOS=linux and GOOS=darwin (GOARCH=amd64); gold is linux.
+
+  Nested modules deleted from the worktree before both arms: argon2/_asm/, blake2b/_asm/AVX2/, blake2b/_asm/standard/,
+  blake2s/_asm/, chacha20poly1305/_asm/, internal/poly1305/_asm/, salsa20/salsa/_asm/, x509roots/fallback/.
+
+  Target''s direct callers: argon2.processBlockSSE@argon2/blamka_amd64.go:28 (static)
+
+  Reached only through interface dispatch (0): none
+
+  Evidence (callee <- caller@site):
+
+  argon2.IDKey [argon2/argon2.go:101] <- (entry point)
+
+  argon2.Key [argon2/argon2.go:75] <- (entry point)
+
+  argon2.deriveKey [argon2/argon2.go:105] <- argon2.IDKey@argon2/argon2.go:102 (static); argon2.Key@argon2/argon2.go:76
+  (static)
+
+  argon2.processBlock [argon2/blamka_amd64.go:54] <- argon2.processBlocks@argon2/argon2.go:203 (static); argon2.processBlocks@argon2/argon2.go:204
+  (static); argon2.processBlocks@argon2/argon2.go:218 (static); argon2.processBlocks@argon2/argon2.go:219 (static)
+
+  argon2.processBlockSSE [argon2/blamka_amd64.go:24] <- argon2.processBlock@argon2/blamka_amd64.go:55 (static);
+  argon2.processBlockXOR@argon2/blamka_amd64.go:59 (static)
+
+  argon2.processBlockXOR [argon2/blamka_amd64.go:58] <- argon2.processBlocks@argon2/argon2.go:226 (static)
+
+  argon2.processBlocks [argon2/argon2.go:183] <- argon2.deriveKey@argon2/argon2.go:119 (static)
+
+  '

@@ -1,7 +1,9 @@
 """Which packages of the root module are test helpers, by rule.
 
-A test helper is a non-test package of the root module that at least one `_test.go` file imports
-and that no non-test package imports, under any of GOOS=linux, darwin and windows (GOARCH=amd64).
+A test helper is a non-test package of the root module that no non-test package imports, under
+any of GOOS=linux, darwin and windows (GOARCH=amd64), and whose path relative to the module has a
+segment that is `internal` or contains `test` (amendment 3: a public leaf package of a library is
+imported only by tests, yet it is production code).
 Test files themselves (`*_test.go`) are never loaded by exp4cg, so they need no rule.
 
 Usage: python3 -I helpers.py <moduleDir> <modulePath> > helpers.json
@@ -32,7 +34,10 @@ def main() -> None:
             for q in (timps + " " + ximps).split():
                 test.setdefault(q, set()).add(f"{goos}:{p}")
     rel = lambda p: p.removeprefix(mod + "/")  # noqa: E731
-    helpers = sorted(rel(p) for p in pkgs if test.get(p) and not prod.get(p))
+    def helper_path(p: str) -> bool:
+        return any(seg == "internal" or "test" in seg for seg in rel(p).split("/"))
+
+    helpers = sorted(rel(p) for p in pkgs if not prod.get(p) and helper_path(p))
     unimported = sorted(rel(p) for p in pkgs if not prod.get(p) and not test.get(p))
     json.dump({"rule": __doc__.split("\n\n")[1].replace("\n", " "),
                "helper_packages": helpers,

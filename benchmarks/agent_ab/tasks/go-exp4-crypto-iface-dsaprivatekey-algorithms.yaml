@@ -1,0 +1,311 @@
+id: go-exp4-crypto-iface-dsaprivatekey-algorithms
+repo: crypto
+sha: 0ae6809b7559060fe62abe65e26bd18b1fcaf6b7
+src_root: .
+type: impact
+delete_paths:
+- argon2/_asm
+- blake2b/_asm/AVX2
+- blake2b/_asm/standard
+- blake2s/_asm
+- chacha20poly1305/_asm
+- internal/poly1305/_asm
+- salsa20/salsa/_asm
+- x509roots/fallback
+question: 'In this repository, the method `dsaPrivateKey.Algorithms` in `ssh/keys.go` is about to change. Which
+  functions and methods can end up calling it, directly or transitively? List every one, production code only: non-test
+  code in this repository''s root module (not `*_test.go` files). Follow every chain up to its entry point (an exported
+  API function, `main`, a function nothing else calls, or a function the code only passes as a value, such as a
+  cobra `RunE` handler) and name every function or method on the way.
+
+  '
+gold:
+  symbols:
+  - id: Certificate.SignCert
+    any_of:
+    - Certificate.SignCert
+    - ssh.Certificate.SignCert
+    - ssh.Certificate.SignCert
+    - ssh/certs.go:Certificate.SignCert
+  - id: Dial
+    any_of:
+    - Dial
+    - ssh.Dial
+    - ssh.Dial
+    - ssh/client.go:Dial
+  - id: NewCertSigner
+    any_of:
+    - NewCertSigner
+    - ssh.NewCertSigner
+    - ssh.NewCertSigner
+    - ssh/certs.go:NewCertSigner
+  - id: NewClientConn
+    any_of:
+    - NewClientConn
+    - ssh.NewClientConn
+    - ssh.NewClientConn
+    - ssh/client.go:NewClientConn
+  - id: NewServerConn
+    any_of:
+    - NewServerConn
+    - ssh.NewServerConn
+    - ssh.NewServerConn
+    - ssh/server.go:NewServerConn
+  - id: connection.clientAuthenticate
+    any_of:
+    - connection.clientAuthenticate
+    - ssh.connection.clientAuthenticate
+    - ssh.connection.clientAuthenticate
+    - ssh/client_auth.go:connection.clientAuthenticate
+  - id: connection.clientHandshake
+    any_of:
+    - connection.clientHandshake
+    - ssh.connection.clientHandshake
+    - ssh.connection.clientHandshake
+    - ssh/client.go:connection.clientHandshake
+  - id: connection.serverHandshake
+    any_of:
+    - connection.serverHandshake
+    - ssh.connection.serverHandshake
+    - ssh.connection.serverHandshake
+    - ssh/server.go:connection.serverHandshake
+  - id: handshakeTransport.enterKeyExchange
+    any_of:
+    - handshakeTransport.enterKeyExchange
+    - ssh.handshakeTransport.enterKeyExchange
+    - ssh.handshakeTransport.enterKeyExchange
+    - ssh/handshake.go:handshakeTransport.enterKeyExchange
+  - id: handshakeTransport.kexLoop
+    any_of:
+    - handshakeTransport.kexLoop
+    - ssh.handshakeTransport.kexLoop
+    - ssh.handshakeTransport.kexLoop
+    - ssh/handshake.go:handshakeTransport.kexLoop
+  - id: handshakeTransport.sendKexInit
+    any_of:
+    - handshakeTransport.sendKexInit
+    - ssh.handshakeTransport.sendKexInit
+    - ssh.handshakeTransport.sendKexInit
+    - ssh/handshake.go:handshakeTransport.sendKexInit
+  - id: handshakeTransport.server
+    any_of:
+    - handshakeTransport.server
+    - ssh.handshakeTransport.server
+    - ssh.handshakeTransport.server
+    - ssh/handshake.go:handshakeTransport.server
+  - id: newClientTransport
+    any_of:
+    - newClientTransport
+    - ssh.newClientTransport
+    - ssh.newClientTransport
+    - ssh/handshake.go:newClientTransport
+  - id: newServerTransport
+    any_of:
+    - newServerTransport
+    - ssh.newServerTransport
+    - ssh.newServerTransport
+    - ssh/handshake.go:newServerTransport
+  - id: pickHostKey
+    any_of:
+    - pickHostKey
+    - ssh.pickHostKey
+    - ssh.pickHostKey
+    - ssh/handshake.go:pickHostKey
+  - id: pickSignatureAlgorithm
+    any_of:
+    - pickSignatureAlgorithm
+    - ssh.pickSignatureAlgorithm
+    - ssh.pickSignatureAlgorithm
+    - ssh/client_auth.go:pickSignatureAlgorithm
+  - id: publicKeyCallback.auth
+    any_of:
+    - publicKeyCallback.auth
+    - ssh.publicKeyCallback.auth
+    - ssh.publicKeyCallback.auth
+    - ssh/client_auth.go:publicKeyCallback.auth
+  - id: retryableAuthMethod.auth
+    any_of:
+    - retryableAuthMethod.auth
+    - ssh.retryableAuthMethod.auth
+    - ssh.retryableAuthMethod.auth
+    - ssh/client_auth.go:retryableAuthMethod.auth
+  - id: ForwardToAgent
+    any_of:
+    - ForwardToAgent
+    - agent.ForwardToAgent
+    - ssh/agent.ForwardToAgent
+    - ssh/agent/forward.go:ForwardToAgent
+  - id: ServeAgent
+    any_of:
+    - ServeAgent
+    - agent.ServeAgent
+    - ssh/agent.ServeAgent
+    - ssh/agent/server.go:ServeAgent
+  - id: keyring.Add
+    any_of:
+    - keyring.Add
+    - agent.keyring.Add
+    - ssh/agent.keyring.Add
+    - ssh/agent/keyring.go:keyring.Add
+  - id: server.insertIdentity
+    any_of:
+    - server.insertIdentity
+    - agent.server.insertIdentity
+    - ssh/agent.server.insertIdentity
+    - ssh/agent/server.go:server.insertIdentity
+  - id: server.processRequest
+    any_of:
+    - server.processRequest
+    - agent.server.processRequest
+    - ssh/agent.server.processRequest
+    - ssh/agent/server.go:server.processRequest
+  - id: server.processRequestBytes
+    any_of:
+    - server.processRequestBytes
+    - agent.server.processRequestBytes
+    - ssh/agent.server.processRequestBytes
+    - ssh/agent/server.go:server.processRequestBytes
+  files:
+  - ssh/agent/forward.go
+  - ssh/agent/keyring.go
+  - ssh/agent/server.go
+  - ssh/certs.go
+  - ssh/client.go
+  - ssh/client_auth.go
+  - ssh/handshake.go
+  - ssh/server.go
+  allowed_symbols:
+  - dsaPrivateKey.Algorithms
+  allowed_files:
+  - ssh/keys.go
+notes: 'exp4 cell iface (ssh.MultiAlgorithmSigner), drawn by benchmarks/agent_ab/analysis/exp4/gold/draw.py (random.Random(4));
+  no cgis input.
+
+  Target ssh.dsaPrivateKey.Algorithms at ssh/keys.go:741.
+
+  Gold model (pre-registration, section Gold): go/ssa VTA static/go/defer calls; closures, $bound and $thunk folded
+  into their function; promoted wrappers and synthetic package initialisers traversed, never symbols; in-module
+  interface dispatch by CHA with every CHA-only edge adjudicated (adjudications-crypto.json); stdlib/third-party/anonymous
+  interface dispatch by VTA only; a function-value reference is not walked: the referenced function is an entry
+  point and the function taking the value is allowed, not required (amendment 2).
+
+  Allowed referencers (0): none
+
+  Platform: the required closure is identical under GOOS=linux and GOOS=darwin (GOARCH=amd64); gold is linux.
+
+  Nested modules deleted from the worktree before both arms: argon2/_asm/, blake2b/_asm/AVX2/, blake2b/_asm/standard/,
+  blake2s/_asm/, chacha20poly1305/_asm/, internal/poly1305/_asm/, salsa20/salsa/_asm/, x509roots/fallback/.
+
+  Target''s direct callers: ssh.Certificate.SignCert@ssh/certs.go:493 (invoke); ssh.Certificate.SignCert@ssh/certs.go:497
+  (invoke); ssh.NewCertSigner@ssh/certs.go:288 (invoke); ssh.handshakeTransport.sendKexInit@ssh/handshake.go:531
+  (invoke); ssh.pickHostKey@ssh/handshake.go:794 (invoke); ssh.pickSignatureAlgorithm@ssh/client_auth.go:286 (invoke);
+  ssh.pickSignatureAlgorithm@ssh/client_auth.go:288 (invoke); ssh.pickSignatureAlgorithm@ssh/client_auth.go:316
+  (invoke); ssh.publicKeyCallback.auth@ssh/client_auth.go:369 (invoke)
+
+  Reached only through interface dispatch (24): ssh.Certificate.SignCert, ssh.Dial, ssh.NewCertSigner, ssh.NewClientConn,
+  ssh.NewServerConn, ssh.connection.clientAuthenticate, ssh.connection.clientHandshake, ssh.connection.serverHandshake,
+  ssh.handshakeTransport.enterKeyExchange, ssh.handshakeTransport.kexLoop, ssh.handshakeTransport.sendKexInit, ssh.handshakeTransport.server,
+  ssh.newClientTransport, ssh.newServerTransport, ssh.pickHostKey, ssh.pickSignatureAlgorithm, ssh.publicKeyCallback.auth,
+  ssh.retryableAuthMethod.auth, agent.ForwardToAgent, agent.ServeAgent, agent.keyring.Add, agent.server.insertIdentity,
+  agent.server.processRequest, agent.server.processRequestBytes
+
+  CHA-only edge (accepted, the value is the caller''s Signer asserted to MultiAlgorithmSigner (NewCertSigner''s
+  signer, ssh/certs.go:283; SignCert''s authority with a non-certificate key, :492); NewSignerWithAlgorithms and
+  NewSignerFromKey return these types): ssh.Certificate.SignCert -> ssh.dsaPrivateKey.Algorithms @ssh/certs.go:493
+  [ssh.MultiAlgorithmSigner]
+
+  CHA-only edge (accepted, the value is the caller''s Signer asserted to MultiAlgorithmSigner (NewCertSigner''s
+  signer, ssh/certs.go:283; SignCert''s authority with a non-certificate key, :492); NewSignerWithAlgorithms and
+  NewSignerFromKey return these types): ssh.Certificate.SignCert -> ssh.dsaPrivateKey.Algorithms @ssh/certs.go:497
+  [ssh.MultiAlgorithmSigner]
+
+  CHA-only edge (accepted, the AuthMethods here are the caller''s: ClientConfig.Auth and AuthCallback''s result
+  (ssh/client_auth.go:80-136) and RetryableAuthMethod''s argument (:712); Password, PublicKeys, KeyboardInteractive,
+  GSSAPIWithMICAuthMethod and RetryableAuthMethod return these types, and KeyboardInteractiveChallenge is exported,
+  so &challenge is legal too (gold-neutral: its wrapper forwards to the value method)): ssh.connection.clientAuthenticate
+  -> ssh.publicKeyCallback.auth @ssh/client_auth.go:80 [ssh.AuthMethod]
+
+  CHA-only edge (accepted, the AuthMethods here are the caller''s: ClientConfig.Auth and AuthCallback''s result
+  (ssh/client_auth.go:80-136) and RetryableAuthMethod''s argument (:712); Password, PublicKeys, KeyboardInteractive,
+  GSSAPIWithMICAuthMethod and RetryableAuthMethod return these types, and KeyboardInteractiveChallenge is exported,
+  so &challenge is legal too (gold-neutral: its wrapper forwards to the value method)): ssh.connection.clientAuthenticate
+  -> ssh.retryableAuthMethod.auth @ssh/client_auth.go:80 [ssh.AuthMethod]
+
+  CHA-only edge (accepted, the AuthMethods here are the caller''s: ClientConfig.Auth and AuthCallback''s result
+  (ssh/client_auth.go:80-136) and RetryableAuthMethod''s argument (:712); Password, PublicKeys, KeyboardInteractive,
+  GSSAPIWithMICAuthMethod and RetryableAuthMethod return these types, and KeyboardInteractiveChallenge is exported,
+  so &challenge is legal too (gold-neutral: its wrapper forwards to the value method)): ssh.retryableAuthMethod.auth
+  -> ssh.publicKeyCallback.auth @ssh/client_auth.go:689 [ssh.AuthMethod]
+
+  CHA-only edge (accepted, ServeAgent(agent Agent, c) is exported (ssh/agent/server.go); a caller gets a *keyring
+  from NewKeyring and a *client from NewClient and may serve either): agent.server.insertIdentity -> agent.keyring.Add
+  @ssh/agent/server.go:602 [ssh/agent.Agent]
+
+  CHA-only edge rejected: ssh.connection.clientAuthenticate -> synth:(*ssh.publicKeyCallback).auth @ssh/client_auth.go:80:
+  passwordCallback and publicKeyCallback are unexported and created only by value (ssh/client_auth.go:229,235,487,493);
+  no pointer to one exists
+
+  CHA-only edge rejected: ssh.retryableAuthMethod.auth -> synth:(*ssh.publicKeyCallback).auth @ssh/client_auth.go:689:
+  passwordCallback and publicKeyCallback are unexported and created only by value (ssh/client_auth.go:229,235,487,493);
+  no pointer to one exists
+
+  Evidence (callee <- caller@site):
+
+  ssh.Certificate.SignCert [ssh/certs.go:479] <- (entry point)
+
+  ssh.Dial [ssh/client.go:203] <- (entry point)
+
+  ssh.NewCertSigner [ssh/certs.go:278] <- agent.keyring.Add@ssh/agent/keyring.go:175 (static)
+
+  ssh.NewClientConn [ssh/client.go:71] <- ssh.Dial@ssh/client.go:208 (static)
+
+  ssh.NewServerConn [ssh/server.go:353] <- (entry point)
+
+  ssh.connection.clientAuthenticate [ssh/client_auth.go:31] <- ssh.connection.clientHandshake@ssh/client.go:140
+  (static)
+
+  ssh.connection.clientHandshake [ssh/client.go:119] <- ssh.NewClientConn@ssh/client.go:83 (static)
+
+  ssh.connection.serverHandshake [ssh/server.go:394] <- ssh.NewServerConn@ssh/server.go:373 (static)
+
+  ssh.handshakeTransport.enterKeyExchange [ssh/handshake.go:650] <- ssh.handshakeTransport.kexLoop@ssh/handshake.go:346
+  (static)
+
+  ssh.handshakeTransport.kexLoop [ssh/handshake.go:304] <- ssh.newClientTransport@ssh/handshake.go:171 (go); ssh.newServerTransport@ssh/handshake.go:180
+  (go)
+
+  ssh.handshakeTransport.sendKexInit [ssh/handshake.go:489] <- ssh.handshakeTransport.kexLoop@ssh/handshake.go:323
+  (static)
+
+  ssh.handshakeTransport.server [ssh/handshake.go:816] <- ssh.handshakeTransport.enterKeyExchange@ssh/handshake.go:715
+  (static)
+
+  ssh.newClientTransport [ssh/handshake.go:159] <- ssh.connection.clientHandshake@ssh/client.go:131 (static)
+
+  ssh.newServerTransport [ssh/handshake.go:175] <- ssh.connection.serverHandshake@ssh/server.go:416 (static)
+
+  ssh.pickHostKey [ssh/handshake.go:791] <- ssh.handshakeTransport.server@ssh/handshake.go:817 (static)
+
+  ssh.pickSignatureAlgorithm [ssh/client_auth.go:260] <- ssh.publicKeyCallback.auth@ssh/client_auth.go:351 (static)
+
+  ssh.publicKeyCallback.auth [ssh/client_auth.go:334] <- ssh.connection.clientAuthenticate@ssh/client_auth.go:80
+  (invoke); ssh.retryableAuthMethod.auth@ssh/client_auth.go:689 (invoke); synth:(*ssh.publicKeyCallback).auth@:0
+  (static)
+
+  ssh.retryableAuthMethod.auth [ssh/client_auth.go:687] <- ssh.connection.clientAuthenticate@ssh/client_auth.go:80
+  (invoke)
+
+  agent.ForwardToAgent [ssh/agent/forward.go:31] <- (entry point)
+
+  agent.ServeAgent [ssh/agent/server.go:607] <- agent.ForwardToAgent@ssh/agent/forward.go:46 (static)
+
+  agent.keyring.Add [ssh/agent/keyring.go:153] <- agent.server.insertIdentity@ssh/agent/server.go:602 (invoke)
+
+  agent.server.insertIdentity [ssh/agent/server.go:565] <- agent.server.processRequest@ssh/agent/server.go:159 (static)
+
+  agent.server.processRequest [ssh/agent/server.go:76] <- agent.server.processRequestBytes@ssh/agent/server.go:30
+  (static)
+
+  agent.server.processRequestBytes [ssh/agent/server.go:29] <- agent.ServeAgent@ssh/agent/server.go:629 (static)
+
+  '
