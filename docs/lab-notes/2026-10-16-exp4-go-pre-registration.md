@@ -327,8 +327,10 @@ first two, and that is where its recall fell. The graph gaps behind this:
 1. **Function values called synchronously or by a launcher have no edge.** This covers
    `sync.Once.Do(c.handleForwards)`, `time.AfterFunc(d, dr.renew)` and a local slice of method
    expressions. It causes the misses in `channeltype`, `dircache` and `stderr`, and both recall
-   losses.
-2. **Dispatch on `packetConn.readPacket` has no targets.** Nothing in the graph reaches
-   `transport.readPacket`, so `cbcCipher.readCipherPacket` has almost no callers.
+   losses (#668).
+2. **`*transport` is not counted as a `packetConn`.** It gets `Close` from an embedded `io.Closer`
+   field, and the method-set check misses that. Dispatch on `packetConn.readPacket` therefore
+   never reaches `transport.readPacket`, and `cbcCipher.readCipherPacket` has almost no callers
+   (#669).
 3. **The call `auth.auth(...)` stays unresolved** when `auth` is the loop variable of
-   `for auth := AuthMethod(new(noneAuth)); auth != nil; {` (ssh/client_auth.go:79).
+   `for auth := AuthMethod(new(noneAuth)); auth != nil; {` (ssh/client_auth.go:79) (#670).
