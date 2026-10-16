@@ -31,6 +31,12 @@ ANSWER_FORMAT = (
 
 _CALL_PARENS = re.compile(r"\(.*\)$")
 _LINE_SUFFIX = re.compile(r":\d+(?:-\d+)?$")
+#: A Go method declaration as an agent may quote it: `func (r *Raft) setState`.
+_GO_FUNC_DECL = re.compile(r"^func\s*\(\s*\w*\s*\*?\s*([\w.]+)(?:\[[^\]]*\])?\s*\)\s*(\w+)")
+#: A `.go` file extension, before its `:`/`::` or at the end — never a `go/` directory.
+_GO_FILE_EXT = re.compile(r"\.go(?=::|:|$)")
+#: A Go receiver in a qualified name: `(*Raft)`, `(Raft)`, `(*Stack[T])`.
+_GO_RECEIVER = re.compile(r"\(\*?([A-Za-z_]\w*)(?:\[[^\]]*\])?\)")
 
 
 class GoldSymbol(BaseModel, frozen=True):
@@ -167,9 +173,14 @@ def normalize_symbol(name: str) -> str:
     """Fold the spellings agents use for a symbol into one dotted form.
 
     `src/cgis/cli.py::structure`, `cgis.cli.structure()` and `cgis/cli.py:structure`
-    all become a dotted path ending in `cli.structure`.
+    all become a dotted path ending in `cli.structure`. A Go receiver folds into
+    its type: `raft.(*Raft).setState` and `func (r *Raft) setState` name
+    `Raft.setState`.
     """
     s = name.strip().strip("`").strip()
+    s = _GO_FUNC_DECL.sub(r"\1.\2", s)
+    s = _GO_RECEIVER.sub(r"\1", s)
+    s = _GO_FILE_EXT.sub("", s)
     s = _CALL_PARENS.sub("", s)
     s = s.replace("::", ".").replace(":", ".").replace("/", ".").replace("\\", ".")
     for ext in (".py.", ".tsx.", ".ts.", ".jsx.", ".js."):

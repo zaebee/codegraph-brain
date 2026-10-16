@@ -244,3 +244,40 @@ def test_the_fence_language_is_case_insensitive() -> None:
     answer = extract_answer('```JSON\n{"symbols": ["a"]}\n```')
     assert answer is not None
     assert answer.symbols == ["a"]
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("raft.(*Raft).setState", "raft.Raft.setState"),
+        ("(*Raft).setState", "Raft.setState"),
+        ("(Raft).setState", "Raft.setState"),
+        ("raft/api.go:(*Raft).Apply", "raft.api.Raft.Apply"),
+        (
+            "raft/net_transport.go::NetworkTransport.AppendEntries",
+            "raft.net_transport.NetworkTransport.AppendEntries",
+        ),
+        ("func (r *Raft) setState", "Raft.setState"),
+        ("store.(*Stack[T]).Push", "store.Stack.Push"),
+        ("raft.NewRaft()", "raft.NewRaft"),
+    ],
+)
+def test_normalize_symbol_folds_go_spellings(raw: str, expected: str) -> None:
+    """Agents write Go methods with their receiver; gold names `Type.Method`."""
+    assert normalize_symbol(raw) == expected
+
+
+def test_a_go_receiver_spelling_matches_the_gold_method() -> None:
+    assert symbol_matches(
+        "raft.(*NetworkTransport).AppendEntries", "NetworkTransport.AppendEntries"
+    )
+    assert not symbol_matches(
+        "raft.(*NetworkTransport).AppendEntriesX", "NetworkTransport.AppendEntries"
+    )
+
+
+def test_a_directory_named_go_is_kept() -> None:
+    """Only a `.go` file extension folds; `languages/go/` is a package path."""
+    assert normalize_symbol("src/cgis/languages/go/dispatch.py::interface_dispatch") == (
+        "src.cgis.languages.go.dispatch.interface_dispatch"
+    )
