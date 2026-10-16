@@ -120,6 +120,19 @@ def remove_graph_files(root: Path) -> list[Path]:
     return found
 
 
+def delete_task_paths(root: Path, paths: list[str]) -> None:
+    """Delete a task's `delete_paths` under `root`; a path that is not there is an error."""
+    for rel in paths:
+        target = root / rel
+        if not target.exists():
+            msg = f"delete_paths: {rel} is not in the worktree"
+            raise FileNotFoundError(msg)
+        if target.is_dir():
+            shutil.rmtree(target)
+        else:
+            target.unlink()
+
+
 def mcp_config(arm: Arm) -> dict[str, object]:
     """The `--mcp-config` document: empty for control, this checkout's server for cgis.
 
@@ -321,6 +334,7 @@ def run_one(
     """
     with worktree_at(task.sha, repo) as wt, tempfile.TemporaryDirectory(prefix="ab-") as tmp:
         removed = remove_graph_files(wt)
+        delete_task_paths(wt, task.delete_paths)
         ingest_s = ingest(wt, task.src_root) if arm != "control" else 0.0
         cmd = build_command(
             claude=args.claude,
@@ -332,7 +346,8 @@ def run_one(
             max_budget_usd=args.max_budget_usd,
         )
         if args.dry_run:
-            print(f"[{task.id} {arm} #{run}] cwd={wt} removed={len(removed)}")
+            deleted = len(task.delete_paths)
+            print(f"[{task.id} {arm} #{run}] cwd={wt} removed={len(removed)} deleted={deleted}")
             print("  " + " ".join([*cmd[:2], "<prompt>", *cmd[3:]]))
             return True
         start = time.monotonic()

@@ -66,6 +66,23 @@ def test_remove_graph_files_finds_nested_and_committed_copies(tmp_path: Path) ->
     assert (tmp_path / ".git" / "graph.db").exists()
 
 
+def test_delete_task_paths_removes_nested_modules(tmp_path: Path) -> None:
+    (tmp_path / "website" / "sub").mkdir(parents=True)
+    (tmp_path / "website" / "go.mod").touch()
+    (tmp_path / "hack" / "tools").mkdir(parents=True)
+    (tmp_path / "hack" / "keep.sh").touch()
+    ab.delete_task_paths(tmp_path, ["website", "hack/tools"])
+    assert not (tmp_path / "website").exists()
+    assert not (tmp_path / "hack" / "tools").exists()
+    assert (tmp_path / "hack" / "keep.sh").exists()
+
+
+def test_delete_task_paths_refuses_a_path_the_worktree_lacks(tmp_path: Path) -> None:
+    # A misspelt path must not leave the nested module in place silently.
+    with pytest.raises(FileNotFoundError, match="delete_paths: websit is not in the worktree"):
+        ab.delete_task_paths(tmp_path, ["websit"])
+
+
 # --- command ------------------------------------------------------------------
 
 
@@ -214,6 +231,22 @@ def test_dry_run_prints_commands_and_spends_nothing(
     assert "removed=1" in out
     assert calls == []
     assert not args.results.exists()
+
+
+def test_a_session_deletes_the_tasks_paths_before_ingest(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _patch_run(monkeypatch, tmp_path)
+    (tmp_path / "wt" / "website").mkdir(parents=True)
+    seen: list[bool] = []
+    monkeypatch.setattr(
+        ab, "ingest", lambda wt, _src: seen.append((wt / "website").exists()) or 1.0
+    )
+    task = TASK.model_copy(update={"delete_paths": ["website"]})
+    args = _args(tmp_path, dry_run=True)
+    assert ab.run_one(task, "cgis", 0, tmp_path, args, "cafe")
+    assert seen == [False]
+    assert "deleted=1" in capsys.readouterr().out
 
 
 def test_a_run_writes_its_transcript_and_a_scored_results_line(
