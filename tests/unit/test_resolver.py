@@ -2460,3 +2460,45 @@ def run(e: Engine):
     nodes, edges = PythonExtractor().parse(code, "src/mod.py")
     result, _ = ResolverEngine(nodes, edges).resolve()
     assert any(e.source == "src.mod.run" and e.target == "src.mod.Store.get" for e in result)
+
+
+def test_local_type_resolution_maps_the_type_through_the_layout() -> None:
+    """`Sub` imported as `pkg.base.Sub` is node `src.pkg.base.Sub`: the walk starts there."""
+    base = """
+class Base:
+    def close(self):
+        pass
+
+class Sub(Base):
+    pass
+"""
+    use = """
+from pkg.base import Sub
+
+def main():
+    s = Sub()
+    s.close()
+"""
+    nodes, edges = [], []
+    for code, path in ((base, "src/pkg/base.py"), (use, "src/pkg/use.py")):
+        n, e = PythonExtractor().parse(code, path)
+        nodes += n
+        edges += e
+    result, _ = ResolverEngine(nodes, edges).resolve()
+    assert any(
+        e.source == "src.pkg.use.main" and e.target == "src.pkg.base.Base.close" for e in result
+    )
+
+
+def test_a_field_chain_on_a_library_type_keeps_its_library_target() -> None:
+    """No declared attribute to follow on a library type: the call still names it."""
+    code = """
+import httpx
+
+def main():
+    c = httpx.Client()
+    c.a.b.get()
+"""
+    nodes, edges = PythonExtractor().parse(code, "src/mod.py")
+    result, _ = ResolverEngine(nodes, edges).resolve()
+    assert any(e.source == "src.mod.main" and e.target == "httpx.Client.a.b.get" for e in result)

@@ -93,3 +93,85 @@ def test_a_method_no_type_in_the_chain_has_stays_unresolved() -> None:
     targets = {e.target for e in _calls() if e.source == "app.Phantom"}
     assert targets.isdisjoint({"app.Server.Missing", "app.Options.Missing"})
     assert all(not t.startswith("app.") for t in targets)
+
+
+def _resolve(files: dict[str, str], source: str) -> set[str]:
+    nodes, edges = [], []
+    for path, code in files.items():
+        n, e = GoExtractor().parse(code, path)
+        nodes += n
+        edges += e
+    state: dict[str, object] = {"go_module": {"path": "example.com/app"}}
+    resolved, _ = ResolverEngine(nodes, edges, project_state=state).resolve()
+    return {e.target for e in resolved if e.type is EdgeType.CALLS and e.source == source}
+
+
+DEPTH = (
+    "package app\n"
+    "type C struct{}\n"
+    "func (c *C) M() {}\n"
+    "type A struct{ C }\n"
+    "type B struct{}\n"
+    "func (b *B) M() {}\n"
+    "type S struct {\n"
+    "\tA\n"
+    "\tB\n"
+    "}\n"
+    "func Use(s *S) { s.M() }\n"
+    "func (s *S) Self() { s.M() }\n"
+)
+
+
+def test_promotion_takes_the_shallowest_method_not_the_first_branch() -> None:
+    """Go's rule: B.M at depth 1 beats C.M at depth 2 under the first embedding."""
+    assert _resolve({"app/a.go": DEPTH}, "app.Use") == {"app.B.M"}
+    assert _resolve({"app/a.go": DEPTH}, "app.S.Self") == {"app.B.M"}
+
+
+def test_two_methods_at_the_same_depth_resolve_to_nothing() -> None:
+    """Go rejects an ambiguous selector; a guess would be a confident wrong edge."""
+    code = (
+        "package app\n"
+        "type A struct{}\n"
+        "func (a *A) M() {}\n"
+        "type B struct{}\n"
+        "func (b *B) M() {}\n"
+        "type S struct {\n"
+        "\tA\n"
+        "\tB\n"
+        "}\n"
+        "func Use(s *S) { s.M() }\n"
+    )
+    assert all(not t.startswith("app.") for t in _resolve({"app/a.go": code}, "app.Use"))
+
+
+def test_a_field_hop_takes_the_shallowest_field() -> None:
+    code = (
+        "package app\n"
+        "type L1 struct{}\n"
+        "func (l *L1) P() {}\n"
+        "type L2 struct{}\n"
+        "func (l *L2) P() {}\n"
+        "type Deep struct{ log *L1 }\n"
+        "type Mid struct{ Deep }\n"
+        "type Shallow struct{ log *L2 }\n"
+        "type S struct {\n"
+        "\tMid\n"
+        "\tShallow\n"
+        "}\n"
+        "func Use(s *S) { s.log.P() }\n"
+    )
+    assert _resolve({"app/a.go": code}, "app.Use") == {"app.L2.P"}
+
+
+def test_an_embedded_type_from_another_package_is_named_without_its_package() -> None:
+    files = {
+        "other/thing.go": "package other\ntype Thing struct{}\nfunc (t *Thing) Do() {}\n",
+        "app/a.go": (
+            "package app\n"
+            'import "example.com/app/other"\n'
+            "type S struct{ other.Thing }\n"
+            "func Use(s *S) { s.Thing.Do() }\n"
+        ),
+    }
+    assert _resolve(files, "app.Use") == {"other.Thing.Do"}

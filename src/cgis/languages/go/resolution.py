@@ -114,4 +114,5 @@ RULES = ResolutionRules(
     reconcile_import=reconcile_import,
     reconciles_references=True,
     dispatch=interface_dispatch,
+    shallowest_member=True,
 )

@@ -1,7 +1,7 @@
 """Symbol resolution strategies over a SymbolIndex."""
 
 import os
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 
 from cgis.core.models import RAW_CLASS_PREFIX, Edge, EdgeType, Node, NodeNamespace
 from cgis.core.resolution import AFTER_IMPORT_MAP
@@ -82,42 +82,59 @@ def _declaring_class(
     *method* on the receiver; this walks the same tree to find the *attribute*
     on the owner.
     """
+    return _find_above(
+        index, inheritance, owner_fqn, lambda c: c if attr in index.self_types.get(c, {}) else None
+    )
+
+
+def _method_in_hierarchy(
+    index: SymbolIndex, inheritance: Mapping[str, list[str]], class_fqn: str, method_name: str
+) -> str | None:
+    """The method `method_name` on class_fqn or the nearest type above it that has one."""
+    return _find_above(
+        index, inheritance, class_fqn, lambda c: index.class_methods.get(c, {}).get(method_name)
+    )
+
+
+def _find_above(
+    index: SymbolIndex,
+    inheritance: Mapping[str, list[str]],
+    start: str,
+    found: Callable[[str], str | None],
+) -> str | None:
+    """The first hit of `found` on `start` or a type above it, in the start's language's order."""
+    node = index.nodes.get(start)
+    rules = rules_for(node.file_path) if node is not None else None
+    if rules is not None and rules.shallowest_member:
+        return _shallowest(inheritance, start, found)
     seen: set[str] = set()
-    stack = [owner_fqn]
+    stack = [start]
     while stack:
         current = stack.pop()
         if current in seen:
             continue
         seen.add(current)
-        if attr in index.self_types.get(current, {}):
-            return current
+        hit = found(current)
+        if hit:
+            return hit
         # Reversed because the stack is LIFO: extending in source order would pop
         # the *rightmost* base first, so `class C(Left, Right)` would answer with
-        # Right's declaration where Python's MRO uses Left's. The sibling
-        # _method_in_hierarchy recurses in source order and is
-        # already correct; this keeps the two consistent.
+        # Right's member where Python's MRO uses Left's.
         stack.extend(reversed(inheritance.get(current, [])))
     return None
 
 
-def _method_in_hierarchy(
-    index: SymbolIndex,
-    inheritance: Mapping[str, list[str]],
-    class_fqn: str,
-    method_name: str,
-    visited: set[str],
+def _shallowest(
+    inheritance: Mapping[str, list[str]], start: str, found: Callable[[str], str | None]
 ) -> str | None:
-    """DFS over EXTENDS edges to find method_name defined in class_fqn or any ancestor."""
-    if class_fqn in visited:
-        return None
-    visited.add(class_fqn)
-    direct = index.class_methods.get(class_fqn, {}).get(method_name)
-    if direct:
-        return direct
-    for parent_fqn in inheritance.get(class_fqn, []):
-        result = _method_in_hierarchy(index, inheritance, parent_fqn, method_name, visited)
-        if result:
-            return result
+    """Go's selector rule: the one hit at the shallowest depth; two there are ambiguous."""
+    level, seen = [start], {start}
+    while level:
+        hits = {hit for hit in map(found, level) if hit}
+        if hits:
+            return hits.pop() if len(hits) == 1 else None
+        level = [p for c in level for p in inheritance.get(c, []) if p not in seen]
+        seen.update(level)
     return None
 
 
@@ -141,7 +158,7 @@ def _resolve_on_type(
         if receiver is None:
             return None
         current = receiver
-    found = _method_in_hierarchy(index, inheritance, current, method, set())
+    found = _method_in_hierarchy(index, inheritance, current, method)
     if found:
         return found
     # No such method on the declared receiver. Keep it only when the receiver
@@ -236,9 +253,7 @@ class SymbolResolver:
         if owner is None:
             return None
         if "." not in method_name:
-            return _method_in_hierarchy(
-                self.index, self.inheritance_tree, owner, method_name, set()
-            )
+            return _method_in_hierarchy(self.index, self.inheritance_tree, owner, method_name)
         source_file = _file_of(self.index, source_fqn)
         return _resolve_on_type(self.index, self.inheritance_tree, owner, method_name, source_file)
 
@@ -336,6 +351,8 @@ class SymbolResolver:
         walked = _resolve_on_type(self.index, self.inheritance_tree, start, method_name, file_path)
         if walked:
             return walked
+        # Reached only for `x.a.m` on a library type: the walk has no declared
+        # attribute to follow there (a one-dot call took the walk's own fallback).
         # No node for `Class.method`. Keep it only when the type is external/stdlib
         # — that is a real call into a library (it becomes an EXTERNAL/STDLIB virtual
         # node). For an internal/unknown type it is a phantom method: drop it rather
