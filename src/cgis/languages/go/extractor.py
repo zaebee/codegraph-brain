@@ -11,6 +11,7 @@ extractor does: a walker class grows into a god object, and its
 `self.edges.append` calls into unresolvable `self.*` placeholders.
 """
 
+import re
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -192,10 +193,11 @@ def _types(ctx: _File, declaration: TSNode, nodes: list[Node], edges: list[Edge]
         fqn = f"{ctx.scope}.{name}"
         body = spec.child_by_field_name("type")
         is_interface = body is not None and body.type == "interface_type"
+        params = _type_parameters(spec)
         # An interface is satisfied, not inherited: the dispatch rule needs to know which
         # types are interfaces (#609). A struct carries its fields instead.
         metadata: dict[str, object] | None = (
-            {"interface": True} if is_interface else _struct_metadata(ctx, body)
+            {"interface": True} if is_interface else _struct_metadata(ctx, body, params)
         )
         nodes.append(_node(ctx, fqn, name, NodeType.CLASS, spec, metadata))
         edges.append(_edge(ctx.node_id, fqn, EdgeType.CONTAINS))
@@ -206,16 +208,22 @@ def _types(ctx: _File, declaration: TSNode, nodes: list[Node], edges: list[Edge]
         if is_interface and body is not None:
             for elem in body.children:
                 if elem.type == "method_elem":
-                    _declare(ctx, fqn, elem, nodes, edges)
+                    _declare(ctx, fqn, elem, nodes, edges, params)
 
 
-def _struct_metadata(ctx: _File, body: TSNode | None) -> dict[str, object] | None:
+def _struct_metadata(
+    ctx: _File, body: TSNode | None, params: frozenset[str] = frozenset()
+) -> dict[str, object] | None:
     """A struct's field types, and every field's name: a field shadows a promoted method.
 
     Go keeps fields and methods in one namespace per depth, so `Log func()` beside
     an embedded type with a `Log` method is what `s.Log()` calls (#656 review).
     """
-    types = _field_types(ctx, body)
+    types = {
+        field: fqn
+        for field, fqn in _field_types(ctx, body).items()
+        if not _names_parameter(fqn, ctx.scope, params)
+    }
     names = sorted(_field_names(body))
     metadata: dict[str, object] = {"self_types": types} if types else {}
     if names:
@@ -277,13 +285,18 @@ def _embedded(body: TSNode | None) -> list[str]:
 
 
 def _declare(
-    ctx: _File, type_fqn_: str, elem: TSNode, nodes: list[Node], edges: list[Edge]
+    ctx: _File,
+    type_fqn_: str,
+    elem: TSNode,
+    nodes: list[Node],
+    edges: list[Edge],
+    params: frozenset[str] = frozenset(),
 ) -> None:
     """An interface method: a METHOD under the interface, with its DECLARES edge."""
     name = text(elem.child_by_field_name("name"))
     fqn = f"{type_fqn_}.{name}"
     metadata: dict[str, object] = {"arity": arity(elem)}
-    returns = result_types(elem, ctx.scope, ctx.import_map)
+    returns = _unparameterised(result_types(elem, ctx.scope, ctx.import_map), ctx.scope, params)
     if returns:
         metadata["returns"] = returns  # `s, _ := fsm.Snapshot()` types `s` (#643 B7)
     nodes.append(_node(ctx, fqn, name, NodeType.METHOD, elem, metadata))
@@ -318,6 +331,37 @@ def _method(ctx: _File, node: TSNode, nodes: list[Node], edges: list[Edge]) -> N
     names = declared_names(receiver)
     receiver_name = names[0] if names else None
     _callable(ctx, fqn, NodeType.METHOD, node, receiver_name, nodes, edges, owner)
+
+
+#: Type names share the scope stack with values, under this prefix (no identifier has it).
+_TYPE_KEY = "type "
+
+
+def _type_parameters(node: TSNode) -> frozenset[str]:
+    """`[A any, B comparable]` of a function or type; a method's from its receiver `Box[T]`."""
+    names: set[str] = set()
+    declared = node.child_by_field_name("type_parameters")
+    for parameter in declared.named_children if declared else []:
+        names.update(text(n) for n in parameter.children_by_field_name("name"))
+    receiver = _child(node.child_by_field_name("receiver"), "parameter_declaration")
+    generic = receiver.child_by_field_name("type") if receiver else None
+    while generic is not None and generic.type == "pointer_type":
+        generic = generic.named_children[0] if generic.named_children else None
+    arguments = generic.child_by_field_name("type_arguments") if generic else None
+    for argument in arguments.named_children if arguments else []:
+        names.add(text(argument))
+    return frozenset(names)
+
+
+def _names_parameter(fqn: str, scope: str, params: frozenset[str]) -> bool:
+    """Whether a type or marker names one of `params` as if it were the package's type."""
+    names = {f"{scope}.{p}" for p in params}
+    return any(part in names for part in re.split(r"[:,]", fqn))
+
+
+def _unparameterised(types: list[str], scope: str, params: frozenset[str]) -> list[str]:
+    """Results with any type parameter blanked: `Idt[A](x A) A` returns no nameable type."""
+    return ["" if _names_parameter(t, scope, params) else t for t in types]
 
 
 class Bindings:
@@ -360,6 +404,14 @@ class Bindings:
     def shadowed(self, name: str) -> bool:
         """Whether a nested block rebinds `name` over the function's own binding of it."""
         return any(name in scope for scope in self._scopes[1:])
+
+    def bind_type(self, name: str, fqn: str) -> None:
+        """Declare a type name in the innermost scope: an alias's target, or "" for none."""
+        self._scopes[-1][f"{_TYPE_KEY}{name}"] = fqn
+
+    def type_here(self, name: str) -> str | None:
+        """A local type name's target ("" when it has none to name); None when not local."""
+        return self.here(f"{_TYPE_KEY}{name}")
 
     def here(self, name: str) -> str | None:
         """The type `name` is bound to in the innermost scope that binds it."""
@@ -406,6 +458,9 @@ def _callable(
     """The node, with its parameter, local and result types, and its body's CALLS edges."""
     # The receiver's type is its method's owner: `s.Parser()` qualifies like `x.M()`.
     bindings = Bindings({receiver: owner} if receiver and owner else None)
+    params = _type_parameters(node)
+    for param in params:
+        bindings.bind_type(param, "")  # `[A any]`: never the package's `A` (#662 review)
     _parameters(ctx, node.child_by_field_name("parameters"), bindings)
     _parameters(ctx, node.child_by_field_name("result"), bindings)  # named results bind too
     body = node.child_by_field_name("body")
@@ -422,7 +477,7 @@ def _callable(
     }
     if sites:
         metadata["site_types"] = sites
-    returns = result_types(node, ctx.scope, ctx.import_map)
+    returns = _unparameterised(result_types(node, ctx.scope, ctx.import_map), ctx.scope, params)
     if returns:
         metadata["returns"] = returns
     if node_type == NodeType.METHOD:
@@ -438,7 +493,7 @@ def _parameters(ctx: _File, parameters: TSNode | None, bindings: Bindings) -> No
             )
         elif declaration.type == "variadic_parameter_declaration":
             # `opts ...Option` is a []Option inside the function (#643 B).
-            element = type_fqn(declaration.child_by_field_name("type"), ctx.scope, ctx.import_map)
+            element = _typed(ctx, declaration.child_by_field_name("type"), bindings)
             for name in declared_names(declaration):
                 bindings.bind(name, f"{ELEM}seq:{element}" if element else _UNKNOWN)
 
@@ -463,13 +518,25 @@ def _record(ctx: _File, bindings: Bindings, names: list[str], type_node: TSNode 
     call can reach (`err.Error()`); `int` or `string` would type nothing.
     """
     predeclared = "error" if text(base_type(type_node)) == "error" else _UNKNOWN
-    fqn = (
-        type_fqn(type_node, ctx.scope, ctx.import_map)
-        or container_type(type_node, ctx.scope, ctx.import_map)
-        or predeclared
-    )
+    fqn = _typed(ctx, type_node, bindings) or predeclared
     for name in names:
         bindings.bind(name, fqn)
+
+
+def _typed(ctx: _File, node: TSNode | None, bindings: Bindings) -> str | None:
+    """A type written in a function: its FQN or container marker, after local type names.
+
+    A type parameter or a type defined in the function names nothing; a local
+    alias (`type A = B`) names its target (#662 review).
+    """
+    named = base_type(node)
+    if named is not None and named.type == "type_identifier":
+        local = bindings.type_here(text(named))
+        if local is not None:
+            return local or None
+    return type_fqn(node, ctx.scope, ctx.import_map) or container_type(
+        node, ctx.scope, ctx.import_map
+    )
 
 
 def _held(bindings: Bindings, name: str) -> str | None:
@@ -650,13 +717,21 @@ def _case_alias(ctx: _File, case: TSNode, bindings: Bindings) -> None:
         return
     types = case.children_by_field_name("type")
     if len(types) == 1:
-        typed = type_fqn(types[0], ctx.scope, ctx.import_map) or container_type(
-            types[0], ctx.scope, ctx.import_map
-        )
+        typed = _typed(ctx, types[0], bindings)
     else:  # several types, or `default`: the value as the switch saw it
         value = switch.child_by_field_name("value")
         typed = _operand(ctx, value, bindings) if value is not None else None
     bindings.bind(names[0], typed or _UNKNOWN)
+
+
+def _local_types(ctx: _File, node: TSNode, bindings: Bindings) -> None:
+    """`type A = B` in a function names B there; `type A struct{...}` names nothing we know."""
+    for spec in node.children:
+        name = text(spec.child_by_field_name("name"))
+        if spec.type == "type_alias" and name:
+            bindings.bind_type(name, _typed(ctx, spec.child_by_field_name("type"), bindings) or "")
+        elif spec.type == "type_spec" and name:
+            bindings.bind_type(name, "")
 
 
 _BINDERS: dict[str, Callable[[_File, TSNode, Bindings], None]] = {
@@ -667,6 +742,7 @@ _BINDERS: dict[str, Callable[[_File, TSNode, Bindings], None]] = {
     "type_case": _case_alias,
     "default_case": _default_case,
     "func_literal": _closure,
+    "type_declaration": _local_types,
 }
 """Statements that bind names, by node type."""
 
@@ -686,14 +762,10 @@ def _value_type(ctx: _File, value: TSNode, bindings: Bindings) -> str | None:
         return _take("elem", _operand(ctx, operand, bindings)) if operand else None
     if value.type == "type_assertion_expression":
         asserted = value.child_by_field_name("type")
-        return type_fqn(asserted, ctx.scope, ctx.import_map) or container_type(
-            asserted, ctx.scope, ctx.import_map
-        )
+        return _typed(ctx, asserted, bindings)
     literal = literal_type(value)
     if literal is not None:
-        return type_fqn(literal, ctx.scope, ctx.import_map) or container_type(
-            literal, ctx.scope, ctx.import_map
-        )
+        return _typed(ctx, literal, bindings)
     if value.type in ("identifier", "selector_expression"):
         return _operand(ctx, value, bindings)
     return None
@@ -762,25 +834,27 @@ def _hold_result(ctx: _File, bindings: Bindings, name: str, call: TSNode, index:
     if builtin in ("make", "new") and builtin not in bindings:
         arguments = call.child_by_field_name("arguments")
         first = arguments.named_children[0] if arguments and arguments.named_children else None
-        bindings.bind(name, (_type_argument(ctx, first) if index == 0 else None) or _UNKNOWN)
+        typed = _type_argument(ctx, first, bindings) if index == 0 else None
+        bindings.bind(name, typed or _UNKNOWN)
         return
     callee = _callee(ctx, function, bindings)
     bindings.bind(name, f"{CALL_RESULT}{index}:{callee}" if callee else _UNKNOWN)
 
 
-def _type_argument(ctx: _File, node: TSNode | None) -> str | None:
+def _type_argument(ctx: _File, node: TSNode | None, bindings: Bindings) -> str | None:
     """A type written where an expression may stand: `make(chan *T)`, `new(T)`, `new(pkg.T)`."""
     if node is None:
         return None
     if node.type == "identifier":
         name = text(node)
+        local = bindings.type_here(name)
+        if local is not None:
+            return local or None
         return None if name in PREDECLARED else f"{ctx.scope}.{name}"
     chain = selector_chain(node)
     if len(chain) == 2 and chain[0] in ctx.import_map:
         return f"{ctx.import_map[chain[0]]}.{chain[1]}"
-    return type_fqn(node, ctx.scope, ctx.import_map) or container_type(
-        node, ctx.scope, ctx.import_map
-    )
+    return _typed(ctx, node, bindings)
 
 
 def _callee(ctx: _File, function: TSNode | None, bindings: Bindings) -> str | None:
@@ -791,7 +865,8 @@ def _callee(ctx: _File, function: TSNode | None, bindings: Bindings) -> str | No
     """
     chain = selector_chain(function) if function is not None else []
     if len(chain) == 1:
-        return None if chain[0] in BUILTINS else f"{ctx.scope}.{chain[0]}"
+        # A local func value (`newT := newB; newT()`) is not the package's `newT` (#662 review).
+        return None if chain[0] in BUILTINS or chain[0] in bindings else f"{ctx.scope}.{chain[0]}"
     if not chain:
         return _chained_callee(ctx, function, bindings) if function is not None else None
     *path, method = chain
@@ -885,7 +960,10 @@ def _label(node: TSNode) -> str:
     if node.type == "unary_expression" and operand is not None:
         return f"{text(node.child_by_field_name('operator'))}{_label(operand)}"
     if node.type == "selector_expression":  # a field of a call's result: `a.B().f`
-        return text(node.child_by_field_name("field"))
+        # `:` keeps each link distinct and dot-free: `a.Get().Get()` is `Get():Get()`,
+        # so two links named alike never share an edge id (#662 review).
+        field = text(node.child_by_field_name("field"))
+        return f"{_label(operand)}:{field}" if operand is not None else field
     return "?"
 
 

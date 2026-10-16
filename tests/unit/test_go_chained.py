@@ -38,6 +38,12 @@ APP = (
     "func Unknown() { missing().M() }\n"
     'func External() { _ = strings.NewReader("").Len() }\n'
     "func FieldCall() { newT().f.Next().M() }\n"
+    "func mk() func() *T { return nil }\n"
+    "func CallOfCall() {\n\tmk()().M()\n\tx := mk()()\n\tx.M()\n}\n"
+    "type B struct{}\n"
+    "func (b *B) Get() *T { return nil }\n"
+    "func newB() *B { return nil }\n"
+    "func Shadow() {\n\tnewT := newB\n\tnewT().Get()\n}\n"
     "func Paren() { (newT()).M() }\n"
 )
 
@@ -82,8 +88,14 @@ def _calls() -> dict[str, list[tuple[str, str]]]:
         ("External", [("NewReader().Len", "-"), ("strings.NewReader", "strings.NewReader")]),
         (
             "FieldCall",
-            [("Next().M", "app.T.M"), ("newT().f.Next", "app.K.Next"), ("newT", "app.newT")],
+            [
+                ("newT():f:Next().M", "app.T.M"),
+                ("newT().f.Next", "app.K.Next"),
+                ("newT", "app.newT"),
+            ],
         ),
+        # A local func value: never the package's `newT` (the value's type is not tracked).
+        ("Shadow", [("newT().Get", "-"), ("newT", "-")]),
         ("Paren", [("(newT()).M", "app.T.M"), ("newT", "app.newT")]),
     ],
 )
@@ -97,3 +109,15 @@ def test_a_chain_of_calls_resolves_every_link() -> None:
     targets = [target for _, target in _calls()["Deep"]]
     assert targets.count("app.T.Get") == 3
     assert "app.T.M" in targets
+
+
+def test_every_link_of_a_chain_has_its_own_edge_id() -> None:
+    """`t.Get().Get().Get()`: two links named alike must not share an id the store dedups."""
+    _, edges = GoExtractor().parse(APP, "app/a.go")
+    ids = [e.id for e in edges if e.type is EdgeType.CALLS]
+    assert len(ids) == len(set(ids))
+
+
+def test_a_call_of_a_call_s_result_is_extracted() -> None:
+    """`mk()().M()` and `x := mk()()`: a function value called in turn, no selector to type."""
+    assert "CallOfCall" in _calls()
