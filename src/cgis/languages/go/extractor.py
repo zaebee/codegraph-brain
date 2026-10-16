@@ -11,7 +11,7 @@ extractor does: a walker class grows into a god object, and its
 `self.edges.append` calls into unresolvable `self.*` placeholders.
 """
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import override
@@ -357,6 +357,10 @@ class Bindings:
         if fqn not in types:
             types.append(fqn)
 
+    def shadowed(self, name: str) -> bool:
+        """Whether a nested block rebinds `name` over the function's own binding of it."""
+        return any(name in scope for scope in self._scopes[1:])
+
     def here(self, name: str) -> str | None:
         """The type `name` is bound to in the innermost scope that binds it."""
         return next((s[name] for s in reversed(self._scopes) if name in s), None)
@@ -474,20 +478,6 @@ def _held(bindings: Bindings, name: str) -> str | None:
     return held if held != _UNKNOWN else None
 
 
-def _unknown(bindings: Bindings, names: TSNode | None) -> None:
-    """Bind every identifier under `names` (a range's or a type switch's left side) to unknown."""
-    for name in names.named_children if names else []:
-        if name.type == "identifier":
-            bindings.bind(text(name), _UNKNOWN)
-
-
-#: Statements that bind names to a value of no nameable type, by the field
-#: holding the names: a type switch's alias, one name typed differently per case.
-_UNTYPED_BINDINGS = {
-    "type_switch_statement": "alias",
-}
-
-
 def _body(
     ctx: _File,
     node: TSNode,
@@ -521,11 +511,13 @@ def _visit(
     declares = node.type in _DECLARATIONS
     if node.type == "call_expression":
         function = node.child_by_field_name("function")
-        name = call_name(function, receiver) if function is not None else ""
+        # A block that rebinds the receiver's name hides it: `x.Run()` there is the local's.
+        own = receiver if receiver and not bindings.shadowed(receiver) else None
+        name = call_name(function, own) if function is not None else ""
         if name and function is not None:
             edge = _call(source, name, node)
             edges.append(edge)
-            _site(ctx, function, receiver, bindings, edge.id.rpartition("@")[2])
+            _site(ctx, function, own, bindings, edge.id.rpartition("@")[2])
             _global_head(ctx, function, bindings)
     elif not declares:
         _bindings_of(ctx, node, bindings)
@@ -544,14 +536,18 @@ _DECLARATIONS = frozenset(
 def _site(
     ctx: _File, function: TSNode, receiver: str | None, bindings: Bindings, position: str
 ) -> None:
-    """What the call's receiver name is at this point: a local's type, or not a local."""
+    """What the call's first name is at this point: a local's type, or not a local.
+
+    A bare `f()` counts too: after a block that bound a local `f`, it is the
+    package's `f` again (#660 review).
+    """
     chain = selector_chain(function)
-    if len(chain) < 2 or chain[0] == receiver or chain[0] in BUILTINS:
+    if not chain or (len(chain) > 1 and chain[0] == receiver):
         return
     head = chain[0]
     if head in bindings:
         held = bindings.here(head) or _UNKNOWN  # a local, typed or not: never the import
-    elif head in ctx.import_map:
+    elif len(chain) == 1 or head in ctx.import_map:
         held = ""
     else:
         held = f"{GLOBAL}{ctx.scope}.{head}"
@@ -560,52 +556,65 @@ def _site(
 
 def _bindings_of(ctx: _File, node: TSNode, bindings: Bindings) -> None:
     """The names `node` binds, if it is a statement that binds any."""
-    if node.type == "var_spec" and node.child_by_field_name("type") is not None:
-        _record(ctx, bindings, declared_names(node), node.child_by_field_name("type"))
-    elif node.type == "var_spec":
+    binder = _BINDERS.get(node.type)
+    if binder is not None:
+        binder(ctx, node, bindings)
+
+
+def _var_spec(ctx: _File, node: TSNode, bindings: Bindings) -> None:
+    """`var x T` binds T; `var x = v` what v gives."""
+    declared = node.child_by_field_name("type")
+    if declared is not None:
+        _record(ctx, bindings, declared_names(node), declared)
+    else:
         _assigned(ctx, declared_names(node), node.child_by_field_name("value"), bindings)
-    elif node.type == "short_var_declaration":
-        left = node.child_by_field_name("left")
-        names = [text(t) for t in left.named_children] if left else []
-        _assigned(ctx, names, node.child_by_field_name("right"), bindings)
-    elif node.type == "range_clause":
-        _ranged(ctx, node, bindings)
-    elif node.type == "receive_statement":  # `case v, ok := <-ch:` (its right is the receive)
-        left = node.child_by_field_name("left")
-        names = [text(t) for t in left.named_children] if left else []
-        right = node.child_by_field_name("right")
-        received = _value_type(ctx, right, bindings) if right is not None else None
-        for name, typed in zip(names, (received, None), strict=False):
-            bindings.bind(name, typed or _UNKNOWN)
-    elif node.type in _UNTYPED_BINDINGS:
-        _unknown(bindings, node.child_by_field_name(_UNTYPED_BINDINGS[node.type]))
-    elif node.type == "type_case" or (
-        node.type == "default_case"
-        and node.parent is not None
-        and node.parent.type == "type_switch_statement"
+
+
+def _short_var(ctx: _File, node: TSNode, bindings: Bindings) -> None:
+    """`a, b := v, w`."""
+    _assigned(
+        ctx, _names(node.child_by_field_name("left")), node.child_by_field_name("right"), bindings
+    )
+
+
+def _received(ctx: _File, node: TSNode, bindings: Bindings) -> None:
+    """`case v, ok := <-ch:` (its right is the receive itself)."""
+    right = node.child_by_field_name("right")
+    received = _value_type(ctx, right, bindings) if right is not None else None
+    for name, typed in zip(
+        _names(node.child_by_field_name("left")), (received, None), strict=False
     ):
+        bindings.bind(name, typed or _UNKNOWN)
+
+
+def _closure(ctx: _File, node: TSNode, bindings: Bindings) -> None:
+    """A closure's parameters and named results bind their declared types, so
+    `t.Run(..., func(t *testing.T) {...})` keeps `t`."""
+    _parameters(ctx, node.child_by_field_name("parameters"), bindings)
+    _parameters(ctx, node.child_by_field_name("result"), bindings)
+
+
+def _default_case(ctx: _File, node: TSNode, bindings: Bindings) -> None:
+    """A type switch's `default:` binds its alias; an expression switch's binds nothing."""
+    if node.parent is not None and node.parent.type == "type_switch_statement":
         _case_alias(ctx, node, bindings)
-    elif node.type == "func_literal":
-        # A closure's parameters and named results bind their declared types, so
-        # `t.Run(..., func(t *testing.T) {...})` keeps `t`.
-        _parameters(ctx, node.child_by_field_name("parameters"), bindings)
-        _parameters(ctx, node.child_by_field_name("result"), bindings)
+
+
+def _names(left: TSNode | None) -> list[str]:
+    """The identifiers of a left-hand side."""
+    return [text(t) for t in left.named_children] if left else []
 
 
 def _assigned(ctx: _File, names: list[str], values: TSNode | None, bindings: Bindings) -> None:
     """`x := T{}` gives T; `x := f()` gives f's result, `a, err := f()` each its own (#608).
 
-    `v, ok := <-ch`, `m[k]` or `w.(T)`: the first name takes the value, the rest a bool.
+    `v, ok := <-ch`, `m[k]` or `w.(T)`: the first name takes the value; the rest,
+    past the values, a bool, which types nothing.
     """
     right = values.named_children if values is not None else []
     if len(right) == 1 and right[0].type == "call_expression" and len(names) > 1:
         for index, name in enumerate(names):
             _hold_result(ctx, bindings, name, right[0], index)
-        return
-    if len(right) == 1 and len(names) > 1:
-        bindings.bind(names[0], _value_type(ctx, right[0], bindings) or _UNKNOWN)
-        for name in names[1:]:
-            bindings.bind(name, _UNKNOWN)
         return
     for position, name in enumerate(names):
         value = right[position] if position < len(right) else None
@@ -642,6 +651,18 @@ def _case_alias(ctx: _File, case: TSNode, bindings: Bindings) -> None:
         value = switch.child_by_field_name("value")
         typed = _operand(ctx, value, bindings) if value is not None else None
     bindings.bind(names[0], typed or _UNKNOWN)
+
+
+_BINDERS: dict[str, Callable[[_File, TSNode, Bindings], None]] = {
+    "var_spec": _var_spec,
+    "short_var_declaration": _short_var,
+    "range_clause": _ranged,
+    "receive_statement": _received,
+    "type_case": _case_alias,
+    "default_case": _default_case,
+    "func_literal": _closure,
+}
+"""Statements that bind names, by node type."""
 
 
 def _value_type(ctx: _File, value: TSNode, bindings: Bindings) -> str | None:

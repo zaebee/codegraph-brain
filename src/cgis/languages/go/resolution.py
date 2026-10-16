@@ -148,20 +148,27 @@ def _field_type(type_fqn: str, name: str, view: ResolutionView) -> str | None:
     """A struct's field `name`, its own or promoted, shallowest first; None when none."""
     level, seen = [type_fqn], {type_fqn}
     while level:
-        found: set[str] = set()
-        below: list[str] = []
-        for current in level:
-            node = _node_of(current, view)
-            fields: dict[str, str] = node.metadata.get("self_types") or {} if node else {}
-            if name in fields:
-                found.add(fields[name])
-            # An embedded field is named after its type (#656).
-            below += [t for f, t in fields.items() if t.rsplit(".", 1)[-1] == f and t not in seen]
+        found, below = _level_fields(level, name, view)
         if found:
             return found.pop() if len(found) == 1 else None
+        below = [t for t in below if t not in seen]
         seen.update(below)
         level = below
     return None
+
+
+def _level_fields(level: list[str], name: str, view: ResolutionView) -> tuple[set[str], list[str]]:
+    """The types of field `name` on one depth's structs, and the structs they embed."""
+    found: set[str] = set()
+    below: list[str] = []
+    for current in level:
+        node = _node_of(current, view)
+        fields: dict[str, str] = node.metadata.get("self_types") or {} if node else {}
+        if name in fields:
+            found.add(fields[name])
+        # An embedded field is named after its type (#656).
+        below += [t for f, t in fields.items() if t.rsplit(".", 1)[-1] == f]
+    return found, below
 
 
 def _global(marker: str, rest: str, view: ResolutionView, budget: int) -> str:
