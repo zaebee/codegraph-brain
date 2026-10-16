@@ -611,7 +611,7 @@ def _visit(
         own = receiver if receiver and not bindings.shadowed(receiver) else None
         name = call_name(function, own) if function is not None else ""
         if name and function is not None:
-            edge = _call(source, name, node)
+            edge = _call(ctx, source, name, node)
             edges.append(edge)
             _site(ctx, function, own, bindings, _site_key(edge))
             _global_head(ctx, function, bindings)
@@ -940,7 +940,7 @@ def _unnamed_receiver(
     """
     root, names = _selector_parts(function)
     label = _label(root)
-    edge = _call(source, ".".join([label, *names]), call)
+    edge = _call(ctx, source, ".".join([label, *names]), call)
     edges.append(edge)
     held = _root_type(ctx, root, bindings)
     bindings.sites[_site_key(edge)] = (label, held or _UNKNOWN)
@@ -1018,8 +1018,12 @@ def _site_key(edge: Edge) -> str:
     return edge.id.partition(_RAW_CALL)[2]
 
 
-def _call(source: str, name: str, node: TSNode) -> Edge:
-    """An unresolved CALLS edge, its id carrying the call's position."""
+def _call(ctx: _File, source: str, name: str, node: TSNode) -> Edge:
+    """An unresolved CALLS edge, its id carrying the call's position.
+
+    The file and line ride along too, so the coverage line names a gap as
+    `file:line`, as it does for Python (#663).
+    """
     target = f"{_RAW_CALL}{name}"
     position = f"{node.start_point[0]}:{node.start_point[1]}"
     return Edge(
@@ -1028,6 +1032,8 @@ def _call(source: str, name: str, node: TSNode) -> Edge:
         target=target,
         type=EdgeType.CALLS,
         confidence=0.1,
+        file_path=ctx.path,
+        line_number=node.start_point[0] + 1,
     )
 
 
