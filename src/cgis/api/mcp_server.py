@@ -683,8 +683,11 @@ def cgis_analyze_impact(
         return f"❌ {exc}"
 
     note = _traversal_note(fqn, res.resolved, res.via_suffix, result, max_nodes, "caller(s)")
-    root_node = next((n for n in result.nodes if n.id == res.resolved), None)
-    caveat = impact_caveat(root_node.language) if root_node else ""
+    # Any node's language, not only the root's: a stdlib or third-party root is a
+    # virtual node not tagged with the language of the callers it has here.
+    caveat = next(
+        (c for c in map(impact_caveat, sorted({n.language for n in result.nodes})) if c), ""
+    )
     if caveat:
         note += f"> {caveat}\n\n"
     return _render_subgraph_with_freshness(

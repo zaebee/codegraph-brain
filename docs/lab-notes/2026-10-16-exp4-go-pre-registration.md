@@ -302,8 +302,9 @@ called cgis. Cost $6.32. Results: `benchmarks/agent_ab/results-exp4.jsonl`. Gate
 - median Δrecall **+0.000** (CI +0.00–+0.00).
 
 The point estimate decides: **the Go pack does not help**. Per the decision fixed above, the README
-and MCP instructions say Go is supported for structure and metrics only, and the coverage line on a
-Go graph tells the agent to confirm callers by reading the code. The scope recorded before the
+and MCP instructions say Go is supported for structure and metrics only. In place of the
+coverage line the decision named, every impact answer that holds Go code carries the same text: a
+note above the answer in text and mermaid, a `caveat` key in json. The scope recorded before the
 pilot applies: one library, mostly `ssh`, with easy questions.
 
 **Secondary (descriptive):**
@@ -313,8 +314,9 @@ pilot applies: one library, mostly `ssh`, with easy questions.
 - forced sessions take fewer turns and less wall time on most tasks, and 1 of 54 forced sessions
   read a whole file.
 
-Two tasks lost recall in the forced arm: `channel-channeltype` (−0.46) and `dircache-delete`
-(−0.21). `encryptedcontentinfo-data` (+0.33) and `static-curvepoint-put` (+0.30) gained.
+Three tasks lost recall in the forced arm: `channel-channeltype` (−0.46), `dircache-delete`
+(−0.21) and `static-twistpoint-setinfinity` (−0.17). Three gained: `encryptedcontentinfo-data`
+(+0.33), `static-curvepoint-put` (+0.30) and `dsaprivatekey-algorithms` (+0.03).
 
 **Known-miss check** (`exp4/known_misses.py`): recall of cgis's own `impact` answer against gold,
 per iface task:
@@ -334,3 +336,14 @@ first two, and that is where its recall fell. The graph gaps behind this:
    (#669).
 3. **The call `auth.auth(...)` stays unresolved** when `auth` is the loop variable of
    `for auth := AuthMethod(new(noneAuth)); auth != nil; {` (ssh/client_auth.go:79) (#670).
+
+## Notes from the PR review (#671)
+
+- **The pre-amendment lima draw is not reproducible from the record.** The first draw on lima
+  (0 iface and 3 static, F3 leaving 46) ran on tooling that was never committed. The first
+  committed tooling (262e6c1) already contains amendment 2.
+- **`exp4_gates.py` counts contaminated rows but keeps them in the medians,** unlike the harness
+  summary. The script was frozen before the run and is unchanged. The main run has 0 contaminated
+  rows and 0 parse failures, so no figure above depends on this.
+- **The caveat sits on `cgis_analyze_impact` only.** `cgis_trace_flow` and `cgis_context` share the
+  function-value blind spot (#668) and carry no caveat. The decision named callers and impact.

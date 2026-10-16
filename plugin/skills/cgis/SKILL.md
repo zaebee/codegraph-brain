@@ -44,7 +44,7 @@ This matters when you act on the output: **an empty impact result means "no stat
 
 ## Coverage
 
-Extractors exist for **Python** (`.py`), **TypeScript** (`.ts`, `.tsx`) and **Go** (`.go`: structure and metrics. Go impact answers are a lead, not a list — confirm callers by reading the code; a function handed over as a value, such as to `sync.Once.Do`, `time.AfterFunc` or a framework, has no edge, and some interface dispatch is missing. Measured in exp4 on golang/crypto). Vue, Astro, Rust and everything else are invisible to the graph — in a mixed repository, fall back to reading files for those parts and say which parts of the answer the graph could not cover.
+Extractors exist for **Python** (`.py`), **TypeScript** (`.ts`, `.tsx`) and **Go** (`.go`: structure and metrics only. Go impact answers are a lead, not a list — confirm callers by reading the code; a function handed over as a value, such as to `sync.Once.Do`, `time.AfterFunc` or a framework, has no edge, and some interface dispatch is missing. Measured in exp4 on one library, golang/crypto, mostly its ssh package; not measured on applications). Vue, Astro, Rust and everything else are invisible to the graph — in a mixed repository, fall back to reading files for those parts and say which parts of the answer the graph could not cover.
 
 ## Not covered here
 

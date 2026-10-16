@@ -124,6 +124,9 @@ def delete_task_paths(root: Path, paths: list[str]) -> None:
     """Delete a task's `delete_paths` under `root`; a path that is not there is an error."""
     for rel in paths:
         target = root / rel
+        if not target.resolve().is_relative_to(root.resolve()):
+            msg = f"delete_paths: {rel} resolves outside the worktree"
+            raise ValueError(msg)
         if not target.exists():
             msg = f"delete_paths: {rel} is not in the worktree"
             raise FileNotFoundError(msg)

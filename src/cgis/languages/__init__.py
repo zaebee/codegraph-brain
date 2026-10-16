@@ -110,9 +110,11 @@ MANIFESTS: tuple[Manifest, ...] = (
         # failed, and the graph misses function values that are called (sync.Once.Do,
         # time.AfterFunc, a framework callback) and some interface dispatch.
         impact_caveat=(
-            "Go callers are a lead, not a list: confirm them by reading the code. A function "
-            "handed over as a value (sync.Once.Do, time.AfterFunc, a framework callback) has "
-            "no edge, and some interface dispatch is missing."
+            "Go is supported for structure and metrics only. Go callers are a lead, not a "
+            "list: confirm them by reading the code. A function handed over as a value "
+            "(sync.Once.Do, time.AfterFunc, a framework callback) has no edge, and some "
+            "interface dispatch is missing (exp4: measured on one library, golang/crypto, "
+            "mostly its ssh package; not measured on applications)."
         ),
     ),
 )
