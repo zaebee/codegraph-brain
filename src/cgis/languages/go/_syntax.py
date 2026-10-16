@@ -213,3 +213,28 @@ def result_types(declaration: TSNode, scope: str, import_map: Mapping[str, str])
             name = result_type_name(item.child_by_field_name("type"), scope, import_map)
             types.extend([name] * max(1, len(declared_names(item))))
     return types
+
+
+def arity(node: TSNode) -> list[int]:
+    """`[parameters, results]` a function, method or interface method takes (#646).
+
+    `a, b int` is two, `int, int` is two, `...T` is one; a result that is a bare
+    type is one. A list, not a tuple: node metadata must read back equal from JSON.
+    """
+    return [
+        _count(node.child_by_field_name("parameters")),
+        _count(node.child_by_field_name("result")),
+    ]
+
+
+def _count(params: TSNode | None) -> int:
+    """How many values a parameter or result list declares."""
+    if params is None:
+        return 0
+    if params.type != "parameter_list":
+        return 1  # a single unnamed result type: `func() error`
+    return sum(
+        max(1, len(declared_names(d)))
+        for d in params.named_children
+        if d.type in ("parameter_declaration", "variadic_parameter_declaration")
+    )

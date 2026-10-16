@@ -11,8 +11,9 @@ would run: its own, or the one promoted from what it embeds. Impact walks DISPAT
 upstream, which is how a caller that only ever sees the interface reaches the
 concrete method.
 
-Satisfaction is decided by method names alone. Signatures are not compared, and
-neither is a value against a pointer receiver. That makes it an upper bound, like
+Satisfaction is decided by method names and arity — how many parameters and
+results each method has (#646). Types are not compared, and neither is a value
+against a pointer receiver. That makes it an upper bound, like
 class hierarchy analysis, hence the same lower confidence. Interfaces outside the
 graph (`io.Writer`) have no methods here and are left alone. An interface that embeds
 one is matched on the methods the graph can see, which over-matches when those are few
@@ -66,13 +67,25 @@ def interface_dispatch(
         rarest = min(needed, key=lambda name: (len(holders.get(name, [])), name))
         for type_id in holders.get(rarest, []):
             method_set = method_sets[type_id]
-            if all(name in method_set for name in needed):
+            if all(_matches(needed[name], method_set.get(name)) for name in needed):
                 for name, declaration in sorted(needed.items()):
                     if method_set[name].id == declaration.id:
                         continue
                     edge = _edge(declaration, method_set[name], type_id, interface)
                     edges[edge.id] = edge
     return list(edges.values())
+
+
+def _matches(declaration: Node, implementation: Node | None) -> bool:
+    """Whether `implementation` can stand for `declaration`: same name, same arity (#646).
+
+    Arity is `[parameters, results]`. A node without it (a graph from before #646)
+    matches on the name alone, as it did then.
+    """
+    if implementation is None:
+        return False
+    wanted, offered = declaration.metadata.get("arity"), implementation.metadata.get("arity")
+    return wanted is None or offered is None or wanted == offered
 
 
 def _edge(declaration: Node, implementation: Node, type_id: str, interface: str) -> Edge:

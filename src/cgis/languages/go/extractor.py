@@ -26,6 +26,7 @@ from cgis.languages.go._syntax import (
     BUILTINS,
     CALL_RESULT,
     UNNAMED_IMPORTS,
+    arity,
     base_type,
     call_name,
     declared_names,
@@ -214,7 +215,7 @@ def _declare(
     """An interface method: a METHOD under the interface, with its DECLARES edge."""
     name = text(elem.child_by_field_name("name"))
     fqn = f"{type_fqn_}.{name}"
-    nodes.append(_node(ctx, fqn, name, NodeType.METHOD, elem))
+    nodes.append(_node(ctx, fqn, name, NodeType.METHOD, elem, {"arity": arity(elem)}))
     edges.append(_edge(type_fqn_, fqn, EdgeType.DECLARES))
 
 
@@ -275,6 +276,8 @@ def _callable(
     returns = result_types(node, ctx.scope, ctx.import_map)
     if returns:
         metadata["returns"] = returns
+    if node_type == NodeType.METHOD:
+        metadata["arity"] = arity(node)  # what an interface it satisfies must match (#646)
     nodes.append(_node(ctx, fqn, text(node.child_by_field_name("name")), node_type, node, metadata))
 
 
