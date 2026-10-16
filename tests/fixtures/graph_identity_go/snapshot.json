@@ -788,7 +788,12 @@
     "is_generated": 0,
     "is_test": 0,
     "language": "go",
-    "metadata": {},
+    "metadata": {
+     "arity": [
+      0,
+      1
+     ]
+    },
     "name": "Serve",
     "namespace": "INTERNAL",
     "ontology_class": "Method",
@@ -821,6 +826,10 @@
     "is_test": 0,
     "language": "go",
     "metadata": {
+     "arity": [
+      1,
+      0
+     ],
      "local_types": {
       "l": "internal.server.Logger"
      }
@@ -884,6 +893,10 @@
     "is_test": 0,
     "language": "go",
     "metadata": {
+     "arity": [
+      0,
+      1
+     ],
      "local_types": {
       "s": "internal.server.Server"
      },
@@ -907,6 +920,10 @@
     "is_test": 0,
     "language": "go",
     "metadata": {
+     "arity": [
+      0,
+      0
+     ],
      "local_types": {
       "s": "internal.server.Server"
      }
@@ -1084,6 +1101,10 @@
     "is_test": 0,
     "language": "go",
     "metadata": {
+     "arity": [
+      0,
+      0
+     ],
      "local_types": {
       "b": "internal.store.Base"
      }
@@ -1120,6 +1141,10 @@
     "is_test": 0,
     "language": "go",
     "metadata": {
+     "arity": [
+      1,
+      0
+     ],
      "local_types": {
       "s": "internal.store.Store"
      }

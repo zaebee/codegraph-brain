@@ -461,8 +461,8 @@ already enforced: `docs/ontology/tolerances.lock` and
   > The Go pack's rule (`languages/go/dispatch.py`) does two things:
   >
   > - It links each interface method to the method every satisfying type would
-  >   run, own or promoted. Satisfaction is by method names, without signatures or
-  >   receiver kind, at confidence 0.5.
+  >   run, own or promoted. Satisfaction is by method names and arity (parameter and
+  >   result counts, #646), without types or receiver kind, at confidence 0.5.
   > - It emits nothing for embedding. The pilot's line above was wrong: embedding
   >   promotes, it does not dispatch, and reading it as inheritance produced false
   >   DISPATCHES (`raftState.setState → Raft.setState`).

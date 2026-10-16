@@ -242,3 +242,60 @@ def test_dispatch_survives_an_incremental_body_edit(tmp_path: Path) -> None:
         IngestionPipeline(extractors([])).run(str(root), store=store)
         d = {(e.source, e.target) for e in store.get_edges_of_type(EdgeType.DISPATCHES)}
     assert d == {("a.Doer.Do", "a.Impl.Do")}
+
+
+# --- arity: name-only matching cost 32 false edges on raft + client_golang (#646)
+
+_PIPE = "package a\ntype Piper interface{ Pipe(n int) (int, error) }\n"
+
+
+def test_a_method_with_another_parameter_count_does_not_satisfy() -> None:
+    d = _dispatch_of(
+        {
+            "a/p.go": _PIPE,
+            "a/t.go": (
+                "package a\ntype T struct{}\nfunc (t *T) Pipe() (int, error) { return 0, nil }\n"
+            ),
+        }
+    )
+    assert d == set()
+
+
+def test_a_method_with_another_result_count_does_not_satisfy() -> None:
+    d = _dispatch_of(
+        {
+            "a/p.go": _PIPE,
+            "a/t.go": "package a\ntype T struct{}\nfunc (t *T) Pipe(n int) error { return nil }\n",
+        }
+    )
+    assert d == set()
+
+
+def test_grouped_and_unnamed_parameters_count_the_same() -> None:
+    """`Pipe(a, b int)` and `Pipe(int, int)` both take two."""
+    d = _dispatch_of(
+        {
+            "a/p.go": "package a\ntype Piper interface{ Pipe(int, int) }\n",
+            "a/t.go": "package a\ntype T struct{}\nfunc (t *T) Pipe(a, b int) {}\n",
+        }
+    )
+    assert d == {("a.Piper.Pipe", "a.T.Pipe")}
+
+
+def test_a_variadic_parameter_counts_as_one() -> None:
+    d = _dispatch_of(
+        {
+            "a/p.go": "package a\ntype L interface{ Log(f string, args ...any) }\n",
+            "a/t.go": "package a\ntype T struct{}\nfunc (t *T) Log(f string, rest ...any) {}\n",
+        }
+    )
+    assert d == {("a.L.Log", "a.T.Log")}
+
+
+def test_methods_record_their_arity() -> None:
+    nodes, _ = GoExtractor().parse(
+        _PIPE + "type T struct{}\nfunc (t *T) Pipe(n int) (x, y int) {}\n", "a/p.go"
+    )
+    arity = {n.id: n.metadata.get("arity") for n in nodes}
+    assert arity["a.Piper.Pipe"] == [1, 2]
+    assert arity["a.T.Pipe"] == [1, 2]
