@@ -24,6 +24,8 @@ RAW_IMPORT_PREFIX = "raw_import:"
 #: What an edge into an unresolved boundary scores. The same value an extractor
 #: gives a call it could not type, so the two are comparable in one filter.
 _UNRESOLVED_CONFIDENCE = 0.8
+#: What a call the resolver found a target for scores, whatever language made it (#674).
+RESOLVED_CALL_CONFIDENCE = 1.0
 
 
 def _agree_on_confidence(edges: list[Edge], virtual_nodes: dict[str, Node]) -> list[Edge]:
@@ -182,7 +184,8 @@ class ResolverEngine:
         Strips the raw_call: prefix, dispatches to resolve_self_call for
         self.* calls or resolve_global_call otherwise, then returns a copy of
         the edge with the resolved target and adjusted confidence:
-        min(edge.confidence + 0.5, 1.0) on success, 0.8 on failure.
+        1.0 on success, 0.8 on failure, in every language: confidence says how
+        the call resolved, not where its extractor started (#674).
         """
         raw_name = edge.target.removeprefix(RAW_CALL_PREFIX)
         if raw_name.startswith(SELF_PREFIX):
@@ -203,7 +206,7 @@ class ResolverEngine:
             if hit is not None:
                 return edge.model_copy(update={"target": hit[0], "confidence": hit[1]})
         final_target = new_target or raw_name
-        confidence = min(edge.confidence + 0.5, 1.0) if new_target else 0.8
+        confidence = RESOLVED_CALL_CONFIDENCE if new_target else _UNRESOLVED_CONFIDENCE
         return edge.model_copy(update={"target": final_target, "confidence": confidence})
 
     def _resolved_dep_edge(self, edge: Edge) -> Edge | None:

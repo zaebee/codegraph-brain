@@ -65,9 +65,11 @@ def reconcile_import(fqn: str, _source_file: str | None, view: ResolutionView) -
 def builtin_call(name: str, file_path: str, view: ResolutionView) -> str | None:
     """`len`, `append`, `string(...)`: the language's own, before any global symbol (I4).
 
-    Before the global index, which would otherwise hand a Go `make` to a Python
-    `make` in the same repository. A function of the caller's own package with
-    the builtin's name shadows it, as in Go: left to the same-scope tiebreak.
+    Before the global index, which would otherwise hand a Go `make` to a `make`
+    of another package. A function of the caller's own package with the builtin's
+    name shadows it, as in Go: left to the same-scope tiebreak. Checked for
+    shadowing, it is a resolved call and scores 1.0, unlike a Python or TS builtin,
+    which is matched by name alone and keeps the unresolved 0.8 (#674 review).
     """
     if name not in BUILTINS:
         return None
