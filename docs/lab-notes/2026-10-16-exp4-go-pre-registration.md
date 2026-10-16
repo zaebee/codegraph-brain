@@ -119,4 +119,28 @@ gold tools are committed under `benchmarks/agent_ab/analysis/exp4/` before the p
 
 ## Choice log (filled in by the walk; nothing above changes)
 
-_Pending._
+The searches ran at 2026-10-16T14:09:57Z, after the pre-registration commit 1a10032
+(14:09:31Z).
+- **Pool.** 300 repositories. The only excluded repository among them was uber-go/zap, which leaves
+  299. Seeded order: `OJ/gobuster`, `lima-vm/lima`, `cilium/cilium`, and so on.
+- **Walk.** Two candidates:
+  1. `OJ/gobuster` failed the size check: 9,678 lines.
+  2. **`lima-vm/lima` passed every check and is chosen:**
+     - sha `f47461ed7d03f300297e01fd659e9aefc6c228b9`, module `github.com/lima-vm/lima/v2`;
+     - 50,577 non-test lines, of which 5.3% are generated;
+     - 1 of 243 non-test files has type parameters;
+     - 20 interfaces, 13 of them with two or more in-module implementations.
+- **Artifacts.** The search outputs, the pool, the walk script, its log and the interface counter
+  (`ifc.go`) are in `benchmarks/agent_ab/analysis/exp4/selection/`.
+
+**Recorded on choice, before any gold or cgis run on lima:**
+- **Nested modules.** `website/` and `hack/tools/` are deleted from the worktree, as above.
+- **Agent instruction files.** The repository carries `CLAUDE.md` and `AGENTS.md`, which Claude Code
+  reads. They are kept, identical in both arms, because a real repository has them.
+- **Amendment to task eligibility.** lima is split by platform: 56 non-test files carry `//go:build`
+  constraints, mostly darwin against linux. The cgis graph is built for linux/amd64 (#667), and gold
+  as specified does not name a platform. A target whose callers differ between the linux and darwin
+  builds would therefore score the arms against an arbitrary platform choice. A target is eligible
+  only if its required caller closure is identical under `GOOS=linux` and `GOOS=darwin` (both
+  `GOARCH=amd64`), and gold is the linux closure. Any target that fails this is dropped before the
+  draw, and the count is reported.

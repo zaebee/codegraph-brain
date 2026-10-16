@@ -1,0 +1,2 @@
+{"name": "OJ/gobuster", "stars": 14220, "at": "2026-10-16T14:10:45Z", "sha": "c77583fbb8824058d74d38240896eff610683c8e", "module": "github.com/OJ/gobuster/v3", "loc": 9678, "generated_frac": 0.0, "fail": "loc 9678"}
+{"name": "lima-vm/lima", "stars": 22104, "at": "2026-10-16T14:10:46Z", "sha": "f47461ed7d03f300297e01fd659e9aefc6c228b9", "module": "github.com/lima-vm/lima/v2", "loc": 50577, "generated_frac": 0.053, "files": 243, "generic_files": 1, "ifaces": 20, "multi_impl": 13, "pass": true}
