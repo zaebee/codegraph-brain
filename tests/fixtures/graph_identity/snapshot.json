@@ -1066,7 +1066,7 @@
     "weight": 1.0
    },
    {
-    "confidence": 0.6,
+    "confidence": 1.0,
     "context": null,
     "file_path": null,
     "id": "main.main->raw_call:debounce@13:19",
@@ -1078,7 +1078,7 @@
     "weight": 1.0
    },
    {
-    "confidence": 0.6,
+    "confidence": 1.0,
     "context": null,
     "file_path": null,
     "id": "main.main->raw_call:helper@13:34",
@@ -1114,7 +1114,7 @@
     "weight": 1.0
    },
    {
-    "confidence": 0.6,
+    "confidence": 1.0,
     "context": null,
     "file_path": null,
     "id": "main.main->raw_call:randomUUID@12:2",
@@ -1126,7 +1126,7 @@
     "weight": 1.0
    },
    {
-    "confidence": 0.6,
+    "confidence": 1.0,
     "context": null,
     "file_path": null,
     "id": "main.main->raw_call:setTimeout@13:2",
@@ -1138,7 +1138,7 @@
     "weight": 1.0
    },
    {
-    "confidence": 0.6,
+    "confidence": 1.0,
     "context": null,
     "file_path": null,
     "id": "main.main->raw_call:useState@11:2",
@@ -2078,7 +2078,7 @@
     "weight": 1.0
    },
    {
-    "confidence": 0.6,
+    "confidence": 1.0,
     "context": null,
     "file_path": null,
     "id": "ts.apps.web.src.main.main->raw_call:debounce@13:19",
@@ -2090,7 +2090,7 @@
     "weight": 1.0
    },
    {
-    "confidence": 0.6,
+    "confidence": 1.0,
     "context": null,
     "file_path": null,
     "id": "ts.apps.web.src.main.main->raw_call:helper@13:34",
@@ -2102,7 +2102,7 @@
     "weight": 1.0
    },
    {
-    "confidence": 0.6,
+    "confidence": 1.0,
     "context": null,
     "file_path": null,
     "id": "ts.apps.web.src.main.main->raw_call:libFn@13:41",
@@ -2114,7 +2114,7 @@
     "weight": 1.0
    },
    {
-    "confidence": 0.6,
+    "confidence": 1.0,
     "context": null,
     "file_path": null,
     "id": "ts.apps.web.src.main.main->raw_call:libFn@14:9",
@@ -2126,7 +2126,7 @@
     "weight": 1.0
    },
    {
-    "confidence": 0.6,
+    "confidence": 1.0,
     "context": null,
     "file_path": null,
     "id": "ts.apps.web.src.main.main->raw_call:randomUUID@12:2",
@@ -2138,7 +2138,7 @@
     "weight": 1.0
    },
    {
-    "confidence": 0.6,
+    "confidence": 1.0,
     "context": null,
     "file_path": null,
     "id": "ts.apps.web.src.main.main->raw_call:setTimeout@13:2",
@@ -2150,7 +2150,7 @@
     "weight": 1.0
    },
    {
-    "confidence": 0.6,
+    "confidence": 1.0,
     "context": null,
     "file_path": null,
     "id": "ts.apps.web.src.main.main->raw_call:useState@11:2",

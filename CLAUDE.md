@@ -67,7 +67,7 @@ IngestionPipeline (pipeline/__init__.py)
 ## Core Models (`src/cgis/core/models.py`)
 
 - `Node` — immutable (frozen Pydantic). `id` is the FQN. Key fields: `type: NodeType`, `file_path`, `start_line`, `end_line`, `confidence_score`, `domains`, `ontology_class`.
-- `Edge` — immutable (frozen Pydantic). `source`/`target` are FQNs. Key fields: `type: EdgeType`, `weight`, `confidence`. Unresolved calls have `confidence=0.1` and target `raw_call:<name>`.
+- `Edge` — immutable (frozen Pydantic). `source`/`target` are FQNs. Key fields: `type: EdgeType`, `weight`, `confidence`. A call leaves the extractor as target `raw_call:<name>`; after resolution a resolved call scores 1.0 in every language, an unresolved one 0.8 with its bare raw name as target (#661), and a DISPATCHES edge 0.5 (#674).
 - `NodeType` — structural (`FILE`, `MODULE`, `CLASS`, `FUNCTION`, `METHOD`…), runtime (`API_ENDPOINT`, `DB_TABLE`…), semantic (`DOMAIN_CONCEPT`).
 - `EdgeType` — structural (`CONTAINS`, `DECLARES`, `IMPORTS`), behavioral (`CALLS`, `REFERENCES`), semantic (`HANDLES`, `PERSISTS`, `AUTHORIZES`).
 

@@ -323,7 +323,9 @@ class SymbolResolver:
         # Global symbol index is keyed by short name; for dotted refs like `models.BaseModel`
         # strip the module prefix and verify the resolved FQN ends with the full dotted name.
         query_name = name.rsplit(".", maxsplit=1)[-1]
-        resolved = self._resolve_via_global_symbols(query_name, file_path)
+        source = self.index.nodes.get(source_fqn)
+        language = source.language if source else None
+        resolved = self._resolve_via_global_symbols(query_name, file_path, language)
         if resolved and ("." not in name or resolved == name or resolved.endswith(f".{name}")):
             return resolved
         return None
@@ -377,7 +379,8 @@ class SymbolResolver:
             if result:
                 return result
 
-        return self._resolve_via_global_symbols(name, file_path)
+        language = source_node.language if source_node else None
+        return self._resolve_via_global_symbols(name, file_path, language)
 
     def resolve_dep_candidate(
         self, name: str, source_fqn: str, edge_file_path: str | None
@@ -468,9 +471,19 @@ class SymbolResolver:
             return candidate
         return None
 
-    def _resolve_via_global_symbols(self, name: str, file_path: str | None) -> str | None:
-        """Look up name in the global symbol index, preferring same-file candidates."""
+    def _resolve_via_global_symbols(
+        self, name: str, file_path: str | None, language: str | None = None
+    ) -> str | None:
+        """Look up name in the global symbol index, preferring same-file candidates.
+
+        With `language`, only that language's symbols are candidates: a bare name in one
+        language never binds to another's (#675).
+        """
         candidates = self.index.global_symbols.get(name, [])
+        if language is not None:
+            candidates = [
+                c for c in candidates if (n := self.index.nodes.get(c)) and n.language == language
+            ]
         if not candidates:
             return None
         if len(candidates) == 1:

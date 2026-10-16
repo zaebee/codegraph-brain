@@ -2565,3 +2565,112 @@ def test_c3_of_a_cycle_is_none() -> None:
     assert _c3("A", {"A": ["B"], "B": ["A"]}) is None
     assert _c3("A", {"A": ["A"]}) is None
     assert _c3("D", {"D": ["B", "C"], "B": ["A"], "C": ["A"]}) == ["D", "B", "C", "A"]
+
+
+@pytest.mark.parametrize(("language", "start"), [("python", 0.5), ("typescript", 0.1), ("go", 0.1)])
+def test_a_resolved_call_scores_one_in_every_language(language: str, start: float) -> None:
+    # #674: confidence is a property of how a call resolved, not of the extractor's
+    # starting value; TS and Go resolved calls scored 0.6, below an unresolved 0.8.
+    nodes = [
+        Node(
+            id=f"m.{n}",
+            type=NodeType.FUNCTION,
+            name=n,
+            file_path="m.x",
+            start_line=1,
+            end_line=2,
+            language=language,
+        )
+        for n in ("caller", "callee")
+    ]
+    edges = [
+        Edge(
+            id="m.x:raw_call:callee@1:0",
+            source="m.caller",
+            target="raw_call:callee",
+            type=EdgeType.CALLS,
+            confidence=start,
+        ),
+        Edge(
+            id="m.x:raw_call:nowhere@2:0",
+            source="m.caller",
+            target="raw_call:nowhere",
+            type=EdgeType.CALLS,
+            confidence=start,
+        ),
+    ]
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+    by_target = {e.target: e.confidence for e in resolved if e.type == EdgeType.CALLS}
+    assert by_target["m.callee"] == pytest.approx(1.0)
+    assert by_target["nowhere"] < by_target["m.callee"]
+
+
+@pytest.mark.parametrize("caller_language", ["typescript", "go"])
+def test_a_bare_name_never_resolves_into_another_language(caller_language: str) -> None:
+    # #675: the global bare-name fallback crossed languages in a mixed repository.
+    nodes = [
+        Node(
+            id="py.tools.make_widget",
+            type=NodeType.FUNCTION,
+            name="make_widget",
+            file_path="py/tools.py",
+            start_line=1,
+            end_line=2,
+            language="python",
+        ),
+        Node(
+            id="web.main",
+            type=NodeType.FUNCTION,
+            name="main",
+            file_path="web/main.x",
+            start_line=1,
+            end_line=2,
+            language=caller_language,
+        ),
+    ]
+    edges = [
+        Edge(
+            id="web/main.x:raw_call:make_widget@1:0",
+            source="web.main",
+            target="raw_call:make_widget",
+            type=EdgeType.CALLS,
+            confidence=0.1,
+        ),
+    ]
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+    call = next(e for e in resolved if e.type == EdgeType.CALLS)
+    assert call.target != "py.tools.make_widget"
+
+
+def test_a_bare_name_still_resolves_within_its_language() -> None:
+    nodes = [
+        Node(
+            id="web.tools.makeWidget",
+            type=NodeType.FUNCTION,
+            name="makeWidget",
+            file_path="web/tools.ts",
+            start_line=1,
+            end_line=2,
+            language="typescript",
+        ),
+        Node(
+            id="web.main",
+            type=NodeType.FUNCTION,
+            name="main",
+            file_path="web/main.ts",
+            start_line=1,
+            end_line=2,
+            language="typescript",
+        ),
+    ]
+    edges = [
+        Edge(
+            id="web/main.ts:raw_call:makeWidget@1:0",
+            source="web.main",
+            target="raw_call:makeWidget",
+            type=EdgeType.CALLS,
+            confidence=0.1,
+        ),
+    ]
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+    assert next(e for e in resolved if e.type == EdgeType.CALLS).target == "web.tools.makeWidget"
