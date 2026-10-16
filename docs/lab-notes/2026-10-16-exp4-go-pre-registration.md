@@ -289,3 +289,46 @@ draw is rerun with the same seed, and the first draw's picks are kept in the rec
   sessions. Fixed costs (system prompt, tool descriptions, the forced first cgis call) weigh
   heavily in those. A fail means "no saving on easy questions in this library", not "the graph is
   useless for Go". A pass carries the scope already recorded. The gate is unchanged.
+
+## Result (2026-10-16)
+
+Main run: 108 sessions at 2f1d166 with gold frozen. All transcripts show
+`apiKeySource: ANTHROPIC_API_KEY`. None failed or was contaminated, and every cgis-forced session
+called cgis. Cost $6.32. Results: `benchmarks/agent_ab/results-exp4.jsonl`. Gates:
+`exp4_gates.py`.
+
+**Primary (iface, n = 12):**
+- median cost ratio **0.810** (bootstrap 95% CI 0.67–0.95), against a threshold of ≤ 0.80;
+- median Δrecall **+0.000** (CI +0.00–+0.00).
+
+The point estimate decides: **the Go pack does not help**. Per the decision fixed above, the README
+and MCP instructions say Go is supported for structure and metrics only, and the coverage line on a
+Go graph tells the agent to confirm callers by reading the code. The scope recorded before the
+pilot applies: one library, mostly `ssh`, with easy questions.
+
+**Secondary (descriptive):**
+- static (n = 6): ratio 0.747, Δrecall +0.000;
+- all 18 tasks: ratio 0.796, Δrecall +0.000;
+- median precision on iface: control 1.00, cgis-forced 0.90;
+- forced sessions take fewer turns and less wall time on most tasks, and no forced session read a
+  whole file.
+
+Two tasks lost recall in the forced arm: `channel-channeltype` (−0.46) and `dircache-delete`
+(−0.21). `encryptedcontentinfo-data` (+0.33) and `static-curvepoint-put` (+0.30) gained.
+
+**Known-miss check** (`exp4/known_misses.py`): recall of cgis's own `impact` answer against gold,
+per iface task:
+- 1.00 on 5 tasks, 0.94–0.96 on 2;
+- 0.75 on `dircache-delete`, 0.50 on `channel-channeltype`, 0.35 on `channel-stderr`,
+  0.20 on `keyboardinteractivechallenge-auth` and 0.08 on `cbccipher-readcipherpacket`.
+
+The forced arm recovered the last three by grepping, which cost money. It did not recover the
+first two, and that is where its recall fell. The graph gaps behind this:
+1. **Function values called synchronously or by a launcher have no edge.** This covers
+   `sync.Once.Do(c.handleForwards)`, `time.AfterFunc(d, dr.renew)` and a local slice of method
+   expressions. It causes the misses in `channeltype`, `dircache` and `stderr`, and both recall
+   losses.
+2. **Dispatch on `packetConn.readPacket` has no targets.** Nothing in the graph reaches
+   `transport.readPacket`, so `cbcCipher.readCipherPacket` has almost no callers.
+3. **The call `auth.auth(...)` stays unresolved** when `auth` is the loop variable of
+   `for auth := AuthMethod(new(noneAuth)); auth != nil; {` (ssh/client_auth.go:79).
