@@ -189,7 +189,8 @@ class ResolverEngine:
                 edge.source, raw_name.removeprefix(SELF_PREFIX)
             )
         else:
-            site = edge.id.rpartition("@")[2] if "@" in edge.id else None
+            # `<raw name>@<row>:<col>`: the key a source's `site_types` uses (#643).
+            site = edge.id.partition("raw_call:")[2] or None
             new_target = self._resolver.resolve_global_call(
                 raw_name, edge.source, edge.file_path, site
             )

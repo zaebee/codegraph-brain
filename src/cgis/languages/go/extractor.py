@@ -517,8 +517,10 @@ def _visit(
         if name and function is not None:
             edge = _call(source, name, node)
             edges.append(edge)
-            _site(ctx, function, own, bindings, edge.id.rpartition("@")[2])
+            _site(ctx, function, own, bindings, _site_key(edge))
             _global_head(ctx, function, bindings)
+        elif function is not None and function.type == "selector_expression":
+            _unnamed_receiver(ctx, source, function, node, bindings, edges)
     elif not declares:
         _bindings_of(ctx, node, bindings)
     for child in node.children:
@@ -791,7 +793,7 @@ def _callee(ctx: _File, function: TSNode | None, bindings: Bindings) -> str | No
     if len(chain) == 1:
         return None if chain[0] in BUILTINS else f"{ctx.scope}.{chain[0]}"
     if not chain:
-        return None
+        return _chained_callee(ctx, function, bindings) if function is not None else None
     *path, method = chain
     if len(path) == 1 and path[0] not in bindings and path[0] in ctx.import_map:
         # A local shadows an import, as the resolver reads it (M1).
@@ -801,6 +803,95 @@ def _callee(ctx: _File, function: TSNode | None, bindings: Bindings) -> str | No
     if held is None or held.count("|") >= _MAX_CHAIN:
         return None
     return f"{held}|{method}" if held.startswith("go-") else f"{held}.{method}"
+
+
+def _chained_callee(ctx: _File, function: TSNode, bindings: Bindings) -> str | None:
+    """`M` on a value no name holds — `a.B().M`, `x.(T).M`: `<its type>|M` (#643 C)."""
+    if function.type != "selector_expression":
+        return None
+    root, names = _selector_parts(function)
+    *fields, method = names
+    held = _root_type(ctx, root, bindings)
+    if held and fields:
+        held = _bounded(f"{FIELD}{'.'.join(fields)}:{held}")
+    if held is None or held.count("|") >= _MAX_CHAIN:
+        return None
+    return f"{held}|{method}" if held.startswith("go-") else f"{held}.{method}"
+
+
+def _unnamed_receiver(
+    ctx: _File,
+    source: str,
+    function: TSNode,
+    call: TSNode,
+    bindings: Bindings,
+    edges: list[Edge],
+) -> None:
+    """A call on a value no name holds gets an edge too, named after the value (#643 C).
+
+    `c.Leader().AddVoter()` was no edge at all, so no name reached the coverage
+    count. It is now `Leader().AddVoter`, its receiver typed at its position in
+    `site_types` — or untyped ("?"), which the resolver leaves unresolved rather
+    than matching `AddVoter` against the package's symbols.
+    """
+    root, names = _selector_parts(function)
+    label = _label(root)
+    edge = _call(source, ".".join([label, *names]), call)
+    edges.append(edge)
+    held = _root_type(ctx, root, bindings)
+    bindings.sites[_site_key(edge)] = (label, held or _UNKNOWN)
+
+
+def _selector_parts(function: TSNode) -> tuple[TSNode, list[str]]:
+    """`a.B().c.M` as (the `a.B()` node, ['c', 'M']): the value and the names after it."""
+    names: list[str] = []
+    node = function
+    while node.type == "selector_expression":
+        names.insert(0, text(node.child_by_field_name("field")))
+        operand = node.child_by_field_name("operand")
+        if operand is None:
+            break
+        node = operand
+    return node, names
+
+
+def _root_type(ctx: _File, root: TSNode, bindings: Bindings) -> str | None:
+    """The type of the value a chain starts from: a call's result, an assertion, ..."""
+    while root.type == "parenthesized_expression" and root.named_children:
+        root = root.named_children[0]
+    if root.type == "call_expression":
+        return _operand(ctx, root, bindings)
+    return _value_type(ctx, root, bindings)
+
+
+def _label(node: TSNode) -> str:
+    """A short, dot-free name for a value no name holds: `Leader()`, `(T)`, `m[]`."""
+    if node.type == "identifier":
+        return text(node)
+    chain = selector_chain(node)
+    if chain:
+        return chain[-1]
+    operand = node.child_by_field_name("operand")
+    if node.type == "call_expression":
+        function = node.child_by_field_name("function")
+        return f"{_label(function) if function is not None else '?'}()"
+    if node.type == "type_assertion_expression":
+        reference = type_reference(node.child_by_field_name("type"))
+        return f"({reference.rsplit('.', 1)[-1] or '?'})"
+    if node.type == "index_expression":
+        return f"{_label(operand) if operand is not None else '?'}[]"
+    if node.type == "parenthesized_expression" and node.named_children:
+        return f"({_label(node.named_children[0])})"
+    if node.type == "unary_expression" and operand is not None:
+        return f"{text(node.child_by_field_name('operator'))}{_label(operand)}"
+    if node.type == "selector_expression":  # a field of a call's result: `a.B().f`
+        return text(node.child_by_field_name("field"))
+    return "?"
+
+
+def _site_key(edge: Edge) -> str:
+    """`<raw name>@<row>:<col>`: a chain's calls share a start, never a name there too."""
+    return edge.id.partition(_RAW_CALL)[2]
 
 
 def _call(source: str, name: str, node: TSNode) -> Edge:

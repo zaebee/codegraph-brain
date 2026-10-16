@@ -356,7 +356,7 @@ class SymbolResolver:
     ) -> str | None:
         """Resolve a global call using local types, import map, then global symbol index.
 
-        `site` is the call's position in its edge id; a source's `site_types` may
+        `site` is the call's raw name and position, as its edge id ends; a source's `site_types` may
         say what the receiver name is there, over its `local_types` (#643 B8).
         """
         source_node = self.index.nodes.get(source_fqn)
