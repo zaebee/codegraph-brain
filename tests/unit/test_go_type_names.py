@@ -35,6 +35,13 @@ APP = (
     "func Field(b *Box[*C]) { b.v.Run() }\n"
     "type Getter[T any] interface{ Get() T }\n"
     "func Iface(g Getter[*C]) { g.Get().Run() }\n"
+    "func Contained[A interface{ Run() }](xs []A, m map[string]A, ch chan A, arr [2]A) {\n"
+    '\txs[0].Run()\n\tm["k"].Run()\n\t(<-ch).Run()\n\tarr[0].Run()\n'
+    "\tfor _, v := range xs {\n\t\tv.Run()\n\t}\n"
+    "\tzs := make([]A, 0)\n\tzs[0].Run()\n"
+    "}\n"
+    "func AliasSlice() {\n\ttype A = C\n\tcs := []A{}\n\tcs[0].Run()\n"
+    "\tfor _, e := range cs {\n\t\te.Run()\n\t}\n}\n"
 )
 
 
@@ -82,3 +89,12 @@ def test_a_generic_struct_s_field_of_its_parameter_is_not_the_package_type() -> 
 
 def test_a_generic_interface_s_result_of_its_parameter_is_not_the_package_type() -> None:
     assert "app.T.Run" not in _targets("Iface")
+
+
+def test_a_type_parameter_inside_a_container_is_not_the_package_type() -> None:
+    """`xs []A`, `map[string]A`, `chan A`, `[2]A`, `make([]A, 0)`: elements type nothing."""
+    assert "app.A.Run" not in _targets("Contained")
+
+
+def test_a_local_alias_inside_a_container_names_its_target() -> None:
+    assert _targets("AliasSlice") == ["app.C.Run", "app.C.Run"]

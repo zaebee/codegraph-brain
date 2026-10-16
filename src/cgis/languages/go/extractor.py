@@ -534,9 +534,34 @@ def _typed(ctx: _File, node: TSNode | None, bindings: Bindings) -> str | None:
         local = bindings.type_here(text(named))
         if local is not None:
             return local or None
-    return type_fqn(node, ctx.scope, ctx.import_map) or container_type(
-        node, ctx.scope, ctx.import_map
-    )
+    container = node
+    while container is not None and container.type == "pointer_type":
+        container = container.named_children[0] if container.named_children else None
+    if container is not None and container.type in _CONTAINERS:
+        # The element goes through the same local names: `xs []A` with `[A any]` is not
+        # a slice of the package's `A` (#662 review).
+        kind, field = _CONTAINERS[container.type]
+        element = _element(ctx, container.child_by_field_name(field), bindings)
+        if kind == "map":
+            key = _element(ctx, container.child_by_field_name("key"), bindings)
+            return f"{ELEM}map:{element},{key}" if element or key else None
+        return f"{ELEM}{kind}:{element}" if element else None
+    return type_fqn(node, ctx.scope, ctx.import_map)
+
+
+#: Container types, by node type: (the kind a `go-elem:` marker names, the element's field).
+_CONTAINERS = {
+    "channel_type": ("chan", "value"),
+    "slice_type": ("seq", "element"),
+    "array_type": ("seq", "element"),
+    "map_type": ("map", "value"),
+}
+
+
+def _element(ctx: _File, node: TSNode | None, bindings: Bindings) -> str:
+    """A container's element or key as a named type; "" for none or another container."""
+    typed = _typed(ctx, node, bindings)
+    return typed if typed and not typed.startswith("go-") else ""
 
 
 def _held(bindings: Bindings, name: str) -> str | None:
