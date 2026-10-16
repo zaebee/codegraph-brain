@@ -175,3 +175,9 @@ def test_the_server_reads_the_variable_at_startup() -> None:
         "cgis_analyze_impact",
         "cgis_trace_flow",
     ]
+
+
+def test_instructions_say_go_callers_need_confirming() -> None:
+    # exp4 decision: Go is supported for structure and metrics; impact answers are a lead.
+    assert re.search(r"\nGo callers .*confirm them by reading the code", SERVER_INSTRUCTIONS)
+    assert "Python callers" not in SERVER_INSTRUCTIONS

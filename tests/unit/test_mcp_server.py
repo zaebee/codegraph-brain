@@ -1345,3 +1345,35 @@ def test_both_flags_reproduce_the_previous_mcp_output(
     payload = _payload(result)
     assert _shape(payload) == _shape(expected)
     assert payload["coverage"] == expected["coverage"]
+
+
+@pytest.fixture
+def go_repo_with_calls(tmp_path: Path) -> Path:
+    (tmp_path / "go.mod").write_text("module example.com/m\n\ngo 1.22\n", encoding="utf-8")
+    (tmp_path / "m.go").write_text(
+        "package m\n\nfunc target() {}\n\nfunc caller() { target() }\n", encoding="utf-8"
+    )
+    db = tmp_path / "graph.db"
+    cgis_ingest(str(tmp_path), str(db))
+    return db
+
+
+@pytest.mark.parametrize("fmt", ["text", "mermaid", "json"])
+def test_go_impact_answer_says_to_confirm_callers_by_reading(
+    go_repo_with_calls: Path, fmt: str
+) -> None:
+    # exp4: the Go pack did not pass the impact gate, so a Go answer says so (decision).
+    out = cgis_analyze_impact("m.target", str(go_repo_with_calls), output_format=fmt)
+    assert "caller" in out
+    assert "confirm" in out
+    assert "reading the code" in out
+
+
+def test_python_impact_answer_carries_no_language_caveat(
+    repo_with_calls: tuple[Path, Path],
+) -> None:
+    root, db = repo_with_calls
+    cgis_ingest(str(root), str(db))
+    out = cgis_analyze_impact("mod.callee", str(db), output_format="text")
+    assert "mod.caller" in out
+    assert "reading the code" not in out
