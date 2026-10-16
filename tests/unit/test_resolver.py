@@ -2422,3 +2422,41 @@ def main():
     targets = {e.target for e in result if e.source == "src.mod.main"}
     assert "src.mod.B.who" in targets
     assert "src.mod.A.who" not in targets
+
+
+def test_local_type_resolution_reaches_an_inherited_method() -> None:
+    """`s = Sub(); s.close()` lands on Base.close, as `self.close()` would (#643 A1)."""
+    code = """
+class Base:
+    def close(self):
+        pass
+
+class Sub(Base):
+    pass
+
+def main():
+    s = Sub()
+    s.close()
+"""
+    nodes, edges = PythonExtractor().parse(code, "src/mod.py")
+    result, _ = ResolverEngine(nodes, edges).resolve()
+    assert any(e.source == "src.mod.main" and e.target == "src.mod.Base.close" for e in result)
+
+
+def test_local_type_resolution_follows_a_declared_attribute() -> None:
+    """`e.store.get()` on `e: Engine` uses Engine's declared `self.store` type (#643 A2)."""
+    code = """
+class Store:
+    def get(self):
+        pass
+
+class Engine:
+    def __init__(self, store: Store):
+        self.store = store
+
+def run(e: Engine):
+    e.store.get()
+"""
+    nodes, edges = PythonExtractor().parse(code, "src/mod.py")
+    result, _ = ResolverEngine(nodes, edges).resolve()
+    assert any(e.source == "src.mod.run" and e.target == "src.mod.Store.get" for e in result)

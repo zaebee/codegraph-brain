@@ -179,13 +179,21 @@ def _types(ctx: _File, declaration: TSNode, nodes: list[Node], edges: list[Edge]
 
 
 def _field_types(ctx: _File, body: TSNode | None) -> dict[str, str]:
-    """A struct's named fields of a named type: its `self_types`, as Python's (#608)."""
+    """A struct's fields of a named type: its `self_types`, as Python's (#608).
+
+    An embedded field is named after its type (`*pkg.Metric` is `Metric`), so
+    `s.Metric.Write()` reads it like any other field (#643 A4).
+    """
     fields = _child(body, "field_declaration_list") if body and body.type == "struct_type" else None
     types: dict[str, str] = {}
     for field in fields.children if fields else []:
-        fqn = type_fqn(field.child_by_field_name("type"), ctx.scope, ctx.import_map)
-        if field.type == "field_declaration" and fqn:
-            types.update(dict.fromkeys(declared_names(field), fqn))
+        type_node = field.child_by_field_name("type")
+        fqn = type_fqn(type_node, ctx.scope, ctx.import_map)
+        if field.type != "field_declaration" or not fqn:
+            continue
+        reference = type_reference(type_node)
+        names = declared_names(field) or [reference.rsplit(".", 1)[-1]]
+        types.update(dict.fromkeys(names, fqn))
     return types
 
 

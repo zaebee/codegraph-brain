@@ -874,6 +874,7 @@
     "language": "go",
     "metadata": {
      "self_types": {
+      "Logger": "internal.server.Logger",
       "db": "example.com.shop.internal.store.Store"
      }
     },
@@ -1124,7 +1125,11 @@
     "is_generated": 0,
     "is_test": 0,
     "language": "go",
-    "metadata": {},
+    "metadata": {
+     "self_types": {
+      "Base": "internal.store.Base"
+     }
+    },
     "name": "Store",
     "namespace": "INTERNAL",
     "ontology_class": "Class",

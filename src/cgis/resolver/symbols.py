@@ -71,7 +71,7 @@ def _file_of(index: SymbolIndex, fqn: str) -> str | None:
 
 
 def _declaring_class(
-    index: SymbolIndex, owner_fqn: str, attr: str, inheritance: dict[str, list[str]]
+    index: SymbolIndex, owner_fqn: str, attr: str, inheritance: Mapping[str, list[str]]
 ) -> str | None:
     """The class in owner_fqn's hierarchy that declares `self.<attr>`, if any.
 
@@ -94,9 +94,67 @@ def _declaring_class(
         # Reversed because the stack is LIFO: extending in source order would pop
         # the *rightmost* base first, so `class C(Left, Right)` would answer with
         # Right's declaration where Python's MRO uses Left's. The sibling
-        # _resolve_method_on_class_hierarchy recurses in source order and is
+        # _method_in_hierarchy recurses in source order and is
         # already correct; this keeps the two consistent.
         stack.extend(reversed(inheritance.get(current, [])))
+    return None
+
+
+def _method_in_hierarchy(
+    index: SymbolIndex,
+    inheritance: Mapping[str, list[str]],
+    class_fqn: str,
+    method_name: str,
+    visited: set[str],
+) -> str | None:
+    """DFS over EXTENDS edges to find method_name defined in class_fqn or any ancestor."""
+    if class_fqn in visited:
+        return None
+    visited.add(class_fqn)
+    direct = index.class_methods.get(class_fqn, {}).get(method_name)
+    if direct:
+        return direct
+    for parent_fqn in inheritance.get(class_fqn, []):
+        result = _method_in_hierarchy(index, inheritance, parent_fqn, method_name, visited)
+        if result:
+            return result
+    return None
+
+
+def _resolve_on_type(
+    index: SymbolIndex,
+    inheritance: Mapping[str, list[str]],
+    type_fqn: str,
+    path: str,
+    source_file: str | None,
+) -> str | None:
+    """`a.b.m` on a value of `type_fqn`: each attribute's declared type, then `m` (#643).
+
+    Attributes and the method are both looked up through the hierarchy: a base
+    class, or a Go struct an embedding promotes from, may hold either.
+    """
+    *attrs, method = path.split(".")
+    current = type_fqn
+    for attr in attrs:
+        declaring = _declaring_class(index, current, attr, inheritance)
+        receiver = receiver_type_fqn(index, declaring, attr) if declaring else None
+        if receiver is None:
+            return None
+        current = receiver
+    found = _method_in_hierarchy(index, inheritance, current, method, set())
+    if found:
+        return found
+    # No such method on the declared receiver. Keep it only when the receiver
+    # is genuinely a library type — a real call into a dependency, for which
+    # the engine mints an EXTERNAL/STDLIB node. On an internal type it is a
+    # phantom method and must not be fabricated: that is the call #414 was
+    # filed to expose. Same policy as _resolve_local_type_call (spec D7).
+    candidate = f"{current}.{method}"
+    if index.classify_fqn(candidate, source_file) in (
+        NodeNamespace.EXTERNAL,
+        NodeNamespace.STDLIB,
+    ):
+        return candidate
     return None
 
 
@@ -171,40 +229,18 @@ class SymbolResolver:
         "client.search": the receiver's declared type comes from `self_types`
         (spec D1), and the method is then searched on that class exactly as it
         would be on the owner — same walk, same inheritance rules (spec D7).
-
-        Only one dot is handled. `self.a.b.c()` is left alone: resolving it
-        would need the return type of `self.a.b`, which nothing records (D8).
+        `self.a.b.c()` takes each hop's declared type in turn (#643; D8 held
+        that nothing recorded them, which `self_types` on every class now does).
         """
         owner = _owning_class(self.index, source_fqn)
         if owner is None:
             return None
-        attr, sep, method = method_name.partition(".")
-        if not sep:
-            return self._resolve_method_on_class_hierarchy(owner, method_name, set())
-        if "." in method:
-            return None
-        declaring = _declaring_class(self.index, owner, attr, self.inheritance_tree)
-        if declaring is None:
-            return None
-        receiver = receiver_type_fqn(self.index, declaring, attr)
-        if receiver is None:
-            return None
-        found = self._resolve_method_on_class_hierarchy(receiver, method, set())
-        if found:
-            return found
-        # No such method on the declared receiver. Keep it only when the receiver
-        # is genuinely a library type — a real call into a dependency, for which
-        # the engine mints an EXTERNAL/STDLIB node. On an internal type it is a
-        # phantom method and must not be fabricated: that is the call #414 was
-        # filed to expose. Same policy as _resolve_local_type_call (spec D7).
-        candidate = f"{receiver}.{method}"
+        if "." not in method_name:
+            return _method_in_hierarchy(
+                self.index, self.inheritance_tree, owner, method_name, set()
+            )
         source_file = _file_of(self.index, source_fqn)
-        if self.index.classify_fqn(candidate, source_file) in (
-            NodeNamespace.EXTERNAL,
-            NodeNamespace.STDLIB,
-        ):
-            return candidate
-        return None
+        return _resolve_on_type(self.index, self.inheritance_tree, owner, method_name, source_file)
 
     def resolve_global_call(
         self, name: str, source_fqn: str, edge_file_path: str | None = None
@@ -260,22 +296,6 @@ class SymbolResolver:
                 return same_file[0]
         return None
 
-    def _resolve_method_on_class_hierarchy(
-        self, class_fqn: str, method_name: str, visited: set[str]
-    ) -> str | None:
-        """DFS over EXTENDS edges to find method_name defined in class_fqn or any ancestor."""
-        if class_fqn in visited:
-            return None
-        visited.add(class_fqn)
-        direct = self.index.class_methods.get(class_fqn, {}).get(method_name)
-        if direct:
-            return direct
-        for parent_fqn in self.inheritance_tree.get(class_fqn, []):
-            result = self._resolve_method_on_class_hierarchy(parent_fqn, method_name, visited)
-            if result:
-                return result
-        return None
-
     def _resolve_via_import_map(self, name: str, file_path: str) -> str | None:
         """Look up name in the file's import map (direct and module-prefixed calls)."""
         file_import_map = self.index.file_imports.get(file_path, {})
@@ -311,6 +331,11 @@ class SymbolResolver:
         resolved = self.index.map_to_node_fqn(candidate, file_path)
         if resolved:
             return resolved
+        # Inherited or promoted, or reached through declared attributes (#643).
+        start = self.index.map_to_node_fqn(class_fqn, file_path) or class_fqn
+        walked = _resolve_on_type(self.index, self.inheritance_tree, start, method_name, file_path)
+        if walked:
+            return walked
         # No node for `Class.method`. Keep it only when the type is external/stdlib
         # — that is a real call into a library (it becomes an EXTERNAL/STDLIB virtual
         # node). For an internal/unknown type it is a phantom method: drop it rather

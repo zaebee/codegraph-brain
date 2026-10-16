@@ -317,6 +317,7 @@ def test_struct_fields_are_the_type_s_self_types() -> None:
     )
     nodes, _ = _parse(code)
     assert nodes["internal.server.Server"].metadata["self_types"] == {
+        "Base": "internal.server.Base",  # embedded: named after its type (#643 A4)
         "db": "example.com.app.internal.store.Store",
         "cache": "internal.server.Cache",
         "spare": "internal.server.Cache",
