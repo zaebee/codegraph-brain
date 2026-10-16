@@ -1,7 +1,7 @@
 """The Go extractor: tree-sitter-go AST -> Nodes and Edges (step 7b, Task B3)."""
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
-from cgis.languages.go._syntax import base_type, selector_chain
+from cgis.languages.go._syntax import ANY_OF, base_type, selector_chain
 from cgis.languages.go.extractor import GoExtractor, _embedded, _File, _method
 
 SERVER = "internal/server/server.go"
@@ -321,6 +321,7 @@ def test_struct_fields_are_the_type_s_self_types() -> None:
         "db": "example.com.app.internal.store.Store",
         "cache": "internal.server.Cache",
         "spare": "internal.server.Cache",
+        "items": "go-elem:seq:internal.server.Item",  # a container's element (#643 B)
     }
 
 
@@ -386,7 +387,11 @@ def test_a_name_bound_to_different_types_holds_all_of_them() -> None:
 
 
 def test_a_name_bound_once_to_something_untyped_stays_untyped() -> None:
-    """#608 delta review: `x := m[k]` in one block must not inherit `&A{}` from another."""
+    """#608 delta review: `x := m[k]` in one block must not inherit `&A{}` from another.
+
+    Since #643 an index, a range or a receive records a marker rather than nothing,
+    so the name holds `go-any:` of both, which resolves only if every binding agrees.
+    """
     for body in (
         "\t{ x := m[k] }\n\t{ x := &A{} }\n",
         "\t{ x := &A{} }\n\t{ x := m[k] }\n",
@@ -396,8 +401,8 @@ def test_a_name_bound_once_to_something_untyped_stays_untyped() -> None:
         "\tx := &A{}\n\tgo func(x int) {}(1)\n",
     ):
         types = _local_types(body)
-        assert "x" not in types, body
-        assert "b" not in types, body
+        assert types.get("x", ANY_OF).startswith(ANY_OF), body
+        assert types.get("b", ANY_OF).startswith(ANY_OF), body
 
 
 def test_a_closure_parameter_of_the_same_type_keeps_the_name() -> None:
@@ -459,4 +464,4 @@ def test_named_results_bind_like_parameters() -> None:
 def test_a_select_receive_binds_an_untyped_name() -> None:
     """#608 delta review: `case v := <-ch` is a binding the walk must see."""
     types = _local_types("\t{ v := &A{}; _ = v }\n\tselect {\n\tcase v := <-ch:\n\t\t_ = v\n\t}\n")
-    assert "v" not in types
+    assert types.get("v", ANY_OF).startswith(ANY_OF)

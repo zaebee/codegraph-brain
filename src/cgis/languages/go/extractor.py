@@ -25,10 +25,16 @@ from cgis.languages.go._syntax import (
     ANY_OF,
     BUILTINS,
     CALL_RESULT,
+    ELEM,
+    FIELD,
+    GLOBAL,
+    PREDECLARED,
+    TAKE,
     UNNAMED_IMPORTS,
     arity,
     base_type,
     call_name,
+    container_type,
     declared_names,
     dotted,
     imports,
@@ -149,6 +155,31 @@ def _file(ctx: _File, root: TSNode, nodes: list[Node], edges: list[Edge]) -> Non
             _function(ctx, declaration, nodes, edges)
         elif declaration.type == "method_declaration":
             _method(ctx, declaration, nodes, edges)
+        elif declaration.type == "var_declaration":
+            _variables(ctx, declaration, nodes, edges)
+
+
+def _variables(ctx: _File, declaration: TSNode, nodes: list[Node], edges: list[Edge]) -> None:
+    """A VARIABLE per package-level var, typed as a local would be (#643 B6).
+
+    A call through it (`DefaultRegisterer.Register()`) is typed by the function's
+    `go-global:` binding of the name, which the resolver expands to this type.
+    """
+    lists = [c for c in declaration.children if c.type == "var_spec_list"]
+    candidates = [*declaration.children, *(c for group in lists for c in group.children)]
+    for spec in (c for c in candidates if c.type == "var_spec"):
+        bindings: Bindings = {}
+        _bindings_of(ctx, spec, bindings)
+        settled = _settled(bindings)
+        for name in declared_names(spec):
+            if name == "_":
+                continue
+            fqn = f"{ctx.scope}.{name}"
+            metadata: dict[str, object] | None = (
+                {"var_type": settled[name]} if name in settled else None
+            )
+            nodes.append(_node(ctx, fqn, name, NodeType.VARIABLE, spec, metadata))
+            edges.append(_edge(ctx.node_id, fqn, EdgeType.CONTAINS))
 
 
 def _types(ctx: _File, declaration: TSNode, nodes: list[Node], edges: list[Edge]) -> None:
@@ -213,7 +244,9 @@ def _field_types(ctx: _File, body: TSNode | None) -> dict[str, str]:
     types: dict[str, str] = {}
     for field in fields.children if fields else []:
         type_node = field.child_by_field_name("type")
-        fqn = type_fqn(type_node, ctx.scope, ctx.import_map)
+        fqn = type_fqn(type_node, ctx.scope, ctx.import_map) or container_type(
+            type_node, ctx.scope, ctx.import_map
+        )
         if field.type != "field_declaration" or not fqn:
             continue
         reference = type_reference(type_node)
@@ -248,7 +281,11 @@ def _declare(
     """An interface method: a METHOD under the interface, with its DECLARES edge."""
     name = text(elem.child_by_field_name("name"))
     fqn = f"{type_fqn_}.{name}"
-    nodes.append(_node(ctx, fqn, name, NodeType.METHOD, elem, {"arity": arity(elem)}))
+    metadata: dict[str, object] = {"arity": arity(elem)}
+    returns = result_types(elem, ctx.scope, ctx.import_map)
+    if returns:
+        metadata["returns"] = returns  # `s, _ := fsm.Snapshot()` types `s` (#643 B7)
+    nodes.append(_node(ctx, fqn, name, NodeType.METHOD, elem, metadata))
     edges.append(_edge(type_fqn_, fqn, EdgeType.DECLARES))
 
 
@@ -320,6 +357,11 @@ def _parameters(ctx: _File, parameters: TSNode | None, bindings: Bindings) -> No
             _record(
                 ctx, bindings, declared_names(declaration), declaration.child_by_field_name("type")
             )
+        elif declaration.type == "variadic_parameter_declaration":
+            # `opts ...Option` is a []Option inside the function (#643 B).
+            element = type_fqn(declaration.child_by_field_name("type"), ctx.scope, ctx.import_map)
+            for name in declared_names(declaration):
+                _bind(bindings, name, f"{ELEM}seq:{element}" if element else _UNKNOWN)
 
 
 def _settled(bindings: Bindings) -> dict[str, str]:
@@ -342,7 +384,11 @@ def _record(ctx: _File, bindings: Bindings, names: list[str], type_node: TSNode 
     call can reach (`err.Error()`); `int` or `string` would type nothing.
     """
     predeclared = "error" if text(base_type(type_node)) == "error" else _UNKNOWN
-    fqn = type_fqn(type_node, ctx.scope, ctx.import_map) or predeclared
+    fqn = (
+        type_fqn(type_node, ctx.scope, ctx.import_map)
+        or container_type(type_node, ctx.scope, ctx.import_map)
+        or predeclared
+    )
     for name in names:
         _bind(bindings, name, fqn)
 
@@ -367,11 +413,9 @@ def _unknown(bindings: Bindings, names: TSNode | None) -> None:
 
 
 #: Statements that bind names to a value of no nameable type, by the field
-#: holding the names: range variables, a type switch's alias, a select receive.
+#: holding the names: a type switch's alias, one name typed differently per case.
 _UNTYPED_BINDINGS = {
-    "range_clause": "left",
     "type_switch_statement": "alias",
-    "receive_statement": "left",
 }
 
 
@@ -389,6 +433,7 @@ def _body(
         name = call_name(function, receiver) if function is not None else ""
         if name:
             edges.append(_call(source, name, node))
+            _global_head(ctx, function, bindings)
     else:
         _bindings_of(ctx, node, bindings)
     for child in node.children:
@@ -405,6 +450,15 @@ def _bindings_of(ctx: _File, node: TSNode, bindings: Bindings) -> None:
         left = node.child_by_field_name("left")
         names = [text(t) for t in left.named_children] if left else []
         _assigned(ctx, names, node.child_by_field_name("right"), bindings)
+    elif node.type == "range_clause":
+        _ranged(ctx, node, bindings)
+    elif node.type == "receive_statement":  # `case v, ok := <-ch:` (its right is the receive)
+        left = node.child_by_field_name("left")
+        names = [text(t) for t in left.named_children] if left else []
+        right = node.child_by_field_name("right")
+        received = _value_type(ctx, right, bindings) if right is not None else None
+        for name, typed in zip(names, (received, None), strict=False):
+            _bind(bindings, name, typed or _UNKNOWN)
     elif node.type in _UNTYPED_BINDINGS:
         _unknown(bindings, node.child_by_field_name(_UNTYPED_BINDINGS[node.type]))
     elif node.type == "func_literal":
@@ -415,40 +469,168 @@ def _bindings_of(ctx: _File, node: TSNode, bindings: Bindings) -> None:
 
 
 def _assigned(ctx: _File, names: list[str], values: TSNode | None, bindings: Bindings) -> None:
-    """`x := T{}` gives T; `x := f()` gives f's result, `a, err := f()` each its own (#608)."""
+    """`x := T{}` gives T; `x := f()` gives f's result, `a, err := f()` each its own (#608).
+
+    `v, ok := <-ch`, `m[k]` or `w.(T)`: the first name takes the value, the rest a bool.
+    """
     right = values.named_children if values is not None else []
     if len(right) == 1 and right[0].type == "call_expression" and len(names) > 1:
         for index, name in enumerate(names):
             _hold_result(ctx, bindings, name, right[0], index)
+        return
+    if len(right) == 1 and len(names) > 1:
+        _bind(bindings, names[0], _value_type(ctx, right[0], bindings) or _UNKNOWN)
+        for name in names[1:]:
+            _bind(bindings, name, _UNKNOWN)
         return
     for position, name in enumerate(names):
         value = right[position] if position < len(right) else None
         if value is not None and value.type == "call_expression":
             _hold_result(ctx, bindings, name, value, 0)
         else:
-            _record(ctx, bindings, [name], literal_type(value) if value is not None else None)
+            typed = _value_type(ctx, value, bindings) if value is not None else None
+            _bind(bindings, name, typed or _UNKNOWN)
+
+
+def _ranged(ctx: _File, clause: TSNode, bindings: Bindings) -> None:
+    """`for k, v := range x`: `v` is x's element; `k` is, only when x is a channel (#643 B2)."""
+    left = clause.child_by_field_name("left")
+    names = [text(t) for t in left.named_children] if left else []
+    right = clause.child_by_field_name("right")
+    source = _operand(ctx, right, bindings) if right is not None else None
+    for name, taken in zip(names, ("key", "elem"), strict=False):
+        _bind(bindings, name, _take(taken, source) or _UNKNOWN)
+
+
+def _value_type(ctx: _File, value: TSNode, bindings: Bindings) -> str | None:
+    """The type a value expression has, as a type or a marker; None when it has no name.
+
+    A receive and an index take the operand's element; an assertion names its
+    type; a literal its own; a name or a field chain what it holds (#643 B).
+    """
+    if value.type == "parenthesized_expression" and value.named_children:
+        return _value_type(ctx, value.named_children[0], bindings)
+    operand = value.child_by_field_name("operand")
+    if value.type == "unary_expression" and text(value.child_by_field_name("operator")) == "<-":
+        return _take("elem", _operand(ctx, operand, bindings)) if operand else None
+    if value.type == "index_expression":
+        return _take("elem", _operand(ctx, operand, bindings)) if operand else None
+    if value.type == "type_assertion_expression":
+        asserted = value.child_by_field_name("type")
+        return type_fqn(asserted, ctx.scope, ctx.import_map) or container_type(
+            asserted, ctx.scope, ctx.import_map
+        )
+    literal = literal_type(value)
+    if literal is not None:
+        return type_fqn(literal, ctx.scope, ctx.import_map) or container_type(
+            literal, ctx.scope, ctx.import_map
+        )
+    if value.type in ("identifier", "selector_expression"):
+        return _operand(ctx, value, bindings)
+    return None
+
+
+def _operand(ctx: _File, node: TSNode, bindings: Bindings) -> str | None:
+    """What a name, a field chain or a call holds, as a type or a marker; else None."""
+    if node.type == "parenthesized_expression" and node.named_children:
+        return _operand(ctx, node.named_children[0], bindings)
+    if node.type == "call_expression":
+        callee = _callee(ctx, node.child_by_field_name("function"), bindings)
+        return _bounded(f"{CALL_RESULT}0:{callee}") if callee else None
+    chain = selector_chain(node)
+    if not chain:
+        return None
+    head, fields = _holder(ctx, chain, bindings)
+    if head is None:
+        return None
+    return _bounded(f"{FIELD}{'.'.join(fields)}:{head}") if fields else head
+
+
+def _holder(ctx: _File, chain: list[str], bindings: Bindings) -> tuple[str | None, list[str]]:
+    """The type a chain's head holds, and the fields after it.
+
+    A local holds its binding; an import names a package, whose next segment is
+    its variable; any other name is a variable of this package (`go-global:`).
+    """
+    head, rest = chain[0], chain[1:]
+    if head in bindings:
+        return _held(bindings, head), rest
+    if head in ctx.import_map:
+        return (f"{GLOBAL}{ctx.import_map[head]}.{rest[0]}", rest[1:]) if rest else (None, [])
+    if head in BUILTINS:
+        return None, []
+    return f"{GLOBAL}{ctx.scope}.{head}", rest
+
+
+def _take(taken: str, source: str | None) -> str | None:
+    """`go-take:<taken>:<source>`, or None when the source has no type."""
+    return _bounded(f"{TAKE}{taken}:{source}") if source else None
+
+
+def _bounded(marker: str) -> str | None:
+    """The marker, unless it nests past `_MAX_CHAIN`: expanding one never recurses deep."""
+    return marker if marker.count("go-") <= _MAX_CHAIN else None
+
+
+def _global_head(ctx: _File, function: TSNode | None, bindings: Bindings) -> None:
+    """`V.M()` with `V` neither local nor an import: `V` is a package variable (#643 B6)."""
+    chain = selector_chain(function) if function is not None else []
+    head = chain[0] if len(chain) > 1 else ""
+    if head and head not in bindings and head not in ctx.import_map and head not in BUILTINS:
+        _bind(bindings, head, f"{GLOBAL}{ctx.scope}.{head}")
 
 
 def _hold_result(ctx: _File, bindings: Bindings, name: str, call: TSNode, index: int) -> None:
-    """Bind `name` to result `index` of `call`, or to unknown when the callee has no name."""
-    callee = _callee(ctx, call.child_by_field_name("function"), bindings)
+    """Bind `name` to result `index` of `call`, or to unknown when the callee has no name.
+
+    `make(chan T)` and `new(T)` name their type in the first argument (#643 B).
+    """
+    function = call.child_by_field_name("function")
+    builtin = text(function) if function is not None else ""
+    if builtin in ("make", "new") and builtin not in bindings:
+        arguments = call.child_by_field_name("arguments")
+        first = arguments.named_children[0] if arguments and arguments.named_children else None
+        _bind(bindings, name, (_type_argument(ctx, first) if index == 0 else None) or _UNKNOWN)
+        return
+    callee = _callee(ctx, function, bindings)
     _bind(bindings, name, f"{CALL_RESULT}{index}:{callee}" if callee else _UNKNOWN)
 
 
+def _type_argument(ctx: _File, node: TSNode | None) -> str | None:
+    """A type written where an expression may stand: `make(chan *T)`, `new(T)`, `new(pkg.T)`."""
+    if node is None:
+        return None
+    if node.type == "identifier":
+        name = text(node)
+        return None if name in PREDECLARED else f"{ctx.scope}.{name}"
+    chain = selector_chain(node)
+    if len(chain) == 2 and chain[0] in ctx.import_map:
+        return f"{ctx.import_map[chain[0]]}.{chain[1]}"
+    return type_fqn(node, ctx.scope, ctx.import_map) or container_type(
+        node, ctx.scope, ctx.import_map
+    )
+
+
 def _callee(ctx: _File, function: TSNode | None, bindings: Bindings) -> str | None:
-    """What a call names, qualified: `f`, `pkg.F`, or `M` on a variable of known type."""
+    """What a call names, qualified: `f`, `pkg.F`, or `M` on a value of known type.
+
+    The value may be a variable, a field chain on one (`r.snapshots.Create`) or a
+    package variable; a method on a marker is written `<marker>|<method>`.
+    """
     chain = selector_chain(function) if function is not None else []
     if len(chain) == 1:
         return None if chain[0] in BUILTINS else f"{ctx.scope}.{chain[0]}"
-    if len(chain) != 2:
+    if not chain:
         return None
-    head, method = chain
-    if head not in bindings:  # a local shadows an import, as the resolver reads it (M1)
-        return f"{ctx.import_map[head]}.{method}" if head in ctx.import_map else None
-    held = _held(bindings, head)
+    *path, method = chain
+    if len(path) == 1 and path[0] not in bindings and path[0] in ctx.import_map:
+        # A local shadows an import, as the resolver reads it (M1).
+        return f"{ctx.import_map[path[0]]}.{method}"
+    holder, fields = _holder(ctx, path, bindings)
+    held = _bounded(f"{FIELD}{'.'.join(fields)}:{holder}") if holder and fields else holder
     if held is None or held.count("|") >= _MAX_CHAIN:
         return None
-    return f"{held}|{method}" if held.startswith(CALL_RESULT) else f"{held}.{method}"
+    return f"{held}|{method}" if held.startswith("go-") else f"{held}.{method}"
 
 
 def _call(source: str, name: str, node: TSNode) -> Edge:

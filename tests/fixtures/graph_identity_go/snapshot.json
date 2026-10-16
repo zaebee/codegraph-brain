@@ -792,6 +792,9 @@
      "arity": [
       0,
       1
+     ],
+     "returns": [
+      "error"
      ]
     },
     "name": "Serve",

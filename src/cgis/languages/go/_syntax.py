@@ -193,7 +193,7 @@ ANY_OF = "go-any:"
 
 def result_type_name(node: TSNode | None, scope: str, import_map: Mapping[str, str]) -> str:
     """A result's type: a named type's FQN, a predeclared type by name (`error`), else ''."""
-    fqn = type_fqn(node, scope, import_map)
+    fqn = type_fqn(node, scope, import_map) or container_type(node, scope, import_map)
     if fqn:
         return fqn
     named = base_type(node)
@@ -238,3 +238,39 @@ def _count(params: TSNode | None) -> int:
         for d in params.named_children
         if d.type in ("parameter_declaration", "variadic_parameter_declaration")
     )
+
+
+#: A container's element type: `go-elem:<chan|seq|map>:<element>` for `chan T`,
+#: `[]T` or `[N]T`, and `go-elem:map:<T>,<K>` for `map[K]T` (#643 B). A container
+#: has no methods; the marker is there for the element a receive, an index or a
+#: range takes from it.
+ELEM = "go-elem:"
+#: An element taken from a value: `go-take:<elem|key>:<the value's type>`. `elem`
+#: is what a receive, an index or a range's second variable gives; `key` a range's
+#: first: a channel's element, a map's key, nothing for a slice.
+TAKE = "go-take:"
+#: A field chain on a value: `go-field:<f1.f2>:<the value's type>`.
+FIELD = "go-field:"
+#: A package variable's declared type, by its node id: `go-global:<scope>.<name>`.
+GLOBAL = "go-global:"
+_CONTAINERS = {
+    "channel_type": ("chan", "value"),
+    "slice_type": ("seq", "element"),
+    "array_type": ("seq", "element"),
+    "map_type": ("map", "value"),
+}
+
+
+def container_type(node: TSNode | None, scope: str, import_map: Mapping[str, str]) -> str | None:
+    """`go-elem:<kind>:<T>` for a channel, slice, array or map of a named type; else None.
+
+    A map also names its key: `go-elem:map:<V>,<K>`, either side empty when unnamed.
+    """
+    if node is None or node.type not in _CONTAINERS:
+        return None
+    kind, field = _CONTAINERS[node.type]
+    element = type_fqn(node.child_by_field_name(field), scope, import_map) or ""
+    if kind == "map":
+        key = type_fqn(node.child_by_field_name("key"), scope, import_map) or ""
+        return f"{ELEM}map:{element},{key}" if element or key else None
+    return f"{ELEM}{kind}:{element}" if element else None
