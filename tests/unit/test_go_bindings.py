@@ -213,3 +213,55 @@ def test_make_and_new_name_their_type() -> None:
 
 def test_the_first_range_variable_over_a_map_is_its_key() -> None:
     assert _targets("Keys") == {"app.T.M"}
+
+
+def _resolve(code: str, source: str) -> set[str]:
+    nodes, edges = GoExtractor().parse(code, "app/a.go")
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+    return {e.target for e in resolved if e.type is EdgeType.CALLS and e.source == f"app.{source}"}
+
+
+_T = "package app\ntype T struct{}\nfunc (t *T) M() {}\ntype K struct{}\nfunc (k *K) M() {}\n"
+
+
+def test_a_range_index_over_a_slice_is_not_its_element() -> None:
+    code = _T + "func F(xs []*T) {\n\tfor i := range xs {\n\t\ti.M()\n\t}\n}\n"
+    assert "app.T.M" not in _resolve(code, "F")
+
+
+def test_a_received_field_promoted_from_an_embedding_types_the_value() -> None:
+    code = _T + (
+        "type Inner struct{ ch chan *T }\n"
+        "type S struct{ Inner }\n"
+        "func (s *S) F() {\n\tx := <-s.ch\n\tx.M()\n}\n"
+    )
+    assert _resolve(code, "S.F") == {"app.T.M"}
+
+
+def test_two_promoted_fields_of_one_name_at_one_depth_type_nothing() -> None:
+    code = _T + (
+        "type A struct{ ch chan *T }\n"
+        "type B struct{ ch chan *K }\n"
+        "type S struct {\n\tA\n\tB\n}\n"
+        "func (s *S) F() {\n\tx := <-s.ch\n\tx.M()\n}\n"
+    )
+    assert _resolve(code, "S.F").isdisjoint({"app.T.M", "app.K.M"})
+
+
+def test_package_variables_initialised_from_each_other_end() -> None:
+    """Go rejects the cycle; the resolver must still stop expanding it."""
+    code = _T + "var A = B\nvar B = A\nfunc F() { A.M() }\n"
+    assert "app.T.M" not in _resolve(code, "F")
+
+
+def test_the_comma_ok_flag_takes_no_type() -> None:
+    code = _T + 'func F(m map[string]*T) {\n\tv, ok := m["k"]\n\tok.M()\n\tv.M()\n}\n'
+    nodes, _ = GoExtractor().parse(code, "app/a.go")
+    local = next(n for n in nodes if n.id == "app.F").metadata["local_types"]
+    assert "ok" not in local
+    assert "v" in local
+
+
+def test_a_local_named_new_is_not_the_builtin() -> None:
+    code = _T + "func F(new func(any) *T) {\n\tp := new(K{})\n\tp.M()\n}\n"
+    assert "app.K.M" not in _resolve(code, "F")
