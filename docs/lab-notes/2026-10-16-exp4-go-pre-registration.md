@@ -310,8 +310,8 @@ pilot applies: one library, mostly `ssh`, with easy questions.
 - static (n = 6): ratio 0.747, Δrecall +0.000;
 - all 18 tasks: ratio 0.796, Δrecall +0.000;
 - median precision on iface: control 1.00, cgis-forced 0.90;
-- forced sessions take fewer turns and less wall time on most tasks, and no forced session read a
-  whole file.
+- forced sessions take fewer turns and less wall time on most tasks, and 1 of 54 forced sessions
+  read a whole file.
 
 Two tasks lost recall in the forced arm: `channel-channeltype` (−0.46) and `dircache-delete`
 (−0.21). `encryptedcontentinfo-data` (+0.33) and `static-curvepoint-put` (+0.30) gained.
