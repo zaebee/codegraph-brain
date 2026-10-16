@@ -281,3 +281,33 @@ def test_a_directory_named_go_is_kept() -> None:
     assert normalize_symbol("src/cgis/languages/go/dispatch.py::interface_dispatch") == (
         "src.cgis.languages.go.dispatch.interface_dispatch"
     )
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("get_user(id)", "get_user"),
+        ("Class.method(self)", "Class.method"),
+        ("Foo.__init__(self)", "Foo.__init__"),
+        ("fn(*args)", "fn"),
+        ("Component(props)", "Component"),
+        ("Raft.setState(s)", "Raft.setState"),
+    ],
+)
+def test_a_call_argument_is_never_read_as_a_go_receiver(raw: str, expected: str) -> None:
+    """`(x)` is a receiver only when a `.` follows it (#653 review)."""
+    assert normalize_symbol(raw) == expected
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("func (r *Raft) setState(s RaftState) error", "Raft.setState"),
+        ("func (m *M[K, V]) Get(k K) V", "M.Get"),
+        ("(*raft.Raft).setState", "raft.Raft.setState"),
+        ("cgis.languages.go.dispatch", "cgis.languages.go.dispatch"),
+        ("cgis.languages.go", "cgis.languages.go"),
+    ],
+)
+def test_go_declarations_with_results_and_dotted_names(raw: str, expected: str) -> None:
+    assert normalize_symbol(raw) == expected

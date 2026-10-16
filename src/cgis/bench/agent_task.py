@@ -32,11 +32,14 @@ ANSWER_FORMAT = (
 _CALL_PARENS = re.compile(r"\(.*\)$")
 _LINE_SUFFIX = re.compile(r":\d+(?:-\d+)?$")
 #: A Go method declaration as an agent may quote it: `func (r *Raft) setState`.
-_GO_FUNC_DECL = re.compile(r"^func\s*\(\s*\w*\s*\*?\s*([\w.]+)(?:\[[^\]]*\])?\s*\)\s*(\w+)")
-#: A `.go` file extension, before its `:`/`::` or at the end — never a `go/` directory.
-_GO_FILE_EXT = re.compile(r"\.go(?=::|:|$)")
-#: A Go receiver in a qualified name: `(*Raft)`, `(Raft)`, `(*Stack[T])`.
-_GO_RECEIVER = re.compile(r"\(\*?([A-Za-z_]\w*)(?:\[[^\]]*\])?\)")
+_GO_FUNC_DECL = re.compile(r"^func\s*\(\s*\w*\s*\*?\s*([\w.]+)(?:\[[^\]]*\])?\s*\)\s*(\w+).*$")
+#: A `.go` file extension before its `:`/`::`; at the end only in a path (see below).
+_GO_FILE_EXT = re.compile(r"\.go(?=::|:)")
+_GO_FILE_END = re.compile(r"\.go$")
+#: A Go receiver in a qualified name: `(*Raft)`, `(Raft)`, `(*raft.Raft)`, `(*M[K, V])`.
+#: Only where a receiver can stand — at the start or after `.`, `/`, `:`, and with a
+#: `.` after it — so a call argument (`get_user(id)`, `Class.method(self)`) is not one.
+_GO_RECEIVER = re.compile(r"(?:(?<=[./:])|^)\(\*?([A-Za-z_][\w.]*)(?:\[[^\]]*\])?\)(?=\.)")
 
 
 class GoldSymbol(BaseModel, frozen=True):
@@ -181,6 +184,8 @@ def normalize_symbol(name: str) -> str:
     s = _GO_FUNC_DECL.sub(r"\1.\2", s)
     s = _GO_RECEIVER.sub(r"\1", s)
     s = _GO_FILE_EXT.sub("", s)
+    if "/" in s:  # `raft/api.go`, never the dotted module `cgis.languages.go`
+        s = _GO_FILE_END.sub("", s)
     s = _CALL_PARENS.sub("", s)
     s = s.replace("::", ".").replace(":", ".").replace("/", ".").replace("\\", ".")
     for ext in (".py.", ".tsx.", ".ts.", ".jsx.", ".js."):
