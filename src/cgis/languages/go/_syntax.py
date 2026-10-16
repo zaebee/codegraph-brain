@@ -253,7 +253,8 @@ TAKE = "go-take:"
 FIELD = "go-field:"
 #: A package variable's declared type, by its node id: `go-global:<scope>.<name>`.
 GLOBAL = "go-global:"
-_CONTAINERS = {
+#: Container types, by node type: (the kind a `go-elem:` marker names, the element's field).
+CONTAINERS = {
     "channel_type": ("chan", "value"),
     "slice_type": ("seq", "element"),
     "array_type": ("seq", "element"),
@@ -268,9 +269,9 @@ def container_type(node: TSNode | None, scope: str, import_map: Mapping[str, str
     """
     while node is not None and node.type == "pointer_type":  # `*[3]T` ranges and indexes too
         node = node.named_children[0] if node.named_children else None
-    if node is None or node.type not in _CONTAINERS:
+    if node is None or node.type not in CONTAINERS:
         return None
-    kind, field = _CONTAINERS[node.type]
+    kind, field = CONTAINERS[node.type]
     element = type_fqn(node.child_by_field_name(field), scope, import_map) or ""
     if kind == "map":
         key = type_fqn(node.child_by_field_name("key"), scope, import_map) or ""
