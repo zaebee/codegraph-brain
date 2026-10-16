@@ -260,6 +260,7 @@ def test_the_fence_language_is_case_insensitive() -> None:
         ("func (r *Raft) setState", "Raft.setState"),
         ("store.(*Stack[T]).Push", "store.Stack.Push"),
         ("raft.NewRaft()", "raft.NewRaft"),
+        ("raft.NewRaft(arg)", "raft.NewRaft"),
     ],
 )
 def test_normalize_symbol_folds_go_spellings(raw: str, expected: str) -> None:

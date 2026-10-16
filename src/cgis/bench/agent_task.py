@@ -32,7 +32,7 @@ ANSWER_FORMAT = (
 _CALL_PARENS = re.compile(r"\(.*\)$")
 _LINE_SUFFIX = re.compile(r":\d+(?:-\d+)?$")
 #: A Go method declaration as an agent may quote it: `func (r *Raft) setState`.
-_GO_FUNC_DECL = re.compile(r"^func\s*\(\s*\w*\s*\*?\s*([\w.]+)(?:\[[^\]]*\])?\s*\)\s*(\w+).*$")
+_GO_FUNC_DECL = re.compile(r"^func\s*\(\s*(?:\w+\s+)?\*?\s*([\w.]+)(?:\[[^\]]*\])?\s*\)\s*(\w+).*$")
 #: A `.go` file extension before its `:`/`::`; at the end only in a path (see below).
 _GO_FILE_EXT = re.compile(r"\.go(?=::|:)")
 _GO_FILE_END = re.compile(r"\.go$")
