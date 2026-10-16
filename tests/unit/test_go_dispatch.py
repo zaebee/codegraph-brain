@@ -10,8 +10,9 @@ type's same-named method, which Go never does.
 
 from pathlib import Path
 
-from cgis.core.models import Edge, EdgeType, Node
+from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.languages import extractors
+from cgis.languages.go.dispatch import interface_dispatch
 from cgis.languages.go.extractor import GoExtractor
 from cgis.pipeline import IngestionPipeline
 from cgis.resolver.engine import ResolverEngine
@@ -299,3 +300,51 @@ def test_methods_record_their_arity() -> None:
     arity = {n.id: n.metadata.get("arity") for n in nodes}
     assert arity["a.Piper.Pipe"] == [1, 2]
     assert arity["a.T.Pipe"] == [1, 2]
+
+
+def test_arity_counts_a_variadic_and_a_bare_result() -> None:
+    code = (
+        "package a\n"
+        "type L interface{ Log(f string, args ...any) }\n"
+        "type T struct{}\n"
+        "func (t *T) Err() error { return nil }\n"
+    )
+    nodes, _ = GoExtractor().parse(code, "a/l.go")
+    arity = {n.id: n.metadata.get("arity") for n in nodes}
+    assert arity["a.L.Log"] == [2, 0]
+    assert arity["a.T.Err"] == [0, 1]
+
+
+def test_a_node_without_arity_matches_on_the_name() -> None:
+    """A graph stored before #646 carries no arity: match as it did then."""
+
+    def method(node_id: str, arity: list[int] | None) -> Node:
+        return Node(
+            id=node_id,
+            type=NodeType.METHOD,
+            name=node_id.rsplit(".", maxsplit=1)[-1],
+            file_path="a/x.go",
+            start_line=1,
+            end_line=1,
+            language="go",
+            metadata={"arity": arity} if arity is not None else {},
+        )
+
+    def cls(node_id: str, interface: bool) -> Node:
+        return Node(
+            id=node_id,
+            type=NodeType.CLASS,
+            name=node_id.rsplit(".", maxsplit=1)[-1],
+            file_path="a/x.go",
+            start_line=1,
+            end_line=1,
+            language="go",
+            metadata={"interface": True} if interface else {},
+        )
+
+    edges = interface_dispatch(
+        [method("a.I.M", [1, 0]), method("a.T.M", None)],
+        [cls("a.I", True), cls("a.T", False)],
+        {},
+    )
+    assert {(e.source, e.target) for e in edges} == {("a.I.M", "a.T.M")}
