@@ -66,7 +66,15 @@ def check(name):
     rec["pass"] = True
     return rec, dest
 
+# Resume (amendment 2): a candidate already in the log keeps its record; the walk goes on after
+# the last one. A logged pass is skipped only when it is listed as not evaluable after the draw.
+done = [json.loads(l)["name"] for l in open(f"{W}/walk-log.jsonl")]
+not_evaluable = set(sys.argv[1:])
 for name in pool["order"]:
+    if name in done:
+        if name in not_evaluable or name != done[-1]:
+            continue
+        print("resume would re-choose", name, "- pass it as not evaluable"); break
     rec, dest = check(name)
     log.write(json.dumps(rec) + "\n"); log.flush()
     print(json.dumps(rec)[:300], flush=True)

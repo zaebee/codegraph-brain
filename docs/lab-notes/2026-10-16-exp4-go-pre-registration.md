@@ -192,3 +192,18 @@ line:
 **Harness.** `scripts/agent_ab.py` builds each session's worktree with `git worktree add`, which
 restored `website/` and `hack/tools/` in both arms. A task now lists `delete_paths`. They are
 deleted before ingest and before the agent starts, and a missing path fails the session.
+
+## Choice log, continued under amendment 2
+
+- **lima-vm/lima is not evaluable.** Under amendment 2 its draw gives 7 iface picks and 6 static
+  ones (`benchmarks/agent_ab/analysis/exp4/gold/out/lima/picks.json`), which is below the floor of
+  8. DriverClient's family gives 1 of 3, because all its members are methods of the one generated
+  `driverClient` type.
+- **The walk resumed at 18:27Z.** cilium, hysteria, ffuf, containerlab, pb, nsq, goka, muraena,
+  fabric, x/mobile, x/tools and VictoriaMetrics failed. Each failure is logged in `walk-log.jsonl`.
+- **`golang/crypto` passed every check and is chosen:**
+  - sha `0ae6809b7559060fe62abe65e26bd18b1fcaf6b7`, module `golang.org/x/crypto`;
+  - 38,246 non-test lines, none generated;
+  - no type parameters in its 128 files;
+  - 32 interfaces, 22 of them with two or more in-module implementations.
+- **Gold and draw follow** under the amended rules. No cgis command has run on it.
