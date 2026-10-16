@@ -7,6 +7,7 @@ other file's calls resolved against types that were not theirs. Such a file now
 keeps its FILE node, marked `build_excluded`, and contributes nothing else.
 """
 
+import time
 from pathlib import Path
 
 import pytest
@@ -36,7 +37,9 @@ from cgis.storage.sqlite_store import SQLiteStore
         ("(linux || darwin) && !cgo", False),
         ("js && !wasm", False),
         ("!js || wasm", True),
-        ("linux,amd64", False),  # not //go:build syntax: an unknown tag, false
+        ("linux,amd64", False),
+        ("(" * 400 + "linux" + ")" * 400, False),  # nesting past the limit: invalid, no crash
+        ("(" * 50 + "linux" + ")" * 50, True),  # not //go:build syntax: an unknown tag, false
     ],
 )
 def test_a_constraint_is_read_for_linux_amd64(expression: str, expected: bool) -> None:
@@ -154,6 +157,10 @@ def test_no_excluded_file_adds_nothing_to_the_overview(tmp_path: Path) -> None:
         ("\ufeff//go:build windows\n\npackage p\n", False),  # a byte-order mark first
         ("/*\npackage docs say\n*/\n// +build windows\n\npackage p\n", True),  # after /* */
         ("//go:build linux\n//go:build amd64\n\npackage p\n", False),  # two: an error
+        # A copyright block before `// +build` hides it from go/build; not before //go:build.
+        ("/* Copyright 2020 */\n\n// +build windows\n\npackage p\n", True),
+        ("/*\nCopyright 2020\n*/\n\n// +build windows\n\npackage p\n", True),
+        ("/* Copyright 2020 */\n\n//go:build windows\n\npackage p\n", False),
         ("/* x\n*/ //go:build windows\n\npackage p\n", True),  # began inside a block
         ("/* x */ // c\n//go:build windows\n\npackage p\n", False),  # comment after /* */
         ("/* a */ /* b\n*/\n//go:build windows\n\npackage p\n", False),
@@ -191,3 +198,10 @@ def test_an_excluded_file_is_never_a_package_s_import_target() -> None:
     resolved, _ = ResolverEngine(nodes, edges, project_state=state).resolve()
     imports = {e.target for e in resolved if e.type is EdgeType.IMPORTS and e.source == "main_go"}
     assert imports == {"p.b_go"}
+
+
+def test_a_long_expression_parses_in_linear_time() -> None:
+    expression = " || ".join(["windows"] * 20_000) + " || linux"
+    started = time.perf_counter()
+    assert satisfied(expression)
+    assert time.perf_counter() - started < 2.0

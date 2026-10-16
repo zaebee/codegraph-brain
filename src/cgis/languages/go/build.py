@@ -190,15 +190,16 @@ def _plus_line(options: str) -> str:
 def satisfied(expression: str) -> bool:
     """Whether a `//go:build` expression holds for the default build.
 
-    Unknown or malformed syntax holds nothing: a file the build cannot place is
-    left out and named, rather than read as part of every build.
+    Unknown or malformed syntax holds nothing, and neither does nesting past
+    `_MAX_DEPTH`: a file the build cannot place is left out and named, rather
+    than read as part of every build or lost to a crash (#667 review).
     """
-    tokens = _tokens(expression)
+    parser = _Parser(_tokens(expression))
     try:
-        value, rest = _or(tokens)
-    except IndexError:
+        value = parser.expression(0)
+    except _InvalidExpressionError:
         return False
-    return value and not rest
+    return value and parser.at_end()
 
 
 def _tokens(expression: str) -> list[str]:
@@ -221,37 +222,66 @@ def _tokens(expression: str) -> list[str]:
     return tokens + ([word] if word else [])
 
 
-def _or(tokens: list[str]) -> tuple[bool, list[str]]:
-    value, rest = _and(tokens)
-    while rest and rest[0] == "||":
-        right, rest = _and(rest[1:])
-        value = value or right
-    return value, rest
+#: Parentheses nested deeper than this make an expression invalid (Go's own limit is 1000).
+_MAX_DEPTH = 100
 
 
-def _and(tokens: list[str]) -> tuple[bool, list[str]]:
-    value, rest = _not(tokens)
-    while rest and rest[0] == "&&":
-        right, rest = _not(rest[1:])
-        value = value and right
-    return value, rest
+class _InvalidExpressionError(ValueError):
+    """An expression outside `//go:build` syntax, or nested past `_MAX_DEPTH`."""
 
 
-def _not(tokens: list[str]) -> tuple[bool, list[str]]:
-    head = tokens[0]
-    if head == "!":
-        if tokens[1:2] == ["!"]:
-            raise IndexError(head)  # `!!a` is not //go:build syntax
-        value, rest = _not(tokens[1:])
-        return not value, rest
-    if head == "(":
-        value, rest = _or(tokens[1:])
-        if not rest or rest[0] != ")":
-            raise IndexError(head)
-        return value, rest[1:]
-    if head in ("||", "&&", ")"):
-        raise IndexError(head)
-    return head in _TAGS, tokens[1:]
+class _Parser:
+    """Recursive descent over a token list by index: `||` over `&&` over `!` and `( )`."""
+
+    def __init__(self, tokens: list[str]) -> None:
+        self._tokens = tokens
+        self._index = 0
+
+    def at_end(self) -> bool:
+        """Whether every token was read."""
+        return self._index == len(self._tokens)
+
+    def expression(self, depth: int) -> bool:
+        """`a || b || ...`."""
+        value = self._conjunction(depth)
+        while self._peek() == "||":
+            self._index += 1
+            value = self._conjunction(depth) or value
+        return value
+
+    def _conjunction(self, depth: int) -> bool:
+        value = self._unary(depth)
+        while self._peek() == "&&":
+            self._index += 1
+            value = self._unary(depth) and value
+        return value
+
+    def _unary(self, depth: int) -> bool:
+        head = self._next()
+        if head == "!":
+            if self._peek() == "!":
+                raise _InvalidExpressionError  # not //go:build syntax
+            return not self._unary(depth)
+        if head == "(":
+            if depth >= _MAX_DEPTH:
+                raise _InvalidExpressionError
+            value = self.expression(depth + 1)
+            if self._next() != ")":
+                raise _InvalidExpressionError
+            return value
+        if head in ("||", "&&", ")"):
+            raise _InvalidExpressionError
+        return head in _TAGS
+
+    def _peek(self) -> str | None:
+        return self._tokens[self._index] if self._index < len(self._tokens) else None
+
+    def _next(self) -> str:
+        token = self._peek()
+        if token is None:
+            raise _InvalidExpressionError
+        self._index += 1
+        return token
 
 
 def _name_constraint(file_name: str) -> str | None:
