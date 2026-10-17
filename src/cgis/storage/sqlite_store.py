@@ -270,8 +270,12 @@ class SQLiteStore:
             is_generated
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
-    #: Same columns as _NODE_INSERT; on an id collision, an UNKNOWN reading
-    #: leaves a known namespace (and the rest of the row) as it was.
+    #: Same columns as _NODE_INSERT. On an id collision the stored row is replaced
+    #: only by a better reading, by the resolver's own rank (`_virtual_rank`): a
+    #: known namespace beats UNKNOWN, then the language that sorts first wins. A
+    #: reading from the same language with the same knownness refreshes the row.
+    #: An incremental run re-resolves only changed files, so without the rank the
+    #: language edited last would win (#672 review).
     _VIRTUAL_NODE_UPSERT = """
         INSERT INTO nodes (
             id, type, name, file_path, start_line, end_line, language,
@@ -285,7 +289,9 @@ class SQLiteStore:
             domains = excluded.domains, confidence_score = excluded.confidence_score,
             metadata = excluded.metadata, namespace = excluded.namespace,
             is_test = excluded.is_test, is_generated = excluded.is_generated
-        WHERE NOT (excluded.namespace = 'UNKNOWN' AND nodes.namespace != 'UNKNOWN')
+        WHERE (excluded.namespace = 'UNKNOWN') < (nodes.namespace = 'UNKNOWN')
+           OR ((excluded.namespace = 'UNKNOWN') = (nodes.namespace = 'UNKNOWN')
+               AND excluded.language <= nodes.language)
         """
     _EDGE_INSERT = """
         INSERT OR REPLACE INTO edges (
@@ -783,11 +789,13 @@ class SQLiteStore:
 
         `virtual_nodes` — resolver-minted boundary nodes — are written in the same
         transaction and never deleted outside a rebuild, since an incremental run
-        re-resolves only the changed files' edges. They are upserted without
-        downgrading a known namespace: an incremental run can mint `json.dumps` as
-        UNKNOWN from a TypeScript local while the stored node is STDLIB from a
-        Python module that did not change, and replacing it would make the
-        namespace flip with whichever language was edited last (#454).
+        re-resolves only the changed files' edges. They are upserted by the
+        resolver's rank, a known namespace first and then the language that sorts
+        first: an incremental run can mint `json.dumps` as UNKNOWN from a TypeScript
+        local while the stored node is STDLIB from a Python module that did not
+        change, and replacing it would make the namespace, or the language, flip
+        with whichever file was edited last (#454, #672). A reading that no longer
+        exists is not withdrawn until a rebuild, the staleness #454 accepted.
         """
         if not self._conn:
             raise RuntimeError(self._error_message)

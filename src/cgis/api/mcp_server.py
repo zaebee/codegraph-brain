@@ -683,8 +683,8 @@ def cgis_analyze_impact(
         return f"❌ {exc}"
 
     note = _traversal_note(fqn, res.resolved, res.via_suffix, result, max_nodes, "caller(s)")
-    # Any node's language, not only the root's: a stdlib or third-party root is a
-    # virtual node not tagged with the language of the callers it has here.
+    # Any node's language, not only the root's: a stdlib or third-party root shared
+    # by two languages carries only the one that sorts first (#672).
     caveat = next(
         (c for c in map(impact_caveat, sorted({n.language for n in result.nodes})) if c), ""
     )

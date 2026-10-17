@@ -126,3 +126,29 @@ def test_incremental_ts_change_does_not_downgrade_python_stdlib(tmp_path: Path) 
         with SQLiteStore(db) as store:
             pipeline.run(str(tmp_path), store=store)
         assert namespace() == NodeNamespace.STDLIB, f"downgraded after TS-only edit {step}"
+
+
+def test_incremental_edit_does_not_change_a_shared_virtual_nodes_language(tmp_path: Path) -> None:
+    """#678 review: an UNKNOWN `foo.bar` reached from Python and TS is `python` on a full run;
+    re-ingesting only the TS file must not flip it to the language edited last."""
+    (tmp_path / "pp").mkdir()
+    (tmp_path / "tt").mkdir()
+    (tmp_path / "pp" / "a.py").write_text("def f(foo):\n    return foo.bar()\n", encoding="utf-8")
+    ts = "export function g(foo: any) {\n  return foo.bar();\n}\n"
+    (tmp_path / "tt" / "b.ts").write_text(ts, encoding="utf-8")
+    pipeline = IngestionPipeline(extractors([]))
+    db = str(tmp_path / "g.db")
+
+    def language() -> str:
+        with SQLiteStore(db) as store:
+            node = store.get_node("foo.bar")
+        assert node is not None
+        return node.language
+
+    with SQLiteStore(db) as store:
+        pipeline.run(str(tmp_path), store=store)
+    assert language() == "python"
+    (tmp_path / "tt" / "b.ts").write_text(ts + "// edit\n", encoding="utf-8")
+    with SQLiteStore(db) as store:
+        pipeline.run(str(tmp_path), store=store)
+    assert language() == "python"

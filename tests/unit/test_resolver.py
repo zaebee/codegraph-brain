@@ -2,9 +2,10 @@
 
 import pytest
 
-from cgis.core.models import Edge, EdgeType, Node, NodeType
+from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
 from cgis.languages.python.extractor import PythonExtractor
 from cgis.resolver.engine import ResolverEngine
+from cgis.resolver.indices import SymbolIndex
 from cgis.resolver.symbols import _c3
 
 
@@ -2709,3 +2710,102 @@ def test_a_class_reference_never_resolves_into_another_language() -> None:
     ]
     resolved, _ = ResolverEngine(nodes, edges).resolve()
     assert all(e.target != "py.tools.Widget" for e in resolved)
+
+
+@pytest.mark.parametrize("language", ["typescript", "go"])
+def test_a_virtual_node_takes_the_language_of_its_caller(language: str) -> None:
+    # #672: every virtual boundary node was stored as `python`, the Node default.
+    nodes = [
+        Node(
+            id="m.caller",
+            type=NodeType.FUNCTION,
+            name="caller",
+            file_path="m.x",
+            start_line=1,
+            end_line=2,
+            language=language,
+        ),
+    ]
+    edges = [
+        Edge(
+            id="m.x:raw_call:nowhere_at_all@1:0",
+            source="m.caller",
+            target="raw_call:nowhere_at_all",
+            type=EdgeType.CALLS,
+            confidence=0.1,
+        ),
+    ]
+    _, virtual = ResolverEngine(nodes, edges).resolve()
+    assert {v.id: v.language for v in virtual} == {"nowhere_at_all": language}
+
+
+@pytest.mark.parametrize("order", [("python", "go"), ("go", "python")])
+def test_a_virtual_node_shared_by_two_languages_is_named_the_same_way_in_any_order(
+    order: tuple[str, str],
+) -> None:
+    # One id reached from two languages needs one answer, not the first one walked.
+    nodes = [
+        Node(
+            id=f"{lang}.caller",
+            type=NodeType.FUNCTION,
+            name="caller",
+            file_path=f"{lang}.x",
+            start_line=1,
+            end_line=2,
+            language=lang,
+        )
+        for lang in order
+    ]
+    edges = [
+        Edge(
+            id=f"{lang}.x:raw_call:shared_name@1:0",
+            source=f"{lang}.caller",
+            target="raw_call:shared_name",
+            type=EdgeType.CALLS,
+            confidence=0.1,
+        )
+        for lang in order
+    ]
+    _, virtual = ResolverEngine(nodes, edges).resolve()
+    assert {v.id: v.language for v in virtual} == {"shared_name": "go"}
+
+
+@pytest.mark.parametrize("order", [("python", "typescript"), ("typescript", "python")])
+def test_a_known_reading_of_a_shared_virtual_node_beats_an_unknown_one_in_any_order(
+    order: tuple[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # #678 review: knownness must outrank the language order, even when the only known
+    # reading comes from the language that sorts last.
+    def classify(_self: object, _fqn: str, source_file: str | None = None) -> NodeNamespace:
+        return (
+            NodeNamespace.EXTERNAL if (source_file or "").endswith(".ts") else NodeNamespace.UNKNOWN
+        )
+
+    monkeypatch.setattr(SymbolIndex, "classify_fqn", classify)
+    ext = {"python": "py", "typescript": "ts"}
+    nodes = [
+        Node(
+            id=f"{lang}.caller",
+            type=NodeType.FUNCTION,
+            name="caller",
+            file_path=f"{lang}.{ext[lang]}",
+            start_line=1,
+            end_line=2,
+            language=lang,
+        )
+        for lang in order
+    ]
+    edges = [
+        Edge(
+            id=f"{lang}.{ext[lang]}:raw_call:lib.thing@1:0",
+            source=f"{lang}.caller",
+            target="raw_call:lib.thing",
+            type=EdgeType.CALLS,
+            confidence=0.5,
+        )
+        for lang in order
+    ]
+    _, virtual = ResolverEngine(nodes, edges).resolve()
+    assert {v.id: (v.namespace, v.language) for v in virtual} == {
+        "lib.thing": (NodeNamespace.EXTERNAL, "typescript")
+    }
