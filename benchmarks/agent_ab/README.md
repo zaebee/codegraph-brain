@@ -106,6 +106,6 @@ column and leaves them out of the medians. A dry run writes nothing.
 | `cgis-orientation-call-resolution` | orientation | cgis |
 | `cgis-control-sqlite-pragmas` | control | cgis |
 
-This repository's `CLAUDE.md` describes its architecture in some detail. It is
-the same in both arms, but it lowers what a graph can add here, which is one
-reason owner-api and httpx come next.
+This repository's `AGENTS.md` (which `CLAUDE.md` imports) describes its
+architecture in some detail. It is the same in both arms, but it lowers what a
+graph can add here, which is one reason owner-api and httpx come next.
