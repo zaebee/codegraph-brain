@@ -284,3 +284,50 @@ def test_an_incremental_ingest_sees_a_new_shadowing_field_in_another_file(tmp_pa
         "type S struct {\n\tInner\n\tLog func()\n}\n"
     )
     assert "app.Inner.Log" not in calls()
+
+
+DECLARES_ONCE = (
+    'package app\nimport "sync"\ntype C struct{ once sync.Once }\nfunc (c *C) init() {}\n'
+)
+
+
+def _calls_from(files: dict[str, str], source: str) -> dict[str, float]:
+    nodes, edges = [], []
+    for path, code in files.items():
+        n, e = GoExtractor().parse(code, path)
+        nodes += n
+        edges += e
+    state: dict[str, object] = {"go_module": {"path": "example.com/app"}}
+    resolved, _ = ResolverEngine(nodes, edges, project_state=state).resolve()
+    return {
+        e.target: e.confidence for e in resolved if e.type is EdgeType.CALLS and e.source == source
+    }
+
+
+def test_a_field_type_resolves_through_the_declaring_file_s_imports_on_the_receiver() -> None:
+    """b.go does not import sync; the field's file does, and that decides (#685)."""
+    files = {
+        "app/a.go": DECLARES_ONCE,
+        "app/b.go": "package app\nfunc (c *C) B() { c.once.Do(c.init) }\n",
+    }
+    assert _calls_from(files, "app.C.B").get("sync.Once.Do") == 1.0
+
+
+def test_a_field_type_resolves_through_the_declaring_file_s_imports_on_a_parameter() -> None:
+    """The same call through a typed parameter, not the receiver (#685)."""
+    files = {
+        "app/a.go": DECLARES_ONCE,
+        "app/b.go": "package app\nfunc Use(c *C) { c.once.Do(c.init) }\n",
+    }
+    assert _calls_from(files, "app.Use").get("sync.Once.Do") == 1.0
+
+
+def test_a_field_chain_resolves_through_the_last_hop_s_file() -> None:
+    """`o.c.once.Do`: the type holding `once` is declared in a.go, the outer one in b.go (#685)."""
+    files = {
+        "app/a.go": DECLARES_ONCE,
+        "app/b.go": (
+            "package app\ntype O struct{ c C }\nfunc (o *O) B() { o.c.once.Do(o.c.init) }\n"
+        ),
+    }
+    assert _calls_from(files, "app.O.B").get("sync.Once.Do") == 1.0
