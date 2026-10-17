@@ -16,7 +16,6 @@ from cgis.core.models import (
 )
 from cgis.core.resolution import ResolutionView
 from cgis.languages import pack_for_path, rules_for
-from cgis.resolver.indices import SymbolIndex
 from cgis.resolver.symbols import SymbolResolver, dispatch_edges
 
 RAW_DEP_PREFIX = "raw_dep:"
@@ -30,12 +29,12 @@ _UNRESOLVED_CONFIDENCE = 0.8
 RESOLVED_CALL_CONFIDENCE = 1.0
 
 
-def _unresolved_target(index: SymbolIndex, raw_name: str) -> str:
+def _unresolved_target(view: ResolutionView, raw_name: str) -> str:
     """What an unresolved call or class reference targets: its bare raw name, unless
     that is the id of a real node, which the edge would join and read as resolved
     (#661). Such a name takes the `raw_call:` prefix, which no real id holds and
     consumers already read as unresolved; a class reference gives up `raw_class:`."""
-    return f"{RAW_CALL_PREFIX}{raw_name}" if index.has_node(raw_name) else raw_name
+    return f"{RAW_CALL_PREFIX}{raw_name}" if raw_name in view.nodes else raw_name
 
 
 def _virtual_rank(node: Node) -> tuple[bool, str]:
