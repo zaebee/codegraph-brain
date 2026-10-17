@@ -57,6 +57,9 @@ _BUILTIN_FUNCTIONS = frozenset(
     }
 )
 BUILTINS = _BUILTIN_FUNCTIONS | PREDECLARED
+#: Go's pseudo-package for its predeclared identifiers: a resolved builtin call
+#: targets `builtin.<name>`, never the bare name (#661).
+BUILTIN_PACKAGE = "builtin"
 _MAJOR_VERSION = re.compile(r"v\d+")
 #: Import names that bring a package in without a name to call it by.
 UNNAMED_IMPORTS = frozenset({"_", "."})

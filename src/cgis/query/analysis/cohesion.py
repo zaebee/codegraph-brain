@@ -12,7 +12,7 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
-from cgis.core.models import Edge, EdgeType, Node, NodeType
+from cgis.core.models import RAW_CALL_PREFIX, Edge, EdgeType, Node, NodeType
 
 if TYPE_CHECKING:
     from collections.abc import Hashable, Mapping
@@ -67,6 +67,8 @@ def _resolve_to_file(node_id: str, file_set: set[str], suffix_index: dict[str, s
     """
     if node_id in file_set:
         return node_id
+    if node_id.startswith(RAW_CALL_PREFIX):
+        return None  # an unresolved call whose name collided with a real id (#661)
     parts = node_id.split(".")
     for i in range(len(parts)):
         hit = suffix_index.get(".".join(parts[i:]))

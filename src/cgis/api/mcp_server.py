@@ -20,7 +20,7 @@ from cgis.api.server_instructions import SERVER_INSTRUCTIONS
 from cgis.api.tool_allowlist import TOOLS_ENV, CgisServer
 from cgis.core.coverage import TraversalCoverage, UnresolvedSite
 from cgis.core.freshness import Freshness, FreshnessState
-from cgis.core.models import Edge, EdgeType, Node, NodeType
+from cgis.core.models import RAW_CALL_PREFIX, Edge, EdgeType, Node, NodeType
 from cgis.languages import extractors, impact_caveat
 from cgis.pipeline import IngestionPipeline
 from cgis.query.analysis.overview import DEFAULT_DEPTH, DEFAULT_LIMIT, build_overview
@@ -48,7 +48,7 @@ from cgis.query.render.graph_json import graph_to_json
 from cgis.query.render.mermaid import MermaidCompiler
 from cgis.query.render.metrics import DuckDBAnalyzer
 from cgis.query.render.text import graph_to_text
-from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
+from cgis.storage.sqlite_store import SQLiteStore
 
 print("CGIS MCP Server starting…", file=sys.stderr)
 # stdout is the JSON-RPC channel; the SDK diverts fd 1 only during a stdio session (#619).

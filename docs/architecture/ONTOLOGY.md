@@ -54,7 +54,7 @@ Produced by `ResolverEngine` after FQN resolution. These edges represent runtime
 | `CALLS` | caller → callee | A resolved function/method invocation |
 | `REFERENCES` | node → node | A non-call symbolic reference |
 
-**Unresolved calls** keep `target = "raw_call:<name>"` with `confidence = 0.1` and are stored explicitly so gaps in resolution are visible rather than hidden.
+**Unresolved calls** are stored explicitly, so gaps in resolution are visible rather than hidden. The target becomes the bare `<name>` (or a pack fallback such as `js_builtins.<name>`), a virtual boundary node classified STDLIB, EXTERNAL or UNKNOWN, at `confidence=0.8`. A name equal to the id of a real node keeps the `raw_call:` prefix instead, so the edge cannot join that node (#661). A resolved call scores 1.0 in every language (#674), capped at 0.8 when its target is an UNKNOWN boundary node (#493); a Go builtin resolves to `builtin.<name>`.
 
 ---
 
@@ -104,10 +104,10 @@ Node
 Edge
 ├── id          str       — unique edge identifier (typically "source->target:type")
 ├── source      str       — FQN of origin node
-├── target      str       — FQN of target node (or "raw_call:<name>" if unresolved)
+├── target      str       — FQN of target node; unresolved: a virtual boundary node (see above)
 ├── type        EdgeType  — L1/L2/L3 classification
 ├── weight      float     — traversal weight (default 1.0)
-└── confidence  float     — resolution confidence; 0.1 for unresolved raw calls
+└── confidence  float     — CALLS: 1.0 resolved, 0.8 unresolved; DISPATCHES 0.5
 ```
 
 ---

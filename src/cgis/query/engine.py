@@ -5,8 +5,8 @@ from collections.abc import Callable
 from typing import NamedTuple
 
 from cgis.core.coverage import TraversalCoverage, rank_unresolved, unresolved_sites
-from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
-from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
+from cgis.core.models import RAW_CALL_PREFIX, Edge, EdgeType, Node, NodeNamespace, NodeType
+from cgis.storage.sqlite_store import SQLiteStore
 
 STRUCTURAL_EDGE_TYPES: frozenset[EdgeType] = frozenset({EdgeType.CONTAINS, EdgeType.DECLARES})
 BEHAVIORAL_EDGE_TYPES: frozenset[EdgeType] = frozenset(
@@ -101,9 +101,15 @@ def _admit(
 Screen = Callable[[list[str]], _Verdict]
 
 
+def _shown(target: str) -> str:
+    """An unresolved target as a reader names it: without the `raw_call:` prefix a
+    name colliding with a real node keeps in storage (#661)."""
+    return target.removeprefix(RAW_CALL_PREFIX)
+
+
 def _call_sites(calls: list[Edge]) -> list[tuple[str, str, str | None, int | None]]:
     """(target, caller, file, line) of each call, as `unresolved_sites` takes them."""
-    return [(e.target, e.source, e.file_path, e.line_number) for e in calls]
+    return [(_shown(e.target), e.source, e.file_path, e.line_number) for e in calls]
 
 
 def agent_screen(
@@ -354,7 +360,7 @@ class QueryEngine:
         left_out = screen(callers).dropped
         examined = [e for e in walk.calls.values() if e.source not in left_out]
         hidden = [e for e in hidden_calls if e.source not in left_out]
-        top = rank_unresolved(Counter(e.target for e in hidden))
+        top = rank_unresolved(Counter(_shown(e.target) for e in hidden))
         coverage = TraversalCoverage(
             basis="unresolved_calls_by_name",
             calls_examined=len(examined) + len(hidden),
@@ -428,7 +434,7 @@ class QueryEngine:
         known = {n.id: n for n in self.store.get_nodes([*walk.discovered, *call_targets])}
         nodes = [n for n in known.values() if n.id in walk.discovered]
         unresolved_calls = [e for e in walk.calls.values() if is_unresolved(e.target, known)]
-        top = rank_unresolved(Counter(e.target for e in unresolved_calls))
+        top = rank_unresolved(Counter(_shown(e.target) for e in unresolved_calls))
         coverage = TraversalCoverage(
             basis="unresolved_calls_made",
             calls_examined=len(call_targets),

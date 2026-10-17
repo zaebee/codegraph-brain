@@ -11,11 +11,11 @@ Callers/callees are restricted to CALLS edges so structural noise
 enclosing class is recovered separately from the structural layer.
 """
 
-from cgis.core.models import EdgeType, Node, NodeNamespace, NodeType
+from cgis.core.models import RAW_CALL_PREFIX, EdgeType, Node, NodeNamespace, NodeType
 from cgis.query.context.prompt import compile_context
 from cgis.query.context.snippet import extract_snippet, resolve_source_path
 from cgis.query.engine import QueryEngine, is_unresolved
-from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
+from cgis.storage.sqlite_store import SQLiteStore
 
 _CALLS: frozenset[EdgeType] = frozenset({EdgeType.CALLS})
 _STRUCTURAL: frozenset[EdgeType] = frozenset({EdgeType.CONTAINS, EdgeType.DECLARES})

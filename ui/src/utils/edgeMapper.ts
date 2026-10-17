@@ -9,9 +9,9 @@ for (const [type, stroke] of Object.entries(EDGE_COLORS)) {
 }
 FULL_EDGE_STYLES.DECLARES = { stroke: EDGE_COLORS.DECLARES, strokeWidth: 1, opacity: 0.6 };
 
-// confidence=1.0 → fully resolved call (thick)
-// confidence=0.8 → resolved to external/builtin (medium)
-// confidence<0.5 → unresolved raw_call (thin)
+// confidence=1.0 → resolved call (thick)
+// confidence=0.8 → unresolved call into a virtual STDLIB/EXTERNAL/UNKNOWN node (medium)
+// confidence<0.7 → DISPATCHES (0.5) or an unresolved class reference (thin)
 function confidenceToWidth(confidence: number | undefined): number {
   if (confidence == null || confidence >= 0.9) return 2.2;
   if (confidence >= 0.7) return 1.2;

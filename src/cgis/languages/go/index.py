@@ -17,7 +17,7 @@ from typing import cast
 
 from cgis.core.index import ClassifyContext
 from cgis.core.models import Node, NodeNamespace, NodeType
-from cgis.languages.go._syntax import BUILTINS, PREDECLARED, dotted
+from cgis.languages.go._syntax import BUILTIN_PACKAGE, BUILTINS, PREDECLARED, dotted
 from cgis.languages.go.naming import GO_LANG
 from cgis.languages.go.project import GO_MODULE_KEY
 
@@ -140,13 +140,18 @@ def classify(fqn: str, ctx: ClassifyContext) -> NodeNamespace:
     facts = cast("GoIndexFacts", ctx.facts)
     if _under(fqn, facts.module) or any(_under(fqn, m) for m in facts.replaces):
         return NodeNamespace.INTERNAL
-    if fqn in BUILTINS:
+    if (
+        fqn.startswith(f"{BUILTIN_PACKAGE}.")
+        and fqn.removeprefix(f"{BUILTIN_PACKAGE}.") in BUILTINS
+    ):
+        # Only the qualified form: a resolved builtin is `builtin.len` (#661). A bare
+        # `len` is an unresolved call, to a local named like a builtin, and stays UNKNOWN.
         return NodeNamespace.STDLIB
     imported = facts.file_imports.get(ctx.source_file or "", {})
     under = [d for d in imported if _under(fqn, d)]
     if under:
         return import_namespace(imported[max(under, key=len)], facts)
-    if fqn.split(".", maxsplit=1)[0] in PREDECLARED:
+    if "." in fqn and fqn.split(".", maxsplit=1)[0] in PREDECLARED:
         return NodeNamespace.STDLIB  # a method of a predeclared type: `error.Error` (#608)
     if fqn.split(".", maxsplit=1)[0] in ctx.internal_roots:
         return NodeNamespace.INTERNAL

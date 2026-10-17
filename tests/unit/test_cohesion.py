@@ -80,6 +80,21 @@ def test_build_file_graph_with_calls_adds_calls_layer() -> None:
     assert g_imports_only.adj == {}
 
 
+def test_build_file_graph_ignores_an_unresolved_call_that_collided_with_a_file() -> None:
+    # #684 review: `raw_call:p.b` is an unresolved call whose name equals a file id (#661);
+    # the suffix match reconciled it to that file and counted a call edge.
+    nodes = [make_file_node("p.a", "p/a.py"), make_file_node("p.b", "p/b.py")]
+    call = Edge(
+        id="p.a:raw",
+        source="p.a",
+        target="raw_call:p.b",
+        type=EdgeType.CALLS,
+        weight=1.0,
+        confidence=0.8,
+    )
+    assert build_file_graph(nodes, [call], prefix="p", with_calls=True).adj == {}
+
+
 def _clique(prefix: str, names: list[str]) -> dict[str, dict[str, float]]:
     adj: dict[str, dict[str, float]] = {}
     ids = [f"{prefix}.{n}" for n in names]

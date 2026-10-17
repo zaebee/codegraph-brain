@@ -4,6 +4,7 @@ from collections.abc import Iterable, Mapping
 
 from cgis.core.models import (
     DEFAULT_LANGUAGE,
+    RAW_CALL_PREFIX,
     RAW_CLASS_PREFIX,
     SELF_PREFIX,
     VIRTUAL_FILE_PATH,
@@ -17,7 +18,6 @@ from cgis.core.resolution import ResolutionView
 from cgis.languages import pack_for_path, rules_for
 from cgis.resolver.symbols import SymbolResolver, dispatch_edges
 
-RAW_CALL_PREFIX = "raw_call:"
 RAW_DEP_PREFIX = "raw_dep:"
 RAW_IMPORT_PREFIX = "raw_import:"
 
@@ -27,6 +27,14 @@ RAW_IMPORT_PREFIX = "raw_import:"
 _UNRESOLVED_CONFIDENCE = 0.8
 #: What a call the resolver found a target for scores, whatever language made it (#674).
 RESOLVED_CALL_CONFIDENCE = 1.0
+
+
+def _unresolved_target(view: ResolutionView, raw_name: str) -> str:
+    """What an unresolved call or class reference targets: its bare raw name, unless
+    that is the id of a real node, which the edge would join and read as resolved
+    (#661). Such a name takes the `raw_call:` prefix, which no real id holds and
+    consumers already read as unresolved; a class reference gives up `raw_class:`."""
+    return f"{RAW_CALL_PREFIX}{raw_name}" if raw_name in view.nodes else raw_name
 
 
 def _virtual_rank(node: Node) -> tuple[bool, str]:
@@ -187,7 +195,7 @@ class ResolverEngine:
         """
         raw = edge.target.removeprefix(RAW_CLASS_PREFIX)
         resolved = self._resolver.resolve_class_ref(raw, edge.source, edge.file_path)
-        final_target = resolved or raw
+        final_target = resolved or _unresolved_target(self._index, raw)
         confidence = 1.0 if resolved else 0.5
         return edge.model_copy(update={"target": final_target, "confidence": confidence})
 
@@ -218,7 +226,7 @@ class ResolverEngine:
             hit = _fallback(self._index, raw_name, file_path)
             if hit is not None:
                 return edge.model_copy(update={"target": hit[0], "confidence": hit[1]})
-        final_target = new_target or raw_name
+        final_target = new_target or _unresolved_target(self._index, raw_name)
         confidence = RESOLVED_CALL_CONFIDENCE if new_target else _UNRESOLVED_CONFIDENCE
         return edge.model_copy(update={"target": final_target, "confidence": confidence})
 
@@ -294,7 +302,8 @@ class ResolverEngine:
         language = source.language if source is not None else _pack_name(source_file)
         if existing is not None and _virtual_rank(existing) <= (False, language):
             return  # nothing this caller can classify would outrank it
-        namespace = self._index.classify_fqn(target, source_file)
+        # A collision kept its `raw_call:` prefix (#661); the name itself is classified.
+        namespace = self._index.classify_fqn(target.removeprefix(RAW_CALL_PREFIX), source_file)
         if namespace is NodeNamespace.INTERNAL:
             # An internal-root FQN with no node is one of four things, measured on
             # owner-api's 681 such nodes (#459, and the review of #493):
@@ -321,7 +330,7 @@ class ResolverEngine:
         return Node(
             id=fqn,
             type=NodeType.FUNCTION,
-            name=fqn.rsplit(".", maxsplit=1)[-1],
+            name=fqn.removeprefix(RAW_CALL_PREFIX).rsplit(".", maxsplit=1)[-1],
             file_path=VIRTUAL_FILE_PATH,
             start_line=0,
             end_line=0,

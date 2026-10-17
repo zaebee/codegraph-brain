@@ -19,9 +19,17 @@ from typing import Any
 
 import pytest
 
-from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeNamespace, NodeType
+from cgis.core.models import (
+    RAW_CALL_PREFIX,
+    VIRTUAL_FILE_PATH,
+    Edge,
+    EdgeType,
+    Node,
+    NodeNamespace,
+    NodeType,
+)
 from cgis.query.engine import BEHAVIORAL_EDGE_TYPES, QueryEngine
-from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
+from cgis.storage.sqlite_store import SQLiteStore
 
 
 @pytest.fixture

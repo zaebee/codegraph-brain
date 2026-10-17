@@ -13,7 +13,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from cgis.core.extractor import BaseExtractor
 from cgis.core.generated import is_generated_source
-from cgis.core.models import Edge, EdgeType, Node, NodeType
+from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeType
 from cgis.core.paths import EXCLUDED_DIRS
 from cgis.import_names import ImportNameCollector
 from cgis.languages import cross_file_metadata, skips
@@ -445,8 +445,14 @@ class IngestionPipeline:
             old = _resolution_signature(old_nodes, store.get_outgoing_edges_batch(old_ids))
             fresh = new_by_file.get(file_path, {})
             # An id another file's row holds (`m.py` beside `m/__init__.py`) was
-            # never this file's in the store, so it cannot be in `old` either.
-            owner = {n.id: n.file_path for n in store.get_nodes(list(fresh))}
+            # never this file's in the store, so it cannot be in `old` either. A
+            # virtual boundary row is no file's: a real node taking a once-virtual
+            # id is new, and unresolved edges that named it must re-resolve (#661).
+            owner = {
+                n.id: n.file_path
+                for n in store.get_nodes(list(fresh))
+                if n.file_path != VIRTUAL_FILE_PATH
+            }
             new_nodes = [n for i, n in fresh.items() if owner.get(i, file_path) == file_path]
             new_edges = [e for n in new_nodes for e in new_extends.get(n.id, {}).values()]
             if _resolution_signature(new_nodes, new_edges) != old:
