@@ -57,7 +57,7 @@ IngestionPipeline (pipeline/__init__.py)
         └── QueryEngine (query/engine.py)      ← BFS traversals (impact / flow)
 ```
 
-**Node FQN format**: `module.ClassName.method_name` — fully dot-separated, derived from the file path (e.g., `src/cgis/pipeline.py` → `src.cgis.pipeline.IngestionPipeline.run`). Use `cgis.languages.scope_of(path, source_root)` to convert paths (it picks the file's own pack; the Python rule lives in `languages/python/extractor.py`). `__init__.py` strips the `/__init__` suffix.
+**Node FQN format**: `module.ClassName.method_name` — fully dot-separated, derived from the file path (e.g., `src/cgis/pipeline/__init__.py` → `src.cgis.pipeline.IngestionPipeline.run`). Use `cgis.languages.scope_of(path, source_root)` to convert paths (it picks the file's own pack; the Python rule lives in `languages/python/extractor.py`). `__init__.py` strips the `/__init__` suffix.
 
 **Raw call convention**: Extractors emit edges with `target = "raw_call:<name>"`. The `ResolverEngine` then resolves these to actual FQNs, or leaves them unresolved: the target becomes the bare raw name (or a pack fallback such as `js_builtins.<name>`), a virtual boundary node classified STDLIB, EXTERNAL or UNKNOWN (#661).
 
