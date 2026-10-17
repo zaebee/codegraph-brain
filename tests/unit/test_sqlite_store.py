@@ -960,3 +960,58 @@ def test_ingest_state_absent_on_an_older_graph(tmp_path: Path) -> None:
     db_path = str(tmp_path / "g.db")
     with SQLiteStore(db_path) as store:
         assert store.get_ingest_state() is None
+
+
+def _virtual(namespace: NodeNamespace, language: str) -> Node:
+    return Node(
+        id="lib.thing",
+        type=NodeType.FUNCTION,
+        name="thing",
+        file_path=VIRTUAL_FILE_PATH,
+        start_line=0,
+        end_line=0,
+        namespace=namespace,
+        language=language,
+    )
+
+
+@pytest.mark.parametrize(
+    ("stored", "incoming", "kept"),
+    [
+        # #678 review: a known reading from the later-sorting language survives an
+        # UNKNOWN one from the earlier-sorting language (knownness ranks first).
+        (
+            (NodeNamespace.EXTERNAL, "typescript"),
+            (NodeNamespace.UNKNOWN, "python"),
+            (NodeNamespace.EXTERNAL, "typescript"),
+        ),
+        (
+            (NodeNamespace.UNKNOWN, "python"),
+            (NodeNamespace.UNKNOWN, "typescript"),
+            (NodeNamespace.UNKNOWN, "python"),
+        ),
+        (
+            (NodeNamespace.UNKNOWN, "typescript"),
+            (NodeNamespace.UNKNOWN, "python"),
+            (NodeNamespace.UNKNOWN, "python"),
+        ),
+        (
+            (NodeNamespace.STDLIB, "python"),
+            (NodeNamespace.EXTERNAL, "python"),
+            (NodeNamespace.EXTERNAL, "python"),
+        ),
+    ],
+)
+def test_the_virtual_node_upsert_keeps_the_better_reading(
+    temp_store: SQLiteStore,
+    stored: tuple[NodeNamespace, str],
+    incoming: tuple[NodeNamespace, str],
+    kept: tuple[NodeNamespace, str],
+) -> None:
+    for namespace, language in (stored, incoming):
+        temp_store.save_incremental_batch(
+            {}, {}, {}, set(), virtual_nodes=[_virtual(namespace, language)]
+        )
+    node = temp_store.get_node("lib.thing")
+    assert node is not None
+    assert (node.namespace, node.language) == kept

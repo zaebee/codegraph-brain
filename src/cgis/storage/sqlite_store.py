@@ -789,11 +789,13 @@ class SQLiteStore:
 
         `virtual_nodes` — resolver-minted boundary nodes — are written in the same
         transaction and never deleted outside a rebuild, since an incremental run
-        re-resolves only the changed files' edges. They are upserted without
-        downgrading a known namespace: an incremental run can mint `json.dumps` as
-        UNKNOWN from a TypeScript local while the stored node is STDLIB from a
-        Python module that did not change, and replacing it would make the
-        namespace flip with whichever language was edited last (#454).
+        re-resolves only the changed files' edges. They are upserted by the
+        resolver's rank, a known namespace first and then the language that sorts
+        first: an incremental run can mint `json.dumps` as UNKNOWN from a TypeScript
+        local while the stored node is STDLIB from a Python module that did not
+        change, and replacing it would make the namespace, or the language, flip
+        with whichever file was edited last (#454, #672). A reading that no longer
+        exists is not withdrawn until a rebuild, the staleness #454 accepted.
         """
         if not self._conn:
             raise RuntimeError(self._error_message)
