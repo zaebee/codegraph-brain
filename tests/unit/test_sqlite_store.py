@@ -1014,4 +1014,5 @@ def test_the_virtual_node_upsert_keeps_the_better_reading(
         )
     node = temp_store.get_node("lib.thing")
     assert node is not None
-    assert (node.namespace, node.language) == kept
+    got = (node.namespace, node.language)
+    assert got == kept
