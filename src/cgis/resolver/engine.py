@@ -45,7 +45,7 @@ def _call_target(
 
 
 def _value_call_edge(resolver: SymbolResolver, view: ResolutionView, edge: Edge) -> Edge | None:
-    """A function value that the code calls (core/ontology.yml CV-1, CV-2), or None (#668).
+    """A function value the code calls (docs/specs/core/ontology.yml CV-1, CV-2), or None.
 
     CV-1: argument i of the call at the recorded site counts only when that call
     resolves to an invoker the source's pack lists with position i. CV-2: a local

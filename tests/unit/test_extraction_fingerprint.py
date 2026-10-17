@@ -210,16 +210,3 @@ def test_a_source_that_cannot_be_read_does_not_break_the_import() -> None:
     result = _import_with("def broken(self):\n    raise OSError('gone')\nPath.read_bytes = broken")
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip().splitlines()[-1] == "None"
-
-
-def test_the_fingerprint_follows_a_pack_s_profile_data(tmp_path: Path) -> None:
-    # #686 review: an edited invoker table changes stored edges, so it must rebuild.
-    pkg = _package(
-        tmp_path / "cgis",
-        {"languages/go/x.py": "a = 1\n", "languages/go/profile.yml": "invokers: {}\n"},
-    )
-    before = extraction_fingerprint(pkg)
-    (pkg / "languages/go/profile.yml").write_text(
-        "invokers: {sync.Once.Do: [0]}\n", encoding="utf-8"
-    )
-    assert extraction_fingerprint(pkg) != before

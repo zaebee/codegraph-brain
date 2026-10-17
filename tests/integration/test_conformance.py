@@ -1,4 +1,4 @@
-"""Conformance cases for the core clauses (src/cgis/core/ontology.yml), run on every pack.
+"""Conformance cases for the core clauses (docs/specs/core/ontology.yml), run on every pack.
 
 A case is a directory under tests/fixtures/conformance/<language>/<case>/: source files,
 plus `expected.yml` naming the clause it checks and the CALLS edges that must and must
@@ -21,7 +21,7 @@ from cgis.pipeline import IngestionPipeline
 
 _ROOT = Path(__file__).resolve().parents[2]
 _CASES = _ROOT / "tests" / "fixtures" / "conformance"
-_ONTOLOGY = yaml.safe_load((_ROOT / "src" / "cgis" / "core" / "ontology.yml").read_text())
+_ONTOLOGY = yaml.safe_load((_ROOT / "docs" / "specs" / "core" / "ontology.yml").read_text())
 _STATUSES = {"pass", "todo", "xfail"}
 
 

@@ -4,14 +4,14 @@
 # case (tests/fixtures/conformance/<lang>/<case>/expected.yml) cites the clause it
 # checks, and tests/integration/test_conformance.py runs every case against every pack.
 # Per-language facts a clause needs (which library functions invoke a value, say) live
-# in the pack's profile.yml, not here and not in code.
+# in the pack's profile (languages/<pack>/profile.py, data only), not here.
 version: 1
 clauses:
   CV-1:
     title: A function value handed to a known invoker is a call by whoever hands it over
     rule: >
       When function or method value F is passed, at a listed position, to an invoker
-      listed in the pack's profile (callable_values.invokers), the passing function P
+      listed in the pack's profile (INVOKERS), the passing function P
       calls F. The invoker may run F now, later or not at all (an empty input, a second
       Once.Do), but every run it makes is on P's behalf, so for impact the caller is P.
       A direct `go f()` or `defer f()` is an ordinary call already; `go cb()` on a local
@@ -24,7 +24,13 @@ clauses:
       When P binds function or method value F to a local (a variable, or the element
       variable of a range over a slice, array or map literal of values) and calls it
       inside P, P calls F. A reassignment in the declaring block replaces the value; one
-      in a nested block (an if, a loop body) may not run, so the local holds either.
+      in a nested block (an if, a loop body) may not run, so after it the local holds
+      either. A copy `x := cb` holds what cb holds.
+    known_limits: >
+      Go pilot: a call reads what the local holds at that point of a single pass, so a
+      reassignment later in a loop body is not seen by a call earlier in it (a missed
+      edge); a value held after one branch of an if is also seen in its else branch (an
+      extra edge).
     edge: {type: CALLS, source: P, target: F, confidence: 1.0, context: "via local value"}
     origin: "exp4 pilot: Session.start's []F{(*Session).stdin, ...} loop; #668"
   CV-3:

@@ -788,8 +788,9 @@ def _bind_value(ctx: _File, bindings: Bindings, name: str, value: TSNode | None)
         return
     typed = _value_type(ctx, value, bindings) if value is not None else None
     bindings.bind(name, typed or _UNKNOWN)
-    held = _value_name(ctx, value, bindings) if value is not None else ""
-    bindings.values.hold(name, [held] if held else [], here=True)
+    bindings.values.hold(
+        name, _values_of(ctx, value, bindings) if value is not None else [], here=True
+    )
 
 
 def _ranged(ctx: _File, clause: TSNode, bindings: Bindings) -> None:
@@ -1086,8 +1087,8 @@ def _value_name(ctx: _File, value: TSNode, bindings: Bindings) -> str:
     A function or method name (`upper`, `c.handle`, `pkg.F`) reads as the call it
     would be; a method expression `(*T).M` or `T.M` names `<scope>.T.M` outright.
     A literal, a call or a closure is not a value this tracks: a closure's calls
-    already fold into the function that holds it. A bare local's name is passed on
-    and dropped by the resolver, which knows it as a local (locals_shadow).
+    already fold into the function that holds it. A bare local is not a function;
+    what it holds is, which `_values_of` carries over.
     """
     if value.type == "selector_expression":
         operand = value.child_by_field_name("operand")
@@ -1097,13 +1098,15 @@ def _value_name(ctx: _File, value: TSNode, bindings: Bindings) -> str:
                 inner = inner.child_by_field_name("operand")
             if inner is not None and inner.type in ("identifier", "type_identifier"):
                 return f"{ctx.scope}.{text(inner)}.{_field_name(value)}"
+            if inner is not None and inner.type in ("selector_expression", "qualified_type"):
+                # `(*q.T).M`: another package's type; resolved through the import map.
+                return f"{text(inner)}.{_field_name(value)}"
             return ""
     elif value.type != "identifier":
         return ""
     chain = selector_chain(value)
     if not chain:
         return ""
-    # A local's name is no function: the resolver's locals_shadow drops it (Go, #660).
     receiver = bindings.receiver if not bindings.shadowed(bindings.receiver or "") else None
     return call_name(value, receiver)
 
@@ -1118,8 +1121,22 @@ def _reassigned(ctx: _File, node: TSNode, bindings: Bindings) -> None:
         if target.type != "identifier":
             continue
         value = values[position] if position < len(values) else None
-        held = _value_name(ctx, value, bindings) if value is not None else ""
-        bindings.values.hold(text(target), [held] if held else [])
+        bindings.values.hold(
+            text(target), _values_of(ctx, value, bindings) if value is not None else []
+        )
+
+
+def _values_of(ctx: _File, value: TSNode, bindings: Bindings) -> list[str]:
+    """The function values an expression gives: its own name, or what a local holds.
+
+    A bare local is no function, only what it holds is: passing its name on would
+    resolve an untyped local (a func parameter) to the package function it shadows,
+    as nothing records its type (#686 review).
+    """
+    if value.type == "identifier" and text(value) in bindings:
+        return bindings.values.held(text(value))  # `x := cb`, `once.Do(cb)`
+    name = _value_name(ctx, value, bindings)
+    return [name] if name else []
 
 
 def _literal_values(ctx: _File, literal: TSNode, bindings: Bindings) -> list[str]:
@@ -1132,9 +1149,9 @@ def _literal_values(ctx: _File, literal: TSNode, bindings: Bindings) -> list[str
         value = element.named_children[-1] if element.named_children else None
         if value is not None and value.type == "literal_element" and value.named_children:
             value = value.named_children[0]  # a keyed element's value: `"a": t.mapped`
-        name = _value_name(ctx, value, bindings) if value is not None else ""
-        if name and name not in names:
-            names.append(name)
+        for name in _values_of(ctx, value, bindings) if value is not None else []:
+            if name not in names:
+                names.append(name)
     return names
 
 
@@ -1157,12 +1174,14 @@ def _value_arguments(
         return []
     edges = []
     for position, argument in enumerate(arguments.named_children):
-        value = _value_name(ctx, argument, bindings)
-        if not value:
-            continue
-        edge = _call(ctx, source, value, argument)
-        edges.append(edge.model_copy(update={"context": f"{VALUE_ARG_CONTEXT}{position}:{site}"}))
-        _site(ctx, argument, receiver, bindings, _site_key(edge))
+        # A local passes what it holds, which the argument's own text does not name.
+        held = argument.type == "identifier" and text(argument) in bindings
+        for value in _values_of(ctx, argument, bindings):
+            edge = _call(ctx, source, value, argument)
+            context = f"{VALUE_ARG_CONTEXT}{position}:{site}"
+            edges.append(edge.model_copy(update={"context": context}))
+            if not held:
+                _site(ctx, argument, receiver, bindings, _site_key(edge))
     return edges
 
 
