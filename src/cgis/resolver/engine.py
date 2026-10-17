@@ -290,6 +290,10 @@ class ResolverEngine:
             return
         existing = virtual_nodes.get(target)
         source_file = self._index.normalized_file_path(edge.source, edge.file_path)
+        source = self._index.nodes.get(edge.source)
+        language = source.language if source is not None else _pack_name(source_file)
+        if existing is not None and _virtual_rank(existing) <= (False, language):
+            return  # nothing this caller can classify would outrank it
         namespace = self._index.classify_fqn(target, source_file)
         if namespace is NodeNamespace.INTERNAL:
             # An internal-root FQN with no node is one of four things, measured on
@@ -308,11 +312,9 @@ class ResolverEngine:
             # classifying them INTERNAL was the same masking as #414 and #454. The
             # target is kept, so the name still shows up in `top_unresolved`.
             namespace = NodeNamespace.UNKNOWN
-        source = self._index.nodes.get(edge.source)
-        language = source.language if source is not None else _pack_name(source_file)
-        candidate = self._make_virtual_node(target, namespace, language)
-        if existing is None or _virtual_rank(candidate) < _virtual_rank(existing):
-            virtual_nodes[target] = candidate
+        rank = (namespace is NodeNamespace.UNKNOWN, language)
+        if existing is None or rank < _virtual_rank(existing):
+            virtual_nodes[target] = self._make_virtual_node(target, namespace, language)
 
     def _make_virtual_node(self, fqn: str, namespace: NodeNamespace, language: str) -> Node:
         """Create a placeholder node for an external/stdlib symbol, in its caller's language."""

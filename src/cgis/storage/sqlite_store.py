@@ -270,8 +270,12 @@ class SQLiteStore:
             is_generated
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
-    #: Same columns as _NODE_INSERT; on an id collision, an UNKNOWN reading
-    #: leaves a known namespace (and the rest of the row) as it was.
+    #: Same columns as _NODE_INSERT. On an id collision the stored row is replaced
+    #: only by a better reading, by the resolver's own rank (`_virtual_rank`): a
+    #: known namespace beats UNKNOWN, then the language that sorts first wins. A
+    #: reading from the same language with the same knownness refreshes the row.
+    #: An incremental run re-resolves only changed files, so without the rank the
+    #: language edited last would win (#672 review).
     _VIRTUAL_NODE_UPSERT = """
         INSERT INTO nodes (
             id, type, name, file_path, start_line, end_line, language,
@@ -285,7 +289,9 @@ class SQLiteStore:
             domains = excluded.domains, confidence_score = excluded.confidence_score,
             metadata = excluded.metadata, namespace = excluded.namespace,
             is_test = excluded.is_test, is_generated = excluded.is_generated
-        WHERE NOT (excluded.namespace = 'UNKNOWN' AND nodes.namespace != 'UNKNOWN')
+        WHERE (excluded.namespace = 'UNKNOWN') < (nodes.namespace = 'UNKNOWN')
+           OR ((excluded.namespace = 'UNKNOWN') = (nodes.namespace = 'UNKNOWN')
+               AND excluded.language <= nodes.language)
         """
     _EDGE_INSERT = """
         INSERT OR REPLACE INTO edges (
