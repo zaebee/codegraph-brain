@@ -32,7 +32,7 @@ clauses:
       edge); a value held after one branch of an if is also seen in its else branch (an
       extra edge); a closure body is read where the closure is written, so it sees the
       value the local held then, not the one it holds when the closure runs (an extra
-      edge and a missed one).
+      edge and a missed one, for CV-1 arguments and CV-2 calls alike).
     edge: {type: CALLS, source: P, target: F, confidence: 1.0, context: "via local value"}
     origin: "exp4 pilot: Session.start's []F{(*Session).stdin, ...} loop; #668"
   CV-3:

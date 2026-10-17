@@ -1173,7 +1173,9 @@ def _value_arguments(
     if arguments is None or name.rsplit(".", 1)[-1] not in INVOKER_NAMES:
         return []
     edges = []
-    for position, argument in enumerate(arguments.named_children):
+    # A comment is a named child too, and would shift every position after it.
+    values = [a for a in arguments.named_children if a.type != "comment"]
+    for position, argument in enumerate(values):
         # A local passes what it holds, which the argument's own text does not name.
         held = argument.type == "identifier" and text(argument) in bindings
         for value in _values_of(ctx, argument, bindings):

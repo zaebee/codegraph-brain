@@ -56,7 +56,7 @@ def _value_call_edge(resolver: SymbolResolver, view: ResolutionView, edge: Edge)
     via = "via local value"
     if context.startswith(VALUE_ARG_CONTEXT):
         position, _, call_site = context.removeprefix(VALUE_ARG_CONTEXT).partition(":")
-        if not position.isdigit() or not call_site:
+        if not position.isdecimal() or not call_site:
             return None  # the extractor's marker, malformed: the edge, not the ingest, is lost
         invoker = _call_target(resolver, call_site.rpartition("@")[0], edge, call_site)
         rules = rules_for(edge.file_path)  # a value edge always carries its file

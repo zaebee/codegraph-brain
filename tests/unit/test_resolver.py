@@ -2851,7 +2851,8 @@ def test_a_function_value_that_resolves_to_a_type_is_no_call() -> None:
 @pytest.mark.parametrize("context", ["value-arg:x:work@1:0", "value-arg:", "value-arg:0"])
 def test_a_malformed_value_candidate_is_dropped_not_raised(context: str) -> None:
     # Gemini on #686: a candidate's context is the extractor's; a bad one costs the
-    # edge, never the ingest.
+    # edge, never the ingest. The first case reaches the position parse; the other two
+    # stop earlier (no call site resolves) and only check that nothing raises.
     nodes = [
         Node(
             id="p.run",
