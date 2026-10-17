@@ -1391,3 +1391,21 @@ def test_python_impact_answer_carries_no_language_caveat(
     out = cgis_analyze_impact("mod.callee", str(db), output_format="text")
     assert "mod.caller" in out
     assert "reading the code" not in out
+
+
+def test_go_impact_on_a_stdlib_root_with_no_production_caller_still_carries_the_caveat(
+    tmp_path: Path,
+) -> None:
+    # #672: the lone virtual root was tagged python, so an empty Go answer had no caveat.
+    (tmp_path / "go.mod").write_text("module example.com/m\n\ngo 1.22\n", encoding="utf-8")
+    (tmp_path / "m.go").write_text("package m\n\nfunc A() {}\n", encoding="utf-8")
+    (tmp_path / "m_test.go").write_text(
+        'package m\n\nimport (\n\t"strings"\n\t"testing"\n)\n\n'
+        'func TestA(t *testing.T) { _ = strings.ToLower("X") }\n',
+        encoding="utf-8",
+    )
+    db = tmp_path / "graph.db"
+    cgis_ingest(str(tmp_path), str(db))
+    out = cgis_analyze_impact("strings.ToLower", str(db), output_format="text")
+    assert "test caller" in out
+    assert "reading the code" in out

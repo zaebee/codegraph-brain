@@ -2709,3 +2709,61 @@ def test_a_class_reference_never_resolves_into_another_language() -> None:
     ]
     resolved, _ = ResolverEngine(nodes, edges).resolve()
     assert all(e.target != "py.tools.Widget" for e in resolved)
+
+
+@pytest.mark.parametrize("language", ["typescript", "go"])
+def test_a_virtual_node_takes_the_language_of_its_caller(language: str) -> None:
+    # #672: every virtual boundary node was stored as `python`, the Node default.
+    nodes = [
+        Node(
+            id="m.caller",
+            type=NodeType.FUNCTION,
+            name="caller",
+            file_path="m.x",
+            start_line=1,
+            end_line=2,
+            language=language,
+        ),
+    ]
+    edges = [
+        Edge(
+            id="m.x:raw_call:nowhere_at_all@1:0",
+            source="m.caller",
+            target="raw_call:nowhere_at_all",
+            type=EdgeType.CALLS,
+            confidence=0.1,
+        ),
+    ]
+    _, virtual = ResolverEngine(nodes, edges).resolve()
+    assert {v.id: v.language for v in virtual} == {"nowhere_at_all": language}
+
+
+@pytest.mark.parametrize("order", [("python", "go"), ("go", "python")])
+def test_a_virtual_node_shared_by_two_languages_is_named_the_same_way_in_any_order(
+    order: tuple[str, str],
+) -> None:
+    # One id reached from two languages needs one answer, not the first one walked.
+    nodes = [
+        Node(
+            id=f"{lang}.caller",
+            type=NodeType.FUNCTION,
+            name="caller",
+            file_path=f"{lang}.x",
+            start_line=1,
+            end_line=2,
+            language=lang,
+        )
+        for lang in order
+    ]
+    edges = [
+        Edge(
+            id=f"{lang}.x:raw_call:shared_name@1:0",
+            source=f"{lang}.caller",
+            target="raw_call:shared_name",
+            type=EdgeType.CALLS,
+            confidence=0.1,
+        )
+        for lang in order
+    ]
+    _, virtual = ResolverEngine(nodes, edges).resolve()
+    assert {v.id: v.language for v in virtual} == {"shared_name": "go"}

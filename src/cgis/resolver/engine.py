@@ -3,6 +3,7 @@
 from collections.abc import Iterable, Mapping
 
 from cgis.core.models import (
+    DEFAULT_LANGUAGE,
     RAW_CLASS_PREFIX,
     SELF_PREFIX,
     VIRTUAL_FILE_PATH,
@@ -13,7 +14,7 @@ from cgis.core.models import (
     NodeType,
 )
 from cgis.core.resolution import ResolutionView
-from cgis.languages import rules_for
+from cgis.languages import pack_for_path, rules_for
 from cgis.resolver.symbols import SymbolResolver, dispatch_edges
 
 RAW_CALL_PREFIX = "raw_call:"
@@ -26,6 +27,18 @@ RAW_IMPORT_PREFIX = "raw_import:"
 _UNRESOLVED_CONFIDENCE = 0.8
 #: What a call the resolver found a target for scores, whatever language made it (#674).
 RESOLVED_CALL_CONFIDENCE = 1.0
+
+
+def _virtual_rank(node: Node) -> tuple[bool, str]:
+    """Which of two readings of one virtual id wins: a known namespace, then the
+    language that sorts first — never the order edges happen to arrive in."""
+    return (node.namespace is NodeNamespace.UNKNOWN, node.language)
+
+
+def _pack_name(source_file: str | None) -> str:
+    """The language of a file no node speaks for: its pack's name, else the Node default."""
+    pack = pack_for_path(source_file) if source_file else None
+    return pack.name if pack is not None else DEFAULT_LANGUAGE
 
 
 def _agree_on_confidence(edges: list[Edge], virtual_nodes: dict[str, Node]) -> list[Edge]:
@@ -269,13 +282,13 @@ class ResolverEngine:
         A known namespace beats UNKNOWN, whichever edge comes first: the Python
         reading is a claim about the symbol, the TS one only says "not known", and
         file walk order is not sorted, so first-seen would differ across machines.
+        The node takes its caller's language (#672); between two callers that agree
+        on knownness, the language that sorts first wins, for the same reason.
         """
         target = edge.target
         if self._index.has_node(target):
             return
         existing = virtual_nodes.get(target)
-        if existing is not None and existing.namespace != NodeNamespace.UNKNOWN:
-            return
         source_file = self._index.normalized_file_path(edge.source, edge.file_path)
         namespace = self._index.classify_fqn(target, source_file)
         if namespace is NodeNamespace.INTERNAL:
@@ -295,11 +308,14 @@ class ResolverEngine:
             # classifying them INTERNAL was the same masking as #414 and #454. The
             # target is kept, so the name still shows up in `top_unresolved`.
             namespace = NodeNamespace.UNKNOWN
-        if existing is None or namespace != NodeNamespace.UNKNOWN:
-            virtual_nodes[target] = self._make_virtual_node(target, namespace)
+        source = self._index.nodes.get(edge.source)
+        language = source.language if source is not None else _pack_name(source_file)
+        candidate = self._make_virtual_node(target, namespace, language)
+        if existing is None or _virtual_rank(candidate) < _virtual_rank(existing):
+            virtual_nodes[target] = candidate
 
-    def _make_virtual_node(self, fqn: str, namespace: NodeNamespace) -> Node:
-        """Create a placeholder node for an external/stdlib symbol."""
+    def _make_virtual_node(self, fqn: str, namespace: NodeNamespace, language: str) -> Node:
+        """Create a placeholder node for an external/stdlib symbol, in its caller's language."""
         return Node(
             id=fqn,
             type=NodeType.FUNCTION,
@@ -308,5 +324,6 @@ class ResolverEngine:
             start_line=0,
             end_line=0,
             namespace=namespace,
+            language=language,
             confidence_score=0.8,
         )

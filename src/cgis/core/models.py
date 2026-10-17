@@ -86,6 +86,11 @@ class EdgeType(StrEnum):
     DOMAIN_DEPENDS_ON = "DOMAIN_DEPENDS_ON"
 
 
+#: The language a node gets when nothing says otherwise. Python's, for history: the
+#: first pack. Virtual nodes take their caller's language instead (#672).
+DEFAULT_LANGUAGE = "python"
+
+
 class Node(BaseModel):
     """
     Represents a single semantic entity in the code graph.
@@ -104,7 +109,7 @@ class Node(BaseModel):
     end_line: int
 
     # Language context
-    language: str = Field(default="python")
+    language: str = Field(default=DEFAULT_LANGUAGE)
 
     # Semantic enrichment (L2/L3)
     ontology_class: str | None = Field(
