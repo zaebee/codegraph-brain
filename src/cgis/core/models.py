@@ -23,6 +23,9 @@ VIRTUAL_FILE_PATH = "EXTERNAL"
 # These mirror the raw_call: / raw_dep: prefixes used by extractors and the
 # resolver, but apply to self-method dispatch and class-inheritance edges.
 SELF_PREFIX = "self."
+#: What an extractor puts before a call it could not resolve; after resolution, kept
+#: only on a raw name that equals a real node's id, which no real id can (#661).
+RAW_CALL_PREFIX = "raw_call:"
 RAW_CLASS_PREFIX = "raw_class:"
 
 

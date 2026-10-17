@@ -5,8 +5,8 @@ from collections.abc import Callable
 from typing import NamedTuple
 
 from cgis.core.coverage import TraversalCoverage, rank_unresolved, unresolved_sites
-from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
-from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
+from cgis.core.models import RAW_CALL_PREFIX, Edge, EdgeType, Node, NodeNamespace, NodeType
+from cgis.storage.sqlite_store import SQLiteStore
 
 STRUCTURAL_EDGE_TYPES: frozenset[EdgeType] = frozenset({EdgeType.CONTAINS, EdgeType.DECLARES})
 BEHAVIORAL_EDGE_TYPES: frozenset[EdgeType] = frozenset(

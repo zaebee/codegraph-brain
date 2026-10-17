@@ -4,6 +4,7 @@ from collections.abc import Iterable, Mapping
 
 from cgis.core.models import (
     DEFAULT_LANGUAGE,
+    RAW_CALL_PREFIX,
     RAW_CLASS_PREFIX,
     SELF_PREFIX,
     VIRTUAL_FILE_PATH,
@@ -15,9 +16,9 @@ from cgis.core.models import (
 )
 from cgis.core.resolution import ResolutionView
 from cgis.languages import pack_for_path, rules_for
+from cgis.resolver.indices import SymbolIndex
 from cgis.resolver.symbols import SymbolResolver, dispatch_edges
 
-RAW_CALL_PREFIX = "raw_call:"
 RAW_DEP_PREFIX = "raw_dep:"
 RAW_IMPORT_PREFIX = "raw_import:"
 
@@ -27,6 +28,14 @@ RAW_IMPORT_PREFIX = "raw_import:"
 _UNRESOLVED_CONFIDENCE = 0.8
 #: What a call the resolver found a target for scores, whatever language made it (#674).
 RESOLVED_CALL_CONFIDENCE = 1.0
+
+
+def _unresolved_target(index: SymbolIndex, raw_name: str) -> str:
+    """What an unresolved call or class reference targets: its bare raw name, unless
+    that is the id of a real node, which the edge would join and read as resolved
+    (#661). Such a name takes the `raw_call:` prefix, which no real id holds and
+    consumers already read as unresolved; a class reference gives up `raw_class:`."""
+    return f"{RAW_CALL_PREFIX}{raw_name}" if index.has_node(raw_name) else raw_name
 
 
 def _virtual_rank(node: Node) -> tuple[bool, str]:
@@ -187,16 +196,9 @@ class ResolverEngine:
         """
         raw = edge.target.removeprefix(RAW_CLASS_PREFIX)
         resolved = self._resolver.resolve_class_ref(raw, edge.source, edge.file_path)
-        final_target = resolved or self._unresolved_target(raw)
+        final_target = resolved or _unresolved_target(self._index, raw)
         confidence = 1.0 if resolved else 0.5
         return edge.model_copy(update={"target": final_target, "confidence": confidence})
-
-    def _unresolved_target(self, raw_name: str) -> str:
-        """What an unresolved reference targets: its bare raw name, unless that is
-        the id of a real node, which the edge would join and read as a resolved call
-        to (#661). Such a name keeps the `raw_call:` prefix, which no real id holds;
-        consumers already read that prefix as unresolved."""
-        return f"{RAW_CALL_PREFIX}{raw_name}" if self._index.has_node(raw_name) else raw_name
 
     def _resolved_call_edge(self, edge: Edge) -> Edge:
         """Resolve a raw_call: edge to its final call target FQN.
@@ -225,7 +227,7 @@ class ResolverEngine:
             hit = _fallback(self._index, raw_name, file_path)
             if hit is not None:
                 return edge.model_copy(update={"target": hit[0], "confidence": hit[1]})
-        final_target = new_target or self._unresolved_target(raw_name)
+        final_target = new_target or _unresolved_target(self._index, raw_name)
         confidence = RESOLVED_CALL_CONFIDENCE if new_target else _UNRESOLVED_CONFIDENCE
         return edge.model_copy(update={"target": final_target, "confidence": confidence})
 

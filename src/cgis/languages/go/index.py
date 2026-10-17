@@ -140,7 +140,12 @@ def classify(fqn: str, ctx: ClassifyContext) -> NodeNamespace:
     facts = cast("GoIndexFacts", ctx.facts)
     if _under(fqn, facts.module) or any(_under(fqn, m) for m in facts.replaces):
         return NodeNamespace.INTERNAL
-    if fqn in BUILTINS or fqn.removeprefix(f"{BUILTIN_PACKAGE}.") in BUILTINS:
+    if (
+        fqn.startswith(f"{BUILTIN_PACKAGE}.")
+        and fqn.removeprefix(f"{BUILTIN_PACKAGE}.") in BUILTINS
+    ):
+        # Only the qualified form: a resolved builtin is `builtin.len` (#661). A bare
+        # `len` is an unresolved call, to a local named like a builtin, and stays UNKNOWN.
         return NodeNamespace.STDLIB
     imported = facts.file_imports.get(ctx.source_file or "", {})
     under = [d for d in imported if _under(fqn, d)]

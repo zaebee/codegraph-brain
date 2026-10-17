@@ -8,12 +8,12 @@ import re
 import structlog
 from pydantic import BaseModel
 
-from cgis.core.models import EdgeType
+from cgis.core.models import RAW_CALL_PREFIX, EdgeType
 
 # Re-exported: the per-file split moved to the pure diff leaf next to the other
 # unified-diff parsers, since the skeptic pass needs it too (#246 plan T3).
 from cgis.guardian.diff_index import split_diff_by_file as split_diff_by_file  # noqa: PLC0414
-from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
+from cgis.storage.sqlite_store import SQLiteStore
 
 log = structlog.getLogger(__name__)
 

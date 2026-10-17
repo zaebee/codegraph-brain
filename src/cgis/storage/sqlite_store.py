@@ -13,6 +13,7 @@ from pathlib import Path
 
 from cgis.core.freshness import Freshness, FreshnessState
 from cgis.core.models import (
+    RAW_CALL_PREFIX,
     VIRTUAL_FILE_PATH,
     Edge,
     EdgeType,
@@ -48,7 +49,6 @@ _RESERVED_STATE_KEYS = frozenset(
     }
 )
 
-RAW_CALL_PREFIX = "raw_call:"
 _DELETE_ALL_NODES = "DELETE FROM nodes"
 _DELETE_ALL_EDGES = "DELETE FROM edges"
 

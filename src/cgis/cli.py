@@ -35,7 +35,15 @@ from rich.tree import Tree
 from cgis import __app_name__, __version__, log_to_stderr
 from cgis.core.coverage import TraversalCoverage
 from cgis.core.freshness import FreshnessState
-from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeNamespace, NodeType
+from cgis.core.models import (
+    RAW_CALL_PREFIX,
+    VIRTUAL_FILE_PATH,
+    Edge,
+    EdgeType,
+    Node,
+    NodeNamespace,
+    NodeType,
+)
 from cgis.guardian.metrics import load_reviews, rate_review
 from cgis.languages import extractors, file_node_id, is_supported
 from cgis.pipeline import IngestionPipeline
@@ -56,7 +64,7 @@ from cgis.query.fqn import effective_prefix, effective_prefixes, is_package_pref
 from cgis.query.render.graph_json import graph_to_json
 from cgis.query.render.mermaid import MermaidCompiler
 from cgis.query.render.metrics import ArchitectureReport, DuckDBAnalyzer
-from cgis.storage.sqlite_store import RAW_CALL_PREFIX, SQLiteStore
+from cgis.storage.sqlite_store import SQLiteStore
 
 _DEFAULT_DB = "graph.db"
 _DEFAULT_DB_HELP = "Path to the SQLite database"

@@ -65,6 +65,10 @@ def test_go_a_local_closure_named_len_is_not_the_builtin(tmp_path: Path) -> None
     assert builtin.target == "builtin.len"
     assert builtin.confidence == 1.0
     assert closure.target != builtin.target
+    with SQLiteStore(str(db)) as store:
+        closure_node = store.get_node(closure.target)
+    assert closure_node is not None
+    assert closure_node.namespace is NodeNamespace.UNKNOWN  # unresolved, not the builtin
 
 
 def test_python_a_parameter_named_like_a_module_does_not_call_the_module(tmp_path: Path) -> None:
@@ -141,3 +145,25 @@ def test_no_unresolved_edge_joins_a_real_node(tmp_path: Path) -> None:
             (VIRTUAL_FILE_PATH,),
         ).fetchall()
     assert joined == []
+
+
+def test_an_incremental_run_detaches_an_edge_when_its_target_becomes_a_real_node(
+    tmp_path: Path,
+) -> None:
+    # #684 review: a stored virtual `q.Get` made the new real `q.Get` look like another
+    # file's row, so no rebuild ran and the stale bare edge joined the new node.
+    _go_module(
+        tmp_path,
+        {
+            "q/q.go": "package q\n\nfunc Other() int { return 1 }\n",
+            "p/p.go": "package p\n\nfunc viaAny(q interface{ Get() int }) int { return q.Get() }\n",
+        },
+    )
+    db = _ingest(tmp_path)
+    (tmp_path / "q" / "q.go").write_text(
+        "package q\n\nfunc Other() int { return 1 }\n\nfunc Get() int { return 2 }\n",
+        encoding="utf-8",
+    )
+    cgis_ingest(str(tmp_path), str(db))
+    (call,) = _calls_from(db, "p.viaAny")
+    assert call.target != "q.Get"

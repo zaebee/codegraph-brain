@@ -82,6 +82,8 @@ def builtin_call(name: str, file_path: str, view: ResolutionView) -> str | None:
     The target is qualified, `builtin.len`, after Go's own pseudo-package, as a TS
     builtin is `js_builtins.<name>`: a bare `len` would be shared with an unresolved
     call to a local closure named `len`, and the two edges would merge (#661).
+    A module with a real top-level package `builtin` (GOROOT's own stubs) would see
+    these calls join it; accepted, as TS accepts it for `js_builtins`.
     """
     if name not in BUILTINS:
         return None
