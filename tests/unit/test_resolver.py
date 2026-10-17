@@ -2846,3 +2846,43 @@ def test_a_function_value_that_resolves_to_a_type_is_no_call() -> None:
     ]
     resolved, _ = ResolverEngine(nodes, edges).resolve()
     assert [e for e in resolved if e.type is EdgeType.CALLS] == []
+
+
+@pytest.mark.parametrize("context", ["value-arg:x:work@1:0", "value-arg:", "value-arg:0"])
+def test_a_malformed_value_candidate_is_dropped_not_raised(context: str) -> None:
+    # Gemini on #686: a candidate's context is the extractor's; a bad one costs the
+    # edge, never the ingest.
+    nodes = [
+        Node(
+            id="p.run",
+            type=NodeType.FUNCTION,
+            name="run",
+            file_path="p/p.go",
+            start_line=1,
+            end_line=2,
+            language="go",
+        ),
+        Node(
+            id="p.work",
+            type=NodeType.FUNCTION,
+            name="work",
+            file_path="p/p.go",
+            start_line=3,
+            end_line=4,
+            language="go",
+        ),
+    ]
+    edges = [
+        # The call at the site resolves (to p.work), so the position is what is parsed.
+        Edge(
+            id="p.run->raw_call:work@1:5",
+            source="p.run",
+            target="raw_call:work",
+            type=EdgeType.CALLS,
+            confidence=0.1,
+            context=context,
+            file_path="p/p.go",
+        ),
+    ]
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+    assert [e for e in resolved if e.type is EdgeType.CALLS] == []
