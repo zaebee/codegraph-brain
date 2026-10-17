@@ -11,7 +11,16 @@ from typing import cast
 
 from cgis.core.models import Node
 from cgis.core.resolution import AFTER_IMPORT_MAP, ResolutionRules, ResolutionView
-from cgis.languages.go._syntax import ANY_OF, BUILTINS, CALL_RESULT, ELEM, FIELD, GLOBAL, TAKE
+from cgis.languages.go._syntax import (
+    ANY_OF,
+    BUILTIN_PACKAGE,
+    BUILTINS,
+    CALL_RESULT,
+    ELEM,
+    FIELD,
+    GLOBAL,
+    TAKE,
+)
 from cgis.languages.go.dispatch import interface_dispatch
 from cgis.languages.go.index import GoIndexFacts
 from cgis.languages.go.naming import GO_LANG
@@ -70,12 +79,15 @@ def builtin_call(name: str, file_path: str, view: ResolutionView) -> str | None:
     name shadows it, as in Go: left to the same-scope tiebreak. Checked for
     shadowing, it is a resolved call and scores 1.0, unlike a Python or TS builtin,
     which is matched by name alone and keeps the unresolved 0.8 (#674 review).
+    The target is qualified, `builtin.len`, after Go's own pseudo-package, as a TS
+    builtin is `js_builtins.<name>`: a bare `len` would be shared with an unresolved
+    call to a local closure named `len`, and the two edges would merge (#661).
     """
     if name not in BUILTINS:
         return None
     facts = view.facts.get(GO_LANG)
     scope = cast("GoIndexFacts", facts).file_scopes.get(file_path, "") if facts else ""
-    return None if f"{scope}.{name}" in view.nodes else name
+    return None if f"{scope}.{name}" in view.nodes else f"{BUILTIN_PACKAGE}.{name}"
 
 
 #: How deep one marker may expand: they nest only as far as the extractor bounds

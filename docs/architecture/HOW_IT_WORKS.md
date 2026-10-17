@@ -59,7 +59,7 @@ The resolver operates on the complete set of raw edges emitted by Phase 1. It bu
 
 1. If `name` starts with `self.`, look up the method on the enclosing class via `_class_methods`
 2. Look up `name` in `_global_symbols`, among the caller's own language only; if ambiguous, prefer the same-scope candidate (a file, or a Go package) via `_file_global_symbols`
-3. A resolved call scores `confidence=1.0` in every language. If unresolved, the target becomes the bare `<name>` (or a pack fallback such as `js_builtins.<name>`), a virtual boundary node classified STDLIB, EXTERNAL or UNKNOWN, at `confidence=0.8`
+3. A resolved call scores `confidence=1.0` in every language. If unresolved, the target becomes the bare `<name>` (or a pack fallback such as `js_builtins.<name>`, or Go's `builtin.<name>`), a virtual boundary node classified STDLIB, EXTERNAL or UNKNOWN, at `confidence=0.8`. A name equal to the id of a real node keeps the `raw_call:` prefix instead, so the edge cannot join that node (#661)
 
 Unresolved calls are **first-class citizens** — they appear in the graph explicitly rather than being silently discarded.
 

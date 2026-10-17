@@ -164,12 +164,15 @@ def _resolve_with(
 
 
 def test_go_builtins_are_stdlib_and_a_package_function_shadows_one() -> None:
-    """I4: `len`/`append`/conversions are the language's; `max` here is the package's own."""
+    """I4: `len`/`append`/conversions are the language's; `max` here is the package's own.
+
+    A builtin is `builtin.<name>`, Go's pseudo-package, never the bare name (#661)."""
     edges, nodes = _resolve_with({"internal/server/use.go": (".go", BUILTINS)})
     calls = _calls_from(edges, "internal.server.Use")
     for builtin in ("len", "append", "make", "string", "rune"):
-        assert builtin in calls
-        assert nodes[builtin].namespace is NodeNamespace.STDLIB
+        assert f"builtin.{builtin}" in calls
+        assert builtin not in calls
+        assert nodes[f"builtin.{builtin}"].namespace is NodeNamespace.STDLIB
     assert "internal.server.max" in calls
 
 

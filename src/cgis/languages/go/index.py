@@ -17,7 +17,7 @@ from typing import cast
 
 from cgis.core.index import ClassifyContext
 from cgis.core.models import Node, NodeNamespace, NodeType
-from cgis.languages.go._syntax import BUILTINS, PREDECLARED, dotted
+from cgis.languages.go._syntax import BUILTIN_PACKAGE, BUILTINS, PREDECLARED, dotted
 from cgis.languages.go.naming import GO_LANG
 from cgis.languages.go.project import GO_MODULE_KEY
 
@@ -140,7 +140,7 @@ def classify(fqn: str, ctx: ClassifyContext) -> NodeNamespace:
     facts = cast("GoIndexFacts", ctx.facts)
     if _under(fqn, facts.module) or any(_under(fqn, m) for m in facts.replaces):
         return NodeNamespace.INTERNAL
-    if fqn in BUILTINS:
+    if fqn in BUILTINS or fqn.removeprefix(f"{BUILTIN_PACKAGE}.") in BUILTINS:
         return NodeNamespace.STDLIB
     imported = facts.file_imports.get(ctx.source_file or "", {})
     under = [d for d in imported if _under(fqn, d)]
