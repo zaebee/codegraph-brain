@@ -399,11 +399,15 @@ class _HeldValues:
 
     def hold(self, name: str, values: list[str], *, here: bool = False) -> None:
         """`name` holds `values` now: in this block for a declaration (`here`), else where
-        the name was declared (`x = v` on an outer local)."""
+        the name was declared (`x = v`). A reassignment in a nested block (an `if`, a
+        loop body) may not run, so there the name holds either value (#686 review)."""
         if name == "_":
             return
         scope = None if here else next((s for s in reversed(self.scopes) if name in s), None)
-        (scope if scope is not None else self.scopes[-1])[name] = values
+        if scope is None or scope is self.scopes[-1]:
+            self.scopes[-1][name] = values
+        else:
+            scope[name] = [*scope[name], *(v for v in values if v not in scope[name])]
 
     def held(self, name: str) -> list[str]:
         """The function values `name` holds in the block that declared it."""
@@ -1081,8 +1085,9 @@ def _value_name(ctx: _File, value: TSNode, bindings: Bindings) -> str:
 
     A function or method name (`upper`, `c.handle`, `pkg.F`) reads as the call it
     would be; a method expression `(*T).M` or `T.M` names `<scope>.T.M` outright.
-    A local, a literal, a call or a closure is not a value this tracks: a closure's
-    calls already fold into the function that holds it.
+    A literal, a call or a closure is not a value this tracks: a closure's calls
+    already fold into the function that holds it. A bare local's name is passed on
+    and dropped by the resolver, which knows it as a local (locals_shadow).
     """
     if value.type == "selector_expression":
         operand = value.child_by_field_name("operand")
@@ -1096,8 +1101,9 @@ def _value_name(ctx: _File, value: TSNode, bindings: Bindings) -> str:
     elif value.type != "identifier":
         return ""
     chain = selector_chain(value)
-    if not chain or (chain[0] in bindings and chain[0] != bindings.receiver):
+    if not chain:
         return ""
+    # A local's name is no function: the resolver's locals_shadow drops it (Go, #660).
     receiver = bindings.receiver if not bindings.shadowed(bindings.receiver or "") else None
     return call_name(value, receiver)
 
@@ -1124,8 +1130,10 @@ def _literal_values(ctx: _File, literal: TSNode, bindings: Bindings) -> list[str
     names = []
     for element in body.named_children if body is not None else []:
         value = element.named_children[-1] if element.named_children else None
+        if value is not None and value.type == "literal_element" and value.named_children:
+            value = value.named_children[0]  # a keyed element's value: `"a": t.mapped`
         name = _value_name(ctx, value, bindings) if value is not None else ""
-        if name:
+        if name and name not in names:
             names.append(name)
     return names
 
@@ -1154,8 +1162,7 @@ def _value_arguments(
             continue
         edge = _call(ctx, source, value, argument)
         edges.append(edge.model_copy(update={"context": f"{VALUE_ARG_CONTEXT}{position}:{site}"}))
-        if "." not in value or value.startswith("self."):
-            _site(ctx, argument, receiver, bindings, _site_key(edge))
+        _site(ctx, argument, receiver, bindings, _site_key(edge))
     return edges
 
 

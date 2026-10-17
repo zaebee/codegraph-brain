@@ -1,0 +1,5 @@
+clause: CV-1
+status: pass
+note: a method value on a typed local or parameter names that type's method
+must_have:
+  - {source: p.shutdown, target: p.Conn.close, context: sync.Once.Do}

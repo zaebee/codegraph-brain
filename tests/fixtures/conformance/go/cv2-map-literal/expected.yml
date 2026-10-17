@@ -1,0 +1,4 @@
+clause: CV-2
+status: pass
+must_have:
+  - {source: p.T.each, target: p.T.mapped, context: via local value}

@@ -53,7 +53,7 @@ def _value_call_edge(resolver: SymbolResolver, view: ResolutionView, edge: Edge)
     real function or method; a name that is not one was never a call.
     """
     context = edge.context or ""
-    via = ""
+    via = "via local value"
     if context.startswith(VALUE_ARG_CONTEXT):
         position, _, call_site = context.removeprefix(VALUE_ARG_CONTEXT).partition(":")
         invoker = _call_target(resolver, call_site.rpartition("@")[0], edge, call_site)
@@ -68,7 +68,7 @@ def _value_call_edge(resolver: SymbolResolver, view: ResolutionView, edge: Edge)
     if node is None or node.type not in _CALLABLE:
         return None
     return edge.model_copy(
-        update={"target": target, "confidence": RESOLVED_CALL_CONFIDENCE, "context": via or None}
+        update={"target": target, "confidence": RESOLVED_CALL_CONFIDENCE, "context": via}
     )
 
 

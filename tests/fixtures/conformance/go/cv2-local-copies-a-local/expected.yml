@@ -1,0 +1,7 @@
+clause: CV-2
+status: pass
+note: >
+  a local copied from another local is not traced through (pilot scope), and above
+  all must not resolve the copied name to the package function it shadows
+must_not_have:
+  - {source: p.C.run, target: p.cb}

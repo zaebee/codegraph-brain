@@ -1,0 +1,5 @@
+clause: CV-1
+status: pass
+note: an invoker from a module outside the standard library; profile keys spell import paths with dots
+must_have:
+  - {source: p.T.run, target: p.T.fetch, context: errgroup.Group.Go}

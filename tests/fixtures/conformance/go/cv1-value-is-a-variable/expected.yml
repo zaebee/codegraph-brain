@@ -1,6 +1,5 @@
 clause: CV-1
 status: pass
-note: a parameter holding a function is not a function the graph can name
+note: a parameter shadowing a package function is the parameter, not the function
 must_not_have:
-  - {source: p.init2, target: p.setup}
-  - {source: p.init2, target: hook}
+  - {source: p.init2, target: p.hook}

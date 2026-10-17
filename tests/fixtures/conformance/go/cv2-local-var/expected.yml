@@ -1,4 +1,4 @@
 clause: CV-2
 status: pass
 must_have:
-  - {source: p.C.run, target: p.C.handle}
+  - {source: p.C.run, target: p.C.handle, context: via local value}

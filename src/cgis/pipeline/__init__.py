@@ -107,7 +107,10 @@ def extraction_fingerprint(package_root: Path | None = None) -> str | None:
 
 def _fingerprint_of(root: Path) -> str | None:
     """The extraction fingerprint of the package at `root`, or None with no sources."""
-    files = [p for d in _EXTRACTION_PACKAGES for p in (root / d).rglob("*.py")]
+    # A pack's profile.yml is data the extraction reads (CV invokers, #668): it counts.
+    files = [
+        p for d in _EXTRACTION_PACKAGES for g in ("*.py", "*.yml") for p in (root / d).rglob(g)
+    ]
     files += [root / m for m in _EXTRACTION_MODULES if (root / m).is_file()]
     if not files:
         return None

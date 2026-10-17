@@ -1,0 +1,7 @@
+clause: CV-2
+status: pass
+origin: lima pkg/hostagent/requirements.go:49-51 (#686 review)
+note: a reassignment in a nested block may not run, so the local holds either value
+must_have:
+  - {source: p.A.wait, target: p.A.waitForRequirement, context: via local value}
+  - {source: p.A.wait, target: p.A.waitForWinRequirement, context: via local value}
