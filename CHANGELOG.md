@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.33.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.32.0...codegraph-brain-v0.33.0) (2026-10-17)
+
+
+### Features
+
+* exp4 — Go impact questions measured; Go impact answers are a lead to confirm ([#671](https://github.com/zaebee/codegraph-brain/issues/671)) ([a3ae7c3](https://github.com/zaebee/codegraph-brain/commit/a3ae7c3f599c9296ee185fccf650e7b0c97d39d9))
+
+
+### Bug Fixes
+
+* **resolver:** a call resolves within its language and scores 1.0 ([#676](https://github.com/zaebee/codegraph-brain/issues/676)) ([8e45fbc](https://github.com/zaebee/codegraph-brain/commit/8e45fbc431f799120e3faad0e1289f927224a935))
+* **resolver:** a virtual node takes its caller's language ([#678](https://github.com/zaebee/codegraph-brain/issues/678)) ([cd3f808](https://github.com/zaebee/codegraph-brain/commit/cd3f8083806c32812644bd013355d2081bfe2d25))
+* **resolver:** an unresolved call never joins a real node ([#684](https://github.com/zaebee/codegraph-brain/issues/684)) ([a91dd8f](https://github.com/zaebee/codegraph-brain/commit/a91dd8f5304b9d8db566d94c05f0a099f709b6b1))
+
+
+### Documentation
+
+* move the guide to AGENTS.md; CLAUDE.md only imports it ([#679](https://github.com/zaebee/codegraph-brain/issues/679)) ([549f4cf](https://github.com/zaebee/codegraph-brain/commit/549f4cf9fc6c818af8e8b445bfaeffd0b8253618))
+
 ## [0.32.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.31.0...codegraph-brain-v0.32.0) (2026-10-16)
 
 
