@@ -1,0 +1,5 @@
+clause: CV-1
+status: pass
+origin: golang/crypto acme/autocert/renewal.go:36 (exp4)
+must_have:
+  - {source: p.renewal.start, target: p.renewal.renew, context: time.AfterFunc}

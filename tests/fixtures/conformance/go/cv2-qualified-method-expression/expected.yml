@@ -1,0 +1,6 @@
+clause: CV-2
+status: pass
+origin: Gemini on #686
+note: a method expression of a type from another package names that package's method
+must_have:
+  - {source: p.run, target: q.T.M, context: via local value}

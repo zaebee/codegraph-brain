@@ -1,0 +1,5 @@
+clause: CV-1
+status: pass
+note: a local holding a function value, passed to an invoker, passes what it holds
+must_have:
+  - {source: p.C.init, target: p.C.setup, context: sync.Once.Do}

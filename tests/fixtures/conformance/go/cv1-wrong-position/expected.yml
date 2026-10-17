@@ -1,0 +1,6 @@
+clause: CV-1
+status: pass
+must_have:
+  - {source: p.schedule, target: p.later, context: time.AfterFunc}
+must_not_have:
+  - {source: p.schedule, target: p.tick}

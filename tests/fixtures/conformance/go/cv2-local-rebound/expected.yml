@@ -1,0 +1,5 @@
+clause: CV-2
+status: pass
+note: a reassignment replaces the value a local holds; `other` is a parameter, no function to name
+must_not_have:
+  - {source: p.C.run, target: p.C.handle}

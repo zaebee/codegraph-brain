@@ -117,7 +117,8 @@ def _calls() -> dict[str, list[tuple[str, str]]]:
             ],
         ),
         # A local func value: never the package's `newT` (the value's type is not tracked).
-        ("Shadow", [("newT().Get", "-"), ("newT", "-")]),
+        # `newT := newB; newT()` calls newB (CV-2, #668); the local still hides newT.
+        ("Shadow", [("newT().Get", "-"), ("newT", "-"), ("newB", "app.newB")]),
         ("Paren", [("(newT()).M", "app.T.M"), ("newT", "app.newT")]),
     ],
 )

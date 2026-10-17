@@ -1,0 +1,5 @@
+clause: CV-1
+status: pass
+note: a go statement's call is a call expression, already an edge
+must_have:
+  - {source: p.spawn, target: p.worker}

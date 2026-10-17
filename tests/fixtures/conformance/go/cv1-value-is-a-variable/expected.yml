@@ -1,0 +1,5 @@
+clause: CV-1
+status: pass
+note: a parameter shadowing a package function is the parameter, not the function
+must_not_have:
+  - {source: p.init2, target: p.hook}

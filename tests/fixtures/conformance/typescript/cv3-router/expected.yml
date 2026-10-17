@@ -1,0 +1,4 @@
+clause: CV-3
+status: pass
+must_not_have:
+  - {source: app.routes, target: app.index}

@@ -1,0 +1,6 @@
+clause: CV-1
+status: pass
+note: a closure argument folds into its enclosing function, so its calls are the encloser's already
+must_have:
+  - {source: p.order, target: p.byName}
+  - {source: p.orderBy, target: p.less}
