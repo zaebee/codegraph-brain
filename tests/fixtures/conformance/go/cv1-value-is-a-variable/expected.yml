@@ -1,0 +1,6 @@
+clause: CV-1
+status: pass
+note: a parameter holding a function is not a function the graph can name
+must_not_have:
+  - {source: p.init2, target: p.setup}
+  - {source: p.init2, target: hook}

@@ -7,6 +7,8 @@ from cgis.core.models import (
     RAW_CALL_PREFIX,
     RAW_CLASS_PREFIX,
     SELF_PREFIX,
+    VALUE_ARG_CONTEXT,
+    VALUE_LOCAL_CONTEXT,
     VIRTUAL_FILE_PATH,
     Edge,
     EdgeType,
@@ -27,6 +29,47 @@ RAW_IMPORT_PREFIX = "raw_import:"
 _UNRESOLVED_CONFIDENCE = 0.8
 #: What a call the resolver found a target for scores, whatever language made it (#674).
 RESOLVED_CALL_CONFIDENCE = 1.0
+
+
+_VALUE_CONTEXTS = (VALUE_ARG_CONTEXT, VALUE_LOCAL_CONTEXT)
+_CALLABLE = frozenset({NodeType.FUNCTION, NodeType.METHOD})
+
+
+def _call_target(
+    resolver: SymbolResolver, raw_name: str, edge: Edge, site: str | None
+) -> str | None:
+    """What a raw call name made in `edge`'s source resolves to, or None."""
+    if raw_name.startswith(SELF_PREFIX):
+        return resolver.resolve_self_call(edge.source, raw_name.removeprefix(SELF_PREFIX))
+    return resolver.resolve_global_call(raw_name, edge.source, edge.file_path, site)
+
+
+def _value_call_edge(resolver: SymbolResolver, view: ResolutionView, edge: Edge) -> Edge | None:
+    """A function value that the code calls (core/ontology.yml CV-1, CV-2), or None (#668).
+
+    CV-1: argument i of the call at the recorded site counts only when that call
+    resolves to an invoker the source's pack lists with position i. CV-2: a local
+    holding the value is called where it is held. Either way the value must be a
+    real function or method; a name that is not one was never a call.
+    """
+    context = edge.context or ""
+    via = ""
+    if context.startswith(VALUE_ARG_CONTEXT):
+        position, _, call_site = context.removeprefix(VALUE_ARG_CONTEXT).partition(":")
+        invoker = _call_target(resolver, call_site.rpartition("@")[0], edge, call_site)
+        rules = rules_for(edge.file_path)  # a value edge always carries its file
+        if invoker is None or rules is None or int(position) not in rules.invokers.get(invoker, ()):
+            return None
+        via = f"via {invoker}"
+    raw_name = edge.target.removeprefix(RAW_CALL_PREFIX)
+    site = edge.id.partition(RAW_CALL_PREFIX)[2] or None
+    target = raw_name if raw_name in view.nodes else _call_target(resolver, raw_name, edge, site)
+    node = view.nodes.get(target) if target is not None else None
+    if node is None or node.type not in _CALLABLE:
+        return None
+    return edge.model_copy(
+        update={"target": target, "confidence": RESOLVED_CALL_CONFIDENCE, "context": via or None}
+    )
 
 
 def _unresolved_target(view: ResolutionView, raw_name: str) -> str:
@@ -160,6 +203,10 @@ class ResolverEngine:
                 final_edge = self._reconciled_layout_edge(edge)
                 resolved_edges.append(final_edge)
                 self._ensure_virtual_node(final_edge, virtual_nodes)
+            elif (edge.context or "").startswith(_VALUE_CONTEXTS):
+                value_edge = _value_call_edge(self._resolver, self._index, edge)
+                if value_edge is not None:  # a candidate that is no call leaves no trace
+                    resolved_edges.append(value_edge)
             else:
                 call_edge = self._resolved_call_edge(edge)
                 resolved_edges.append(call_edge)

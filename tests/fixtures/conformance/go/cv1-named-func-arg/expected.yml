@@ -1,4 +1,4 @@
 clause: CV-1
-status: todo
+status: pass
 must_have:
   - {source: p.shout, target: p.upper, context: strings.Map}

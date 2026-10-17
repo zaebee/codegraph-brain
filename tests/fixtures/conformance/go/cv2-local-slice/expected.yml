@@ -1,5 +1,5 @@
 clause: CV-2
-status: todo
+status: pass
 origin: golang/crypto ssh/session.go:376 (exp4 pilot)
 must_have:
   - {source: p.Session.start, target: p.Session.stdin}

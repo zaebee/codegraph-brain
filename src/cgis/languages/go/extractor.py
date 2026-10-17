@@ -22,7 +22,15 @@ from tree_sitter import Language, Parser
 from tree_sitter import Node as TSNode
 
 from cgis.core.extractor import BaseExtractor
-from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
+from cgis.core.models import (
+    VALUE_ARG_CONTEXT,
+    VALUE_LOCAL_CONTEXT,
+    Edge,
+    EdgeType,
+    Node,
+    NodeNamespace,
+    NodeType,
+)
 from cgis.languages.go._syntax import (
     ANY_OF,
     BUILTINS,
@@ -50,6 +58,7 @@ from cgis.languages.go._syntax import (
 )
 from cgis.languages.go.build import excluded
 from cgis.languages.go.naming import GO_LANG, file_node_id, is_test, scope_of
+from cgis.languages.go.profile import INVOKER_NAMES
 
 _RAW_CALL = "raw_call:"
 #: A binding whose type cannot be named (`x := m[k]`, a range variable): one per
@@ -377,6 +386,30 @@ def _unparameterised(types: list[str], scope: str, params: frozenset[str]) -> li
     return ["" if _names_parameter(t, scope, params) else t for t in types]
 
 
+class _HeldValues:
+    """The function values each local holds (CV-2, #668), one dict per open block.
+
+    `Bindings` pushes and pops a block here with its own, and records every new
+    binding as holding nothing, so a name looks up the values of the binding in scope.
+    """
+
+    def __init__(self) -> None:
+        """One block: the function's own."""
+        self.scopes: list[dict[str, list[str]]] = [{}]
+
+    def hold(self, name: str, values: list[str], *, here: bool = False) -> None:
+        """`name` holds `values` now: in this block for a declaration (`here`), else where
+        the name was declared (`x = v` on an outer local)."""
+        if name == "_":
+            return
+        scope = None if here else next((s for s in reversed(self.scopes) if name in s), None)
+        (scope if scope is not None else self.scopes[-1])[name] = values
+
+    def held(self, name: str) -> list[str]:
+        """The function values `name` holds in the block that declared it."""
+        return next((s[name] for s in reversed(self.scopes) if name in s), [])
+
+
 class Bindings:
     """A function's local names: every type each is bound to, and the one in scope now.
 
@@ -386,8 +419,14 @@ class Bindings:
     each `select` case keeps its own `c` (#643 B8).
     """
 
-    def __init__(self, initial: Mapping[str, str] | None = None) -> None:
+    def __init__(
+        self, initial: Mapping[str, str] | None = None, receiver: str | None = None
+    ) -> None:
         """Bindings with the receiver (or nothing) bound in the function's own scope."""
+        #: The method's receiver name, which a function value reads as `self` (H6).
+        self.receiver = receiver
+        #: The function values each local holds, block by block like the types (CV-2).
+        self.values = _HeldValues()
         self.every: dict[str, list[str]] = {}
         #: Call position -> (receiver name, its type there), for `site_types`.
         self.sites: dict[str, tuple[str, str]] = {}
@@ -407,6 +446,7 @@ class Bindings:
         if fqn not in types:
             types.append(fqn)
         self._scopes[-1][name] = fqn
+        self.values.hold(name, [], here=True)  # a new binding holds no function value yet
 
     def note(self, name: str, fqn: str) -> None:
         """Record a type for `name` without declaring it: a package variable's use."""
@@ -434,10 +474,12 @@ class Bindings:
     def scope(self) -> Iterator[None]:
         """A nested block for the walk's duration."""
         self._scopes.append({})
+        self.values.scopes.append({})
         try:
             yield
         finally:
             self._scopes.pop()
+            self.values.scopes.pop()
 
 
 #: Nodes that open a block in Go: a name bound inside is gone after them.
@@ -470,7 +512,7 @@ def _callable(
 ) -> None:
     """The node, with its parameter, local and result types, and its body's CALLS edges."""
     # The receiver's type is its method's owner: `s.Parser()` qualifies like `x.M()`.
-    bindings = Bindings({receiver: owner} if receiver and owner else None)
+    bindings = Bindings({receiver: owner} if receiver and owner else None, receiver)
     params = _type_parameters(node)
     for param in params:
         bindings.bind_type(param, "")  # `[A any]`: never the package's `A` (#662 review)
@@ -627,8 +669,13 @@ def _visit(
             edges.append(edge)
             _site(ctx, function, own, bindings, _site_key(edge))
             _global_head(ctx, function, bindings)
+            edges.extend(_value_arguments(ctx, source, own, node, name, _site_key(edge), bindings))
+            if function.type == "identifier":
+                edges.extend(_value_calls(ctx, source, node, bindings.values.held(name)))
         elif function is not None and function.type == "selector_expression":
             _unnamed_receiver(ctx, source, function, node, bindings, edges)
+    elif node.type == "assignment_statement":
+        _reassigned(ctx, node, bindings)
     elif not declares:
         _bindings_of(ctx, node, bindings)
     for child in node.children:
@@ -737,6 +784,8 @@ def _bind_value(ctx: _File, bindings: Bindings, name: str, value: TSNode | None)
         return
     typed = _value_type(ctx, value, bindings) if value is not None else None
     bindings.bind(name, typed or _UNKNOWN)
+    held = _value_name(ctx, value, bindings) if value is not None else ""
+    bindings.values.hold(name, [held] if held else [], here=True)
 
 
 def _ranged(ctx: _File, clause: TSNode, bindings: Bindings) -> None:
@@ -747,6 +796,8 @@ def _ranged(ctx: _File, clause: TSNode, bindings: Bindings) -> None:
     source = _operand(ctx, right, bindings) if right is not None else None
     for name, taken in zip(names, ("key", "elem"), strict=False):
         bindings.bind(name, _take(taken, source) or _UNKNOWN)
+    if len(names) == 2 and right is not None:
+        bindings.values.hold(names[1], _literal_values(ctx, right, bindings), here=True)
 
 
 def _case_alias(ctx: _File, case: TSNode, bindings: Bindings) -> None:
@@ -1023,6 +1074,97 @@ _LABELLERS: dict[str, Callable[[TSNode], str]] = {
     "selector_expression": _selector_label,
 }
 """Labels of the values a chain can start from, by node type."""
+
+
+def _value_name(ctx: _File, value: TSNode, bindings: Bindings) -> str:
+    """The raw call name of a function value, or "" when `value` cannot be one (#668).
+
+    A function or method name (`upper`, `c.handle`, `pkg.F`) reads as the call it
+    would be; a method expression `(*T).M` or `T.M` names `<scope>.T.M` outright.
+    A local, a literal, a call or a closure is not a value this tracks: a closure's
+    calls already fold into the function that holds it.
+    """
+    if value.type == "selector_expression":
+        operand = value.child_by_field_name("operand")
+        if operand is not None and operand.type == "parenthesized_expression":
+            inner = operand.named_children[0] if operand.named_children else None
+            if inner is not None and inner.type == "unary_expression":
+                inner = inner.child_by_field_name("operand")
+            if inner is not None and inner.type in ("identifier", "type_identifier"):
+                return f"{ctx.scope}.{text(inner)}.{_field_name(value)}"
+            return ""
+    elif value.type != "identifier":
+        return ""
+    chain = selector_chain(value)
+    if not chain or (chain[0] in bindings and chain[0] != bindings.receiver):
+        return ""
+    receiver = bindings.receiver if not bindings.shadowed(bindings.receiver or "") else None
+    return call_name(value, receiver)
+
+
+def _reassigned(ctx: _File, node: TSNode, bindings: Bindings) -> None:
+    """`a, b = v, w` on locals: each now holds what its value names, if a function (CV-2)."""
+    left = node.child_by_field_name("left")
+    right = node.child_by_field_name("right")
+    names = left.named_children if left is not None else []
+    values = right.named_children if right is not None else []
+    for position, target in enumerate(names):
+        if target.type != "identifier":
+            continue
+        value = values[position] if position < len(values) else None
+        held = _value_name(ctx, value, bindings) if value is not None else ""
+        bindings.values.hold(text(target), [held] if held else [])
+
+
+def _literal_values(ctx: _File, literal: TSNode, bindings: Bindings) -> list[str]:
+    """The function values a slice, array or map literal holds, for `range` (CV-2)."""
+    if literal.type != "composite_literal":
+        return []
+    body = literal.child_by_field_name("body")
+    names = []
+    for element in body.named_children if body is not None else []:
+        value = element.named_children[-1] if element.named_children else None
+        name = _value_name(ctx, value, bindings) if value is not None else ""
+        if name:
+            names.append(name)
+    return names
+
+
+def _value_arguments(
+    ctx: _File,
+    source: str,
+    receiver: str | None,
+    call: TSNode,
+    name: str,
+    site: str,
+    bindings: Bindings,
+) -> list[Edge]:
+    """CV-1 candidates: each function value passed to a call that may be an invoker.
+
+    Only a call whose last segment names an invoker in the profile is looked at;
+    the resolver decides, from the resolved call, whether it is one (#668).
+    """
+    arguments = call.child_by_field_name("arguments")
+    if arguments is None or name.rsplit(".", 1)[-1] not in INVOKER_NAMES:
+        return []
+    edges = []
+    for position, argument in enumerate(arguments.named_children):
+        value = _value_name(ctx, argument, bindings)
+        if not value:
+            continue
+        edge = _call(ctx, source, value, argument)
+        edges.append(edge.model_copy(update={"context": f"{VALUE_ARG_CONTEXT}{position}:{site}"}))
+        if "." not in value or value.startswith("self."):
+            _site(ctx, argument, receiver, bindings, _site_key(edge))
+    return edges
+
+
+def _value_calls(ctx: _File, source: str, call: TSNode, values: list[str]) -> list[Edge]:
+    """CV-2 candidates: a local holding function values is called here, so each is."""
+    return [
+        _call(ctx, source, value, call).model_copy(update={"context": VALUE_LOCAL_CONTEXT})
+        for value in values
+    ]
 
 
 def _site_key(edge: Edge) -> str:

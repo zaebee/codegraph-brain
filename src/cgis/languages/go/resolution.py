@@ -24,6 +24,7 @@ from cgis.languages.go._syntax import (
 from cgis.languages.go.dispatch import interface_dispatch
 from cgis.languages.go.index import GoIndexFacts
 from cgis.languages.go.naming import GO_LANG
+from cgis.languages.go.profile import INVOKERS
 
 
 def _strip(fqn: str, prefix: str) -> str | None:
@@ -223,4 +224,5 @@ RULES = ResolutionRules(
     dispatch=interface_dispatch,
     shallowest_member=True,
     locals_shadow=True,
+    invokers=INVOKERS,
 )

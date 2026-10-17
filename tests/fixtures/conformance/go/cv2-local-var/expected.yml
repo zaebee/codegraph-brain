@@ -1,4 +1,4 @@
 clause: CV-2
-status: todo
+status: pass
 must_have:
   - {source: p.C.run, target: p.C.handle}

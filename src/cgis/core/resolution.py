@@ -8,7 +8,7 @@ source file's pack at each of those points. A rule reads the index through
 """
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 from cgis.core.index import IndexFacts
@@ -85,6 +85,10 @@ class ResolutionRules:
     #: package symbol it shadows (Go, #660 review). False: the import map and the
     #: global symbols are tried next.
     locals_shadow: bool = False
+    #: CV-1 (core/ontology.yml): a library callable that always invokes some of its
+    #: arguments, by resolved target, with the 0-based positions it invokes. A
+    #: function value passed there is a call by the function passing it (#668).
+    invokers: Mapping[str, frozenset[int]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Refuse a step at a position the engine never runs."""
