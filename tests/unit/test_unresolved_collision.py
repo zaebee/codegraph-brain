@@ -167,3 +167,21 @@ def test_an_incremental_run_detaches_an_edge_when_its_target_becomes_a_real_node
     cgis_ingest(str(tmp_path), str(db))
     (call,) = _calls_from(db, "p.viaAny")
     assert call.target != "q.Get"
+
+
+def test_go_a_local_closure_named_like_a_predeclared_type_is_unresolved(tmp_path: Path) -> None:
+    # #684 delta review: `string := func…; string(x)` classified STDLIB through the
+    # predeclared-type head check, which is meant for methods like `error.Error`.
+    _go_module(
+        tmp_path,
+        {
+            "p/p.go": "package p\n\nfunc f(x int) int {\n\tstring := func(int) int { return 0 }\n"
+            "\treturn string(x)\n}\n",
+        },
+    )
+    db = _ingest(tmp_path)
+    (call,) = _calls_from(db, "p.f")
+    with SQLiteStore(str(db)) as store:
+        node = store.get_node(call.target)
+    assert node is not None
+    assert node.namespace is NodeNamespace.UNKNOWN

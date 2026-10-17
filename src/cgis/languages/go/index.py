@@ -151,7 +151,7 @@ def classify(fqn: str, ctx: ClassifyContext) -> NodeNamespace:
     under = [d for d in imported if _under(fqn, d)]
     if under:
         return import_namespace(imported[max(under, key=len)], facts)
-    if fqn.split(".", maxsplit=1)[0] in PREDECLARED:
+    if "." in fqn and fqn.split(".", maxsplit=1)[0] in PREDECLARED:
         return NodeNamespace.STDLIB  # a method of a predeclared type: `error.Error` (#608)
     if fqn.split(".", maxsplit=1)[0] in ctx.internal_roots:
         return NodeNamespace.INTERNAL
