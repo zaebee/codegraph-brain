@@ -30,7 +30,9 @@ clauses:
       Go pilot: a call reads what the local holds at that point of a single pass, so a
       reassignment later in a loop body is not seen by a call earlier in it (a missed
       edge); a value held after one branch of an if is also seen in its else branch (an
-      extra edge).
+      extra edge); a closure body is read where the closure is written, so it sees the
+      value the local held then, not the one it holds when the closure runs (an extra
+      edge and a missed one).
     edge: {type: CALLS, source: P, target: F, confidence: 1.0, context: "via local value"}
     origin: "exp4 pilot: Session.start's []F{(*Session).stdin, ...} loop; #668"
   CV-3:
