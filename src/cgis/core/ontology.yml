@@ -1,0 +1,33 @@
+# The language-neutral core of the cgis graph, one clause at a time.
+#
+# Each clause states one semantic rule every language pack implements. A conformance
+# case (tests/fixtures/conformance/<lang>/<case>/expected.yml) cites the clause it
+# checks, and tests/integration/test_conformance.py runs every case against every pack.
+# Per-language facts a clause needs (which library functions invoke a value, say) live
+# in the pack's profile.yml, not here and not in code.
+version: 1
+clauses:
+  CV-1:
+    title: A function value handed to a known invoker is a call by whoever hands it over
+    rule: >
+      When function or method value F is passed as an argument to an invoker listed in
+      the pack's profile (callable_values.invokers), the passing function P calls F.
+      The invoker runs F now or later, but it always runs it, and for impact the caller
+      is P. A goroutine or deferred call of a value counts the same way.
+    edge: {type: CALLS, source: P, target: F, confidence: 1.0, context: "via <invoker>"}
+    origin: "exp4 (#671): once.Do(c.handleForwards), time.AfterFunc(d, dr.renew); #668"
+  CV-2:
+    title: A function value called in the function that holds it is a call by that function
+    rule: >
+      When P binds function or method value F to a local (a variable, or an element of a
+      slice, array or map literal) and calls it inside P, P calls F.
+    edge: {type: CALLS, source: P, target: F, confidence: 1.0}
+    origin: "exp4 pilot: Session.start's []F{(*Session).stdin, ...} loop; #668"
+  CV-3:
+    title: A function value given to other code to keep is not a call
+    rule: >
+      When F is stored where code outside P decides whether and when to call it (a struct
+      field such as cobra's RunE, a handler registry, a hook), P does not call F. F is an
+      entry point, like a function nothing calls.
+    edge: none
+    origin: "exp4 amendment 2"

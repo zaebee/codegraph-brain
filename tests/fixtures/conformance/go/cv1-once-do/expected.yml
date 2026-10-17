@@ -1,0 +1,5 @@
+clause: CV-1
+status: todo
+origin: golang/crypto ssh/tcpip.go:117 (exp4)
+must_have:
+  - {source: p.Client.ListenTCP, target: p.Client.handleForwards, context: sync.Once.Do}

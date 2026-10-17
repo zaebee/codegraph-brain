@@ -1,0 +1,4 @@
+clause: CV-2
+status: todo
+must_have:
+  - {source: p.C.run, target: p.C.handle}

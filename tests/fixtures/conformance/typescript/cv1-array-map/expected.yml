@@ -1,0 +1,5 @@
+clause: CV-1
+status: xfail
+reason: TypeScript CV-1 is not implemented in the #668 pilot; the case checks the clause fits TS
+must_have:
+  - {source: app.doubled, target: app.double, context: map}
