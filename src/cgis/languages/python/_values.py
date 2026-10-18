@@ -10,6 +10,8 @@ to a real function or method. The walk reads one function's own body: a nested
 
 from collections.abc import Callable, Iterator
 
+import tree_sitter_python as tspython
+from tree_sitter import Language, Query, QueryCursor
 from tree_sitter import Node as BaseNode
 
 from cgis.core.models import (
@@ -32,6 +34,10 @@ _NAMED_PARAMETERS = frozenset(
     {"identifier", "typed_parameter", "default_parameter", "typed_default_parameter"}
 )
 _PARTIAL = frozenset({"partial", "functools.partial"})
+#: Literals whose elements a `for` loop binds its variable to, one by one.
+_LITERALS = frozenset({"tuple", "list", "parenthesized_expression", "set"})
+#: A right-hand side that may put a function value in a local (CV-2).
+_HOLDABLE = frozenset({"identifier", "attribute", "call", *_LITERALS})
 _CALLABLE = frozenset({NodeType.FUNCTION, NodeType.METHOD})
 
 #: The values a local holds at a call, for CV-2 (None: no local holds any).
@@ -83,18 +89,38 @@ def _parameters(
     return found
 
 
-def _first_events(func: BaseNode, code: bytes) -> tuple[dict[str, int], dict[str, int]]:
-    """The first call by bare name, and the first binding, of each name in `func`'s body."""
-    calls: dict[str, int] = {}
-    binds: dict[str, int] = {}
-    for node in _own_nodes(func):
-        if node.type == "call":
-            callee = node.child_by_field_name("function")
-            if callee is not None and callee.type == "identifier":
-                calls.setdefault(get_identifier(callee, code), node.start_byte)
-        for target in _bound_names(node):
-            binds.setdefault(get_identifier(target, code), target.start_byte)
-    return calls, binds
+def _may_hold(right: BaseNode | None, code: bytes) -> bool:
+    """Whether a binding's right side may name a function value: a cheap pre-check."""
+    if right is None or right.type not in _HOLDABLE:
+        return False
+    if right.type != "call":
+        return True
+    callee = right.child_by_field_name("function")
+    return callee is not None and _dotted(callee, code) in _PARTIAL
+
+
+class _Body:
+    """One function's own body, read once: every pass below shares this walk."""
+
+    def __init__(self, func: BaseNode, code: bytes, events: list[BaseNode] | None = None) -> None:
+        """Note `func`'s calls and bindings: from `events` (its own, in source order), or a walk."""
+        #: The body's calls, in source order.
+        self.calls: list[BaseNode] = []
+        #: The first call by bare name, and the first binding, of each name.
+        self.first_call: dict[str, int] = {}
+        self.first_bind: dict[str, int] = {}
+        #: Whether some binding may hold a function value (CV-2 has work to do).
+        self.holds = False
+        for node in _own_nodes(func) if events is None else events:
+            if node.type == "call":
+                self.calls.append(node)
+                callee = node.child_by_field_name("function")
+                if callee is not None and callee.type == "identifier":
+                    self.first_call.setdefault(get_identifier(callee, code), node.start_byte)
+            elif node.type in ("assignment", "for_statement") and not self.holds:
+                self.holds = _may_hold(node.child_by_field_name("right"), code)
+            for target in _bound_names(node):
+                self.first_bind.setdefault(get_identifier(target, code), target.start_byte)
 
 
 def _bound_names(node: BaseNode) -> list[BaseNode]:
@@ -114,13 +140,16 @@ def _bound_names(node: BaseNode) -> list[BaseNode]:
     return [c for c in target.named_children if c.type == "identifier"]
 
 
-def invoked_slots(func: BaseNode, code: bytes, skip_first: bool) -> list[int | str]:
+def invoked_slots(
+    func: BaseNode, code: bytes, skip_first: bool, body: _Body | None = None
+) -> list[int | str]:
     """The slots of each own parameter `func` calls (CV-4): its position, then its name.
 
     `skip_first` drops a method's receiver (`self`, `cls`); a staticmethod passes False.
     A parameter bound in the body before its first call holds something else there.
     """
-    calls, binds = _first_events(func, code)
+    body = body or _Body(func, code)
+    calls, binds = body.first_call, body.first_bind
     slots: list[int | str] = []
     for name, position, by_keyword in _parameters(func, code, skip_first):
         called = calls.get(name)
@@ -133,10 +162,10 @@ def invoked_slots(func: BaseNode, code: bytes, skip_first: bool) -> list[int | s
     return slots
 
 
-def local_names(func: BaseNode, code: bytes) -> frozenset[str]:
+def local_names(func: BaseNode, code: bytes, body: _Body | None = None) -> frozenset[str]:
     """The names `func` binds itself: its parameters and every name its body assigns."""
     params = {name for name, _, _ in _parameters(func, code, skip_first=False)}
-    return frozenset(params | set(_first_events(func, code)[1]))
+    return frozenset(params | set((body or _Body(func, code)).first_bind))
 
 
 def value_name(
@@ -209,6 +238,21 @@ def _arguments(call: BaseNode) -> Iterator[tuple[int | str, BaseNode]]:
             position += 1
 
 
+def _values_of(
+    value: BaseNode,
+    code: bytes,
+    file_names: frozenset[str],
+    shadowed: frozenset[str],
+    held: Held | None,
+) -> list[str]:
+    """The function values one argument hands over: a held local's, or its own name."""
+    names = held(value) if held is not None and value.type == "identifier" else []
+    if names:
+        return names
+    name = value_name(value, code, file_names, shadowed)
+    return [name] if name is not None else []
+
+
 def value_candidates(
     func: BaseNode,
     code: bytes,
@@ -216,24 +260,28 @@ def value_candidates(
     file_path: str,
     file_names: frozenset[str],
     held: Held | None = None,
+    body: _Body | None = None,
 ) -> list[Edge]:
     """A `value-arg:` candidate per function value `func` hands to a call (CV-1, CV-4).
 
     A local holding values (CV-2, `held`) passes what it holds, not its own name.
     """
-    shadowed = local_names(func, code)
+    body = body or _Body(func, code)
+    shadowed = local_names(func, code, body)
     edges: list[Edge] = []
-    for call in (n for n in _own_nodes(func) if n.type == "call"):
+    for call in body.calls:
+        handed = [
+            (slot, value, names)
+            for slot, value in _arguments(call)
+            if (names := _values_of(value, code, file_names, shadowed, held))
+        ]
         callee = call.child_by_field_name("function")
-        raw = get_identifier(callee, code) if callee is not None else "unknown"
+        # Named only once a value is found: most calls hand over none.
+        raw = get_identifier(callee, code) if handed and callee is not None else "unknown"
         if raw == "unknown":
             continue
         site = f"{raw}@{call.start_point.row}:{call.start_point.column}"
-        for slot, value in _arguments(call):
-            names = held(value) if held is not None and value.type == "identifier" else []
-            if not names:
-                name = value_name(value, code, file_names, shadowed)
-                names = [name] if name is not None else []
+        for slot, value, names in handed:
             for i, name in enumerate(names):
                 suffix = f"_{i}" if len(names) > 1 else ""
                 edges.append(
@@ -251,10 +299,6 @@ def value_candidates(
     return edges
 
 
-#: Literals whose elements a `for` loop binds its variable to, one by one.
-_LITERALS = frozenset({"tuple", "list", "parenthesized_expression", "set"})
-
-
 class HeldValues:
     """What each local of one function holds where it is read (CV-2).
 
@@ -262,11 +306,17 @@ class HeldValues:
     local replaces what it held, one in a nested block (an if, a loop) adds to it.
     """
 
-    def __init__(self, func: BaseNode, code: bytes, file_names: frozenset[str]) -> None:
+    def __init__(
+        self,
+        func: BaseNode,
+        code: bytes,
+        file_names: frozenset[str],
+        shadowed: frozenset[str] | None = None,
+    ) -> None:
         """Walk `func`'s body once and record the values at every read of a local."""
         self._code = code
         self._file_names = file_names
-        self._shadowed = local_names(func, code)
+        self._shadowed = local_names(func, code) if shadowed is None else shadowed
         self._values: dict[str, list[str]] = {}
         self._home: dict[str, int] = {}
         self._reads: dict[int, list[str]] = {}
@@ -345,11 +395,15 @@ def held_values(func: BaseNode, code: bytes, file_names: frozenset[str]) -> Held
 
 
 def local_value_calls(
-    func: BaseNode, source_id: str, file_path: str, held: HeldValues
+    func: BaseNode,
+    source_id: str,
+    file_path: str,
+    held: HeldValues,
+    calls: list[BaseNode] | None = None,
 ) -> list[Edge]:
     """A `value-local:` candidate per value a local holds where `func` calls it (CV-2)."""
     edges: list[Edge] = []
-    for call in (n for n in _own_nodes(func) if n.type == "call"):
+    for call in calls if calls is not None else [n for n in _own_nodes(func) if n.type == "call"]:
         callee = call.child_by_field_name("function")
         if callee is None or callee.type != "identifier":
             continue
@@ -369,6 +423,55 @@ def local_value_calls(
     return edges
 
 
+#: Every node `function_values` reads, found in one pass in C rather than a walk in Python.
+_EVENTS = Query(
+    Language(tspython.language()),
+    """
+    (function_definition) @def
+    [(lambda) (class_definition) (decorated_definition)] @scope
+    [(call) (assignment) (augmented_assignment) (for_statement) (named_expression)
+     (as_pattern_target)] @event
+    """,
+)
+
+
+def _bodies(root: BaseNode) -> Iterator[tuple[BaseNode, list[BaseNode]]]:
+    """Each function definition with the calls and bindings of its own body, in order.
+
+    One sweep in source order: an event belongs to the innermost scope open at its
+    start, and counts only when that scope is a function and the event is in its body
+    (a default value or a decorator is not).
+    """
+    captured = QueryCursor(_EVENTS).captures(root)
+    defs = captured.get("def", [])
+    scopes = sorted([*defs, *captured.get("scope", [])], key=_outer_first)
+    owned: dict[int, list[BaseNode]] = {d.start_byte: [] for d in defs}
+    stack: list[BaseNode] = []
+    pending = iter(scopes)
+    upcoming = next(pending, None)
+    for event in sorted(captured.get("event", []), key=_outer_first):
+        while upcoming is not None and upcoming.start_byte <= event.start_byte:
+            while stack and stack[-1].end_byte <= upcoming.start_byte:
+                stack.pop()
+            stack.append(upcoming)
+            upcoming = next(pending, None)
+        while stack and stack[-1].end_byte <= event.start_byte:
+            stack.pop()
+        owner = stack[-1] if stack else None
+        if owner is None or owner.type != "function_definition":
+            continue
+        body = owner.child_by_field_name("body")
+        if body is not None and event.start_byte >= body.start_byte:
+            owned[owner.start_byte].append(event)
+    for definition in defs:
+        yield definition, owned[definition.start_byte]
+
+
+def _outer_first(node: BaseNode) -> tuple[int, int]:
+    """Source order, an enclosing node before what it encloses."""
+    return node.start_byte, -node.end_byte
+
+
 def function_values(
     root: BaseNode,
     code: bytes,
@@ -384,23 +487,25 @@ def function_values(
     index = {n.id: i for i, n in enumerate(nodes) if n.type in _CALLABLE}
     updated = list(nodes)
     edges: list[Edge] = []
-    stack = [root]
-    while stack:
-        node = stack.pop()
-        stack.extend(node.children)
-        if node.type != "function_definition":
-            continue
+    for node, events in _bodies(root):
         position = index.get(get_id(node, code, file_path, source_root))
         if position is None:
             continue
         owner = updated[position]
         static = "staticmethod" in owner.metadata.get("decorators", ())
-        slots = invoked_slots(node, code, skip_first=owner.type is NodeType.METHOD and not static)
+        body = _Body(node, code, events)
+        skip_first = owner.type is NodeType.METHOD and not static
+        slots = invoked_slots(node, code, skip_first, body)
         if slots:
             updated[position] = owner.model_copy(
                 update={"metadata": {**owner.metadata, "invokes": slots}}
             )
-        held = held_values(node, code, file_names)
-        edges.extend(value_candidates(node, code, owner.id, file_path, file_names, held.at))
-        edges.extend(local_value_calls(node, owner.id, file_path, held))
+        if not body.calls:
+            continue
+        if not body.holds:
+            edges.extend(value_candidates(node, code, owner.id, file_path, file_names, body=body))
+            continue
+        held = HeldValues(node, code, file_names, local_names(node, code, body))
+        edges.extend(value_candidates(node, code, owner.id, file_path, file_names, held.at, body))
+        edges.extend(local_value_calls(node, owner.id, file_path, held, body.calls))
     return updated, edges
