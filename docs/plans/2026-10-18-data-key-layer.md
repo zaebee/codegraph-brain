@@ -27,6 +27,7 @@ SQLite store, typer CLI, FastMCP, pytest, strict mypy.
 - Two keys match when their paths are equal and their namespaces are equal or either is unscoped.
 - The held-out set is mined and sealed (Task 0) before any product code; its diffs are not read until Task 6; a held-out miss is reported, not fixed against the same set.
 - Pass thresholds (Task 6): held-out in-zone recall ≥ 3 of 4; noise median ≤ 5 listed items per PR and ≥ 50% "worth a look"; same on the public repository; < 10 s.
+- Ingest cost: full owner-api ingest ≤ 1.15× main (median of 5 clean interleaved pairs, fresh databases, never reusing a db between runs); checked after Task 3 and after Task 4, not only at the end. Over budget → profile and fix before the next task.
 - Worktree `/home/zaebee/projects/ownima/cgb-keys`; `unset VIRTUAL_ENV` before `uv run`; run touched test files plus `tests/self_parsing` when `src/` changes, never the full suite.
 - Commits end `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`; chain `&&`.
 
@@ -179,7 +180,7 @@ SQLite store, typer CLI, FastMCP, pytest, strict mypy.
 - [ ] **Step 2: Run** `uv run pytest tests/unit/test_python_keys.py -q`. Expected: FAIL.
 - [ ] **Step 3: Implement** `_keys.py` (one tree-sitter query per file, as `_values._bodies` does), profile, wiring, `str_value`.
 - [ ] **Step 4: Run** the unit file, conformance, graph identity (re-snapshot if key nodes change it, every change a key edge or node), `tests/self_parsing` (calibration bands: re-measure, and ask the maintainer before moving any).
-  Expected: PASS.
+  Expected: PASS. Then the ingest-cost check (Global Constraints) on owner-api at the pinned sha: ≤ 1.15× main; record node/edge counts and key-edge count.
 - [ ] **Step 5: Commit** `feat(python): dict access, query literals and model fields are data keys`.
 
 ### Task 4: JSON and YAML declare keys
@@ -207,7 +208,7 @@ SQLite store, typer CLI, FastMCP, pytest, strict mypy.
   `test_malformed_yaml_is_skipped_not_raised`, `test_coverage_claims_name_the_data_pack`.
 - [ ] **Step 2: Run** them. Expected: FAIL.
 - [ ] **Step 3: Implement** the pack (minimal `LanguagePack`: `is_test` via `is_test_path`, `scope_of` = path rule, empty `index_facts`, `classify` → UNKNOWN, default `ResolutionRules`), manifest, claims.
-- [ ] **Step 4: Run** the unit file, `tests/unit/test_coverage_claims.py tests/unit/test_languages.py tests/integration/test_conformance.py tests/self_parsing`. Expected: PASS.
+- [ ] **Step 4: Run** the unit file, `tests/unit/test_coverage_claims.py tests/unit/test_languages.py tests/integration/test_conformance.py tests/self_parsing`. Expected: PASS. Then the ingest-cost check again with the data pack on, plus the number of JSON/YAML files read versus skipped on owner-api.
 - [ ] **Step 5: Commit** `feat(languages): JSON and YAML files declare data keys`.
 
 ### Task 5: The diff check reports keys
@@ -248,5 +249,5 @@ SQLite store, typer CLI, FastMCP, pytest, strict mypy.
 - [ ] **Step 1:** Have an independent agent label `heldout.json` per `labelling.md` (in/out of zone, broken site), without the check's output; commit the labels.
 - [ ] **Step 2:** Run `evaluate.py` on the held-out set once. Record caught/in-zone per case.
 - [ ] **Step 3:** Run the check on the 30 owner-api and 15 public noise PRs; have an independent agent judge each listed item "worth a look" or not with the PR in front of it; record medians.
-- [ ] **Step 4:** Time the check on five owner-api diffs with a fresh graph (median).
+- [ ] **Step 4:** Time the check on five owner-api diffs with a fresh graph (median), and the final ingest-cost pair run (threshold 5 in the spec).
 - [ ] **Step 5:** Write the lab note: thresholds, results, misses with causes, and what the misses argue for (variant B data flow, registry completeness, fakes). Commit and open the PR.

@@ -213,6 +213,10 @@ the site that later broke (the reader, the subclass, the undeclared path).
    in front of it.
 3. Generality: no owner-api-specific code; the public repository meets threshold 2.
 4. Speed: the check finishes in under 10 s on an owner-api diff with a fresh graph.
+5. Ingest cost: a full owner-api ingest with the key layer and the data pack takes at
+   most 1.15× main's time (median of 5 clean interleaved pairs, fresh databases), and
+   the stored graph grows by a reported amount. Every cgis user pays this, including
+   auto-refresh in the MCP server, so it gates the round like the thresholds above.
 
 A miss in the held-out set is reported, not fixed against the same set (a fix makes a
 re-run "known misses closed", not recall).
