@@ -9,7 +9,7 @@ the import edge and every reference through it (`reconciles_references`).
 
 from typing import cast
 
-from cgis.core.models import Node
+from cgis.core.models import Node, NodeType
 from cgis.core.resolution import AFTER_IMPORT_MAP, ResolutionRules, ResolutionView
 from cgis.languages.go._syntax import (
     ANY_OF,
@@ -147,6 +147,10 @@ def _returned(marker: str, rest: str, view: ResolutionView, budget: int, trace: 
         held, _, method = callee.rpartition("|")
         callee = f"{_expand(held, view, budget, trace)}.{method}"
     node = _node_of(callee, view)
+    if node is not None and node.type is NodeType.CLASS:
+        # `T(x)` names a type, so it is a conversion, not a call: its value is a T
+        # (#670, #689). The name came from the caller's file, which stays the origin.
+        return node.id
     returns: list[str] = node.metadata.get("returns") or [] if node else []
     index = int(position) if position.isdigit() else len(returns)
     result = next(iter(returns[index : index + 1]), "")  # past the end: no such result

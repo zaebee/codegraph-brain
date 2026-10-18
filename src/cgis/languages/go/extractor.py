@@ -962,6 +962,21 @@ def _type_argument(ctx: _File, node: TSNode | None, bindings: Bindings) -> str |
     return _typed(ctx, node, bindings)
 
 
+def _named_callee(ctx: _File, name: str, bindings: Bindings) -> str | None:
+    """What a bare `name(...)` names: the package's `name`, or None for a local.
+
+    A local func value (`newT := newB; newT()`) is not the package's `newT` (#662
+    review). A local type name converts to what it names: an alias `type A = Name`
+    to Name, a type parameter (which names nothing) to nothing (#693 review).
+    """
+    if name in BUILTINS or name in bindings:
+        return None
+    local_type = bindings.type_here(name)
+    if local_type is not None:
+        return local_type or None
+    return f"{ctx.scope}.{name}"
+
+
 def _callee(ctx: _File, function: TSNode | None, bindings: Bindings) -> str | None:
     """What a call names, qualified: `f`, `pkg.F`, or `M` on a value of known type.
 
@@ -970,8 +985,7 @@ def _callee(ctx: _File, function: TSNode | None, bindings: Bindings) -> str | No
     """
     chain = selector_chain(function) if function is not None else []
     if len(chain) == 1:
-        # A local func value (`newT := newB; newT()`) is not the package's `newT` (#662 review).
-        return None if chain[0] in BUILTINS or chain[0] in bindings else f"{ctx.scope}.{chain[0]}"
+        return _named_callee(ctx, chain[0], bindings)
     if not chain:
         return _chained_callee(ctx, function, bindings) if function is not None else None
     *path, method = chain
@@ -1116,6 +1130,8 @@ def _value_name(ctx: _File, value: TSNode, bindings: Bindings) -> str:
     if not chain:
         return ""
     receiver = bindings.receiver if not bindings.shadowed(bindings.receiver or "") else None
+    # `log.Errorf` held as a value: `log` is a package variable, as in a call (#689).
+    _global_head(ctx, value, bindings)
     return call_name(value, receiver)
 
 

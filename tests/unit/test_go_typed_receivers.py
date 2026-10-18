@@ -459,3 +459,60 @@ def test_a_phantom_on_an_own_type_from_another_package_is_no_library_call() -> N
         ),
     }
     assert "errors.I.Missing" not in _calls_from(files, "app.B")
+
+
+def test_a_conversion_types_its_local_as_the_named_type() -> None:
+    """`k := Name(x)` is a conversion, not a call: `k.Matches` is `Name.Matches` (#689)."""
+    files = {
+        "app/a.go": (
+            "package app\ntype Name string\nfunc (n Name) Matches(s string) bool { return true }\n"
+            'func B(x string) bool {\n\tk := Name(x)\n\treturn k.Matches("a")\n}\n'
+        ),
+    }
+    assert _calls_from(files, "app.B").get("app.Name.Matches") == 1.0
+
+
+def test_a_conversion_in_a_for_init_types_its_variable() -> None:
+    """`for a := AuthMethod(new(none)); ...` types `a` as the interface (#670)."""
+    files = {
+        "app/a.go": (
+            "package app\ntype AuthMethod interface{ auth() bool }\ntype none struct{}\n"
+            "func (none) auth() bool { return true }\n"
+            "func B() {\n\tfor a := AuthMethod(new(none)); a != nil; {\n\t\ta.auth()\n\t}\n}\n"
+        ),
+    }
+    assert _calls_from(files, "app.B").get("app.AuthMethod.auth") == 1.0
+
+
+def test_a_conversion_to_a_type_parameter_is_not_the_package_type_of_its_name() -> None:
+    """`T(x)` inside `func B[T S]` converts to the type parameter, not the package's `T`
+    (#693 review): its method stays unresolved rather than wrong."""
+    files = {
+        "app/a.go": (
+            "package app\ntype T struct{}\nfunc (T) M() {}\ntype S interface{ M() }\n"
+            "func B[T S](x any) {\n\tv := T(x.(T))\n\tv.M()\n}\n"
+        ),
+    }
+    assert "app.T.M" not in _calls_from(files, "app.B")
+
+
+def test_a_method_value_on_a_package_variable_is_called_where_it_is_held() -> None:
+    """`f := log.Errorf; f()` with `log` a package variable of type P: f calls P.Errorf (#689)."""
+    files = {
+        "app/a.go": (
+            "package app\ntype P struct{}\nfunc (P) Errorf(s string) {}\nvar log P\n"
+            'func B() {\n\tf := log.Errorf\n\tf("x")\n}\n'
+        ),
+    }
+    assert _calls_from(files, "app.B").get("app.P.Errorf") == 1.0
+
+
+def test_a_conversion_through_a_local_type_alias_is_the_aliased_type() -> None:
+    """`type A = Name` inside the function: `A(x)` converts to Name (#693, Gemini)."""
+    files = {
+        "app/a.go": (
+            "package app\ntype Name string\nfunc (n Name) Matches(s string) bool { return true }\n"
+            'func B(x string) bool {\n\ttype A = Name\n\tk := A(x)\n\treturn k.Matches("a")\n}\n'
+        ),
+    }
+    assert _calls_from(files, "app.B").get("app.Name.Matches") == 1.0
