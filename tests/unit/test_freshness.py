@@ -429,3 +429,30 @@ def test_a_quiet_ingest_through_the_pipeline_is_fresh(tmp_path: Path) -> None:
         store.record_ingest(str(repo), pipeline.observed_mtimes)
     with SQLiteStore(db) as store:
         assert store.freshness().state is FreshnessState.FRESH
+
+
+def test_a_graph_built_by_other_extraction_code_is_stale(tmp_path: Path) -> None:
+    """After an upgrade the tree is unchanged, yet the graph is the old code's (#618)."""
+    db, _repo = _graph_of(tmp_path, "a.py")
+    with SQLiteStore(db) as store:
+        store.record_extraction_fingerprint("old")
+        result = store.freshness(fingerprint="new")
+    assert result.state is FreshnessState.STALE
+    assert (result.changed, result.missing) == (0, 0)
+    assert "other cgis extraction code" in (result.reason or "")
+
+
+def test_a_graph_built_by_the_running_code_is_fresh(tmp_path: Path) -> None:
+    """The same fingerprint, and a caller that passes none, both leave it FRESH (#618)."""
+    db, _repo = _graph_of(tmp_path, "a.py")
+    with SQLiteStore(db) as store:
+        store.record_extraction_fingerprint("same")
+        assert store.freshness(fingerprint="same").state is FreshnessState.FRESH
+        assert store.freshness().state is FreshnessState.FRESH
+
+
+def test_a_graph_from_before_fingerprints_is_stale_to_fingerprinted_code(tmp_path: Path) -> None:
+    """No recorded fingerprint: the next ingest rebuilds it (#617), so it reads STALE now."""
+    db, _repo = _graph_of(tmp_path, "a.py")
+    with SQLiteStore(db) as store:
+        assert store.freshness(fingerprint="new").state is FreshnessState.STALE

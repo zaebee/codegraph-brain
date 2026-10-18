@@ -12,6 +12,7 @@ from cgis.api.auto_refresh import AUTO_REFRESH_ENV, refresh_if_stale
 from cgis.api.mcp_server import cgis_find_symbol, cgis_ingest
 from cgis.cli import app
 from cgis.core.freshness import FreshnessState
+from cgis.pipeline import extraction_fingerprint
 from cgis.storage.sqlite_store import SQLiteStore
 
 _PAST = time.time() - 100
@@ -141,3 +142,19 @@ def test_a_refresh_keeps_the_source_roots_it_was_ingested_with(
     ids = _ids(db)
     assert "pkg.mod.new_fn" in ids
     assert not any(i.startswith("src.") for i in ids)
+
+
+def test_a_graph_built_by_other_extraction_code_is_rebuilt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No file changed, but the graph is an older cgis's: the read refreshes it (#618)."""
+    monkeypatch.setenv(AUTO_REFRESH_ENV, "1")
+    repo = _repo(tmp_path)
+    db = tmp_path / "graph.db"
+    cgis_ingest(str(repo), str(db))
+    with SQLiteStore(str(db)) as store:
+        store.record_extraction_fingerprint("built-by-an-older-cgis")
+
+    assert refresh_if_stale(str(db)) is True
+    with SQLiteStore(str(db)) as store:
+        assert store.get_extraction_fingerprint() == extraction_fingerprint()

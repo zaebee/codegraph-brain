@@ -24,7 +24,7 @@ import structlog
 
 from cgis.core.freshness import FreshnessState
 from cgis.languages import extractors
-from cgis.pipeline import IngestionPipeline
+from cgis.pipeline import IngestionPipeline, extraction_fingerprint
 from cgis.storage.sqlite_store import SQLiteStore
 
 logger = structlog.getLogger(__name__)
@@ -63,7 +63,7 @@ def refresh_if_stale(db_path: str) -> bool:
 def _refresh(db_path: str) -> bool:
     """The refresh itself, run under the lock: freshness is re-read here, not before."""
     with SQLiteStore(db_path) as store:
-        if store.freshness().state is not FreshnessState.STALE:
+        if store.freshness(fingerprint=extraction_fingerprint()).state is not FreshnessState.STALE:
             return False
         recorded = store.get_ingest_state()
         options = store.get_ingest_options()

@@ -22,7 +22,7 @@ from cgis.core.coverage import TraversalCoverage, UnresolvedSite
 from cgis.core.freshness import Freshness, FreshnessState
 from cgis.core.models import RAW_CALL_PREFIX, Edge, EdgeType, Node, NodeType
 from cgis.languages import extractors, impact_caveat
-from cgis.pipeline import IngestionPipeline
+from cgis.pipeline import IngestionPipeline, extraction_fingerprint
 from cgis.query.analysis.overview import DEFAULT_DEPTH, DEFAULT_LIMIT, build_overview
 from cgis.query.analysis.suggest_service import report_to_dict, suggest_packages
 from cgis.query.context.audit import audit_reachability
@@ -402,7 +402,7 @@ def _graph_freshness(db_path: str) -> Freshness | None:
         return None
     try:
         with SQLiteStore(db_path) as store:
-            return store.freshness()
+            return store.freshness(fingerprint=extraction_fingerprint())
     except Exception:
         return None
 
@@ -412,8 +412,9 @@ def _freshness_text(result: "Freshness | None") -> str:
     if result is None or result.state is FreshnessState.FRESH:
         return ""
     if result.state is FreshnessState.STALE:
+        why = f"{result.reason}, " if result.reason else ""
         return (
-            f"> \u26a0 Graph is stale: {result.changed} changed, {result.missing} missing "
+            f"> \u26a0 Graph is stale: {why}{result.changed} changed, {result.missing} missing "
             "since ingest. Re-run cgis_ingest for a current answer.\n\n"
         )
     return f"> Freshness unknowable: {result.reason}\n\n"

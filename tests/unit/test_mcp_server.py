@@ -1141,6 +1141,19 @@ def test_a_text_tool_gets_a_prefixed_note(tmp_path: Path) -> None:
     assert answer.lower().startswith("> ⚠ graph is stale") or "graph is stale" in answer.lower()
 
 
+def test_a_graph_built_by_other_extraction_code_says_so(tmp_path: Path) -> None:
+    """No file changed since the ingest, but an older cgis built the graph (#618)."""
+    db, _repo = _mcp_repo(tmp_path)
+    with SQLiteStore(db) as store:
+        store.record_extraction_fingerprint("built-by-an-older-cgis")
+
+    answer = cgis_get_structure("m", db_path=db)
+    payload = json.loads(cgis_validate(db))
+
+    assert "built by other cgis extraction code" in answer
+    assert payload["freshness"]["state"] == "STALE"
+
+
 def test_cgis_ingest_full_rebuild_of_a_bad_path_keeps_the_graph(tmp_path: Path) -> None:
     """A typo'd path fails before the stored graph is touched."""
     src = tmp_path / "src"
