@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT / "scripts" / "data_keys"))
 
 import draw_noise  # noqa: E402
 import mine_heldout  # noqa: E402
-from mine_heldout import DEV_PRS, PR, find_pairs, heldout_pairs, repairs  # noqa: E402
+from mine_heldout import DEV_PRS, PR, all_pairs, find_pairs, heldout_pairs, repairs  # noqa: E402
 
 NOW = datetime(2026, 10, 18, tzinfo=UTC)
 
@@ -121,3 +121,12 @@ def test_committed_sets_hold_no_development_case() -> None:
     assert len(drawn) == 30
     assert not drawn & numbers
     assert len(noise["public_repo"]["prs"]) == 15
+
+
+def test_a_breaking_pr_that_is_itself_a_fix_is_dropped() -> None:
+    """In a chain 1 <- 2 <- 3 only the pair whose breaking PR is no fix survives."""
+    prs = [pr(2500, 20), pr(2501, 15, "fix: a", "#2500"), pr(2502, 10, "fix: b", "#2501")]
+    assert [(b.number, f.number) for b, f in all_pairs(prs)] == [(2500, 2501), (2501, 2502)]
+    assert [(b.number, f.number) for b, f in find_pairs(prs)] == [(2500, 2501)]
+    noise = [*prs, pr(2600, 3)]
+    assert [p.number for p in draw_noise.candidates(noise, NOW)] == [2600]

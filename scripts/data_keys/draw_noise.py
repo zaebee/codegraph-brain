@@ -21,8 +21,8 @@ from mine_heldout import (
     PR,
     REPO_ROOT,
     _gh,
+    all_pairs,
     fetch_prs,
-    find_pairs,
     first_parent,
 )
 
@@ -43,7 +43,7 @@ def candidates(prs: Sequence[PR], now: datetime, days: int = DAYS) -> list[PR]:
     Development PRs and non-code PRs (releases, dependency bumps) are left out, and the
     result is ordered by number so that the seeded draw does not depend on fetch order.
     """
-    paired = {pr.number for pair in find_pairs(prs) for pr in pair}
+    paired = {pr.number for pair in all_pairs(prs) for pr in pair}
     since = now - timedelta(days=days)
     return sorted(
         (

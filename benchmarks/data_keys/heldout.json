@@ -71,17 +71,6 @@
     },
     {
       "breaking": {
-        "pr": 1919,
-        "base_sha": "5657de224ce8fc81646902211cc2cfc1191c33a5",
-        "merge_sha": "43433d1e6eb21a884c474a880a4f88eae714882c"
-      },
-      "fix": {
-        "pr": 1920,
-        "merge_sha": "91b58b760f36ac39a71c750c06c690bb747c629d"
-      }
-    },
-    {
-      "breaking": {
         "pr": 1916,
         "base_sha": "a389bc4bdc9a64c2d507a2313511b404335a9643",
         "merge_sha": "16816f09108b6f079bf290b2207eb43f3ccef1c7"
@@ -166,6 +155,17 @@
       "fix": {
         "pr": 1805,
         "merge_sha": "8d5ce37ee9d11a32d2c607da114be2875f7c0c44"
+      }
+    },
+    {
+      "breaking": {
+        "pr": 1759,
+        "base_sha": "12855f5204ce576da6eaa44f51044f821c15a266",
+        "merge_sha": "7cac12017028c64efc66856b8016b10d784bc1a6"
+      },
+      "fix": {
+        "pr": 1765,
+        "merge_sha": "639a40098357508058ae0969e691ff78758fd7a7"
       }
     }
   ]

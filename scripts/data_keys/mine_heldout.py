@@ -79,10 +79,11 @@ def repairs(fix: PR, earlier: Sequence[PR]) -> PR | None:
     return max(hits, key=lambda pr: pr.merged_at, default=None)
 
 
-def find_pairs(prs: Sequence[PR]) -> list[tuple[PR, PR]]:
+def all_pairs(prs: Sequence[PR]) -> list[tuple[PR, PR]]:
     """Every ``(breaking, fix)`` pair in ``prs`` under the rule, development PRs included.
 
-    A breaking PR keeps only its earliest fix, so no breakage is counted twice.
+    A breaking PR keeps only its earliest fix, so no breakage is counted twice. Chains
+    are kept here: the noise draw must stay clear of both sides of every original pair.
     """
     ordered = sorted(prs, key=lambda pr: (pr.merged_at, pr.number))
     first_fix: dict[int, tuple[PR, PR]] = {}
@@ -91,6 +92,17 @@ def find_pairs(prs: Sequence[PR]) -> list[tuple[PR, PR]]:
         if broken is not None and broken.number not in first_fix:
             first_fix[broken.number] = (broken, fix)
     return list(first_fix.values())
+
+
+def find_pairs(prs: Sequence[PR]) -> list[tuple[PR, PR]]:
+    """The independent pairs: ``all_pairs`` minus those whose breaking PR is itself a fix.
+
+    Pre-registered before any diff was read: in a chain (#1916, then #1919 fixing it,
+    then #1920 fixing that) the middle PR's breakage is not independent of the first.
+    """
+    pairs = all_pairs(prs)
+    fixes = {fix.number for _, fix in pairs}
+    return [(broken, fix) for broken, fix in pairs if broken.number not in fixes]
 
 
 def heldout_pairs(prs: Sequence[PR], limit: int = MAX_PAIRS) -> list[tuple[PR, PR]]:

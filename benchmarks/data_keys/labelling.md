@@ -1,6 +1,7 @@
 # Labelling the held-out breakages
 
-Written and committed before the held-out set was mined (spec:
+Written before the mining run; it landed in the same commit as the mined set, see
+`SEALING.md` (spec:
 `docs/specs/2026-10-18-data-key-layer-design.md`, Evaluation, Sets). The labeller is an
 independent agent that sees each (breaking PR, fix PR) pair, and never the output of the
 check.
