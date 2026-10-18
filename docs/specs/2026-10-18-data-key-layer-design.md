@@ -11,7 +11,8 @@ the gain is cost (×0.63, exp3), not correctness. The question that matters is w
 the graph stops an agent from breaking someone else's code when it edits.
 
 Two owner-api agent sessions listed ten real breakages from their own edits
-(2026-10-18, cross-session interviews; case ids are owner-api PRs):
+(2026-10-18, cross-session interviews; case ids are owner-api PRs), and the cgis
+session added its own (the last row):
 
 | Case | What broke | Found by | Call graph would help |
 |---|---|---|---|
@@ -25,6 +26,7 @@ Two owner-api agent sessions listed ten real breakages from their own edits
 | #1815 | `asyncio.gather` over one AsyncSession | prod | no — race |
 | ruff G004 | autofix would break structlog formatting | manual | no — library semantics |
 | #2040 | stale lockfile on a branch | CI on main | no |
+| cgis #701 | a new node metadata key `invokes` was written by the Python extractor and read by the resolver, but not listed in the manifest's `cross_file_metadata` tuple, so incremental runs kept stale edges | independent review | yes — the key's declaration lives in a string tuple in code |
 
 The call graph covers two or three of ten. The most frequent class the graph cannot
 see is **a dependency through a string key**: a document field, an OpenSearch field
@@ -51,7 +53,14 @@ a diff check that reports it, and measures both against held-out breakages.
 - Timing, races, external-system behaviour, library semantics, lockfiles.
 - The edit-time hook (#588). It reuses this check once the check passes; it is not built here.
 - Cross-repository contracts (four frontends generated from OpenAPI, RFC #224).
-- OpenAPI as a declaring file. JSON mappings only in this round.
+- OpenAPI as a declaring file. JSON and YAML files only in this round.
+- **Registry completeness.** A key whose declaration is a string in a collection
+  literal in code (cgis's `cross_file_metadata = {...: ("invokes",)}`) is not treated as
+  declared: "any tuple of strings declares" would drown the check, and a rule for that
+  one constant would be repository-specific. A later idea, untested: when almost every
+  key read through one access path (`node.metadata.get(...)`) appears in some
+  collection literal and a new one does not, flag it. The cgis #701 case is expected to
+  be a known miss this round, and its miss is the measured case for that idea.
 - Go and TypeScript key extraction. The core is language-neutral; Python is the only
   extractor built and measured here.
 - **Data flow across functions** (decided, variant A). A namespace is taken only where
@@ -135,7 +144,9 @@ mappings to indices. Nothing in this round depends on it: the measured runs use 
 project config, on owner-api and on the public repository alike, so both are measured
 on the same terms.
 
-**Declaring files.** A JSON mapping is read by a small data pack: each path under
+**Declaring files.** JSON and YAML files are read by a small data pack (one pack, two
+parsers). A file's keys declare themselves as dotted paths. For an OpenSearch mapping
+the profile adds the mapping's shape: each path under
 `properties` declares a key, and each subfield under `fields` declares
 `<path>.<subfield>` (this is what makes `event_type.keyword` declared or not). The
 mapping's namespace is the index it belongs to. The profile says how to link a mapping
@@ -173,7 +184,8 @@ Exposed as a CLI command and an MCP tool; the name is the builder's call (#544
 ## Evaluation (pre-registered before building)
 
 **Sets.**
-- *Development set:* the ten cases above. Used freely while building.
+- *Development set:* the eleven cases above (ten owner-api, one cgis — a second
+  repository from the start). Used freely while building.
 - *Held-out set:* 10–15 breakages mined from owner-api history by a rule fixed before
   mining: a `fix` commit whose message or PR references an earlier PR it repairs, or
   whose diff reverts lines that PR introduced, within 30 days, excluding the ten known
