@@ -331,3 +331,131 @@ def test_a_field_chain_resolves_through_the_last_hop_s_file() -> None:
         ),
     }
     assert _calls_from(files, "app.O.B").get("sync.Once.Do") == 1.0
+
+
+def test_a_package_variable_s_type_resolves_through_its_declaring_file_s_imports() -> None:
+    """`once` is declared in a.go, which imports sync; b.go calls it and does not (#688)."""
+    files = {
+        "app/a.go": 'package app\nimport "sync"\nvar once sync.Once\nfunc setup() {}\n',
+        "app/b.go": "package app\nfunc B() { once.Do(setup) }\n",
+    }
+    assert _calls_from(files, "app.B").get("sync.Once.Do") == 1.0
+
+
+def test_a_call_result_s_type_resolves_through_the_callee_s_file() -> None:
+    """`NewOnce` returns *sync.Once in a.go; b.go holds it and does not import sync (#688)."""
+    files = {
+        "app/a.go": (
+            'package app\nimport "sync"\nfunc NewOnce() *sync.Once { return &sync.Once{} }\n'
+            "func setup() {}\n"
+        ),
+        "app/b.go": "package app\nfunc B() {\n\to := NewOnce()\n\to.Do(setup)\n}\n",
+    }
+    assert _calls_from(files, "app.B").get("sync.Once.Do") == 1.0
+
+
+def test_a_field_copied_to_a_local_resolves_through_the_struct_s_file() -> None:
+    """`x := c.once` holds a `go-field:` marker that expands through C in a.go (#688)."""
+    files = {
+        "app/a.go": DECLARES_ONCE,
+        "app/b.go": "package app\nfunc B(c *C) {\n\tx := c.once\n\tx.Do(c.init)\n}\n",
+    }
+    assert _calls_from(files, "app.B").get("sync.Once.Do") == 1.0
+
+
+def test_a_field_hop_on_an_expanded_library_type_is_kept_as_the_library_s() -> None:
+    """`srv.Handler.ServeHTTP`: no declared field to walk on http.Server, so the call is
+    kept as a library call, classified through a.go, which imports net/http (#688)."""
+    files = {
+        "app/a.go": 'package app\nimport "net/http"\nvar srv http.Server\n',
+        "app/b.go": "package app\nfunc B() { srv.Handler.ServeHTTP(nil, nil) }\n",
+    }
+    assert _calls_from(files, "app.B").get("net.http.Server.Handler.ServeHTTP") == 1.0
+
+
+def test_the_origin_is_the_file_that_gave_the_last_step() -> None:
+    """`f.Get()`: f is declared in a.go (no sync import), Get returns *sync.Once in c.go;
+    the type is read from c.go, the last declaration the expansion went through (#688)."""
+    files = {
+        "app/a.go": "package app\nvar f F\nfunc setup() {}\n",
+        "app/c.go": (
+            'package app\nimport "sync"\ntype F struct{}\n'
+            "func (F) Get() *sync.Once { return nil }\n"
+        ),
+        "app/b.go": "package app\nfunc B() {\n\to := f.Get()\n\to.Do(setup)\n}\n",
+    }
+    assert _calls_from(files, "app.B").get("sync.Once.Do") == 1.0
+
+
+SHADOWS_STDLIB = (
+    'package errors\nimport std "errors"\nvar _ = std.New\ntype E struct{ i I }\ntype I struct{}\n'
+)
+
+
+def test_a_missing_method_on_an_own_type_named_like_an_import_is_no_library_call() -> None:
+    """Package `errors` imports the stdlib's: `errors.E` is still its own type, so a
+    method it lacks is a phantom, never `errors.E.Missing` in the stdlib (#691 review)."""
+    files = {
+        "errors/a.go": SHADOWS_STDLIB + "var e E\n",
+        "errors/b.go": "package errors\nfunc B() { e.Missing() }\n",
+    }
+    assert "errors.E.Missing" not in _calls_from(files, "errors.B")
+
+
+def test_a_missing_method_after_a_field_hop_on_an_own_type_is_no_library_call() -> None:
+    """The same through a field hop, which #687's walk keeps as a library call (#691 review)."""
+    files = {
+        "errors/a.go": SHADOWS_STDLIB + "var e E\n",
+        "errors/b.go": "package errors\nfunc B() { e.i.Missing() }\n",
+    }
+    assert "errors.I.Missing" not in _calls_from(files, "errors.B")
+
+
+def test_a_library_type_mapped_onto_an_own_type_by_suffix_is_still_the_library_s() -> None:
+    """An own package `cdc/regexp` also declares `Regexp`; a stdlib `*regexp.Regexp` call it
+    lacks stays the stdlib's (#691: the phantom guard must not read the mapped type)."""
+    files = {
+        "cdc/regexp/re.go": (
+            'package regexp\ntype Regexp struct{}\nfunc (r Regexp) String() string { return "" }\n'
+        ),
+        "app/a.go": 'package app\nimport "regexp"\nvar re *regexp.Regexp\n',
+        "app/b.go": 'package app\nfunc B() bool { return re.MatchString("y") }\n',
+    }
+    assert _calls_from(files, "app.B").get("regexp.Regexp.MatchString") == 1.0
+
+
+OWN_CONTEXT = "package context\ntype Context struct{}\nfunc (Context) JSON() {}\n"
+
+
+def test_a_stdlib_type_whose_id_an_own_package_shares_keeps_its_calls() -> None:
+    """An own `context/` declares `Context`, so its id is `context.Context` too; the
+    stdlib's `ctx.Done()` from another package is still the stdlib's (#691 review)."""
+    files = {
+        "context/ctx.go": OWN_CONTEXT,
+        "app/b.go": 'package app\nimport "context"\nfunc B(c context.Context) { c.Done() }\n',
+    }
+    assert _calls_from(files, "app.B").get("context.Context.Done") == 1.0
+
+
+def test_a_stdlib_field_type_whose_id_an_own_package_shares_keeps_its_calls() -> None:
+    """The same through a field hop: `s.c.Done()` with `c context.Context` (#691 review)."""
+    files = {
+        "context/ctx.go": OWN_CONTEXT,
+        "app/b.go": (
+            'package app\nimport "context"\ntype S struct{ c context.Context }\n'
+            "func B(s *S) { s.c.Done() }\n"
+        ),
+    }
+    assert _calls_from(files, "app.B").get("context.Context.Done") == 1.0
+
+
+def test_a_phantom_on_an_own_type_from_another_package_is_no_library_call() -> None:
+    """`app` imports its own `errors` package; `e.i.Missing()` there is a phantom, not
+    `errors.I.Missing` in the stdlib (#691 review; main kept it)."""
+    files = {
+        "errors/a.go": SHADOWS_STDLIB,
+        "app/b.go": (
+            'package app\nimport "example.com/app/errors"\nfunc B(e errors.E) { e.i.Missing() }\n'
+        ),
+    }
+    assert "errors.I.Missing" not in _calls_from(files, "app.B")
