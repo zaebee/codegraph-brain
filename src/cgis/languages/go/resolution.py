@@ -124,7 +124,9 @@ def type_origin(type_fqn: str, view: ResolutionView) -> str | None:
     """
     files: list[str] = []
     expanded = _expand(type_fqn, view, _MAX_EXPANSION, files)
-    return files[-1] if files and expanded != type_fqn else None
+    if not files or expanded == type_fqn or expanded.startswith("go-"):
+        return None  # nothing expanded, or only as far as another marker
+    return files[-1]
 
 
 #: Files of the nodes an expansion read, in order: the last one gave the result.

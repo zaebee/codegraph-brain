@@ -269,6 +269,10 @@ def _resolve_on_type(
     # the engine mints an EXTERNAL/STDLIB node. On an internal type it is a
     # phantom method and must not be fabricated: that is the call #414 was
     # filed to expose. Same policy as _resolve_local_type_call (spec D7).
+    if current in index.nodes:
+        # The receiver is a type of this graph: the method it lacks is a phantom,
+        # even where its package shares a name with an import (`errors`, #691 review).
+        return None
     candidate = f"{current}.{method}"
     namespace = index.classify_fqn(candidate, source_file)
     if namespace in (NodeNamespace.EXTERNAL, NodeNamespace.STDLIB):
@@ -488,6 +492,11 @@ class SymbolResolver:
         # — that is a real call into a library (it becomes an EXTERNAL/STDLIB virtual
         # node). For an internal/unknown type it is a phantom method: drop it rather
         # than fabricate a node that does not exist (#183).
+        if class_fqn in self.index.nodes:
+            # A type of this graph by its own id: a phantom, as in `_resolve_on_type`.
+            # Not `start`: a suffix match may map a library type onto an own one
+            # (`regexp.Regexp` → `cdc.regexp.Regexp`), and the call is still the library's.
+            return None
         namespace = self.index.classify_fqn(candidate, classify_in)
         if namespace in (NodeNamespace.EXTERNAL, NodeNamespace.STDLIB):
             self.boundary_claims.setdefault(candidate, namespace)
