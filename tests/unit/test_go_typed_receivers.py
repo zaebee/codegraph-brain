@@ -505,3 +505,14 @@ def test_a_method_value_on_a_package_variable_is_called_where_it_is_held() -> No
         ),
     }
     assert _calls_from(files, "app.B").get("app.P.Errorf") == 1.0
+
+
+def test_a_conversion_through_a_local_type_alias_is_the_aliased_type() -> None:
+    """`type A = Name` inside the function: `A(x)` converts to Name (#693, Gemini)."""
+    files = {
+        "app/a.go": (
+            "package app\ntype Name string\nfunc (n Name) Matches(s string) bool { return true }\n"
+            'func B(x string) bool {\n\ttype A = Name\n\tk := A(x)\n\treturn k.Matches("a")\n}\n'
+        ),
+    }
+    assert _calls_from(files, "app.B").get("app.Name.Matches") == 1.0
