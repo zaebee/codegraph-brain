@@ -1,0 +1,6 @@
+clause: DK-2
+status: pass
+must_have:
+  - {type: READS_KEY, source: mod.load, target: "key:|details.brand"}
+must_not_have:
+  - {type: READS_KEY, source: mod.load, target: "key:|details"}
