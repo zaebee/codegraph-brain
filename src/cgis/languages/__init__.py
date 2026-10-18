@@ -74,7 +74,8 @@ MANIFESTS: tuple[Manifest, ...] = (
         extensions=(".py",),
         never_ingested=re.compile(r"\.(test|spec)\.py$", re.IGNORECASE),
         cross_file_metadata={
-            NodeType.FILE: ("import_map", "reexports", "star_imports"),
+            # Another file's key names its namespace by an imported constant (DK-1).
+            NodeType.FILE: ("import_map", "reexports", "star_imports", "str_constants"),
             NodeType.CLASS: ("self_types",),
             # Another file's parameter typed with the alias reads the type behind it (#550).
             NodeType.VARIABLE: ("annotated_type",),

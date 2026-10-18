@@ -18,9 +18,10 @@ def resolve_key_edges(edges: list[Edge], index: SymbolIndex) -> tuple[list[Edge]
     """Split off the raw_key: edges, resolved to their key ids; the rest come back as they were."""
     keys: list[Edge] = []
     others: list[Edge] = []
+    files: dict[str, Node] = {}  # FILE nodes by path, filled at the first `@NAME`
     for edge in edges:
         if edge.target.startswith(RAW_KEY_PREFIX):
-            keys.append(_resolved_key_edge(edge, index))
+            keys.append(_resolved_key_edge(edge, index, files))
         else:
             others.append(edge)
     return keys, others
@@ -44,29 +45,54 @@ def key_nodes(key_edges: list[Edge]) -> dict[str, Node]:
     return nodes
 
 
-def _resolved_key_edge(edge: Edge, index: SymbolIndex) -> Edge:
+def _resolved_key_edge(edge: Edge, index: SymbolIndex, files: dict[str, Node]) -> Edge:
     """Point a raw_key: edge at its key id, resolving an `@NAME` namespace.
 
-    The namespace is the `str_value` of the module-level constant NAME (the edge's
-    own file's, else the only one the graph has); a name that resolves to no single
-    string leaves the key unscoped, as a namespace living in another function does.
+    The namespace is the string the module-level constant NAME holds, recorded in a
+    FILE node's `str_constants`: the edge's own file's, else the file its import of
+    NAME comes from. A name that resolves to no single string leaves the key
+    unscoped, as a namespace living in another function does.
     """
     namespace, _, path = edge.target.removeprefix(RAW_KEY_PREFIX).partition("|")
     if namespace.startswith("@"):
-        namespace = _constant_value(namespace[1:], edge, index)
+        source_file = index.normalized_file_path(edge.source, edge.file_path)
+        if not files:
+            files.update(
+                (os.path.normpath(n.file_path), n)
+                for n in index.nodes.values()
+                if n.type is NodeType.FILE
+            )
+        namespace = _constant_value(namespace[1:], source_file, index, files)
     return edge.model_copy(update={"target": key_id(namespace, path)})
 
 
-def _constant_value(name: str, edge: Edge, index: SymbolIndex) -> str:
-    """The string a module-level constant holds, or "" when it is not one string."""
-    source_file = index.normalized_file_path(edge.source, edge.file_path)
-    values: dict[str, set[str]] = {}
-    for fqn in index.variable_symbols.get(name, []):
-        node = index.nodes[fqn]
-        value = node.metadata.get("str_value")
-        if isinstance(value, str) and value:
-            values.setdefault(os.path.normpath(node.file_path), set()).add(value)
-    found = values.get(source_file) if source_file is not None else None
-    if found is None:
-        found = set().union(*values.values())
-    return next(iter(found)) if len(found) == 1 else ""
+def _constant_value(
+    name: str, source_file: str | None, index: SymbolIndex, files: dict[str, Node]
+) -> str:
+    """What constant `name` holds where `source_file` uses it; "" when not one string."""
+    if source_file is None:
+        return ""
+    own = _constants(files.get(source_file)).get(name)
+    if own is not None:
+        return own
+    target = index.file_imports.get(source_file, {}).get(name)
+    if target is None or "." not in target:
+        return ""
+    module, _, imported = target.rpartition(".")
+    return _constants(_module_file(module, index)).get(imported, "")
+
+
+def _module_file(fqn: str, index: SymbolIndex) -> Node | None:
+    """The FILE node of module `fqn`, through the suffix map for a src/ layout."""
+    node = index.nodes.get(fqn)
+    if node is not None and node.type is NodeType.FILE:
+        return node
+    found = [index.nodes[c] for c in index.suffix_map.get(fqn, [])]
+    found = [f for f in found if f.type is NodeType.FILE]
+    return found[0] if len(found) == 1 else None
+
+
+def _constants(file: Node | None) -> dict[str, str]:
+    """A FILE node's module-level string constants; none for a missing file."""
+    constants = file.metadata.get("str_constants") if file is not None else None
+    return constants if isinstance(constants, dict) else {}

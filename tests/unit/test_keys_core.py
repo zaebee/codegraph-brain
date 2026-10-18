@@ -21,16 +21,25 @@ def _func(fqn: str, file_path: str = "svc.py") -> Node:
     )
 
 
-def _constant(fqn: str, value: object, file_path: str = "svc.py") -> Node:
+def _file(
+    fqn: str,
+    file_path: str,
+    constants: dict[str, object] | None = None,
+    imports: dict[str, str] | None = None,
+) -> Node:
+    """A FILE node carrying its module-level string constants and its import map."""
+    metadata: dict[str, object] = {"import_map": imports or {}}
+    if constants is not None:
+        metadata["str_constants"] = constants
     return Node(
         id=fqn,
-        type=NodeType.VARIABLE,
-        name=fqn.rsplit(".", maxsplit=1)[-1],
+        type=NodeType.FILE,
+        name=file_path,
         file_path=file_path,
         start_line=1,
         end_line=1,
         language="python",
-        metadata={"str_value": value},
+        metadata=metadata,
     )
 
 
@@ -88,18 +97,35 @@ def test_raw_key_edges_become_key_nodes() -> None:
     assert node.metadata == {"namespace": "events", "path": "details.brand"}
 
 
-def test_a_constant_namespace_resolves_through_str_value() -> None:
-    """`@NAME` becomes the namespace held by the module-level constant NAME."""
-    nodes = [_func("svc.f"), _constant("svc.EVENTS_INDEX", "events")]
+def test_a_constant_namespace_resolves_through_the_files_constants() -> None:
+    """`@NAME` becomes the namespace held by the module-level constant NAME of its file."""
+    nodes = [_func("svc.f"), _file("svc", "svc.py", {"EVENTS_INDEX": "events"})]
     resolved, virtual = ResolverEngine(nodes, [_key_edge("@EVENTS_INDEX|brand")]).resolve()
     assert [e.target for e in resolved] == [key_id("events", "brand")]
     assert virtual[0].metadata == {"namespace": "events", "path": "brand"}
 
 
+def test_an_imported_constant_names_the_namespace() -> None:
+    """`from consts import INDEX`: the value comes from the file that defines INDEX."""
+    nodes = [
+        _func("svc.f"),
+        _file("svc", "svc.py", imports={"INDEX": "consts.INDEX"}),
+        _file("consts", "consts.py", {"INDEX": "vehicles"}),
+        # Another file's same-named constant does not decide it.
+        _file("other", "other.py", {"INDEX": "events"}),
+    ]
+    resolved, _ = ResolverEngine(nodes, [_key_edge("@INDEX|brand")]).resolve()
+    assert [e.target for e in resolved] == [key_id("vehicles", "brand")]
+
+
 def test_an_unresolvable_namespace_is_unscoped() -> None:
-    """A missing constant, or one with no string value, leaves the key unscoped."""
-    nodes = [_func("svc.f"), _constant("svc.COUNT", None)]
-    edges = [_key_edge("@MISSING|brand"), _key_edge("@COUNT|brand")]
+    """A missing constant, one that is not imported, or an import of nothing known: unscoped."""
+    nodes = [
+        _func("svc.f"),
+        _file("svc", "svc.py", {}, imports={"GONE": "nowhere.GONE"}),
+        _file("other", "other.py", {"ELSEWHERE": "events"}),
+    ]
+    edges = [_key_edge("@MISSING|brand"), _key_edge("@ELSEWHERE|brand"), _key_edge("@GONE|brand")]
     resolved, virtual = ResolverEngine(nodes, edges).resolve()
     assert {e.target for e in resolved} == {key_id("", "brand")}
     assert [n.id for n in virtual] == [key_id("", "brand")]

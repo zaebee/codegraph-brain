@@ -1,6 +1,6 @@
 """Data keys in Python (DK-1..DK-3): which strings address data, and how each is used."""
 
-from cgis.core.models import RAW_KEY_PREFIX, EdgeType
+from cgis.core.models import RAW_KEY_PREFIX, EdgeType, NodeType
 from cgis.languages.python.extractor import PythonExtractor
 
 _R, _W, _D = EdgeType.READS_KEY, EdgeType.WRITES_KEY, EdgeType.DECLARES_KEY
@@ -211,3 +211,20 @@ def test_key_edges_score_one_and_carry_their_line() -> None:
     assert edge.confidence == 1.0
     assert edge.line_number == 3
     assert edge.file_path == "m.py"
+
+
+def test_module_string_constants_are_recorded_on_the_file() -> None:
+    code = (
+        'EVENTS = "events"\nOTHER = 3\nJOINED = "a" "b"\nTYPED: str = "t"\n'
+        'EVENTS = "events-v2"\nclass C:\n    INNER = "x"\ndef f():\n    LOCAL = "y"\n'
+    )
+    nodes, _edges = PythonExtractor().parse(code, "m.py")
+    (file_node,) = [n for n in nodes if n.type is NodeType.FILE]
+    assert file_node.metadata["str_constants"] == {"EVENTS": "events-v2"}
+    assert not [n for n in nodes if n.type is NodeType.VARIABLE]
+
+
+def test_a_file_without_string_constants_records_none() -> None:
+    nodes, _edges = PythonExtractor().parse("X = 1\n", "m.py")
+    (file_node,) = [n for n in nodes if n.type is NodeType.FILE]
+    assert "str_constants" not in file_node.metadata

@@ -375,9 +375,11 @@ def test_cross_file_metadata_is_the_old_table() -> None:
     Python and TypeScript nodes never carry them, so their signatures read the same.
     Python adds `invokes` on functions and methods (#632): a caller's value edge
     depends on whether the function it hands the value to calls it.
+    Python adds `str_constants` on files (data keys, Task 3): a key in another file
+    takes its namespace from the value of the constant it imports.
     """
     assert cross_file_metadata() == {
-        NodeType.FILE: ("import_map", "reexports", "star_imports"),
+        NodeType.FILE: ("import_map", "reexports", "star_imports", "str_constants"),
         NodeType.CLASS: ("self_types", "fields"),
         NodeType.VARIABLE: ("annotated_type", "var_type"),
         NodeType.FUNCTION: ("invokes", "returns"),

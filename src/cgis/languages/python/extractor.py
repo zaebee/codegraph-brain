@@ -18,7 +18,7 @@ from cgis.languages.python._functions import (
     emit_name_reference_edges,
 )
 from cgis.languages.python._imports import ImportHandler
-from cgis.languages.python._keys import key_edges
+from cgis.languages.python._keys import key_edges, string_constants
 from cgis.languages.python._routes import mark_routes, routers
 from cgis.languages.python._syntax import (
     enclosing_class_fqn,
@@ -378,6 +378,14 @@ class PythonExtractor(BaseExtractor):
         # FastAPI handlers carry a `route` role (#566); the import map is complete here.
         nodes = mark_routes(nodes, routers(root_node, code_bytes, import_map))
         reexports = find_reexports(root_node, code_bytes, import_map)
+        file_metadata: dict[str, object] = {
+            "import_map": import_map,
+            "reexports": reexports,
+            "star_imports": star_imports,
+        }
+        # The namespace an `index=NAME` key names (DK-1); only a file that has one says so.
+        if constants := string_constants(root_node, code_bytes):
+            file_metadata["str_constants"] = constants
 
         file_node = Node(
             id=module_fqn,
@@ -386,11 +394,7 @@ class PythonExtractor(BaseExtractor):
             file_path=file_path,
             start_line=1,
             end_line=root_node.end_point.row + 1,
-            metadata={
-                "import_map": import_map,
-                "reexports": reexports,
-                "star_imports": star_imports,
-            },
+            metadata=file_metadata,
         )
         nodes.insert(0, file_node)
 

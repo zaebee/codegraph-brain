@@ -52,7 +52,17 @@ _APP_PASSES_HANDLER = (
     "from pkg.lib import run\n\n\ndef handler():\n    pass\n\n\ndef go():\n    run(handler)\n"
 )
 
+_APP_KEYS_BY_CONSTANT = (
+    "from pkg.consts import INDEX\n\n\ndef save(c, b):\n"
+    '    c.index(index=INDEX, document={"brand": b})\n'
+)
+
 SCENARIOS: dict[str, tuple[Files, Files]] = {
+    # DK-1 (data keys, Task 3): a key's namespace is the value of the constant it imports.
+    "a constant naming a key's namespace changes its value": (
+        {"pkg/consts.py": 'INDEX = "events"\n', "pkg/app.py": _APP_KEYS_BY_CONSTANT},
+        {"pkg/consts.py": 'INDEX = "vehicles"\n'},
+    ),
     # CV-4 (#632): a caller's value edge depends on the invoker's `invokes`.
     "an own invoker stops calling its parameter": (
         {"pkg/lib.py": "def run(fn):\n    fn()\n", "pkg/app.py": _APP_PASSES_HANDLER},
@@ -173,6 +183,21 @@ def test_incremental_graph_equals_full_ingest(scenario: str, tmp_path: Path) -> 
     assert inc_nodes == full_nodes
     assert inc_edges - full_edges == set(), "stale edges survived the incremental run"
     assert full_edges - inc_edges == set(), "edges a full ingest has are missing"
+
+
+def test_an_incremental_run_moves_a_key_to_its_constants_new_namespace(tmp_path: Path) -> None:
+    """Only the constants file changes; the key in the importing file follows it."""
+    initial, edit = SCENARIOS["a constant naming a key's namespace changes its value"]
+    pipeline = IngestionPipeline({".py": PythonExtractor()})
+    work, db = tmp_path / "work", str(tmp_path / "graph.db")
+    _write(work, initial)
+    _ingest(work, db, pipeline)
+    assert ("pkg.app.save", "key:events|brand", "WRITES_KEY") in _graph(db)[0]
+    _write(work, edit)
+    _ingest(work, db, pipeline)
+    edges, _ = _graph(db)
+    assert ("pkg.app.save", "key:vehicles|brand", "WRITES_KEY") in edges
+    assert not [e for e in edges if e[1] == "key:events|brand"]
 
 
 class _CountingExtractor(PythonExtractor):

@@ -447,3 +447,23 @@ def _owned_edges(
             )
         )
     return edges
+
+
+def string_constants(root: BaseNode, code: bytes) -> dict[str, str]:
+    """Each module-level `NAME = "literal"`, by name; a name bound twice holds its later value.
+
+    Recorded on the FILE node, where the resolver reads the namespace a constant names
+    (`index=EVENTS`), in this file or through another file's import of it.
+    """
+    found: dict[str, str] = {}
+    for statement in root.named_children:
+        if statement.type != "expression_statement" or statement.named_child_count != 1:
+            continue
+        assignment = statement.named_children[0]
+        if assignment.type != "assignment" or assignment.child_by_field_name("type") is not None:
+            continue
+        name = assignment.child_by_field_name("left")
+        value = _literal(assignment.child_by_field_name("right"), code)
+        if name is not None and name.type == "identifier" and value is not None:
+            found[_text(name, code)] = value
+    return found
