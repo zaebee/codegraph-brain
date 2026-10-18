@@ -20,6 +20,7 @@ from cgis.api.mcp_server import mcp
 from cgis.api.server_instructions import SERVER_INSTRUCTIONS
 from cgis.api.tool_allowlist import TOOLS_ENV, CgisServer, parse_allowlist
 from cgis.languages.go.profile import INVOKERS
+from cgis.languages.python.profile import INVOKERS as PYTHON_INVOKERS
 
 
 def _listed(server: CgisServer) -> list[str]:
@@ -205,3 +206,27 @@ def test_every_invoker_the_go_caveat_names_is_on_the_invoker_list() -> None:
     for name in ("sync.Once.Do", "time.AfterFunc", "sort.Slice"):
         assert name in SERVER_INSTRUCTIONS
         assert name in INVOKERS
+
+
+#: The Python invokers the coverage bullet names, as it spells them.
+_PYTHON_NAMED = {
+    "map": "map",
+    "sorted(key=)": "sorted",
+    "threading.Thread(target=)": "threading.Thread",
+}
+
+
+def test_instructions_say_which_python_function_values_have_edges() -> None:
+    # #632: CV-1 (listed invokers), CV-4 (a project function calling its parameter),
+    # CV-2 (a local), CV-3 (a stored callback) — and no recall figure until it is measured.
+    text = " ".join(SERVER_INSTRUCTIONS.split())
+    assert "to a project function that calls that parameter, has an edge" in text
+    assert "as does one held in a local and called" in text
+    assert "one stored for a framework to call has no caller" in text
+
+
+def test_every_invoker_the_python_coverage_names_is_on_the_invoker_list() -> None:
+    text = " ".join(SERVER_INSTRUCTIONS.split())
+    for spelled, key in _PYTHON_NAMED.items():
+        assert spelled in text
+        assert key in PYTHON_INVOKERS

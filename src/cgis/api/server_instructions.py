@@ -55,7 +55,11 @@ re-run cgis_ingest (incremental) before relying on it.
 - coverage / top_unresolved (json): calls on values whose type is decided at runtime \
 (an injected client, logger.info) resolve to nothing. An empty impact result means \
 "no static callers found", not "safe to delete": dispatch through a registry, a \
-decorator or a framework is invisible. Each unresolved name comes with where it is \
+decorator or a framework is invisible. In Python, a function handed to map, \
+sorted(key=), threading.Thread(target=), an executor or the event loop, or to a project \
+function that calls that parameter, has an edge from the code that hands it over, as \
+does one held in a local and called; one stored for a framework to call has no caller. \
+Each unresolved name comes with where it is \
 made ("at <caller> <file:line>" in text, coverage.sites in json). When one could reach \
 the symbol you asked about (impact) or lead past the answer (flow), read that line and \
 follow it before answering; naming the gap is not enough.
