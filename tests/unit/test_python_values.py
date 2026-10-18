@@ -254,3 +254,14 @@ def test_an_attribute_name_is_no_read_of_a_local() -> None:
     attribute = _first(func.child_by_field_name("body").children[1], "attribute")
     name = attribute.child_by_field_name("attribute")
     assert held_values(func, data, frozenset()).at(name) == []
+
+
+def test_an_unpacking_binds_each_local_to_its_value() -> None:
+    # Gemini on #701: `a, b = x, y` binds pairwise.
+    code = "def f(self):\n    first, second = self.a, self.b\n    second()\n"
+    assert _local_calls(code) == ["self.b"]
+
+
+def test_an_unpacking_swap_reads_before_it_binds() -> None:
+    code = "def f(self):\n    a, b = self.x, self.y\n    a, b = b, a\n    a()\n"
+    assert _local_calls(code) == ["self.y"]

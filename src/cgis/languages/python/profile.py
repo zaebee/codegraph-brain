@@ -21,6 +21,7 @@ INVOKERS: Mapping[str, frozenset[int | str]] = MappingProxyType(
         "functools.reduce": frozenset({0}),
         "threading.Thread": frozenset({1, "target"}),
         "threading.Timer": frozenset({1, "function"}),
+        "multiprocessing.Process": frozenset({1, "target"}),
         "asyncio.to_thread": frozenset({0}),
         "concurrent.futures.ThreadPoolExecutor.submit": frozenset({0}),
         "concurrent.futures.ThreadPoolExecutor.map": frozenset({0}),

@@ -373,8 +373,19 @@ class HeldValues:
         right = node.child_by_field_name("right")
         if right is not None:
             self._visit(right, block)
-        if left is not None and left.type == "identifier":
+        if left is None:
+            return
+        if left.type == "identifier":
             self._bind(get_identifier(left, self._code), self._held_by(right), block)
+            return
+        # `a, b = x, y`: pairwise, every right side read before any name is bound.
+        targets = [t for t in left.named_children if t.type == "identifier"]
+        values = right.named_children if right is not None else []
+        if len(targets) != len(left.named_children) or len(values) != len(targets):
+            return
+        held = [self._held_by(v) for v in values]
+        for target, names in zip(targets, held, strict=True):
+            self._bind(get_identifier(target, self._code), names, block)
 
     def _loop(self, node: BaseNode, block: int) -> None:
         """`for cb in (a, b)`: `cb` holds each value the literal names."""
