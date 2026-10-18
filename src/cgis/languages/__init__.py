@@ -78,6 +78,9 @@ MANIFESTS: tuple[Manifest, ...] = (
             NodeType.CLASS: ("self_types",),
             # Another file's parameter typed with the alias reads the type behind it (#550).
             NodeType.VARIABLE: ("annotated_type",),
+            # A value another file hands over is a call only while this one calls it (#632).
+            NodeType.FUNCTION: ("invokes",),
+            NodeType.METHOD: ("invokes",),
         },
     ),
     Manifest(

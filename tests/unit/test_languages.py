@@ -373,13 +373,15 @@ def test_cross_file_metadata_is_the_old_table() -> None:
     Go adds `returns` on functions and methods (#608), `fields` on structs (#656) and
     `var_type` on package variables (#643);
     Python and TypeScript nodes never carry them, so their signatures read the same.
+    Python adds `invokes` on functions and methods (#632): a caller's value edge
+    depends on whether the function it hands the value to calls it.
     """
     assert cross_file_metadata() == {
         NodeType.FILE: ("import_map", "reexports", "star_imports"),
         NodeType.CLASS: ("self_types", "fields"),
         NodeType.VARIABLE: ("annotated_type", "var_type"),
-        NodeType.FUNCTION: ("returns",),
-        NodeType.METHOD: ("returns",),
+        NodeType.FUNCTION: ("invokes", "returns"),
+        NodeType.METHOD: ("invokes", "returns"),
     }
 
 

@@ -4,12 +4,15 @@ import tree_sitter_python as tspython
 from tree_sitter import Language, Node, Parser
 
 from cgis.languages.python._values import (
+    _bodies,
+    _own_nodes,
     held_values,
     invoked_slots,
     local_value_calls,
     value_candidates,
     value_name,
 )
+from cgis.languages.python.extractor import PythonExtractor
 
 _PARSER = Parser(Language(tspython.language()))
 
@@ -181,3 +184,59 @@ def test_a_held_local_passed_to_an_invoker_passes_its_values() -> None:
     held = held_values(func, data, frozenset({"run"}))
     edges = value_candidates(func, data, "m.f", "m.py", frozenset({"run"}), held.at)
     assert [(e.target, e.context) for e in edges] == [("raw_call:self.a", "value-arg:0:run@2:4")]
+
+
+def _invokes(code: str) -> dict[str, object]:
+    """Each function's `invokes`, as the extractor records it for `m.py`."""
+    nodes, _ = PythonExtractor().parse(code, "m.py")
+    return {n.id: n.metadata.get("invokes") for n in nodes if n.type.name in ("FUNCTION", "METHOD")}
+
+
+def test_a_redefined_function_keeps_the_last_definitions_slots() -> None:
+    # Review M1: the later `apply` never calls `fn`, and it is the one that runs.
+    code = "def apply(fn):\n    return fn(1)\n\n\ndef apply(fn):\n    return None\n"
+    assert _invokes(code)["m.apply"] is None
+
+
+def test_a_comprehension_variable_shadows_the_parameter() -> None:
+    # Review M3: `fn` in the comprehension is the loop variable, not the parameter.
+    assert _invokes("def apply(fn):\n    return [fn(x) for fn in []]\n")["m.apply"] is None
+
+
+def test_a_call_through_a_shadowed_builtin_hands_nothing_over() -> None:
+    # Review M2: `sorted` is the parameter here, not the builtin invoker.
+    code = "def g(xs, sorted):\n    return sorted(xs, key=handler)\n"
+    assert _candidates(code, frozenset({"handler"})) == []
+
+
+_TRICKY = """
+def outer(a, b=default()):
+    @decorate(arg())
+    def inner(c):
+        c()
+    x = [fn(y) for y in z]
+    lambda: hidden()
+    class K:
+        k = made()
+        def m(self):
+            self.n()
+    a(b)
+    return inner
+"""
+
+
+def test_the_query_sweep_owns_what_the_walk_owns() -> None:
+    # Review I2: production reads `_bodies`; the other tests read `_own_nodes`.
+    root, _ = _parse(_TRICKY)
+    events = {
+        "call",
+        "assignment",
+        "augmented_assignment",
+        "for_statement",
+        "named_expression",
+        "as_pattern_target",
+        "for_in_clause",
+    }
+    for definition, owned in _bodies(root):
+        walked = [n for n in _own_nodes(definition) if n.type in events]
+        assert [(n.type, n.start_byte) for n in owned] == [(n.type, n.start_byte) for n in walked]

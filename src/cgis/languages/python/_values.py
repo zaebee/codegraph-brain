@@ -119,13 +119,19 @@ class _Body:
                     self.first_call.setdefault(get_identifier(callee, code), node.start_byte)
             elif node.type in ("assignment", "for_statement") and not self.holds:
                 self.holds = _may_hold(node.child_by_field_name("right"), code)
+            # A comprehension binds its variable before the expression written ahead of it.
+            scope = node.parent if node.type == "for_in_clause" else None
             for target in _bound_names(node):
-                self.first_bind.setdefault(get_identifier(target, code), target.start_byte)
+                at = scope.start_byte if scope is not None else target.start_byte
+                self.first_bind.setdefault(get_identifier(target, code), at)
 
 
 def _bound_names(node: BaseNode) -> list[BaseNode]:
-    """The identifiers `node` binds: an assignment's or a loop's target, `as`, walrus."""
-    if node.type in ("assignment", "augmented_assignment", "for_statement"):
+    """The identifiers `node` binds: an assignment's or a loop's target, `as`, walrus.
+
+    A comprehension's variable counts too: it shadows a parameter of that name.
+    """
+    if node.type in ("assignment", "augmented_assignment", "for_statement", "for_in_clause"):
         target = node.child_by_field_name("left")
     elif node.type == "named_expression":
         target = node.child_by_field_name("name")
@@ -180,23 +186,36 @@ def value_name(
         name = get_identifier(expr, code)
         return name if name in file_names and name not in shadowed else None
     if expr.type == "attribute":
-        dotted = _dotted(expr, code)
-        if dotted is None:
-            return None
-        head = dotted.partition(".")[0]
-        if head == "self" or (head in file_names and head not in shadowed):
-            return dotted
-        return None
+        return _attribute_value(expr, code, file_names, shadowed)
     if expr.type == "call":
-        callee = expr.child_by_field_name("function")
-        args = expr.child_by_field_name("arguments")
-        if callee is None or args is None or _dotted(callee, code) not in _PARTIAL:
-            return None
-        first = next((a for a in args.named_children if a.type != "comment"), None)
-        if first is None or first.type in ("keyword_argument", "list_splat", "dictionary_splat"):
-            return None
-        return value_name(first, code, file_names, shadowed)
+        first = _partial_of(expr, code)
+        return value_name(first, code, file_names, shadowed) if first is not None else None
     return None
+
+
+def _attribute_value(
+    expr: BaseNode, code: bytes, file_names: frozenset[str], shadowed: frozenset[str]
+) -> str | None:
+    """`self.m`, or a dotted name whose head the file defines or imports."""
+    dotted = _dotted(expr, code)
+    if dotted is None:
+        return None
+    head = dotted.partition(".")[0]
+    if head == "self" or (head in file_names and head not in shadowed):
+        return dotted
+    return None
+
+
+def _partial_of(call: BaseNode, code: bytes) -> BaseNode | None:
+    """The function `partial(f, ...)` binds, or None for any other call."""
+    callee = call.child_by_field_name("function")
+    args = call.child_by_field_name("arguments")
+    if callee is None or args is None or _dotted(callee, code) not in _PARTIAL:
+        return None
+    first = next((a for a in args.named_children if a.type != "comment"), None)
+    if first is None or first.type in ("keyword_argument", "list_splat", "dictionary_splat"):
+        return None
+    return first
 
 
 def _dotted(expr: BaseNode, code: bytes) -> str | None:
@@ -278,8 +297,8 @@ def value_candidates(
         callee = call.child_by_field_name("function")
         # Named only once a value is found: most calls hand over none.
         raw = get_identifier(callee, code) if handed and callee is not None else "unknown"
-        if raw == "unknown":
-            continue
+        if raw == "unknown" or raw in shadowed:
+            continue  # a local called here is no invoker (`sorted` as a parameter)
         site = f"{raw}@{call.start_point.row}:{call.start_point.column}"
         for slot, value, names in handed:
             for i, name in enumerate(names):
@@ -430,7 +449,7 @@ _EVENTS = Query(
     (function_definition) @def
     [(lambda) (class_definition) (decorated_definition)] @scope
     [(call) (assignment) (augmented_assignment) (for_statement) (named_expression)
-     (as_pattern_target)] @event
+     (as_pattern_target) (for_in_clause)] @event
     """,
 )
 
@@ -444,32 +463,63 @@ def _bodies(root: BaseNode) -> Iterator[tuple[BaseNode, list[BaseNode]]]:
     """
     captured = QueryCursor(_EVENTS).captures(root)
     defs = captured.get("def", [])
-    scopes = sorted([*defs, *captured.get("scope", [])], key=_outer_first)
+    scopes = _Scopes(sorted([*defs, *captured.get("scope", [])], key=_outer_first))
     owned: dict[int, list[BaseNode]] = {d.start_byte: [] for d in defs}
-    stack: list[BaseNode] = []
-    pending = iter(scopes)
-    upcoming = next(pending, None)
     for event in sorted(captured.get("event", []), key=_outer_first):
-        while upcoming is not None and upcoming.start_byte <= event.start_byte:
-            while stack and stack[-1].end_byte <= upcoming.start_byte:
-                stack.pop()
-            stack.append(upcoming)
-            upcoming = next(pending, None)
-        while stack and stack[-1].end_byte <= event.start_byte:
-            stack.pop()
-        owner = stack[-1] if stack else None
-        if owner is None or owner.type != "function_definition":
-            continue
-        body = owner.child_by_field_name("body")
-        if body is not None and event.start_byte >= body.start_byte:
+        owner = scopes.innermost(event.start_byte)
+        if owner is not None and _in_body(owner, event):
             owned[owner.start_byte].append(event)
     for definition in defs:
         yield definition, owned[definition.start_byte]
 
 
+class _Scopes:
+    """The scopes open at a point of the source, for points visited in order."""
+
+    def __init__(self, ordered: list[BaseNode]) -> None:
+        """Scopes in source order, an enclosing one before what it encloses."""
+        self._pending = iter(ordered)
+        self._upcoming = next(self._pending, None)
+        self._open: list[BaseNode] = []
+
+    def innermost(self, at: int) -> BaseNode | None:
+        """The innermost scope open at byte `at`; `at` never moves backwards."""
+        while self._upcoming is not None and self._upcoming.start_byte <= at:
+            self._close_before(self._upcoming.start_byte)
+            self._open.append(self._upcoming)
+            self._upcoming = next(self._pending, None)
+        self._close_before(at)
+        return self._open[-1] if self._open else None
+
+    def _close_before(self, at: int) -> None:
+        """Drop the scopes that end at or before byte `at`."""
+        while self._open and self._open[-1].end_byte <= at:
+            self._open.pop()
+
+
+def _in_body(scope: BaseNode, event: BaseNode) -> bool:
+    """Whether `event` is in function `scope`'s body (not a default or a decorator)."""
+    if scope.type != "function_definition":
+        return False
+    body = scope.child_by_field_name("body")
+    return body is not None and event.start_byte >= body.start_byte
+
+
 def _outer_first(node: BaseNode) -> tuple[int, int]:
     """Source order, an enclosing node before what it encloses."""
     return node.start_byte, -node.end_byte
+
+
+def _with_invokes(owner: Node, slots: list[int | str]) -> Node:
+    """`owner` carrying `slots`; without any when there are none.
+
+    Two definitions of one name share a node, and the later one is what runs: its
+    slots replace the earlier one's, and none clears them.
+    """
+    metadata = {k: v for k, v in owner.metadata.items() if k != "invokes"}
+    if slots:
+        metadata["invokes"] = slots
+    return owner if metadata == owner.metadata else owner.model_copy(update={"metadata": metadata})
 
 
 def function_values(
@@ -496,10 +546,7 @@ def function_values(
         body = _Body(node, code, events)
         skip_first = owner.type is NodeType.METHOD and not static
         slots = invoked_slots(node, code, skip_first, body)
-        if slots:
-            updated[position] = owner.model_copy(
-                update={"metadata": {**owner.metadata, "invokes": slots}}
-            )
+        updated[position] = _with_invokes(owner, slots)
         if not body.calls:
             continue
         if not body.holds:
