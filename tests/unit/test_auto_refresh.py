@@ -8,13 +8,22 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from cgis.api import auto_refresh
 from cgis.api.auto_refresh import AUTO_REFRESH_ENV, refresh_if_stale
 from cgis.api.mcp_server import cgis_find_symbol, cgis_ingest
 from cgis.cli import app
 from cgis.core.freshness import FreshnessState
+from cgis.pipeline import extraction_fingerprint
 from cgis.storage.sqlite_store import SQLiteStore
 
 _PAST = time.time() - 100
+
+
+@pytest.fixture(autouse=True)
+def _fresh_process(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each test is a new server process: no refresh remembered from another test."""
+    monkeypatch.setattr(auto_refresh, "_REBUILT_FOR_CODE", set())
+    monkeypatch.setattr(auto_refresh, "_EMPTY_REFRESH", {})
 
 
 def _repo(tmp_path: Path, rel: str = "mod.py") -> Path:
@@ -141,3 +150,90 @@ def test_a_refresh_keeps_the_source_roots_it_was_ingested_with(
     ids = _ids(db)
     assert "pkg.mod.new_fn" in ids
     assert not any(i.startswith("src.") for i in ids)
+
+
+def test_a_graph_built_by_other_extraction_code_is_rebuilt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No file changed, but the graph is an older cgis's: the read refreshes it (#618)."""
+    monkeypatch.setenv(AUTO_REFRESH_ENV, "1")
+    repo = _repo(tmp_path)
+    db = tmp_path / "graph.db"
+    cgis_ingest(str(repo), str(db))
+    with SQLiteStore(str(db)) as store:
+        store.record_extraction_fingerprint("built-by-an-older-cgis")
+
+    assert refresh_if_stale(str(db)) is True
+    with SQLiteStore(str(db)) as store:
+        assert store.get_extraction_fingerprint() == extraction_fingerprint()
+
+
+def test_a_rebuild_for_other_code_runs_once_per_process(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two servers on different code must not rebuild the graph in turn on every read
+    (#700 review): this process rebuilds for the other code once, then only notes it."""
+    monkeypatch.setenv(AUTO_REFRESH_ENV, "1")
+    repo = _repo(tmp_path)
+    db = tmp_path / "graph.db"
+    cgis_ingest(str(repo), str(db))
+    with SQLiteStore(str(db)) as store:
+        store.record_extraction_fingerprint("another-server-s-code")
+    assert refresh_if_stale(str(db)) is True
+
+    with SQLiteStore(str(db)) as store:  # the other server rebuilt it back
+        store.record_extraction_fingerprint("another-server-s-code")
+    assert refresh_if_stale(str(db)) is False
+    with SQLiteStore(str(db)) as store:  # still said, not hidden
+        assert store.freshness(fingerprint=extraction_fingerprint()).state is FreshnessState.STALE
+
+
+def test_a_file_change_still_refreshes_after_a_rebuild_for_other_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The once-per-process cap is for code alone: an edit is refreshed as before."""
+    monkeypatch.setenv(AUTO_REFRESH_ENV, "1")
+    repo = _repo(tmp_path)
+    db = tmp_path / "graph.db"
+    cgis_ingest(str(repo), str(db))
+    with SQLiteStore(str(db)) as store:
+        store.record_extraction_fingerprint("another-server-s-code")
+    assert refresh_if_stale(str(db)) is True
+
+    _add_function(repo / "mod.py")
+    assert refresh_if_stale(str(db)) is True
+    assert "mod.new_fn" in _ids(db)
+
+
+def test_a_refresh_that_extracts_nothing_is_not_retried_on_every_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every tracked file gone and the graph from other code: the rebuild extracts
+    nothing and keeps the graph, so a retry would do the same forever (#700 review)."""
+    monkeypatch.setenv(AUTO_REFRESH_ENV, "1")
+    repo = _repo(tmp_path)
+    db = tmp_path / "graph.db"
+    cgis_ingest(str(repo), str(db))
+    with SQLiteStore(str(db)) as store:
+        store.record_extraction_fingerprint("built-by-an-older-cgis")
+    (repo / "mod.py").unlink()
+
+    assert [refresh_if_stale(str(db)) for _ in range(3)] == [True, False, False]
+
+
+def test_the_once_per_process_cap_holds_across_spellings_of_one_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A relative and an absolute path to one database are one database (Gemini on #700)."""
+    monkeypatch.setenv(AUTO_REFRESH_ENV, "1")
+    repo = _repo(tmp_path)
+    db = tmp_path / "graph.db"
+    cgis_ingest(str(repo), str(db))
+    with SQLiteStore(str(db)) as store:
+        store.record_extraction_fingerprint("another-server-s-code")
+    assert refresh_if_stale(str(db)) is True
+
+    with SQLiteStore(str(db)) as store:
+        store.record_extraction_fingerprint("another-server-s-code")
+    monkeypatch.chdir(tmp_path)
+    assert refresh_if_stale("graph.db") is False

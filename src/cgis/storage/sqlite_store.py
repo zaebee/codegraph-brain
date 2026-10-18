@@ -956,7 +956,7 @@ class SQLiteStore:
             top_unresolved=top,
         )
 
-    def freshness(self, root: str | None = None) -> Freshness:
+    def freshness(self, root: str | None = None, fingerprint: str | None = None) -> Freshness:
         """Does this graph still match the tree it was built from? (#175)
 
         Decided by `st_mtime` against the recorded ingest time, never by
@@ -978,6 +978,11 @@ class SQLiteStore:
         Tracked files come from `nodes.file_path`, not `files_state`: a
         non-incremental `cgis ingest` leaves that table empty, so a probe built
         on it would report "nothing missing" for every ordinary graph.
+
+        `fingerprint` is the running code's extraction fingerprint. A graph built
+        by other extraction code is STALE with no file changed: the next ingest
+        rebuilds it in full (#617), and until then it answers as the old code
+        would (#618). None skips that check; the store cannot hash the code itself.
         """
         recorded = self.get_ingest_state()
         if recorded is None:
@@ -1002,6 +1007,13 @@ class SQLiteStore:
             )
 
         changed, missing = self._count_stale(base, self.get_tracked_source_files(), ingested_at)
+        if fingerprint is not None and self.get_extraction_fingerprint() != fingerprint:
+            return Freshness(
+                state=FreshnessState.STALE,
+                changed=changed,
+                missing=missing,
+                reason="built by other cgis extraction code",
+            )
         if changed or missing:
             return Freshness(state=FreshnessState.STALE, changed=changed, missing=missing)
         return Freshness(state=FreshnessState.FRESH)

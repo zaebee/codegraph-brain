@@ -2143,6 +2143,17 @@ def test_a_stale_graph_warns_before_the_answer(tmp_path: Path) -> None:
     assert "1 changed" in result.stderr
 
 
+def test_a_graph_built_by_other_extraction_code_warns_with_the_reason(tmp_path: Path) -> None:
+    """No file changed, but an older cgis built the graph (#618)."""
+    db, _repo = _ingested_repo(tmp_path)
+    with SQLiteStore(db) as store:
+        store.record_extraction_fingerprint("built-by-an-older-cgis")
+
+    result = runner.invoke(app, ["validate", "--db", db])
+
+    assert "built by other cgis extraction code" in result.stderr
+
+
 def test_a_fresh_graph_says_nothing_about_freshness(tmp_path: Path) -> None:
     """No note on the happy path, matching `_render_orphans`' warn-only idiom."""
     db, _repo = _ingested_repo(tmp_path)

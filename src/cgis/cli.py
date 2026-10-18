@@ -46,7 +46,7 @@ from cgis.core.models import (
 )
 from cgis.guardian.metrics import load_reviews, rate_review
 from cgis.languages import extractors, file_node_id, is_supported
-from cgis.pipeline import IngestionPipeline
+from cgis.pipeline import IngestionPipeline, extraction_fingerprint
 from cgis.query.analysis.analyzer import AnalyzerEngine
 from cgis.query.analysis.anomaly import AnomalyType, ArchitecturalAnomaly
 from cgis.query.analysis.health import HealthScorer
@@ -1660,12 +1660,13 @@ def _warn_if_not_fresh(db: str) -> None:
         return
     try:
         with SQLiteStore(db) as store:
-            result = store.freshness()
+            result = store.freshness(fingerprint=extraction_fingerprint())
     except Exception:
         return
     if result.state is FreshnessState.STALE:
+        why = f"{escape(result.reason)}, " if result.reason else ""
         err_console.print(
-            f"[bold yellow]⚠  Graph is stale:[/bold yellow] {result.changed} changed, "
+            f"[bold yellow]⚠  Graph is stale:[/bold yellow] {why}{result.changed} changed, "
             f"{result.missing} missing since ingest. Re-ingest for a current answer."
         )
     elif result.state is FreshnessState.UNKNOWN:
