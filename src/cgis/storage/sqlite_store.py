@@ -907,7 +907,9 @@ class SQLiteStore:
 
         DISPATCHES edges are left out (#545): the resolver synthesizes them from
         the class hierarchy, every one internal by construction, so counting them
-        would lower `unresolved_ratio` without a single reference resolving.
+        would lower `unresolved_ratio` without a single reference resolving. So are
+        the data-key edges (DK-1..DK-3): their targets are virtual key nodes, neither
+        a resolved call nor an unresolved one.
         """
         if not self._conn:
             raise RuntimeError(self._error_message)
@@ -923,6 +925,7 @@ class SQLiteStore:
             FROM edges e
             LEFT JOIN nodes n ON e.target = n.id
             WHERE e.type != 'DISPATCHES'
+              AND e.type NOT IN ('WRITES_KEY', 'READS_KEY', 'DECLARES_KEY')
             """,
             (f"{RAW_CALL_PREFIX}*",),
         ).fetchone()
@@ -939,7 +942,8 @@ class SQLiteStore:
             SELECT e.target, COUNT(*) AS cnt
             FROM edges e
             LEFT JOIN nodes n ON e.target = n.id
-            WHERE n.namespace = 'UNKNOWN' OR n.id IS NULL
+            WHERE (n.namespace = 'UNKNOWN' OR n.id IS NULL)
+              AND e.type NOT IN ('WRITES_KEY', 'READS_KEY', 'DECLARES_KEY')
             GROUP BY e.target
             ORDER BY cnt DESC
             LIMIT 10

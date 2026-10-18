@@ -1,0 +1,5 @@
+clause: DK-1
+status: xfail
+reason: "data keys are extracted for Python only (spec)"
+must_have:
+  - {type: WRITES_KEY, source: p.Load, target: "key:|details"}

@@ -1,11 +1,11 @@
 """Conformance cases for the core clauses (docs/specs/core/ontology.yml), run on every pack.
 
 A case is a directory under tests/fixtures/conformance/<language>/<case>/: source files,
-plus `expected.yml` naming the clause it checks and the CALLS edges that must and must
-not exist after a full ingest. `status` says what the case is expected to do today:
-`pass` must pass; `todo` and `xfail` are strict expected failures (a case the pack does
-not implement yet, or a language outside a pilot), so a case that starts passing has to
-be promoted rather than pass unnoticed.
+plus `expected.yml` naming the clause it checks and the edges that must and must not
+exist after a full ingest (each names a `type`, CALLS when omitted). `status` says what
+the case is expected to do today: `pass` must pass; `todo` and `xfail` are strict
+expected failures (a case the pack does not implement yet, or a language outside a
+pilot), so a case that starts passing has to be promoted rather than pass unnoticed.
 """
 
 import shutil
@@ -38,16 +38,18 @@ def _cases() -> list[Any]:
     return params
 
 
-def _calls(case: Path, tmp_path: Path) -> list[Edge]:
+def _edges(case: Path, tmp_path: Path) -> list[Edge]:
     tree = tmp_path / "tree"
     shutil.copytree(case, tree, ignore=shutil.ignore_patterns("expected.yml"))
     _nodes, _raw, edges = IngestionPipeline(extractors([])).run(str(tree))
-    return [e for e in edges if e.type is EdgeType.CALLS]
+    return list(edges)
 
 
 def _matches(edge: Edge, want: dict[str, str]) -> bool:
+    """Whether `edge` is the edge `want` names; `type` defaults to CALLS."""
     return (
-        edge.source == want["source"]
+        edge.type is EdgeType(want.get("type", "CALLS"))
+        and edge.source == want["source"]
         and edge.target == want["target"]
         and want.get("context", "") in (edge.context or "")
     )
@@ -55,18 +57,18 @@ def _matches(edge: Edge, want: dict[str, str]) -> bool:
 
 @pytest.mark.parametrize(("case", "spec"), _cases())
 def test_conformance_case(case: Path, spec: dict[str, Any], tmp_path: Path) -> None:
-    calls = _calls(case, tmp_path)
+    calls = _edges(case, tmp_path)
     for want in spec.get("must_have", []):
         hits = [e for e in calls if _matches(e, want)]
         assert hits, (
-            f"{spec['clause']}: missing CALLS {want}; have {[(e.source, e.target) for e in calls]}"
+            f"{spec['clause']}: missing edge {want}; have {[(e.source, e.target) for e in calls]}"
         )
         assert all(e.confidence == pytest.approx(1.0) for e in hits), (
             f"{spec['clause']}: {want} scored {[e.confidence for e in hits]}, not 1.0"
         )
     for unwanted in spec.get("must_not_have", []):
         assert not [e for e in calls if _matches(e, unwanted)], (
-            f"{spec['clause']}: unexpected CALLS {unwanted}"
+            f"{spec['clause']}: unexpected edge {unwanted}"
         )
 
 

@@ -17,6 +17,7 @@ node_types:
     - DB_TABLE       # A database table definition
     - DB_QUERY       # A database query call site
     - EVENT          # A domain event emitted or consumed
+    - DATA_KEY       # A string the code uses to address data, in a namespace (virtual; DK-1..DK-3)
   semantic:
     - DOMAIN_CONCEPT  # High-level semantic domain (e.g. Auth, Billing)
 
@@ -40,6 +41,9 @@ edge_types:
     - EMITS         # Node emits a domain event
     - CONSUMES      # Node consumes a domain event
     - DEPENDS_ON    # Dependency-injection wiring — consumer depends on a DI provider/alias (FastAPI Depends/Security)
+    - WRITES_KEY    # Code stores a value under a data key (DK-1)
+    - READS_KEY     # Code reads a data key (DK-2)
+    - DECLARES_KEY  # Code or a file declares a data key (DK-3)
   semantic:
     - HANDLES          # Handler is responsible for a domain concept
     - TRANSFORMS       # Node transforms data from one shape to another
@@ -80,7 +84,7 @@ classes:
 
   RuntimeEntity:
     description: "Runtime/behavioral entities derived from code analysis"
-    node_types: [API_ENDPOINT, ROUTE_HANDLER, DB_TABLE, DB_QUERY, EVENT]
+    node_types: [API_ENDPOINT, ROUTE_HANDLER, DB_TABLE, DB_QUERY, EVENT, DATA_KEY]
 
   DomainConcept:
     description: "High-level semantic domain"

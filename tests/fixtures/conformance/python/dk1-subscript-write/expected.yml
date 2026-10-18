@@ -1,0 +1,5 @@
+clause: DK-1
+status: xfail
+reason: "Python key extraction lands in Task 3"
+must_have:
+  - {type: WRITES_KEY, source: mod.save, target: "key:|details"}

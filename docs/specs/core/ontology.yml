@@ -59,3 +59,36 @@ clauses:
       after a `*xs` splat has no position; a default value of p gets no edge.
     edge: {type: CALLS, source: P, target: F, confidence: 1.0, context: "via <I>"}
     origin: "exp1 (#632): self._execute_with_metrics(..., self._check_conflicts_internal)"
+  DK-1:
+    title: Code that stores a value under a key writes that key
+    rule: >
+      A key is a string literal in a key position, normalised to a dotted path
+      (`details.brand`). When code stores a value under a key (`d["k"] = v`,
+      `d.setdefault("k", ...)`, a dict literal handed to a write call, nested keys as
+      dotted paths), the enclosing function writes the key. Keys are compared inside a
+      namespace (an index, a Redis prefix, a task registry, a model class), empty for
+      an unscoped key; a namespace is given only where the call site names it (an
+      argument, or a module-level constant). The key is one virtual DATA_KEY node per
+      (namespace, path) across the repository.
+    edge: {type: WRITES_KEY, source: P, target: "key:<namespace>|<path>", confidence: 1.0}
+    origin: "data-key layer spec (2026-10-18), Concepts"
+  DK-2:
+    title: Code that reads a value by key reads that key
+    rule: >
+      When code reads a value by a key (`d["k"]`, `d.get("k")`, `d.pop("k")`,
+      `"k" in d`, a dict literal inside a query body, path from the inner key), the
+      enclosing function reads the key. The edge targets the same DATA_KEY node as
+      DK-1; `d.pop("k")` both reads and writes it. Two keys name the same data when
+      their paths are equal and their namespaces are equal or either is unscoped.
+    edge: {type: READS_KEY, source: P, target: "key:<namespace>|<path>", confidence: 1.0}
+    origin: "data-key layer spec (2026-10-18), Concepts"
+  DK-3:
+    title: A model field or a declaring file declares its key
+    rule: >
+      A field of a model class (pydantic, dataclass) or an entry of a declaring file
+      declares a key whose namespace is the model. The declaring class or file node
+      has a DECLARES_KEY edge to the key. Declaring is neither reading nor writing: a
+      key with a declaration and no reader is a dead field, one with a reader and no
+      declaration is undeclared.
+    edge: {type: DECLARES_KEY, source: C, target: "key:<namespace>|<path>", confidence: 1.0}
+    origin: "data-key layer spec (2026-10-18), Concepts"

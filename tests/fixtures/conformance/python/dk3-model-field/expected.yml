@@ -1,0 +1,5 @@
+clause: DK-3
+status: xfail
+reason: "Python key extraction lands in Task 3"
+must_have:
+  - {type: DECLARES_KEY, source: mod.Event, target: "key:Event|brand"}

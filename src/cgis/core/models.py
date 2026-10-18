@@ -35,6 +35,10 @@ RAW_CALL_PREFIX = "raw_call:"
 VALUE_ARG_CONTEXT = "value-arg:"
 VALUE_LOCAL_CONTEXT = "value-local:"
 RAW_CLASS_PREFIX = "raw_class:"
+#: What an extractor puts before a data key's `<namespace>|<path>` (DK-1..DK-3), for the
+#: resolver to replace. The namespace is empty for an unscoped key, or `@NAME` for a
+#: module-level constant the resolver reads the namespace from.
+RAW_KEY_PREFIX = "raw_key:"
 
 
 class NodeType(StrEnum):
@@ -56,6 +60,9 @@ class NodeType(StrEnum):
     DB_TABLE = "DB_TABLE"
     DB_QUERY = "DB_QUERY"
     EVENT = "EVENT"
+    # A string the code uses to address data, in a namespace (DK-1..DK-3). Virtual:
+    # one node per (namespace, path) across the repository.
+    DATA_KEY = "DATA_KEY"
 
     # Semantic (L3/Ontology)
     DOMAIN_CONCEPT = "DOMAIN_CONCEPT"
@@ -87,6 +94,12 @@ class EdgeType(StrEnum):
     EMITS = "EMITS"
     CONSUMES = "CONSUMES"
     DEPENDS_ON = "DEPENDS_ON"
+    # Code (or a declaring file) -> a DATA_KEY node. New types rather than reuses of
+    # PERSISTS / CONSUMES / DECLARES / REFERENCES, which already feed metrics, drift and
+    # impact; they are kept out of the unresolved ratio (`KEY_EDGE_TYPES`).
+    WRITES_KEY = "WRITES_KEY"
+    READS_KEY = "READS_KEY"
+    DECLARES_KEY = "DECLARES_KEY"
 
     # Semantic (The OWL-Lite Layer)
     HANDLES = "HANDLES"
@@ -96,6 +109,12 @@ class EdgeType(StrEnum):
     PERSISTS = "PERSISTS"
     DOMAIN_DEPENDS_ON = "DOMAIN_DEPENDS_ON"
 
+
+#: The three data-key relations (DK-1..DK-3). Their targets are virtual key nodes that
+#: no resolution step looks for, so resolution statistics leave them out.
+KEY_EDGE_TYPES: frozenset[EdgeType] = frozenset(
+    {EdgeType.WRITES_KEY, EdgeType.READS_KEY, EdgeType.DECLARES_KEY}
+)
 
 #: The language a node gets when nothing says otherwise. Python's, for history: the
 #: first pack. Virtual nodes take their caller's language instead (#672).
