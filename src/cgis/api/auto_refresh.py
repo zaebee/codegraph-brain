@@ -22,7 +22,7 @@ from pathlib import Path
 
 import structlog
 
-from cgis.core.freshness import FreshnessState
+from cgis.core.freshness import Freshness, FreshnessState
 from cgis.languages import extractors
 from cgis.pipeline import IngestionPipeline, extraction_fingerprint
 from cgis.storage.sqlite_store import SQLiteStore
@@ -37,6 +37,18 @@ _TRUTHY = frozenset({"1", "true", "yes", "on"})
 #: graph fresh and returns, rather than racing the first into "database is
 #: locked" once a rebuild outlasts SQLite's busy timeout.
 _LOCK = threading.Lock()
+
+
+#: Databases this process has already rebuilt because other extraction code built
+#: them. Two servers on different code would otherwise rebuild the graph in turn on
+#: every read (#700 review); after the one rebuild, staleness for code alone is only
+#: noted.
+_REBUILT_FOR_CODE: set[str] = set()
+
+#: The freshness a refresh that extracted nothing left, per database. Such a run
+#: keeps the stored graph (#617 review), so the same freshness next time would run
+#: the same no-op again; a different one (a file added, an edit) is worth a retry.
+_EMPTY_REFRESH: dict[str, Freshness] = {}
 
 
 def auto_refresh_enabled() -> bool:
@@ -63,7 +75,8 @@ def refresh_if_stale(db_path: str) -> bool:
 def _refresh(db_path: str) -> bool:
     """The refresh itself, run under the lock: freshness is re-read here, not before."""
     with SQLiteStore(db_path) as store:
-        if store.freshness(fingerprint=extraction_fingerprint()).state is not FreshnessState.STALE:
+        freshness = store.freshness(fingerprint=extraction_fingerprint())
+        if freshness.state is not FreshnessState.STALE or not _worth_refreshing(db_path, freshness):
             return False
         recorded = store.get_ingest_state()
         options = store.get_ingest_options()
@@ -82,6 +95,11 @@ def _refresh(db_path: str) -> bool:
         nodes, _raw, _resolved = pipeline.run(root, store=store)
         if nodes:
             store.record_ingest(root, pipeline.observed_mtimes)
+            _EMPTY_REFRESH.pop(db_path, None)
+        else:
+            _EMPTY_REFRESH[db_path] = freshness
+        if _for_code_alone(freshness):
+            _REBUILT_FOR_CODE.add(db_path)
         logger.info(
             "Auto-refreshed stale graph",
             db=db_path,
@@ -89,6 +107,18 @@ def _refresh(db_path: str) -> bool:
             seconds=round(time.perf_counter() - started, 3),
         )
         return True
+
+
+def _for_code_alone(freshness: Freshness) -> bool:
+    """STALE only because other extraction code built the graph: no file changed."""
+    return freshness.reason is not None and not (freshness.changed or freshness.missing)
+
+
+def _worth_refreshing(db_path: str, freshness: Freshness) -> bool:
+    """Whether a refresh could change anything this process has not already tried."""
+    if _for_code_alone(freshness) and db_path in _REBUILT_FOR_CODE:
+        return False
+    return _EMPTY_REFRESH.get(db_path) != freshness
 
 
 def refreshes_graph[**P, R](tool: Callable[P, R]) -> Callable[P, R]:
