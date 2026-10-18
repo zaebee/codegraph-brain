@@ -422,3 +422,40 @@ def test_a_library_type_mapped_onto_an_own_type_by_suffix_is_still_the_library_s
         "app/b.go": 'package app\nfunc B() bool { return re.MatchString("y") }\n',
     }
     assert _calls_from(files, "app.B").get("regexp.Regexp.MatchString") == 1.0
+
+
+OWN_CONTEXT = "package context\ntype Context struct{}\nfunc (Context) JSON() {}\n"
+
+
+def test_a_stdlib_type_whose_id_an_own_package_shares_keeps_its_calls() -> None:
+    """An own `context/` declares `Context`, so its id is `context.Context` too; the
+    stdlib's `ctx.Done()` from another package is still the stdlib's (#691 review)."""
+    files = {
+        "context/ctx.go": OWN_CONTEXT,
+        "app/b.go": 'package app\nimport "context"\nfunc B(c context.Context) { c.Done() }\n',
+    }
+    assert _calls_from(files, "app.B").get("context.Context.Done") == 1.0
+
+
+def test_a_stdlib_field_type_whose_id_an_own_package_shares_keeps_its_calls() -> None:
+    """The same through a field hop: `s.c.Done()` with `c context.Context` (#691 review)."""
+    files = {
+        "context/ctx.go": OWN_CONTEXT,
+        "app/b.go": (
+            'package app\nimport "context"\ntype S struct{ c context.Context }\n'
+            "func B(s *S) { s.c.Done() }\n"
+        ),
+    }
+    assert _calls_from(files, "app.B").get("context.Context.Done") == 1.0
+
+
+def test_a_phantom_on_an_own_type_from_another_package_is_no_library_call() -> None:
+    """`app` imports its own `errors` package; `e.i.Missing()` there is a phantom, not
+    `errors.I.Missing` in the stdlib (#691 review; main kept it)."""
+    files = {
+        "errors/a.go": SHADOWS_STDLIB,
+        "app/b.go": (
+            'package app\nimport "example.com/app/errors"\nfunc B(e errors.E) { e.i.Missing() }\n'
+        ),
+    }
+    assert "errors.I.Missing" not in _calls_from(files, "app.B")

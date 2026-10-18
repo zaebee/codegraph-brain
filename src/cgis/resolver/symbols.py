@@ -75,6 +75,21 @@ def receiver_type_fqn(index: SymbolIndex, owner_fqn: str, attr: str) -> str | No
     return _normalized(index, index.map_to_node_fqn(declared, source_file) or declared)
 
 
+def _own_type(index: SymbolIndex, type_fqn: str, source_file: str | None) -> bool:
+    """Whether `type_fqn` is a node declared in `source_file`'s own scope (its Go package,
+    else the file itself).
+
+    Any node of the graph is not enough: a Go id is a directory, so an own `context/`
+    declaring `Context` has the stdlib type's id, and `ctx.Done()` stays the stdlib's.
+    """
+    node_file = _file_of(index, type_fqn)
+    if node_file is None or source_file is None:
+        return False
+    source_file = os.path.normpath(source_file)
+    scopes = index.file_scopes
+    return scopes.get(node_file, node_file) == scopes.get(source_file, source_file)
+
+
 def _origin_of(index: SymbolIndex, type_fqn: str, source_file: str | None) -> str | None:
     """The normalized file the caller's pack says `type_fqn` expands through, or None."""
     rules = rules_for(source_file)
@@ -269,9 +284,10 @@ def _resolve_on_type(
     # the engine mints an EXTERNAL/STDLIB node. On an internal type it is a
     # phantom method and must not be fabricated: that is the call #414 was
     # filed to expose. Same policy as _resolve_local_type_call (spec D7).
-    if current in index.nodes:
-        # The receiver is a type of this graph: the method it lacks is a phantom,
-        # even where its package shares a name with an import (`errors`, #691 review).
+    if _own_type(index, current, source_file):
+        # The receiver is declared in the classifying file's own package: the method
+        # it lacks is a phantom, even where that package shares a name with an import
+        # it makes (`errors` importing the stdlib's, #691 review).
         return None
     candidate = f"{current}.{method}"
     namespace = index.classify_fqn(candidate, source_file)
@@ -486,16 +502,17 @@ class SymbolResolver:
         )
         if walked:
             return walked
-        # Reached only for `x.a.m` on a library type: the walk has no declared
-        # attribute to follow there (a one-dot call took the walk's own fallback).
+        # Reached for `x.a.m` on a library type, where the walk has no declared
+        # attribute to follow, and for a library type a suffix match mapped onto an
+        # own one, where the walk stopped at the own type.
         # No node for `Class.method`. Keep it only when the type is external/stdlib
         # — that is a real call into a library (it becomes an EXTERNAL/STDLIB virtual
         # node). For an internal/unknown type it is a phantom method: drop it rather
         # than fabricate a node that does not exist (#183).
-        if class_fqn in self.index.nodes:
-            # A type of this graph by its own id: a phantom, as in `_resolve_on_type`.
-            # Not `start`: a suffix match may map a library type onto an own one
-            # (`regexp.Regexp` → `cdc.regexp.Regexp`), and the call is still the library's.
+        if _own_type(self.index, class_fqn, classify_in):
+            # A phantom, as in `_resolve_on_type`. The unmapped type, not `start`: a
+            # suffix match may map a library type onto an own one (`regexp.Regexp` →
+            # `cdc.regexp.Regexp`), and the call is still the library's.
             return None
         namespace = self.index.classify_fqn(candidate, classify_in)
         if namespace in (NodeNamespace.EXTERNAL, NodeNamespace.STDLIB):
