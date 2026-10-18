@@ -109,12 +109,12 @@ MANIFESTS: tuple[Manifest, ...] = (
         # exp4 (docs/lab-notes/2026-10-16-exp4-go-pre-registration.md): the impact gate
         # failed, and the graph missed function values and some interface dispatch.
         # Function values since #686: the held-out check #695 measured a value held in a
-        # local and called later (20/20 pairs); a value handed to a listed invoker had one
+        # local and called through it (20/20 pairs); a value handed to a listed invoker had one
         # pair. Only that sentence changed; the rest still rests on exp4.
         impact_caveat=(
             "Go is supported for structure and metrics only. Go callers are a lead, not a "
             "list: confirm them by reading the code. A function value held in a local and "
-            "called there has an edge (20 of 20 held-out calls, cgis #695). One passed to "
+            "called through it has an edge (20 of 20 held-out calls, cgis #695). One passed to "
             "another function that calls it has an edge only if that function is on cgis's "
             "invoker list (sync.Once.Do, time.AfterFunc, sort.Slice and similar ones are); "
             "this is barely measured. A callback stored for a framework to call (a handler, "

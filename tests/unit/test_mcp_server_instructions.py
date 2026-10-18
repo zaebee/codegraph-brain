@@ -191,7 +191,9 @@ def test_instructions_say_go_callers_need_confirming() -> None:
 def test_instructions_say_which_go_function_values_have_edges() -> None:
     # #695: a held value is measured (20/20 held out); an invoker argument barely is, and a
     # framework callback is no call (CV-3). Only that sentence changed; dispatch stays.
-    assert "A function value held in a local and called there has an edge" in SERVER_INSTRUCTIONS
+    assert (
+        "A function value held in a local and called through it has an edge" in SERVER_INSTRUCTIONS
+    )
     assert "this is barely measured" in SERVER_INSTRUCTIONS
     assert "has no caller: treat it as an entry point" in SERVER_INSTRUCTIONS
     assert "handed over as a value" not in SERVER_INSTRUCTIONS
