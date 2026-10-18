@@ -75,6 +75,13 @@ def receiver_type_fqn(index: SymbolIndex, owner_fqn: str, attr: str) -> str | No
     return _normalized(index, index.map_to_node_fqn(declared, source_file) or declared)
 
 
+def _origin_of(index: SymbolIndex, type_fqn: str, source_file: str | None) -> str | None:
+    """The normalized file the caller's pack says `type_fqn` expands through, or None."""
+    rules = rules_for(source_file)
+    origin = rules.type_origin(type_fqn, index) if rules and rules.type_origin else None
+    return os.path.normpath(origin) if origin else None
+
+
 def _file_of(index: SymbolIndex, fqn: str) -> str | None:
     """The normalized file a node was extracted from, or None for no such node."""
     node = index.nodes.get(fqn)
@@ -460,6 +467,9 @@ class SymbolResolver:
         class_fqn = sites[site] if site in sites else local_types.get(var_name)
         if not class_fqn:
             return None
+        # An expanded type was named in the file that declared it, so that file's
+        # imports classify it, not the caller's (#688).
+        classify_in = _origin_of(self.index, class_fqn, file_path) or file_path
         class_fqn = _normalized(self.index, class_fqn)
         candidate = f"{class_fqn}.{method_name}"
         resolved = self.index.map_to_node_fqn(candidate, file_path)
@@ -468,7 +478,7 @@ class SymbolResolver:
         # Inherited or promoted, or reached through declared attributes (#643).
         start = self.index.map_to_node_fqn(class_fqn, file_path) or class_fqn
         walked = _resolve_on_type(
-            self.index, self.inheritance_tree, start, method_name, file_path, self.boundary_claims
+            self.index, self.inheritance_tree, start, method_name, classify_in, self.boundary_claims
         )
         if walked:
             return walked
@@ -478,10 +488,9 @@ class SymbolResolver:
         # — that is a real call into a library (it becomes an EXTERNAL/STDLIB virtual
         # node). For an internal/unknown type it is a phantom method: drop it rather
         # than fabricate a node that does not exist (#183).
-        if self.index.classify_fqn(candidate, file_path) in (
-            NodeNamespace.EXTERNAL,
-            NodeNamespace.STDLIB,
-        ):
+        namespace = self.index.classify_fqn(candidate, classify_in)
+        if namespace in (NodeNamespace.EXTERNAL, NodeNamespace.STDLIB):
+            self.boundary_claims.setdefault(candidate, namespace)
             return candidate
         return None
 

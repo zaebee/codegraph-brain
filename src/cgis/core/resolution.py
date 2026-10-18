@@ -47,6 +47,8 @@ class ResolutionView(Protocol):
 
 
 TypeNormalizer = Callable[[str, ResolutionView], str]
+#: A declared type → the file whose declaration it expands through, or None (#688).
+TypeOrigin = Callable[[str, ResolutionView], str | None]
 CallStep = Callable[[str, str, ResolutionView], str | None]
 Fallback = Callable[[str, str, ResolutionView], tuple[str, float] | None]
 ImportReconciler = Callable[[str, str | None, ResolutionView], str | None]
@@ -60,6 +62,10 @@ class ResolutionRules:
 
     #: Applied to a declared type before its methods are looked up (e.g. Annotated alias → T).
     type_normalizers: tuple[TypeNormalizer, ...] = ()
+    #: The file a normalizer read the declared type from, when it expanded one (a Go
+    #: package variable, a call's result): that file named the type with its own
+    #: imports, so it, not the caller, says whether the type is a library's (#688).
+    type_origin: TypeOrigin | None = None
     #: (position, step): a call step run at that point of the chain.
     steps: tuple[tuple[str, CallStep], ...] = ()
     #: When nothing resolved a call: (target, confidence), or None.

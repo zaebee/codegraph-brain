@@ -331,3 +331,55 @@ def test_a_field_chain_resolves_through_the_last_hop_s_file() -> None:
         ),
     }
     assert _calls_from(files, "app.O.B").get("sync.Once.Do") == 1.0
+
+
+def test_a_package_variable_s_type_resolves_through_its_declaring_file_s_imports() -> None:
+    """`once` is declared in a.go, which imports sync; b.go calls it and does not (#688)."""
+    files = {
+        "app/a.go": 'package app\nimport "sync"\nvar once sync.Once\nfunc setup() {}\n',
+        "app/b.go": "package app\nfunc B() { once.Do(setup) }\n",
+    }
+    assert _calls_from(files, "app.B").get("sync.Once.Do") == 1.0
+
+
+def test_a_call_result_s_type_resolves_through_the_callee_s_file() -> None:
+    """`NewOnce` returns *sync.Once in a.go; b.go holds it and does not import sync (#688)."""
+    files = {
+        "app/a.go": (
+            'package app\nimport "sync"\nfunc NewOnce() *sync.Once { return &sync.Once{} }\n'
+            "func setup() {}\n"
+        ),
+        "app/b.go": "package app\nfunc B() {\n\to := NewOnce()\n\to.Do(setup)\n}\n",
+    }
+    assert _calls_from(files, "app.B").get("sync.Once.Do") == 1.0
+
+
+def test_a_field_copied_to_a_local_resolves_through_the_struct_s_file() -> None:
+    """`x := c.once` holds a `go-field:` marker that expands through C in a.go (#688)."""
+    files = {
+        "app/a.go": DECLARES_ONCE,
+        "app/b.go": "package app\nfunc B(c *C) {\n\tx := c.once\n\tx.Do(c.init)\n}\n",
+    }
+    assert _calls_from(files, "app.B").get("sync.Once.Do") == 1.0
+
+
+def test_the_caller_s_alias_does_not_decide_an_expanded_type() -> None:
+    """b.go names another package `sync`; the expanded `sync.Once` is still the stdlib's (#688)."""
+    files = {
+        "app/a.go": 'package app\nimport "sync"\nvar once sync.Once\nfunc setup() {}\n',
+        "app/b.go": (
+            'package app\nimport sync "example.com/mysync"\nvar _ = sync.X\n'
+            "func B() { once.Do(setup) }\n"
+        ),
+    }
+    assert _calls_from(files, "app.B").get("sync.Once.Do") == 1.0
+
+
+def test_a_field_hop_on_an_expanded_library_type_is_kept_as_the_library_s() -> None:
+    """`srv.Handler.ServeHTTP`: no declared field to walk on http.Server, so the call is
+    kept as a library call, classified through a.go, which imports net/http (#688)."""
+    files = {
+        "app/a.go": 'package app\nimport "net/http"\nvar srv http.Server\n',
+        "app/b.go": "package app\nfunc B() { srv.Handler.ServeHTTP(nil, nil) }\n",
+    }
+    assert _calls_from(files, "app.B").get("net.http.Server.Handler.ServeHTTP") == 1.0
