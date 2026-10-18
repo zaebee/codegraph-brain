@@ -114,12 +114,13 @@ MANIFESTS: tuple[Manifest, ...] = (
         impact_caveat=(
             "Go is supported for structure and metrics only. Go callers are a lead, not a "
             "list: confirm them by reading the code. A function value held in a local and "
-            "called later has an edge (measured on 7 held-out repositories, #695). One "
-            "handed to a library function that calls it (sync.Once.Do, time.AfterFunc, "
-            "sort.Slice) has an edge only when cgis lists that function, which is barely "
-            "measured, and a framework callback has none. Some interface dispatch is "
-            "missing (exp4: measured on one library, golang/crypto, mostly its ssh "
-            "package; not measured on applications)."
+            "called there has an edge (20 of 20 held-out calls, cgis #695). One passed to "
+            "another function that calls it has an edge only if that function is on cgis's "
+            "invoker list (sync.Once.Do, time.AfterFunc, sort.Slice and similar ones are); "
+            "this is barely measured. A callback stored for a framework to call (a handler, "
+            "cobra's RunE) has no caller: treat it as an entry point. Some interface "
+            "dispatch is missing (exp4: measured on one library, golang/crypto, mostly its "
+            "ssh package; not measured on applications)."
         ),
     ),
 )

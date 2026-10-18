@@ -19,6 +19,7 @@ from mcp.types import CallToolResult
 from cgis.api.mcp_server import mcp
 from cgis.api.server_instructions import SERVER_INSTRUCTIONS
 from cgis.api.tool_allowlist import TOOLS_ENV, CgisServer, parse_allowlist
+from cgis.languages.go.profile import INVOKERS
 
 
 def _listed(server: CgisServer) -> list[str]:
@@ -189,8 +190,16 @@ def test_instructions_say_go_callers_need_confirming() -> None:
 
 def test_instructions_say_which_go_function_values_have_edges() -> None:
     # #695: a held value is measured (20/20 held out); an invoker argument barely is, and a
-    # framework callback is not covered. Only that sentence changed; dispatch stays.
-    assert "A function value held in a local and called later has an edge" in SERVER_INSTRUCTIONS
-    assert "which is barely measured, and a framework callback has none" in SERVER_INSTRUCTIONS
+    # framework callback is no call (CV-3). Only that sentence changed; dispatch stays.
+    assert "A function value held in a local and called there has an edge" in SERVER_INSTRUCTIONS
+    assert "this is barely measured" in SERVER_INSTRUCTIONS
+    assert "has no caller: treat it as an entry point" in SERVER_INSTRUCTIONS
     assert "handed over as a value" not in SERVER_INSTRUCTIONS
     assert "Some interface dispatch is missing" in SERVER_INSTRUCTIONS
+
+
+def test_every_invoker_the_go_caveat_names_is_on_the_invoker_list() -> None:
+    # The caveat says its examples are listed: a profile change must not quietly falsify it.
+    for name in ("sync.Once.Do", "time.AfterFunc", "sort.Slice"):
+        assert name in SERVER_INSTRUCTIONS
+        assert name in INVOKERS
