@@ -307,3 +307,54 @@ def test_parentheses_around_a_held_argument_or_a_rebinding_change_nothing() -> N
 def test_a_one_element_unpacking_is_not_a_plain_binding() -> None:
     # `(cb,) = x` unpacks a one-element sequence: `cb` does not hold `x`.
     assert _local_calls("def f(self):\n    (cb,) = self.a\n    cb()\n") == []
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "def f(self, req):\n    z = self.g\n    a, b = mk(req)\n    a()\n",
+        "def f(self, req):\n    z = self.g\n    handler, args = self.parse(req)\n    handler()\n",
+        "def f(self, cfg):\n    z = self.g\n    a, b = cfg.h\n    b()\n",
+        "def f(self):\n    z = self.g\n    a, b = self.g + self.h\n    a()\n",
+    ],
+    ids=["call", "method-call", "attribute", "operator"],
+)
+def test_an_unpacking_of_anything_but_a_literal_binds_nothing(code: str) -> None:
+    # Delta review on #701: only a literal's elements pair with the targets.
+    assert _local_calls(code) == []
+
+
+@pytest.mark.parametrize(
+    "rebinding",
+    [
+        "a, b = xs",
+        "a, *b = self.h, self.k, self.g",
+        "(a, c), d = (self.h, self.k), self.g",
+        "a, = xs",
+        "a += 1",
+        "(a := make())",
+    ],
+    ids=["unpack-sequence", "starred", "nested", "one-element", "augmented", "walrus"],
+)
+def test_a_rebinding_the_walk_cannot_pair_clears_the_local(rebinding: str) -> None:
+    # Delta review on #701: an untaken binding must not leave the old value bound.
+    code = f"def f(self, xs):\n    a = self.g\n    {rebinding}\n    a()\n"
+    assert _local_calls(code) == []
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        "for a, b in xs:\n        a()",
+        "with xs as a:\n        a()",
+        "try:\n        pass\n    except E as a:\n        a()",
+    ],
+    ids=["for-pattern", "with-as", "except-as"],
+)
+def test_a_loop_with_or_except_target_clears_the_local(block: str) -> None:
+    code = f"def f(self, xs):\n    a = self.g\n    {block}\n"
+    assert _local_calls(code) == []
+
+
+def test_a_walrus_binds_a_function_value() -> None:
+    assert _local_calls("def f(self):\n    if (cb := self.a):\n        cb()\n") == ["self.a"]

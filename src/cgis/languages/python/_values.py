@@ -37,7 +37,7 @@ _PARTIAL = frozenset({"partial", "functools.partial"})
 #: Literals whose elements a `for` loop binds its variable to, one by one.
 _LITERALS = frozenset({"tuple", "list", "parenthesized_expression", "set"})
 #: A right-hand side that may put a function value in a local (CV-2).
-_HOLDABLE = frozenset({"identifier", "attribute", "call", *_LITERALS})
+_HOLDABLE = frozenset({"identifier", "attribute", "call", "expression_list", *_LITERALS})
 _CALLABLE = frozenset({NodeType.FUNCTION, NodeType.METHOD})
 
 #: The values a local holds at a call, for CV-2 (None: no local holds any).
@@ -425,8 +425,32 @@ class HeldValues:
         if node.type == "for_statement":
             self._loop(node, block)
             return
+        if node.type in _REBINDS:
+            self._rebind(node, block)
+            return
         for child in _read_children(node):
             self._visit(child, block)
+
+    def _rebind(self, node: BaseNode, block: int) -> None:
+        """A walrus binds its value; `x += ...` and an `as` target bind no function value."""
+        if node.type == "as_pattern_target":
+            self._clear(node, block)
+            return
+        value = node.child_by_field_name("value" if node.type == "named_expression" else "right")
+        if value is not None:
+            self._visit(value, block)
+        target = node.child_by_field_name("name" if node.type == "named_expression" else "left")
+        if target is None:
+            return
+        if node.type == "named_expression" and target.type == "identifier":
+            self._bind(get_identifier(target, self._code), self._held_by(value), block)
+        else:
+            self._clear(target, block)
+
+    def _clear(self, target: BaseNode, block: int) -> None:
+        """Every name `target` binds now holds no function value we can name."""
+        for name in _target_names(target):
+            self._bind(get_identifier(name, self._code), [], block)
 
     def _assign(self, node: BaseNode, block: int) -> None:
         """`x = <value>`: the right side is read first, then `x` bound to it."""
@@ -441,14 +465,13 @@ class HeldValues:
         if left.type == "identifier":
             self._bind(get_identifier(left, self._code), self._held_by(right), block)
             return
-        # `a, b = x, y`: pairwise, every right side read before any name is bound.
-        targets = [t for t in left.named_children if t.type == "identifier"]
-        values = right.named_children if right is not None else []
-        if len(targets) != len(left.named_children) or len(values) != len(targets):
+        pairs = _pairs(left, right)
+        if pairs is None:
+            self._clear(left, block)  # an unpacking we cannot pair holds nothing we know
             return
-        held = [self._held_by(v) for v in values]
-        for target, names in zip(targets, held, strict=True):
-            self._bind(get_identifier(target, self._code), names, block)
+        # `a, b = x, y`: every right side was read above, before any name is bound.
+        for target, value in pairs:
+            self._bind(get_identifier(target, self._code), self._held_by(value), block)
 
     def _loop(self, node: BaseNode, block: int) -> None:
         """`for cb in (a, b)`: `cb` holds each value the literal names."""
@@ -462,6 +485,8 @@ class HeldValues:
             elements = right.named_children if right is not None and right.type in _LITERALS else []
             values = [v for e in elements for v in self._held_by(e)]
             self._bind(get_identifier(left, self._code), values, block)
+        elif left is not None:
+            self._clear(left, block)
         for child in node.children:
             if child.type in ("block", "else_clause"):
                 self._visit(child, block)
@@ -483,6 +508,37 @@ class HeldValues:
             self._values[name] = values
         else:
             self._values[name] = list(dict.fromkeys([*self._values.get(name, []), *values]))
+
+
+#: Bindings other than `=` and `for`, which HeldValues reads on their own.
+_REBINDS = frozenset({"augmented_assignment", "named_expression", "as_pattern_target"})
+#: Right sides whose elements pair with an unpacking's targets one by one.
+_SEQUENCES = frozenset({"expression_list", "tuple", "list"})
+
+
+def _pairs(left: BaseNode, right: BaseNode | None) -> list[tuple[BaseNode, BaseNode]] | None:
+    """`a, b = x, y` as [(a, x), (b, y)]; None unless both sides are flat and equal in length.
+
+    Only a literal's elements pair: `a, b = mk()` or `a, b = obj.attr` unpack a value
+    whose parts the walk cannot see, however many children their nodes happen to have.
+    """
+    if right is None or right.type not in _SEQUENCES:
+        return None
+    targets, values = left.named_children, right.named_children
+    if len(targets) != len(values) or any(t.type != "identifier" for t in targets):
+        return None
+    if any(v.type == "list_splat" for v in values):
+        return None
+    return list(zip(targets, values, strict=True))
+
+
+def _target_names(target: BaseNode) -> list[BaseNode]:
+    """The names a binding target binds, at any depth: not an attribute's or subscript's."""
+    if target.type == "identifier":
+        return [target]
+    if target.type in ("attribute", "subscript"):
+        return []
+    return [n for child in target.named_children for n in _target_names(child)]
 
 
 def _read_children(node: BaseNode) -> list[BaseNode]:
