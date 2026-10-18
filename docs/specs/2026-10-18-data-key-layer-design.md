@@ -129,13 +129,19 @@ which argument names the namespace, come from the **library profile** — data o
 the pack, the same shape as the CV invoker profile:
 
 - opensearch-py: `index`, `search`, `update`, `delete_by_query`, `bulk` — namespace from `index=`;
-- redis: `get`, `set`, `hget`, `hset`, `delete` — namespace from the key's literal prefix;
+- redis: `get`, `hget`, `exists` read and `set`, `hset`, `delete` write, on a receiver whose
+  name mentions redis — fixed namespace `redis`;
 - SAQ (and Celery as a second profile): enqueue by task name;
 - pydantic: model fields declare keys of the model's namespace.
 
 A namespace given at the site by a module-level constant (`EVENTS_INDEX = "events"`)
-resolves through the existing variable resolution. One that cannot be resolved, or that
-lives in another function, leaves the key unscoped.
+resolves through that constant's value. The extractor records each module-level
+plain-string constant (`NAME = "literal"`) on its FILE node as `str_constants`
+(name → literal), and the resolver looks `NAME` up in the key's own file first, then
+through that file's import map in the defining module's FILE node. `str_constants` is
+cross-file metadata, so editing a constant re-resolves the files that import it on an
+incremental run. One that cannot be resolved, is ambiguous, or lives in another
+function, leaves the key unscoped.
 
 **Project wrappers.** A project may route storage through its own functions
 (owner-api's `doc_index=` helpers, `enqueue_task(...)`). An optional project config
@@ -241,6 +247,12 @@ for wrappers that no measured run uses; base side = re-parsed old text of change
 files, 10 s excluding ingest; "in zone" defined independently of the design; new edge
 types, not reuses; test sites counted, not listed; module-path strings out of this
 round.
+
+Rulings after implementation (Task 3, controller): a namespace constant is recorded as
+FILE metadata `str_constants` and resolved via the file, then its import map — not as
+VARIABLE nodes, which made name references to constants resolve as DI aliases (+639
+DEPENDS_ON on owner-api); Redis keys take the fixed namespace `redis` rather than a
+prefix of the key literal.
 
 ## Left to the builder
 
