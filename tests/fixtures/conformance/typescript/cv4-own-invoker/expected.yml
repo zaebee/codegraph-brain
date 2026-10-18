@@ -1,0 +1,5 @@
+clause: CV-4
+status: xfail
+reason: CV-4 is implemented for Python only (#632)
+must_have:
+  - {source: app.run, target: app.work, context: app.measure}

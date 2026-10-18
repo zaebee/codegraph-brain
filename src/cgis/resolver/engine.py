@@ -16,7 +16,7 @@ from cgis.core.models import (
     NodeNamespace,
     NodeType,
 )
-from cgis.core.resolution import ResolutionView
+from cgis.core.resolution import ResolutionRules, ResolutionView
 from cgis.languages import pack_for_path, rules_for
 from cgis.resolver.symbols import SymbolResolver, dispatch_edges
 
@@ -51,8 +51,24 @@ def _slot(token: str) -> int | str | None:
     return token if token.isidentifier() else None
 
 
+def _invoker_slots(
+    view: ResolutionView, rules: ResolutionRules | None, invoker: str
+) -> frozenset[int | str]:
+    """The argument slots `invoker` calls: the pack's profile, else the node's own.
+
+    A function or method in the graph that calls its own parameter records that
+    parameter's slots as `metadata["invokes"]` (docs/specs/core/ontology.yml CV-4).
+    """
+    if rules is not None and invoker in rules.invokers:
+        return rules.invokers[invoker]
+    node = view.nodes.get(invoker)
+    if node is None or node.type not in _CALLABLE:
+        return frozenset()
+    return frozenset(node.metadata.get("invokes", ()))
+
+
 def _value_call_edge(resolver: SymbolResolver, view: ResolutionView, edge: Edge) -> Edge | None:
-    """A function value the code calls (docs/specs/core/ontology.yml CV-1, CV-2), or None.
+    """A function value the code calls (docs/specs/core/ontology.yml CV-1, CV-2, CV-4), or None.
 
     CV-1: argument i of the call at the recorded site counts only when that call
     resolves to an invoker the source's pack lists with slot i (a position, or a
@@ -74,7 +90,7 @@ def _value_call_edge(resolver: SymbolResolver, view: ResolutionView, edge: Edge)
             # that name would have resolved to itself above (#632).
             invoker = raw_invoker
         rules = rules_for(edge.file_path)  # a value edge always carries its file
-        if invoker is None or rules is None or slot not in rules.invokers.get(invoker, ()):
+        if invoker is None or slot not in _invoker_slots(view, rules, invoker):
             return None
         via = f"via {invoker}"
     raw_name = edge.target.removeprefix(RAW_CALL_PREFIX)

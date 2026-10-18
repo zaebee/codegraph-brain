@@ -1,5 +1,7 @@
 """Unit test cases for Resolver."""
 
+from pathlib import Path
+
 import pytest
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
@@ -8,6 +10,7 @@ from cgis.languages.python.extractor import PythonExtractor
 from cgis.resolver.engine import ResolverEngine
 from cgis.resolver.indices import SymbolIndex
 from cgis.resolver.symbols import _c3
+from cgis.storage.sqlite_store import SQLiteStore
 
 
 def _file_node(file_path: str, import_map: dict[str, str]) -> Node:
@@ -2964,3 +2967,42 @@ def test_a_dotted_unresolved_invoker_is_not_looked_up(monkeypatch: pytest.Monkey
         monkeypatch, {"xs.sort": frozenset({"key"})}, nodes, ["value-arg:key:xs.sort@1:0"]
     )
     assert calls == []
+
+
+def _own_invoker(invokes: list[int | str]) -> Node:
+    return _py_function("m.run", 3).model_copy(update={"metadata": {"invokes": invokes}})
+
+
+def test_an_own_invoker_is_read_from_its_node(monkeypatch: pytest.MonkeyPatch) -> None:
+    # CV-4 (#632): `run` calls its parameter `fn`, second by position.
+    nodes = [_py_function("m.caller", 1), _py_function("m.work", 2), _own_invoker([1, "fn"])]
+    calls = _value_calls(monkeypatch, {}, nodes, ["value-arg:1:run@1:0", "value-arg:fn:run@2:0"])
+    assert [(e.source, e.target, e.context) for e in calls] == [
+        ("m.caller", "m.work", "via m.run"),
+        ("m.caller", "m.work", "via m.run"),
+    ]
+
+
+def test_a_slot_the_own_invoker_does_not_call_is_dropped(monkeypatch: pytest.MonkeyPatch) -> None:
+    nodes = [_py_function("m.caller", 1), _py_function("m.work", 2), _own_invoker([1, "fn"])]
+    assert _value_calls(monkeypatch, {}, nodes, ["value-arg:0:run@1:0"]) == []
+
+
+def test_an_own_invoker_needs_a_callable_node(monkeypatch: pytest.MonkeyPatch) -> None:
+    # `invokes` on anything but a function or method is not read.
+    variable = _own_invoker([0]).model_copy(update={"type": NodeType.VARIABLE})
+    nodes = [_py_function("m.caller", 1), _py_function("m.work", 2), variable]
+    assert _value_calls(monkeypatch, {}, nodes, ["value-arg:0:run@1:0"]) == []
+
+
+def test_an_invoker_read_back_from_the_store_still_invokes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # An incremental run reads unchanged files' nodes from the store (JSON metadata).
+    with SQLiteStore(str(tmp_path / "g.db")) as store:
+        store.upsert_nodes([_own_invoker([1, "fn"])])
+        stored = store.get_node("m.run")
+    assert stored is not None
+    nodes = [_py_function("m.caller", 1), _py_function("m.work", 2), stored]
+    calls = _value_calls(monkeypatch, {}, nodes, ["value-arg:fn:run@1:0"])
+    assert [(e.source, e.target) for e in calls] == [("m.caller", "m.work")]
