@@ -358,3 +358,18 @@ def test_a_loop_with_or_except_target_clears_the_local(block: str) -> None:
 
 def test_a_walrus_binds_a_function_value() -> None:
     assert _local_calls("def f(self):\n    if (cb := self.a):\n        cb()\n") == ["self.a"]
+
+
+def test_a_walrus_alone_passes_the_holds_gate() -> None:
+    # Gemini on #701: through the production path, not held_values directly.
+    _nodes, edges = PythonExtractor().parse(
+        "class C:\n    def a(self):\n        pass\n\n"
+        "    def f(self):\n        if (cb := self.a):\n            cb()\n",
+        "m.py",
+    )
+    assert [e.target for e in edges if e.context == "value-local:"] == ["raw_call:self.a"]
+
+
+def test_a_nested_unpacking_rebinds_the_parameter() -> None:
+    # Gemini on #701: `(x, cb) = ...` binds `cb` before it is called.
+    assert _slots("def f(cb):\n    a, (x, cb) = g, (h, k)\n    cb()\n") == []

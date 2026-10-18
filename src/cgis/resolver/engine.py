@@ -64,7 +64,7 @@ def _invoker_slots(
     node = view.nodes.get(invoker)
     if node is None or node.type not in _CALLABLE:
         return frozenset()
-    return frozenset(node.metadata.get("invokes", ()))
+    return frozenset(node.metadata.get("invokes") or ())
 
 
 def _invoker_via(

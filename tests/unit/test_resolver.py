@@ -3006,3 +3006,10 @@ def test_an_invoker_read_back_from_the_store_still_invokes(
     nodes = [_py_function("m.caller", 1), _py_function("m.work", 2), stored]
     calls = _value_calls(monkeypatch, {}, nodes, ["value-arg:fn:run@1:0"])
     assert [(e.source, e.target) for e in calls] == [("m.caller", "m.work")]
+
+
+def test_an_invokes_of_none_reads_as_no_slots(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Gemini on #701: a node whose metadata holds `invokes: None` is no invoker, not a crash.
+    nodes = [_py_function("m.caller", 1), _py_function("m.work", 2), _own_invoker([])]
+    nodes[2] = nodes[2].model_copy(update={"metadata": {"invokes": None}})
+    assert _value_calls(monkeypatch, {}, nodes, ["value-arg:0:run@1:0"]) == []

@@ -117,6 +117,8 @@ class _Body:
                 self._note_call(node, code)
             elif node.type in ("assignment", "for_statement") and not self.holds:
                 self.holds = _may_hold(node.child_by_field_name("right"), code)
+            elif node.type == "named_expression" and not self.holds:
+                self.holds = _may_hold(node.child_by_field_name("value"), code)
             self._note_binds(node, code)
 
     def _note_call(self, call: BaseNode, code: bytes) -> None:
@@ -148,12 +150,7 @@ def _bound_names(node: BaseNode) -> list[BaseNode]:
         target = node
     else:
         return []
-    if target is None:
-        return []
-    target = _unwrap(target)
-    if target.type == "identifier":
-        return [target]
-    return [c for c in target.named_children if c.type == "identifier"]
+    return [] if target is None else _target_names(_unwrap(target))
 
 
 def invoked_slots(
