@@ -210,8 +210,8 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
         uplift_SemanticUpliftEngine_execute_uplift["execute_uplift (uplift.py:92)"]:::methodNode
     end
     subgraph sg_engine["engine.py"]
-        engine_ResolverEngine["ResolverEngine (engine.py:132)"]:::classNode
-        engine_ResolverEngine_resolve["resolve (engine.py:178)"]:::methodNode
+        engine_ResolverEngine["ResolverEngine (engine.py:171)"]:::classNode
+        engine_ResolverEngine_resolve["resolve (engine.py:217)"]:::methodNode
     end
     subgraph sg_sqlite_store["sqlite_store.py"]
         sqlite_store_SQLiteStore["SQLiteStore (sqlite_store.py:81)"]:::classNode
@@ -257,7 +257,7 @@ classDef externalNode fill:#fff3e0,stroke:#e65100,stroke-width:1px,stroke-dashar
 | `_get_extractor` | METHOD | [`__init__.py:539`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline/__init__.py#L539) |
 | `SemanticUpliftEngine` | CLASS | [`uplift.py:67`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline/uplift.py#L67) |
 | `execute_uplift` | METHOD | [`uplift.py:92`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/pipeline/uplift.py#L92) |
-| `ResolverEngine` | CLASS | [`engine.py:132`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L132) |
-| `resolve` | METHOD | [`engine.py:178`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L178) |
+| `ResolverEngine` | CLASS | [`engine.py:171`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L171) |
+| `resolve` | METHOD | [`engine.py:217`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/resolver/engine.py#L217) |
 | `SQLiteStore` | CLASS | [`sqlite_store.py:81`](https://github.com/zaebee/codegraph-brain/blob/main/src/cgis/storage/sqlite_store.py#L81) |
 <!-- END_CGIS_GRAPH -->
