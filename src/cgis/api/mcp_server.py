@@ -28,6 +28,8 @@ from cgis.query.analysis.suggest_service import report_to_dict, suggest_packages
 from cgis.query.context.audit import audit_reachability
 from cgis.query.context.context_service import build_context
 from cgis.query.context.orphans import find_orphan_classes
+from cgis.query.diffcheck import DiffError, check_database, render_text
+from cgis.query.diffcheck import report_to_dict as diff_report_to_dict
 from cgis.query.drift.drift_service import analyze_drift
 from cgis.query.drift.fractal import analyze_fractal_db
 from cgis.query.drift.ontology_init import propose_ontology
@@ -1081,6 +1083,53 @@ def cgis_init_ontology(
         return prefix + propose_ontology(db_path, margin=margin, min_nodes=min_nodes, depth=depth)
     except Exception as e:  # translate errors to the ❌-message medium
         return f"❌ Error proposing ontology: {e}"
+
+
+@mcp.tool()
+@refreshes_graph
+def cgis_diff_check(
+    repo_path: Annotated[
+        str,
+        Field(description="Git repository holding the diff; prefer an absolute path."),
+    ],
+    base: Annotated[
+        str, Field(description="Base revision of the diff, e.g. origin/main or a sha.")
+    ] = "origin/main",
+    head: Annotated[str, Field(description="Head revision of the diff.")] = "HEAD",
+    db_path: DbPath = _DEFAULT_DB,
+    cap: Annotated[int, Field(description="Items listed; the rest are only counted.", ge=1)] = 5,
+    prefix: Annotated[
+        str,
+        Field(
+            description="The path of the ingested directory inside the repository (e.g. 'src' "
+            "after cgis_ingest of ./src); empty when the repository root was ingested."
+        ),
+    ] = "",
+    output_format: Annotated[str, Field(description="'text' or 'json'.")] = "text",
+) -> str:
+    """What else depends on what a diff changed: subclasses and callers.
+
+    Call this before review or merge. It reads the lines ``base..head`` changed,
+    finds the graph symbols they fall in (and symbols the diff removed, read from
+    the base text), and lists the classes that extend a changed class and the
+    functions that call a changed or removed function. Callers in test files are
+    counted, not listed. An empty list means no static dependants were found,
+    not that the change is safe: dispatch the graph cannot see is not covered.
+    """
+    if not Path(db_path).exists():
+        return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
+    fmt = output_format.strip().lower()
+    if fmt not in ("text", "json"):
+        return f"❌ Unknown format '{output_format}'. Use 'text' or 'json'."
+    try:
+        report = check_database(db_path, Path(repo_path), base, head, cap, prefix=prefix)
+    except DiffError as exc:
+        return f"❌ Cannot diff {base}..{head}: {exc}"
+    except Exception as exc:
+        return f"❌ {exc}"
+    if fmt == "json":
+        return json.dumps(diff_report_to_dict(report), indent=2)
+    return _freshness_note(db_path) + render_text(report, base, head)
 
 
 @mcp.tool()

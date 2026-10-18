@@ -20,6 +20,7 @@ style tags you wrote yourself and pure numbers need no escaping.
 
 import dataclasses
 import json as _json
+import subprocess
 from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
@@ -55,6 +56,8 @@ from cgis.query.analysis.suggest_service import SuggestReport, report_to_dict, s
 from cgis.query.context.audit import NoAuditSourcesError, ReachabilityAudit, audit_reachability
 from cgis.query.context.context_service import build_context
 from cgis.query.context.orphans import OrphanReport, find_orphan_classes
+from cgis.query.diffcheck import DiffError, check_database, render_text
+from cgis.query.diffcheck import report_to_dict as diff_report_to_dict
 from cgis.query.drift.drift import DriftReport, FitQuality
 from cgis.query.drift.drift_service import analyze_drift
 from cgis.query.drift.fractal import FractalReport, analyze_fractal_db
@@ -768,6 +771,67 @@ def validate(
         f"\n[bold green]✅ Internal {internal_pct:.1f}% — "
         f"unresolved {unresolved_pct:.1f}% below threshold {threshold_pct:.1f}%[/bold green]"
     )
+
+
+def _repo_prefix(repo: Path, root: str | None) -> str:
+    """The ingest root's path inside the repository, from `--root`; empty without one."""
+    if not root:
+        return ""
+    top = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if top.returncode != 0:
+        return ""
+    rel = Path(root).resolve().relative_to(Path(top.stdout.strip()).resolve())
+    return "" if str(rel) == "." else rel.as_posix()
+
+
+@app.command(name="diff-check")
+def diff_check(
+    db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
+    repo: str = typer.Option(".", "--repo", help="Git repository holding the diff"),
+    base: str = typer.Option("origin/main", "--base", help="Base revision of the diff"),
+    head: str = typer.Option("HEAD", "--head", help="Head revision of the diff"),
+    cap: int = typer.Option(5, "--cap", min=1, help="Items shown; the rest are counted"),
+    output_format: str = typer.Option("text", "--format", help="text or json"),
+    root: str | None = typer.Option(
+        None, "--root", help="The directory the graph was ingested from"
+    ),
+    prefix: str | None = typer.Option(
+        None,
+        "--prefix",
+        help="The ingest root's path inside the repository (default: --root relative to it)",
+    ),
+) -> None:
+    """
+    List the subclasses and callers of what a diff changed.
+
+    Reads the changed lines of BASE..HEAD, maps them to graph symbols and prints
+    the code that extends or calls them, so a change is checked against its
+    dependants before review. Exit code 2 when git cannot read the range.
+    """
+    if output_format not in ("text", "json"):
+        message = "use text or json"
+        raise typer.BadParameter(message, param_hint="--format")
+    if not Path(db).is_file():
+        console.print(
+            f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
+        )
+        raise typer.Exit(code=1)
+    repo_path = Path(repo)
+    where = prefix if prefix is not None else _repo_prefix(repo_path, root)
+    try:
+        report = check_database(db, repo_path, base, head, cap, prefix=where)
+    except DiffError as exc:
+        typer.echo(f"Cannot diff {base}..{head}: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    if output_format == "json":
+        typer.echo(_json.dumps(diff_report_to_dict(report), indent=2))
+    else:
+        typer.echo(render_text(report, base, head))
 
 
 @app.command()

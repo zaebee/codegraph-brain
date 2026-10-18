@@ -75,14 +75,14 @@ def test_cgis_query_children_need_no_regrouping(
     """At the level of its own children, cgis.query reads 'leave' (#446).
 
     Clustering every file, the tool says 'split' — but it says it about a package
-    that is already four sub-packages and two modules, with each sub-package's
+    that is already five sub-packages and two modules, with each sub-package's
     `__init__` sitting beside its own files. Asked the question the verdict is
-    about, whether those six children should be regrouped, the answer is no:
+    about, whether those seven children should be regrouped, the answer is no:
     measured Q ~0.20, under the 0.25 'leave' threshold.
     """
     store, _, _ = root_graph_data
     report = suggest_packages(store.db_path, prefix="cgis.query", with_calls=False)
     assert report.level == "children"
     members = sorted(f for c in report.communities for f in c.files)
-    assert members == ["analysis", "context", "drift", "engine", "fqn", "render"]
+    assert members == ["analysis", "context", "diffcheck", "drift", "engine", "fqn", "render"]
     assert report.verdict == "leave"
