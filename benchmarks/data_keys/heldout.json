@@ -1,0 +1,172 @@
+{
+  "repo": "Ownima/owner-api",
+  "as_of": "2026-10-18",
+  "rule": "fix title; names a PR merged 0-30 days earlier; dev set excluded; max 15",
+  "pairs": [
+    {
+      "breaking": {
+        "pr": 2076,
+        "base_sha": "9dd77d241276f743700cf43a2dfcc0d34d9f5cbb",
+        "merge_sha": "30a16bf182e928202b350801e792472610c725ec"
+      },
+      "fix": {
+        "pr": 2077,
+        "merge_sha": "d39ebd84b53d440603a1b0b29e7dbcdf11355db4"
+      }
+    },
+    {
+      "breaking": {
+        "pr": 1985,
+        "base_sha": "5cee1a7cec76040175fa25cae2301cfcc355f9ea",
+        "merge_sha": "cbc868b551e33d46a5694293a1fd1448817d6d9b"
+      },
+      "fix": {
+        "pr": 2058,
+        "merge_sha": "5106440988cc549d3f18ad67a1c39d493a02dcd2"
+      }
+    },
+    {
+      "breaking": {
+        "pr": 1764,
+        "base_sha": "4cc03674a06271c72fabadd86e3667821b315795",
+        "merge_sha": "82530524c043c53041bc11f777505bcddd8332d3"
+      },
+      "fix": {
+        "pr": 2051,
+        "merge_sha": "f409f8a2fc90b02f98051e692a67056b94c2a6a2"
+      }
+    },
+    {
+      "breaking": {
+        "pr": 2033,
+        "base_sha": "a6e359a65ca71192a8e8bcacdbf58c3186e383c7",
+        "merge_sha": "8746a1771ffd11bb480f6ef5bc9f7f77e29b3763"
+      },
+      "fix": {
+        "pr": 2042,
+        "merge_sha": "a6b550221d4e58fb691a13ee3d9c474bda54f5b0"
+      }
+    },
+    {
+      "breaking": {
+        "pr": 1921,
+        "base_sha": "91b58b760f36ac39a71c750c06c690bb747c629d",
+        "merge_sha": "a96af8dbc10de81e19636ed6d4cf5a8ab11aac59"
+      },
+      "fix": {
+        "pr": 1976,
+        "merge_sha": "46ef54b663c49be896590431b266556b8e8d40d9"
+      }
+    },
+    {
+      "breaking": {
+        "pr": 1911,
+        "base_sha": "ff8e1881b90e369abc00e9be66f654e7f63b21a6",
+        "merge_sha": "24d350a27e819c4440d6465de3549f7b0acc5559"
+      },
+      "fix": {
+        "pr": 1923,
+        "merge_sha": "440daa97012f73ef6bb5352b7d58afa892c5428b"
+      }
+    },
+    {
+      "breaking": {
+        "pr": 1919,
+        "base_sha": "5657de224ce8fc81646902211cc2cfc1191c33a5",
+        "merge_sha": "43433d1e6eb21a884c474a880a4f88eae714882c"
+      },
+      "fix": {
+        "pr": 1920,
+        "merge_sha": "91b58b760f36ac39a71c750c06c690bb747c629d"
+      }
+    },
+    {
+      "breaking": {
+        "pr": 1916,
+        "base_sha": "a389bc4bdc9a64c2d507a2313511b404335a9643",
+        "merge_sha": "16816f09108b6f079bf290b2207eb43f3ccef1c7"
+      },
+      "fix": {
+        "pr": 1919,
+        "merge_sha": "43433d1e6eb21a884c474a880a4f88eae714882c"
+      }
+    },
+    {
+      "breaking": {
+        "pr": 1892,
+        "base_sha": "0379316205cb16a8a3d4b2fe26b03f1cd740dad1",
+        "merge_sha": "1c1c12088408a2c249cdd550b601e58947835003"
+      },
+      "fix": {
+        "pr": 1893,
+        "merge_sha": "a9718c6c2c786701c21d9a67e507fce850865792"
+      }
+    },
+    {
+      "breaking": {
+        "pr": 1839,
+        "base_sha": "5c8174eeeb50800d67d418bd6c6d84b4e886ce9f",
+        "merge_sha": "7dd072d58d11eafca3685efbe1340accf3520ed6"
+      },
+      "fix": {
+        "pr": 1843,
+        "merge_sha": "07ef45a8335a22999079ec3194bcd914b99d4d5e"
+      }
+    },
+    {
+      "breaking": {
+        "pr": 1822,
+        "base_sha": "0c2abd04c9219bb7be581beeb34c22336fb9c810",
+        "merge_sha": "164909de119bf065adfe94e4963b8f5d5c2bce6f"
+      },
+      "fix": {
+        "pr": 1825,
+        "merge_sha": "776f0f4ae76798349492d88ac56cbb160a4ec62c"
+      }
+    },
+    {
+      "breaking": {
+        "pr": 1714,
+        "base_sha": "539181c51c7f79e8a61f3b2369abcec7f9e5d3cc",
+        "merge_sha": "e3c91e61f3e92a6b0482d833171e7a781001bb91"
+      },
+      "fix": {
+        "pr": 1819,
+        "merge_sha": "0507481554e837191ab494fa7460877a6d9a166b"
+      }
+    },
+    {
+      "breaking": {
+        "pr": 1808,
+        "base_sha": "e4533cadf926f3d76c9eec0253b250443496d697",
+        "merge_sha": "8051691f6bf3cdac516e14dd43870b553cbe3b29"
+      },
+      "fix": {
+        "pr": 1813,
+        "merge_sha": "71c3e36b9cb044f0a970185f32aa7990a0357324"
+      }
+    },
+    {
+      "breaking": {
+        "pr": 1810,
+        "base_sha": "8051691f6bf3cdac516e14dd43870b553cbe3b29",
+        "merge_sha": "d2b22a02dd002022a07a2668f297c6e9f1ae9b56"
+      },
+      "fix": {
+        "pr": 1811,
+        "merge_sha": "464d63af917070fe5121cb8a5bcc10504bc8aaea"
+      }
+    },
+    {
+      "breaking": {
+        "pr": 1803,
+        "base_sha": "6fd69c64676d20cf2249448baec390e1b15b1bb8",
+        "merge_sha": "d16b410177a53830be5b992e07294ce873cf231e"
+      },
+      "fix": {
+        "pr": 1805,
+        "merge_sha": "8d5ce37ee9d11a32d2c607da114be2875f7c0c44"
+      }
+    }
+  ]
+}
