@@ -777,20 +777,28 @@ def _assigned(ctx: _File, names: list[str], values: TSNode | None, bindings: Bin
         for index, name in enumerate(names):
             _hold_result(ctx, bindings, name, right[0], index)
         return
-    for position, name in enumerate(names):
-        _bind_value(ctx, bindings, name, right[position] if position < len(right) else None)
+    paired = [
+        (name, right[position] if position < len(right) else None)
+        for position, name in enumerate(names)
+    ]
+    # Every value is read before any name is declared: `f, g := g, f` in a new block
+    # reads the outer f and g (#686 review).
+    held = [_values_of(ctx, value, bindings) if value is not None else [] for _, value in paired]
+    for (name, value), values_held in zip(paired, held, strict=True):
+        _bind_value(ctx, bindings, name, value, values_held)
 
 
-def _bind_value(ctx: _File, bindings: Bindings, name: str, value: TSNode | None) -> None:
-    """Bind `name` to one value: a call's first result, or what the expression gives."""
+def _bind_value(
+    ctx: _File, bindings: Bindings, name: str, value: TSNode | None, held: list[str]
+) -> None:
+    """Bind `name` to one value: a call's first result, or what the expression gives;
+    `held` is the function values it gives, read before the assignment."""
     if value is not None and value.type == "call_expression":
         _hold_result(ctx, bindings, name, value, 0)
         return
     typed = _value_type(ctx, value, bindings) if value is not None else None
     bindings.bind(name, typed or _UNKNOWN)
-    bindings.values.hold(
-        name, _values_of(ctx, value, bindings) if value is not None else [], here=True
-    )
+    bindings.values.hold(name, held, here=True)
 
 
 def _ranged(ctx: _File, clause: TSNode, bindings: Bindings) -> None:
@@ -1112,18 +1120,25 @@ def _value_name(ctx: _File, value: TSNode, bindings: Bindings) -> str:
 
 
 def _reassigned(ctx: _File, node: TSNode, bindings: Bindings) -> None:
-    """`a, b = v, w` on locals: each now holds what its value names, if a function (CV-2)."""
+    """`a, b = v, w` on locals: each now holds what its value names, if a function (CV-2).
+
+    The whole right side is read before any name changes, as Go evaluates it:
+    `f, g = g, f` swaps (#686 review).
+    """
     left = node.child_by_field_name("left")
     right = node.child_by_field_name("right")
     names = left.named_children if left is not None else []
     values = right.named_children if right is not None else []
-    for position, target in enumerate(names):
-        if target.type != "identifier":
-            continue
-        value = values[position] if position < len(values) else None
-        bindings.values.hold(
-            text(target), _values_of(ctx, value, bindings) if value is not None else []
+    held = [
+        (
+            text(target),
+            _values_of(ctx, values[position], bindings) if position < len(values) else [],
         )
+        for position, target in enumerate(names)
+        if target.type == "identifier"
+    ]
+    for name, values_held in held:
+        bindings.values.hold(name, values_held)
 
 
 def _values_of(ctx: _File, value: TSNode, bindings: Bindings) -> list[str]:

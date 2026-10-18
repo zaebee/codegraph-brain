@@ -1,0 +1,6 @@
+clause: CV-2
+status: pass
+note: "`f, g := g, f` in a new block reads the outer f and g, not the f it has just declared"
+must_have:
+  - {source: p.C.run, target: p.C.a, context: via local value}
+  - {source: p.C.run, target: p.C.b, context: via local value}
