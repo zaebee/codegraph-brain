@@ -219,3 +219,21 @@ def test_a_refresh_that_extracts_nothing_is_not_retried_on_every_read(
     (repo / "mod.py").unlink()
 
     assert [refresh_if_stale(str(db)) for _ in range(3)] == [True, False, False]
+
+
+def test_the_once_per_process_cap_holds_across_spellings_of_one_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A relative and an absolute path to one database are one database (Gemini on #700)."""
+    monkeypatch.setenv(AUTO_REFRESH_ENV, "1")
+    repo = _repo(tmp_path)
+    db = tmp_path / "graph.db"
+    cgis_ingest(str(repo), str(db))
+    with SQLiteStore(str(db)) as store:
+        store.record_extraction_fingerprint("another-server-s-code")
+    assert refresh_if_stale(str(db)) is True
+
+    with SQLiteStore(str(db)) as store:
+        store.record_extraction_fingerprint("another-server-s-code")
+    monkeypatch.chdir(tmp_path)
+    assert refresh_if_stale("graph.db") is False

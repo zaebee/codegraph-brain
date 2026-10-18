@@ -76,7 +76,8 @@ def _refresh(db_path: str) -> bool:
     """The refresh itself, run under the lock: freshness is re-read here, not before."""
     with SQLiteStore(db_path) as store:
         freshness = store.freshness(fingerprint=extraction_fingerprint())
-        if freshness.state is not FreshnessState.STALE or not _worth_refreshing(db_path, freshness):
+        key = os.path.realpath(db_path)  # one database, however its path is spelled
+        if freshness.state is not FreshnessState.STALE or not _worth_refreshing(key, freshness):
             return False
         recorded = store.get_ingest_state()
         options = store.get_ingest_options()
@@ -95,11 +96,11 @@ def _refresh(db_path: str) -> bool:
         nodes, _raw, _resolved = pipeline.run(root, store=store)
         if nodes:
             store.record_ingest(root, pipeline.observed_mtimes)
-            _EMPTY_REFRESH.pop(db_path, None)
+            _EMPTY_REFRESH.pop(key, None)
         else:
-            _EMPTY_REFRESH[db_path] = freshness
+            _EMPTY_REFRESH[key] = freshness
         if _for_code_alone(freshness):
-            _REBUILT_FOR_CODE.add(db_path)
+            _REBUILT_FOR_CODE.add(key)
         logger.info(
             "Auto-refreshed stale graph",
             db=db_path,
@@ -114,11 +115,11 @@ def _for_code_alone(freshness: Freshness) -> bool:
     return freshness.reason is not None and not (freshness.changed or freshness.missing)
 
 
-def _worth_refreshing(db_path: str, freshness: Freshness) -> bool:
+def _worth_refreshing(key: str, freshness: Freshness) -> bool:
     """Whether a refresh could change anything this process has not already tried."""
-    if _for_code_alone(freshness) and db_path in _REBUILT_FOR_CODE:
+    if _for_code_alone(freshness) and key in _REBUILT_FOR_CODE:
         return False
-    return _EMPTY_REFRESH.get(db_path) != freshness
+    return _EMPTY_REFRESH.get(key) != freshness
 
 
 def refreshes_graph[**P, R](tool: Callable[P, R]) -> Callable[P, R]:
