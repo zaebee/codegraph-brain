@@ -27,6 +27,13 @@ SELF_PREFIX = "self."
 #: After resolution it stays only on an unresolved name that equals a real node's
 #: id, which no real id can hold (#661).
 RAW_CALL_PREFIX = "raw_call:"
+#: The context of a raw edge for a function value that may be called (#668), set by
+#: an extractor and replaced by the resolver: `value-arg:<i>:<call site>` for argument
+#: i of the call at that site (CV-1), `value-local:` for a local bound to the value
+#: and called where it is held (CV-2). The resolver keeps such an edge only when the
+#: value is a real function or method, and only when CV-1's call is an invoker.
+VALUE_ARG_CONTEXT = "value-arg:"
+VALUE_LOCAL_CONTEXT = "value-local:"
 RAW_CLASS_PREFIX = "raw_class:"
 
 

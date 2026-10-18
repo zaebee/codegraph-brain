@@ -1,0 +1,5 @@
+clause: CV-3
+status: pass
+origin: lima cmd/limactl (exp4 amendment 2)
+must_not_have:
+  - {source: p.newStartCommand, target: p.startAction}

@@ -1,0 +1,6 @@
+clause: CV-2
+status: pass
+origin: golang/crypto ssh/session.go:376 (exp4 pilot)
+must_have:
+  - {source: p.Session.start, target: p.Session.stdin, context: via local value}
+  - {source: p.Session.start, target: p.Session.stdout, context: via local value}

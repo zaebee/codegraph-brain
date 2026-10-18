@@ -1,0 +1,7 @@
+clause: CV-1
+status: pass
+note: only a resolved invoker listed in the profile makes its argument a call
+must_have:
+  - {source: p.run, target: p.Pool.Do}
+must_not_have:
+  - {source: p.run, target: p.work}

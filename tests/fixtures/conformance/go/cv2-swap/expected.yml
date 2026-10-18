@@ -1,0 +1,7 @@
+clause: CV-2
+status: pass
+note: "`f, g = g, f` evaluates the whole right side first, so g holds what f held before the swap"
+must_have:
+  - {source: p.C.run, target: p.C.a, context: via local value}
+must_not_have:
+  - {source: p.C.run, target: p.C.b}

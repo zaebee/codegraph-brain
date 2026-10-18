@@ -1,0 +1,7 @@
+clause: CV-2
+status: pass
+origin: "#686 delta review: a copy of an untyped local resolved to the package function it shadows"
+must_not_have:
+  - {source: p.Param, target: p.fn}
+  - {source: p.Range, target: p.g}
+  - {source: p.Closure, target: p.h}

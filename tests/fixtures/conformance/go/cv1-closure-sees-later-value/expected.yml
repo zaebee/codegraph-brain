@@ -1,0 +1,10 @@
+clause: CV-1
+status: todo
+reason: >
+  the single pass reads a closure body where the closure is written, so it sees the
+  value the local held then (a) and not the one it holds when the closure runs (b)
+origin: "#686 delta review"
+must_have:
+  - {source: p.Stale, target: p.b, context: sync.Once.Do}
+must_not_have:
+  - {source: p.Stale, target: p.a}

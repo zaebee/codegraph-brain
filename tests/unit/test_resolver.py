@@ -2809,3 +2809,81 @@ def test_a_known_reading_of_a_shared_virtual_node_beats_an_unknown_one_in_any_or
     assert {v.id: (v.namespace, v.language) for v in virtual} == {
         "lib.thing": (NodeNamespace.EXTERNAL, "typescript")
     }
+
+
+def test_a_function_value_that_resolves_to_a_type_is_no_call() -> None:
+    # #668: a CV-2 candidate is kept only when it names a function or method.
+    nodes = [
+        Node(
+            id="p.Widget",
+            type=NodeType.CLASS,
+            name="Widget",
+            file_path="p/p.go",
+            start_line=1,
+            end_line=2,
+            language="go",
+        ),
+        Node(
+            id="p.run",
+            type=NodeType.FUNCTION,
+            name="run",
+            file_path="p/p.go",
+            start_line=3,
+            end_line=4,
+            language="go",
+        ),
+    ]
+    edges = [
+        Edge(
+            id="p.run->value-local:Widget@3:1",
+            source="p.run",
+            target="raw_call:Widget",
+            type=EdgeType.CALLS,
+            confidence=0.1,
+            context="value-local:",
+            file_path="p/p.go",
+        ),
+    ]
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+    assert [e for e in resolved if e.type is EdgeType.CALLS] == []
+
+
+@pytest.mark.parametrize("context", ["value-arg:x:work@1:0", "value-arg:", "value-arg:0"])
+def test_a_malformed_value_candidate_is_dropped_not_raised(context: str) -> None:
+    # Gemini on #686: a candidate's context is the extractor's; a bad one costs the
+    # edge, never the ingest. The first case reaches the position parse; the other two
+    # stop earlier (no call site resolves) and only check that nothing raises.
+    nodes = [
+        Node(
+            id="p.run",
+            type=NodeType.FUNCTION,
+            name="run",
+            file_path="p/p.go",
+            start_line=1,
+            end_line=2,
+            language="go",
+        ),
+        Node(
+            id="p.work",
+            type=NodeType.FUNCTION,
+            name="work",
+            file_path="p/p.go",
+            start_line=3,
+            end_line=4,
+            language="go",
+        ),
+    ]
+    edges = [
+        # The call at the site resolves (to p.work), so the position is what is parsed.
+        Edge(
+            id="p.run->raw_call:work@1:5",
+            source="p.run",
+            target="raw_call:work",
+            type=EdgeType.CALLS,
+            confidence=0.1,
+            context=context,
+            file_path="p/p.go",
+        ),
+    ]
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+    assert [e for e in resolved if e.type is EdgeType.CALLS] == []

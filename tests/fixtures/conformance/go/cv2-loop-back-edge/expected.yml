@@ -1,0 +1,9 @@
+clause: CV-2
+status: todo
+reason: >
+  the walk reads a call before a reassignment later in the same loop body, so the
+  second iteration's value is missed; the pilot does not iterate loops to a fixed point
+origin: "#686 delta review"
+must_have:
+  - {source: p.run, target: p.a, context: via local value}
+  - {source: p.run, target: p.b, context: via local value}
