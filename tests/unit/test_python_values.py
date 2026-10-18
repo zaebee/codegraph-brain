@@ -240,3 +240,17 @@ def test_the_query_sweep_owns_what_the_walk_owns() -> None:
     for definition, owned in _bodies(root):
         walked = [n for n in _own_nodes(definition) if n.type in events]
         assert [(n.type, n.start_byte) for n in owned] == [(n.type, n.start_byte) for n in walked]
+
+
+def test_a_typed_default_parameter_is_named() -> None:
+    # Gemini on #701: its `name` field is a plain identifier, so it is read as one.
+    assert _slots("def f(cb: Callable = g):\n    cb()\n") == [0, "cb"]
+
+
+def test_an_attribute_name_is_no_read_of_a_local() -> None:
+    # Gemini on #701: in `self.cb` the `cb` is the attribute, not the local `cb`.
+    root, data = _parse("def f(self):\n    cb = self.a\n    self.cb\n")
+    func = _first(root, "function_definition")
+    attribute = _first(func.child_by_field_name("body").children[1], "attribute")
+    name = attribute.child_by_field_name("attribute")
+    assert held_values(func, data, frozenset()).at(name) == []

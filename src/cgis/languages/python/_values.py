@@ -234,7 +234,7 @@ def _dotted(expr: BaseNode, code: bytes) -> str | None:
     return ".".join(reversed(parts))
 
 
-def _arguments(call: BaseNode) -> Iterator[tuple[int | str, BaseNode]]:
+def _arguments(call: BaseNode, code: bytes) -> Iterator[tuple[int | str, BaseNode]]:
     """(slot, value) per argument: positions up to a `*xs` splat, then keywords only."""
     args = call.child_by_field_name("arguments")
     if args is None or args.type != "argument_list":
@@ -247,7 +247,7 @@ def _arguments(call: BaseNode) -> Iterator[tuple[int | str, BaseNode]]:
             name = arg.child_by_field_name("name")
             value = arg.child_by_field_name("value")
             if name is not None and value is not None:
-                yield name.text.decode() if name.text else "", value
+                yield get_identifier(name, code), value
             continue
         if arg.type in ("list_splat", "dictionary_splat"):
             position = None
@@ -291,7 +291,7 @@ def value_candidates(
     for call in body.calls:
         handed = [
             (slot, value, names)
-            for slot, value in _arguments(call)
+            for slot, value in _arguments(call, code)
             if (names := _values_of(value, code, file_names, shadowed, held))
         ]
         callee = call.child_by_field_name("function")
@@ -364,7 +364,7 @@ class HeldValues:
         if node.type == "for_statement":
             self._loop(node, block)
             return
-        for child in node.children:
+        for child in _read_children(node):
             self._visit(child, block)
 
     def _assign(self, node: BaseNode, block: int) -> None:
@@ -406,6 +406,17 @@ class HeldValues:
             self._values[name] = values
         else:
             self._values[name] = list(dict.fromkeys([*self._values.get(name, []), *values]))
+
+
+def _read_children(node: BaseNode) -> list[BaseNode]:
+    """The children of `node` that read names: not an attribute's or a keyword's own name."""
+    if node.type == "attribute":
+        obj = node.child_by_field_name("object")
+        return [obj] if obj is not None else []
+    if node.type == "keyword_argument":
+        value = node.child_by_field_name("value")
+        return [value] if value is not None else []
+    return list(node.children)
 
 
 def held_values(func: BaseNode, code: bytes, file_names: frozenset[str]) -> HeldValues:
