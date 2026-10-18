@@ -2,4 +2,4 @@ clause: DK-3
 status: xfail
 reason: "data keys are extracted for Python only (spec)"
 must_have:
-  - {type: DECLARES_KEY, source: p.Load, target: "key:|details"}
+  - {type: DECLARES_KEY, source: app.Event, target: "key:app.Event|brand"}

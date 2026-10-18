@@ -86,8 +86,8 @@ clauses:
     title: A model field or a declaring file declares its key
     rule: >
       A field of a model class (pydantic, dataclass) or an entry of a declaring file
-      declares a key whose namespace is the model. The declaring class or file node
-      has a DECLARES_KEY edge to the key. Declaring is neither reading nor writing: a
+      declares a key whose namespace is the model's FQN (`mod.Event`). The declaring class
+      or file node has a DECLARES_KEY edge to the key. Declaring is neither reading nor writing: a
       key with a declaration and no reader is a dead field, one with a reader and no
       declaration is undeclared.
     edge: {type: DECLARES_KEY, source: C, target: "key:<namespace>|<path>", confidence: 1.0}

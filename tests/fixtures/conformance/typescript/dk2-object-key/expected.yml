@@ -2,4 +2,4 @@ clause: DK-2
 status: xfail
 reason: "data keys are extracted for Python only (spec)"
 must_have:
-  - {type: READS_KEY, source: p.Load, target: "key:|details"}
+  - {type: READS_KEY, source: app.load, target: "key:|details"}
