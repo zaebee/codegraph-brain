@@ -1,5 +1,4 @@
 clause: CV-2
-status: xfail
-reason: Python CV-2 is not implemented in the #668 pilot
+status: pass
 must_have:
   - {source: mod.C.run, target: mod.C.handle}

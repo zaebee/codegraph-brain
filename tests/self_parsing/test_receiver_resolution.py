@@ -43,7 +43,11 @@ _KNOWN_FABRICATED = frozenset(
 #: three new ones are `self.question.strip`, `self.calls.get` and `self.fields.update`:
 #: `str` and `dict` receivers, declined by D1 like the ones above. `main` alone sat
 #: 9 above the old centre, one short of the edge.
-_EXPECTED_PLACEHOLDERS = 69
+#:
+#: Re-measured 2026-10-18: 78 on `main` (0ac6946), 82 with #632. The four new ones are
+#: `self._values.get` (twice), `self._reads.get` and `self._home.setdefault` in
+#: `languages/python/_values.HeldValues`: `dict` receivers, declined by D1.
+_EXPECTED_PLACEHOLDERS = 82
 _TOLERANCE = 10
 
 

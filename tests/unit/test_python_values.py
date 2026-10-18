@@ -3,7 +3,13 @@
 import tree_sitter_python as tspython
 from tree_sitter import Language, Node, Parser
 
-from cgis.languages.python._values import invoked_slots, value_candidates, value_name
+from cgis.languages.python._values import (
+    held_values,
+    invoked_slots,
+    local_value_calls,
+    value_candidates,
+    value_name,
+)
 
 _PARSER = Parser(Language(tspython.language()))
 
@@ -121,3 +127,57 @@ def test_a_candidate_id_is_the_value_span() -> None:
     assert edge.id == f"m.py:value_{value}_{value + 1}"
     assert edge.source == "m.outer"
     assert edge.line_number == 2
+
+
+def _local_calls(code: str, file_names: frozenset[str] = frozenset()) -> list[str]:
+    """The raw names of the CV-2 edges the first function of `code` emits."""
+    root, data = _parse(code)
+    func = _first(root, "function_definition")
+    held = held_values(func, data, file_names)
+    return [
+        e.target.removeprefix("raw_call:") for e in local_value_calls(func, "m.f", "m.py", held)
+    ]
+
+
+def test_a_local_holds_a_method_value() -> None:
+    assert _local_calls("def f(self):\n    cb = self.handle\n    cb()\n") == ["self.handle"]
+
+
+def test_a_rebinding_in_the_same_block_replaces() -> None:
+    code = "def f(self):\n    cb = self.a\n    cb = self.b\n    cb()\n"
+    assert _local_calls(code) == ["self.b"]
+
+
+def test_a_rebinding_to_no_function_clears_the_local() -> None:
+    assert _local_calls("def f(self):\n    cb = self.a\n    cb = make()\n    cb()\n") == []
+
+
+def test_a_rebinding_in_an_if_adds() -> None:
+    code = "def f(self, x):\n    cb = self.a\n    if x:\n        cb = self.b\n    cb()\n"
+    assert _local_calls(code) == ["self.a", "self.b"]
+
+
+def test_a_call_before_the_binding_sees_nothing() -> None:
+    assert _local_calls("def f(self):\n    cb()\n    cb = self.a\n") == []
+
+
+def test_a_tuple_loop_binds_each_value() -> None:
+    code = "def f(self):\n    for cb in (self.a, self.b):\n        cb()\n"
+    assert _local_calls(code) == ["self.a", "self.b"]
+
+
+def test_a_copy_holds_what_the_original_holds() -> None:
+    code = "def f(self):\n    cb = self.a\n    other = cb\n    other()\n"
+    assert _local_calls(code) == ["self.a"]
+
+
+def test_a_bare_module_function_is_held() -> None:
+    assert _local_calls("def f():\n    cb = work\n    cb()\n", frozenset({"work"})) == ["work"]
+
+
+def test_a_held_local_passed_to_an_invoker_passes_its_values() -> None:
+    root, data = _parse("def f(self):\n    cb = self.a\n    run(cb)\n")
+    func = _first(root, "function_definition")
+    held = held_values(func, data, frozenset({"run"}))
+    edges = value_candidates(func, data, "m.f", "m.py", frozenset({"run"}), held.at)
+    assert [(e.target, e.context) for e in edges] == [("raw_call:self.a", "value-arg:0:run@2:4")]

@@ -12,7 +12,15 @@ from collections.abc import Callable, Iterator
 
 from tree_sitter import Node as BaseNode
 
-from cgis.core.models import RAW_CALL_PREFIX, VALUE_ARG_CONTEXT, Edge, EdgeType, Node, NodeType
+from cgis.core.models import (
+    RAW_CALL_PREFIX,
+    VALUE_ARG_CONTEXT,
+    VALUE_LOCAL_CONTEXT,
+    Edge,
+    EdgeType,
+    Node,
+    NodeType,
+)
 from cgis.languages.python._syntax import get_id, get_identifier
 
 #: Nodes whose body is not the enclosing function's.
@@ -243,6 +251,124 @@ def value_candidates(
     return edges
 
 
+#: Literals whose elements a `for` loop binds its variable to, one by one.
+_LITERALS = frozenset({"tuple", "list", "parenthesized_expression", "set"})
+
+
+class HeldValues:
+    """What each local of one function holds where it is read (CV-2).
+
+    One pass in source order, as Go's: a binding in the block that first bound the
+    local replaces what it held, one in a nested block (an if, a loop) adds to it.
+    """
+
+    def __init__(self, func: BaseNode, code: bytes, file_names: frozenset[str]) -> None:
+        """Walk `func`'s body once and record the values at every read of a local."""
+        self._code = code
+        self._file_names = file_names
+        self._shadowed = local_names(func, code)
+        self._values: dict[str, list[str]] = {}
+        self._home: dict[str, int] = {}
+        self._reads: dict[int, list[str]] = {}
+        body = func.child_by_field_name("body")
+        if body is not None:
+            self._visit(body, body.start_byte)
+
+    def at(self, node: BaseNode) -> list[str]:
+        """The function values the local read at `node` holds there; [] if none."""
+        return list(self._reads.get(node.start_byte, ()))
+
+    def _visit(self, node: BaseNode, block: int) -> None:
+        """Record reads in `node`, then bind what it assigns, as Python evaluates it."""
+        if node.type in _OWN_SCOPES:
+            return
+        if node.type == "block":
+            block = node.start_byte
+        if node.type == "identifier":
+            name = get_identifier(node, self._code)
+            if self._values.get(name):
+                self._reads[node.start_byte] = list(self._values[name])
+            return
+        if node.type == "assignment":
+            self._assign(node, block)
+            return
+        if node.type == "for_statement":
+            self._loop(node, block)
+            return
+        for child in node.children:
+            self._visit(child, block)
+
+    def _assign(self, node: BaseNode, block: int) -> None:
+        """`x = <value>`: the right side is read first, then `x` bound to it."""
+        left = node.child_by_field_name("left")
+        right = node.child_by_field_name("right")
+        if right is not None:
+            self._visit(right, block)
+        if left is not None and left.type == "identifier":
+            self._bind(get_identifier(left, self._code), self._held_by(right), block)
+
+    def _loop(self, node: BaseNode, block: int) -> None:
+        """`for cb in (a, b)`: `cb` holds each value the literal names."""
+        left = node.child_by_field_name("left")
+        right = node.child_by_field_name("right")
+        if right is not None:
+            self._visit(right, block)
+        if left is not None and left.type == "identifier":
+            elements = right.named_children if right is not None and right.type in _LITERALS else []
+            values = [v for e in elements for v in self._held_by(e)]
+            self._bind(get_identifier(left, self._code), values, block)
+        for child in node.children:
+            if child.type in ("block", "else_clause"):
+                self._visit(child, block)
+
+    def _held_by(self, expr: BaseNode | None) -> list[str]:
+        """The values `expr` names: a held local's, or the value form's own name."""
+        if expr is None:
+            return []
+        if expr.type == "identifier" and expr.start_byte in self._reads:
+            return list(self._reads[expr.start_byte])
+        name = value_name(expr, self._code, self._file_names, self._shadowed)
+        return [name] if name is not None else []
+
+    def _bind(self, name: str, values: list[str], block: int) -> None:
+        """Bind `name` in `block`: replace in its home block, add anywhere else."""
+        home = self._home.setdefault(name, block)
+        if home == block:
+            self._values[name] = values
+        else:
+            self._values[name] = list(dict.fromkeys([*self._values.get(name, []), *values]))
+
+
+def held_values(func: BaseNode, code: bytes, file_names: frozenset[str]) -> HeldValues:
+    """The values each local of `func` holds where it is read (CV-2)."""
+    return HeldValues(func, code, file_names)
+
+
+def local_value_calls(
+    func: BaseNode, source_id: str, file_path: str, held: HeldValues
+) -> list[Edge]:
+    """A `value-local:` candidate per value a local holds where `func` calls it (CV-2)."""
+    edges: list[Edge] = []
+    for call in (n for n in _own_nodes(func) if n.type == "call"):
+        callee = call.child_by_field_name("function")
+        if callee is None or callee.type != "identifier":
+            continue
+        for i, name in enumerate(held.at(callee)):
+            edges.append(
+                Edge(
+                    id=f"{file_path}:value_{call.start_byte}_{call.end_byte}_{i}",
+                    source=source_id,
+                    target=f"{RAW_CALL_PREFIX}{name}",
+                    type=EdgeType.CALLS,
+                    confidence=0.1,
+                    context=VALUE_LOCAL_CONTEXT,
+                    file_path=file_path,
+                    line_number=call.start_point.row + 1,
+                )
+            )
+    return edges
+
+
 def function_values(
     root: BaseNode,
     code: bytes,
@@ -274,5 +400,7 @@ def function_values(
             updated[position] = owner.model_copy(
                 update={"metadata": {**owner.metadata, "invokes": slots}}
             )
-        edges.extend(value_candidates(node, code, owner.id, file_path, file_names))
+        held = held_values(node, code, file_names)
+        edges.extend(value_candidates(node, code, owner.id, file_path, file_names, held.at))
+        edges.extend(local_value_calls(node, owner.id, file_path, held))
     return updated, edges
