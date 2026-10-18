@@ -29,11 +29,12 @@ cases:
       id: picture
   - case: "#2071-#2085"
     repo: owner-api
-    # #2071 is an issue; the PR that introduced the event_type.keyword queries (#1691, the
-    # activation funnel) is recorded as the breaking change. Lower confidence than the rest.
-    breaking_pr: 1691
-    base_sha: fd071efe75e0507f98b198950553c84ea3184e4f
-    merge_sha: ebf3db3b0c18481506a1b9c9fc1d1abe934a5f27
+    # #2071 is an issue; #2075 declared the details labels in events.json and left
+    # event_type without a .keyword subfield while the code reads event_type.keyword
+    # (controller ruling); #2079 repaired it.
+    breaking_pr: 2075
+    base_sha: 6374541bee0cbd1c3703d549f4a248a39d78e449
+    merge_sha: 9e8f73dbfa45ee4f008d5dc8aba9f49c1ae506b6
     what_broke: mapping events.json declares event_type as keyword with no .keyword subfield; code queries event_type.keyword
     in_zone: true
     expected_site:
