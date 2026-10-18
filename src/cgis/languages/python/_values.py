@@ -91,6 +91,7 @@ def _parameters(
 
 def _may_hold(right: BaseNode | None, code: bytes) -> bool:
     """Whether a binding's right side may name a function value: a cheap pre-check."""
+    right = _unwrap(right) if right is not None else None
     if right is None or right.type not in _HOLDABLE:
         return False
     if right.type != "call":
@@ -113,17 +114,25 @@ class _Body:
         self.holds = False
         for node in _own_nodes(func) if events is None else events:
             if node.type == "call":
-                self.calls.append(node)
-                callee = node.child_by_field_name("function")
-                if callee is not None and callee.type == "identifier":
-                    self.first_call.setdefault(get_identifier(callee, code), node.start_byte)
+                self._note_call(node, code)
             elif node.type in ("assignment", "for_statement") and not self.holds:
                 self.holds = _may_hold(node.child_by_field_name("right"), code)
-            # A comprehension binds its variable before the expression written ahead of it.
-            scope = node.parent if node.type == "for_in_clause" else None
-            for target in _bound_names(node):
-                at = scope.start_byte if scope is not None else target.start_byte
-                self.first_bind.setdefault(get_identifier(target, code), at)
+            self._note_binds(node, code)
+
+    def _note_call(self, call: BaseNode, code: bytes) -> None:
+        """Keep the call, and when it calls a bare name, the first such call."""
+        self.calls.append(call)
+        callee = call.child_by_field_name("function")
+        if callee is not None and callee.type == "identifier":
+            self.first_call.setdefault(get_identifier(callee, code), call.start_byte)
+
+    def _note_binds(self, node: BaseNode, code: bytes) -> None:
+        """The first binding of each name `node` binds."""
+        # A comprehension binds its variable before the expression written ahead of it.
+        scope = node.parent if node.type == "for_in_clause" else None
+        for target in _bound_names(node):
+            at = scope.start_byte if scope is not None else target.start_byte
+            self.first_bind.setdefault(get_identifier(target, code), at)
 
 
 def _bound_names(node: BaseNode) -> list[BaseNode]:
@@ -174,6 +183,13 @@ def local_names(func: BaseNode, code: bytes, body: _Body | None = None) -> froze
     return frozenset(params | set((body or _Body(func, code)).first_bind))
 
 
+def _unwrap(expr: BaseNode) -> BaseNode:
+    """`expr` without the parentheses around it: `(self.handle)` names `self.handle`."""
+    while expr.type == "parenthesized_expression" and len(expr.named_children) == 1:
+        expr = expr.named_children[0]
+    return expr
+
+
 def value_name(
     expr: BaseNode, code: bytes, file_names: frozenset[str], shadowed: frozenset[str]
 ) -> str | None:
@@ -182,6 +198,7 @@ def value_name(
     `file_names` are the module-level definitions and imports of the file; a bare
     name counts only when it is one of them and no local of the function shadows it.
     """
+    expr = _unwrap(expr)
     if expr.type == "identifier":
         name = get_identifier(expr, code)
         return name if name in file_names and name not in shadowed else None
@@ -294,28 +311,47 @@ def value_candidates(
             for slot, value in _arguments(call, code)
             if (names := _values_of(value, code, file_names, shadowed, held))
         ]
-        callee = call.child_by_field_name("function")
-        # Named only once a value is found: most calls hand over none.
-        raw = get_identifier(callee, code) if handed and callee is not None else "unknown"
-        if raw == "unknown" or raw in shadowed:
-            continue  # a local called here is no invoker (`sorted` as a parameter)
-        site = f"{raw}@{call.start_point.row}:{call.start_point.column}"
+        site = _invoker_site(call, code, shadowed) if handed else None
+        if site is None:
+            continue
         for slot, value, names in handed:
-            for i, name in enumerate(names):
-                suffix = f"_{i}" if len(names) > 1 else ""
-                edges.append(
-                    Edge(
-                        id=f"{file_path}:value_{value.start_byte}_{value.end_byte}{suffix}",
-                        source=source_id,
-                        target=f"{RAW_CALL_PREFIX}{name}",
-                        type=EdgeType.CALLS,
-                        confidence=0.1,
-                        context=f"{VALUE_ARG_CONTEXT}{slot}:{site}",
-                        file_path=file_path,
-                        line_number=value.start_point.row + 1,
-                    )
-                )
+            context = f"{VALUE_ARG_CONTEXT}{slot}:{site}"
+            numbered = len(names) > 1
+            edges.extend(
+                _value_edge(source_id, file_path, value, name, context, i if numbered else None)
+                for i, name in enumerate(names)
+            )
     return edges
+
+
+def _invoker_site(call: BaseNode, code: bytes, shadowed: frozenset[str]) -> str | None:
+    """`<raw name>@<row>:<col>` of a call that may invoke, or None.
+
+    A local called here is no invoker (`sorted` as a parameter), and a call whose
+    callee has no name is none either.
+    """
+    callee = call.child_by_field_name("function")
+    raw = get_identifier(callee, code) if callee is not None else "unknown"
+    if raw == "unknown" or raw in shadowed:
+        return None
+    return f"{raw}@{call.start_point.row}:{call.start_point.column}"
+
+
+def _value_edge(
+    source_id: str, file_path: str, value: BaseNode, name: str, context: str, i: int | None
+) -> Edge:
+    """A raw CALLS candidate for value `name` at `value`; `i` numbers one of several."""
+    suffix = "" if i is None else f"_{i}"
+    return Edge(
+        id=f"{file_path}:value_{value.start_byte}_{value.end_byte}{suffix}",
+        source=source_id,
+        target=f"{RAW_CALL_PREFIX}{name}",
+        type=EdgeType.CALLS,
+        confidence=0.1,
+        context=context,
+        file_path=file_path,
+        line_number=value.start_point.row + 1,
+    )
 
 
 class HeldValues:
@@ -373,6 +409,7 @@ class HeldValues:
         right = node.child_by_field_name("right")
         if right is not None:
             self._visit(right, block)
+            right = _unwrap(right)
         if left is None:
             return
         if left.type == "identifier":
@@ -393,6 +430,7 @@ class HeldValues:
         right = node.child_by_field_name("right")
         if right is not None:
             self._visit(right, block)
+            right = _unwrap(right)
         if left is not None and left.type == "identifier":
             elements = right.named_children if right is not None and right.type in _LITERALS else []
             values = [v for e in elements for v in self._held_by(e)]
@@ -405,6 +443,7 @@ class HeldValues:
         """The values `expr` names: a held local's, or the value form's own name."""
         if expr is None:
             return []
+        expr = _unwrap(expr)
         if expr.type == "identifier" and expr.start_byte in self._reads:
             return list(self._reads[expr.start_byte])
         name = value_name(expr, self._code, self._file_names, self._shadowed)

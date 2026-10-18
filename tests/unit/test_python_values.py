@@ -265,3 +265,16 @@ def test_an_unpacking_binds_each_local_to_its_value() -> None:
 def test_an_unpacking_swap_reads_before_it_binds() -> None:
     code = "def f(self):\n    a, b = self.x, self.y\n    a, b = b, a\n    a()\n"
     assert _local_calls(code) == ["self.y"]
+
+
+def test_a_parenthesized_value_is_held() -> None:
+    # Gemini on #701: `(self.handle)` is a parenthesized_expression around the value.
+    assert _local_calls("def f(self):\n    cb = (self.handle)\n    cb()\n") == ["self.handle"]
+
+
+def test_doubly_parenthesized_literals_unpack_and_loop() -> None:
+    # A single pair of parentheses is already a tuple; a second pair wraps it.
+    unpack = "def f(self):\n    a, b = ((self.x, self.y))\n    b()\n"
+    loop = "def f(self):\n    for cb in ((self.x, self.y)):\n        cb()\n"
+    assert _local_calls(unpack) == ["self.y"]
+    assert _local_calls(loop) == ["self.x", "self.y"]

@@ -67,6 +67,26 @@ def _invoker_slots(
     return frozenset(node.metadata.get("invokes", ()))
 
 
+def _invoker_via(
+    resolver: SymbolResolver, view: ResolutionView, edge: Edge, marker: str
+) -> str | None:
+    """`via <invoker>` when the call at a CV-1 marker's site invokes its slot, else None."""
+    token, _, call_site = marker.partition(":")
+    slot = _slot(token)
+    if slot is None or not call_site:
+        return None  # the extractor's marker, malformed: the edge, not the ingest, is lost
+    raw_invoker = call_site.rpartition("@")[0]
+    invoker = _call_target(resolver, raw_invoker, edge, call_site)
+    if invoker is None and "." not in raw_invoker:
+        # A builtin (`map`, `sorted`) resolves to no node; a project function of
+        # that name would have resolved to itself above (#632).
+        invoker = raw_invoker
+    rules = rules_for(edge.file_path)  # a value edge always carries its file
+    if invoker is None or slot not in _invoker_slots(view, rules, invoker):
+        return None
+    return f"via {invoker}"
+
+
 def _value_call_edge(resolver: SymbolResolver, view: ResolutionView, edge: Edge) -> Edge | None:
     """A function value the code calls (docs/specs/core/ontology.yml CV-1, CV-2, CV-4), or None.
 
@@ -77,22 +97,11 @@ def _value_call_edge(resolver: SymbolResolver, view: ResolutionView, edge: Edge)
     one was never a call.
     """
     context = edge.context or ""
-    via = "via local value"
+    via: str | None = "via local value"
     if context.startswith(VALUE_ARG_CONTEXT):
-        token, _, call_site = context.removeprefix(VALUE_ARG_CONTEXT).partition(":")
-        slot = _slot(token)
-        if slot is None or not call_site:
-            return None  # the extractor's marker, malformed: the edge, not the ingest, is lost
-        raw_invoker = call_site.rpartition("@")[0]
-        invoker = _call_target(resolver, raw_invoker, edge, call_site)
-        if invoker is None and "." not in raw_invoker:
-            # A builtin (`map`, `sorted`) resolves to no node; a project function of
-            # that name would have resolved to itself above (#632).
-            invoker = raw_invoker
-        rules = rules_for(edge.file_path)  # a value edge always carries its file
-        if invoker is None or slot not in _invoker_slots(view, rules, invoker):
+        via = _invoker_via(resolver, view, edge, context.removeprefix(VALUE_ARG_CONTEXT))
+        if via is None:
             return None
-        via = f"via {invoker}"
     raw_name = edge.target.removeprefix(RAW_CALL_PREFIX)
     site = edge.id.partition(RAW_CALL_PREFIX)[2] or None
     target = raw_name if raw_name in view.nodes else _call_target(resolver, raw_name, edge, site)
