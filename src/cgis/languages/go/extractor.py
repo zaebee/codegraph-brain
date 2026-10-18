@@ -1116,6 +1116,8 @@ def _value_name(ctx: _File, value: TSNode, bindings: Bindings) -> str:
     if not chain:
         return ""
     receiver = bindings.receiver if not bindings.shadowed(bindings.receiver or "") else None
+    # `log.Errorf` held as a value: `log` is a package variable, as in a call (#689).
+    _global_head(ctx, value, bindings)
     return call_name(value, receiver)
 
 

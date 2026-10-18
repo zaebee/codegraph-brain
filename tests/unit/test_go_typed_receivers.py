@@ -459,3 +459,26 @@ def test_a_phantom_on_an_own_type_from_another_package_is_no_library_call() -> N
         ),
     }
     assert "errors.I.Missing" not in _calls_from(files, "app.B")
+
+
+def test_a_conversion_types_its_local_as_the_named_type() -> None:
+    """`k := Name(x)` is a conversion, not a call: `k.Matches` is `Name.Matches` (#689)."""
+    files = {
+        "app/a.go": (
+            "package app\ntype Name string\nfunc (n Name) Matches(s string) bool { return true }\n"
+            'func B(x string) bool {\n\tk := Name(x)\n\treturn k.Matches("a")\n}\n'
+        ),
+    }
+    assert _calls_from(files, "app.B").get("app.Name.Matches") == 1.0
+
+
+def test_a_conversion_in_a_for_init_types_its_variable() -> None:
+    """`for a := AuthMethod(new(none)); ...` types `a` as the interface (#670)."""
+    files = {
+        "app/a.go": (
+            "package app\ntype AuthMethod interface{ auth() bool }\ntype none struct{}\n"
+            "func (none) auth() bool { return true }\n"
+            "func B() {\n\tfor a := AuthMethod(new(none)); a != nil; {\n\t\ta.auth()\n\t}\n}\n"
+        ),
+    }
+    assert _calls_from(files, "app.B").get("app.AuthMethod.auth") == 1.0

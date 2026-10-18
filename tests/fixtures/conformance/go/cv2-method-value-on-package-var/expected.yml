@@ -1,0 +1,6 @@
+clause: CV-2
+status: pass
+origin: coredns/coredns plugin/errors/errors.go:102,118 (#686 hidden check, #689)
+note: "a method value on a package variable is held like any other: `logFunc := log.Errorf` then `logFunc()` calls P.Errorf"
+must_have:
+  - {source: er.report, target: lg.P.Errorf, context: via local value}

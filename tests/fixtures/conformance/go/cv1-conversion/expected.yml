@@ -1,0 +1,6 @@
+clause: CV-1
+status: pass
+origin: coredns/coredns plugin/dnssec/setup.go:100 (#686 hidden check, #689)
+note: "a conversion `T(x)` types the local as T, so the method value `kname.Matches` is a value of T"
+must_have:
+  - {source: p.keyZones, target: p.Name.Matches, context: slices.ContainsFunc}
