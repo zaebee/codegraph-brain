@@ -303,7 +303,11 @@ class ResolverEngine:
         if existing is not None and _virtual_rank(existing) <= (False, language):
             return  # nothing this caller can classify would outrank it
         # A collision kept its `raw_call:` prefix (#661); the name itself is classified.
-        namespace = self._index.classify_fqn(target.removeprefix(RAW_CALL_PREFIX), source_file)
+        # A target the resolver reached through another file's field keeps that file's
+        # reading (#685).
+        namespace = self._resolver.boundary_claims.get(target) or self._index.classify_fqn(
+            target.removeprefix(RAW_CALL_PREFIX), source_file
+        )
         if namespace is NodeNamespace.INTERNAL:
             # An internal-root FQN with no node is one of four things, measured on
             # owner-api's 681 such nodes (#459, and the review of #493):

@@ -234,20 +234,26 @@ def _resolve_on_type(
     type_fqn: str,
     path: str,
     source_file: str | None,
+    claims: dict[str, NodeNamespace] | None = None,
 ) -> str | None:
     """`a.b.m` on a value of `type_fqn`: each attribute's declared type, then `m` (#643).
 
     Attributes and the method are both looked up through the hierarchy: a base
-    class, or a Go struct an embedding promotes from, may hold either.
+    class, or a Go struct an embedding promotes from, may hold either. A library
+    method kept at the end is recorded in `claims` with the namespace it was kept
+    for, read from the file that declared the last field (#685).
     """
     *attrs, method = path.split(".")
     current = type_fqn
     for attr in attrs:
         declaring = _declaring_class(index, current, attr, inheritance)
         receiver = receiver_type_fqn(index, declaring, attr) if declaring else None
-        if receiver is None:
+        if declaring is None or receiver is None:
             return None
         current = receiver
+        # The field's type was named in its declaring file, so that file's imports
+        # say what it is, not the caller's (#685).
+        source_file = _file_of(index, declaring) or source_file
     found = _method_in_hierarchy(index, inheritance, current, method)
     if found:
         return found
@@ -257,10 +263,10 @@ def _resolve_on_type(
     # phantom method and must not be fabricated: that is the call #414 was
     # filed to expose. Same policy as _resolve_local_type_call (spec D7).
     candidate = f"{current}.{method}"
-    if index.classify_fqn(candidate, source_file) in (
-        NodeNamespace.EXTERNAL,
-        NodeNamespace.STDLIB,
-    ):
+    namespace = index.classify_fqn(candidate, source_file)
+    if namespace in (NodeNamespace.EXTERNAL, NodeNamespace.STDLIB):
+        if claims is not None:
+            claims.setdefault(candidate, namespace)
         return candidate
     return None
 
@@ -301,6 +307,10 @@ class SymbolResolver:
         # class_fqn -> [resolved parent FQNs] built from EXTENDS edges; read by the
         # DISPATCHES pass too (`dispatch_edges`, below).
         self.inheritance_tree: dict[str, list[str]] = {}
+        # Library targets resolved through a field declared in another file, with the
+        # namespace that file's imports gave them: the caller's file may not import the
+        # package, so the engine must not classify them again from there (#685).
+        self.boundary_claims: dict[str, NodeNamespace] = {}
         for edge in edges:
             if edge.type == EdgeType.EXTENDS:
                 raw = edge.target.removeprefix(RAW_CLASS_PREFIX)
@@ -347,7 +357,9 @@ class SymbolResolver:
         if "." not in method_name:
             return _method_in_hierarchy(self.index, self.inheritance_tree, owner, method_name)
         source_file = _file_of(self.index, source_fqn)
-        return _resolve_on_type(self.index, self.inheritance_tree, owner, method_name, source_file)
+        return _resolve_on_type(
+            self.index, self.inheritance_tree, owner, method_name, source_file, self.boundary_claims
+        )
 
     def resolve_global_call(
         self,
@@ -455,7 +467,9 @@ class SymbolResolver:
             return resolved
         # Inherited or promoted, or reached through declared attributes (#643).
         start = self.index.map_to_node_fqn(class_fqn, file_path) or class_fqn
-        walked = _resolve_on_type(self.index, self.inheritance_tree, start, method_name, file_path)
+        walked = _resolve_on_type(
+            self.index, self.inheritance_tree, start, method_name, file_path, self.boundary_claims
+        )
         if walked:
             return walked
         # Reached only for `x.a.m` on a library type: the walk has no declared
