@@ -92,9 +92,10 @@ class ResolutionRules:
     #: global symbols are tried next.
     locals_shadow: bool = False
     #: CV-1 (docs/specs/core/ontology.yml): a library callable that may invoke some of its
-    #: arguments, by resolved target, with the 0-based positions it invokes. A
-    #: function value passed there is a call by the function passing it (#668).
-    invokers: Mapping[str, frozenset[int]] = field(default_factory=dict)
+    #: arguments, by resolved target, with the slots it invokes: an `int` is a 0-based
+    #: position, a `str` a keyword name (Python, #632). A function value passed there
+    #: is a call by the function passing it (#668).
+    invokers: Mapping[str, frozenset[int | str]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Refuse a step at a position the engine never runs."""

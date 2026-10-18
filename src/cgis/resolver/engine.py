@@ -44,23 +44,37 @@ def _call_target(
     return resolver.resolve_global_call(raw_name, edge.source, edge.file_path, site)
 
 
+def _slot(token: str) -> int | str | None:
+    """An invoked argument slot: a 0-based position, a keyword name, or None if malformed."""
+    if token.isdecimal():
+        return int(token)
+    return token if token.isidentifier() else None
+
+
 def _value_call_edge(resolver: SymbolResolver, view: ResolutionView, edge: Edge) -> Edge | None:
     """A function value the code calls (docs/specs/core/ontology.yml CV-1, CV-2), or None.
 
     CV-1: argument i of the call at the recorded site counts only when that call
-    resolves to an invoker the source's pack lists with position i. CV-2: a local
-    holding the value is called where it is held. Either way the value must be a
-    real function or method; a name that is not one was never a call.
+    resolves to an invoker the source's pack lists with slot i (a position, or a
+    keyword name). CV-2: a local holding the value is called where it is held.
+    Either way the value must be a real function or method; a name that is not
+    one was never a call.
     """
     context = edge.context or ""
     via = "via local value"
     if context.startswith(VALUE_ARG_CONTEXT):
-        position, _, call_site = context.removeprefix(VALUE_ARG_CONTEXT).partition(":")
-        if not position.isdecimal() or not call_site:
+        token, _, call_site = context.removeprefix(VALUE_ARG_CONTEXT).partition(":")
+        slot = _slot(token)
+        if slot is None or not call_site:
             return None  # the extractor's marker, malformed: the edge, not the ingest, is lost
-        invoker = _call_target(resolver, call_site.rpartition("@")[0], edge, call_site)
+        raw_invoker = call_site.rpartition("@")[0]
+        invoker = _call_target(resolver, raw_invoker, edge, call_site)
+        if invoker is None and "." not in raw_invoker:
+            # A builtin (`map`, `sorted`) resolves to no node; a project function of
+            # that name would have resolved to itself above (#632).
+            invoker = raw_invoker
         rules = rules_for(edge.file_path)  # a value edge always carries its file
-        if invoker is None or rules is None or int(position) not in rules.invokers.get(invoker, ()):
+        if invoker is None or rules is None or slot not in rules.invokers.get(invoker, ()):
             return None
         via = f"via {invoker}"
     raw_name = edge.target.removeprefix(RAW_CALL_PREFIX)

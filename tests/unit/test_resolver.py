@@ -3,6 +3,7 @@
 import pytest
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
+from cgis.core.resolution import ResolutionRules
 from cgis.languages.python.extractor import PythonExtractor
 from cgis.resolver.engine import ResolverEngine
 from cgis.resolver.indices import SymbolIndex
@@ -2848,7 +2849,7 @@ def test_a_function_value_that_resolves_to_a_type_is_no_call() -> None:
     assert [e for e in resolved if e.type is EdgeType.CALLS] == []
 
 
-@pytest.mark.parametrize("context", ["value-arg:x:work@1:0", "value-arg:", "value-arg:0"])
+@pytest.mark.parametrize("context", ["value-arg:1x:work@1:0", "value-arg:", "value-arg:0"])
 def test_a_malformed_value_candidate_is_dropped_not_raised(context: str) -> None:
     # Gemini on #686: a candidate's context is the extractor's; a bad one costs the
     # edge, never the ingest. The first case reaches the position parse; the other two
@@ -2887,3 +2888,79 @@ def test_a_malformed_value_candidate_is_dropped_not_raised(context: str) -> None
     ]
     resolved, _ = ResolverEngine(nodes, edges).resolve()
     assert [e for e in resolved if e.type is EdgeType.CALLS] == []
+
+
+def _py_function(fqn: str, line: int) -> Node:
+    return Node(
+        id=fqn,
+        type=NodeType.FUNCTION,
+        name=fqn.rsplit(".", 1)[-1],
+        file_path="m.py",
+        start_line=line,
+        end_line=line,
+        language="python",
+    )
+
+
+def _py_value_edge(context: str) -> Edge:
+    return Edge(
+        id=f"m.py:value_{context}",
+        source="m.caller",
+        target="raw_call:work",
+        type=EdgeType.CALLS,
+        confidence=0.1,
+        context=context,
+        file_path="m.py",
+    )
+
+
+def _value_calls(
+    monkeypatch: pytest.MonkeyPatch,
+    invokers: dict[str, frozenset[int | str]],
+    nodes: list[Node],
+    contexts: list[str],
+) -> list[Edge]:
+    """The CALLS edges value candidates in m.py resolve to under the given invokers."""
+    rules = ResolutionRules(invokers=invokers)
+    monkeypatch.setattr("cgis.resolver.engine.rules_for", lambda _path: rules)
+    edges = [_py_value_edge(c) for c in contexts]
+    resolved, _ = ResolverEngine(nodes, edges).resolve()
+    return [e for e in resolved if e.type is EdgeType.CALLS]
+
+
+def test_a_keyword_slot_matches_an_invoker_listed_by_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # #632: Python hands a value over by keyword, `Thread(target=f)`.
+    nodes = [_py_function(f, i) for i, f in enumerate(("m.caller", "m.work", "m.run"), 1)]
+    calls = _value_calls(
+        monkeypatch, {"m.run": frozenset({"target"})}, nodes, ["value-arg:target:run@1:0"]
+    )
+    assert [(e.source, e.target, e.confidence, e.context) for e in calls] == [
+        ("m.caller", "m.work", 1.0, "via m.run")
+    ]
+
+
+def test_an_unresolved_builtin_is_looked_up_by_its_raw_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # `map` resolves to no node, so the profile is keyed by the builtin's name.
+    nodes = [_py_function(f, i) for i, f in enumerate(("m.caller", "m.work"), 1)]
+    calls = _value_calls(monkeypatch, {"map": frozenset({0})}, nodes, ["value-arg:0:map@1:0"])
+    assert [(e.source, e.target, e.context) for e in calls] == [("m.caller", "m.work", "via map")]
+
+
+def test_a_shadowed_builtin_is_not_the_builtin_invoker(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A project `map` is the call's target; it is no invoker unless it calls the value.
+    nodes = [_py_function(f, i) for i, f in enumerate(("m.caller", "m.work", "m.map"), 1)]
+    calls = _value_calls(monkeypatch, {"map": frozenset({0})}, nodes, ["value-arg:0:map@1:0"])
+    assert calls == []
+
+
+def test_a_dotted_unresolved_invoker_is_not_looked_up(monkeypatch: pytest.MonkeyPatch) -> None:
+    # `xs.sort` on an untyped receiver names no builtin: no raw-name lookup.
+    nodes = [_py_function(f, i) for i, f in enumerate(("m.caller", "m.work"), 1)]
+    calls = _value_calls(
+        monkeypatch, {"xs.sort": frozenset({"key"})}, nodes, ["value-arg:key:xs.sort@1:0"]
+    )
+    assert calls == []
