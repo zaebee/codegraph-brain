@@ -163,3 +163,51 @@ def test_bad_range_is_a_clear_error(tmp_path: Path) -> None:
     )
     assert result.exit_code == 2
     assert "nope..range" in result.output
+
+
+@pytest.mark.parametrize("side", ["base", "head"])
+def test_a_revision_that_looks_like_a_flag_is_refused(tmp_path: Path, side: str) -> None:
+    repo, sha = _repo(tmp_path, {"a.py": BASE_A})
+    target = tmp_path / "pwned"
+    flag = f"--output={target}"
+    args = (flag, "HEAD") if side == "base" else (sha, flag)
+    with pytest.raises(DiffError):
+        changed_files(repo, *args)
+    assert not target.exists()
+
+
+def test_a_removed_content_line_that_looks_like_a_header_is_content(tmp_path: Path) -> None:
+    repo, _ = _repo(tmp_path, {"q.py": "x = 1\n"})
+    # A removed line that starts with "-- " reads as "--- ..." in a -U0 diff.
+    (repo / "q.py").write_text("-- note\nx = 1\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "q")
+    base = _git(repo, "rev-parse", "HEAD")
+    _commit(repo, {"q.py": "x = 1\n"}, "drop the first line")
+    (change,) = changed_files(repo, base, "HEAD")
+    assert (change.old_path, change.new_path) == ("q.py", "q.py")
+    assert change.old_lines == frozenset({1})
+
+
+def test_base_reparse_uses_the_graphs_source_roots(tmp_path: Path) -> None:
+    a = "def f():\n    return 1\n"
+    b = "from a import f\n\n\ndef g():\n    return f()\n"
+    repo, base = _repo(tmp_path, {"src/a.py": a, "src/b.py": b})
+    _commit(repo, {"src/a.py": a.replace("1", "2")}, "edit")
+    store = SQLiteStore(str(tmp_path / "s.db"))
+    store.connect()
+    IngestionPipeline(extractors(["src"])).run(str(repo), store=store, rebuild=True)
+    store.record_ingest_options(["src"], None)
+    with store:
+        report = run_diff_check(store, repo, base)
+    assert report.changed_symbols == ["a.f"]
+    assert [(i.changed, i.site) for i in report.items] == [("a.f", "b.g")]
+
+
+def test_a_removed_class_lists_its_subclasses(tmp_path: Path) -> None:
+    repo, base = _repo(tmp_path, {"a.py": BASE_A + "\n\nclass Z:\n    pass\n", "b.py": SUB_B})
+    _commit(repo, {"a.py": "class Z:\n    pass\n"}, "remove A")
+    with _store(repo, tmp_path) as store:
+        report = run_diff_check(store, repo, base)
+    assert "a.A" in report.changed_symbols
+    assert [(i.kind, i.changed, i.site) for i in report.items] == [("subclass", "a.A", "b.B")]

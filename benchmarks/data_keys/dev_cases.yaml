@@ -96,7 +96,7 @@ cases:
     what_broke: stale lockfile on a branch
     in_zone: false
     expected_site: null
-  - case: cgis #701
+  - case: "cgis #701"
     repo: cgis
     breaking_pr: null
     breaking_commit: 4a7c450bcc577dc74d6dd7e495f39f8490c77082

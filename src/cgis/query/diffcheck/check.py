@@ -1,13 +1,15 @@
 """Map a git range onto the graph: the subclasses and callers of what it changed."""
 
 from collections import deque
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Final
 
+from cgis.core.extractor import BaseExtractor
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.languages import extractors, is_supported
-from cgis.query.diffcheck.hunks import FileChange, changed_files, read_at
+from cgis.query.diffcheck.hunks import FileChange, changed_files, read_at, resolve_rev
 from cgis.storage.sqlite_store import SQLiteStore
 
 #: Node types whose lines count as "changed code" (a FILE node spans the whole file).
@@ -52,22 +54,32 @@ def _meets(node: Node, lines: frozenset[int]) -> bool:
     return any(node.start_line <= n <= node.end_line for n in lines)
 
 
-def _base_nodes(repo: Path, base: str, change: FileChange, graph_old: str) -> list[Node]:
+def _base_nodes(
+    repo: Path,
+    base: str,
+    change: FileChange,
+    graph_old: str,
+    parsers: Mapping[str, BaseExtractor],
+) -> list[Node]:
     """The symbols of the file as it was at `base`; none for a language with no pack."""
     if change.old_path is None or not is_supported(graph_old):
         return []
     ext = PurePosixPath(graph_old).suffix
-    extractor = extractors([])[ext]
+    extractor = parsers[ext]
     nodes, _ = extractor.parse(read_at(repo, base, change.old_path), graph_old)
     return [n for n in nodes if n.type in _SYMBOLS]
 
 
 def _changed(
     store: SQLiteStore, repo: Path, base: str, head: str, prefix: str
-) -> tuple[list[Node], list[str]]:
-    """Head symbols the diff touched, and ids of base symbols that no longer exist."""
+) -> tuple[list[Node], list[Node]]:
+    """Head symbols the diff touched, and base symbols that no longer exist."""
     touched: dict[str, Node] = {}
-    removed: list[str] = []
+    removed: dict[str, Node] = {}
+    # Re-parse the old text the way the graph was built, or ids would differ.
+    options = store.get_ingest_options()
+    parsers = extractors(options[0] if options else [])
+    base_sha = resolve_rev(repo, base)
     for change in changed_files(repo, base, head):
         graph_old = _graph_path(change.old_path, prefix)
         graph_new = _graph_path(change.new_path, prefix)
@@ -80,14 +92,17 @@ def _changed(
         # A deleted or moved file takes every symbol it held to a new id (or none),
         # whether or not a hunk says so: a pure rename has no hunks at all.
         whole = change.old_path != change.new_path
-        for old in _base_nodes(repo, base, change, graph_old):
+        for old in _base_nodes(repo, base_sha, change, graph_old, parsers):
             if not whole and not _meets(old, change.old_lines):
                 continue
-            if (current := store.get_node(old.id)) is None:
-                removed.append(old.id)
+            # A node of that id in another file is the resolver's stand-in for a
+            # target it could not find (a base class that is gone), not the symbol.
+            current = store.get_node(old.id)
+            if current is None or current.file_path != old.file_path:
+                removed[old.id] = old
             else:
                 touched[current.id] = current
-    return list(touched.values()), sorted(set(removed) - set(touched))
+    return list(touched.values()), [n for _, n in sorted(removed.items()) if n.id not in touched]
 
 
 def _subclasses(store: SQLiteStore, cls: str) -> list[tuple[str, Edge, int]]:
@@ -106,10 +121,11 @@ def _subclasses(store: SQLiteStore, cls: str) -> list[tuple[str, Edge, int]]:
     return found
 
 
-def _items(store: SQLiteStore, nodes: list[Node], removed: list[str]) -> list[DiffItem]:
+def _items(store: SQLiteStore, nodes: list[Node], removed: list[Node]) -> list[DiffItem]:
     """Subclass and caller items for every changed or removed symbol, unsorted."""
     items: list[DiffItem] = []
-    for node in nodes:
+    for node in [*nodes, *removed]:
+        verb = "removed" if node in removed else "changed"
         if node.type == NodeType.CLASS:
             for site, edge, depth in _subclasses(store, node.id):
                 items.append(
@@ -119,15 +135,13 @@ def _items(store: SQLiteStore, nodes: list[Node], removed: list[str]) -> list[Di
                         site=site,
                         file="",
                         line=edge.line_number,
-                        reason=f"extends {node.name}"
+                        reason=f"extends {node.name}, which this diff {verb}"
                         + ("" if depth == 1 else f" ({depth} levels)"),
                         score=edge.confidence / depth,
                     )
                 )
         else:
-            items.extend(_callers(store, node.id, node.name, "changed"))
-    for gone in removed:
-        items.extend(_callers(store, gone, gone.rsplit(".", 1)[-1], "removed"))
+            items.extend(_callers(store, node.id, node.name, verb))
     return items
 
 
@@ -193,7 +207,7 @@ def run_diff_check(
             )
         )
     shown.sort(key=lambda i: (-i.score, i.file, i.line or 0, i.site))
-    symbols = sorted({n.id for n in nodes} | set(removed))
+    symbols = sorted({n.id for n in [*nodes, *removed]})
     return DiffReport(shown[:cap], max(len(shown) - cap, 0), in_tests, symbols, [])
 
 

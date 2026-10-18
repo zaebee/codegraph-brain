@@ -46,9 +46,22 @@ def _git(repo: Path, *args: str) -> str:
     return done.stdout
 
 
-def read_at(repo: Path, rev: str, path: str) -> str:
-    """The text of `path` at `rev` (`git show rev:path`)."""
-    return _git(repo, "show", f"{rev}:{path}")
+def resolve_rev(repo: Path, rev: str) -> str:
+    """The commit sha `rev` names; `DiffError` when it names none.
+
+    Revisions arrive from outside (the MCP tool), so nothing but a sha reaches
+    another git command: `--end-of-options` keeps `rev` from being read as a flag.
+    """
+    try:
+        return _git(repo, "rev-parse", "--verify", "--end-of-options", f"{rev}^{{commit}}").strip()
+    except DiffError as exc:
+        message = f"no commit named {rev!r}: {exc}"
+        raise DiffError(message) from exc
+
+
+def read_at(repo: Path, sha: str, path: str) -> str:
+    """The text of `path` at the commit `sha` (`git show sha:path`)."""
+    return _git(repo, "show", "--end-of-options", f"{sha}:{path}")
 
 
 def _span(start: str, count: str | None) -> range:
@@ -73,6 +86,7 @@ class _Block:
         self.new: str | None = None
         self.old_lines: set[int] = set()
         self.new_lines: set[int] = set()
+        self.in_hunks = False
         # The header covers a pure rename or mode change, which has no ---/+++
         # lines; a space in a path makes the split ambiguous, so later lines win.
         parts = header.split(" b/", 1)
@@ -81,7 +95,13 @@ class _Block:
 
     def feed(self, line: str) -> None:
         """Take one line of the section."""
-        if line.startswith("--- "):
+        if m := _HUNK.match(line):
+            self.in_hunks = True
+            self.old_lines.update(_span(m.group(1), m.group(2)))
+            self.new_lines.update(_span(m.group(3), m.group(4)))
+        elif self.in_hunks:
+            return  # content: a removed "-- x" line reads as "--- x", and is not a header
+        elif line.startswith("--- "):
             self.old = _strip(line[4:])
         elif line.startswith("+++ "):
             self.new = _strip(line[4:])
@@ -89,9 +109,6 @@ class _Block:
             self.old = line[len("rename from ") :]
         elif line.startswith("rename to "):
             self.new = line[len("rename to ") :]
-        elif m := _HUNK.match(line):
-            self.old_lines.update(_span(m.group(1), m.group(2)))
-            self.new_lines.update(_span(m.group(3), m.group(4)))
 
     def done(self) -> FileChange:
         """The finished change."""
@@ -111,7 +128,8 @@ def changed_files(repo: Path, base: str, head: str) -> list[FileChange]:
         "--unified=0",
         "--no-color",
         "--no-ext-diff",
-        f"{base}..{head}",
+        "--end-of-options",
+        f"{resolve_rev(repo, base)}..{resolve_rev(repo, head)}",
     )
     blocks: list[_Block] = []
     for line in text.splitlines():
