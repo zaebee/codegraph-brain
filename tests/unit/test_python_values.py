@@ -1,5 +1,6 @@
 """Function values in Python: invoked parameters and value candidates (#632, CV-1/CV-4)."""
 
+import pytest
 import tree_sitter_python as tspython
 from tree_sitter import Language, Node, Parser
 
@@ -278,3 +279,31 @@ def test_doubly_parenthesized_literals_unpack_and_loop() -> None:
     loop = "def f(self):\n    for cb in ((self.x, self.y)):\n        cb()\n"
     assert _local_calls(unpack) == ["self.y"]
     assert _local_calls(loop) == ["self.x", "self.y"]
+
+
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [
+        ("def f(self):\n    cb = self.a\n    (cb)()\n", ["self.a"]),
+        ("def f(self):\n    (cb) = self.a\n    cb()\n", ["self.a"]),
+        ("def f(self):\n    for (cb) in (self.a, self.b):\n        cb()\n", ["self.a", "self.b"]),
+    ],
+    ids=["parenthesized-callee", "parenthesized-target", "parenthesized-loop-variable"],
+)
+def test_parentheses_around_a_name_change_nothing(code: str, expected: list[str]) -> None:
+    # Gemini on #701: `(cb)` is the name `cb` wherever it stands.
+    assert _local_calls(code) == expected
+
+
+def test_parentheses_around_a_held_argument_or_a_rebinding_change_nothing() -> None:
+    root, data = _parse("def f(self):\n    cb = self.a\n    run((cb))\n")
+    func = _first(root, "function_definition")
+    held = held_values(func, data, frozenset({"run"}))
+    edges = value_candidates(func, data, "m.f", "m.py", frozenset({"run"}), held.at)
+    assert [e.target for e in edges] == ["raw_call:self.a"]
+    assert _slots("def f(cb):\n    (cb) = g\n    cb()\n") == []
+
+
+def test_a_one_element_unpacking_is_not_a_plain_binding() -> None:
+    # `(cb,) = x` unpacks a one-element sequence: `cb` does not hold `x`.
+    assert _local_calls("def f(self):\n    (cb,) = self.a\n    cb()\n") == []

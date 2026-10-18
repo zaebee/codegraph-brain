@@ -122,7 +122,7 @@ class _Body:
     def _note_call(self, call: BaseNode, code: bytes) -> None:
         """Keep the call, and when it calls a bare name, the first such call."""
         self.calls.append(call)
-        callee = call.child_by_field_name("function")
+        callee = _callee(call)
         if callee is not None and callee.type == "identifier":
             self.first_call.setdefault(get_identifier(callee, code), call.start_byte)
 
@@ -150,6 +150,7 @@ def _bound_names(node: BaseNode) -> list[BaseNode]:
         return []
     if target is None:
         return []
+    target = _unwrap(target)
     if target.type == "identifier":
         return [target]
     return [c for c in target.named_children if c.type == "identifier"]
@@ -181,6 +182,29 @@ def local_names(func: BaseNode, code: bytes, body: _Body | None = None) -> froze
     """The names `func` binds itself: its parameters and every name its body assigns."""
     params = {name for name, _, _ in _parameters(func, code, skip_first=False)}
     return frozenset(params | set((body or _Body(func, code)).first_bind))
+
+
+def _callee(call: BaseNode) -> BaseNode | None:
+    """What `call` calls, parentheses removed: `(cb)()` calls `cb`."""
+    callee = call.child_by_field_name("function")
+    return _unwrap(callee) if callee is not None else None
+
+
+def _single_name(target: BaseNode) -> BaseNode:
+    """A binding target that is one name in parentheses, as that name: `(cb) = ...`.
+
+    tree-sitter reads `(cb)` on the left as a one-element `tuple_pattern`; only a
+    comma (`(cb,) = ...`) makes it an unpacking.
+    """
+    target = _unwrap(target)
+    names = target.named_children
+    if (
+        target.type in ("tuple_pattern", "pattern_list")
+        and len(names) == 1
+        and not any(c.type == "," for c in target.children)
+    ):
+        return _single_name(names[0])
+    return target
 
 
 def _unwrap(expr: BaseNode) -> BaseNode:
@@ -282,6 +306,7 @@ def _values_of(
     held: Held | None,
 ) -> list[str]:
     """The function values one argument hands over: a held local's, or its own name."""
+    value = _unwrap(value)
     names = held(value) if held is not None and value.type == "identifier" else []
     if names:
         return names
@@ -330,7 +355,7 @@ def _invoker_site(call: BaseNode, code: bytes, shadowed: frozenset[str]) -> str 
     A local called here is no invoker (`sorted` as a parameter), and a call whose
     callee has no name is none either.
     """
-    callee = call.child_by_field_name("function")
+    callee = _callee(call)
     raw = get_identifier(callee, code) if callee is not None else "unknown"
     if raw == "unknown" or raw in shadowed:
         return None
@@ -412,6 +437,7 @@ class HeldValues:
             right = _unwrap(right)
         if left is None:
             return
+        left = _single_name(left)
         if left.type == "identifier":
             self._bind(get_identifier(left, self._code), self._held_by(right), block)
             return
@@ -431,6 +457,7 @@ class HeldValues:
         if right is not None:
             self._visit(right, block)
             right = _unwrap(right)
+        left = _single_name(left) if left is not None else None
         if left is not None and left.type == "identifier":
             elements = right.named_children if right is not None and right.type in _LITERALS else []
             values = [v for e in elements for v in self._held_by(e)]
@@ -484,7 +511,7 @@ def local_value_calls(
     """A `value-local:` candidate per value a local holds where `func` calls it (CV-2)."""
     edges: list[Edge] = []
     for call in calls if calls is not None else [n for n in _own_nodes(func) if n.type == "call"]:
-        callee = call.child_by_field_name("function")
+        callee = _callee(call)
         if callee is None or callee.type != "identifier":
             continue
         for i, name in enumerate(held.at(callee)):
