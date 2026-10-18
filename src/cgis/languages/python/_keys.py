@@ -26,6 +26,8 @@ _DICT_METHODS: dict[str, tuple[EdgeType, ...]] = {
     "pop": (_READ, _WRITE),
     "setdefault": (_WRITE,),
 }
+#: Right sides of `in` that are constants, not data: `"b" in ["x", "y"]`, `"a" in "abc"`.
+_LITERAL_COLLECTIONS = frozenset({"list", "tuple", "set", "string", "concatenated_string"})
 _REDIS = KEY_PROFILE.redis_reads | KEY_PROFILE.redis_writes
 #: Nodes a store target sits inside on the left of `=` or after `del`.
 _TARGET_WRAPPERS = frozenset(
@@ -50,7 +52,7 @@ _KEYS = Query(
      (#any-of? @_f {_any_of(KEY_PROFILE.task_methods)}))
     (comparison_operator . (string)) @member
     ((call function: (attribute attribute: (identifier) @_s)
-           arguments: (argument_list (keyword_argument value: (dictionary)))) @store
+           arguments: (argument_list (keyword_argument value: [(dictionary) (list)]))) @store
      (#any-of? @_s {_any_of(set(KEY_PROFILE.storage_calls))}))
     (pair key: (string (string_content) @_op
                        (#any-of? @_op {_any_of(KEY_PROFILE.query_operators)}))) @op
@@ -179,7 +181,8 @@ def _memberships(comparisons: list[BaseNode], code: bytes) -> Iterator[_Access]:
         if node.child_count != 3 or node.children[1].type not in ("in", "not in"):
             continue
         key = _literal(node.children[0], code)
-        if key is not None:
+        # `"b" in ["x", "y"]` tests a constant, not data.
+        if key is not None and _unwrap(node.children[2]).type not in _LITERAL_COLLECTIONS:
             yield _Access(node, node.children[2], key, (_READ,))
 
 
@@ -204,31 +207,37 @@ class _Literals:
         self.code = code
 
     def stored(self, call: BaseNode) -> Iterator[_Use]:
-        """The keys of the literals a storage call is handed, in the call's namespace."""
+        """The keys of the literals a storage call is handed, in the call's namespace.
+
+        A write method's document arguments are written; every other literal argument
+        (`query=`, `aggs=`, `sort=`, a search's `body=`) is a query and reads its fields.
+        """
         function, args = call.child_by_field_name("function"), call.child_by_field_name("arguments")
         attribute = function.child_by_field_name("attribute") if function else None
         if attribute is None or args is None:
             return
         method = _text(attribute, self.code)
         keywords = dict(_keywords(args, self.code))
-        namespace = _namespace(keywords.get(KEY_PROFILE.storage_calls[method]), self.code)
+        namespace_keyword = KEY_PROFILE.storage_calls[method]
+        namespace = _namespace(keywords.get(namespace_keyword), self.code)
         for name, value in keywords.items():
-            if name not in KEY_PROFILE.write_arguments or value.type != "dictionary":
+            if name == namespace_keyword or value.type not in ("dictionary", "list"):
                 continue
-            if method in KEY_PROFILE.storage_writes:
-                yield from self._written(value, namespace, "", top=True)
+            if name in KEY_PROFILE.query_operators:
+                yield from self._operands(name, value, namespace)
+            elif method in KEY_PROFILE.storage_writes and name in KEY_PROFILE.write_arguments:
+                if value.type == "dictionary":
+                    yield from self._written(value, namespace, "", top=True)
             else:
                 yield from self._queried(value, namespace)
 
     def _written(
         self, literal: BaseNode, namespace: str, prefix: str, *, top: bool
     ) -> Iterator[_Use]:
-        """A written dict literal writes each leaf key, nested keys as dotted paths."""
+        """A written dict literal holds data: each leaf key is written, nested as a dotted path."""
         for pair, key, value in _pairs(literal, self.code):
             if top and key in KEY_PROFILE.write_arguments and value.type == "dictionary":
                 yield from self._written(value, namespace, prefix, top=False)
-            elif key in KEY_PROFILE.query_operators:
-                yield from self.operator(pair, namespace)
             elif value.type == "dictionary":
                 yield from self._written(value, namespace, _join(prefix, key), top=False)
             else:
@@ -243,22 +252,26 @@ class _Literals:
             if current.type == "list":
                 stack.extend(current.named_children)
             elif current.type == "dictionary":
-                for pair, key, value in _pairs(current, self.code):
+                for _pair, key, value in _pairs(current, self.code):
                     if key in KEY_PROFILE.query_operators:
-                        yield from self.operator(pair, namespace)
+                        yield from self._operands(key, value, namespace)
                     else:
                         stack.append(value)
 
     def operator(self, pair: BaseNode, namespace: str) -> Iterator[_Use]:
-        """`{"term": {"f": x}}` and `{"terms": {"field": "f"}}` read `f`; so does a sort list."""
+        """The fields an operator pair (`{"term": {"f": x}}`) reads."""
+        name = _literal(pair.child_by_field_name("key"), self.code)
         value = pair.child_by_field_name("value")
-        elements = (
-            [] if value is None else value.named_children if value.type == "list" else [value]
-        )
+        if name is not None and value is not None:
+            yield from self._operands(name, value, namespace)
+
+    def _operands(self, name: str, value: BaseNode, namespace: str) -> Iterator[_Use]:
+        """`{"f": x}` and `{"field": "f"}` read `f`; only a sort reads a bare string as a field."""
+        elements = value.named_children if value.type == "list" else [value]
         for element in elements:
             if element.type == "dictionary":
                 yield from self._operator_fields(element, namespace)
-            elif (field := _literal(element, self.code)) is not None:
+            elif name == "sort" and (field := _literal(element, self.code)) is not None:
                 yield element, _READ, namespace, field
 
     def _operator_fields(self, literal: BaseNode, namespace: str) -> Iterator[_Use]:
@@ -400,7 +413,14 @@ def key_edges(
         for access in found
     }
     stores = list({_span(c): c for c in captured.get("store", [])}.values())
-    covered = [_span(args) for c in stores if (args := c.child_by_field_name("arguments"))]
+    # A storage call reads its keyword literals itself; a positional one reads unscoped.
+    covered = [
+        _span(arg)
+        for c in stores
+        if (args := c.child_by_field_name("arguments"))
+        for arg in args.named_children
+        if arg.type == "keyword_argument"
+    ]
     literals = _Literals(code)
     uses = [
         *_chained(accesses),

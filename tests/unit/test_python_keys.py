@@ -228,3 +228,36 @@ def test_a_file_without_string_constants_records_none() -> None:
     nodes, _edges = PythonExtractor().parse("X = 1\n", "m.py")
     (file_node,) = [n for n in nodes if n.type is NodeType.FILE]
     assert "str_constants" not in file_node.metadata
+
+
+def test_storage_query_aggs_and_sort_keywords_read_scoped_fields() -> None:
+    code = (
+        "def f(es, x):\n"
+        '    es.search(index="v", query={"term": {"brand": x}},\n'
+        '              aggs={"by": {"terms": {"field": "model"}}},\n'
+        '              sort=[{"year": "desc"}, "price"])\n'
+    )
+    assert _relations(code) == {(_R, "v|brand"), (_R, "v|model"), (_R, "v|year"), (_R, "v|price")}
+
+
+def test_a_positional_query_body_still_reads_unscoped() -> None:
+    code = 'def f(es, x):\n    es.search("v", {"query": {"term": {"brand": x}}})\n'
+    assert _relations(code) == {(_R, "|brand")}
+
+
+def test_a_written_field_named_like_an_operator_is_written() -> None:
+    code = 'def f(es):\n    es.index(index="v", document={"sort": 3, "range": {"min": 1}})\n'
+    assert _relations(code) == {(_W, "v|sort"), (_W, "v|range.min")}
+
+
+def test_only_sort_reads_a_bare_string_as_a_field() -> None:
+    code = 'ROUTES = [{"match": "/api", "prefix": "/v1"}, {"sort": "name"}]\n'
+    assert _relations(code) == {(_R, "|name")}
+
+
+def test_membership_in_a_literal_is_no_key() -> None:
+    code = (
+        "def f(s):\n"
+        '    return ("b" in ["x"], "c" in ("y",), "d" in {"z"}, "e" in "xyz", "f" in s)\n'
+    )
+    assert _relations(code) == {(_R, "|f")}
