@@ -107,14 +107,19 @@ MANIFESTS: tuple[Manifest, ...] = (
             NodeType.METHOD: ("returns",),
         },
         # exp4 (docs/lab-notes/2026-10-16-exp4-go-pre-registration.md): the impact gate
-        # failed, and the graph misses function values that are called (sync.Once.Do,
-        # time.AfterFunc, a framework callback) and some interface dispatch.
+        # failed, and the graph missed function values and some interface dispatch.
+        # Function values since #686: the held-out check #695 measured a value held in a
+        # local and called later (20/20 pairs); a value handed to a listed invoker had one
+        # pair. Only that sentence changed; the rest still rests on exp4.
         impact_caveat=(
             "Go is supported for structure and metrics only. Go callers are a lead, not a "
-            "list: confirm them by reading the code. A function handed over as a value "
-            "(sync.Once.Do, time.AfterFunc, a framework callback) has no edge, and some "
-            "interface dispatch is missing (exp4: measured on one library, golang/crypto, "
-            "mostly its ssh package; not measured on applications)."
+            "list: confirm them by reading the code. A function value held in a local and "
+            "called later has an edge (measured on 7 held-out repositories, #695). One "
+            "handed to a library function that calls it (sync.Once.Do, time.AfterFunc, "
+            "sort.Slice) has an edge only when cgis lists that function, which is barely "
+            "measured, and a framework callback has none. Some interface dispatch is "
+            "missing (exp4: measured on one library, golang/crypto, mostly its ssh "
+            "package; not measured on applications)."
         ),
     ),
 )
