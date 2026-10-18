@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.33.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.32.0...codegraph-brain-v0.33.0) (2026-10-18)
+
+
+### Features
+
+* exp4 — Go impact questions measured; Go impact answers are a lead to confirm ([#671](https://github.com/zaebee/codegraph-brain/issues/671)) ([a3ae7c3](https://github.com/zaebee/codegraph-brain/commit/a3ae7c3f599c9296ee185fccf650e7b0c97d39d9))
+* **go:** function values handed to an invoker or called where held are calls (core clause CV) ([#686](https://github.com/zaebee/codegraph-brain/issues/686)) ([eab75f8](https://github.com/zaebee/codegraph-brain/commit/eab75f8d243f424d95ec2a069524ce3f4f68a610))
+
+
+### Bug Fixes
+
+* **go:** a conversion types its value, and a method value on a package variable is held ([#670](https://github.com/zaebee/codegraph-brain/issues/670), [#689](https://github.com/zaebee/codegraph-brain/issues/689)) ([#693](https://github.com/zaebee/codegraph-brain/issues/693)) ([2c67f44](https://github.com/zaebee/codegraph-brain/commit/2c67f442a983787611113f7b007e739349054295))
+* **resolver:** a call resolves within its language and scores 1.0 ([#676](https://github.com/zaebee/codegraph-brain/issues/676)) ([8e45fbc](https://github.com/zaebee/codegraph-brain/commit/8e45fbc431f799120e3faad0e1289f927224a935))
+* **resolver:** a field's library type is read through its declaring file ([#685](https://github.com/zaebee/codegraph-brain/issues/685)) ([#687](https://github.com/zaebee/codegraph-brain/issues/687)) ([1dcdf7d](https://github.com/zaebee/codegraph-brain/commit/1dcdf7d1b9af50a7e28c725b0ccbdb6433c6b9a5))
+* **resolver:** a virtual node takes its caller's language ([#678](https://github.com/zaebee/codegraph-brain/issues/678)) ([cd3f808](https://github.com/zaebee/codegraph-brain/commit/cd3f8083806c32812644bd013355d2081bfe2d25))
+* **resolver:** an expanded Go type is classified through the file that declared it ([#688](https://github.com/zaebee/codegraph-brain/issues/688)) ([#691](https://github.com/zaebee/codegraph-brain/issues/691)) ([5d4bcc2](https://github.com/zaebee/codegraph-brain/commit/5d4bcc20c65d177c7921690fb239ec4e3464efaa))
+* **resolver:** an unresolved call never joins a real node ([#684](https://github.com/zaebee/codegraph-brain/issues/684)) ([a91dd8f](https://github.com/zaebee/codegraph-brain/commit/a91dd8f5304b9d8db566d94c05f0a099f709b6b1))
+
+
+### Documentation
+
+* move the guide to AGENTS.md; CLAUDE.md only imports it ([#679](https://github.com/zaebee/codegraph-brain/issues/679)) ([549f4cf](https://github.com/zaebee/codegraph-brain/commit/549f4cf9fc6c818af8e8b445bfaeffd0b8253618))
+
 ## [0.32.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.31.0...codegraph-brain-v0.32.0) (2026-10-16)
 
 
