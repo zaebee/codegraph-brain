@@ -970,8 +970,12 @@ def _callee(ctx: _File, function: TSNode | None, bindings: Bindings) -> str | No
     """
     chain = selector_chain(function) if function is not None else []
     if len(chain) == 1:
-        # A local func value (`newT := newB; newT()`) is not the package's `newT` (#662 review).
-        return None if chain[0] in BUILTINS or chain[0] in bindings else f"{ctx.scope}.{chain[0]}"
+        # A local func value (`newT := newB; newT()`) is not the package's `newT` (#662
+        # review), and a type parameter `T(x)` is not the package's `T` (#693 review).
+        local = chain[0] in BUILTINS or chain[0] in bindings
+        if local or bindings.type_here(chain[0]) is not None:
+            return None
+        return f"{ctx.scope}.{chain[0]}"
     if not chain:
         return _chained_callee(ctx, function, bindings) if function is not None else None
     *path, method = chain

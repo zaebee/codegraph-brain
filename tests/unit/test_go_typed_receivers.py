@@ -482,3 +482,26 @@ def test_a_conversion_in_a_for_init_types_its_variable() -> None:
         ),
     }
     assert _calls_from(files, "app.B").get("app.AuthMethod.auth") == 1.0
+
+
+def test_a_conversion_to_a_type_parameter_is_not_the_package_type_of_its_name() -> None:
+    """`T(x)` inside `func B[T S]` converts to the type parameter, not the package's `T`
+    (#693 review): its method stays unresolved rather than wrong."""
+    files = {
+        "app/a.go": (
+            "package app\ntype T struct{}\nfunc (T) M() {}\ntype S interface{ M() }\n"
+            "func B[T S](x any) {\n\tv := T(x.(T))\n\tv.M()\n}\n"
+        ),
+    }
+    assert "app.T.M" not in _calls_from(files, "app.B")
+
+
+def test_a_method_value_on_a_package_variable_is_called_where_it_is_held() -> None:
+    """`f := log.Errorf; f()` with `log` a package variable of type P: f calls P.Errorf (#689)."""
+    files = {
+        "app/a.go": (
+            "package app\ntype P struct{}\nfunc (P) Errorf(s string) {}\nvar log P\n"
+            'func B() {\n\tf := log.Errorf\n\tf("x")\n}\n'
+        ),
+    }
+    assert _calls_from(files, "app.B").get("app.P.Errorf") == 1.0

@@ -150,7 +150,7 @@ def _returned(marker: str, rest: str, view: ResolutionView, budget: int, trace: 
     if node is not None and node.type is NodeType.CLASS:
         # `T(x)` names a type, so it is a conversion, not a call: its value is a T
         # (#670, #689). The name came from the caller's file, which stays the origin.
-        return node.id if position == "0" else marker
+        return node.id
     returns: list[str] = node.metadata.get("returns") or [] if node else []
     index = int(position) if position.isdigit() else len(returns)
     result = next(iter(returns[index : index + 1]), "")  # past the end: no such result
