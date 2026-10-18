@@ -1,6 +1,7 @@
 """The Python pack's resolution rules (spec: Resolution; language-packs step 4)."""
 
 from cgis.core.resolution import ResolutionRules, ResolutionView
+from cgis.languages.python.profile import INVOKERS
 
 
 def reconcile_import(fqn: str, _source_file: str | None, view: ResolutionView) -> str | None:
@@ -29,4 +30,6 @@ def annotated_alias(type_fqn: str, view: ResolutionView) -> str:
     return view.map_to_node_fqn(annotated) or annotated
 
 
-RULES = ResolutionRules(type_normalizers=(annotated_alias,), reconcile_import=reconcile_import)
+RULES = ResolutionRules(
+    type_normalizers=(annotated_alias,), reconcile_import=reconcile_import, invokers=INVOKERS
+)

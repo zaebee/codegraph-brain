@@ -26,6 +26,7 @@ from cgis.languages.python._syntax import (
 )
 from cgis.languages.python._syntax import file_path_to_module_fqn as _file_path_to_module_fqn
 from cgis.languages.python._types import TypeResolver
+from cgis.languages.python._values import function_values
 
 
 def file_path_to_module_fqn(file_path: str, source_root: str | None = None) -> str:
@@ -247,6 +248,16 @@ def _walk_one_decorator(
         stack.extend(current.children)
 
 
+def _file_names(nodes: list[Node], module_fqn: str, import_map: dict[str, str]) -> frozenset[str]:
+    """The names a function may hand over by bare name: module-level defs, classes, imports."""
+    defined = {
+        n.name
+        for n in nodes
+        if n.type in (NodeType.FUNCTION, NodeType.CLASS) and n.id == f"{module_fqn}.{n.name}"
+    }
+    return frozenset(defined | set(import_map))
+
+
 class PythonExtractor(BaseExtractor):
     """
     A concrete extractor for Python source code using tree-sitter.
@@ -324,6 +335,17 @@ class PythonExtractor(BaseExtractor):
                 nodes[i] = nodes[i].model_copy(
                     update={"metadata": {**nodes[i].metadata, "self_types": st}}
                 )
+
+        # Function values (CV-1, CV-4, #632) need the finished import map too.
+        nodes, value_edges = function_values(
+            root_node,
+            code_bytes,
+            file_path,
+            self._pick_source_root(file_path),
+            nodes,
+            _file_names(nodes, module_fqn, import_map),
+        )
+        edges.extend(value_edges)
 
         # FastAPI handlers carry a `route` role (#566); the import map is complete here.
         nodes = mark_routes(nodes, routers(root_node, code_bytes, import_map))

@@ -40,7 +40,7 @@ Re-run `cgis_ingest` after any substantial change; it is incremental by default 
 
 CGIS classifies each edge as **internal**, **stdlib**, **external**, or **unresolved**. Unresolved edges are not bugs — they are calls on objects whose type is decided at runtime (`response.json`, `logger.info`, an injected client). No static analyser resolves those without executing the code.
 
-This matters when you act on the output: **an empty impact result means "no static callers found", not "safe to delete."** A symbol reached only through dynamic dispatch, a registry, or a framework decorator will not appear. Check `cgis_validate` if the unresolved share looks high for the area you are touching, and say so rather than asserting safety you cannot see.
+This matters when you act on the output: **an empty impact result means "no static callers found", not "safe to delete."** A symbol reached only through dynamic dispatch, a registry, or a framework decorator will not appear. In Python, a function handed to `map`, `sorted(key=)`, `threading.Thread(target=)`, an executor or the event loop, or to a project function that calls that parameter, has an edge from the code that hands it over, as does one held in a local and called; one stored for a framework to call has no caller. Check `cgis_validate` if the unresolved share looks high for the area you are touching, and say so rather than asserting safety you cannot see.
 
 ## Coverage
 

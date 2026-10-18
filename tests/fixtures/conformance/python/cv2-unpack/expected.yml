@@ -1,0 +1,7 @@
+clause: CV-2
+status: pass
+must_have:
+  - {source: mod.C.run, target: mod.C.b, context: via local value}
+must_not_have:
+  - {source: mod.C.run, target: mod.C.a}
+  - {source: mod.C.dispatch, target: mod.C.parse, context: via local value}

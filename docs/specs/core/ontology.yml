@@ -10,8 +10,8 @@ clauses:
   CV-1:
     title: A function value handed to a known invoker is a call by whoever hands it over
     rule: >
-      When function or method value F is passed, at a listed position, to an invoker
-      listed in the pack's profile (INVOKERS), the passing function P
+      When function or method value F is passed, at a listed position or keyword name,
+      to an invoker listed in the pack's profile (INVOKERS), the passing function P
       calls F. The invoker may run F now, later or not at all (an empty input, a second
       Once.Do), but every run it makes is on P's behalf, so for impact the caller is P.
       A direct `go f()` or `defer f()` is an ordinary call already; `go cb()` on a local
@@ -43,3 +43,19 @@ clauses:
       entry point, like a function nothing calls.
     edge: none
     origin: "exp4 amendment 2"
+  CV-4:
+    title: A function value handed to a function that calls that parameter is a call by whoever hands it over
+    rule: >
+      When function or method I in the graph calls its own parameter p in its own body
+      (not in a nested function or lambda), and no assignment to p comes before that
+      call, I is an invoker of p, by p's position and by p's name. When P passes
+      function or method value F there, P calls F. The edge never starts at I, which
+      would make every caller of I reach every value handed to it. A method's positions
+      count after its first parameter unless it is a staticmethod; a keyword-only
+      parameter is invoked by name only, a positional-only one by position only.
+    known_limits: >
+      Python: one level only (a parameter passed on, `pool.submit(fn)`, makes no
+      invoker); a method called through its class shifts positions by one; an argument
+      after a `*xs` splat has no position; a default value of p gets no edge.
+    edge: {type: CALLS, source: P, target: F, confidence: 1.0, context: "via <I>"}
+    origin: "exp1 (#632): self._execute_with_metrics(..., self._check_conflicts_internal)"

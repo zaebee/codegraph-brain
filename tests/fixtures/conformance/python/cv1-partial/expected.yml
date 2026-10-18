@@ -1,0 +1,5 @@
+clause: CV-1
+status: pass
+must_have:
+  - {source: mod.doubled, target: mod.scale, context: map}
+  - {source: mod.tripled, target: mod.scale, context: map}

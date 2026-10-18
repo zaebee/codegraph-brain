@@ -1,0 +1,4 @@
+clause: CV-2
+status: pass
+must_have:
+  - {source: mod.C.run, target: mod.C.handle, context: via local value}

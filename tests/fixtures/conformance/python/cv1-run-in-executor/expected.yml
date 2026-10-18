@@ -1,0 +1,5 @@
+clause: CV-1
+status: pass
+must_have:
+  - {source: mod.running, target: mod.work, context: get_running_loop.run_in_executor}
+  - {source: mod.event, target: mod.work, context: get_event_loop.run_in_executor}

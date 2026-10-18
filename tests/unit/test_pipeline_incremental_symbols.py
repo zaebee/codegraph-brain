@@ -48,7 +48,20 @@ def _ingest(root: Path, db: str, pipeline: IngestionPipeline) -> None:
 
 _B_IMPORTS_FOO = "from pkg.a import foo\n\n\ndef bar():\n    return foo()\n"
 
+_APP_PASSES_HANDLER = (
+    "from pkg.lib import run\n\n\ndef handler():\n    pass\n\n\ndef go():\n    run(handler)\n"
+)
+
 SCENARIOS: dict[str, tuple[Files, Files]] = {
+    # CV-4 (#632): a caller's value edge depends on the invoker's `invokes`.
+    "an own invoker stops calling its parameter": (
+        {"pkg/lib.py": "def run(fn):\n    fn()\n", "pkg/app.py": _APP_PASSES_HANDLER},
+        {"pkg/lib.py": "def run(fn):\n    return fn\n"},
+    ),
+    "a function starts calling its parameter": (
+        {"pkg/lib.py": "def run(fn):\n    return fn\n", "pkg/app.py": _APP_PASSES_HANDLER},
+        {"pkg/lib.py": "def run(fn):\n    fn()\n"},
+    ),
     "rename a symbol another file calls": (
         {"pkg/a.py": "def foo():\n    return 1\n", "pkg/b.py": _B_IMPORTS_FOO},
         {"pkg/a.py": "def foo2():\n    return 1\n"},

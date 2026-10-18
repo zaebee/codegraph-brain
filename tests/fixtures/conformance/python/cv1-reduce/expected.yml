@@ -1,0 +1,5 @@
+clause: CV-1
+status: pass
+must_have:
+  - {source: mod.total, target: mod.add, context: functools.reduce}
+  - {source: mod.total_imported, target: mod.add, context: functools.reduce}

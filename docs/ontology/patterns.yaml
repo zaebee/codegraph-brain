@@ -195,7 +195,11 @@ project_domains:
     # (only `raw_call:` targets were counted, and the resolver turns those into UNKNOWN
     # nodes before saving). Measured honestly it is 0.2787: the acknowledged debt still
     # scores, and discounts the CALLS layer — 0.2026 -> 0.2212. Correctness-driven, like #183.
-    drift_tolerance: 0.23
+    # Re-baselined 0.23 -> 0.24 in #632: main scored 0.2296; Python function values
+    # (CV-4) add eight real calls — QueryEngine.get_{flow,impact}_{result,graph} hand
+    # SQLiteStore.get_*_edges_batch and _target/_source to _bfs_traverse, which calls
+    # them — and the score reads 0.2304. Correctness-driven again.
+    drift_tolerance: 0.24
     hygiene_baseline:
       unresolved_ratio: 0.28 # measured 0.2787 when the gate came alive (#149)
 
