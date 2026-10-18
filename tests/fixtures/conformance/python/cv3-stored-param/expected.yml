@@ -1,0 +1,6 @@
+clause: CV-3
+status: pass
+must_have:
+  - {source: mod.wire, target: mod.work, context: mod.Bus.run_now}
+must_not_have:
+  - {source: mod.wire, target: mod.on_event}

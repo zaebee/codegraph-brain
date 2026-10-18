@@ -1,0 +1,6 @@
+clause: CV-1
+status: pass
+must_have:
+  - {source: mod.right, target: mod.job, context: threading.Thread}
+must_not_have:
+  - {source: mod.wrong, target: mod.other}

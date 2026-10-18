@@ -1,0 +1,5 @@
+clause: CV-1
+status: pass
+must_have:
+  - {source: mod.extremes, target: mod.rank, context: min}
+  - {source: mod.extremes, target: mod.size, context: max}

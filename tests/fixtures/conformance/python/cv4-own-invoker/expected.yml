@@ -1,6 +1,5 @@
 clause: CV-4
-status: xfail
-reason: the Python extractor does not record invokes yet (#632, plan task 3)
+status: pass
 origin: owner-api services/reservation_conflict_service.py:183 (exp1, #632)
 must_have:
   - {source: mod.ConflictService.check_conflicts, target: mod.ConflictService._check_internal, context: mod.BaseService._execute_with_metrics}

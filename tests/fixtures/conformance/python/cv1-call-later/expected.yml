@@ -1,0 +1,4 @@
+clause: CV-1
+status: pass
+must_have:
+  - {source: mod.schedule, target: mod.tick, context: get_running_loop.call_later}

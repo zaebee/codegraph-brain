@@ -1,0 +1,4 @@
+clause: CV-4
+status: pass
+must_have:
+  - {source: mod.go, target: mod.work, context: mod.run}

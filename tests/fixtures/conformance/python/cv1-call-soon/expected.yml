@@ -1,0 +1,5 @@
+clause: CV-1
+status: pass
+must_have:
+  - {source: mod.schedule, target: mod.tick, context: get_running_loop.call_soon}
+  - {source: mod.schedule_threadsafe, target: mod.tick, context: get_event_loop.call_soon_threadsafe}

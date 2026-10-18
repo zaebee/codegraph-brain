@@ -1,0 +1,5 @@
+clause: CV-1
+status: pass
+must_have:
+  - {source: mod.later, target: mod.tick, context: threading.Timer}
+  - {source: mod.later_by_name, target: mod.tick, context: threading.Timer}

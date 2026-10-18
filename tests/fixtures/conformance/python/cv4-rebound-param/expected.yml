@@ -1,0 +1,6 @@
+clause: CV-4
+status: pass
+must_have:
+  - {source: mod.outer, target: mod.other, context: mod.run}
+must_not_have:
+  - {source: mod.outer, target: mod.work}

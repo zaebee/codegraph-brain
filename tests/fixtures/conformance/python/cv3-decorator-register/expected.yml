@@ -1,0 +1,7 @@
+clause: CV-3
+status: pass
+must_have:
+  - {source: mod.boot, target: mod.work, context: mod.apply}
+must_not_have:
+  - {source: mod.route, target: mod.index}
+  - {source: mod.boot, target: mod.index}

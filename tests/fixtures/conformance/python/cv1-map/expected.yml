@@ -1,5 +1,4 @@
 clause: CV-1
-status: xfail
-reason: Python CV-1 is not implemented in the #668 pilot; the case checks the clause fits Python
+status: pass
 must_have:
   - {source: mod.doubled, target: mod.double, context: map}

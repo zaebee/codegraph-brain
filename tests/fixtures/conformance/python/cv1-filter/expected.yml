@@ -1,0 +1,4 @@
+clause: CV-1
+status: pass
+must_have:
+  - {source: mod.evens, target: mod.even, context: filter}

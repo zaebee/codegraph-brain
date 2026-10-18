@@ -1,0 +1,4 @@
+clause: CV-1
+status: pass
+must_have:
+  - {source: mod.ordered, target: mod.rank, context: sorted}

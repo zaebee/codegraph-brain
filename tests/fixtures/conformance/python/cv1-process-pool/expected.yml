@@ -1,0 +1,5 @@
+clause: CV-1
+status: pass
+must_have:
+  - {source: mod.fan_out, target: mod.work, context: ProcessPoolExecutor.submit}
+  - {source: mod.fan_out, target: mod.work, context: ProcessPoolExecutor.map}
