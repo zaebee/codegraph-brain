@@ -227,3 +227,14 @@ def test_ingest_pairs_takes_no_interpreter_from_the_command_line() -> None:
     with pytest.raises(SystemExit) as refused:
         ingest_pairs.main(["--main-src", "x", "--python", "/bin/sh"])
     assert refused.value.code == 2  # argparse: unrecognized arguments
+
+
+def test_a_linked_worktree_finds_owner_api_beside_its_main_checkout(tmp_path: Path) -> None:
+    """A worktree under .claude/worktrees/ has no owner-api beside it; the main checkout does."""
+    main = tmp_path / "codegraph-brain"
+    (main / ".git" / "worktrees" / "x").mkdir(parents=True)
+    worktree = main / ".claude" / "worktrees" / "x"
+    worktree.mkdir(parents=True)
+    (worktree / ".git").write_text(f"gitdir: {main / '.git' / 'worktrees' / 'x'}\n")
+    assert locations.checkout_root(worktree) == main
+    assert locations.checkout_root(main) == main
