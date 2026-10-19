@@ -46,9 +46,12 @@ This is an estimate with sampling error on the hidden part. It would have to be 
 factor of two to reach 50%.
 
 Two owner-api noise PRs (#1381, #1812) errored and are excluded from the medians. The
-cause is a product bug: git's rename detection pairs two identical empty `__init__.py`
-files, and the check then reads a path that does not exist at the base. Counted as 0, the
-median listed would be about 10.
+cause is a product bug: each adds an empty `__init__.py`. git writes no `---`/`+++` lines
+for a file with no text hunks, so the hunk reader kept the path from the `diff --git`
+header as the old path, and the check then read a file that does not exist at the base.
+An earlier draft of this note blamed rename detection; that was wrong. The bug is fixed
+(I1 below); the two PRs were not re-run. Counted as 0, the median listed would be about
+10.
 
 ## The held-out set: recall was not measurable
 
@@ -147,6 +150,32 @@ These are options, not conclusions.
 4. **Prospective collection of real agent breakages, run blind.** This is the only route
    to a recall number seen here. History mining produced 0 in-zone cases from 30 pairs.
 
+## Fixed after the measurement
+
+The final branch review found five bugs after every number above was taken. The numbers
+were measured before these fixes, and none of them was re-measured.
+
+- **I1.** A diff that adds or deletes a file with no text hunks (an empty or binary file)
+  broke the whole check. This was the #1381/#1812 crash. Fixed: `new file mode` and
+  `deleted file mode` now clear the missing side.
+- **I2.** A user's `diff.noprefix=true` made the hunk reader cut two characters off every
+  path. Fixed: git runs with `--src-prefix=a/ --dst-prefix=b/ --no-textconv`.
+- **I3.** A missing or wrong prefix silently reported every symbol of the changed files as
+  removed, and the MCP tool's default prefix (empty) set that trap. Fixed: the prefix
+  defaults to the graph's recorded ingest root; when changed files under it exist and
+  none is in the graph, the check fails with a message (CLI exit 2). A `--root` outside
+  the repository exits 2.
+- **I4.** A plain JSON or YAML document counted as a declaring parent for an undeclared
+  read: a ConfigMap's `data:` made every `resp["data"]["id"]` one. Fixed: only a mapping
+  declaration (a property type or an index namespace) is a parent.
+- **I5.** Dotted paths made only of common keys (`data.id`, `result.type`) were never
+  dropped, and the file-count cut applied to single segments only. Fixed for both.
+
+I4 and I5 target noise causes the judge found (common-word keys, dotted paths escaping the
+drop rule), so the noise numbers above are probably worse than the shipped check's. The
+noise set was not re-measured: it has been seen, and a re-run on it would measure fixes
+made with its failures in view. A fresh noise draw is the follow-up.
+
 ## Reproduction
 
 - Branch `docs/data-key-layer` at 44c21ea (code at 632d4d1; measurements e53eecb, 44c21ea).
@@ -162,9 +191,11 @@ These are options, not conclusions.
 - Noise and speed: `uv run python scripts/data_keys/noise_run.py` →
   `results/noise-items.json`. Each PR's tree at `merge_sha` is ingested fresh, then
   `base_sha..merge_sha` is checked with no cap; "shown" is the first 5.
-- Ingest cost: `python scripts/data_keys/ingest_pairs.py --pairs 5`, run from the scratch
-  directory, on the owner-api export `owner-2bd0fb7` (`ownima-backend`, source root `app`)
-  → `results/ingest-pairs.txt`.
+- Ingest cost: `python scripts/data_keys/ingest_pairs.py --pairs 5 --main-src <main
+  checkout>/src`, run from the scratch directory, on the owner-api export `owner-2bd0fb7`
+  (`ownima-backend`, source root `app`) → `results/ingest-pairs.txt`. Where the scripts
+  look for the corpus and the owner-api checkout: `benchmarks/data_keys/SEALING.md`,
+  "Reproducing on another machine".
 - One check by hand: `cgis diff-check --db <graph.db> --repo <owner-api> --base <base_sha>
   --head <merge_sha> --prefix ownima-backend --format json`.
 - Judging: `results/noise-judgements.json` (sample rule, indices, labels, summary).
