@@ -142,8 +142,13 @@ def _subscripts(
             continue
         value, *rest = [c for c in node.named_children if c.type != "comment"]
         key = _literal(rest[0], code) if len(rest) == 1 else None
-        if key is not None and not _text(value, code).endswith("Literal"):
+        if key is not None and not _is_literal_type(_text(value, code)):
             yield _Access(node, value, key, _store_relations(node))
+
+
+def _is_literal_type(receiver: str) -> bool:
+    """`Literal` or `typing.Literal`: a type subscript, not a key; `configLiteral` is data."""
+    return receiver == "Literal" or receiver.endswith(".Literal")
 
 
 def _calls(calls: list[BaseNode], code: bytes) -> Iterator[tuple[BaseNode, str, BaseNode | None]]:

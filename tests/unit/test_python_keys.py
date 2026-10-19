@@ -161,6 +161,16 @@ def test_type_subscripts_are_not_keys() -> None:
     assert _relations(code) == set()
 
 
+def test_a_receiver_whose_name_ends_in_literal_is_still_read() -> None:
+    code = (
+        "import typing\n"
+        'Mode = typing.Literal["fast"]\n'
+        "def f(configLiteral):\n"
+        '    return configLiteral["key"]\n'
+    )
+    assert _relations(code) == {(_R, "|key")}
+
+
 def test_redis_and_task_namespaces() -> None:
     code = (
         "async def f(self, queue, cache):\n"
