@@ -238,3 +238,13 @@ def test_a_linked_worktree_finds_owner_api_beside_its_main_checkout(tmp_path: Pa
     (worktree / ".git").write_text(f"gitdir: {main / '.git' / 'worktrees' / 'x'}\n")
     assert locations.checkout_root(worktree) == main
     assert locations.checkout_root(main) == main
+
+
+def test_a_relative_gitdir_resolves_against_the_worktree(tmp_path: Path) -> None:
+    """`git worktree add --relative-paths` (git 2.48+) writes a gitdir relative to the worktree."""
+    main = tmp_path / "codegraph-brain"
+    (main / ".git" / "worktrees" / "x").mkdir(parents=True)
+    worktree = main / ".claude" / "worktrees" / "x"
+    worktree.mkdir(parents=True)
+    (worktree / ".git").write_text("gitdir: ../../../.git/worktrees/x\n")
+    assert locations.checkout_root(worktree).resolve() == main.resolve()

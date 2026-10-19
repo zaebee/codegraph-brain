@@ -29,7 +29,8 @@ def checkout_root(root: Path) -> Path:
     marker = root / ".git"
     if not marker.is_file():
         return root
-    gitdir = Path(marker.read_text(encoding="utf-8").removeprefix("gitdir:").strip())
+    # Relative under `git worktree add --relative-paths`: it is relative to the worktree.
+    gitdir = (root / marker.read_text(encoding="utf-8").removeprefix("gitdir:").strip()).resolve()
     return gitdir.parent.parent.parent if gitdir.parent.name == "worktrees" else root
 
 
