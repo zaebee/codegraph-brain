@@ -1,7 +1,8 @@
-"""Diff check: what else depends on what a diff changed (subclasses, callers).
+"""Diff check: what else depends on what a diff changed (subclasses, callers, keys).
 
 `hunks` reads the changed files and lines out of git; `check` maps them onto the
-graph and lists the code that stands on the changed symbols.
+graph and lists the code that stands on the changed symbols; `keys` lists the
+other sites of the data keys the changed lines use.
 """
 
 from cgis.query.diffcheck.check import (

@@ -5,7 +5,8 @@ case database, run the check for ``base_sha..merge_sha`` against the git reposit
 record whether ``expected_site`` is among all the items (shown or hidden) and whether it is
 among the ones shown at the default cap. A hit is an item whose ``site`` equals the
 expected ``id``, else one in the expected file (after the prefix mapping) whose line lies
-within the span of the expected symbol.
+within the span of the expected symbol, else, when the ``id`` is a key path rather than a
+node, one in the expected file whose key (at the site, or the changed one) has that path.
 
 Usage: ``uv run python scripts/data_keys/evaluate.py [--sets FILE] [--out FILE] [--only CASE]``
 """
@@ -22,6 +23,7 @@ from typing import Any
 
 import yaml
 
+from cgis.core.keys import KEY_ID_PREFIX, parse_key_id
 from cgis.languages import extractors
 from cgis.pipeline import IngestionPipeline
 from cgis.query.diffcheck import DiffItem, run_diff_check
@@ -106,7 +108,14 @@ def match(
             continue
         if span is not None and item.line is not None and span[1] <= item.line <= span[2]:
             return index
+        if span is None and expected["id"] in {_key_path(item.key), _key_path(item.changed)}:
+            return index
     return None
+
+
+def _key_path(key: str) -> str | None:
+    """The path of a key id; None for anything else (a symbol id, an empty key)."""
+    return parse_key_id(key)[1] if key.startswith(KEY_ID_PREFIX) else None
 
 
 def run_case(case: Mapping[str, Any], work: Path) -> dict[str, Any]:
@@ -141,6 +150,15 @@ def run_case(case: Mapping[str, Any], work: Path) -> dict[str, Any]:
         "shown": hit is not None and hit < SHOWN if expected else None,
         "rank": hit,
         "items": len(report.items),
+        "shown_items": [
+            {"kind": i.kind, "site": i.site, "file": i.file, "line": i.line, "score": i.score}
+            for i in report.items[:SHOWN]
+        ],
+        "kinds": {
+            k: sum(i.kind == k for i in report.items)
+            for k in sorted({i.kind for i in report.items})
+        },
+        "changed_keys": len(report.changed_keys),
         "in_tests": report.in_tests,
         "changed_symbols": len(report.changed_symbols),
         "ingest_seconds": round(ingested - started, 1),

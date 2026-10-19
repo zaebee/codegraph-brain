@@ -1,4 +1,5 @@
-"""Map a git range onto the graph: the subclasses and callers of what it changed."""
+"""Map a git range onto the graph: the subclasses and callers of what it changed,
+and the other sites of the data keys it touched (`keys`)."""
 
 from collections import deque
 from collections.abc import Mapping
@@ -7,9 +8,10 @@ from pathlib import Path, PurePosixPath
 from typing import Final
 
 from cgis.core.extractor import BaseExtractor
-from cgis.core.models import Edge, EdgeType, Node, NodeType
+from cgis.core.models import KEY_EDGE_TYPES, Edge, EdgeType, Node, NodeType
 from cgis.languages import extractors, is_supported
 from cgis.query.diffcheck.hunks import FileChange, changed_files, read_at, resolve_rev
+from cgis.query.diffcheck.keys import KeyGraph, KeyUse, base_key, key_items
 from cgis.storage.sqlite_store import SQLiteStore
 
 #: Node types whose lines count as "changed code" (a FILE node spans the whole file).
@@ -27,6 +29,8 @@ class DiffItem:
     line: int | None
     reason: str
     score: float
+    #: For a data-key item, the key id at the site (it may differ from `changed`).
+    key: str = ""
 
 
 @dataclass(frozen=True)
@@ -54,28 +58,51 @@ def _meets(node: Node, lines: frozenset[int]) -> bool:
     return any(node.start_line <= n <= node.end_line for n in lines)
 
 
-def _base_nodes(
+@dataclass(frozen=True)
+class _Changes:
+    """What a range changed: head symbols touched, base symbols gone, key edges met."""
+
+    touched: list[Node]
+    removed: list[Node]
+    keys: list[KeyUse]
+    #: Base path -> head path of every changed file that still exists.
+    head_files: dict[str, str]
+
+
+def _base_parse(
+    store: SQLiteStore,
     repo: Path,
     base: str,
     change: FileChange,
     graph_old: str,
     parsers: Mapping[str, BaseExtractor],
-) -> list[Node]:
-    """The symbols of the file as it was at `base`; none for a language with no pack."""
+) -> tuple[list[Node], list[KeyUse]]:
+    """The symbols of the file as it was at `base`, and its key edges on removed lines.
+
+    None for a language with no pack.
+    """
     if change.old_path is None or not is_supported(graph_old):
-        return []
+        return [], []
     ext = PurePosixPath(graph_old).suffix
     extractor = parsers[ext]
-    nodes, _ = extractor.parse(read_at(repo, base, change.old_path), graph_old)
-    return [n for n in nodes if n.type in _SYMBOLS]
+    nodes, edges = extractor.parse(read_at(repo, base, change.old_path), graph_old)
+    file = next((n for n in nodes if n.type is NodeType.FILE), None)
+    keys = [
+        KeyUse(base_key(e.target, file, store), e.type, e.source, graph_old, base=True)
+        for e in edges
+        if e.type in KEY_EDGE_TYPES and e.line_number in change.old_lines
+    ]
+    return [n for n in nodes if n.type in _SYMBOLS], keys
 
 
 def _changed(
-    store: SQLiteStore, repo: Path, base: str, head: str, prefix: str
-) -> tuple[list[Node], list[Node]]:
-    """Head symbols the diff touched, and base symbols that no longer exist."""
+    store: SQLiteStore, graph: KeyGraph, repo: Path, base: str, head: str, prefix: str
+) -> _Changes:
+    """Head symbols the diff touched, base symbols that no longer exist, key edges met."""
     touched: dict[str, Node] = {}
     removed: dict[str, Node] = {}
+    keys: list[KeyUse] = []
+    head_files: dict[str, str] = {}
     # Re-parse the old text the way the graph was built, or ids would differ.
     options = store.get_ingest_options()
     parsers = extractors(options[0] if options else [])
@@ -87,12 +114,22 @@ def _changed(
             for node in store.get_nodes_by_file(graph_new):
                 if node.type in _SYMBOLS and _meets(node, change.new_lines):
                     touched[node.id] = node
+            keys.extend(
+                KeyUse(e.target, e.type, e.source, graph_new, base=False)
+                for e in graph.by_file.get(graph_new, [])
+                if e.line_number in change.new_lines
+            )
         if graph_old is None:
             continue
+        if graph_new is not None:
+            head_files[graph_old] = graph_new
         # A deleted or moved file takes every symbol it held to a new id (or none),
-        # whether or not a hunk says so: a pure rename has no hunks at all.
+        # whether or not a hunk says so: a pure rename has no hunks at all. Its keys
+        # keep their ids, so only the edges on removed lines count.
         whole = change.old_path != change.new_path
-        for old in _base_nodes(repo, base_sha, change, graph_old, parsers):
+        old_nodes, old_keys = _base_parse(store, repo, base_sha, change, graph_old, parsers)
+        keys.extend(old_keys)
+        for old in old_nodes:
             if not whole and not _meets(old, change.old_lines):
                 continue
             # A node of that id in another file is the resolver's stand-in for a
@@ -102,7 +139,8 @@ def _changed(
                 removed[old.id] = old
             else:
                 touched[current.id] = current
-    return list(touched.values()), [n for _, n in sorted(removed.items()) if n.id not in touched]
+    gone = [n for _, n in sorted(removed.items()) if n.id not in touched]
+    return _Changes(list(touched.values()), gone, keys, head_files)
 
 
 def _subclasses(store: SQLiteStore, cls: str) -> list[tuple[str, Edge, int]]:
@@ -174,19 +212,25 @@ def run_diff_check(
     *,
     prefix: str = "",
 ) -> DiffReport:
-    """List what depends on the symbols `base..head` changed.
+    """List what depends on the symbols and data keys `base..head` changed.
 
     `prefix` is the ingest root's path inside the repository: diff paths map to
     graph files by stripping it, and paths outside it are ignored. Sites in test
-    files are counted, not listed; the rest are ranked by score and cut to `cap`.
-    Raises `DiffError` when git cannot read the range.
+    files are counted, not listed; the rest are ranked by score, then kind, and
+    cut to `cap`. Raises `DiffError` when git cannot read the range.
     """
     prefix = prefix.strip("/")
-    nodes, removed = _changed(store, repo, base, head, prefix)
+    graph = KeyGraph(store)
+    changes = _changed(store, graph, repo, base, head, prefix)
+    nodes, removed = changes.touched, changes.removed
+    keyed = [
+        DiffItem(k.kind, k.changed, k.site, k.file, k.line, k.reason, k.score, k.key)
+        for k in key_items(graph, changes.keys, changes.head_files)
+    ]
     shown: list[DiffItem] = []
     in_tests = 0
     seen: set[tuple[str, str, str]] = set()
-    for raw in _items(store, nodes, removed):
+    for raw in [*_items(store, nodes, removed), *keyed]:
         key = (raw.kind, raw.changed, raw.site)
         site = store.get_node(raw.site)
         if key in seen or site is None:
@@ -204,11 +248,13 @@ def run_diff_check(
                 raw.line or site.start_line,
                 raw.reason,
                 raw.score,
+                raw.key,
             )
         )
-    shown.sort(key=lambda i: (-i.score, i.file, i.line or 0, i.site))
+    shown.sort(key=lambda i: (-i.score, i.kind, i.file, i.line or 0, i.site))
     symbols = sorted({n.id for n in [*nodes, *removed]})
-    return DiffReport(shown[:cap], max(len(shown) - cap, 0), in_tests, symbols, [])
+    keys = sorted({u.key for u in changes.keys})
+    return DiffReport(shown[:cap], max(len(shown) - cap, 0), in_tests, symbols, keys)
 
 
 def report_to_dict(report: DiffReport) -> dict[str, object]:
@@ -218,11 +264,11 @@ def report_to_dict(report: DiffReport) -> dict[str, object]:
 
 def render_text(report: DiffReport, base: str, head: str) -> str:
     """The report as the short list an agent reads."""
-    if not report.changed_symbols:
-        return f"No indexed symbol changed in {base}..{head}."
+    if not report.changed_symbols and not report.changed_keys:
+        return f"No indexed symbol or data key changed in {base}..{head}."
     lines = [
-        f"{len(report.changed_symbols)} symbol(s) changed in {base}..{head}; "
-        "what else depends on them:"
+        f"{len(report.changed_symbols)} symbol(s) and {len(report.changed_keys)} data key(s) "
+        f"changed in {base}..{head}; what else depends on them:"
     ]
     for item in report.items:
         where = f"{item.file}:{item.line}" if item.line else item.file

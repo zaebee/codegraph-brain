@@ -807,10 +807,11 @@ def diff_check(
     ),
 ) -> None:
     """
-    List the subclasses and callers of what a diff changed.
+    List the subclasses, callers and data-key sites of what a diff changed.
 
-    Reads the changed lines of BASE..HEAD, maps them to graph symbols and prints
-    the code that extends or calls them, so a change is checked against its
+    Reads the changed lines of BASE..HEAD, maps them to graph symbols and data
+    keys and prints the code that extends or calls them and the other readers,
+    writers and declarers of the keys, so a change is checked against its
     dependants before review. Exit code 2 when git cannot read the range.
     """
     if output_format not in ("text", "json"):

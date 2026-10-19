@@ -1107,14 +1107,19 @@ def cgis_diff_check(
     ] = "",
     output_format: Annotated[str, Field(description="'text' or 'json'.")] = "text",
 ) -> str:
-    """What else depends on what a diff changed: subclasses and callers.
+    """What else depends on what a diff changed: subclasses, callers and data keys.
 
     Call this before review or merge. It reads the lines ``base..head`` changed,
     finds the graph symbols they fall in (and symbols the diff removed, read from
     the base text), and lists the classes that extend a changed class and the
-    functions that call a changed or removed function. Callers in test files are
-    counted, not listed. An empty list means no static dependants were found,
-    not that the change is safe: dispatch the graph cannot see is not covered.
+    functions that call a changed or removed function. For each data key the
+    changed lines read, write or declare (``doc["picture"]``, a mapping field) it
+    lists the key's other readers, writers and declarers, reads of a dotted path
+    a mapping does not declare, and reads of a declaration the diff removed;
+    common keys (``id``, ``name``, or used in many files) are left out. Sites in
+    test files are counted, not listed. An empty list means no static dependants
+    were found, not that the change is safe: dispatch the graph cannot see is
+    not covered.
     """
     if not Path(db_path).exists():
         return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
