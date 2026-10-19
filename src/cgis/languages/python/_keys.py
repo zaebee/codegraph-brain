@@ -26,10 +26,12 @@ _DICT_METHODS: dict[str, tuple[EdgeType, ...]] = {
     "pop": (_READ, _WRITE),
     "setdefault": (_WRITE,),
 }
-#: A key that is only read; and what a statement with the access as its target does to it.
+#: A key that is only read or only written; and what a statement with the access as its
+#: target does to it.
 _READ_ONLY: tuple[EdgeType, ...] = (_READ,)
+_WRITE_ONLY: tuple[EdgeType, ...] = (_WRITE,)
 _STORE_TARGETS: dict[str, tuple[EdgeType, ...]] = {
-    "assignment": (_WRITE,),
+    "assignment": _WRITE_ONLY,
     "augmented_assignment": (_READ, _WRITE),
 }
 #: Right sides of `in` that are constants, not data: `"b" in ["x", "y"]`, `"a" in "abc"`.
@@ -322,7 +324,7 @@ def _store_relations(node: BaseNode) -> tuple[EdgeType, ...]:
     if parent is None:
         return _READ_ONLY
     if parent.type == "delete_statement":
-        return _STORE_TARGETS["assignment"]
+        return _WRITE_ONLY
     left = parent.child_by_field_name("left")
     if left is None or _span(left) != _span(child):
         return _READ_ONLY

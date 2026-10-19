@@ -224,5 +224,6 @@ def test_a_path_or_sha_argument_passes() -> None:
 
 
 def test_ingest_pairs_takes_no_interpreter_from_the_command_line() -> None:
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit) as refused:
         ingest_pairs.main(["--main-src", "x", "--python", "/bin/sh"])
+    assert refused.value.code == 2  # argparse: unrecognized arguments

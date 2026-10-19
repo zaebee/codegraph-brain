@@ -120,8 +120,7 @@ class KeyGraph:
             by_file[file].append(edge)
             ids[path].add(edge.target)
             if edge.type is EdgeType.DECLARES_KEY:
-                if namespace not in declared[path]:
-                    declared[path][namespace] = file
+                declared[path].setdefault(namespace, file)
                 if file not in declaring:
                     declaring[file] = _is_declaring(file)
                 if declaring[file] and _from_mapping(namespace, edge):
