@@ -172,8 +172,7 @@ were measured before these fixes, and none of them was re-measured.
   dropped, and the file-count cut applied to single segments only. Fixed for both.
 
 I4 and I5 target noise causes the judge found (common-word keys, dotted paths escaping the
-drop rule), so the noise numbers above are probably worse than the shipped check's. The
-noise set was not re-measured: it has been seen, and a re-run on it would measure fixes
+drop rule). How much noise they remove is not known. The noise set was not re-measured: it has been seen, and a re-run on it would measure fixes
 made with its failures in view. A fresh noise draw is the follow-up.
 
 ## Reproduction
