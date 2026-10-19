@@ -60,12 +60,12 @@ def export_tree(repo: Path, sha: str, prefix: str, dest: Path) -> None:
     if dest.exists():
         shutil.rmtree(dest)
     dest.mkdir(parents=True)
-    archive = subprocess.Popen(
+    with subprocess.Popen(
         ["git", "-C", str(repo), "archive", sha, *([prefix] if prefix else [])],
         stdout=subprocess.PIPE,
-    )
-    subprocess.run(["tar", "-x", "-C", str(dest)], stdin=archive.stdout, check=True)
-    if archive.wait() != 0:
+    ) as archive:
+        subprocess.run(["tar", "-x", "-C", str(dest)], stdin=archive.stdout, check=True)
+    if archive.returncode != 0:
         message = f"git archive {sha} {prefix} failed"
         raise RuntimeError(message)
 

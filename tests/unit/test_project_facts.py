@@ -11,6 +11,7 @@ import cgis.resolver.indices as indices
 from cgis.core.models import Node
 from cgis.import_names import ImportNameCollector, ImportNames
 from cgis.languages import extractors, project_readers
+from cgis.languages.data import DataProjectReader
 from cgis.languages.go.project import GoProjectReader
 from cgis.languages.python.dependencies import declared_import_roots
 from cgis.languages.python.project import PythonFacts, PythonProjectReader
@@ -43,6 +44,7 @@ def test_every_pack_contributes_a_reader_in_manifest_order(tmp_path: Path) -> No
         PythonProjectReader,
         TypeScriptProjectReader,
         GoProjectReader,
+        DataProjectReader,
     ]
 
 

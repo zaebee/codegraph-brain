@@ -220,8 +220,14 @@ def test_module_string_constants_are_recorded_on_the_file() -> None:
     )
     nodes, _edges = PythonExtractor(data_keys=True).parse(code, "m.py")
     (file_node,) = [n for n in nodes if n.type is NodeType.FILE]
-    assert file_node.metadata["str_constants"] == {"EVENTS": "events-v2"}
+    assert file_node.metadata["str_constants"] == {"EVENTS": "events-v2", "TYPED": "t"}
     assert not [n for n in nodes if n.type is NodeType.VARIABLE]
+
+
+def test_an_annotation_without_a_value_is_no_constant() -> None:
+    nodes, _edges = PythonExtractor(data_keys=True).parse("NAME: str\n", "m.py")
+    (file_node,) = [n for n in nodes if n.type is NodeType.FILE]
+    assert "str_constants" not in file_node.metadata
 
 
 def test_a_file_without_string_constants_records_none() -> None:

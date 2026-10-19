@@ -95,9 +95,9 @@ def summarise(records: Sequence[dict[str, Any]]) -> dict[str, dict[str, float]]:
         out[name] = {
             "prs": len(rows),
             "errors": sum(r["repo"] == name and "error" in r for r in records),
-            "median_shown": median(r["shown"] for r in rows),
-            "median_listed": median(r["listed"] for r in rows),
-            "max_listed": max(r["listed"] for r in rows),
+            "median_shown": median(r["shown"] for r in rows) if rows else 0.0,
+            "median_listed": median(r["listed"] for r in rows) if rows else 0.0,
+            "max_listed": max((r["listed"] for r in rows), default=0),
         }
     return out
 

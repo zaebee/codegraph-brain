@@ -136,7 +136,7 @@ the pack, the same shape as the CV invoker profile:
 
 A namespace given at the site by a module-level constant (`EVENTS_INDEX = "events"`)
 resolves through that constant's value. The extractor records each module-level
-plain-string constant (`NAME = "literal"`) on its FILE node as `str_constants`
+plain-string constant (`NAME = "literal"`, annotated or not) on its FILE node as `str_constants`
 (name → literal), and the resolver looks `NAME` up in the key's own file first, then
 through that file's import map in the defining module's FILE node. `str_constants` is
 cross-file metadata, so editing a constant re-resolves the files that import it on an

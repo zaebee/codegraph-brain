@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / "scripts" / "data_keys"))
 import draw_noise  # noqa: E402
 import mine_blame  # noqa: E402
 import mine_heldout  # noqa: E402
+import noise_run  # noqa: E402
 from mine_heldout import DEV_PRS, PR, all_pairs, find_pairs, heldout_pairs, repairs  # noqa: E402
 
 NOW = datetime(2026, 10, 18, tzinfo=UTC)
@@ -188,3 +189,10 @@ def test_no_script_names_a_machines_home_directory() -> None:
     assert scripts, "no script found: the check below would pass on nothing"
     named = [p.name for p in scripts if "/home/" in p.read_text(encoding="utf-8")]
     assert named == []
+
+
+def test_noise_summary_of_a_repository_with_only_errored_runs() -> None:
+    summary = noise_run.summarise([{"repo": "r", "error": "boom"}])
+    assert summary == {
+        "r": {"prs": 0, "errors": 1, "median_shown": 0.0, "median_listed": 0.0, "max_listed": 0}
+    }

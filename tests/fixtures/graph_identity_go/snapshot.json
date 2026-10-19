@@ -614,6 +614,7 @@
     ]
    },
    "ingest_options": {
+    "data_keys": false,
     "domains": null,
     "source_roots": []
    },

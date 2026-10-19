@@ -40,7 +40,7 @@ class _NoFacts:
         return frozenset()
 
 
-class _NoConfigs:
+class DataProjectReader:
     """A data file has no project config of its own: nothing to note, nothing to state."""
 
     def note(self, path: Path) -> bool:
@@ -98,7 +98,7 @@ class DataPack(LanguagePack):
     @override
     def project_reader(self, root: Path, extractors: Mapping[str, BaseExtractor]) -> ProjectReader:
         """A reader that reads nothing."""
-        return _NoConfigs()
+        return DataProjectReader()
 
     @override
     def index_facts(self, nodes: Mapping[str, Node], state: Mapping[str, object]) -> IndexFacts:

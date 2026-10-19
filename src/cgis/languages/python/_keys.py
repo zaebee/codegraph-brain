@@ -472,6 +472,8 @@ def _owned_edges(
 def string_constants(root: BaseNode, code: bytes) -> dict[str, str]:
     """Each module-level `NAME = "literal"`, by name; a name bound twice holds its later value.
 
+    An annotated one (`NAME: str = "literal"`) counts; a bare annotation binds nothing.
+
     Recorded on the FILE node, where the resolver reads the namespace a constant names
     (`index=EVENTS`), in this file or through another file's import of it.
     """
@@ -480,7 +482,7 @@ def string_constants(root: BaseNode, code: bytes) -> dict[str, str]:
         if statement.type != "expression_statement" or statement.named_child_count != 1:
             continue
         assignment = statement.named_children[0]
-        if assignment.type != "assignment" or assignment.child_by_field_name("type") is not None:
+        if assignment.type != "assignment":
             continue
         name = assignment.child_by_field_name("left")
         value = _literal(assignment.child_by_field_name("right"), code)
