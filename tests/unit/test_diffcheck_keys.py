@@ -293,3 +293,70 @@ def test_an_undeclared_read_under_a_leaf_parent_ranks_first(tmp_path: Path) -> N
     undeclared = _of(report, "undeclared-read")
     assert len({i.score for i in undeclared}) == 1
     assert [i.site for i in undeclared] == ["z_leaf.leaf", "a_object.obj"]
+
+
+# --- Final review fixes (I4, I5) -----------------------------------------------------
+
+CONFIG_MAP = "kind: ConfigMap\ndata:\n  LOG_LEVEL: info\n"
+READ_DATA = "def h3(resp):\n    return resp['data']['id'], resp['data']['user']\n"
+
+
+def test_a_plain_document_declares_no_parent_for_an_undeclared_read(tmp_path: Path) -> None:
+    """I4: a k8s ConfigMap's `data:` is no schema of every `resp['data']`."""
+    report = _check(
+        tmp_path,
+        {"deploy/cm.yaml": CONFIG_MAP, "app/c3.py": READ_DATA},
+        {"deploy/cm.yaml": CONFIG_MAP.replace("info", "debug")},
+    )
+    assert _of(report, "undeclared-read") == []
+
+
+def test_a_changed_read_under_a_plain_document_key_is_not_undeclared(tmp_path: Path) -> None:
+    report = _check(
+        tmp_path,
+        {"deploy/cm.yaml": CONFIG_MAP, "app/c3.py": "def h3(resp):\n    return resp\n"},
+        {"app/c3.py": READ_DATA},
+    )
+    assert _of(report, "undeclared-read") == []
+
+
+def test_dotted_paths_of_common_keys_are_not_listed(tmp_path: Path) -> None:
+    """I5: `data.id` and `result.type` name no data in particular, dotted or not."""
+    writer = "def save(d):\n    d['data']['id'] = 1\n    d['result']['type'] = 1\n"
+    report = _check(
+        tmp_path,
+        {
+            "w.py": writer,
+            "r1.py": "def r1(d):\n    return d['data']['id']\n",
+            "r2.py": "def r2(d):\n    return d['result']['type']\n",
+        },
+        {"w.py": writer.replace("= 1", "= 2")},
+    )
+    assert {"key:|data.id", "key:|result.type"} <= set(report.changed_keys)
+    assert report.items == []
+
+
+def test_a_dotted_path_read_from_many_files_is_not_listed(tmp_path: Path) -> None:
+    writer = "def save(d):\n    d['owner']['email'] = 1\n"
+    readers = {f"r{n}.py": f"def read{n}(d):\n    return d['owner']['email']\n" for n in range(9)}
+    report = _check(tmp_path, {"w.py": writer, **readers}, {"w.py": writer.replace("1", "2")})
+    assert "key:|owner.email" in report.changed_keys
+    assert report.items == []
+
+
+def test_a_scoped_key_does_not_pull_in_common_paths_inside_it(tmp_path: Path) -> None:
+    search = (
+        "def find(client):\n"
+        "    return client.search(index='events', body={'query': {'term': {'data': VALUE}}})\n"
+    )
+    report = _check(
+        tmp_path,
+        {
+            "a.py": search.replace("VALUE", "1"),
+            "r1.py": "def r1(d):\n    return d['data']['id']\n",
+            "r2.py": "def r2(d):\n    return d['data']['colour']\n",
+        },
+        {"a.py": search.replace("VALUE", "2")},
+    )
+    assert "key:events|data" in report.changed_keys
+    assert [(i.kind, i.site) for i in report.items] == [("key-reader", "r2.r2")]

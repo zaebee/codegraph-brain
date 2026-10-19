@@ -4,9 +4,10 @@ A key changes where the diff's lines meet a key edge: in the head graph, or in t
 base text re-parsed by `check`. Each changed key lists the other readers, writers and
 declarers of every key that can name the same data (`keys_match`), and readers of
 paths inside it (`avatar.url` reads into `avatar`). Two more kinds compare reads
-with declarations: a dotted path read whose parent is declared and the path nowhere
-(`undeclared-read`), and a declaration only the base has whose path is still read
-(`removed-declaration`). Specificity ranks them and keeps the common keys out.
+with declarations: a dotted path read whose parent a mapping declares and the path
+nothing does (`undeclared-read`), and a declaration only the base has whose path is
+still read (`removed-declaration`). Specificity ranks them; an unscoped path made only
+of common keys, or used in many files, is never listed.
 """
 
 import math
@@ -23,9 +24,10 @@ from cgis.languages import names_code, pack_for_path
 from cgis.resolver.keys import constant_namespace
 from cgis.storage.sqlite_store import SQLiteStore
 
-#: Unscoped single-segment keys that name no data in particular: never listed.
+#: Keys that name no data in particular: an unscoped path made only of these
+#: (`id`, `data.id`, `result.type`) is never listed.
 COMMON_KEYS = frozenset({"id", "name", "type", "data", "value", "key", "items", "result"})
-#: An unscoped single-segment key referenced from more files than this is not listed.
+#: An unscoped key, dotted or not, referenced from more files than this is not listed.
 MAX_FILES = 8
 #: Nodes read per suffix lookup of an imported module: enough to see a second FILE.
 _SUFFIX_LIMIT = 1000
@@ -92,11 +94,12 @@ class KeyGraph:
         by_file: defaultdict[str, list[Edge]] = defaultdict(list)
         ids: defaultdict[str, set[str]] = defaultdict(set)  # path -> key ids
         declared: defaultdict[str, dict[str, str]] = defaultdict(dict)  # path -> ns -> file
-        # The same, for declaring files only (a mapping, not a model's fields).
+        # The same, for mapping declarations only: not a model's fields, and not the keys
+        # of a plain document (a ConfigMap's `data:` is no schema of every `resp["data"]`).
         in_files: defaultdict[str, dict[str, str]] = defaultdict(dict)
-        # path -> ns -> the mapping type a declaring file gives it ("" when none).
+        # path -> ns -> the mapping type a mapping gives it ("" when none).
         types: defaultdict[str, dict[str, str]] = defaultdict(dict)
-        declared_in: defaultdict[str, set[str]] = defaultdict(set)  # declaring file -> key ids
+        declared_in: defaultdict[str, set[str]] = defaultdict(set)  # mapping file -> key ids
         reads_under: defaultdict[str, list[Edge]] = defaultdict(list)  # parent path -> reads
         declaring: dict[str, bool] = {}
         for edge in (e for relation in _KIND for e in store.get_edges_of_type(relation)):
@@ -110,7 +113,7 @@ class KeyGraph:
                     declared[path][namespace] = file
                 if file not in declaring:
                     declaring[file] = _is_declaring(file)
-                if declaring[file]:
+                if declaring[file] and _from_mapping(namespace, edge):
                     if namespace not in in_files[path]:
                         in_files[path][namespace] = file
                         types[path][namespace] = edge.context or ""
@@ -155,12 +158,15 @@ class KeyGraph:
             )
         return self._files[key]
 
-    def declaring_file(self, namespace: str, path: str, *, files_only: bool = False) -> str | None:
+    def declaring_file(
+        self, namespace: str, path: str, *, mappings_only: bool = False
+    ) -> str | None:
         """A file declaring `path` in a namespace agreeing with `namespace`; None when none does.
 
-        `files_only` counts declaring files alone, not the fields of a model.
+        `mappings_only` counts a data file's mapping declarations alone: not the fields
+        of a model, and not the keys of a plain JSON or YAML document.
         """
-        declared = (self._in_files if files_only else self._declared)[path]
+        declared = (self._in_files if mappings_only else self._declared)[path]
         files = [declared[ns] for ns in declared if _agree(namespace, ns)]
         return min(files) if files else None
 
@@ -170,7 +176,7 @@ class KeyGraph:
         return any(types[ns] not in ("", "object") for ns in types if _agree(namespace, ns))
 
     def declared_in(self, file: str) -> set[str]:
-        """The key ids `file` declares."""
+        """The key ids `file` declares as a mapping."""
         return self._declared_in[file]
 
     def reads_under(self, path: str) -> list[Edge]:
@@ -184,6 +190,17 @@ def _is_declaring(file: str) -> bool:
     return pack is not None and not names_code(pack.name)
 
 
+def _from_mapping(namespace: str, edge: Edge) -> bool:
+    """Whether a data file's declaration comes from a mapping, not a plain document.
+
+    The data pack gives a mapping's declarations the property type as `context` and,
+    for a file the profile links to an index, that index as namespace; a plain
+    document's keys carry neither. A mapping property with no type, in a file linked
+    to no index, is missed: it declares no parent here.
+    """
+    return bool(namespace or edge.context)
+
+
 def _parent(path: str) -> str:
     """The path one level up: `status` for `status.keyword`; "" at the top."""
     return path.rpartition(".")[0]
@@ -195,11 +212,12 @@ def _agree(a: str, b: str) -> bool:
 
 
 def dropped(key: str, graph: KeyGraph) -> bool:
-    """An unscoped single-segment key that is common or used everywhere: never listed."""
+    """An unscoped key made only of common segments, or used everywhere: never listed."""
     namespace, path = parse_key_id(key)
-    if namespace or "." in path:
+    if namespace:
         return False
-    return path in COMMON_KEYS or graph.files(key) > MAX_FILES
+    common = all(segment in COMMON_KEYS for segment in path.split("."))
+    return common or graph.files(key) > MAX_FILES
 
 
 def _link_score(changed: str, site: str, graph: KeyGraph) -> float:
@@ -287,10 +305,12 @@ def _other_sites(graph: KeyGraph, by_key: dict[str, list[KeyUse]]) -> Iterator[K
 def _undeclared(
     graph: KeyGraph, by_key: dict[str, list[KeyUse]], head_files: dict[str, str]
 ) -> Iterator[KeyItem]:
-    """Dotted reads whose parent a declaring file declares and the path nothing does.
+    """Dotted reads whose parent a mapping declares and the path nothing does.
 
     Checked are the reads the diff changed, and every read below a path that a
-    declaring file the diff changed declares now.
+    mapping the diff changed declares now: the whole mapping, not its changed lines,
+    since a mapping change is where a read it never declared breaks (#2075 added
+    `details` labels; the read it broke was `event_type.keyword`, on no changed line).
     """
     changed_reads = [
         e
@@ -315,7 +335,7 @@ def _undeclared(
     for edge in [*changed_reads, *below_declared]:
         namespace, path = parse_key_id(edge.target)
         parent = _parent(path)
-        declaring = graph.declaring_file(namespace, parent, files_only=True) if parent else None
+        declaring = graph.declaring_file(namespace, parent, mappings_only=True) if parent else None
         if declaring is None or graph.declaring_file(namespace, path) is not None:
             continue
         yield KeyItem(
