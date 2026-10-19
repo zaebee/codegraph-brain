@@ -12,6 +12,7 @@ from cgis.cli import app
 from cgis.languages import extractors
 from cgis.pipeline import IngestionPipeline
 from cgis.query.diffcheck import (
+    KEY_ITEMS_HINT,
     DiffError,
     changed_files,
     render_text,
@@ -399,6 +400,23 @@ def test_a_graph_with_data_keys_lists_key_items_without_the_note(tmp_path: Path)
     assert report.note == ""
     assert [i for i in report.items if i.kind.startswith("key-")]
     assert "--data-keys" not in render_text(report, base, "HEAD")
+
+
+def test_listed_key_items_say_to_read_their_callers(tmp_path: Path) -> None:
+    """owner-api#2144: a reader that took no dates was fed them by its caller."""
+    repo, base, db = _keyed_check(tmp_path, data_keys=True)
+    with SQLiteStore(str(db)) as store:
+        text = render_text(run_diff_check(store, repo, base, cap=100), base, "HEAD")
+    assert KEY_ITEMS_HINT in text.splitlines()
+    assert "callers" in KEY_ITEMS_HINT
+    assert "cgis_analyze_impact" in KEY_ITEMS_HINT
+
+
+def test_a_list_without_key_items_has_no_caller_hint(tmp_path: Path) -> None:
+    repo, base, db = _keyed_check(tmp_path, data_keys=False)
+    with SQLiteStore(str(db)) as store:
+        text = render_text(run_diff_check(store, repo, base, cap=100), base, "HEAD")
+    assert KEY_ITEMS_HINT not in text
 
 
 def test_a_graph_whose_options_predate_the_mode_reads_it_from_its_key_edges(

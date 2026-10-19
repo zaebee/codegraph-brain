@@ -6,6 +6,7 @@ other sites of the data keys the changed lines use.
 """
 
 from cgis.query.diffcheck.check import (
+    KEY_ITEMS_HINT,
     DiffItem,
     DiffReport,
     check_database,
@@ -16,6 +17,7 @@ from cgis.query.diffcheck.check import (
 from cgis.query.diffcheck.hunks import DiffError, FileChange, changed_files
 
 __all__ = [
+    "KEY_ITEMS_HINT",
     "DiffError",
     "DiffItem",
     "DiffReport",
