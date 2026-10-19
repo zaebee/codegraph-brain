@@ -59,6 +59,11 @@ def resolve_rev(repo: Path, rev: str) -> str:
         raise DiffError(message) from exc
 
 
+def toplevel(repo: Path) -> Path:
+    """The working tree root of the repository holding `repo`; `DiffError` outside one."""
+    return Path(_git(repo, "rev-parse", "--show-toplevel").strip()).resolve()
+
+
 def read_at(repo: Path, sha: str, path: str) -> str:
     """The text of `path` at the commit `sha` (`git show sha:path`)."""
     return _git(repo, "show", "--end-of-options", f"{sha}:{path}")
@@ -101,6 +106,11 @@ class _Block:
             self.new_lines.update(_span(m.group(3), m.group(4)))
         elif self.in_hunks:
             return  # content: a removed "-- x" line reads as "--- x", and is not a header
+        elif line.startswith("new file mode "):
+            # An empty or binary file has no ---/+++ lines to say /dev/null.
+            self.old = None
+        elif line.startswith("deleted file mode "):
+            self.new = None
         elif line.startswith("--- "):
             self.old = _strip(line[4:])
         elif line.startswith("+++ "):
@@ -118,7 +128,9 @@ class _Block:
 def changed_files(repo: Path, base: str, head: str) -> list[FileChange]:
     """Every file changed between `base` and `head`, with its changed line numbers.
 
-    Renames are followed (`-M`). Raises `DiffError` with git's message when
+    Renames are followed (`-M`). An added or deleted file with no text hunks (empty,
+    binary) has no ---/+++ lines; its `new file mode` / `deleted file mode` line
+    clears the missing side. Raises `DiffError` with git's message when
     `repo` is not a repository or a revision does not exist.
     """
     text = _git(
@@ -128,6 +140,12 @@ def changed_files(repo: Path, base: str, head: str) -> list[FileChange]:
         "--unified=0",
         "--no-color",
         "--no-ext-diff",
+        # The user's config must not reshape what is parsed: `diff.noprefix` or
+        # `diff.mnemonicPrefix` would change the `a/`/`b/` that `_strip` cuts, and
+        # a textconv filter would rewrite the lines the hunks number.
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
+        "--no-textconv",
         "--end-of-options",
         f"{resolve_rev(repo, base)}..{resolve_rev(repo, head)}",
     )

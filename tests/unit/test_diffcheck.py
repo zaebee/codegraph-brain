@@ -211,3 +211,119 @@ def test_a_removed_class_lists_its_subclasses(tmp_path: Path) -> None:
         report = run_diff_check(store, repo, base)
     assert "a.A" in report.changed_symbols
     assert [(i.kind, i.changed, i.site) for i in report.items] == [("subclass", "a.A", "b.B")]
+
+
+# --- Final review fixes (I1-I3) ------------------------------------------------------
+
+
+def test_an_added_empty_file_has_no_old_path(tmp_path: Path) -> None:
+    """I1: git writes no ---/+++ for an empty file, so the header's paths must not stand."""
+    a = "def f():\n    return 1\n"
+    b = "from pkg.a import f\n\n\ndef g():\n    return f()\n"
+    repo, base = _repo(tmp_path, {"pkg/a.py": a, "pkg/b.py": b})
+    _commit(repo, {"pkg/__init__.py": "", "pkg/a.py": a.replace("1", "2")}, "add package")
+    changes = {(c.old_path, c.new_path) for c in changed_files(repo, base, "HEAD")}
+    assert (None, "pkg/__init__.py") in changes
+    with _store(repo, tmp_path) as store:
+        report = run_diff_check(store, repo, base)
+    assert [(i.changed, i.site) for i in report.items] == [("pkg.a.f", "pkg.b.g")]
+
+
+def test_a_deleted_empty_file_has_no_new_path(tmp_path: Path) -> None:
+    repo, base = _repo(tmp_path, {"pkg/__init__.py": "", "pkg/a.py": BASE_A})
+    _commit(repo, {"pkg/__init__.py": None}, "drop the package marker")
+    assert [(c.old_path, c.new_path) for c in changed_files(repo, base, "HEAD")] == [
+        ("pkg/__init__.py", None)
+    ]
+    with _store(repo, tmp_path) as store:
+        run_diff_check(store, repo, base)
+
+
+def test_an_added_binary_file_has_no_old_path(tmp_path: Path) -> None:
+    repo, base = _repo(tmp_path, {"a.py": BASE_A})
+    (repo / "blob.py").write_bytes(b"\x00\x01\x02binary\x00")
+    _commit(repo, {"a.py": BASE_A.replace("return 1", "return 2")}, "add a binary")
+    changes = {(c.old_path, c.new_path) for c in changed_files(repo, base, "HEAD")}
+    assert (None, "blob.py") in changes
+    with _store(repo, tmp_path) as store:
+        report = run_diff_check(store, repo, base)
+    assert "a.A.run" in report.changed_symbols
+
+
+def test_a_user_noprefix_config_does_not_cut_paths(tmp_path: Path) -> None:
+    """I2: `diff.noprefix=true` drops `a/` and `b/`; the check must not cut two characters."""
+    a = "def f():\n    return 1\n"
+    b = "from app.a import f\n\n\ndef g():\n    return f()\n"
+    repo, base = _repo(tmp_path, {"app/a.py": a, "app/b.py": b})
+    _git(repo, "config", "diff.noprefix", "true")
+    _git(repo, "config", "diff.mnemonicPrefix", "true")
+    _commit(repo, {"app/a.py": a.replace("1", "2")}, "edit")
+    (change,) = changed_files(repo, base, "HEAD")
+    assert (change.old_path, change.new_path) == ("app/a.py", "app/a.py")
+    with _store(repo, tmp_path) as store:
+        report = run_diff_check(store, repo, base)
+    assert [(i.changed, i.site) for i in report.items] == [("app.a.f", "app.b.g")]
+
+
+A_APP = "def f():\n    return 1\n"
+B_APP = "from a import f\n\n\ndef g():\n    return f()\n"
+
+
+def _app_graph(tmp_path: Path, *, record: bool) -> tuple[Path, str, Path]:
+    """A repository whose `app/` was ingested on its own; `record` stores the ingest root."""
+    repo, base = _repo(tmp_path, {"app/a.py": A_APP, "app/b.py": B_APP})
+    _commit(repo, {"app/a.py": A_APP.replace("1", "2")}, "edit")
+    db = tmp_path / "app.db"
+    store = SQLiteStore(str(db))
+    store.connect()
+    IngestionPipeline(extractors([])).run(str(repo / "app"), store=store, rebuild=True)
+    if record:
+        store.record_ingest(str(repo / "app"))
+    store.disconnect()
+    return repo, base, db
+
+
+def test_the_prefix_defaults_to_the_recorded_ingest_root(tmp_path: Path) -> None:
+    """I3: the graph knows where it was ingested from; no prefix must not mean the repo root."""
+    repo, base, db = _app_graph(tmp_path, record=True)
+    with SQLiteStore(str(db)) as store:
+        report = run_diff_check(store, repo, base)
+    assert [(i.changed, i.site) for i in report.items] == [("a.f", "b.g")]
+    result = CliRunner().invoke(
+        app, ["diff-check", "--db", str(db), "--repo", str(repo), "--base", base]
+    )
+    assert result.exit_code == 0, result.output
+    assert "b.g" in result.output
+
+
+def test_a_prefix_that_maps_no_changed_file_is_a_clear_error(tmp_path: Path) -> None:
+    """I3: a wrong prefix used to invent `removed` items from the base re-parse."""
+    repo, base, db = _app_graph(tmp_path, record=False)
+    with SQLiteStore(str(db)) as store, pytest.raises(DiffError, match="prefix"):
+        run_diff_check(store, repo, base, prefix="")
+    result = CliRunner().invoke(
+        app, ["diff-check", "--db", str(db), "--repo", str(repo), "--base", base, "--prefix", ""]
+    )
+    assert result.exit_code == 2
+    assert "prefix" in result.output
+
+
+def test_the_mcp_tool_says_when_no_changed_file_maps(tmp_path: Path) -> None:
+    from cgis.api.mcp_server import cgis_diff_check  # noqa: PLC0415 — the server is heavy
+
+    repo, base, db = _app_graph(tmp_path, record=False)
+    text = cgis_diff_check(str(repo), base, "HEAD", str(db))
+    assert text.startswith("❌")
+    assert "prefix" in text
+    assert "removed" not in text
+
+
+def test_a_root_outside_the_repository_is_a_clear_error(tmp_path: Path) -> None:
+    repo, base, db = _app_graph(tmp_path, record=True)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    args = ["diff-check", "--db", str(db), "--repo", str(repo), "--base", base]
+    result = CliRunner().invoke(app, [*args, "--root", str(elsewhere)])
+    assert result.exit_code == 2
+    assert "outside" in result.output
+    assert result.exception is None or isinstance(result.exception, SystemExit)

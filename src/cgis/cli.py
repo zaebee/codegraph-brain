@@ -773,10 +773,8 @@ def validate(
     )
 
 
-def _repo_prefix(repo: Path, root: str | None) -> str:
-    """The ingest root's path inside the repository, from `--root`; empty without one."""
-    if not root:
-        return ""
+def _repo_prefix(repo: Path, root: str) -> str:
+    """The `--root` directory's path inside the repository; ValueError when outside it."""
     top = subprocess.run(
         ["git", "-C", str(repo), "rev-parse", "--show-toplevel"],
         capture_output=True,
@@ -798,12 +796,15 @@ def diff_check(
     cap: int = typer.Option(5, "--cap", min=1, help="Items shown; the rest are counted"),
     output_format: str = typer.Option("text", "--format", help="text or json"),
     root: str | None = typer.Option(
-        None, "--root", help="The directory the graph was ingested from"
+        None,
+        "--root",
+        help="The directory the graph was ingested from (default: the root the graph recorded)",
     ),
     prefix: str | None = typer.Option(
         None,
         "--prefix",
-        help="The ingest root's path inside the repository (default: --root relative to it)",
+        help="The ingest root's path inside the repository (default: from --root, else from"
+        " the graph's recorded ingest root)",
     ),
 ) -> None:
     """
@@ -812,7 +813,8 @@ def diff_check(
     Reads the changed lines of BASE..HEAD, maps them to graph symbols and data
     keys and prints the code that extends or calls them and the other readers,
     writers and declarers of the keys, so a change is checked against its
-    dependants before review. Exit code 2 when git cannot read the range.
+    dependants before review. Exit code 2 when git cannot read the range, when
+    --root lies outside the repository, or when no changed file maps onto the graph.
     """
     if output_format not in ("text", "json"):
         message = "use text or json"
@@ -823,7 +825,13 @@ def diff_check(
         )
         raise typer.Exit(code=1)
     repo_path = Path(repo)
-    where = prefix if prefix is not None else _repo_prefix(repo_path, root)
+    where = prefix
+    if where is None and root is not None:
+        try:
+            where = _repo_prefix(repo_path, root)
+        except ValueError as exc:
+            typer.echo(f"--root {root} is outside the repository {repo}: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
     try:
         report = check_database(db, repo_path, base, head, cap, prefix=where)
     except DiffError as exc:

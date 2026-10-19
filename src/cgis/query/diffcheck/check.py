@@ -9,8 +9,16 @@ from typing import Final
 
 from cgis.core.extractor import BaseExtractor
 from cgis.core.models import KEY_EDGE_TYPES, Edge, EdgeType, Node, NodeType
-from cgis.languages import extractors, is_supported
-from cgis.query.diffcheck.hunks import FileChange, changed_files, read_at, resolve_rev
+from cgis.core.paths import is_excluded_dir
+from cgis.languages import extractors, is_supported, skips
+from cgis.query.diffcheck.hunks import (
+    DiffError,
+    FileChange,
+    changed_files,
+    read_at,
+    resolve_rev,
+    toplevel,
+)
 from cgis.query.diffcheck.keys import KeyGraph, KeyUse, base_key, key_items
 from cgis.storage.sqlite_store import SQLiteStore
 
@@ -69,6 +77,32 @@ def _graph_path(path: str | None, prefix: str) -> str | None:
     return path[len(prefix) + 1 :] if path.startswith(prefix + "/") else None
 
 
+def _walked(path: str) -> bool:
+    """Whether an ingest of the graph's root reads `path`: a pack's, outside skipped dirs."""
+    parts = PurePosixPath(path).parts
+    return (
+        is_supported(path)
+        and not skips(parts[-1])
+        and not any(is_excluded_dir(d) for d in parts[:-1])
+    )
+
+
+def default_prefix(store: SQLiteStore, repo: Path) -> str:
+    """The recorded ingest root's path inside `repo`'s working tree; "" when none is known.
+
+    "" also for a root outside the repository (a graph of an exported tree): the
+    mapping check in `_changed` then says so instead of guessing.
+    """
+    state = store.get_ingest_state()
+    if state is None:
+        return ""
+    try:
+        rel = Path(state[0]).resolve().relative_to(toplevel(repo))
+    except ValueError:
+        return ""
+    return "" if rel == Path() else rel.as_posix()
+
+
 def _meets(node: Node, lines: frozenset[int]) -> bool:
     """Whether any of `lines` falls inside the node's span."""
     return any(node.start_line <= n <= node.end_line for n in lines)
@@ -111,6 +145,28 @@ def _base_parse(
     return [n for n in nodes if n.type in _SYMBOLS], keys
 
 
+def _require_mapped(store: SQLiteStore, files: list[FileChange], prefix: str) -> None:
+    """`DiffError` when changed files under `prefix` that an ingest reads exist and none
+    is in the graph.
+
+    A wrong prefix re-parses the base under ids the graph never had, and every
+    symbol of a changed file would read as removed (final review I3).
+    """
+    expected = [
+        path
+        for path in (_graph_path(change.new_path, prefix) for change in files)
+        if path is not None and _walked(path)
+    ]
+    if not expected or any(store.get_nodes_by_file(path) for path in expected):
+        return
+    message = (
+        f"none of the {len(expected)} changed file(s) under prefix {prefix!r} is in the "
+        f"graph (first: {expected[0]}). Pass the ingested directory's path inside the "
+        "repository as the prefix, or re-ingest if the graph predates these files."
+    )
+    raise DiffError(message)
+
+
 def _changed(
     store: SQLiteStore, graph: KeyGraph, repo: Path, base: str, head: str, prefix: str
 ) -> _Changes:
@@ -123,7 +179,9 @@ def _changed(
     options = store.get_ingest_options()
     parsers = extractors(options[0] if options else [])
     base_sha = resolve_rev(repo, base)
-    for change in changed_files(repo, base, head):
+    files = changed_files(repo, base, head)
+    _require_mapped(store, files, prefix)
+    for change in files:
         graph_old = _graph_path(change.old_path, prefix)
         graph_new = _graph_path(change.new_path, prefix)
         if graph_new is not None and change.new_lines:
@@ -226,17 +284,20 @@ def run_diff_check(
     head: str = "HEAD",
     cap: int = 5,
     *,
-    prefix: str = "",
+    prefix: str | None = None,
 ) -> DiffReport:
     """List what depends on the symbols and data keys `base..head` changed.
 
     `prefix` is the ingest root's path inside the repository: diff paths map to
-    graph files by stripping it, and paths outside it are ignored. Sites in test
+    graph files by stripping it, and paths outside it are ignored. None takes it
+    from the graph's recorded ingest root (`default_prefix`). When changed files
+    under the prefix exist and none is in the graph, `DiffError` says so rather
+    than reporting their symbols as removed. Sites in test
     files are counted, not listed; the rest are ranked by score, then `_KIND_ORDER`,
     then (undeclared reads) a leaf-typed parent first, then file and line, and cut
     to `cap`. Raises `DiffError` when git cannot read the range.
     """
-    prefix = prefix.strip("/")
+    prefix = (default_prefix(store, repo) if prefix is None else prefix).strip("/")
     graph = KeyGraph(store)
     changes = _changed(store, graph, repo, base, head, prefix)
     nodes, removed = changes.touched, changes.removed
@@ -310,7 +371,13 @@ def render_text(report: DiffReport, base: str, head: str) -> str:
 
 
 def check_database(
-    db_path: str, repo: Path, base: str, head: str = "HEAD", cap: int = 5, *, prefix: str = ""
+    db_path: str,
+    repo: Path,
+    base: str,
+    head: str = "HEAD",
+    cap: int = 5,
+    *,
+    prefix: str | None = None,
 ) -> DiffReport:
     """`run_diff_check` over the graph database at `db_path`, opened and closed here.
 

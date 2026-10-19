@@ -1099,12 +1099,13 @@ def cgis_diff_check(
     db_path: DbPath = _DEFAULT_DB,
     cap: Annotated[int, Field(description="Items listed; the rest are only counted.", ge=1)] = 5,
     prefix: Annotated[
-        str,
+        str | None,
         Field(
             description="The path of the ingested directory inside the repository (e.g. 'src' "
-            "after cgis_ingest of ./src); empty when the repository root was ingested."
+            "after cgis_ingest of ./src); empty when the repository root was ingested. Left "
+            "out, it comes from the root the graph recorded at ingest."
         ),
-    ] = "",
+    ] = None,
     output_format: Annotated[str, Field(description="'text' or 'json'.")] = "text",
 ) -> str:
     """What else depends on what a diff changed: subclasses, callers and data keys.
