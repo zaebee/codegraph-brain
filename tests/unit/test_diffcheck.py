@@ -316,6 +316,15 @@ def test_a_prefix_that_maps_no_changed_file_is_a_clear_error(tmp_path: Path) -> 
     assert "prefix" in result.output
 
 
+def test_a_diff_of_only_added_files_passes_on_a_graph_built_after_it(tmp_path: Path) -> None:
+    """The mapping guard checks the head side: an added file is in a fresh graph."""
+    repo, base = _repo(tmp_path, {"app/a.py": A_APP})
+    _commit(repo, {"app/b.py": B_APP}, "add b")
+    with _store(repo, tmp_path) as store:
+        report = run_diff_check(store, repo, base)
+    assert report.items == []
+
+
 def test_the_mcp_tool_says_when_no_changed_file_maps(tmp_path: Path) -> None:
     from cgis.api.mcp_server import cgis_diff_check  # noqa: PLC0415 — the server is heavy
 
