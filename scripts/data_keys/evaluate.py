@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from locations import CORPUS, OWNER_API
 
 from cgis.core.keys import KEY_ID_PREFIX, parse_key_id
 from cgis.languages import extractors
@@ -32,11 +33,11 @@ from cgis.storage.sqlite_store import SQLiteStore
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_SETS = REPO_ROOT / "benchmarks" / "data_keys" / "dev_cases.yaml"
 DEFAULT_OUT = REPO_ROOT / "benchmarks" / "data_keys" / "results" / "dev-task1.json"
-CASES_DIR = Path("/home/zaebee/bench-corpora/data-keys/cases")
+CASES_DIR = CORPUS / "cases"
 
 #: Where each repository named in a sets file lives, and its ingest root inside it.
 REPOS: Mapping[str, Path] = {
-    "owner-api": Path("/home/zaebee/projects/ownima/owner-api"),
+    "owner-api": OWNER_API,
     "cgis": REPO_ROOT,
 }
 #: The ingest root inside each repository, and the source roots under it. owner-api is

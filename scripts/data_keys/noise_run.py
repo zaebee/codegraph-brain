@@ -20,6 +20,7 @@ from statistics import median
 from typing import Any
 
 from evaluate import PREFIXES, REPOS, SHOWN, SOURCE_ROOTS, export_tree, ingest
+from locations import CORPUS
 
 from cgis.query.diffcheck import DiffError, run_diff_check
 from cgis.storage.sqlite_store import SQLiteStore
@@ -27,8 +28,8 @@ from cgis.storage.sqlite_store import SQLiteStore
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 NOISE = REPO_ROOT / "benchmarks" / "data_keys" / "noise.json"
 DEFAULT_OUT = REPO_ROOT / "benchmarks" / "data_keys" / "results" / "noise-items.json"
-WORK = Path("/home/zaebee/bench-corpora/data-keys/noise-work")
-PUBLIC_CLONE = Path("/home/zaebee/bench-corpora/data-keys/rq")
+WORK = CORPUS / "noise-work"
+PUBLIC_CLONE = CORPUS / "rq"
 
 
 def run_pr(

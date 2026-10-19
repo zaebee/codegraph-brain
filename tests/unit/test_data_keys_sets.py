@@ -180,3 +180,11 @@ def test_blame_parsers_read_hunks_and_porcelain() -> None:
     sha = "a" * 40
     porcelain = f"{sha} 5 5 2\nauthor x\n\tcode\n{sha} 6 6\n\tmore\n"
     assert mine_blame.blamed_shas(porcelain) == [sha, sha]
+
+
+def test_no_script_names_a_machines_home_directory() -> None:
+    # Final review #32: inputs come from arguments or the environment (`locations.py`).
+    scripts = sorted((ROOT / "scripts" / "data_keys").glob("*.py"))
+    assert scripts, "no script found: the check below would pass on nothing"
+    named = [p.name for p in scripts if "/home/" in p.read_text(encoding="utf-8")]
+    assert named == []

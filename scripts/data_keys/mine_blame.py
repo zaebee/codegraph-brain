@@ -15,6 +15,7 @@ from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from locations import OWNER_API
 from mine_heldout import (
     _NON_CODE_TITLE,
     DEFAULT_REPO,
@@ -28,7 +29,7 @@ from mine_heldout import (
 
 DEFAULT_OUT = REPO_ROOT / "benchmarks" / "data_keys" / "heldout-v2.json"
 NOISE_PATH = REPO_ROOT / "benchmarks" / "data_keys" / "noise.json"
-DEFAULT_CHECKOUT = Path("/home/zaebee/projects/ownima/owner-api")
+DEFAULT_CHECKOUT = OWNER_API
 
 #: The breaking PR is merged at most this long before the fix.
 WINDOW = timedelta(days=60)

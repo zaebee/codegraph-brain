@@ -47,3 +47,19 @@ v2 uses the spec's other branch, `git blame`. The rule, fixed before the run:
   fix first.
 - Sealing as before: the miner prints counts and PR numbers only, never a diff or a blamed
   line. Output: `heldout-v2.json`, the v1 record shape plus `blamed_lines` (a count) per pair.
+
+## Reproducing on another machine
+
+The scripts in `scripts/data_keys/` name no machine's paths; `locations.py` derives them.
+Set these, or accept the defaults:
+
+- `CGIS_DATA_KEYS_CORPUS`: exported trees, clones and scratch databases
+  (default `~/bench-corpora/data-keys`). The noise run expects the pinned `rq/rq` clone
+  at `<corpus>/rq`, and `ingest_pairs.py` the owner-api export at
+  `<corpus>/owner-2bd0fb7-backend/ownima-backend` (or pass `--tree`).
+- `CGIS_OWNER_API`: the owner-api checkout, read with `git` only, never checked out
+  (default: `owner-api` beside this checkout). `mine_blame.py --checkout` overrides it.
+
+`ingest_pairs.py` takes main's source tree as `--main-src <main checkout>/src` and the
+interpreter as `--python` (default: the one running it); the branch side is this
+checkout's `src`.
