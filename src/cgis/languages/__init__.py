@@ -46,6 +46,10 @@ class Manifest:
     #: Said with every impact answer rooted in this language, and in the server
     #: instructions: what an agent must not take on trust (exp4, for Go).
     impact_caveat: str = ""
+    #: Whether the pack's nodes are code another file can name. False for files that
+    #: only declare data: their ids stay out of the resolver's index, so a `data/`
+    #: directory of JSON never makes an unresolved `data.get` look internal.
+    names_code: bool = True
 
 
 def _python() -> LanguagePack:
@@ -62,6 +66,12 @@ def _typescript() -> LanguagePack:
 
 def _go() -> LanguagePack:
     from cgis.languages.go import PACK  # noqa: PLC0415 — on the first .go file
+
+    return PACK
+
+
+def _data() -> LanguagePack:
+    from cgis.languages.data import PACK  # noqa: PLC0415 — on the first .json/.yaml/.yml file
 
     return PACK
 
@@ -127,6 +137,21 @@ MANIFESTS: tuple[Manifest, ...] = (
             "ssh package; not measured on applications)."
         ),
     ),
+    Manifest(
+        name="data",
+        title="JSON and YAML",
+        load=_data,
+        extensions=(".json", ".yaml", ".yml"),
+        never_ingested=re.compile(r"\b\B"),  # matches nowhere: lock files keep a FILE node
+        names_code=False,
+        # DK-3: a declaring file adds keys and nothing a caller could reach, so an
+        # answer rooted in one (its FILE node) says what it can and cannot hold.
+        impact_caveat=(
+            "JSON and YAML files contribute data key declarations only: no symbols, calls "
+            "or impact. An OpenSearch mapping declares each property and each subfield "
+            "under its fields (event_type.keyword is declared only by a keyword subfield)."
+        ),
+    ),
 )
 
 _BY_EXTENSION: dict[str, Manifest] = {ext: m for m in MANIFESTS for ext in m.extensions}
@@ -146,6 +171,16 @@ def _load(name: str) -> LanguagePack:
 def impact_caveat(language: str) -> str:
     """The caveat an impact answer on `language` carries; empty when there is none."""
     return next((m.impact_caveat for m in MANIFESTS if m.name == language), "")
+
+
+def names_code(language: str) -> bool:
+    """Whether nodes of `language` are code other files can name; imports no pack.
+
+    True for a language no manifest declares: the virtual nodes and hand-built rows
+    that carry none have always been indexed.
+    """
+    manifest = _BY_NAME.get(language)
+    return manifest is None or manifest.names_code
 
 
 def is_supported(path: str) -> bool:

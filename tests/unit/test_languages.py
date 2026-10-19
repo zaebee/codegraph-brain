@@ -175,7 +175,8 @@ class TestExtractors:
             "import sys\n"
             "from cgis.languages import extractors\n"
             "m = extractors([])\n"
-            "assert '.ts' in m and '.tsx' in m and '.go' in m and len(list(m)) == 4\n"
+            "assert '.ts' in m and '.tsx' in m and '.go' in m and '.json' in m\n"
+            "assert len(list(m)) == 7\n"
             "print(sorted(x for x in sys.modules if x.startswith('tree_sitter_')))\n"
         )
         out = subprocess.run(

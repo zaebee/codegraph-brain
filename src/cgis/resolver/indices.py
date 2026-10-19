@@ -8,7 +8,7 @@ from types import MappingProxyType
 from cgis.core.index import ClassifyContext, IndexFacts
 from cgis.core.js_globals import JS_BUILTINS_ROOT
 from cgis.core.models import SELF_PREFIX, Node, NodeNamespace, NodeType
-from cgis.languages import classifying_pack, rules_for
+from cgis.languages import classifying_pack, names_code, rules_for
 from cgis.languages import index_facts as pack_index_facts
 
 
@@ -355,7 +355,9 @@ class IndexBuilder:
         `project_state` is every other fact a pack declared (step 7, H3), merged
         into the state its `index_facts` reads; it may not shadow a built-in.
         """
-        nodes_by_id = {n.id: n for n in nodes}
+        # A declaring file (JSON, YAML) names no code: its FILE node would add an
+        # internal root (`data` for data/x.json) and hide a same-named import's root.
+        nodes_by_id = {n.id: n for n in nodes if names_code(n.language)}
         global_symbols: dict[str, list[str]] = {}
         file_global_symbols: dict[tuple[str, str], list[str]] = {}
         class_methods: dict[str, dict[str, str]] = {}

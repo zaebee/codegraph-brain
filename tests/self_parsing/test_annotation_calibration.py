@@ -85,7 +85,12 @@ _GraphData = tuple[SQLiteStore, list[Node], list[Edge]]
 # main held 317 name references, and Task 2 adds 3, every one in the new
 # src/cgis/core/keys.py and src/cgis/resolver/keys.py. Name band re-centred on the
 # branch; annotation band unchanged.
-_EXPECTED_ANNOTATION_REFERENCES = 1095
+#
+# Re-measured 2026-10-19 on the data-key branch (fresh ingest, the fixture's pipeline):
+# 32dab04 held 1150 annotation references (Task 3's _keys.py and profile signatures),
+# and Task 4 adds 17, every one in the new src/cgis/languages/data/ modules. Annotation
+# band re-centred on the branch; names unchanged (326, within 320±25).
+_EXPECTED_ANNOTATION_REFERENCES = 1167
 _EXPECTED_NAME_REFERENCES = 320
 _TOLERANCE = 60  # ~10% of the annotation band: ordinary code churn, not a lost source
 _NAME_REF_TOLERANCE = 25  # the name-reference band is smaller, so its band is too

@@ -37,7 +37,11 @@ REPOS: Mapping[str, Path] = {
     "owner-api": Path("/home/zaebee/projects/ownima/owner-api"),
     "cgis": REPO_ROOT,
 }
-PREFIXES: Mapping[str, str] = {"owner-api": "ownima-backend/app", "cgis": "src"}
+#: The ingest root inside each repository, and the source roots under it. owner-api is
+#: ingested at ownima-backend, where its OpenSearch mappings live beside app/, with app
+#: as the source root so Python ids stay `models.owner.UserAdmin` (Task 4 ruling).
+PREFIXES: Mapping[str, str] = {"owner-api": "ownima-backend", "cgis": "src"}
+SOURCE_ROOTS: Mapping[str, list[str]] = {"owner-api": ["app"], "cgis": []}
 
 #: Items a reader sees by default; the evaluation's "shown" is the first this many.
 SHOWN = 5
@@ -63,12 +67,17 @@ def export_tree(repo: Path, sha: str, prefix: str, dest: Path) -> None:
         raise RuntimeError(message)
 
 
-def ingest(root: Path, db: Path) -> None:
-    """Ingest `root` into a fresh database at `db`."""
+def ingest(root: Path, db: Path, source_roots: Sequence[str] = ()) -> None:
+    """Ingest `root` into a fresh database at `db`, as `cgis ingest --source-root` does.
+
+    The options are recorded, so the diff check re-parses base files with the same roots.
+    """
     db.unlink(missing_ok=True)
-    pipeline = IngestionPipeline(extractors([]))
+    roots = list(source_roots)
+    pipeline = IngestionPipeline(extractors(roots))
     with SQLiteStore(str(db)) as store:
         pipeline.run(str(root), store=store, rebuild=True)
+        store.record_ingest_options(roots, None)
 
 
 def _graph_file(repo_path: str, prefix: str) -> str:
@@ -112,7 +121,7 @@ def run_case(case: Mapping[str, Any], work: Path) -> dict[str, Any]:
     started = time.monotonic()
     export_tree(repo, case["merge_sha"], prefix, case_dir)
     db = case_dir / "graph.db"
-    ingest(case_dir / prefix, db)
+    ingest(case_dir / prefix, db, case.get("source_roots", SOURCE_ROOTS[case["repo"]]))
     ingested = time.monotonic()
     with SQLiteStore(str(db)) as store:
         report = run_diff_check(

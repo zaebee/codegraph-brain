@@ -1,9 +1,10 @@
 # The development set: the eleven cases of the spec table
 # (docs/specs/2026-10-18-data-key-layer-design.md). Used freely while building.
-# expected_site is {file, id}: id is the node id (a dotted name relative to the ingest root
-# ownima-backend/app) or the key path the check should list; null when the case is out of
-# zone (the check is not expected to find anything). Evaluation counts a hit on id match,
-# else on the same file within the broken symbol's line span.
+# expected_site is {file, id}: id is the node id (a dotted name relative to the source
+# root app, under the ingest root ownima-backend) or the key path the check should list;
+# null when the case is out of zone (the check is not expected to find anything).
+# Evaluation counts a hit on id match, else on the same file within the broken symbol's
+# line span.
 # repo: owner-api = github.com/Ownima/owner-api; cgis = this repository.
 # base_sha is the first parent of the merge commit (squash merges).
 cases:
