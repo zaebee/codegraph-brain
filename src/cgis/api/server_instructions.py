@@ -18,7 +18,7 @@ from cgis.languages import MANIFESTS
 DIFF_CHECK_NOISE = (
     "caller and subclass items are leads to read; data-key items are noisy — measured "
     "on one application (owner-api), about a quarter of listed items were worth a look "
-    "(docs/lab-notes/2026-10-19-data-key-diff-check.md). Before calling a code site that "
+    "(docs/lab-notes/2026-10-19-data-key-diff-check.md). Before judging a code site that "
     "reads or writes a key unaffected, read its callers (cgis_analyze_impact): they decide "
     "what values reach it. "
     "Key items need a graph ingested "
