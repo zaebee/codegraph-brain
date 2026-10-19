@@ -16,6 +16,22 @@ from cgis.storage.sqlite_store import SQLiteStore
 
 #: Node types whose lines count as "changed code" (a FILE node spans the whole file).
 _SYMBOLS: Final = frozenset({NodeType.CLASS, NodeType.FUNCTION, NodeType.METHOD})
+#: Order of kinds among items of equal score, fixed before any noise or held-out run:
+#: a declaration the diff broke first, a plain other user of a key last.
+_KIND_ORDER: Final = {
+    kind: n
+    for n, kind in enumerate(
+        (
+            "removed-declaration",
+            "undeclared-read",
+            "subclass",
+            "caller",
+            "key-writer",
+            "key-declarer",
+            "key-reader",
+        )
+    )
+}
 
 
 @dataclass(frozen=True)
@@ -216,17 +232,19 @@ def run_diff_check(
 
     `prefix` is the ingest root's path inside the repository: diff paths map to
     graph files by stripping it, and paths outside it are ignored. Sites in test
-    files are counted, not listed; the rest are ranked by score, then kind, and
-    cut to `cap`. Raises `DiffError` when git cannot read the range.
+    files are counted, not listed; the rest are ranked by score, then `_KIND_ORDER`,
+    then (undeclared reads) a leaf-typed parent first, then file and line, and cut
+    to `cap`. Raises `DiffError` when git cannot read the range.
     """
     prefix = prefix.strip("/")
     graph = KeyGraph(store)
     changes = _changed(store, graph, repo, base, head, prefix)
     nodes, removed = changes.touched, changes.removed
+    found = key_items(graph, changes.keys, changes.head_files)
     keyed = [
-        DiffItem(k.kind, k.changed, k.site, k.file, k.line, k.reason, k.score, k.key)
-        for k in key_items(graph, changes.keys, changes.head_files)
+        DiffItem(k.kind, k.changed, k.site, k.file, k.line, k.reason, k.score, k.key) for k in found
     ]
+    tiers = {(k.kind, k.changed, k.site): k.tier for k in found}
     shown: list[DiffItem] = []
     in_tests = 0
     seen: set[tuple[str, str, str]] = set()
@@ -251,7 +269,16 @@ def run_diff_check(
                 raw.key,
             )
         )
-    shown.sort(key=lambda i: (-i.score, i.kind, i.file, i.line or 0, i.site))
+    shown.sort(
+        key=lambda i: (
+            -i.score,
+            _KIND_ORDER.get(i.kind, len(_KIND_ORDER)),
+            tiers.get((i.kind, i.changed, i.site), 0),
+            i.file,
+            i.line or 0,
+            i.site,
+        )
+    )
     symbols = sorted({n.id for n in [*nodes, *removed]})
     keys = sorted({u.key for u in changes.keys})
     return DiffReport(shown[:cap], max(len(shown) - cap, 0), in_tests, symbols, keys)

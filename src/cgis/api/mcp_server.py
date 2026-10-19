@@ -1113,7 +1113,7 @@ def cgis_diff_check(
     finds the graph symbols they fall in (and symbols the diff removed, read from
     the base text), and lists the classes that extend a changed class and the
     functions that call a changed or removed function. For each data key the
-    changed lines read, write or declare (``doc["picture"]``, a mapping field) it
+    changed lines read, write or declare (``doc["avatar"]``, a mapping field) it
     lists the key's other readers, writers and declarers, reads of a dotted path
     a mapping does not declare, and reads of a declaration the diff removed;
     common keys (``id``, ``name``, or used in many files) are left out. Sites in

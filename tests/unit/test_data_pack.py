@@ -75,6 +75,27 @@ def test_mapping_declares_property_paths_and_subfields() -> None:
     assert {e.source for e in edges} == {file_node.id}
 
 
+def test_a_mapping_declaration_carries_the_property_type() -> None:
+    _, edges = _parse(_MAPPING, "search/events.json")
+    types = {e.target.removeprefix(RAW_KEY_PREFIX): e.context for e in edges}
+    assert types == {
+        "|event_type": "keyword",
+        "|entity_id": "text",
+        "|entity_id.keyword": "keyword",
+        "|details": "object",
+        "|details.currency": "keyword",
+    }
+    yaml_mapping = "properties:\n  meta:\n    type: nested\n  tag:\n    type: keyword\n"
+    _, edges = _parse(yaml_mapping, "search/tags.yaml")
+    assert {e.target: e.context for e in edges} == {
+        f"{RAW_KEY_PREFIX}|meta": "object",
+        f"{RAW_KEY_PREFIX}|tag": "keyword",
+    }
+    # A plain document has no mapping types.
+    _, edges = _parse('{"a": {"type": "keyword"}}', "conf/plain.json")
+    assert {e.context for e in edges} == {None}
+
+
 def test_a_top_level_properties_document_is_a_mapping_too() -> None:
     code = (
         "properties:\n  status:\n    type: text\n    fields:\n      raw:\n        type: keyword\n"

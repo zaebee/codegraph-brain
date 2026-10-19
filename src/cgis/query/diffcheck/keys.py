@@ -3,7 +3,7 @@
 A key changes where the diff's lines meet a key edge: in the head graph, or in the
 base text re-parsed by `check`. Each changed key lists the other readers, writers and
 declarers of every key that can name the same data (`keys_match`), and readers of
-paths inside it (`picture.cover` reads into `picture`). Two more kinds compare reads
+paths inside it (`avatar.url` reads into `avatar`). Two more kinds compare reads
 with declarations: a dotted path read whose parent is declared and the path nowhere
 (`undeclared-read`), and a declaration only the base has whose path is still read
 (`removed-declaration`). Specificity ranks them and keeps the common keys out.
@@ -17,15 +17,18 @@ from dataclasses import dataclass
 from itertools import takewhile
 
 from cgis.core.keys import key_id, parse_key_id
-from cgis.core.models import RAW_KEY_PREFIX, Edge, EdgeType, Node, NodeType
+from cgis.core.models import RAW_KEY_PREFIX, Edge, EdgeType, Node
 from cgis.core.paths import is_test_path
 from cgis.languages import names_code, pack_for_path
+from cgis.resolver.keys import constant_namespace
 from cgis.storage.sqlite_store import SQLiteStore
 
 #: Unscoped single-segment keys that name no data in particular: never listed.
 COMMON_KEYS = frozenset({"id", "name", "type", "data", "value", "key", "items", "result"})
 #: An unscoped single-segment key referenced from more files than this is not listed.
 MAX_FILES = 8
+#: Nodes read per suffix lookup of an imported module: enough to see a second FILE.
+_SUFFIX_LIMIT = 1000
 
 _KIND = {
     EdgeType.READS_KEY: "key-reader",
@@ -69,6 +72,9 @@ class KeyItem:
     key: str
     reason: str
     score: float
+    #: Order among items of equal score and kind: 0 first. An undeclared read under a
+    #: leaf-typed parent (`keyword`) is 0, under an object or untyped parent 1.
+    tier: int = 0
 
 
 def _show(key: str) -> str:
@@ -88,6 +94,8 @@ class KeyGraph:
         declared: defaultdict[str, dict[str, str]] = defaultdict(dict)  # path -> ns -> file
         # The same, for declaring files only (a mapping, not a model's fields).
         in_files: defaultdict[str, dict[str, str]] = defaultdict(dict)
+        # path -> ns -> the mapping type a declaring file gives it ("" when none).
+        types: defaultdict[str, dict[str, str]] = defaultdict(dict)
         declared_in: defaultdict[str, set[str]] = defaultdict(set)  # declaring file -> key ids
         reads_under: defaultdict[str, list[Edge]] = defaultdict(list)  # parent path -> reads
         declaring: dict[str, bool] = {}
@@ -105,6 +113,7 @@ class KeyGraph:
                 if declaring[file]:
                     if namespace not in in_files[path]:
                         in_files[path][namespace] = file
+                        types[path][namespace] = edge.context or ""
                     declared_in[file].add(edge.target)
             elif edge.type is EdgeType.READS_KEY and "." in path:
                 reads_under[_parent(path)].append(edge)
@@ -113,6 +122,7 @@ class KeyGraph:
         self._ids = ids
         self._declared = declared
         self._in_files = in_files
+        self._types = types
         self._declared_in = declared_in
         self._reads_under = reads_under
         self._paths = sorted(ids)
@@ -124,7 +134,7 @@ class KeyGraph:
         return sorted(k for k in self._ids[path] if _agree(namespace, parse_key_id(k)[0]))
 
     def inside(self, key: str) -> list[str]:
-        """Ids of paths below `key`'s (`picture.cover` under `picture`), namespaces agreeing."""
+        """Ids of paths below `key`'s (`avatar.url` under `avatar`), namespaces agreeing."""
         namespace, path = parse_key_id(key)
         prefix = path + "."
         start = bisect_left(self._paths, prefix)
@@ -154,6 +164,11 @@ class KeyGraph:
         files = [declared[ns] for ns in declared if _agree(namespace, ns)]
         return min(files) if files else None
 
+    def leaf_parent(self, namespace: str, path: str) -> bool:
+        """Whether a declaring file gives `path` a leaf mapping type (`keyword`, not `object`)."""
+        types = self._types[path]
+        return any(types[ns] not in ("", "object") for ns in types if _agree(namespace, ns))
+
     def declared_in(self, file: str) -> set[str]:
         """The key ids `file` declares."""
         return self._declared_in[file]
@@ -170,7 +185,7 @@ def _is_declaring(file: str) -> bool:
 
 
 def _parent(path: str) -> str:
-    """The path one level up: `event_type` for `event_type.keyword`; "" at the top."""
+    """The path one level up: `status` for `status.keyword`; "" at the top."""
     return path.rpartition(".")[0]
 
 
@@ -201,41 +216,20 @@ def specificity(key: str, graph: KeyGraph) -> float:
 def base_key(target: str, file: Node | None, store: SQLiteStore) -> str:
     """The key id of a re-parsed base edge's `raw_key:` target, as the resolver would make it.
 
-    An `@NAME` namespace is the string constant NAME holds: in the file's own
-    `str_constants`, else in those of the module its `import_map` takes NAME from
-    (looked up in the head graph). Anything else leaves the key unscoped.
+    An `@NAME` namespace goes through `constant_namespace`, the resolver's rule, with
+    the base FILE node's own import map and the head graph for the imported module.
     """
     namespace, _, path = target.removeprefix(RAW_KEY_PREFIX).partition("|")
     if namespace.startswith("@"):
-        namespace = _constant(namespace[1:], file, store)
+        imports = file.metadata.get("import_map") if file is not None else None
+        namespace = constant_namespace(
+            namespace[1:],
+            file,
+            imports if isinstance(imports, dict) else {},
+            store.get_node,
+            lambda fqn: store.find_nodes_by_suffix(fqn, limit=_SUFFIX_LIMIT),
+        )
     return key_id(namespace, path)
-
-
-def _constant(name: str, file: Node | None, store: SQLiteStore) -> str:
-    """What the module-level string constant `name` holds where `file` uses it; "" if unknown."""
-    metadata = file.metadata if file is not None else {}
-    own = _strings(metadata.get("str_constants")).get(name)
-    if own is not None:
-        return own
-    imports = metadata.get("import_map")
-    target = imports.get(name) if isinstance(imports, dict) else None
-    if not isinstance(target, str) or "." not in target:
-        return ""
-    module, _, imported = target.rpartition(".")
-    parts = module.split(".")
-    # The import names the module from the repository's view, the graph from the source root.
-    for start in range(len(parts)):
-        node = store.get_node(".".join(parts[start:]))
-        if node is not None and node.type is NodeType.FILE:
-            return _strings(node.metadata.get("str_constants")).get(imported, "")
-    return ""
-
-
-def _strings(value: object) -> dict[str, str]:
-    """The string-to-string entries of a metadata value; none when it is not a dict."""
-    if not isinstance(value, dict):
-        return {}
-    return {k: v for k, v in value.items() if isinstance(k, str) and isinstance(v, str)}
 
 
 def key_items(graph: KeyGraph, uses: Iterable[KeyUse], head_files: dict[str, str]) -> list[KeyItem]:
@@ -333,6 +327,7 @@ def _undeclared(
             key=edge.target,
             reason=f"reads {path}, but {declaring} declares {parent} with no {path}",
             score=specificity(edge.target, graph),
+            tier=0 if graph.leaf_parent(namespace, parent) else 1,
         )
 
 

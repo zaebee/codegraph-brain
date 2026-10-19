@@ -1,6 +1,6 @@
 """Data keys: the id of a key node and the rule for when two keys are the same key.
 
-A key is a string the code uses to address data (`details.brand`), compared inside a
+A key is a string the code uses to address data (`address.city`), compared inside a
 namespace (an index, a Redis prefix, a model). The namespace is empty for an unscoped
 key. DK-1..DK-3 in docs/specs/core/ontology.yml say what writes, reads and declares one.
 """

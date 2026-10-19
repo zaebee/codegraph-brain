@@ -245,3 +245,51 @@ def test_a_key_changed_only_in_tests_lists_nothing(tmp_path: Path) -> None:
     )
     assert "key:|details.brand" in report.changed_keys
     assert report.items == []
+
+
+def test_an_added_read_of_an_undeclared_subfield_is_reported(tmp_path: Path) -> None:
+    mapping = _mapping({"event_type": {"type": "keyword"}})
+    before = "def count_events(client, kind):\n    return client.search(body={})\n"
+    report = _check(
+        tmp_path,
+        {"opensearch/mappings/events.json": mapping, "admin/query.py": before},
+        {"admin/query.py": QUERY},
+    )
+    (item,) = _of(report, "undeclared-read")
+    assert (item.site, item.line) == ("admin.query.count_events", 2)
+
+
+def test_equal_scores_rank_by_the_fixed_kind_order(tmp_path: Path) -> None:
+    read = "def a(doc):\n    return doc['details']['brand']\n"
+    report = _check(
+        tmp_path,
+        {
+            "a.py": read,
+            "r.py": read.replace("def a", "def r"),
+            "w.py": "def w(doc):\n    doc['details']['brand'] = 1\n",
+            "opensearch/mappings/cars.json": _mapping(
+                {"details": {"properties": {"brand": {"type": "keyword"}}}}
+            ),
+        },
+        {"a.py": read.replace("doc", "car")},
+    )
+    assert len({i.score for i in report.items}) == 1
+    # Alphabetical kinds would put key-declarer, then key-reader, then key-writer.
+    assert [i.kind for i in report.items] == ["key-writer", "key-declarer", "key-reader"]
+
+
+def test_an_undeclared_read_under_a_leaf_parent_ranks_first(tmp_path: Path) -> None:
+    fields = {"brand": {"type": "keyword"}, "meta": {"type": "object"}}
+    report = _check(
+        tmp_path,
+        {
+            "opensearch/mappings/cars.json": _mapping(fields),
+            "a_object.py": "def obj(doc):\n    return doc['meta']['colour']\n",
+            "z_leaf.py": "def leaf(client):\n    return client.search(body={'query': "
+            "{'term': {'brand.keyword': 1}}})\n",
+        },
+        {"opensearch/mappings/cars.json": _mapping({**fields, "year": {"type": "integer"}})},
+    )
+    undeclared = _of(report, "undeclared-read")
+    assert len({i.score for i in undeclared}) == 1
+    assert [i.site for i in undeclared] == ["z_leaf.leaf", "a_object.obj"]

@@ -149,7 +149,7 @@ MANIFESTS: tuple[Manifest, ...] = (
         impact_caveat=(
             "JSON and YAML files contribute data key declarations only: no symbols, calls "
             "or impact. An OpenSearch mapping declares each property and each subfield "
-            "under its fields (event_type.keyword is declared only by a keyword subfield)."
+            "under its fields (status.keyword is declared only by a keyword subfield)."
         ),
     ),
 )

@@ -4,7 +4,9 @@ A document's keys declare themselves as dotted paths, at every depth; nothing be
 a list is read, since its items have no key of their own. An OpenSearch mapping
 declares its shape instead (`DataProfile.mapping_roots`): each property path, and
 `<path>.<subfield>` for each entry under the property's `fields` — so
-`event_type: {type: keyword}` declares `event_type` and no `event_type.keyword`.
+`status: {type: keyword}` declares `status` and no `status.keyword`.
+A mapping declaration carries the property's type as its edge `context` (`keyword`;
+`object` for a property with nested `properties`); a plain document's carry none.
 
 This runs on every JSON and YAML file a walk meets, so a file the profile skips is
 never parsed, and a parsed one is reduced to its keys and their lines: JSON by a
@@ -31,8 +33,11 @@ from cgis.languages.data.profile import DATA_PROFILE, DataProfile
 
 logger = structlog.getLogger(__name__)
 
-#: A document's keys: each key's line and, when its value is a mapping, that mapping's keys.
-type Keys = dict[str, tuple[int, Keys | None]]
+#: A document's keys: each key's line and its value when that is a mapping (its keys) or
+#: a string (a mapping property's `type` is read from it); None for anything else.
+type Keys = dict[str, tuple[int, Keys | str | None]]
+#: Mapping types whose property holds named fields rather than one value.
+_OBJECT_TYPES = frozenset({"object", "nested"})
 
 _DECODER = json.JSONDecoder()
 _WHITESPACE = re.compile(r"[ \t\n\r]*")
@@ -87,8 +92,9 @@ class DataExtractor(BaseExtractor):
                 confidence=1.0,
                 file_path=file_path,
                 line_number=line,
+                context=kind or None,
             )
-            for namespace, path, line in declared
+            for namespace, path, line, kind in declared
         ]
         return [file_node], edges
 
@@ -112,19 +118,23 @@ def _skipped(file_path: str, code: str, profile: DataProfile) -> bool:
 
 def _declarations(
     documents: list[Keys], file_path: str, profile: DataProfile
-) -> list[tuple[str, str, int]]:
-    """(namespace, path, line) per declared key; `_TooManyKeysError` past the profile's cap."""
+) -> list[tuple[str, str, int, str]]:
+    """(namespace, path, line, mapping type) per declared key; the type is "" outside a
+    mapping. `_TooManyKeysError` past the profile's cap."""
     linked = profile.mapping_namespace.search(file_path.replace("\\", "/"))
-    found: list[tuple[str, str, int]] = []
+    found: list[tuple[str, str, int, str]] = []
     for keys in documents:
         properties = _mapping_properties(keys, profile)
         if properties is None:
-            namespace, paths = "", _plain_paths(keys, "")
+            namespace = ""
+            paths: Iterator[tuple[str, int, str]] = (
+                (path, line, "") for path, line in _plain_paths(keys, "")
+            )
         else:
             namespace = linked.group("index") if linked else ""
             paths = _mapping_paths(properties, "", profile)
-        for path, line in paths:
-            found.append((namespace, path, line))
+        for path, line, kind in paths:
+            found.append((namespace, path, line, kind))
             if len(found) > profile.max_keys:
                 raise _TooManyKeysError
     return found
@@ -136,7 +146,7 @@ def _mapping_properties(keys: Keys, profile: DataProfile) -> Keys | None:
         here: Keys | None = keys
         for step in root:
             entry = here.get(step) if here is not None else None
-            here = entry[1] if entry is not None else None
+            here = entry[1] if entry is not None and isinstance(entry[1], dict) else None
         if here is not None:
             return here
     return None
@@ -147,26 +157,36 @@ def _plain_paths(keys: Keys, prefix: str) -> Iterator[tuple[str, int]]:
     for key, (line, child) in keys.items():
         path = f"{prefix}.{key}" if prefix else key
         yield path, line
-        if child is not None:
+        if isinstance(child, dict):
             yield from _plain_paths(child, path)
 
 
 def _mapping_paths(
     properties: Keys, prefix: str, profile: DataProfile
-) -> Iterator[tuple[str, int]]:
-    """Each property path, its subfields under `fields`, then its nested properties."""
+) -> Iterator[tuple[str, int, str]]:
+    """Each property path and type, its subfields under `fields`, then its nested properties."""
     for name, (line, spec) in properties.items():
         path = f"{prefix}.{name}" if prefix else name
-        yield path, line
-        if spec is None:
+        if not isinstance(spec, dict):
+            yield path, line, ""
             continue
-        subfields = spec.get(profile.mapping_subfields)
-        if subfields is not None and subfields[1] is not None:
-            for subfield, (sub_line, _) in subfields[1].items():
-                yield f"{path}.{subfield}", sub_line
         nested = spec.get(profile.mapping_children)
-        if nested is not None and nested[1] is not None:
-            yield from _mapping_paths(nested[1], path, profile)
+        children = nested[1] if nested is not None and isinstance(nested[1], dict) else None
+        yield path, line, "object" if children is not None else _mapping_type(spec)
+        subfields = spec.get(profile.mapping_subfields)
+        if subfields is not None and isinstance(subfields[1], dict):
+            for subfield, (sub_line, sub_spec) in subfields[1].items():
+                kind = _mapping_type(sub_spec) if isinstance(sub_spec, dict) else ""
+                yield f"{path}.{subfield}", sub_line, kind
+        if children is not None:
+            yield from _mapping_paths(children, path, profile)
+
+
+def _mapping_type(spec: Keys) -> str:
+    """A mapping property's type: `object` for an object or nested one, "" when unstated."""
+    entry = spec.get("type")
+    kind = entry[1] if entry is not None and isinstance(entry[1], str) else ""
+    return "object" if kind in _OBJECT_TYPES else kind
 
 
 def _json_keys(code: str) -> list[Keys]:
@@ -210,11 +230,12 @@ def _json_object(text: str, index: int, newlines: list[int]) -> tuple[Keys, int]
             msg = f"expecting ':' at offset {index}"
             raise ValueError(msg)
         index = _past_whitespace(text, index + 1)
-        child: Keys | None = None
+        child: Keys | str | None = None
         if text[index] == "{":
             child, index = _json_object(text, index, newlines)
         else:
-            _, index = _DECODER.raw_decode(text, index)  # a list or a scalar, in C
+            value, index = _DECODER.raw_decode(text, index)  # a list or a scalar, in C
+            child = value if isinstance(value, str) else None
         keys[key] = (line, child)
         index = _past_whitespace(text, index)
         if text[index] == ",":
@@ -244,8 +265,10 @@ def _yaml_mapping(node: yaml.MappingNode, seen: dict[int, Keys]) -> Keys:
     for key_node, value_node in node.value:
         if not isinstance(key_node, yaml.ScalarNode) or key_node.value == _MERGE_KEY:
             continue
-        child = (
-            _yaml_mapping(value_node, seen) if isinstance(value_node, yaml.MappingNode) else None
-        )
+        child: Keys | str | None = None
+        if isinstance(value_node, yaml.MappingNode):
+            child = _yaml_mapping(value_node, seen)
+        elif isinstance(value_node, yaml.ScalarNode):
+            child = str(value_node.value)
         keys[str(key_node.value)] = (key_node.start_mark.line + 1, child)
     return keys

@@ -4,7 +4,7 @@ The clauses are docs/specs/core/ontology.yml DK-1..DK-3. A key is a plain string
 literal in a key position (`d["k"]`, `d.get("k")`, `"k" in d`, a field of a query or
 of a document handed to storage, an annotated field of a model); each becomes a
 `raw_key:<namespace>|<path>` edge the resolver turns into a key node. Nested access
-(`doc["details"]["brand"]`) is one dotted path. Which calls read, write or name a
+(`doc["address"]["city"]`) is one dotted path. Which calls read, write or name a
 namespace is `KEY_PROFILE`. The file is read by one tree-sitter query, its captures
 assigned to their owners in one sweep, as `_values._bodies` does (#701).
 """

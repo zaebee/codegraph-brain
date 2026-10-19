@@ -21,8 +21,10 @@ cases:
   - case: "#2066"
     repo: owner-api
     breaking_pr: 2066
-    base_sha: 449cb94b6703b1feffd63199bfbbc3296efcaeb1
-    merge_sha: 06ddd2fc3d54c23af15bba43ffb1819003177abd
+    # The breaking state is the PR's first commit (pull/2066/head); the squash merge
+    # 06ddd2fc already holds the second commit's fix and the finance guard (controller ruling).
+    base_sha: b7bc685bff1f273a64b94162986382a7a8b4d678
+    merge_sha: 2b4dcfcb4398d6f3cb2ad717cd6e88c6835817f0
     what_broke: create_vehicle stored picture null; finance does data_source["picture"].pop(...)
     in_zone: true
     expected_site:

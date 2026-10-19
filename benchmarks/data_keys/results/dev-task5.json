@@ -35,8 +35,8 @@
       "changed_keys": 4,
       "in_tests": 1,
       "changed_symbols": 17,
-      "ingest_seconds": 32.2,
-      "check_seconds": 0.3
+      "ingest_seconds": 33.5,
+      "check_seconds": 0.2
     },
     {
       "case": "#2066",
@@ -49,22 +49,8 @@
       "listed": false,
       "shown": false,
       "rank": null,
-      "items": 20,
+      "items": 7,
       "shown_items": [
-        {
-          "kind": "caller",
-          "site": "domains.finance.routes.create_external_transaction",
-          "file": "app/domains/finance/routes.py",
-          "line": 97,
-          "score": 1.0
-        },
-        {
-          "kind": "caller",
-          "site": "domains.vehicle.routes.create_vehicle",
-          "file": "app/domains/vehicle/routes.py",
-          "line": 72,
-          "score": 1.0
-        },
         {
           "kind": "caller",
           "site": "domains.vehicle.routes.update_vehicle",
@@ -85,19 +71,30 @@
           "file": "app/domains/vehicle/routes.py",
           "line": 215,
           "score": 1.0
+        },
+        {
+          "kind": "caller",
+          "site": "domains.vehicle.service.VehicleService.update_vehicle",
+          "file": "app/domains/vehicle/service.py",
+          "line": 695,
+          "score": 1.0
+        },
+        {
+          "kind": "caller",
+          "site": "domains.vehicle.service.VehicleService.publish_vehicle",
+          "file": "app/domains/vehicle/service.py",
+          "line": 841,
+          "score": 1.0
         }
       ],
       "kinds": {
-        "caller": 9,
-        "key-declarer": 2,
-        "key-reader": 7,
-        "key-writer": 2
+        "caller": 7
       },
-      "changed_keys": 9,
-      "in_tests": 56,
-      "changed_symbols": 27,
-      "ingest_seconds": 33.7,
-      "check_seconds": 0.6
+      "changed_keys": 5,
+      "in_tests": 34,
+      "changed_symbols": 21,
+      "ingest_seconds": 35.3,
+      "check_seconds": 0.4
     },
     {
       "case": "#2071-#2085",
@@ -109,42 +106,42 @@
       },
       "listed": true,
       "shown": true,
-      "rank": 4,
+      "rank": 0,
       "items": 11,
       "shown_items": [
-        {
-          "kind": "undeclared-read",
-          "site": "domains.admin.activity.get_recent_vehicle_activities",
-          "file": "app/domains/admin/activity.py",
-          "line": 91,
-          "score": 2.0
-        },
-        {
-          "kind": "undeclared-read",
-          "site": "domains.admin.activity.get_recent_reservation_activities",
-          "file": "app/domains/admin/activity.py",
-          "line": 146,
-          "score": 2.0
-        },
-        {
-          "kind": "undeclared-read",
-          "site": "domains.admin.metrics_service.MetricsService.get_recent_vehicle_activities",
-          "file": "app/domains/admin/metrics_service.py",
-          "line": 215,
-          "score": 2.0
-        },
-        {
-          "kind": "undeclared-read",
-          "site": "domains.admin.metrics_service.MetricsService.get_recent_reservation_activities",
-          "file": "app/domains/admin/metrics_service.py",
-          "line": 241,
-          "score": 2.0
-        },
         {
           "kind": "undeclared-read",
           "site": "domains.admin.query.user_activity",
           "file": "app/domains/admin/query.py",
           "line": 81,
+          "score": 2.0
+        },
+        {
+          "kind": "undeclared-read",
+          "site": "domains.admin.query.audit_events",
+          "file": "app/domains/admin/query.py",
+          "line": 388,
+          "score": 2.0
+        },
+        {
+          "kind": "undeclared-read",
+          "site": "domains.admin.query.first_event_per_owner",
+          "file": "app/domains/admin/query.py",
+          "line": 919,
+          "score": 2.0
+        },
+        {
+          "kind": "undeclared-read",
+          "site": "domains.vehicle.query.first_event_per_vehicle",
+          "file": "app/domains/vehicle/query.py",
+          "line": 374,
+          "score": 2.0
+        },
+        {
+          "kind": "undeclared-read",
+          "site": "domains.admin.activity.get_recent_vehicle_activities",
+          "file": "app/domains/admin/activity.py",
+          "line": 91,
           "score": 2.0
         }
       ],
@@ -154,7 +151,7 @@
       "changed_keys": 12,
       "in_tests": 17,
       "changed_symbols": 4,
-      "ingest_seconds": 32.5,
+      "ingest_seconds": 33.3,
       "check_seconds": 0.3
     },
     {
@@ -217,7 +214,7 @@
       "changed_keys": 27,
       "in_tests": 103,
       "changed_symbols": 58,
-      "ingest_seconds": 30.4,
+      "ingest_seconds": 31.6,
       "check_seconds": 1.5
     },
     {
@@ -274,7 +271,7 @@
       "changed_keys": 11,
       "in_tests": 70,
       "changed_symbols": 31,
-      "ingest_seconds": 32.9,
+      "ingest_seconds": 29.8,
       "check_seconds": 0.6
     },
     {
@@ -308,8 +305,8 @@
       "changed_keys": 3,
       "in_tests": 22,
       "changed_symbols": 24,
-      "ingest_seconds": 31.3,
-      "check_seconds": 0.4
+      "ingest_seconds": 32.2,
+      "check_seconds": 0.5
     },
     {
       "case": "#1815",
@@ -337,8 +334,8 @@
       "changed_keys": 0,
       "in_tests": 0,
       "changed_symbols": 2,
-      "ingest_seconds": 32.3,
-      "check_seconds": 0.2
+      "ingest_seconds": 31.1,
+      "check_seconds": 0.3
     },
     {
       "case": "cgis #701",
@@ -395,7 +392,7 @@
       "changed_keys": 1,
       "in_tests": 0,
       "changed_symbols": 15,
-      "ingest_seconds": 3.2,
+      "ingest_seconds": 3.0,
       "check_seconds": 0.1
     }
   ]

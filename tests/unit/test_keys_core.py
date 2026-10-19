@@ -6,6 +6,7 @@ from cgis.core.keys import key_id, keys_match, parse_key_id
 from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeType
 from cgis.query.engine import BEHAVIORAL_EDGE_TYPES, QueryEngine
 from cgis.resolver.engine import ResolverEngine
+from cgis.resolver.keys import constant_namespace
 from cgis.storage.sqlite_store import SQLiteStore
 
 
@@ -174,3 +175,42 @@ def test_key_edges_stay_out_of_flow_and_impact(tmp_path: Path) -> None:
     assert {n.id for n in flow} == {"svc.f", "svc.h"}
     assert {n.id for n in impact} == {"svc.f", "svc.h"}
     assert not [n for n in [*flow, *impact] if n.type is NodeType.DATA_KEY]
+
+
+def _module(fqn: str, constants: dict[str, str]) -> Node:
+    return Node(
+        id=fqn,
+        type=NodeType.FILE,
+        name=fqn,
+        file_path=fqn.replace(".", "/") + ".py",
+        start_line=1,
+        end_line=1,
+        metadata={"str_constants": constants},
+    )
+
+
+def _namespace(name: str, user: Node, modules: list[Node]) -> str:
+    by_id = {m.id: m for m in modules}
+    return constant_namespace(
+        name,
+        user,
+        user.metadata.get("import_map", {}),
+        by_id.get,
+        lambda fqn: [m for m in modules if m.id.endswith("." + fqn)],
+    )
+
+
+def test_a_constant_namespace_comes_from_the_file_then_its_import() -> None:
+    user = _module("svc", {"OWN": "own_index"})
+    user = user.model_copy(update={"metadata": {**user.metadata, "import_map": {"IDX": "cfg.IDX"}}})
+    assert _namespace("OWN", user, []) == "own_index"
+    assert _namespace("IDX", user, [_module("src.cfg", {"IDX": "events"})]) == "events"
+    assert _namespace("MISSING", user, []) == ""
+
+
+def test_an_imported_module_matching_several_files_gives_no_namespace() -> None:
+    user = _module("svc", {}).model_copy(update={"metadata": {"import_map": {"IDX": "cfg.IDX"}}})
+    twins = [_module("a.cfg", {"IDX": "events"}), _module("b.cfg", {"IDX": "vehicles"})]
+    assert _namespace("IDX", user, twins) == ""
+    # An exact id wins over the suffix matches.
+    assert _namespace("IDX", user, [*twins, _module("cfg", {"IDX": "exact"})]) == "exact"
