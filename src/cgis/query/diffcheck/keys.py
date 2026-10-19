@@ -85,6 +85,17 @@ def _show(key: str) -> str:
     return f"{path} ({namespace})" if namespace else path
 
 
+def _record_mapping(
+    edge: Edge, in_files: dict[str, str], types: dict[str, str], declared_in: set[str]
+) -> None:
+    """Note a mapping declaration: the first file per namespace and its type, and the id."""
+    namespace = parse_key_id(edge.target)[0]
+    if namespace not in in_files:
+        in_files[namespace] = edge.file_path or ""
+        types[namespace] = edge.context or ""
+    declared_in.add(edge.target)
+
+
 class KeyGraph:
     """The head graph's key edges, indexed by key, file, path and parent path."""
 
@@ -114,10 +125,7 @@ class KeyGraph:
                 if file not in declaring:
                     declaring[file] = _is_declaring(file)
                 if declaring[file] and _from_mapping(namespace, edge):
-                    if namespace not in in_files[path]:
-                        in_files[path][namespace] = file
-                        types[path][namespace] = edge.context or ""
-                    declared_in[file].add(edge.target)
+                    _record_mapping(edge, in_files[path], types[path], declared_in[file])
             elif edge.type is EdgeType.READS_KEY and "." in path:
                 reads_under[_parent(path)].append(edge)
         self.by_target = by_target
@@ -283,23 +291,29 @@ def _other_sites(graph: KeyGraph, by_key: dict[str, list[KeyUse]]) -> Iterator[K
             # A common key on the far side joins nothing: `|name` matches every model's name.
             if dropped(match, graph):
                 continue
-            score = _link_score(key, match, graph)
-            for edge in sorted(graph.by_target[match], key=_line):
-                if edge.source in sources or (
-                    match in below and edge.type is not EdgeType.READS_KEY
-                ):
-                    continue
-                yield KeyItem(
-                    kind=_KIND[edge.type],
-                    changed=key,
-                    site=edge.source,
-                    file=edge.file_path or "",
-                    line=edge.line_number,
-                    key=match,
-                    reason=f"{_VERB[edge.type]} {_show(match)}; this diff changes a {words}"
-                    f" of {_show(key)}",
-                    score=score,
-                )
+            yield from _match_sites(graph, key, match, (sources, words), match in below)
+
+
+def _match_sites(
+    graph: KeyGraph, key: str, match: str, seen: tuple[set[str], str], is_below: bool
+) -> Iterator[KeyItem]:
+    """The sites of `match` other than the changed key's own; `seen` is its sources and words."""
+    sources, words = seen
+    score = _link_score(key, match, graph)
+    for edge in sorted(graph.by_target[match], key=_line):
+        if edge.source in sources or (is_below and edge.type is not EdgeType.READS_KEY):
+            continue
+        yield KeyItem(
+            kind=_KIND[edge.type],
+            changed=key,
+            site=edge.source,
+            file=edge.file_path or "",
+            line=edge.line_number,
+            key=match,
+            reason=f"{_VERB[edge.type]} {_show(match)}; this diff changes a {words}"
+            f" of {_show(key)}",
+            score=score,
+        )
 
 
 def _undeclared(
@@ -361,19 +375,24 @@ def _removed(graph: KeyGraph, by_key: dict[str, list[KeyUse]]) -> Iterator[KeyIt
         for match in graph.matching(key):
             if dropped(match, graph):
                 continue
-            for edge in sorted(graph.by_target[match], key=_line):
-                if edge.type is not EdgeType.READS_KEY:
-                    continue
-                yield KeyItem(
-                    kind="removed-declaration",
-                    changed=key,
-                    site=edge.source,
-                    file=edge.file_path or "",
-                    line=edge.line_number,
-                    key=match,
-                    reason=f"reads {path}, whose declaration in {min(gone)} this diff removes",
-                    score=_link_score(key, match, graph),
-                )
+            yield from _removed_reads(graph, key, match, min(gone))
+
+
+def _removed_reads(graph: KeyGraph, key: str, match: str, gone: str) -> Iterator[KeyItem]:
+    """The reads of `match`, whose declaration in `gone` the diff removes from `key`."""
+    path = parse_key_id(key)[1]
+    for edge in sorted(graph.by_target[match], key=_line):
+        if edge.type is EdgeType.READS_KEY:
+            yield KeyItem(
+                kind="removed-declaration",
+                changed=key,
+                site=edge.source,
+                file=edge.file_path or "",
+                line=edge.line_number,
+                key=match,
+                reason=f"reads {path}, whose declaration in {gone} this diff removes",
+                score=_link_score(key, match, graph),
+            )
 
 
 def _line(edge: Edge) -> int:

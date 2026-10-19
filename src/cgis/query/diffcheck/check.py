@@ -180,6 +180,45 @@ def _require_mapped(
     raise DiffError(message)
 
 
+def _head_side(
+    store: SQLiteStore,
+    graph: KeyGraph,
+    lines: frozenset[int],
+    path: str,
+    found: tuple[dict[str, Node], list[KeyUse]],
+) -> None:
+    """Add the head symbols and key edges of `path` that sit on the diff's new `lines`."""
+    touched, keys = found
+    for node in store.get_nodes_by_file(path):
+        if node.type in _SYMBOLS and _meets(node, lines):
+            touched[node.id] = node
+    keys.extend(
+        KeyUse(e.target, e.type, e.source, path, base=False)
+        for e in graph.by_file.get(path, [])
+        if e.line_number in lines
+    )
+
+
+def _base_side(
+    store: SQLiteStore,
+    old_nodes: list[Node],
+    lines: frozenset[int] | None,
+    touched: dict[str, Node],
+    removed: dict[str, Node],
+) -> None:
+    """Sort the base symbols into changed and removed; `lines` None takes them all."""
+    for old in old_nodes:
+        if lines is not None and not _meets(old, lines):
+            continue
+        # A node of that id in another file is the resolver's stand-in for a
+        # target it could not find (a base class that is gone), not the symbol.
+        current = store.get_node(old.id)
+        if current is None or current.file_path != old.file_path:
+            removed[old.id] = old
+        else:
+            touched[current.id] = current
+
+
 def _changed(
     store: SQLiteStore,
     graph: KeyGraph,
@@ -204,14 +243,7 @@ def _changed(
         graph_old = _graph_path(change.old_path, prefix)
         graph_new = _graph_path(change.new_path, prefix)
         if graph_new is not None and change.new_lines:
-            for node in store.get_nodes_by_file(graph_new):
-                if node.type in _SYMBOLS and _meets(node, change.new_lines):
-                    touched[node.id] = node
-            keys.extend(
-                KeyUse(e.target, e.type, e.source, graph_new, base=False)
-                for e in graph.by_file.get(graph_new, [])
-                if e.line_number in change.new_lines
-            )
+            _head_side(store, graph, change.new_lines, graph_new, (touched, keys))
         if graph_old is None:
             continue
         if graph_new is not None:
@@ -222,16 +254,8 @@ def _changed(
         whole = change.old_path != change.new_path
         old_nodes, old_keys = _base_parse(store, repo, base_sha, change, graph_old, parsers)
         keys.extend(old_keys)
-        for old in old_nodes:
-            if not whole and not _meets(old, change.old_lines):
-                continue
-            # A node of that id in another file is the resolver's stand-in for a
-            # target it could not find (a base class that is gone), not the symbol.
-            current = store.get_node(old.id)
-            if current is None or current.file_path != old.file_path:
-                removed[old.id] = old
-            else:
-                touched[current.id] = current
+        lines = None if whole else change.old_lines
+        _base_side(store, old_nodes, lines, touched, removed)
     gone = [n for _, n in sorted(removed.items()) if n.id not in touched]
     return _Changes(list(touched.values()), gone, keys, head_files)
 

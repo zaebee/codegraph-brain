@@ -170,16 +170,23 @@ def _mapping_paths(
         if not isinstance(spec, dict):
             yield path, line, ""
             continue
-        nested = spec.get(profile.mapping_children)
-        children = nested[1] if nested is not None and isinstance(nested[1], dict) else None
+        children = _dict_of(spec.get(profile.mapping_children))
         yield path, line, "object" if children is not None else _mapping_type(spec)
-        subfields = spec.get(profile.mapping_subfields)
-        if subfields is not None and isinstance(subfields[1], dict):
-            for subfield, (sub_line, sub_spec) in subfields[1].items():
-                kind = _mapping_type(sub_spec) if isinstance(sub_spec, dict) else ""
-                yield f"{path}.{subfield}", sub_line, kind
+        yield from _subfield_paths(path, _dict_of(spec.get(profile.mapping_subfields)))
         if children is not None:
             yield from _mapping_paths(children, path, profile)
+
+
+def _dict_of(entry: tuple[int, Keys | str | None] | None) -> Keys | None:
+    """The child keys of a key's entry, or None when it has none or is no object."""
+    return entry[1] if entry is not None and isinstance(entry[1], dict) else None
+
+
+def _subfield_paths(path: str, subfields: Keys | None) -> Iterator[tuple[str, int, str]]:
+    """Each subfield path of a property, with its line and type."""
+    for subfield, (sub_line, sub_spec) in (subfields or {}).items():
+        kind = _mapping_type(sub_spec) if isinstance(sub_spec, dict) else ""
+        yield f"{path}.{subfield}", sub_line, kind
 
 
 def _mapping_type(spec: Keys) -> str:
@@ -220,31 +227,38 @@ def _json_object(text: str, index: int, newlines: list[int]) -> tuple[Keys, int]
     if text[index] == "}":
         return keys, index + 1
     while True:
-        if text[index] != '"':
-            msg = f"expecting a key at offset {index}"
-            raise ValueError(msg)
         line = bisect_right(newlines, index) + 1
-        key, index = scanstring(text, index + 1)
-        index = _past_whitespace(text, index)
-        if text[index] != ":":
-            msg = f"expecting ':' at offset {index}"
-            raise ValueError(msg)
-        index = _past_whitespace(text, index + 1)
-        child: Keys | str | None = None
-        if text[index] == "{":
-            child, index = _json_object(text, index, newlines)
-        else:
-            value, index = _DECODER.raw_decode(text, index)  # a list or a scalar, in C
-            child = value if isinstance(value, str) else None
+        key, index = _json_key(text, index)
+        child, index = _json_value(text, index, newlines)
         keys[key] = (line, child)
         index = _past_whitespace(text, index)
-        if text[index] == ",":
-            index = _past_whitespace(text, index + 1)
-        elif text[index] == "}":
+        if text[index] == "}":
             return keys, index + 1
-        else:
+        if text[index] != ",":
             msg = f"expecting ',' or '}}' at offset {index}"
             raise ValueError(msg)
+        index = _past_whitespace(text, index + 1)
+
+
+def _json_key(text: str, index: int) -> tuple[str, int]:
+    """The key string at `text[index]`, and the offset of its value past the colon."""
+    if text[index] != '"':
+        msg = f"expecting a key at offset {index}"
+        raise ValueError(msg)
+    key, index = scanstring(text, index + 1)
+    index = _past_whitespace(text, index)
+    if text[index] != ":":
+        msg = f"expecting ':' at offset {index}"
+        raise ValueError(msg)
+    return key, _past_whitespace(text, index + 1)
+
+
+def _json_value(text: str, index: int, newlines: list[int]) -> tuple[Keys | str | None, int]:
+    """The value at `text[index]`: its keys for an object, its text for a string, else None."""
+    if text[index] == "{":
+        return _json_object(text, index, newlines)
+    value, index = _DECODER.raw_decode(text, index)  # a list or a scalar, in C
+    return (value if isinstance(value, str) else None), index
 
 
 def _yaml_keys(code: str) -> list[Keys]:
