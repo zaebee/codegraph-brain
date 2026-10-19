@@ -1,0 +1,187 @@
+{
+  "repo": "Ownima/owner-api",
+  "as_of": "2026-10-19",
+  "rule": "SEALING.md v2: git blame of the lines a fix changes; window 60 days",
+  "pairs": [
+    {
+      "breaking": {
+        "pr": 1810,
+        "base_sha": "8051691f6bf3cdac516e14dd43870b553cbe3b29",
+        "merge_sha": "d2b22a02dd002022a07a2668f297c6e9f1ae9b56"
+      },
+      "fix": {
+        "pr": 2107,
+        "merge_sha": "c35ac36af390172dd9676dde0feddb9994f07c6f"
+      },
+      "blamed_lines": 2
+    },
+    {
+      "breaking": {
+        "pr": 1367,
+        "base_sha": "6505819b3c172d44237aeb0e60ebb072645e5a97",
+        "merge_sha": "4c5ce3f91274a0175828be376d0ab2be0a516155"
+      },
+      "fix": {
+        "pr": 2067,
+        "merge_sha": "bbeeabcafbe3f0ea864fb0c05263a4d87999c165"
+      },
+      "blamed_lines": 1
+    },
+    {
+      "breaking": {
+        "pr": 1866,
+        "base_sha": "844529847312c81e0c6f745bdb3fb5c3d470d7d2",
+        "merge_sha": "baa283c5b35b38279a7f5c7220b55fb178db81b0"
+      },
+      "fix": {
+        "pr": 2061,
+        "merge_sha": "2dd613e4b09362638c63f25033018942e87e2282"
+      },
+      "blamed_lines": 2
+    },
+    {
+      "breaking": {
+        "pr": 1386,
+        "base_sha": "568cd21ed43b6cea71e5bef75fb04c7aa63016b5",
+        "merge_sha": "53413618c6ac95d3d74569285a838af8d3e9adc7"
+      },
+      "fix": {
+        "pr": 2062,
+        "merge_sha": "42b0b39f349895f3af102d218923353eb67b9df3"
+      },
+      "blamed_lines": 1
+    },
+    {
+      "breaking": {
+        "pr": 1120,
+        "base_sha": "0decf27179d7a25e4b1f382e8e713441d97bb4a0",
+        "merge_sha": "d7c7d16e77baf7e26bb5d16ef3f9eeaf4620239f"
+      },
+      "fix": {
+        "pr": 2053,
+        "merge_sha": "50a63aa3f35d43bf50bb1c37c2f9956da0a3f5c6"
+      },
+      "blamed_lines": 11
+    },
+    {
+      "breaking": {
+        "pr": 1664,
+        "base_sha": "49643fe2da72795d3b59902d14140673c022ced3",
+        "merge_sha": "83758337a7264c9019d935a2aba4a1ede4961bd4"
+      },
+      "fix": {
+        "pr": 2051,
+        "merge_sha": "f409f8a2fc90b02f98051e692a67056b94c2a6a2"
+      },
+      "blamed_lines": 28
+    },
+    {
+      "breaking": {
+        "pr": 1194,
+        "base_sha": "d260decef9cd8e4a9adce051d58aa3c1d9466474",
+        "merge_sha": "3949bed2616a9f5ada0366af8465dda20832ed8f"
+      },
+      "fix": {
+        "pr": 2006,
+        "merge_sha": "ba083edee5c1302bd6915e0c066aaa80dbde4783"
+      },
+      "blamed_lines": 5
+    },
+    {
+      "breaking": {
+        "pr": 1375,
+        "base_sha": "1468b0c85753a7e3b195c2dfddb51ffbcef2115e",
+        "merge_sha": "b330ce490086c767c1dcfd30ac2a49f5b134d0d1"
+      },
+      "fix": {
+        "pr": 2012,
+        "merge_sha": "1adb77139abce31fdebc500fca46e742581d1db9"
+      },
+      "blamed_lines": 1
+    },
+    {
+      "breaking": {
+        "pr": 1893,
+        "base_sha": "1c1c12088408a2c249cdd550b601e58947835003",
+        "merge_sha": "a9718c6c2c786701c21d9a67e507fce850865792"
+      },
+      "fix": {
+        "pr": 1920,
+        "merge_sha": "91b58b760f36ac39a71c750c06c690bb747c629d"
+      },
+      "blamed_lines": 9
+    },
+    {
+      "breaking": {
+        "pr": 1866,
+        "base_sha": "844529847312c81e0c6f745bdb3fb5c3d470d7d2",
+        "merge_sha": "baa283c5b35b38279a7f5c7220b55fb178db81b0"
+      },
+      "fix": {
+        "pr": 1892,
+        "merge_sha": "1c1c12088408a2c249cdd550b601e58947835003"
+      },
+      "blamed_lines": 1
+    },
+    {
+      "breaking": {
+        "pr": 1102,
+        "base_sha": "d7efe0fe3becee3c21a297b74a8aed67dca188e7",
+        "merge_sha": "75518114b8885566e2753ed786410cd9420661ac"
+      },
+      "fix": {
+        "pr": 1885,
+        "merge_sha": "23a4686366f06c4b99d40485b701635e4e9c1fef"
+      },
+      "blamed_lines": 5
+    },
+    {
+      "breaking": {
+        "pr": 1866,
+        "base_sha": "844529847312c81e0c6f745bdb3fb5c3d470d7d2",
+        "merge_sha": "baa283c5b35b38279a7f5c7220b55fb178db81b0"
+      },
+      "fix": {
+        "pr": 1882,
+        "merge_sha": "05171515856dd0ea12e2e912bc53ac47aaf36e02"
+      },
+      "blamed_lines": 1
+    },
+    {
+      "breaking": {
+        "pr": 1631,
+        "base_sha": "a101979d40daf906c2d5cfef379ad1b69838beca",
+        "merge_sha": "062790948f445d5828aa50078f539eaeab8662c3"
+      },
+      "fix": {
+        "pr": 1867,
+        "merge_sha": "865b2c4d5ef3e4a6d3c4b9cd509cb37803b84754"
+      },
+      "blamed_lines": 3
+    },
+    {
+      "breaking": {
+        "pr": 1633,
+        "base_sha": "062790948f445d5828aa50078f539eaeab8662c3",
+        "merge_sha": "d695eeceaa18e9844c319f56c0fe1bef66b09891"
+      },
+      "fix": {
+        "pr": 1839,
+        "merge_sha": "7dd072d58d11eafca3685efbe1340accf3520ed6"
+      },
+      "blamed_lines": 1
+    },
+    {
+      "breaking": {
+        "pr": 1810,
+        "base_sha": "8051691f6bf3cdac516e14dd43870b553cbe3b29",
+        "merge_sha": "d2b22a02dd002022a07a2668f297c6e9f1ae9b56"
+      },
+      "fix": {
+        "pr": 1837,
+        "merge_sha": "8792a92161bf7484eaa499793d8bf80df126916a"
+      },
+      "blamed_lines": 3
+    }
+  ]
+}

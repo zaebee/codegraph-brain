@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts" / "data_keys"))
 
 import draw_noise  # noqa: E402
+import mine_blame  # noqa: E402
 import mine_heldout  # noqa: E402
 from mine_heldout import DEV_PRS, PR, all_pairs, find_pairs, heldout_pairs, repairs  # noqa: E402
 
@@ -130,3 +131,52 @@ def test_a_breaking_pr_that_is_itself_a_fix_is_dropped() -> None:
     assert [(b.number, f.number) for b, f in find_pairs(prs)] == [(2500, 2501)]
     noise = [*prs, pr(2600, 3)]
     assert [p.number for p in draw_noise.candidates(noise, NOW)] == [2600]
+
+
+def test_blame_most_blamed_pr_wins_and_ties_go_to_the_most_recent() -> None:
+    """The PR owning most of the changed lines is breaking; equal counts: newer PR."""
+    old, new, fix = pr(3001, 30), pr(3002, 20), pr(3100, 5, "fix: q")
+    most = mine_blame.blame_pairs(
+        [old, new, fix], {3100: ["sha3001"] * 3 + ["sha3002"]}, frozenset()
+    )
+    assert [(b.number, n) for b, _, n in most] == [(3001, 3)]
+    tie = mine_blame.blame_pairs([old, new, fix], {3100: ["sha3001", "sha3002"]}, frozenset())
+    assert [b.number for b, _, _ in tie] == [3002]
+
+
+def test_blame_window_and_non_pr_commits() -> None:
+    """A PR merged over 60 days before the fix, or a commit that is no PR, makes no pair."""
+    old, fix = pr(3001, 90), pr(3100, 5, "fix: q")
+    assert mine_blame.blame_pairs([old, fix], {3100: ["sha3001", "deadbeef"]}, frozenset()) == []
+    assert mine_blame.blame_pairs([pr(3001, 30), fix], {3100: ["deadbeef"]}, frozenset()) == []
+    assert (
+        mine_blame.blame_pairs(
+            [pr(3001, 30), pr(3100, 5, "feat: q")], {3100: ["sha3001"]}, frozenset()
+        )
+        == []
+    )
+
+
+def test_blame_exclusions_and_chain_rule() -> None:
+    """Excluded PRs on either side are dropped, and so is a breaking PR that is a fix."""
+    a, b, c = pr(3001, 40), pr(3002, 30, "fix: b"), pr(3003, 20, "fix: c")
+    blamed = {3002: ["sha3001"], 3003: ["sha3002"]}
+    got = mine_blame.blame_pairs([a, b, c], blamed, frozenset())
+    assert [(x.number, y.number) for x, y, _ in got] == [(3001, 3002)]
+    assert mine_blame.blame_pairs([a, b, c], blamed, frozenset({3001})) == []
+    assert mine_blame.blame_pairs([a, b], {3002: ["sha3001"]}, frozenset({3002})) == []
+    assert mine_blame.blame_pairs([a, b], {3002: ["sha3001"]}, DEV_PRS | {3001}) == []
+
+
+def test_blame_parsers_read_hunks_and_porcelain() -> None:
+    """Old-side ranges come only from measured files; porcelain yields a sha per line."""
+    diff = (
+        "--- a/ownima-backend/app/x.py\n+++ b/ownima-backend/app/x.py\n"
+        "@@ -10,2 +10,3 @@\n@@ -20 +21 @@\n@@ -30,0 +31,4 @@\n"
+        "--- a/ownima-backend/app/tests/test_x.py\n+++ b/x\n@@ -1,5 +1 @@\n"
+        "--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n"
+    )
+    assert mine_blame.changed_ranges(diff) == {"ownima-backend/app/x.py": [(10, 2), (20, 1)]}
+    sha = "a" * 40
+    porcelain = f"{sha} 5 5 2\nauthor x\n\tcode\n{sha} 6 6\n\tmore\n"
+    assert mine_blame.blamed_shas(porcelain) == [sha, sha]
