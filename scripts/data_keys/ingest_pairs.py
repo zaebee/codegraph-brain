@@ -8,10 +8,10 @@ note measured it); ``--keys-off`` measures the branch's default instead.
 Usage, run from the scratch directory::
 
     python scripts/data_keys/ingest_pairs.py --main-src <main checkout>/src [--pairs N]
-        [--tree DIR] [--python EXE] [--keys-off]
+        [--tree DIR] [--keys-off]
 
-``--tree`` defaults to the owner-api export under the corpus (``locations.py``),
-``--python`` to the interpreter running this script; the branch side is this checkout.
+``--tree`` defaults to the owner-api export under the corpus (``locations.py``). Both sides
+run under the interpreter running this script; the branch side is this checkout.
 """
 
 import argparse
@@ -23,7 +23,7 @@ import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-from locations import CORPUS, REPO_ROOT
+from locations import CORPUS, REPO_ROOT, checked_arg
 
 #: The owner-api export the ratio in the lab note was measured on.
 DEFAULT_TREE = CORPUS / "owner-2bd0fb7-backend" / "ownima-backend"
@@ -32,7 +32,6 @@ DEFAULT_TREE = CORPUS / "owner-2bd0fb7-backend" / "ownima-backend"
 def run_once(
     side: str,
     sides: Mapping[str, str],
-    python: str,
     tree: Path,
     scratch: Path,
     flags: Sequence[str] = (),
@@ -44,7 +43,18 @@ def run_once(
     env = {**os.environ, "PYTHONPATH": sides[side]}
     started = time.monotonic()
     subprocess.run(
-        [python, "-m", "cgis", "ingest", str(tree), "--source-root", "app", "-o", str(db), *flags],
+        [
+            sys.executable,
+            "-m",
+            "cgis",
+            "ingest",
+            str(tree),
+            "--source-root",
+            "app",
+            "-o",
+            str(db),
+            *flags,
+        ],
         cwd=scratch,
         env=env,
         check=True,
@@ -59,10 +69,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--pairs", type=int, default=5)
     parser.add_argument("--main-src", type=Path, required=True, help="main's src directory")
     parser.add_argument("--tree", type=Path, default=DEFAULT_TREE)
-    parser.add_argument("--python", default=sys.executable)
     parser.add_argument("--keys-off", action="store_true", help="the branch's default ingest")
     args = parser.parse_args(argv)
-    sides = {"main": str(args.main_src), "branch": str(REPO_ROOT / "src")}
+    sides = {"main": checked_arg(str(args.main_src)), "branch": str(REPO_ROOT / "src")}
     flags = {"main": (), "branch": () if args.keys_off else ("--data-keys",)}
     scratch = Path.cwd()
     times: dict[str, list[float]] = {side: [] for side in sides}
@@ -70,7 +79,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     for index in range(args.pairs):
         for side in sides:
             seconds, sizes[side] = run_once(
-                side, sides, args.python, args.tree, scratch, flags[side]
+                side, sides, Path(checked_arg(str(args.tree))), scratch, flags[side]
             )
             times[side].append(seconds)
             print(f"{index + 1} {side} {seconds:.1f}s db={sizes[side]}", flush=True)

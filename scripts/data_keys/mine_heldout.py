@@ -20,6 +20,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from locations import checked_arg, checked_repo
+
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 #: The default repository mined, and where the committed output goes.
@@ -153,7 +155,7 @@ def fetch_prs(repo: str) -> list[PR]:
             "pr",
             "list",
             "--repo",
-            repo,
+            checked_repo(repo),
             "--state",
             "merged",
             "--json",
@@ -167,7 +169,8 @@ def fetch_prs(repo: str) -> list[PR]:
 
 def first_parent(repo: str, sha: str) -> str:
     """The first parent of ``sha`` in ``repo``: a squash merge's base, by ``gh api``."""
-    return _gh(["api", f"repos/{repo}/commits/{sha}", "--jq", ".parents[0].sha"]).strip()
+    path = f"repos/{checked_repo(repo)}/commits/{checked_arg(sha)}"
+    return _gh(["api", path, "--jq", ".parents[0].sha"]).strip()
 
 
 def build_output(

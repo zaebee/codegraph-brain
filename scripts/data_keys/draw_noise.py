@@ -14,6 +14,7 @@ from collections.abc import Callable, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from locations import checked_repo
 from mine_heldout import (
     _NON_CODE_TITLE,
     DEFAULT_REPO,
@@ -63,7 +64,8 @@ def draw(
 ) -> list[PR]:
     """``count`` candidate PRs by a seeded sample, in PR-number order."""
     pool = candidates(prs, now, days)
-    picked = random.Random(seed).sample(pool, min(count, len(pool)))
+    # A seeded, reproducible draw of PRs to measure, not a secret: no CSPRNG wanted.
+    picked = random.Random(seed).sample(pool, min(count, len(pool)))  # NOSONAR
     return sorted(picked, key=lambda pr: pr.number)
 
 
@@ -77,7 +79,7 @@ def records(picked: Sequence[PR], parent_of: Callable[[str], str]) -> list[dict[
 
 def head_sha(repo: str) -> str:
     """The head commit of ``repo``'s default branch, to pin the public repository."""
-    return _gh(["api", f"repos/{repo}/commits/HEAD", "--jq", ".sha"]).strip()
+    return _gh(["api", f"repos/{checked_repo(repo)}/commits/HEAD", "--jq", ".sha"]).strip()
 
 
 def main(argv: Sequence[str] | None = None) -> int:

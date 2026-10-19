@@ -10,6 +10,7 @@ derived from the home directory or from where this checkout lives:
 """
 
 import os
+import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -23,3 +24,29 @@ def _from_env(name: str, default: Path) -> Path:
 
 CORPUS = _from_env("CGIS_DATA_KEYS_CORPUS", Path.home() / "bench-corpora" / "data-keys")
 OWNER_API = _from_env("CGIS_OWNER_API", REPO_ROOT.parent / "owner-api")
+
+
+#: A GitHub repository as ``owner/name``: what ``gh --repo`` and ``repos/<repo>/…`` take.
+_REPO = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
+
+#: One argument to git or gh: a path, a sha, a revision. Never an option (no leading
+#: ``-``), no whitespace or shell characters — a value from the command line that reached
+#: a subprocess as ``--upload-pack=…`` would be a flag, not data (pythonsecurity:S8705,
+#: as in ``scripts/check_test_count.py``).
+_ARG = re.compile(r"(?!-)[A-Za-z0-9_./~^@:+=-]+")
+
+
+def checked_repo(repo: str) -> str:
+    """``repo`` unchanged when it is ``owner/name``; otherwise the run stops."""
+    if not _REPO.fullmatch(repo):
+        message = f"{repo!r} is not a GitHub repository as owner/name"
+        raise SystemExit(message)
+    return repo
+
+
+def checked_arg(value: str) -> str:
+    """``value`` unchanged when it cannot read as an option; otherwise the run stops."""
+    if not _ARG.fullmatch(value):
+        message = f"{value!r} could reach git as an option or hold shell characters; refused"
+        raise SystemExit(message)
+    return value

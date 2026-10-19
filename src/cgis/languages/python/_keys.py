@@ -26,6 +26,12 @@ _DICT_METHODS: dict[str, tuple[EdgeType, ...]] = {
     "pop": (_READ, _WRITE),
     "setdefault": (_WRITE,),
 }
+#: A key that is only read; and what a statement with the access as its target does to it.
+_READ_ONLY: tuple[EdgeType, ...] = (_READ,)
+_STORE_TARGETS: dict[str, tuple[EdgeType, ...]] = {
+    "assignment": (_WRITE,),
+    "augmented_assignment": (_READ, _WRITE),
+}
 #: Right sides of `in` that are constants, not data: `"b" in ["x", "y"]`, `"a" in "abc"`.
 _LITERAL_COLLECTIONS = frozenset({"list", "tuple", "set", "string", "concatenated_string"})
 _REDIS = KEY_PROFILE.redis_reads | KEY_PROFILE.redis_writes
@@ -314,17 +320,13 @@ def _store_relations(node: BaseNode) -> tuple[EdgeType, ...]:
     while parent is not None and parent.type in _TARGET_WRAPPERS:
         child, parent = parent, parent.parent
     if parent is None:
-        return (_READ,)
+        return _READ_ONLY
     if parent.type == "delete_statement":
-        return (_WRITE,)
+        return _STORE_TARGETS["assignment"]
     left = parent.child_by_field_name("left")
     if left is None or _span(left) != _span(child):
-        return (_READ,)
-    if parent.type == "assignment":
-        return (_WRITE,)
-    if parent.type == "augmented_assignment":
-        return (_READ, _WRITE)
-    return (_READ,)
+        return _READ_ONLY
+    return _STORE_TARGETS.get(parent.type, _READ_ONLY)
 
 
 def _last_segment(expr: BaseNode, code: bytes) -> str:

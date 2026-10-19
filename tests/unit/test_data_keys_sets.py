@@ -9,10 +9,14 @@ import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts" / "data_keys"))
 
 import draw_noise  # noqa: E402
+import ingest_pairs  # noqa: E402
+import locations  # noqa: E402
 import mine_blame  # noqa: E402
 import mine_heldout  # noqa: E402
 import noise_run  # noqa: E402
@@ -196,3 +200,29 @@ def test_noise_summary_of_a_repository_with_only_errored_runs() -> None:
     assert summary == {
         "r": {"prs": 0, "errors": 1, "median_shown": 0.0, "median_listed": 0.0, "max_listed": 0}
     }
+
+
+@pytest.mark.parametrize("repo", ["--upload-pack=x", "a/b c", "noslash", "a/b/c"])
+def test_a_repository_that_is_not_owner_slash_name_is_refused(repo: str) -> None:
+    with pytest.raises(SystemExit, match="owner/name"):
+        locations.checked_repo(repo)
+
+
+def test_a_github_repository_name_passes() -> None:
+    assert locations.checked_repo("Ownima/owner-api") == "Ownima/owner-api"
+
+
+@pytest.mark.parametrize("value", ["--output=x", "-L1", "a b", "a;b", ""])
+def test_an_argument_that_could_read_as_an_option_is_refused(value: str) -> None:
+    with pytest.raises(SystemExit, match="option"):
+        locations.checked_arg(value)
+
+
+def test_a_path_or_sha_argument_passes() -> None:
+    assert locations.checked_arg("/home/u/bench-corpora/x_y.db") == "/home/u/bench-corpora/x_y.db"
+    assert locations.checked_arg("2b4dcfcb") == "2b4dcfcb"
+
+
+def test_ingest_pairs_takes_no_interpreter_from_the_command_line() -> None:
+    with pytest.raises(SystemExit):
+        ingest_pairs.main(["--main-src", "x", "--python", "/bin/sh"])

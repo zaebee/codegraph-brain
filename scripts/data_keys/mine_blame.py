@@ -15,7 +15,7 @@ from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from locations import OWNER_API
+from locations import OWNER_API, checked_arg
 from mine_heldout import (
     _NON_CODE_TITLE,
     DEFAULT_REPO,
@@ -94,6 +94,7 @@ def blame_pairs(
     PRs on either side are removed, and up to ``limit`` pairs are kept, newest fix first.
     """
     by_sha = {pr.merge_sha: pr for pr in prs}
+    merged = {p.number: p.merged_at for p in prs}
     raw: list[tuple[PR, PR, int]] = []
     for fix in prs:
         if not _FIX_TITLE.match(fix.title) or _NON_CODE_TITLE.match(fix.title):
@@ -104,15 +105,10 @@ def blame_pairs(
             if sha in by_sha and by_sha[sha].number != fix.number
         )
         in_window = [
-            (n, c)
-            for n, c in counts.items()
-            if timedelta(0)
-            <= fix.merged_at - next(p for p in prs if p.number == n).merged_at
-            <= WINDOW
+            (n, c) for n, c in counts.items() if timedelta(0) <= fix.merged_at - merged[n] <= WINDOW
         ]
         if not in_window:
             continue
-        merged = {p.number: p.merged_at for p in prs}
         number, count = max(in_window, key=lambda nc: (nc[1], merged[nc[0]]))
         broken = next(p for p in prs if p.number == number)
         raw.append((broken, fix, count))
@@ -131,13 +127,17 @@ def blame_pairs(
 def _git(checkout: Path, args: Sequence[str]) -> str:
     """Run a read-only git command in ``checkout``; an empty string when it fails."""
     done = subprocess.run(
-        ["git", "-C", str(checkout), *args], capture_output=True, text=True, check=False
+        ["git", "-C", checked_arg(str(checkout)), *args],
+        capture_output=True,
+        text=True,
+        check=False,
     )
     return done.stdout if done.returncode == 0 else ""
 
 
 def blame_fix(checkout: Path, base: str, merge: str) -> list[str]:
     """The commit sha blamed, at ``base``, for each measured line the fix changed."""
+    base, merge = checked_arg(base), checked_arg(merge)
     diff = _git(checkout, ["diff", "-U0", "--no-renames", base, merge, "--", "ownima-backend"])
     shas: list[str] = []
     for path, spans in changed_ranges(diff).items():
