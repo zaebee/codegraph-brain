@@ -1120,7 +1120,10 @@ def cgis_diff_check(
     common keys (``id``, ``name``, or used in many files) are left out. Sites in
     test files are counted, not listed. An empty list means no static dependants
     were found, not that the change is safe: dispatch the graph cannot see is
-    not covered.
+    not covered. How to read the list: caller and subclass items are leads to
+    read; data-key items are noisy — measured on one application (owner-api),
+    about a quarter of listed items were worth a look
+    (docs/lab-notes/2026-10-19-data-key-diff-check.md).
     """
     if not Path(db_path).exists():
         return f"❌ Database not found at: {db_path}. Run cgis_ingest first."

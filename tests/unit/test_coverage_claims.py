@@ -58,3 +58,17 @@ def test_no_claim_calls_a_covered_language_invisible(path: str) -> None:
         # A whole word, whatever wraps it: `**Go**`, `Go,` and `Go` alike.
         named = [m.title for m in MANIFESTS if re.search(rf"\b{re.escape(m.title)}\b", clause)]
         assert not named, f"{path}: {clause.strip()[:120]}"
+
+
+def test_the_coverage_line_says_data_files_declare_keys_only() -> None:
+    # Final review #77: the data pack read as a fourth language ("... and JSON and YAML").
+    (coverage,) = [
+        line for line in SERVER_INSTRUCTIONS.splitlines() if line.startswith("Coverage:")
+    ]
+    code = [m for m in MANIFESTS if m.names_code]
+    data = [m for m in MANIFESTS if not m.names_code]
+    assert data, "no declare-only pack: this check would pass on nothing"
+    assert f"{code[-1].title} ({', '.join(code[-1].extensions)}) only;" in coverage
+    for manifest in data:
+        named = f"{manifest.title} files ({', '.join(manifest.extensions)})"
+        assert f"{named} contribute data-key declarations only." in coverage
