@@ -23,7 +23,7 @@ DIFF_CHECK_NOISE = (
 
 def _coverage() -> str:
     """`Python (.py), TypeScript (.ts, .tsx) and Go (.go) only; JSON and YAML files (...)
-    contribute data-key declarations only.`, from the registry.
+    contribute data-key declarations only when data keys are enabled (...).`, from the registry.
 
     A pack whose files name no code (`names_code=False`) is no language of the graph's
     symbols: it is said apart, or the line reads as a fourth language.
@@ -32,6 +32,7 @@ def _coverage() -> str:
     code = named[0] if len(named) == 1 else f"{', '.join(named[:-1])} and {named[-1]}"
     data = "".join(
         f"; {m.title} files ({', '.join(m.extensions)}) contribute data-key declarations only"
+        + (" when data keys are enabled (`--data-keys`)" if m.data_keys_only else "")
         for m in MANIFESTS
         if not m.names_code
     )
