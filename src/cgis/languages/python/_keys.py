@@ -486,6 +486,10 @@ def string_constants(root: BaseNode, code: bytes) -> dict[str, str]:
             continue
         name = assignment.child_by_field_name("left")
         value = _literal(assignment.child_by_field_name("right"), code)
-        if name is not None and name.type == "identifier" and value is not None:
+        if name is None or name.type != "identifier":
+            continue
+        if value is None:
+            found.pop(_text(name, code), None)  # rebound to something else: no longer a constant
+        else:
             found[_text(name, code)] = value
     return found

@@ -325,6 +325,17 @@ def test_a_diff_of_only_added_files_passes_on_a_graph_built_after_it(tmp_path: P
     assert report.items == []
 
 
+def test_a_diff_of_only_added_files_is_an_error_on_a_graph_built_before_it(
+    tmp_path: Path,
+) -> None:
+    """The same diff against a graph of the base: the added file is not in it."""
+    repo, base = _repo(tmp_path, {"app/a.py": A_APP})
+    with _store(repo, tmp_path) as store:
+        _commit(repo, {"app/b.py": B_APP}, "add b")
+        with pytest.raises(DiffError, match="predates"):
+            run_diff_check(store, repo, base)
+
+
 def test_the_mcp_tool_says_when_no_changed_file_maps(tmp_path: Path) -> None:
     from cgis.api.mcp_server import cgis_diff_check  # noqa: PLC0415 — the server is heavy
 
