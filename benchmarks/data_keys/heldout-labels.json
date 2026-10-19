@@ -1,0 +1,111 @@
+{
+  "labeller": "independent agent, 2026-10-19",
+  "principle": "A pair is in zone only when the breakage the fix repaired originated in the breaking PR and travelled from it through a data key or an inheritance link. Where the fix repaired a defect the breaking PR did not introduce (it only exposed it, sat next to it, or was named for context), nothing travelled from the breaking PR, so the pair is out; the reason says when that defect was itself key-shaped.",
+  "labels": [
+    {
+      "breaking_pr": 2076,
+      "fix_pr": 2077,
+      "zone": "out",
+      "broken_site": null,
+      "reason": "#2076 adds only a hand-run reindex shell script; the repaired defect (EventTracker.track turning a proto result into a camelCase dict while every details extractor reads snake keys such as general_info.vehicle_class and total_price) predates it and was only discovered while rehearsing it, so it did not travel from #2076 (the defect itself is key-shaped, in services/event_tracker.py)."
+    },
+    {
+      "breaking_pr": 1985,
+      "fix_pr": 2058,
+      "zone": "out",
+      "broken_site": null,
+      "reason": "The faker 40 bump dropped the transitive tzdata package, so legacy IANA names like Asia/Saigon stopped resolving in the slim image and UserAdmin validation failed; it travelled through the dependency graph and the container's timezone database, not a data key or inheritance link."
+    },
+    {
+      "breaking_pr": 1764,
+      "fix_pr": 2051,
+      "zone": "out",
+      "broken_site": null,
+      "reason": "#1764 closed some hiding-404 pairs and deliberately kept the history route's difference; #2051 closes two further pre-existing pairs (review 403 vs 404, history DOCUMENT_NOT_FOUND vs RESERVATION_NOT_FOUND) in rider route error handling, an incomplete sweep of exception mapping rather than a breakage travelling through a key or inheritance."
+    },
+    {
+      "breaking_pr": 2033,
+      "fix_pr": 2042,
+      "zone": "out",
+      "broken_site": null,
+      "reason": "The main repair (an unknown enum string in a stored document raising on parse) is unrelated to #2033; the part #2033 caused is tooling config: the pre-commit ruff hook passes its own --select and never saw #2033's UP042/UP046/UP047 ignores in pyproject, blocking commits."
+    },
+    {
+      "breaking_pr": 1921,
+      "fix_pr": 1976,
+      "zone": "out",
+      "broken_site": null,
+      "reason": "#1921 moved notify-telegram.yml onto the self-hosted worker runner, which has no network route to api.telegram.org; a CI workflow/infrastructure breakage."
+    },
+    {
+      "breaking_pr": 1911,
+      "fix_pr": 1923,
+      "zone": "out",
+      "broken_site": null,
+      "reason": "Mail to the real showcase address demo@ownima.com bounced; #1911 only added the reserved-domain skip in send_email (and is cited for context), so the bounce was pre-existing behaviour fixed by a new recipient check, not a key or inheritance breakage."
+    },
+    {
+      "breaking_pr": 1916,
+      "fix_pr": 1919,
+      "zone": "out",
+      "broken_site": null,
+      "reason": "Stale prometheus livesum gauge files from workers gunicorn killed during a load run (mentioned in a #1916 comment) were summed into every scrape; a pre-existing multiprocess-metrics lifecycle gap, unrelated to #1916's caching code."
+    },
+    {
+      "breaking_pr": 1892,
+      "fix_pr": 1893,
+      "zone": "out",
+      "broken_site": null,
+      "reason": "#1893 is a metrics feature (priming labelled series after restart) that also adapts #1892's startup test to pass SAQ's worker in ctx; #1892 broke nothing, the test was updated for the new code."
+    },
+    {
+      "breaking_pr": 1839,
+      "fix_pr": 1843,
+      "zone": "out",
+      "broken_site": null,
+      "reason": "The admin reservation searches read rider.full_name while the Rider message and documents have rider.name; that key mismatch predates #1839 ('never had that field'), which only made the search stop answering 500 and moved the clause, so the breakage did not originate in #1839 (the defect itself is key-shaped, in domains/admin/query.py)."
+    },
+    {
+      "breaking_pr": 1822,
+      "fix_pr": 1825,
+      "zone": "out",
+      "broken_site": null,
+      "reason": "#1825 names #1822 only for a review nit (HandoverSchedule.for_owner built once per search); the repaired defect, sorts and counts on created_at where documents carry created_date, came from #1788 and older MetricsService code, not from #1822 (the defect itself is key-shaped)."
+    },
+    {
+      "breaking_pr": 1714,
+      "fix_pr": 1819,
+      "zone": "out",
+      "broken_site": null,
+      "reason": "#1714 fixed the numeric status term in all_vehicles_page; the owner vehicle and reservation tabs beside it already had the same pre-existing mismatch (numeric status vs stored enum name) and were left unfixed, so #1714 introduced nothing that travelled to them."
+    },
+    {
+      "breaking_pr": 1808,
+      "fix_pr": 1813,
+      "zone": "out",
+      "broken_site": null,
+      "reason": "fetch_selected_extra_options swallowing every exception into [] is a pre-existing error-handling bug; #1808 is cited only because it fixed the test fake's _id lookup for single ids and not for terms queries."
+    },
+    {
+      "breaking_pr": 1810,
+      "fix_pr": 1811,
+      "zone": "out",
+      "broken_site": null,
+      "reason": "Quote and booking paths read a vehicle's price template by id with no owner comparison, a pre-existing authorization hole; #1811 reuses #1810's templates.py loader to close it, #1810 broke nothing."
+    },
+    {
+      "breaking_pr": 1803,
+      "fix_pr": 1805,
+      "zone": "out",
+      "broken_site": null,
+      "reason": "A review sweep of #1787-#1803 fixing a missing ownership check on contract template PUT, unchecked markup side doors and private extra-option fields on the public vehicle detail; none of these was introduced by #1803's price_conversions/PriceBreakdown change."
+    },
+    {
+      "breaking_pr": 1759,
+      "fix_pr": 1765,
+      "zone": "out",
+      "broken_site": null,
+      "reason": "#1759 let the showcase fleet into the stage catalog but deliberately kept the online-sales balance lock for it; the demo wallet was overdue, so the business predicate hid the fleet again, a logic decision rather than a key or inheritance link."
+    }
+  ]
+}
