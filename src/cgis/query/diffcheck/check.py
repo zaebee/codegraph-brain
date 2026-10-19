@@ -40,6 +40,8 @@ _KIND_ORDER: Final = {
         )
     )
 }
+#: Kinds that come from the data-key layer rather than from calls and inheritance.
+_KEY_KINDS: Final = frozenset(_KIND_ORDER) - {"caller", "subclass"}
 
 
 @dataclass(frozen=True)
@@ -76,6 +78,13 @@ class DiffReport:
 DATA_KEYS_OFF_NOTE: Final = (
     "Data keys are off in this graph, so no key items: re-ingest with --data-keys "
     "(MCP: cgis_ingest(data_keys=True)) to list them."
+)
+
+#: What a list with key items says, once: a key item is a lead, and what reaches a reader
+#: is decided by its callers (owner-api#2144: a reader took no dates; its caller passed them).
+KEY_ITEMS_HINT: Final = (
+    "Key items are leads: before judging a code site that reads or writes a key unaffected, "
+    "read its callers (cgis_analyze_impact on the site) - they decide what values reach it."
 )
 
 
@@ -417,6 +426,8 @@ def render_text(report: DiffReport, base: str, head: str) -> str:
         lines.append(f"  ... and {report.hidden} more (raise the cap to list them)")
     if report.in_tests:
         lines.append(f"  {report.in_tests} site(s) in tests, not listed")
+    if any(item.kind in _KEY_KINDS for item in report.items):
+        lines.append(KEY_ITEMS_HINT)
     if report.note:
         lines.append(report.note)
     return "\n".join(lines)
