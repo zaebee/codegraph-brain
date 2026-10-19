@@ -408,15 +408,20 @@ def test_listed_key_items_say_to_read_their_callers(tmp_path: Path) -> None:
     with SQLiteStore(str(db)) as store:
         text = render_text(run_diff_check(store, repo, base, cap=100), base, "HEAD")
     assert KEY_ITEMS_HINT in text.splitlines()
-    assert "callers" in KEY_ITEMS_HINT
-    assert "cgis_analyze_impact" in KEY_ITEMS_HINT
 
 
-def test_a_list_without_key_items_has_no_caller_hint(tmp_path: Path) -> None:
-    repo, base, db = _keyed_check(tmp_path, data_keys=False)
+def test_a_list_of_callers_only_has_no_caller_hint(tmp_path: Path) -> None:
+    """Data keys on, but the diff touches no key: callers need no such reminder."""
+    repo, base = _repo(tmp_path, {"a.py": A_APP, "b.py": B_APP})
+    _commit(repo, {"a.py": A_APP.replace("1", "2")}, "edit")
+    db = tmp_path / "callers.db"
+    result = CliRunner().invoke(app, ["ingest", str(repo), "-o", str(db), "--data-keys"])
+    assert result.exit_code == 0, result.output
     with SQLiteStore(str(db)) as store:
-        text = render_text(run_diff_check(store, repo, base, cap=100), base, "HEAD")
-    assert KEY_ITEMS_HINT not in text
+        report = run_diff_check(store, repo, base, cap=100)
+    assert report.data_keys is True
+    assert [i.kind for i in report.items] == ["caller"]
+    assert KEY_ITEMS_HINT not in render_text(report, base, "HEAD")
 
 
 def test_a_graph_whose_options_predate_the_mode_reads_it_from_its_key_edges(

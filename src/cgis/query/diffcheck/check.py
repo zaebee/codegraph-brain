@@ -41,9 +41,7 @@ _KIND_ORDER: Final = {
     )
 }
 #: Kinds that come from the data-key layer rather than from calls and inheritance.
-_KEY_KINDS: Final = frozenset(
-    {"removed-declaration", "undeclared-read", "key-writer", "key-declarer", "key-reader"}
-)
+_KEY_KINDS: Final = frozenset(_KIND_ORDER) - {"caller", "subclass"}
 
 
 @dataclass(frozen=True)
@@ -85,8 +83,8 @@ DATA_KEYS_OFF_NOTE: Final = (
 #: What a list with key items says, once: a key item is a lead, and what reaches a reader
 #: is decided by its callers (owner-api#2144: a reader took no dates; its caller passed them).
 KEY_ITEMS_HINT: Final = (
-    "Key items are leads: before calling a reader or writer unaffected, read its callers "
-    "(cgis_analyze_impact on the site) - they decide what values reach it."
+    "Key items are leads: before calling a code site that reads or writes a key unaffected, "
+    "read its callers (cgis_analyze_impact on the site) - they decide what values reach it."
 )
 
 
