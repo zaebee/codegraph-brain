@@ -166,7 +166,8 @@ SCENARIOS: dict[str, tuple[Files, Files]] = {
 def test_incremental_graph_equals_full_ingest(scenario: str, tmp_path: Path) -> None:
     """After the edit, the incremental database holds exactly the full-ingest edges and nodes."""
     initial, edit = SCENARIOS[scenario]
-    pipeline = IngestionPipeline({".py": PythonExtractor()})
+    # Data keys on: the DK-1 scenario's keys exist only then; the rest are unaffected.
+    pipeline = IngestionPipeline({".py": PythonExtractor(data_keys=True)}, data_keys=True)
 
     work = tmp_path / "work"
     _write(work, initial)
@@ -188,7 +189,7 @@ def test_incremental_graph_equals_full_ingest(scenario: str, tmp_path: Path) -> 
 def test_an_incremental_run_moves_a_key_to_its_constants_new_namespace(tmp_path: Path) -> None:
     """Only the constants file changes; the key in the importing file follows it."""
     initial, edit = SCENARIOS["a constant naming a key's namespace changes its value"]
-    pipeline = IngestionPipeline({".py": PythonExtractor()})
+    pipeline = IngestionPipeline({".py": PythonExtractor(data_keys=True)}, data_keys=True)
     work, db = tmp_path / "work", str(tmp_path / "graph.db")
     _write(work, initial)
     _ingest(work, db, pipeline)

@@ -484,6 +484,7 @@
   ],
   "ingest_state": {
    "ingest_options": {
+    "data_keys": false,
     "domains": null,
     "source_roots": []
    },
@@ -1176,6 +1177,7 @@
   ],
   "ingest_state": {
    "ingest_options": {
+    "data_keys": false,
     "domains": null,
     "source_roots": []
    },
@@ -2196,22 +2198,11 @@
     "type": "CONTAINS",
     "type_only": 0,
     "weight": 1.0
-   },
-   {
-    "confidence": 1.0,
-    "context": null,
-    "file_path": "ts/pnpm-workspace.yaml",
-    "id": "ts/pnpm-workspace.yaml:declares_1_|packages",
-    "line_number": 1,
-    "source": "ts.pnpm-workspace_yaml",
-    "target": "key:|packages",
-    "type": "DECLARES_KEY",
-    "type_only": 0,
-    "weight": 1.0
    }
   ],
   "ingest_state": {
    "ingest_options": {
+    "data_keys": false,
     "domains": null,
     "source_roots": []
    },
@@ -2330,25 +2321,6 @@
     "ontology_class": "Function",
     "start_line": 0,
     "type": "FUNCTION"
-   },
-   {
-    "confidence_score": 1.0,
-    "domains": [],
-    "end_line": 0,
-    "file_path": "EXTERNAL",
-    "id": "key:|packages",
-    "is_generated": 0,
-    "is_test": 0,
-    "language": "python",
-    "metadata": {
-     "namespace": "",
-     "path": "packages"
-    },
-    "name": "packages",
-    "namespace": "INTERNAL",
-    "ontology_class": null,
-    "start_line": 0,
-    "type": "DATA_KEY"
    },
    {
     "confidence_score": 0.8,
@@ -2941,22 +2913,6 @@
    {
     "confidence_score": 1.0,
     "domains": [],
-    "end_line": 1,
-    "file_path": "ts/apps/web/package.json",
-    "id": "ts.apps.web.package_json",
-    "is_generated": 0,
-    "is_test": 0,
-    "language": "data",
-    "metadata": {},
-    "name": "package.json",
-    "namespace": "INTERNAL",
-    "ontology_class": "File",
-    "start_line": 1,
-    "type": "FILE"
-   },
-   {
-    "confidence_score": 1.0,
-    "domains": [],
     "end_line": 17,
     "file_path": "ts/apps/web/src/main.ts",
     "id": "ts.apps.web.src.main",
@@ -3071,22 +3027,6 @@
    {
     "confidence_score": 1.0,
     "domains": [],
-    "end_line": 1,
-    "file_path": "ts/package.json",
-    "id": "ts.package_json",
-    "is_generated": 0,
-    "is_test": 0,
-    "language": "data",
-    "metadata": {},
-    "name": "package.json",
-    "namespace": "INTERNAL",
-    "ontology_class": "File",
-    "start_line": 1,
-    "type": "FILE"
-   },
-   {
-    "confidence_score": 1.0,
-    "domains": [],
     "end_line": 4,
     "file_path": "ts/packages/lib/index.ts",
     "id": "ts.packages.lib",
@@ -3115,54 +3055,6 @@
     "ontology_class": "Function",
     "start_line": 1,
     "type": "FUNCTION"
-   },
-   {
-    "confidence_score": 1.0,
-    "domains": [],
-    "end_line": 1,
-    "file_path": "ts/packages/lib/package.json",
-    "id": "ts.packages.lib.package_json",
-    "is_generated": 0,
-    "is_test": 0,
-    "language": "data",
-    "metadata": {},
-    "name": "package.json",
-    "namespace": "INTERNAL",
-    "ontology_class": "File",
-    "start_line": 1,
-    "type": "FILE"
-   },
-   {
-    "confidence_score": 1.0,
-    "domains": [],
-    "end_line": 3,
-    "file_path": "ts/pnpm-workspace.yaml",
-    "id": "ts.pnpm-workspace_yaml",
-    "is_generated": 0,
-    "is_test": 0,
-    "language": "data",
-    "metadata": {},
-    "name": "pnpm-workspace.yaml",
-    "namespace": "INTERNAL",
-    "ontology_class": "File",
-    "start_line": 1,
-    "type": "FILE"
-   },
-   {
-    "confidence_score": 1.0,
-    "domains": [],
-    "end_line": 1,
-    "file_path": "ts/tsconfig.json",
-    "id": "ts.tsconfig_json",
-    "is_generated": 0,
-    "is_test": 0,
-    "language": "data",
-    "metadata": {},
-    "name": "tsconfig.json",
-    "namespace": "INTERNAL",
-    "ontology_class": "File",
-    "start_line": 1,
-    "type": "FILE"
    },
    {
     "confidence_score": 0.8,

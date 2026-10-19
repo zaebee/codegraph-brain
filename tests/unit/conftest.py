@@ -18,6 +18,9 @@ import pytest
 # or call its tools assume all of them (#542). Cleared before any test module
 # imports it; tests of the allowlist build their own server.
 os.environ.pop("CGIS_MCP_TOOLS", None)
+# The data-key layer is opt-in; a developer's CGIS_DATA_KEYS=1 must not turn it on
+# for tests that assert the default.
+os.environ.pop("CGIS_DATA_KEYS", None)
 
 from cgis.core.models import Edge, EdgeType, Node, NodeType
 from cgis.guardian.martian import ReviewRecord

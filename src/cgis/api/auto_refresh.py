@@ -24,7 +24,7 @@ import structlog
 
 from cgis.core.freshness import Freshness, FreshnessState
 from cgis.languages import extractors
-from cgis.pipeline import IngestionPipeline, extraction_fingerprint
+from cgis.pipeline import IngestionPipeline, extraction_fingerprint, recorded_data_keys
 from cgis.storage.sqlite_store import SQLiteStore
 
 logger = structlog.getLogger(__name__)
@@ -92,7 +92,12 @@ def _refresh(db_path: str) -> bool:
             )
             return False
         started = time.perf_counter()
-        pipeline = IngestionPipeline(extractors(source_roots), domains_config=domains)
+        # The mode the graph was built in, never the environment's: a refresh is the
+        # same graph, fresher, and a switch would rebuild it on a read.
+        keys = recorded_data_keys(store) is True
+        pipeline = IngestionPipeline(
+            extractors(source_roots, data_keys=keys), domains_config=domains, data_keys=keys
+        )
         nodes, _raw, _resolved = pipeline.run(root, store=store)
         if nodes:
             store.record_ingest(root, pipeline.observed_mtimes)

@@ -43,7 +43,9 @@ def _check(tmp_path: Path, before: dict[str, str], after: dict[str, str | None])
     _commit(repo, after, "edit")
     store = SQLiteStore(str(tmp_path / "g.db"))
     store.connect()
-    IngestionPipeline(extractors([])).run(str(repo), store=store, rebuild=True)
+    IngestionPipeline(extractors([], data_keys=True), data_keys=True).run(
+        str(repo), store=store, rebuild=True
+    )
     with store:
         return run_diff_check(store, repo, base, cap=100)
 

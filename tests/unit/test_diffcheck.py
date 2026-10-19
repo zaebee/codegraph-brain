@@ -9,7 +9,13 @@ from typer.testing import CliRunner
 from cgis.cli import app
 from cgis.languages import extractors
 from cgis.pipeline import IngestionPipeline
-from cgis.query.diffcheck import DiffError, changed_files, run_diff_check
+from cgis.query.diffcheck import (
+    DiffError,
+    changed_files,
+    render_text,
+    report_to_dict,
+    run_diff_check,
+)
 from cgis.storage.sqlite_store import SQLiteStore
 
 
@@ -327,3 +333,47 @@ def test_a_root_outside_the_repository_is_a_clear_error(tmp_path: Path) -> None:
     assert result.exit_code == 2
     assert "outside" in result.output
     assert result.exception is None or isinstance(result.exception, SystemExit)
+
+
+# --- data keys are opt-in -----------------------------------------------------------
+
+KEYED = "def save(doc):\n    doc['cover'] = 1\n\n\ndef load(doc):\n    return doc['cover']\n"
+MAPPING = '{"mappings": {"properties": {"cover": {"type": "keyword"}}}}\n'
+
+
+def _keyed_check(tmp_path: Path, *, data_keys: bool) -> tuple[Path, str, Path]:
+    """A change to a key writer and to a mapping, ingested with data keys on or off."""
+    repo, base = _repo(tmp_path, {"m.py": KEYED, "map.json": MAPPING})
+    _commit(
+        repo,
+        {"m.py": KEYED.replace("= 1", "= 2"), "map.json": MAPPING.replace("keyword", "text")},
+        "edit",
+    )
+    db = tmp_path / "keys.db"
+    flag = "--data-keys" if data_keys else "--no-data-keys"
+    result = CliRunner().invoke(app, ["ingest", str(repo), "-o", str(db), flag])
+    assert result.exit_code == 0, result.output
+    return repo, base, db
+
+
+def test_a_graph_without_data_keys_says_how_to_turn_them_on(tmp_path: Path) -> None:
+    repo, base, db = _keyed_check(tmp_path, data_keys=False)
+    with SQLiteStore(str(db)) as store:
+        report = run_diff_check(store, repo, base, cap=100)
+    assert report.data_keys is False
+    assert not [i for i in report.items if i.kind.startswith("key-")]
+    assert report.changed_symbols == ["m.save"]
+    text = render_text(report, base, "HEAD")
+    assert sum("--data-keys" in line for line in text.splitlines()) == 1
+    assert "data keys are off" in text.lower()
+    assert "--data-keys" in str(report_to_dict(report)["note"])
+
+
+def test_a_graph_with_data_keys_lists_key_items_without_the_note(tmp_path: Path) -> None:
+    repo, base, db = _keyed_check(tmp_path, data_keys=True)
+    with SQLiteStore(str(db)) as store:
+        report = run_diff_check(store, repo, base, cap=100)
+    assert report.data_keys is True
+    assert report.note == ""
+    assert [i for i in report.items if i.kind.startswith("key-")]
+    assert "--data-keys" not in render_text(report, base, "HEAD")

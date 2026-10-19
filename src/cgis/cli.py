@@ -47,7 +47,7 @@ from cgis.core.models import (
 )
 from cgis.guardian.metrics import load_reviews, rate_review
 from cgis.languages import extractors, file_node_id, is_supported
-from cgis.pipeline import IngestionPipeline, extraction_fingerprint
+from cgis.pipeline import IngestionPipeline, extraction_fingerprint, ingest_data_keys
 from cgis.query.analysis.analyzer import AnalyzerEngine
 from cgis.query.analysis.anomaly import AnomalyType, ArchitecturalAnomaly
 from cgis.query.analysis.health import HealthScorer
@@ -181,6 +181,13 @@ def _write_json_graph(
         _json.dump(graph_data, f, indent=2)
 
 
+def _pipeline(roots: list[str], domains: str | None, data_keys: bool) -> IngestionPipeline:
+    """The ingest pipeline for these options."""
+    return IngestionPipeline(
+        extractors(roots, data_keys=data_keys), domains_config=domains, data_keys=data_keys
+    )
+
+
 @app.command()
 def ingest(
     path: str = typer.Argument(..., help="Path to the repository to ingest"),
@@ -209,12 +216,20 @@ def ingest(
             "May be repeated for multiple roots."
         ),
     ),
+    data_keys: bool | None = typer.Option(
+        None,
+        "--data-keys/--no-data-keys",
+        help=(
+            "Extract data keys (Python dict keys, JSON and YAML declarations) for the "
+            "diff check. Off by default; CGIS_DATA_KEYS=1 turns it on, and an incremental "
+            "run keeps the mode the graph was built in. Switching it rebuilds the graph."
+        ),
+    ),
 ) -> None:
     """
     Scan a repository, extract code structure, and resolve semantic links.
     """
     roots = source_roots or []
-    pipeline = IngestionPipeline(extractors(roots), domains_config=domains)
 
     if domains and not Path(domains).is_file():
         console.print(
@@ -242,13 +257,16 @@ def ingest(
             # A bad path must not create or touch the database.
             IngestionPipeline.workspace_root(path)
             with SQLiteStore(output) as store:
+                keys = ingest_data_keys(store, data_keys)
+                pipeline = _pipeline(roots, domains, keys)
                 nodes, raw_edges, resolved_edges = pipeline.run(
                     path, store=store, rebuild=not incremental
                 )
                 if nodes:
                     store.record_ingest(path, pipeline.observed_mtimes)
-                    store.record_ingest_options(roots, domains)
+                    store.record_ingest_options(roots, domains, data_keys=keys)
         else:
+            pipeline = _pipeline(roots, domains, ingest_data_keys(None, data_keys))
             nodes, raw_edges, resolved_edges = pipeline.run(path)
 
         if not nodes:

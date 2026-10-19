@@ -74,13 +74,14 @@ def ingest(root: Path, db: Path, source_roots: Sequence[str] = ()) -> None:
     """Ingest `root` into a fresh database at `db`, as `cgis ingest --source-root` does.
 
     The options are recorded, so the diff check re-parses base files with the same roots.
+    Data keys are on: they are what this evaluates, and the layer is opt-in.
     """
     db.unlink(missing_ok=True)
     roots = list(source_roots)
-    pipeline = IngestionPipeline(extractors(roots))
+    pipeline = IngestionPipeline(extractors(roots, data_keys=True), data_keys=True)
     with SQLiteStore(str(db)) as store:
         pipeline.run(str(root), store=store, rebuild=True)
-        store.record_ingest_options(roots, None)
+        store.record_ingest_options(roots, None, data_keys=True)
 
 
 def _graph_file(repo_path: str, prefix: str) -> str:

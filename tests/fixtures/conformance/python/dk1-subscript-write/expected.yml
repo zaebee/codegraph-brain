@@ -1,4 +1,5 @@
 clause: DK-1
+options: {data_keys: true}
 status: pass
 must_have:
   - {type: WRITES_KEY, source: mod.save, target: "key:|details"}

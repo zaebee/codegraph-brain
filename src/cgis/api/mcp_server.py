@@ -22,7 +22,7 @@ from cgis.core.coverage import TraversalCoverage, UnresolvedSite
 from cgis.core.freshness import Freshness, FreshnessState
 from cgis.core.models import RAW_CALL_PREFIX, Edge, EdgeType, Node, NodeType
 from cgis.languages import extractors, impact_caveat
-from cgis.pipeline import IngestionPipeline, extraction_fingerprint
+from cgis.pipeline import IngestionPipeline, extraction_fingerprint, ingest_data_keys
 from cgis.query.analysis.overview import DEFAULT_DEPTH, DEFAULT_LIMIT, build_overview
 from cgis.query.analysis.suggest_service import report_to_dict, suggest_packages
 from cgis.query.context.audit import audit_reachability
@@ -468,6 +468,14 @@ def cgis_ingest(
         bool,
         Field(description="Re-scan every file from scratch instead of the incremental default."),
     ] = False,
+    data_keys: Annotated[
+        bool | None,
+        Field(
+            description="Extract data keys (Python dict keys, JSON and YAML declarations) for "
+            "cgis_diff_check. Off by default. Left out: CGIS_DATA_KEYS=1 in the server's "
+            "environment, else the mode the graph was built in. Switching it rebuilds the graph."
+        ),
+    ] = None,
 ) -> str:
     """Scan a local directory, extract all symbols, resolve links, and build the graph DB.
 
@@ -487,22 +495,26 @@ def cgis_ingest(
     or re-export — the incremental run rebuilds the whole graph itself, so edges
     in unchanged files never point at symbols that no longer exist. Set
     ``full_rebuild=True`` to force a re-scan of every file from scratch.
+
+    Data keys are opt-in (``data_keys=True``): they cost every ingest time and
+    graph size, and make JSON and YAML edits mark the graph stale.
     """
     refusal = _reject_db_path(db_path)
     if refusal is not None:
         logger.warning("MCP ingest refused db_path", db=db_path)
         return refusal
 
-    pipeline = IngestionPipeline(extractors([]))
     try:
         with SQLiteStore(db_path) as store:
+            keys = ingest_data_keys(store, data_keys)
+            pipeline = IngestionPipeline(extractors([], data_keys=keys), data_keys=keys)
             # A rebuild replaces the stored graph in the transaction that writes the
             # new one: deleted-file nodes and stale hashes go, uplift runs inside
             # the pipeline, and a failure part-way leaves the old graph intact.
             nodes, _raw, resolved = pipeline.run(project_path, store=store, rebuild=full_rebuild)
             if nodes:
                 store.record_ingest(project_path, pipeline.observed_mtimes)
-                store.record_ingest_options([], None)
+                store.record_ingest_options([], None, data_keys=keys)
             total_nodes = store.get_node_count()
             total_edges = store.get_edge_count()
     except Exception as exc:
@@ -1117,13 +1129,15 @@ def cgis_diff_check(
     changed lines read, write or declare (``doc["avatar"]``, a mapping field) it
     lists the key's other readers, writers and declarers, reads of a dotted path
     a mapping does not declare, and reads of a declaration the diff removed;
-    common keys (``id``, ``name``, or used in many files) are left out. Sites in
-    test files are counted, not listed. An empty list means no static dependants
-    were found, not that the change is safe: dispatch the graph cannot see is
-    not covered. How to read the list: caller and subclass items are leads to
-    read; data-key items are noisy — measured on one application (owner-api),
-    about a quarter of listed items were worth a look
-    (docs/lab-notes/2026-10-19-data-key-diff-check.md).
+    common keys (``id``, ``name``, or used in many files) are left out. Key items
+    need a graph ingested with data keys on (``cgis_ingest(data_keys=True)`` or
+    ``cgis ingest --data-keys``); on a graph without them the answer says so and
+    lists subclasses and callers only. Sites in test files are counted, not
+    listed. An empty list means no static dependants were found, not that the
+    change is safe: dispatch the graph cannot see is not covered. How to read
+    the list: caller and subclass items are leads to read; data-key items are
+    noisy — measured on one application (owner-api), about a quarter of listed
+    items were worth a look (docs/lab-notes/2026-10-19-data-key-diff-check.md).
     """
     if not Path(db_path).exists():
         return f"❌ Database not found at: {db_path}. Run cgis_ingest first."

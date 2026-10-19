@@ -21,7 +21,7 @@ REPO = Path(__file__).resolve().parent.parent.parent
 
 
 def _parse(code: str, path: str) -> tuple[list[Node], list[Edge]]:
-    extractor = extractors([])[Path(path).suffix]
+    extractor = extractors([], data_keys=True)[Path(path).suffix]
     return extractor.parse(code, path)
 
 
@@ -235,7 +235,9 @@ def test_an_ingest_resolves_declarations_to_key_nodes(tmp_path: Path) -> None:
     (tmp_path / "opensearch" / "mappings").mkdir(parents=True)
     (tmp_path / "opensearch" / "mappings" / "events.json").write_text(_MAPPING)
     (tmp_path / "app.py").write_text("def f(q):\n    return q['entity_id.keyword']\n")
-    nodes, _raw, edges = IngestionPipeline(extractors([])).run(str(tmp_path))
+    nodes, _raw, edges = IngestionPipeline(extractors([], data_keys=True), data_keys=True).run(
+        str(tmp_path)
+    )
     declares = {e.target for e in edges if e.type is EdgeType.DECLARES_KEY}
     assert "key:events|entity_id.keyword" in declares
     assert "key:events|event_type.keyword" not in declares
@@ -261,7 +263,9 @@ def test_coverage_claims_name_the_data_pack() -> None:
 
 
 def _boundary_namespaces(root: Path) -> dict[str, str]:
-    nodes, _raw, _edges = IngestionPipeline(extractors([])).run(str(root))
+    nodes, _raw, _edges = IngestionPipeline(extractors([], data_keys=True), data_keys=True).run(
+        str(root)
+    )
     return {
         n.id: n.namespace.value
         for n in nodes

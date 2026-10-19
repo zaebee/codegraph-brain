@@ -155,7 +155,15 @@ class TestExtractors:
     """The pipeline's mapping comes from the registry, so it cannot drift from it."""
 
     def test_covers_every_registered_extension(self) -> None:
-        assert set(extractors([])) == {ext for m in MANIFESTS for ext in m.extensions}
+        assert set(extractors([], data_keys=True)) == {
+            ext for m in MANIFESTS for ext in m.extensions
+        }
+
+    def test_leaves_out_the_data_key_packs_by_default(self) -> None:
+        """The data-key layer is opt-in: off, the walk never meets a JSON or YAML file."""
+        assert set(extractors([])) == {
+            ext for m in MANIFESTS if not m.data_keys_only for ext in m.extensions
+        }
 
     def test_source_roots_reach_the_extractors(self) -> None:
         """A root that does not reach the extractor silently changes every FQN."""
@@ -174,9 +182,10 @@ class TestExtractors:
         script = (
             "import sys\n"
             "from cgis.languages import extractors\n"
-            "m = extractors([])\n"
+            "m = extractors([], data_keys=True)\n"
             "assert '.ts' in m and '.tsx' in m and '.go' in m and '.json' in m\n"
             "assert len(list(m)) == 7\n"
+            "assert '.json' not in extractors([]) and len(extractors([])) == 4\n"
             "print(sorted(x for x in sys.modules if x.startswith('tree_sitter_')))\n"
         )
         out = subprocess.run(

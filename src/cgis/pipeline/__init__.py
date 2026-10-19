@@ -13,6 +13,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from cgis.core.extractor import BaseExtractor
 from cgis.core.generated import is_generated_source
+from cgis.core.keys import data_keys_enabled
 from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeType
 from cgis.core.paths import EXCLUDED_DIRS
 from cgis.import_names import ImportNameCollector
@@ -157,6 +158,34 @@ def _needs_rebuild(store: "SQLiteStore | None", rebuild: bool) -> bool:
     return True
 
 
+def ingest_data_keys(store: "SQLiteStore | None", explicit: bool | None) -> bool:
+    """The data-key mode an ingest into `store` runs in (`cgis.core.keys.data_keys_enabled`).
+
+    An explicit flag, then `CGIS_DATA_KEYS`, then the mode `store` was last
+    ingested in, then off.
+    """
+    return data_keys_enabled(explicit, recorded_data_keys(store))
+
+
+def recorded_data_keys(store: "SQLiteStore | None") -> bool | None:
+    """The data-key mode `store` was last ingested in; None when it never recorded one."""
+    return None if store is None else store.get_ingest_data_keys()
+
+
+def _data_keys_switched(store: "SQLiteStore | None", data_keys: bool) -> bool:
+    """Whether the store was last ingested with the data-key layer in the other mode.
+
+    Unchanged files keep their key edges (or lack them) through an incremental
+    run, and the data files' FILE nodes stay or never appear: only a full
+    rebuild gives the graph the mode asked for.
+    """
+    recorded = recorded_data_keys(store)
+    if recorded is None or recorded == data_keys:
+        return False
+    logger.info("Data keys switched — rebuilding the graph in full.", data_keys=data_keys)
+    return True
+
+
 class IngestionPipeline:
     """Orchestrates the full Extract → Resolve → Store pipeline over a source tree."""
 
@@ -171,6 +200,8 @@ class IngestionPipeline:
         self,
         extractors: Mapping[str, BaseExtractor],
         domains_config: str | None = None,
+        *,
+        data_keys: bool = False,
     ) -> None:
         """
         Args:
@@ -178,9 +209,13 @@ class IngestionPipeline:
                         e.g., {".py": PythonExtractor()}
             domains_config: Optional path to a domains.yaml file. When provided,
                             the SemanticUpliftEngine runs after resolution.
+            data_keys: Whether `extractors` were built with the opt-in data-key
+                       layer (`cgis.languages.extractors(..., data_keys=)`). A
+                       store recorded in the other mode is rebuilt in full.
         """
         self._extractors = extractors
         self._domains_config = domains_config
+        self._data_keys = data_keys
         self._excluded = EXCLUDED_DIRS
         self.observed_mtimes = {}
 
@@ -228,7 +263,7 @@ class IngestionPipeline:
         path, an empty walk or a crash before that commit leaves the old graph
         intact.
         """
-        rebuild = _needs_rebuild(store, rebuild)
+        rebuild = _needs_rebuild(store, rebuild) or _data_keys_switched(store, self._data_keys)
         all_nodes: list[Node] = []
         all_edges: list[Edge] = []
         # file_path -> new hash, only for files that were re-extracted

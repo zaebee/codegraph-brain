@@ -1245,19 +1245,23 @@ class SQLiteStore:
             if isinstance(rules, dict)
         }
 
-    def record_ingest_options(self, source_roots: list[str], domains: str | None) -> None:
+    def record_ingest_options(
+        self, source_roots: list[str], domains: str | None, *, data_keys: bool = False
+    ) -> None:
         """Record the options this graph was ingested with, so a refresh can repeat them (#175).
 
         An automatic refresh that ran with different `--source-root`s would give
         every node a new FQN, and one without `--domains` would drop its uplift:
         the graph it leaves is a different graph, not a fresher one. `domains`
-        is stored absolute, for the same reason as the ingest root.
+        is stored absolute, for the same reason as the ingest root. `data_keys`
+        is the opt-in data-key layer: a refresh or incremental run keeps it.
         """
         self._record_state_json(
             _INGEST_OPTIONS_KEY,
             {
                 "source_roots": list(source_roots),
                 "domains": None if domains is None else str(Path(domains).resolve()),
+                "data_keys": data_keys,
             },
         )
 
@@ -1272,6 +1276,17 @@ class SQLiteStore:
             return None
         domains = loaded.get("domains")
         return [str(r) for r in loaded["source_roots"]], None if domains is None else str(domains)
+
+    def get_ingest_data_keys(self) -> bool | None:
+        """Whether the graph was ingested with data keys on; None when no options were recorded.
+
+        Options recorded before the layer was opt-in carry no `data_keys`: False, the
+        default they are rebuilt in.
+        """
+        loaded = self._state_json(_INGEST_OPTIONS_KEY)
+        if not isinstance(loaded, dict):
+            return None
+        return loaded.get("data_keys") is True
 
     def record_python_dependencies(self, roots: list[str]) -> None:
         """Record the declared dependency roots Python references were classified against (#495).

@@ -42,11 +42,13 @@ class PythonPack(LanguagePack):
         return self.scope_of(path, source_root)
 
     @override
-    def extractor(self, extension: str, source_roots: list[str]) -> BaseExtractor:
+    def extractor(
+        self, extension: str, source_roots: list[str], *, data_keys: bool = False
+    ) -> BaseExtractor:
         """One grammar for the one extension — loaded here, on first use."""
         from cgis.languages.python.extractor import PythonExtractor  # noqa: PLC0415
 
-        return PythonExtractor(source_roots=source_roots)
+        return PythonExtractor(source_roots=source_roots, data_keys=data_keys)
 
     @override
     def project_reader(self, root: Path, extractors: Mapping[str, BaseExtractor]) -> ProjectReader:

@@ -294,9 +294,14 @@ class PythonExtractor(BaseExtractor):
 
     LANG: str = "python"
 
-    def __init__(self, source_roots: list[str] | None = None) -> None:
-        """Initialise the tree-sitter Python parser and the extraction handlers."""
+    def __init__(self, source_roots: list[str] | None = None, *, data_keys: bool = False) -> None:
+        """Initialise the tree-sitter Python parser and the extraction handlers.
+
+        `data_keys` turns on the opt-in data-key layer (DK-1..DK-3): key edges and
+        the `str_constants` a key's namespace is read from. Off, neither is emitted.
+        """
         super().__init__(source_roots=source_roots)
+        self._data_keys = data_keys
         self._parser = Parser(Language(tspython.language()))
         self._imports = ImportHandler()
         self._types = TypeResolver(self._pick_source_root)
@@ -371,9 +376,11 @@ class PythonExtractor(BaseExtractor):
             _file_names(nodes, module_fqn, import_map),
         )
         edges.extend(value_edges)
-        # Data keys (DK-1..DK-3) are owned by the same rule as the walk's calls.
-        owners = _key_owners(code_bytes, file_path, self._pick_source_root(file_path), module_fqn)
-        edges.extend(key_edges(root_node, code_bytes, file_path, owners))
+        # Data keys (DK-1..DK-3), opt-in, are owned by the same rule as the walk's calls.
+        if self._data_keys:
+            source_root = self._pick_source_root(file_path)
+            owners = _key_owners(code_bytes, file_path, source_root, module_fqn)
+            edges.extend(key_edges(root_node, code_bytes, file_path, owners))
 
         # FastAPI handlers carry a `route` role (#566); the import map is complete here.
         nodes = mark_routes(nodes, routers(root_node, code_bytes, import_map))
@@ -384,7 +391,7 @@ class PythonExtractor(BaseExtractor):
             "star_imports": star_imports,
         }
         # The namespace an `index=NAME` key names (DK-1); only a file that has one says so.
-        if constants := string_constants(root_node, code_bytes):
+        if self._data_keys and (constants := string_constants(root_node, code_bytes)):
             file_metadata["str_constants"] = constants
 
         file_node = Node(

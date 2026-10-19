@@ -2,12 +2,13 @@
 
 Each side runs ``python -m cgis ingest`` with PYTHONPATH set to its ``src`` (no ``-I``), from
 the scratch directory, so the two differ only in the code. Prints one line per run and the
-medians and ratio.
+medians and ratio. The branch side ingests with ``--data-keys`` (the layer's cost, as the lab
+note measured it); ``--keys-off`` measures the branch's default instead.
 
 Usage, run from the scratch directory::
 
     python scripts/data_keys/ingest_pairs.py --main-src <main checkout>/src [--pairs N]
-        [--tree DIR] [--python EXE]
+        [--tree DIR] [--python EXE] [--keys-off]
 
 ``--tree`` defaults to the owner-api export under the corpus (``locations.py``),
 ``--python`` to the interpreter running this script; the branch side is this checkout.
@@ -29,7 +30,12 @@ DEFAULT_TREE = CORPUS / "owner-2bd0fb7-backend" / "ownima-backend"
 
 
 def run_once(
-    side: str, sides: Mapping[str, str], python: str, tree: Path, scratch: Path
+    side: str,
+    sides: Mapping[str, str],
+    python: str,
+    tree: Path,
+    scratch: Path,
+    flags: Sequence[str] = (),
 ) -> tuple[float, int]:
     """One ingest into a fresh database; its seconds and the database size in bytes."""
     db = scratch / f"{side}.db"
@@ -38,7 +44,7 @@ def run_once(
     env = {**os.environ, "PYTHONPATH": sides[side]}
     started = time.monotonic()
     subprocess.run(
-        [python, "-m", "cgis", "ingest", str(tree), "--source-root", "app", "-o", str(db)],
+        [python, "-m", "cgis", "ingest", str(tree), "--source-root", "app", "-o", str(db), *flags],
         cwd=scratch,
         env=env,
         check=True,
@@ -54,14 +60,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--main-src", type=Path, required=True, help="main's src directory")
     parser.add_argument("--tree", type=Path, default=DEFAULT_TREE)
     parser.add_argument("--python", default=sys.executable)
+    parser.add_argument("--keys-off", action="store_true", help="the branch's default ingest")
     args = parser.parse_args(argv)
     sides = {"main": str(args.main_src), "branch": str(REPO_ROOT / "src")}
+    flags = {"main": (), "branch": () if args.keys_off else ("--data-keys",)}
     scratch = Path.cwd()
     times: dict[str, list[float]] = {side: [] for side in sides}
     sizes: dict[str, int] = {}
     for index in range(args.pairs):
         for side in sides:
-            seconds, sizes[side] = run_once(side, sides, args.python, args.tree, scratch)
+            seconds, sizes[side] = run_once(
+                side, sides, args.python, args.tree, scratch, flags[side]
+            )
             times[side].append(seconds)
             print(f"{index + 1} {side} {seconds:.1f}s db={sizes[side]}", flush=True)
     medians = {side: statistics.median(v) for side, v in times.items()}

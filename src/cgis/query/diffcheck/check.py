@@ -66,6 +66,17 @@ class DiffReport:
     in_tests: int
     changed_symbols: list[str]
     changed_keys: list[str] = field(default_factory=list)
+    #: Whether the graph was ingested with the opt-in data-key layer; off, no key item.
+    data_keys: bool = True
+    #: One line for the reader: how to turn data keys on, when they are off.
+    note: str = ""
+
+
+#: What a report on a graph without data keys says, once.
+DATA_KEYS_OFF_NOTE: Final = (
+    "Data keys are off in this graph, so no key items: re-ingest with --data-keys "
+    "(MCP: cgis_ingest(data_keys=True), or CGIS_DATA_KEYS=1) to list them."
+)
 
 
 def _graph_path(path: str | None, prefix: str) -> str | None:
@@ -77,11 +88,11 @@ def _graph_path(path: str | None, prefix: str) -> str | None:
     return path[len(prefix) + 1 :] if path.startswith(prefix + "/") else None
 
 
-def _walked(path: str) -> bool:
+def _walked(path: str, data_keys: bool) -> bool:
     """Whether an ingest of the graph's root reads `path`: a pack's, outside skipped dirs."""
     parts = PurePosixPath(path).parts
     return (
-        is_supported(path)
+        is_supported(path, data_keys=data_keys)
         and not skips(parts[-1])
         and not any(is_excluded_dir(d) for d in parts[:-1])
     )
@@ -129,11 +140,11 @@ def _base_parse(
 ) -> tuple[list[Node], list[KeyUse]]:
     """The symbols of the file as it was at `base`, and its key edges on removed lines.
 
-    None for a language with no pack.
+    Empty for a file the graph's ingest does not read (no pack, or data keys off).
     """
-    if change.old_path is None or not is_supported(graph_old):
-        return [], []
     ext = PurePosixPath(graph_old).suffix
+    if change.old_path is None or not is_supported(graph_old) or ext not in parsers:
+        return [], []
     extractor = parsers[ext]
     nodes, edges = extractor.parse(read_at(repo, base, change.old_path), graph_old)
     file = next((n for n in nodes if n.type is NodeType.FILE), None)
@@ -145,7 +156,9 @@ def _base_parse(
     return [n for n in nodes if n.type in _SYMBOLS], keys
 
 
-def _require_mapped(store: SQLiteStore, files: list[FileChange], prefix: str) -> None:
+def _require_mapped(
+    store: SQLiteStore, files: list[FileChange], prefix: str, data_keys: bool
+) -> None:
     """`DiffError` when changed files under `prefix` that an ingest reads exist and none
     is in the graph.
 
@@ -155,7 +168,7 @@ def _require_mapped(store: SQLiteStore, files: list[FileChange], prefix: str) ->
     expected = [
         path
         for path in (_graph_path(change.new_path, prefix) for change in files)
-        if path is not None and _walked(path)
+        if path is not None and _walked(path, data_keys)
     ]
     if not expected or any(store.get_nodes_by_file(path) for path in expected):
         return
@@ -168,19 +181,25 @@ def _require_mapped(store: SQLiteStore, files: list[FileChange], prefix: str) ->
 
 
 def _changed(
-    store: SQLiteStore, graph: KeyGraph, repo: Path, base: str, head: str, prefix: str
+    store: SQLiteStore,
+    graph: KeyGraph,
+    repo: Path,
+    rev: tuple[str, str],
+    prefix: str,
+    data_keys: bool,
 ) -> _Changes:
     """Head symbols the diff touched, base symbols that no longer exist, key edges met."""
     touched: dict[str, Node] = {}
     removed: dict[str, Node] = {}
     keys: list[KeyUse] = []
     head_files: dict[str, str] = {}
+    base, head = rev
     # Re-parse the old text the way the graph was built, or ids would differ.
     options = store.get_ingest_options()
-    parsers = extractors(options[0] if options else [])
+    parsers = extractors(options[0] if options else [], data_keys=data_keys)
     base_sha = resolve_rev(repo, base)
     files = changed_files(repo, base, head)
-    _require_mapped(store, files, prefix)
+    _require_mapped(store, files, prefix, data_keys)
     for change in files:
         graph_old = _graph_path(change.old_path, prefix)
         graph_new = _graph_path(change.new_path, prefix)
@@ -299,7 +318,10 @@ def run_diff_check(
     """
     prefix = (default_prefix(store, repo) if prefix is None else prefix).strip("/")
     graph = KeyGraph(store)
-    changes = _changed(store, graph, repo, base, head, prefix)
+    # A graph whose options predate recording the mode says it by its key edges.
+    recorded = store.get_ingest_data_keys()
+    data_keys = bool(graph.by_file) if recorded is None else recorded
+    changes = _changed(store, graph, repo, (base, head), prefix, data_keys)
     nodes, removed = changes.touched, changes.removed
     found = key_items(graph, changes.keys, changes.head_files)
     keyed = [
@@ -342,7 +364,10 @@ def run_diff_check(
     )
     symbols = sorted({n.id for n in [*nodes, *removed]})
     keys = sorted({u.key for u in changes.keys})
-    return DiffReport(shown[:cap], max(len(shown) - cap, 0), in_tests, symbols, keys)
+    note = "" if data_keys else DATA_KEYS_OFF_NOTE
+    return DiffReport(
+        shown[:cap], max(len(shown) - cap, 0), in_tests, symbols, keys, data_keys, note
+    )
 
 
 def report_to_dict(report: DiffReport) -> dict[str, object]:
@@ -353,7 +378,8 @@ def report_to_dict(report: DiffReport) -> dict[str, object]:
 def render_text(report: DiffReport, base: str, head: str) -> str:
     """The report as the short list an agent reads."""
     if not report.changed_symbols and not report.changed_keys:
-        return f"No indexed symbol or data key changed in {base}..{head}."
+        empty = f"No indexed symbol or data key changed in {base}..{head}."
+        return f"{empty}\n{report.note}" if report.note else empty
     lines = [
         f"{len(report.changed_symbols)} symbol(s) and {len(report.changed_keys)} data key(s) "
         f"changed in {base}..{head}; what else depends on them:"
@@ -367,6 +393,8 @@ def render_text(report: DiffReport, base: str, head: str) -> str:
         lines.append(f"  ... and {report.hidden} more (raise the cap to list them)")
     if report.in_tests:
         lines.append(f"  {report.in_tests} site(s) in tests, not listed")
+    if report.note:
+        lines.append(report.note)
     return "\n".join(lines)
 
 

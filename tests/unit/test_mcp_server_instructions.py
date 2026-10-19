@@ -254,3 +254,12 @@ def test_the_diff_check_says_its_data_key_items_are_noisy() -> None:
         assert "about a quarter of listed items were worth a look" in said
         assert "owner-api" in said
         assert _DIFF_CHECK_NOTE in said
+
+
+def test_the_diff_check_says_key_items_need_data_keys_on() -> None:
+    # The data-key layer is opt-in: without it the tool lists no key item at all.
+    from cgis.api.mcp_server import cgis_diff_check  # noqa: PLC0415
+
+    doc = " ".join((cgis_diff_check.__doc__ or "").split())
+    assert "a graph ingested with data keys on" in doc
+    assert "data_keys=True" in doc

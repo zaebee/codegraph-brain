@@ -87,7 +87,9 @@ class DataPack(LanguagePack):
         return file_node_id(path, source_root)
 
     @override
-    def extractor(self, extension: str, source_roots: list[str]) -> BaseExtractor:
+    def extractor(
+        self, extension: str, source_roots: list[str], *, data_keys: bool = False
+    ) -> BaseExtractor:
         """One extractor for both formats — the YAML parser is imported here, on first use."""
         from cgis.languages.data.extractor import DataExtractor  # noqa: PLC0415
 

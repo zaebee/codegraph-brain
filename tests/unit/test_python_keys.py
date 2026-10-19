@@ -8,7 +8,7 @@ _R, _W, _D = EdgeType.READS_KEY, EdgeType.WRITES_KEY, EdgeType.DECLARES_KEY
 
 def _keys(code: str) -> set[tuple[str, EdgeType, str]]:
     """(source, relation, raw key) for every key edge the extractor emits for m.py."""
-    _nodes, edges = PythonExtractor().parse(code, "m.py")
+    _nodes, edges = PythonExtractor(data_keys=True).parse(code, "m.py")
     return {
         (e.source, e.type, e.target.removeprefix(RAW_KEY_PREFIX))
         for e in edges
@@ -206,7 +206,7 @@ def test_key_edges_belong_to_the_enclosing_function() -> None:
 
 
 def test_key_edges_score_one_and_carry_their_line() -> None:
-    _nodes, edges = PythonExtractor().parse('def f(d):\n\n    d["a"]\n', "m.py")
+    _nodes, edges = PythonExtractor(data_keys=True).parse('def f(d):\n\n    d["a"]\n', "m.py")
     (edge,) = [e for e in edges if e.target.startswith(RAW_KEY_PREFIX)]
     assert edge.confidence == 1.0
     assert edge.line_number == 3
@@ -218,14 +218,14 @@ def test_module_string_constants_are_recorded_on_the_file() -> None:
         'EVENTS = "events"\nOTHER = 3\nJOINED = "a" "b"\nTYPED: str = "t"\n'
         'EVENTS = "events-v2"\nclass C:\n    INNER = "x"\ndef f():\n    LOCAL = "y"\n'
     )
-    nodes, _edges = PythonExtractor().parse(code, "m.py")
+    nodes, _edges = PythonExtractor(data_keys=True).parse(code, "m.py")
     (file_node,) = [n for n in nodes if n.type is NodeType.FILE]
     assert file_node.metadata["str_constants"] == {"EVENTS": "events-v2"}
     assert not [n for n in nodes if n.type is NodeType.VARIABLE]
 
 
 def test_a_file_without_string_constants_records_none() -> None:
-    nodes, _edges = PythonExtractor().parse("X = 1\n", "m.py")
+    nodes, _edges = PythonExtractor(data_keys=True).parse("X = 1\n", "m.py")
     (file_node,) = [n for n in nodes if n.type is NodeType.FILE]
     assert "str_constants" not in file_node.metadata
 
