@@ -12,12 +12,14 @@ the moment it ships — it said "Python and TypeScript only" for as long as Go h
 
 from cgis.languages import MANIFESTS
 
-#: Said by the tool's own description and by the instructions (final review I6): the
-#: tool is on by default, and its key items were measured noisy before it shipped.
+#: Said by the tool's own description and by the instructions (final review I6). The
+#: tool itself is always available; only its data-key items need the opt-in data-key
+#: layer, and they were measured noisy before it shipped.
 DIFF_CHECK_NOISE = (
     "caller and subclass items are leads to read; data-key items are noisy — measured "
     "on one application (owner-api), about a quarter of listed items were worth a look "
-    "(docs/lab-notes/2026-10-19-data-key-diff-check.md)."
+    "(docs/lab-notes/2026-10-19-data-key-diff-check.md). Key items need a graph ingested "
+    "with data keys on (cgis_ingest(data_keys=True)); without them the answer says so."
 )
 
 
@@ -32,7 +34,11 @@ def _coverage() -> str:
     code = named[0] if len(named) == 1 else f"{', '.join(named[:-1])} and {named[-1]}"
     data = "".join(
         f"; {m.title} files ({', '.join(m.extensions)}) contribute data-key declarations only"
-        + (" when data keys are enabled (`--data-keys`)" if m.data_keys_only else "")
+        + (
+            " when data keys are enabled (`cgis_ingest(data_keys=True)`, CLI `--data-keys`)"
+            if m.data_keys_only
+            else ""
+        )
         for m in MANIFESTS
         if not m.names_code
     )

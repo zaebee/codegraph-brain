@@ -261,5 +261,7 @@ def test_the_diff_check_says_key_items_need_data_keys_on() -> None:
     from cgis.api.mcp_server import cgis_diff_check  # noqa: PLC0415
 
     doc = " ".join((cgis_diff_check.__doc__ or "").split())
-    assert "a graph ingested with data keys on" in doc
-    assert "data_keys=True" in doc
+    text = " ".join(SERVER_INSTRUCTIONS.split())
+    for said in (doc, text):
+        assert "a graph ingested with data keys on" in said
+        assert "data_keys=True" in said

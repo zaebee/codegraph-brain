@@ -178,7 +178,7 @@ made with its failures in view. A fresh noise draw is the follow-up.
 ## Shipped off by default
 
 The data-key layer ships opt-in (`cgis ingest --data-keys`, `cgis_ingest(data_keys=True)`
-or `CGIS_DATA_KEYS=1`); the diff check's subclass and caller items stay on for everyone.
+or `CGIS_DATA_KEYS=1` for a new graph); the diff check's subclass and caller items stay on for everyone.
 The reason is the per-kind worth shares above against what the layer costs everyone:
 on owner-api callers were worth a look 44 of 57 times and key items 9 of 28, while the
 layer made every ingest 1.076x slower, grew the graph 11.2%, and made every JSON or YAML

@@ -74,8 +74,8 @@ def test_the_coverage_line_says_data_files_declare_keys_only() -> None:
         assert f"{named} contribute data-key declarations only {_OPT_IN}." in coverage
 
 
-#: How every claim about the data packs says they are opt-in.
-_OPT_IN = "when data keys are enabled (`--data-keys`)"
+#: How the instructions say the data packs are opt-in, and how an MCP reader opts in.
+_OPT_IN = "when data keys are enabled (`cgis_ingest(data_keys=True)`, CLI `--data-keys`)"
 
 
 @pytest.mark.parametrize("path", CLAIMS)
