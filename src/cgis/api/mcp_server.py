@@ -20,14 +20,17 @@ from cgis.api.server_instructions import SERVER_INSTRUCTIONS
 from cgis.api.tool_allowlist import TOOLS_ENV, CgisServer
 from cgis.core.coverage import TraversalCoverage, UnresolvedSite
 from cgis.core.freshness import Freshness, FreshnessState
+from cgis.core.keys import data_keys_summary
 from cgis.core.models import RAW_CALL_PREFIX, Edge, EdgeType, Node, NodeType
 from cgis.languages import extractors, impact_caveat
-from cgis.pipeline import IngestionPipeline, extraction_fingerprint
+from cgis.pipeline import IngestionPipeline, extraction_fingerprint, ingest_data_keys
 from cgis.query.analysis.overview import DEFAULT_DEPTH, DEFAULT_LIMIT, build_overview
 from cgis.query.analysis.suggest_service import report_to_dict, suggest_packages
 from cgis.query.context.audit import audit_reachability
 from cgis.query.context.context_service import build_context
 from cgis.query.context.orphans import find_orphan_classes
+from cgis.query.diffcheck import DiffError, check_database, render_text
+from cgis.query.diffcheck import report_to_dict as diff_report_to_dict
 from cgis.query.drift.drift_service import analyze_drift
 from cgis.query.drift.fractal import analyze_fractal_db
 from cgis.query.drift.ontology_init import propose_ontology
@@ -466,6 +469,15 @@ def cgis_ingest(
         bool,
         Field(description="Re-scan every file from scratch instead of the incremental default."),
     ] = False,
+    data_keys: Annotated[
+        bool | None,
+        Field(
+            description="Extract data keys (Python dict keys, JSON and YAML declarations) for "
+            "cgis_diff_check. Off by default. Left out, an existing graph keeps the mode it was "
+            "built in, and a new one takes CGIS_DATA_KEYS=1 from the server's environment. "
+            "Switching it rebuilds the graph."
+        ),
+    ] = None,
 ) -> str:
     """Scan a local directory, extract all symbols, resolve links, and build the graph DB.
 
@@ -485,28 +497,34 @@ def cgis_ingest(
     or re-export — the incremental run rebuilds the whole graph itself, so edges
     in unchanged files never point at symbols that no longer exist. Set
     ``full_rebuild=True`` to force a re-scan of every file from scratch.
+
+    Data keys are opt-in (``data_keys=True``): they cost every ingest time and
+    graph size, and make JSON and YAML edits mark the graph stale.
     """
     refusal = _reject_db_path(db_path)
     if refusal is not None:
         logger.warning("MCP ingest refused db_path", db=db_path)
         return refusal
 
-    pipeline = IngestionPipeline(extractors([]))
     try:
         with SQLiteStore(db_path) as store:
+            keys, switched = ingest_data_keys(store, data_keys)
+            pipeline = IngestionPipeline(extractors([], data_keys=keys), data_keys=keys)
             # A rebuild replaces the stored graph in the transaction that writes the
             # new one: deleted-file nodes and stale hashes go, uplift runs inside
             # the pipeline, and a failure part-way leaves the old graph intact.
             nodes, _raw, resolved = pipeline.run(project_path, store=store, rebuild=full_rebuild)
             if nodes:
                 store.record_ingest(project_path, pipeline.observed_mtimes)
-                store.record_ingest_options([], None)
+                store.record_ingest_options([], None, data_keys=keys)
             total_nodes = store.get_node_count()
             total_edges = store.get_edge_count()
     except Exception as exc:
         return f"❌ {exc}"
 
-    mode = "full rebuild" if full_rebuild else "incremental"
+    # A forced rebuild (changed symbols, switched data keys) is no incremental run.
+    rebuilt = full_rebuild or pipeline.rebuilt
+    mode = "full rebuild" if rebuilt else "incremental"
     logger.info(
         "MCP ingest complete",
         mode=mode,
@@ -517,11 +535,12 @@ def cgis_ingest(
     if not nodes:
         # Nothing extracted: a rebuild kept the stored graph, and neither mode
         # records this path as the graph's fresh root.
-        kept = "the stored graph was kept" if full_rebuild else "the graph now holds none"
+        kept = "the stored graph was kept" if rebuilt else "the graph now holds none"
         lines = [f"⚠️ No source files extracted from {project_path} (mode: {mode}); {kept}."]
     else:
         lines = [f"✅ Ingested: {project_path} (mode: {mode})"]
-    if nodes and not full_rebuild and not resolved:
+    lines.append(data_keys_summary(keys, switched))
+    if nodes and not rebuilt and not resolved:
         # Incremental no-op: an empty resolved set means no files changed. Say so
         # explicitly so the stable total below doesn't read as a shrunken graph (#192).
         lines.append("No files changed since the last ingest.")
@@ -1081,6 +1100,64 @@ def cgis_init_ontology(
         return prefix + propose_ontology(db_path, margin=margin, min_nodes=min_nodes, depth=depth)
     except Exception as e:  # translate errors to the ❌-message medium
         return f"❌ Error proposing ontology: {e}"
+
+
+@mcp.tool()
+@refreshes_graph
+def cgis_diff_check(
+    repo_path: Annotated[
+        str,
+        Field(description="Git repository holding the diff; prefer an absolute path."),
+    ],
+    base: Annotated[
+        str, Field(description="Base revision of the diff, e.g. origin/main or a sha.")
+    ] = "origin/main",
+    head: Annotated[str, Field(description="Head revision of the diff.")] = "HEAD",
+    db_path: DbPath = _DEFAULT_DB,
+    cap: Annotated[int, Field(description="Items listed; the rest are only counted.", ge=1)] = 5,
+    prefix: Annotated[
+        str | None,
+        Field(
+            description="The path of the ingested directory inside the repository (e.g. 'src' "
+            "after cgis_ingest of ./src); empty when the repository root was ingested. Left "
+            "out, it comes from the root the graph recorded at ingest."
+        ),
+    ] = None,
+    output_format: Annotated[str, Field(description="'text' or 'json'.")] = "text",
+) -> str:
+    """What else depends on what a diff changed: subclasses, callers and data keys.
+
+    Call this before review or merge. It reads the lines ``base..head`` changed,
+    finds the graph symbols they fall in (and symbols the diff removed, read from
+    the base text), and lists the classes that extend a changed class and the
+    functions that call a changed or removed function. For each data key the
+    changed lines read, write or declare (``doc["avatar"]``, a mapping field) it
+    lists the key's other readers, writers and declarers, reads of a dotted path
+    a mapping does not declare, and reads of a declaration the diff removed;
+    common keys (``id``, ``name``, or used in many files) are left out. Key items
+    need a graph ingested with data keys on (``cgis_ingest(data_keys=True)`` or
+    ``cgis ingest --data-keys``); on a graph without them the answer says so and
+    lists subclasses and callers only. Sites in test files are counted, not
+    listed. An empty list means no static dependants were found, not that the
+    change is safe: dispatch the graph cannot see is not covered. How to read
+    the list: caller and subclass items are leads to read; data-key items are
+    noisy — measured on one application (owner-api), about a quarter of listed
+    items were worth a look (docs/lab-notes/2026-10-19-data-key-diff-check.md).
+    """
+    if not Path(db_path).exists():
+        return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
+    fmt = output_format.strip().lower()
+    if fmt not in ("text", "json"):
+        return f"❌ Unknown format '{output_format}'. Use 'text' or 'json'."
+    try:
+        report = check_database(db_path, Path(repo_path), base, head, cap, prefix=prefix)
+    except DiffError as exc:
+        return f"❌ Cannot diff {base}..{head}: {exc}"
+    except Exception as exc:
+        return f"❌ {exc}"
+    if fmt == "json":
+        return json.dumps(diff_report_to_dict(report), indent=2)
+    return _freshness_note(db_path) + render_text(report, base, head)
 
 
 @mcp.tool()

@@ -14,6 +14,7 @@ project_domains:
   languages.python: 0.42
   languages.typescript: 0.42
   languages.go: 0.42
+  languages.data: 0.42
   core: 0.25
   resolution: 0.40
   pipeline: 0.25

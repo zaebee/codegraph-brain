@@ -155,7 +155,15 @@ class TestExtractors:
     """The pipeline's mapping comes from the registry, so it cannot drift from it."""
 
     def test_covers_every_registered_extension(self) -> None:
-        assert set(extractors([])) == {ext for m in MANIFESTS for ext in m.extensions}
+        assert set(extractors([], data_keys=True)) == {
+            ext for m in MANIFESTS for ext in m.extensions
+        }
+
+    def test_leaves_out_the_data_key_packs_by_default(self) -> None:
+        """The data-key layer is opt-in: off, the walk never meets a JSON or YAML file."""
+        assert set(extractors([])) == {
+            ext for m in MANIFESTS if not m.data_keys_only for ext in m.extensions
+        }
 
     def test_source_roots_reach_the_extractors(self) -> None:
         """A root that does not reach the extractor silently changes every FQN."""
@@ -174,8 +182,10 @@ class TestExtractors:
         script = (
             "import sys\n"
             "from cgis.languages import extractors\n"
-            "m = extractors([])\n"
-            "assert '.ts' in m and '.tsx' in m and '.go' in m and len(list(m)) == 4\n"
+            "m = extractors([], data_keys=True)\n"
+            "assert '.ts' in m and '.tsx' in m and '.go' in m and '.json' in m\n"
+            "assert len(list(m)) == 7\n"
+            "assert '.json' not in extractors([]) and len(extractors([])) == 4\n"
             "print(sorted(x for x in sys.modules if x.startswith('tree_sitter_')))\n"
         )
         out = subprocess.run(
@@ -375,9 +385,11 @@ def test_cross_file_metadata_is_the_old_table() -> None:
     Python and TypeScript nodes never carry them, so their signatures read the same.
     Python adds `invokes` on functions and methods (#632): a caller's value edge
     depends on whether the function it hands the value to calls it.
+    Python adds `str_constants` on files (data keys, Task 3): a key in another file
+    takes its namespace from the value of the constant it imports.
     """
     assert cross_file_metadata() == {
-        NodeType.FILE: ("import_map", "reexports", "star_imports"),
+        NodeType.FILE: ("import_map", "reexports", "star_imports", "str_constants"),
         NodeType.CLASS: ("self_types", "fields"),
         NodeType.VARIABLE: ("annotated_type", "var_type"),
         NodeType.FUNCTION: ("invokes", "returns"),

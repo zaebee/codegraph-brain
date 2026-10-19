@@ -1,0 +1,147 @@
+{
+  "sets": "dev_cases.yaml",
+  "results": [
+    {
+      "case": "#2093 after #2088",
+      "in_zone": true,
+      "status": "done",
+      "expected_site": {
+        "file": "ownima-backend/app/models/owner.py",
+        "id": "models.owner.UserAdmin"
+      },
+      "listed": true,
+      "shown": true,
+      "rank": 1,
+      "items": 2,
+      "in_tests": 1,
+      "changed_symbols": 17,
+      "ingest_seconds": 32.1,
+      "check_seconds": 0.1
+    },
+    {
+      "case": "#2066",
+      "in_zone": true,
+      "status": "done",
+      "expected_site": {
+        "file": "ownima-backend/app/domains/finance/service.py",
+        "id": "picture"
+      },
+      "listed": false,
+      "shown": false,
+      "rank": null,
+      "items": 9,
+      "in_tests": 38,
+      "changed_symbols": 27,
+      "ingest_seconds": 29.7,
+      "check_seconds": 0.3
+    },
+    {
+      "case": "#2071-#2085",
+      "in_zone": true,
+      "status": "done",
+      "expected_site": {
+        "file": "ownima-backend/app/domains/admin/query.py",
+        "id": "event_type.keyword"
+      },
+      "listed": false,
+      "shown": false,
+      "rank": null,
+      "items": 0,
+      "in_tests": 3,
+      "changed_symbols": 4,
+      "ingest_seconds": 31.3,
+      "check_seconds": 0.0
+    },
+    {
+      "case": "moved module",
+      "in_zone": false,
+      "status": "skipped",
+      "reason": "no merge commit"
+    },
+    {
+      "case": "#2057",
+      "in_zone": false,
+      "status": "done",
+      "expected_site": null,
+      "listed": null,
+      "shown": null,
+      "rank": null,
+      "items": 51,
+      "in_tests": 67,
+      "changed_symbols": 57,
+      "ingest_seconds": 30.5,
+      "check_seconds": 1.4
+    },
+    {
+      "case": "#1832",
+      "in_zone": false,
+      "status": "done",
+      "expected_site": null,
+      "listed": null,
+      "shown": null,
+      "rank": null,
+      "items": 3,
+      "in_tests": 25,
+      "changed_symbols": 31,
+      "ingest_seconds": 28.4,
+      "check_seconds": 0.2
+    },
+    {
+      "case": "#2082",
+      "in_zone": false,
+      "status": "done",
+      "expected_site": null,
+      "listed": null,
+      "shown": null,
+      "rank": null,
+      "items": 2,
+      "in_tests": 17,
+      "changed_symbols": 24,
+      "ingest_seconds": 29.8,
+      "check_seconds": 0.2
+    },
+    {
+      "case": "#1815",
+      "in_zone": false,
+      "status": "skipped",
+      "reason": "no merge commit"
+    },
+    {
+      "case": "ruff G004",
+      "in_zone": false,
+      "status": "skipped",
+      "reason": "no merge commit"
+    },
+    {
+      "case": "#2040",
+      "in_zone": false,
+      "status": "done",
+      "expected_site": null,
+      "listed": null,
+      "shown": null,
+      "rank": null,
+      "items": 0,
+      "in_tests": 0,
+      "changed_symbols": 2,
+      "ingest_seconds": 31.8,
+      "check_seconds": 0.0
+    },
+    {
+      "case": "cgis",
+      "in_zone": true,
+      "status": "done",
+      "expected_site": {
+        "file": "src/cgis/languages/__init__.py",
+        "id": "cross_file_metadata"
+      },
+      "listed": false,
+      "shown": false,
+      "rank": null,
+      "items": 16,
+      "in_tests": 0,
+      "changed_symbols": 15,
+      "ingest_seconds": 2.6,
+      "check_seconds": 0.1
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+clause: DK-3
+options: {data_keys: true}
+status: pass
+must_have:
+  - {type: DECLARES_KEY, source: mod.Event, target: "key:mod.Event|brand"}

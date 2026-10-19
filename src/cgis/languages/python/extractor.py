@@ -1,6 +1,7 @@
 """Implements Python Extractor."""
 
 import re
+from collections.abc import Callable
 
 import tree_sitter_python as tspython
 from tree_sitter import Language, Parser
@@ -17,10 +18,12 @@ from cgis.languages.python._functions import (
     emit_name_reference_edges,
 )
 from cgis.languages.python._imports import ImportHandler
+from cgis.languages.python._keys import key_edges, string_constants
 from cgis.languages.python._routes import mark_routes, routers
 from cgis.languages.python._syntax import (
     enclosing_class_fqn,
     extract_decorator_names,
+    get_id,
     is_module_level_assignment,
     is_name_load,
 )
@@ -258,6 +261,28 @@ def _file_names(nodes: list[Node], module_fqn: str, import_map: dict[str, str]) 
     return frozenset(defined | set(import_map))
 
 
+def _key_owners(
+    code_bytes: bytes, file_path: str, source_root: str | None, module_fqn: str
+) -> Callable[[BaseNode], str | None]:
+    """The walk's owner rule for any node: its function, else its class, else the module.
+
+    A decorator belongs to the definition it decorates, as `_walk_decorators` has it.
+    """
+
+    def owner(node: BaseNode) -> str | None:
+        current: BaseNode | None = node
+        while current is not None:
+            if current.type == "decorated_definition":
+                current = current.child_by_field_name("definition") or current.parent
+                continue
+            if current.type in ("function_definition", "class_definition"):
+                return get_id(current, code_bytes, file_path, source_root)
+            current = current.parent
+        return module_fqn or None
+
+    return owner
+
+
 class PythonExtractor(BaseExtractor):
     """
     A concrete extractor for Python source code using tree-sitter.
@@ -269,9 +294,14 @@ class PythonExtractor(BaseExtractor):
 
     LANG: str = "python"
 
-    def __init__(self, source_roots: list[str] | None = None) -> None:
-        """Initialise the tree-sitter Python parser and the extraction handlers."""
+    def __init__(self, source_roots: list[str] | None = None, *, data_keys: bool = False) -> None:
+        """Initialise the tree-sitter Python parser and the extraction handlers.
+
+        `data_keys` turns on the opt-in data-key layer (DK-1..DK-3): key edges and
+        the `str_constants` a key's namespace is read from. Off, neither is emitted.
+        """
         super().__init__(source_roots=source_roots)
+        self._data_keys = data_keys
         self._parser = Parser(Language(tspython.language()))
         self._imports = ImportHandler()
         self._types = TypeResolver(self._pick_source_root)
@@ -346,10 +376,23 @@ class PythonExtractor(BaseExtractor):
             _file_names(nodes, module_fqn, import_map),
         )
         edges.extend(value_edges)
+        # Data keys (DK-1..DK-3), opt-in, are owned by the same rule as the walk's calls.
+        if self._data_keys:
+            source_root = self._pick_source_root(file_path)
+            owners = _key_owners(code_bytes, file_path, source_root, module_fqn)
+            edges.extend(key_edges(root_node, code_bytes, file_path, owners))
 
         # FastAPI handlers carry a `route` role (#566); the import map is complete here.
         nodes = mark_routes(nodes, routers(root_node, code_bytes, import_map))
         reexports = find_reexports(root_node, code_bytes, import_map)
+        file_metadata: dict[str, object] = {
+            "import_map": import_map,
+            "reexports": reexports,
+            "star_imports": star_imports,
+        }
+        # The namespace an `index=NAME` key names (DK-1); only a file that has one says so.
+        if self._data_keys and (constants := string_constants(root_node, code_bytes)):
+            file_metadata["str_constants"] = constants
 
         file_node = Node(
             id=module_fqn,
@@ -358,11 +401,7 @@ class PythonExtractor(BaseExtractor):
             file_path=file_path,
             start_line=1,
             end_line=root_node.end_point.row + 1,
-            metadata={
-                "import_map": import_map,
-                "reexports": reexports,
-                "star_imports": star_imports,
-            },
+            metadata=file_metadata,
         )
         nodes.insert(0, file_node)
 

@@ -13,6 +13,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from cgis.core.extractor import BaseExtractor
 from cgis.core.generated import is_generated_source
+from cgis.core.keys import data_keys_enabled
 from cgis.core.models import VIRTUAL_FILE_PATH, Edge, EdgeType, Node, NodeType
 from cgis.core.paths import EXCLUDED_DIRS
 from cgis.import_names import ImportNameCollector
@@ -157,6 +158,46 @@ def _needs_rebuild(store: "SQLiteStore | None", rebuild: bool) -> bool:
     return True
 
 
+def _replaces_a_graph(store: "SQLiteStore | None", rebuild: bool) -> bool:
+    """Whether a run rebuilds a graph the store already holds: what surfaces call a full rebuild.
+
+    A fresh store's first run is a rebuild internally (`_needs_rebuild`), yet no
+    graph was replaced, so it is not reported as one.
+    """
+    return rebuild and store is not None and store.get_node_count() > 0
+
+
+def ingest_data_keys(store: "SQLiteStore | None", explicit: bool | None) -> tuple[bool, bool]:
+    """The data-key mode an ingest into `store` runs in, and whether that switches it.
+
+    An explicit flag, then the mode `store` was last ingested in, then
+    `CGIS_DATA_KEYS` (a new store only), then off (`cgis.core.keys.data_keys_enabled`).
+    A switch rebuilds the graph in full.
+    """
+    recorded = recorded_data_keys(store)
+    on = data_keys_enabled(explicit, recorded)
+    return on, recorded is not None and recorded != on
+
+
+def recorded_data_keys(store: "SQLiteStore | None") -> bool | None:
+    """The data-key mode `store` was last ingested in; None when it never recorded one."""
+    return None if store is None else store.get_ingest_data_keys()
+
+
+def _data_keys_switched(store: "SQLiteStore | None", data_keys: bool) -> bool:
+    """Whether the store was last ingested with the data-key layer in the other mode.
+
+    Unchanged files keep their key edges (or lack them) through an incremental
+    run, and the data files' FILE nodes stay or never appear: only a full
+    rebuild gives the graph the mode asked for.
+    """
+    recorded = recorded_data_keys(store)
+    if recorded is None or recorded == data_keys:
+        return False
+    logger.info("Data keys switched — rebuilding the graph in full.", data_keys=data_keys)
+    return True
+
+
 class IngestionPipeline:
     """Orchestrates the full Extract → Resolve → Store pipeline over a source tree."""
 
@@ -166,11 +207,15 @@ class IngestionPipeline:
     #: run read it, keyed relative to the workspace root ("" for the root). Hand
     #: it to `SQLiteStore.record_ingest` so a write landing mid-run reads STALE.
     observed_mtimes: dict[str, float]
+    #: Whether the last `run` rebuilt a stored graph in full, asked or forced.
+    rebuilt: bool
 
     def __init__(
         self,
         extractors: Mapping[str, BaseExtractor],
         domains_config: str | None = None,
+        *,
+        data_keys: bool = False,
     ) -> None:
         """
         Args:
@@ -178,11 +223,16 @@ class IngestionPipeline:
                         e.g., {".py": PythonExtractor()}
             domains_config: Optional path to a domains.yaml file. When provided,
                             the SemanticUpliftEngine runs after resolution.
+            data_keys: Whether `extractors` were built with the opt-in data-key
+                       layer (`cgis.languages.extractors(..., data_keys=)`). A
+                       store recorded in the other mode is rebuilt in full.
         """
         self._extractors = extractors
         self._domains_config = domains_config
+        self._data_keys = data_keys
         self._excluded = EXCLUDED_DIRS
         self.observed_mtimes = {}
+        self.rebuilt = False
 
     @staticmethod
     def _compute_hash(content: str) -> str:
@@ -228,7 +278,8 @@ class IngestionPipeline:
         path, an empty walk or a crash before that commit leaves the old graph
         intact.
         """
-        rebuild = _needs_rebuild(store, rebuild)
+        rebuild = _needs_rebuild(store, rebuild) or _data_keys_switched(store, self._data_keys)
+        self.rebuilt = _replaces_a_graph(store, rebuild)
         all_nodes: list[Node] = []
         all_edges: list[Edge] = []
         # file_path -> new hash, only for files that were re-extracted

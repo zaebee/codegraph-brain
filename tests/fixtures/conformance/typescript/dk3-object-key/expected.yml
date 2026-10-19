@@ -1,0 +1,6 @@
+clause: DK-3
+options: {data_keys: true}
+status: xfail
+reason: "data keys are extracted for Python only (spec)"
+must_have:
+  - {type: DECLARES_KEY, source: app.Event, target: "key:app.Event|brand"}

@@ -6,6 +6,7 @@ rather than a data file, so the import walk behind both fingerprints (extraction
 """
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from types import MappingProxyType
 
 #: CV-1: a library callable that may invoke one of its arguments, keyed by what the
@@ -36,4 +37,49 @@ INVOKERS: Mapping[str, frozenset[int | str]] = MappingProxyType(
         "asyncio.get_event_loop.call_later": frozenset({1}),
         "asyncio.get_running_loop.call_later": frozenset({1}),
     }
+)
+
+
+@dataclass(frozen=True)
+class KeyProfile:
+    """DK-1..DK-3: the library calls and shapes whose strings address data (data only)."""
+
+    #: A dict literal keyed by one of these reads its child's keys as field paths, or
+    #: the string under a child `"field"` key (an aggregation), as OpenSearch reads them.
+    query_operators: frozenset[str]
+    #: Storage methods, with the keyword argument that names their namespace (`index=`).
+    storage_calls: Mapping[str, str]
+    #: The storage methods that write the dict literals handed to them.
+    storage_writes: frozenset[str]
+    #: Arguments of a storage call holding a document; nested inside a written literal,
+    #: such a key (`update`'s `{"doc": {...}}`) adds nothing to the path.
+    write_arguments: frozenset[str]
+    #: A class whose direct base ends in one of these declares its annotated fields.
+    model_bases: frozenset[str]
+    #: Redis methods, read or written, on a receiver whose name mentions redis.
+    redis_reads: frozenset[str]
+    redis_writes: frozenset[str]
+    #: Calls naming a task by its first argument: they write a task-name key.
+    task_methods: frozenset[str]
+
+
+KEY_PROFILE = KeyProfile(
+    query_operators=frozenset(
+        {"term", "terms", "match", "match_phrase", "range", "prefix", "wildcard", "exists", "sort"}
+    ),
+    storage_calls=MappingProxyType(
+        {
+            "search": "index",
+            "index": "index",
+            "update": "index",
+            "delete_by_query": "index",
+            "count": "index",
+        }
+    ),
+    storage_writes=frozenset({"index", "update"}),
+    write_arguments=frozenset({"body", "document", "doc"}),
+    model_bases=frozenset({"BaseModel", "SQLModel"}),
+    redis_reads=frozenset({"get", "hget", "exists"}),
+    redis_writes=frozenset({"set", "hset", "delete"}),
+    task_methods=frozenset({"enqueue"}),
 )

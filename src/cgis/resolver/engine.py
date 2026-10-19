@@ -18,6 +18,7 @@ from cgis.core.models import (
 )
 from cgis.core.resolution import ResolutionRules, ResolutionView
 from cgis.languages import pack_for_path, rules_for
+from cgis.resolver.keys import key_nodes, resolve_key_edges
 from cgis.resolver.symbols import SymbolResolver, dispatch_edges
 
 RAW_DEP_PREFIX = "raw_dep:"
@@ -226,7 +227,11 @@ class ResolverEngine:
         resolved_edges: list[Edge] = []
         virtual_nodes: dict[str, Node] = {}
 
-        for edge in self.edges:
+        key_edges, other_edges = resolve_key_edges(self.edges, self._index)
+        resolved_edges.extend(key_edges)
+        virtual_nodes.update(key_nodes(key_edges))
+
+        for edge in other_edges:
             if edge.target.startswith(RAW_CLASS_PREFIX):
                 class_edge = self._resolved_class_edge(edge)
                 resolved_edges.append(class_edge)

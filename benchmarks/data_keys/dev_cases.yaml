@@ -1,0 +1,113 @@
+# The development set: the eleven cases of the spec table
+# (docs/specs/2026-10-18-data-key-layer-design.md). Used freely while building.
+# expected_site is {file, id}: id is the node id (a dotted name relative to the source
+# root app, under the ingest root ownima-backend) or the key path the check should list;
+# null when the case is out of zone (the check is not expected to find anything).
+# Evaluation counts a hit on id match, else on the same file within the broken symbol's
+# line span.
+# repo: owner-api = github.com/Ownima/owner-api; cgis = this repository.
+# base_sha is the first parent of the merge commit (squash merges).
+cases:
+  - case: "#2093 after #2088"
+    repo: owner-api
+    breaking_pr: 2093
+    base_sha: fec6fb91bffe657b09d4f57f72c597dc3f911f66
+    merge_sha: fc84e0db13ab2dab4d7b5ade20fa63bac2d44ad9
+    what_broke: UserPublic validators made lenient; UserAdmin inherits it and silently changed
+    in_zone: true
+    expected_site:
+      file: ownima-backend/app/models/owner.py
+      id: models.owner.UserAdmin
+  - case: "#2066"
+    repo: owner-api
+    breaking_pr: 2066
+    # The breaking state is the PR's first commit (pull/2066/head); the squash merge
+    # 06ddd2fc already holds the second commit's fix and the finance guard (controller ruling).
+    base_sha: b7bc685bff1f273a64b94162986382a7a8b4d678
+    merge_sha: 2b4dcfcb4398d6f3cb2ad717cd6e88c6835817f0
+    what_broke: create_vehicle stored picture null; finance does data_source["picture"].pop(...)
+    in_zone: true
+    expected_site:
+      file: ownima-backend/app/domains/finance/service.py
+      id: picture
+  - case: "#2071-#2085"
+    repo: owner-api
+    # #2071 is an issue; #2075 declared the details labels in events.json and left
+    # event_type without a .keyword subfield while the code reads event_type.keyword
+    # (controller ruling); #2079 repaired it.
+    breaking_pr: 2075
+    base_sha: 6374541bee0cbd1c3703d549f4a248a39d78e449
+    merge_sha: 9e8f73dbfa45ee4f008d5dc8aba9f49c1ae506b6
+    what_broke: mapping events.json declares event_type as keyword with no .keyword subfield; code queries event_type.keyword
+    in_zone: true
+    expected_site:
+      file: ownima-backend/app/domains/admin/query.py
+      id: event_type.keyword
+  - case: moved module
+    repo: owner-api
+    breaking_pr: null
+    base_sha: null
+    merge_sha: null
+    what_broke: a structural test names a module by path string and silently stopped checking
+    in_zone: false   # module paths named as strings are out of this round
+    expected_site: null
+  - case: "#2057"
+    repo: owner-api
+    breaking_pr: 2057
+    base_sha: 5106440988cc549d3f18ad67a1c39d493a02dcd2
+    merge_sha: 85f3230792d6e13aa2045261892fa000bd27a4da
+    what_broke: hook switched to item.path; a test fake SimpleNamespace(fspath=...) lacks it
+    in_zone: false   # fake shape
+    expected_site: null
+  - case: "#1832"
+    repo: owner-api
+    breaking_pr: 1832
+    base_sha: da05dab62e7d46fbddab321a8c73d88e898ddc9a
+    merge_sha: 8247f6d8ae20f52477d39c8b79c7bcf1c81cffcf
+    what_broke: query passed a fake OpenSearch, the real cluster rejected it (500)
+    in_zone: false   # fake vs real service
+    expected_site: null
+  - case: "#2082"
+    repo: owner-api
+    breaking_pr: 2082
+    base_sha: 803a039bc3e3ad1d89072c4d47db65004c65f3dc
+    merge_sha: 1c2f20ebf1ce458bef2f32fffbb9cf55c4a87fc0
+    what_broke: SAQ task span made a child of the request span; tail sampler dropped traces
+    in_zone: false   # timing across systems
+    expected_site: null
+  - case: "#1815"
+    repo: owner-api
+    breaking_pr: null   # not a pull request of owner-api (gh cannot resolve it)
+    base_sha: null
+    merge_sha: null
+    what_broke: asyncio.gather over one AsyncSession
+    in_zone: false   # race
+    expected_site: null
+  - case: ruff G004
+    repo: owner-api
+    breaking_pr: null   # a manual finding, no pull request
+    base_sha: null
+    merge_sha: null
+    what_broke: ruff autofix would break structlog formatting
+    in_zone: false   # library semantics
+    expected_site: null
+  - case: "#2040"
+    repo: owner-api
+    breaking_pr: 2040
+    base_sha: 8746a1771ffd11bb480f6ef5bc9f7f77e29b3763
+    merge_sha: 19f50da03f0345f8f7d0a41d060989893a62acb5
+    what_broke: stale lockfile on a branch
+    in_zone: false
+    expected_site: null
+  - case: "cgis #701"
+    repo: cgis
+    breaking_pr: null
+    breaking_commit: 4a7c450bcc577dc74d6dd7e495f39f8490c77082
+    base_sha: 860fd1b4cacfa02361bccfbdb74f4245844a3381
+    merge_sha: 4a7c450bcc577dc74d6dd7e495f39f8490c77082
+    what_broke: node metadata key invokes written by the Python extractor, read by the resolver, not listed in the manifest's cross_file_metadata, so incremental runs kept stale edges
+    in_zone: true
+    # Expected to be a known miss this round (spec: Non-goals, Registry completeness).
+    expected_site:
+      file: src/cgis/languages/__init__.py
+      id: cross_file_metadata

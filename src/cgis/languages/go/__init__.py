@@ -40,7 +40,9 @@ class GoPack(LanguagePack):
         return naming.file_node_id(path, source_root)
 
     @override
-    def extractor(self, extension: str, source_roots: list[str]) -> BaseExtractor:
+    def extractor(
+        self, extension: str, source_roots: list[str], *, data_keys: bool = False
+    ) -> BaseExtractor:
         """The Go grammar — loaded here, on first use."""
         from cgis.languages.go.extractor import GoExtractor  # noqa: PLC0415
 

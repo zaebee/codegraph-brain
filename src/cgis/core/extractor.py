@@ -89,8 +89,10 @@ class LanguagePack(Protocol):
         """The id of this file's FILE node. Equal to `scope_of` where a file is its own scope."""
         ...
 
-    def extractor(self, extension: str, source_roots: list[str]) -> BaseExtractor:
-        """A new extractor for files of `extension`."""
+    def extractor(
+        self, extension: str, source_roots: list[str], *, data_keys: bool = False
+    ) -> BaseExtractor:
+        """A new extractor for files of `extension`; `data_keys` turns on the opt-in key layer."""
         ...
 
     def project_reader(self, root: Path, extractors: Mapping[str, BaseExtractor]) -> ProjectReader:

@@ -162,7 +162,8 @@ SELECT
                OR starts_with(e.target, 'raw_call:') THEN 1 END) AS unresolved
 FROM edges e
 LEFT JOIN nodes n ON e.target = n.id
-WHERE e.type != 'DISPATCHES'{filter_sql}
+WHERE e.type != 'DISPATCHES'
+  AND e.type NOT IN ('WRITES_KEY', 'READS_KEY', 'DECLARES_KEY'){filter_sql}
 """
 
 
@@ -366,7 +367,8 @@ def resolution_metric(
     """The share of edges the resolver left unplaced, by `cgis validate`'s rule (#451).
 
     Unfiltered it is the same number `cgis validate` reports — DISPATCHES edges
-    left out by both, being synthesized rather than resolved (#545). ``exclude`` and
+    left out by both, being synthesized rather than resolved (#545), as are the
+    data-key edges (DK-1..DK-3). ``exclude`` and
     ``scope`` filter by the edge's *source*: a scoped run answers "of the edges
     this subtree's code emits, how many point nowhere", which is the caveat its
     own rankings carry. Filtering by target instead would drop exactly the

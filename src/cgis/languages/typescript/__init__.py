@@ -42,7 +42,9 @@ class TypeScriptPack(LanguagePack):
         return self.scope_of(path, source_root)
 
     @override
-    def extractor(self, extension: str, source_roots: list[str]) -> BaseExtractor:
+    def extractor(
+        self, extension: str, source_roots: list[str], *, data_keys: bool = False
+    ) -> BaseExtractor:
         """The TSX grammar for `.tsx`, the TypeScript one otherwise — loaded here, on first use."""
         from cgis.languages.typescript.extractor import TypeScriptExtractor  # noqa: PLC0415
 

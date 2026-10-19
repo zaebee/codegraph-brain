@@ -907,7 +907,9 @@ class SQLiteStore:
 
         DISPATCHES edges are left out (#545): the resolver synthesizes them from
         the class hierarchy, every one internal by construction, so counting them
-        would lower `unresolved_ratio` without a single reference resolving.
+        would lower `unresolved_ratio` without a single reference resolving. So are
+        the data-key edges (DK-1..DK-3): their targets are virtual key nodes, neither
+        a resolved call nor an unresolved one.
         """
         if not self._conn:
             raise RuntimeError(self._error_message)
@@ -923,6 +925,7 @@ class SQLiteStore:
             FROM edges e
             LEFT JOIN nodes n ON e.target = n.id
             WHERE e.type != 'DISPATCHES'
+              AND e.type NOT IN ('WRITES_KEY', 'READS_KEY', 'DECLARES_KEY')
             """,
             (f"{RAW_CALL_PREFIX}*",),
         ).fetchone()
@@ -939,7 +942,8 @@ class SQLiteStore:
             SELECT e.target, COUNT(*) AS cnt
             FROM edges e
             LEFT JOIN nodes n ON e.target = n.id
-            WHERE n.namespace = 'UNKNOWN' OR n.id IS NULL
+            WHERE (n.namespace = 'UNKNOWN' OR n.id IS NULL)
+              AND e.type NOT IN ('WRITES_KEY', 'READS_KEY', 'DECLARES_KEY')
             GROUP BY e.target
             ORDER BY cnt DESC
             LIMIT 10
@@ -1241,19 +1245,23 @@ class SQLiteStore:
             if isinstance(rules, dict)
         }
 
-    def record_ingest_options(self, source_roots: list[str], domains: str | None) -> None:
+    def record_ingest_options(
+        self, source_roots: list[str], domains: str | None, *, data_keys: bool = False
+    ) -> None:
         """Record the options this graph was ingested with, so a refresh can repeat them (#175).
 
         An automatic refresh that ran with different `--source-root`s would give
         every node a new FQN, and one without `--domains` would drop its uplift:
         the graph it leaves is a different graph, not a fresher one. `domains`
-        is stored absolute, for the same reason as the ingest root.
+        is stored absolute, for the same reason as the ingest root. `data_keys`
+        is the opt-in data-key layer: a refresh or incremental run keeps it.
         """
         self._record_state_json(
             _INGEST_OPTIONS_KEY,
             {
                 "source_roots": list(source_roots),
                 "domains": None if domains is None else str(Path(domains).resolve()),
+                "data_keys": data_keys,
             },
         )
 
@@ -1268,6 +1276,19 @@ class SQLiteStore:
             return None
         domains = loaded.get("domains")
         return [str(r) for r in loaded["source_roots"]], None if domains is None else str(domains)
+
+    def get_ingest_data_keys(self) -> bool | None:
+        """Whether the graph was ingested with data keys on; None when that was never recorded.
+
+        None also for options recorded before the layer was opt-in, which carry no
+        `data_keys`: such a graph may hold key edges, and reading its silence as
+        "off" made the diff check say keys were off while listing key items.
+        """
+        loaded = self._state_json(_INGEST_OPTIONS_KEY)
+        if not isinstance(loaded, dict):
+            return None
+        value = loaded.get("data_keys")
+        return value if isinstance(value, bool) else None
 
     def record_python_dependencies(self, roots: list[str]) -> None:
         """Record the declared dependency roots Python references were classified against (#495).

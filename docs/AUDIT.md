@@ -57,7 +57,7 @@ The graph is static structure. That boundary is real, and it is better stated he
 - **Not a penetration test.** Authorisation *coverage* means every handler has a static path to a guard. It does not mean the guard is correct, that the logic behind it is sound, or that the endpoint is unexploitable.
 - **Not a runtime analysis.** Nothing is executed. Behaviour that only appears under load, concurrency or real data is out of scope.
 - **Not a business-logic review.** The report says how your code is wired, not whether the wiring implements the right rules.
-- **Not language-complete.** Extractors cover Python and TypeScript, with Go as a pilot outside this offer. Vue, Astro, Rust and everything else are invisible to the graph, and the report will say which parts of your codebase it could not see.
+- **Not language-complete.** Extractors cover Python and TypeScript, with Go as a pilot outside this offer; JSON and YAML files contribute data key declarations only when data keys are enabled (`--data-keys`). Vue, Astro, Rust and everything else are invisible to the graph, and the report will say which parts of your codebase it could not see.
 - **Not a substitute for judgement.** An empty impact result means *no static callers found*, not *safe to delete*. Dynamic dispatch, registries and framework decorators do not appear in any static graph. The report flags where this matters instead of asserting a safety it cannot see.
 
 Roughly a tenth of call edges in a typical Python codebase cannot be resolved statically at all — they are calls on objects typed at runtime. That number is in the report too, because it tells you how much of the analysis to trust.

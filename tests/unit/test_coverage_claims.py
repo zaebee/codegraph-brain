@@ -58,3 +58,32 @@ def test_no_claim_calls_a_covered_language_invisible(path: str) -> None:
         # A whole word, whatever wraps it: `**Go**`, `Go,` and `Go` alike.
         named = [m.title for m in MANIFESTS if re.search(rf"\b{re.escape(m.title)}\b", clause)]
         assert not named, f"{path}: {clause.strip()[:120]}"
+
+
+def test_the_coverage_line_says_data_files_declare_keys_only() -> None:
+    # Final review #77: the data pack read as a fourth language ("... and JSON and YAML").
+    (coverage,) = [
+        line for line in SERVER_INSTRUCTIONS.splitlines() if line.startswith("Coverage:")
+    ]
+    code = [m for m in MANIFESTS if m.names_code]
+    data = [m for m in MANIFESTS if not m.names_code]
+    assert data, "no declare-only pack: this check would pass on nothing"
+    assert f"{code[-1].title} ({', '.join(code[-1].extensions)}) only;" in coverage
+    for manifest in data:
+        named = f"{manifest.title} files ({', '.join(manifest.extensions)})"
+        assert f"{named} contribute data-key declarations only {_OPT_IN}." in coverage
+
+
+#: How the instructions say the data packs are opt-in, and how an MCP reader opts in.
+_OPT_IN = "when data keys are enabled (`cgis_ingest(data_keys=True)`, CLI `--data-keys`)"
+
+
+@pytest.mark.parametrize("path", CLAIMS)
+def test_every_claim_about_data_files_says_they_are_opt_in(path: str) -> None:
+    # The data-key layer ships off by default (lab note, "Shipped off by default").
+    # server.json's description is the registry's 100-character tagline: "opt-in" fits.
+    said = "opt-in" if path == "server.json" else "--data-keys"
+    text = " ".join((REPO / path).read_text(encoding="utf-8").split())
+    for manifest in (m for m in MANIFESTS if m.data_keys_only):
+        assert manifest.title in text, path
+        assert said in text, f"{path} names {manifest.title} but not {said}"

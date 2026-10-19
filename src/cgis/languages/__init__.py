@@ -46,6 +46,14 @@ class Manifest:
     #: Said with every impact answer rooted in this language, and in the server
     #: instructions: what an agent must not take on trust (exp4, for Go).
     impact_caveat: str = ""
+    #: Whether the pack's nodes are code another file can name. False for files that
+    #: only declare data: their ids stay out of the resolver's index, so a `data/`
+    #: directory of JSON never makes an unresolved `data.get` look internal.
+    names_code: bool = True
+    #: Whether the pack reads files only for the opt-in data-key layer. Off (the
+    #: default), the walk never meets its files: not parsed, hashed or tracked, so
+    #: editing one never makes a graph stale.
+    data_keys_only: bool = False
 
 
 def _python() -> LanguagePack:
@@ -66,6 +74,12 @@ def _go() -> LanguagePack:
     return PACK
 
 
+def _data() -> LanguagePack:
+    from cgis.languages.data import PACK  # noqa: PLC0415 — on the first .json/.yaml/.yml file
+
+    return PACK
+
+
 MANIFESTS: tuple[Manifest, ...] = (
     Manifest(
         name="python",
@@ -74,7 +88,8 @@ MANIFESTS: tuple[Manifest, ...] = (
         extensions=(".py",),
         never_ingested=re.compile(r"\.(test|spec)\.py$", re.IGNORECASE),
         cross_file_metadata={
-            NodeType.FILE: ("import_map", "reexports", "star_imports"),
+            # Another file's key names its namespace by an imported constant (DK-1).
+            NodeType.FILE: ("import_map", "reexports", "star_imports", "str_constants"),
             NodeType.CLASS: ("self_types",),
             # Another file's parameter typed with the alias reads the type behind it (#550).
             NodeType.VARIABLE: ("annotated_type",),
@@ -126,6 +141,22 @@ MANIFESTS: tuple[Manifest, ...] = (
             "ssh package; not measured on applications)."
         ),
     ),
+    Manifest(
+        name="data",
+        title="JSON and YAML",
+        load=_data,
+        extensions=(".json", ".yaml", ".yml"),
+        never_ingested=re.compile(r"\b\B"),  # matches nowhere: lock files keep a FILE node
+        names_code=False,
+        data_keys_only=True,
+        # DK-3: a declaring file adds keys and nothing a caller could reach, so an
+        # answer rooted in one (its FILE node) says what it can and cannot hold.
+        impact_caveat=(
+            "JSON and YAML files contribute data key declarations only: no symbols, calls "
+            "or impact. An OpenSearch mapping declares each property and each subfield "
+            "under its fields (status.keyword is declared only by a keyword subfield)."
+        ),
+    ),
 )
 
 _BY_EXTENSION: dict[str, Manifest] = {ext: m for m in MANIFESTS for ext in m.extensions}
@@ -147,9 +178,24 @@ def impact_caveat(language: str) -> str:
     return next((m.impact_caveat for m in MANIFESTS if m.name == language), "")
 
 
-def is_supported(path: str) -> bool:
-    """Whether some pack reads this path. Imports no pack."""
-    return _suffix(path) in _BY_EXTENSION
+def names_code(language: str) -> bool:
+    """Whether nodes of `language` are code other files can name; imports no pack.
+
+    True for a language no manifest declares: the virtual nodes and hand-built rows
+    that carry none have always been indexed.
+    """
+    manifest = _BY_NAME.get(language)
+    return manifest is None or manifest.names_code
+
+
+def is_supported(path: str, *, data_keys: bool = True) -> bool:
+    """Whether some pack reads this path. Imports no pack.
+
+    `data_keys=False` asks about an ingest with the data-key layer off, which reads
+    no file of a `data_keys_only` pack.
+    """
+    manifest = _BY_EXTENSION.get(_suffix(path))
+    return manifest is not None and (data_keys or not manifest.data_keys_only)
 
 
 def pack_for_path(path: str) -> LanguagePack | None:
@@ -251,26 +297,36 @@ def skips(filename: str) -> bool:
 class _LazyExtractors(Mapping[str, BaseExtractor]):
     """Extension → extractor, each built (and its grammar loaded) on first lookup."""
 
-    def __init__(self, source_roots: list[str]) -> None:
+    def __init__(self, source_roots: list[str], data_keys: bool) -> None:
         self._roots = list(source_roots)
+        self._data_keys = data_keys
+        self._known = {
+            ext: m for ext, m in _BY_EXTENSION.items() if data_keys or not m.data_keys_only
+        }
         self._built: dict[str, BaseExtractor] = {}
 
     def __getitem__(self, extension: str) -> BaseExtractor:
         if extension not in self._built:
-            manifest = _BY_EXTENSION[extension]  # KeyError for an unknown one, as a dict
-            self._built[extension] = _load(manifest.name).extractor(extension, self._roots)
+            manifest = self._known[extension]  # KeyError for an unknown one, as a dict
+            self._built[extension] = _load(manifest.name).extractor(
+                extension, self._roots, data_keys=self._data_keys
+            )
         return self._built[extension]
 
     def __contains__(self, extension: object) -> bool:
-        return extension in _BY_EXTENSION  # Mapping's default would build it
+        return extension in self._known  # Mapping's default would build it
 
     def __iter__(self) -> Iterator[str]:
-        return iter(_BY_EXTENSION)
+        return iter(self._known)
 
     def __len__(self) -> int:
-        return len(_BY_EXTENSION)
+        return len(self._known)
 
 
-def extractors(source_roots: list[str]) -> Mapping[str, BaseExtractor]:
-    """The extension → extractor mapping `IngestionPipeline` takes, built lazily."""
-    return _LazyExtractors(source_roots)
+def extractors(source_roots: list[str], *, data_keys: bool = False) -> Mapping[str, BaseExtractor]:
+    """The extension → extractor mapping `IngestionPipeline` takes, built lazily.
+
+    `data_keys` turns on the opt-in data-key layer: Python key edges, and the files
+    of every `data_keys_only` pack (JSON, YAML). Off, those files are not walked.
+    """
+    return _LazyExtractors(source_roots, data_keys)

@@ -25,6 +25,6 @@ Then:
 
 On the unresolved share, interpret rather than just quoting the number. A residue in the low tens of percent is normal and consists mostly of runtime-dispatched calls — `logger.info`, `response.json`, injected clients. If it is unusually high, the likely cause is ingesting the wrong root or a codebase leaning heavily on dynamic dispatch; say which you think it is.
 
-If the repository contains languages CGIS has no extractor for — anything other than Python, TypeScript and Go — name them, so it is clear up front which parts of the codebase the graph will not be able to answer for.
+If the repository contains languages CGIS has no extractor for — anything other than Python, TypeScript and Go (JSON and YAML files are read for the data keys they declare, nothing else, and only when data keys are enabled with `--data-keys`) — name them, so it is clear up front which parts of the codebase the graph will not be able to answer for.
 
 Finally, mention that `graph.db` should be added to `.gitignore` if it is not already there, and that the graph goes stale as code changes: re-run this command after substantial edits.

@@ -20,6 +20,7 @@ style tags you wrote yourself and pure numbers need no escaping.
 
 import dataclasses
 import json as _json
+import subprocess
 from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
@@ -35,6 +36,7 @@ from rich.tree import Tree
 from cgis import __app_name__, __version__, log_to_stderr
 from cgis.core.coverage import TraversalCoverage
 from cgis.core.freshness import FreshnessState
+from cgis.core.keys import data_keys_summary
 from cgis.core.models import (
     RAW_CALL_PREFIX,
     VIRTUAL_FILE_PATH,
@@ -46,7 +48,7 @@ from cgis.core.models import (
 )
 from cgis.guardian.metrics import load_reviews, rate_review
 from cgis.languages import extractors, file_node_id, is_supported
-from cgis.pipeline import IngestionPipeline, extraction_fingerprint
+from cgis.pipeline import IngestionPipeline, extraction_fingerprint, ingest_data_keys
 from cgis.query.analysis.analyzer import AnalyzerEngine
 from cgis.query.analysis.anomaly import AnomalyType, ArchitecturalAnomaly
 from cgis.query.analysis.health import HealthScorer
@@ -55,6 +57,8 @@ from cgis.query.analysis.suggest_service import SuggestReport, report_to_dict, s
 from cgis.query.context.audit import NoAuditSourcesError, ReachabilityAudit, audit_reachability
 from cgis.query.context.context_service import build_context
 from cgis.query.context.orphans import OrphanReport, find_orphan_classes
+from cgis.query.diffcheck import DiffError, check_database, render_text
+from cgis.query.diffcheck import report_to_dict as diff_report_to_dict
 from cgis.query.drift.drift import DriftReport, FitQuality
 from cgis.query.drift.drift_service import analyze_drift
 from cgis.query.drift.fractal import FractalReport, analyze_fractal_db
@@ -178,6 +182,13 @@ def _write_json_graph(
         _json.dump(graph_data, f, indent=2)
 
 
+def _pipeline(roots: list[str], domains: str | None, data_keys: bool) -> IngestionPipeline:
+    """The ingest pipeline for these options."""
+    return IngestionPipeline(
+        extractors(roots, data_keys=data_keys), domains_config=domains, data_keys=data_keys
+    )
+
+
 @app.command()
 def ingest(
     path: str = typer.Argument(..., help="Path to the repository to ingest"),
@@ -206,12 +217,20 @@ def ingest(
             "May be repeated for multiple roots."
         ),
     ),
+    data_keys: bool | None = typer.Option(
+        None,
+        "--data-keys/--no-data-keys",
+        help=(
+            "Extract data keys (Python dict keys, JSON and YAML declarations) for the "
+            "diff check. Off by default. Left out, an existing graph keeps the mode it was "
+            "built in, and a new one takes CGIS_DATA_KEYS=1. Switching it rebuilds the graph."
+        ),
+    ),
 ) -> None:
     """
     Scan a repository, extract code structure, and resolve semantic links.
     """
     roots = source_roots or []
-    pipeline = IngestionPipeline(extractors(roots), domains_config=domains)
 
     if domains and not Path(domains).is_file():
         console.print(
@@ -239,13 +258,17 @@ def ingest(
             # A bad path must not create or touch the database.
             IngestionPipeline.workspace_root(path)
             with SQLiteStore(output) as store:
+                keys, switched = ingest_data_keys(store, data_keys)
+                pipeline = _pipeline(roots, domains, keys)
                 nodes, raw_edges, resolved_edges = pipeline.run(
                     path, store=store, rebuild=not incremental
                 )
                 if nodes:
                     store.record_ingest(path, pipeline.observed_mtimes)
-                    store.record_ingest_options(roots, domains)
+                    store.record_ingest_options(roots, domains, data_keys=keys)
         else:
+            keys, switched = ingest_data_keys(None, data_keys)
+            pipeline = _pipeline(roots, domains, keys)
             nodes, raw_edges, resolved_edges = pipeline.run(path)
 
         if not nodes:
@@ -266,9 +289,11 @@ def ingest(
         table.add_row("Edges extracted (raw)", str(len(raw_edges)))
         table.add_row("Edges resolved (clean)", str(len(resolved_edges)))
         if incremental:
-            table.add_row("Mode", "incremental")
+            # A forced rebuild (changed symbols, switched data keys) is no incremental run.
+            table.add_row("Mode", "full rebuild" if pipeline.rebuilt else "incremental")
 
         console.print(table)
+        console.print(data_keys_summary(keys, switched))
         console.print("[bold green]✅ Success![/bold green] Graph data ready.")
 
     except Exception as e:
@@ -768,6 +793,76 @@ def validate(
         f"\n[bold green]✅ Internal {internal_pct:.1f}% — "
         f"unresolved {unresolved_pct:.1f}% below threshold {threshold_pct:.1f}%[/bold green]"
     )
+
+
+def _repo_prefix(repo: Path, root: str) -> str:
+    """The `--root` directory's path inside the repository; ValueError when outside it."""
+    top = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if top.returncode != 0:
+        return ""
+    rel = Path(root).resolve().relative_to(Path(top.stdout.strip()).resolve())
+    return "" if str(rel) == "." else rel.as_posix()
+
+
+@app.command(name="diff-check")
+def diff_check(
+    db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
+    repo: str = typer.Option(".", "--repo", help="Git repository holding the diff"),
+    base: str = typer.Option("origin/main", "--base", help="Base revision of the diff"),
+    head: str = typer.Option("HEAD", "--head", help="Head revision of the diff"),
+    cap: int = typer.Option(5, "--cap", min=1, help="Items shown; the rest are counted"),
+    output_format: str = typer.Option("text", "--format", help="text or json"),
+    root: str | None = typer.Option(
+        None,
+        "--root",
+        help="The directory the graph was ingested from (default: the root the graph recorded)",
+    ),
+    prefix: str | None = typer.Option(
+        None,
+        "--prefix",
+        help="The ingest root's path inside the repository (default: from --root, else from"
+        " the graph's recorded ingest root)",
+    ),
+) -> None:
+    """
+    List the subclasses, callers and data-key sites of what a diff changed.
+
+    Reads the changed lines of BASE..HEAD, maps them to graph symbols and data
+    keys and prints the code that extends or calls them and the other readers,
+    writers and declarers of the keys, so a change is checked against its
+    dependants before review. Exit code 2 when git cannot read the range, when
+    --root lies outside the repository, or when no changed file maps onto the graph.
+    """
+    if output_format not in ("text", "json"):
+        message = "use text or json"
+        raise typer.BadParameter(message, param_hint="--format")
+    if not Path(db).is_file():
+        console.print(
+            f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
+        )
+        raise typer.Exit(code=1)
+    repo_path = Path(repo)
+    where = prefix
+    if where is None and root is not None:
+        try:
+            where = _repo_prefix(repo_path, root)
+        except ValueError as exc:
+            typer.echo(f"--root {root} is outside the repository {repo}: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
+    try:
+        report = check_database(db, repo_path, base, head, cap, prefix=where)
+    except DiffError as exc:
+        typer.echo(f"Cannot diff {base}..{head}: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    if output_format == "json":
+        typer.echo(_json.dumps(diff_report_to_dict(report), indent=2))
+    else:
+        typer.echo(render_text(report, base, head))
 
 
 @app.command()

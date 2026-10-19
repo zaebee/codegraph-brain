@@ -1,0 +1,399 @@
+{
+  "sets": "dev_cases.yaml",
+  "results": [
+    {
+      "case": "#2093 after #2088",
+      "in_zone": true,
+      "status": "done",
+      "expected_site": {
+        "file": "ownima-backend/app/models/owner.py",
+        "id": "models.owner.UserAdmin"
+      },
+      "listed": true,
+      "shown": true,
+      "rank": 1,
+      "items": 2,
+      "shown_items": [
+        {
+          "kind": "subclass",
+          "site": "models.owner.UserWithToken",
+          "file": "app/models/owner.py",
+          "line": 578,
+          "score": 1.0
+        },
+        {
+          "kind": "subclass",
+          "site": "models.owner.UserAdmin",
+          "file": "app/models/owner.py",
+          "line": 590,
+          "score": 1.0
+        }
+      ],
+      "kinds": {
+        "subclass": 2
+      },
+      "changed_keys": 4,
+      "in_tests": 1,
+      "changed_symbols": 17,
+      "ingest_seconds": 33.5,
+      "check_seconds": 0.2
+    },
+    {
+      "case": "#2066",
+      "in_zone": true,
+      "status": "done",
+      "expected_site": {
+        "file": "ownima-backend/app/domains/finance/service.py",
+        "id": "picture"
+      },
+      "listed": false,
+      "shown": false,
+      "rank": null,
+      "items": 7,
+      "shown_items": [
+        {
+          "kind": "caller",
+          "site": "domains.vehicle.routes.update_vehicle",
+          "file": "app/domains/vehicle/routes.py",
+          "line": 120,
+          "score": 1.0
+        },
+        {
+          "kind": "caller",
+          "site": "domains.vehicle.routes.publish_vehicle",
+          "file": "app/domains/vehicle/routes.py",
+          "line": 196,
+          "score": 1.0
+        },
+        {
+          "kind": "caller",
+          "site": "domains.vehicle.routes.archive_vehicle",
+          "file": "app/domains/vehicle/routes.py",
+          "line": 215,
+          "score": 1.0
+        },
+        {
+          "kind": "caller",
+          "site": "domains.vehicle.service.VehicleService.update_vehicle",
+          "file": "app/domains/vehicle/service.py",
+          "line": 695,
+          "score": 1.0
+        },
+        {
+          "kind": "caller",
+          "site": "domains.vehicle.service.VehicleService.publish_vehicle",
+          "file": "app/domains/vehicle/service.py",
+          "line": 841,
+          "score": 1.0
+        }
+      ],
+      "kinds": {
+        "caller": 7
+      },
+      "changed_keys": 5,
+      "in_tests": 34,
+      "changed_symbols": 21,
+      "ingest_seconds": 35.3,
+      "check_seconds": 0.4
+    },
+    {
+      "case": "#2071-#2085",
+      "in_zone": true,
+      "status": "done",
+      "expected_site": {
+        "file": "ownima-backend/app/domains/admin/query.py",
+        "id": "event_type.keyword"
+      },
+      "listed": true,
+      "shown": true,
+      "rank": 0,
+      "items": 11,
+      "shown_items": [
+        {
+          "kind": "undeclared-read",
+          "site": "domains.admin.query.user_activity",
+          "file": "app/domains/admin/query.py",
+          "line": 81,
+          "score": 2.0
+        },
+        {
+          "kind": "undeclared-read",
+          "site": "domains.admin.query.audit_events",
+          "file": "app/domains/admin/query.py",
+          "line": 388,
+          "score": 2.0
+        },
+        {
+          "kind": "undeclared-read",
+          "site": "domains.admin.query.first_event_per_owner",
+          "file": "app/domains/admin/query.py",
+          "line": 919,
+          "score": 2.0
+        },
+        {
+          "kind": "undeclared-read",
+          "site": "domains.vehicle.query.first_event_per_vehicle",
+          "file": "app/domains/vehicle/query.py",
+          "line": 374,
+          "score": 2.0
+        },
+        {
+          "kind": "undeclared-read",
+          "site": "domains.admin.activity.get_recent_vehicle_activities",
+          "file": "app/domains/admin/activity.py",
+          "line": 91,
+          "score": 2.0
+        }
+      ],
+      "kinds": {
+        "undeclared-read": 11
+      },
+      "changed_keys": 12,
+      "in_tests": 17,
+      "changed_symbols": 4,
+      "ingest_seconds": 33.3,
+      "check_seconds": 0.3
+    },
+    {
+      "case": "moved module",
+      "in_zone": false,
+      "status": "skipped",
+      "reason": "no merge commit"
+    },
+    {
+      "case": "#2057",
+      "in_zone": false,
+      "status": "done",
+      "expected_site": null,
+      "listed": null,
+      "shown": null,
+      "rank": null,
+      "items": 78,
+      "shown_items": [
+        {
+          "kind": "caller",
+          "site": "api.dependencies.s3_client.S3Client.ensure_bucket_exists",
+          "file": "app/api/dependencies/s3_client.py",
+          "line": 85,
+          "score": 1.0
+        },
+        {
+          "kind": "caller",
+          "site": "api.dependencies.s3_client.S3Client.create_object",
+          "file": "app/api/dependencies/s3_client.py",
+          "line": 154,
+          "score": 1.0
+        },
+        {
+          "kind": "caller",
+          "site": "api.dependencies.s3_client.S3Client.get_object",
+          "file": "app/api/dependencies/s3_client.py",
+          "line": 202,
+          "score": 1.0
+        },
+        {
+          "kind": "caller",
+          "site": "api.dependencies.s3_client.S3Client.remove_object",
+          "file": "app/api/dependencies/s3_client.py",
+          "line": 257,
+          "score": 1.0
+        },
+        {
+          "kind": "caller",
+          "site": "api.dependencies.s3_client.S3Client.copy_object",
+          "file": "app/api/dependencies/s3_client.py",
+          "line": 311,
+          "score": 1.0
+        }
+      ],
+      "kinds": {
+        "caller": 51,
+        "key-declarer": 3,
+        "key-reader": 24
+      },
+      "changed_keys": 27,
+      "in_tests": 103,
+      "changed_symbols": 58,
+      "ingest_seconds": 31.6,
+      "check_seconds": 1.5
+    },
+    {
+      "case": "#1832",
+      "in_zone": false,
+      "status": "done",
+      "expected_site": null,
+      "listed": null,
+      "shown": null,
+      "rank": null,
+      "items": 35,
+      "shown_items": [
+        {
+          "kind": "caller",
+          "site": "domains.admin.reservations._build_list_query",
+          "file": "app/domains/admin/reservations.py",
+          "line": 120,
+          "score": 1.0
+        },
+        {
+          "kind": "caller",
+          "site": "domains.admin.reservations.get_admin_reservations",
+          "file": "app/domains/admin/reservations.py",
+          "line": 389,
+          "score": 1.0
+        },
+        {
+          "kind": "caller",
+          "site": "domains.admin.reservations.get_admin_reservations",
+          "file": "app/domains/admin/reservations.py",
+          "line": 393,
+          "score": 1.0
+        },
+        {
+          "kind": "key-declarer",
+          "site": "opensearch.mappings.reservations_json",
+          "file": "opensearch/mappings/reservations.json",
+          "line": 29,
+          "score": -1.7004397181410922
+        },
+        {
+          "kind": "key-declarer",
+          "site": "opensearch.mappings.transactions_json",
+          "file": "opensearch/mappings/transactions.json",
+          "line": 17,
+          "score": -1.7004397181410922
+        }
+      ],
+      "kinds": {
+        "caller": 3,
+        "key-declarer": 2,
+        "key-reader": 30
+      },
+      "changed_keys": 11,
+      "in_tests": 70,
+      "changed_symbols": 31,
+      "ingest_seconds": 29.8,
+      "check_seconds": 0.6
+    },
+    {
+      "case": "#2082",
+      "in_zone": false,
+      "status": "done",
+      "expected_site": null,
+      "listed": null,
+      "shown": null,
+      "rank": null,
+      "items": 2,
+      "shown_items": [
+        {
+          "kind": "caller",
+          "site": "core.observability.log_config._add_trace_ids",
+          "file": "app/core/observability/log_config.py",
+          "line": 192,
+          "score": 1.0
+        },
+        {
+          "kind": "caller",
+          "site": "core.observability.tracing._RequestsAndJobsOnly.should_sample",
+          "file": "app/core/observability/tracing.py",
+          "line": 136,
+          "score": 1.0
+        }
+      ],
+      "kinds": {
+        "caller": 2
+      },
+      "changed_keys": 3,
+      "in_tests": 22,
+      "changed_symbols": 24,
+      "ingest_seconds": 32.2,
+      "check_seconds": 0.5
+    },
+    {
+      "case": "#1815",
+      "in_zone": false,
+      "status": "skipped",
+      "reason": "no merge commit"
+    },
+    {
+      "case": "ruff G004",
+      "in_zone": false,
+      "status": "skipped",
+      "reason": "no merge commit"
+    },
+    {
+      "case": "#2040",
+      "in_zone": false,
+      "status": "done",
+      "expected_site": null,
+      "listed": null,
+      "shown": null,
+      "rank": null,
+      "items": 0,
+      "shown_items": [],
+      "kinds": {},
+      "changed_keys": 0,
+      "in_tests": 0,
+      "changed_symbols": 2,
+      "ingest_seconds": 31.1,
+      "check_seconds": 0.3
+    },
+    {
+      "case": "cgis #701",
+      "in_zone": true,
+      "status": "done",
+      "expected_site": {
+        "file": "src/cgis/languages/__init__.py",
+        "id": "cross_file_metadata"
+      },
+      "listed": false,
+      "shown": false,
+      "rank": null,
+      "items": 16,
+      "shown_items": [
+        {
+          "kind": "caller",
+          "site": "cgis.languages.python._values._parameters",
+          "file": "cgis/languages/python/_values.py",
+          "line": 69,
+          "score": 1.0
+        },
+        {
+          "kind": "caller",
+          "site": "cgis.languages.python._values._first_events",
+          "file": "cgis/languages/python/_values.py",
+          "line": 82,
+          "score": 1.0
+        },
+        {
+          "kind": "caller",
+          "site": "cgis.languages.python._values._first_events",
+          "file": "cgis/languages/python/_values.py",
+          "line": 87,
+          "score": 1.0
+        },
+        {
+          "kind": "caller",
+          "site": "cgis.languages.python._values.invoked_slots",
+          "file": "cgis/languages/python/_values.py",
+          "line": 115,
+          "score": 1.0
+        },
+        {
+          "kind": "caller",
+          "site": "cgis.languages.python._values.invoked_slots",
+          "file": "cgis/languages/python/_values.py",
+          "line": 117,
+          "score": 1.0
+        }
+      ],
+      "kinds": {
+        "caller": 16
+      },
+      "changed_keys": 1,
+      "in_tests": 0,
+      "changed_symbols": 15,
+      "ingest_seconds": 3.0,
+      "check_seconds": 0.1
+    }
+  ]
+}

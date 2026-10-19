@@ -79,7 +79,9 @@ def test_the_instructions_name_only_tools_that_exist() -> None:
 
 
 def test_every_tool_is_listed_without_an_allowlist() -> None:
-    assert len(_listed(mcp)) == 15
+    listed = _listed(mcp)
+    assert len(listed) == 16
+    assert "cgis_diff_check" in listed
 
 
 @pytest.mark.parametrize("raw", [None, "", " , "])
@@ -230,3 +232,36 @@ def test_every_invoker_the_python_coverage_names_is_on_the_invoker_list() -> Non
     for spelled, key in _PYTHON_NAMED.items():
         assert spelled in text
         assert key in PYTHON_INVOKERS
+
+
+#: Where the diff check's noise was measured; both texts below cite it.
+_DIFF_CHECK_NOTE = "docs/lab-notes/2026-10-19-data-key-diff-check.md"
+
+
+def test_the_when_to_use_list_names_the_diff_check() -> None:
+    # Final review I6: the tool shipped on by default and appeared in no routing line.
+    listing = SERVER_INSTRUCTIONS.split("When to use which tool:")[1].split("\n\n")[0]
+    assert re.search(r"^- .*: cgis_diff_check\.$", listing, re.MULTILINE)
+
+
+def test_the_diff_check_says_its_data_key_items_are_noisy() -> None:
+    from cgis.api.mcp_server import cgis_diff_check  # noqa: PLC0415
+
+    doc = " ".join((cgis_diff_check.__doc__ or "").split())
+    text = " ".join(SERVER_INSTRUCTIONS.split())
+    for said in (doc, text):
+        assert "caller and subclass items are leads to read" in said
+        assert "about a quarter of listed items were worth a look" in said
+        assert "owner-api" in said
+        assert _DIFF_CHECK_NOTE in said
+
+
+def test_the_diff_check_says_key_items_need_data_keys_on() -> None:
+    # The data-key layer is opt-in: without it the tool lists no key item at all.
+    from cgis.api.mcp_server import cgis_diff_check  # noqa: PLC0415
+
+    doc = " ".join((cgis_diff_check.__doc__ or "").split())
+    text = " ".join(SERVER_INSTRUCTIONS.split())
+    for said in (doc, text):
+        assert "a graph ingested with data keys on" in said
+        assert "data_keys=True" in said

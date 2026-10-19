@@ -12,11 +12,37 @@ the moment it ships — it said "Python and TypeScript only" for as long as Go h
 
 from cgis.languages import MANIFESTS
 
+#: Said by the tool's own description and by the instructions (final review I6). The
+#: tool itself is always available; only its data-key items need the opt-in data-key
+#: layer, and they were measured noisy before it shipped.
+DIFF_CHECK_NOISE = (
+    "caller and subclass items are leads to read; data-key items are noisy — measured "
+    "on one application (owner-api), about a quarter of listed items were worth a look "
+    "(docs/lab-notes/2026-10-19-data-key-diff-check.md). Key items need a graph ingested "
+    "with data keys on (cgis_ingest(data_keys=True)); without them the answer says so."
+)
+
 
 def _coverage() -> str:
-    """`Python (.py), TypeScript (.ts, .tsx) and Go (.go)`, from the registry."""
-    named = [f"{m.title} ({', '.join(m.extensions)})" for m in MANIFESTS]
-    return named[0] if len(named) == 1 else f"{', '.join(named[:-1])} and {named[-1]}"
+    """`Python (.py), TypeScript (.ts, .tsx) and Go (.go) only; JSON and YAML files (...)
+    contribute data-key declarations only when data keys are enabled (...).`, from the registry.
+
+    A pack whose files name no code (`names_code=False`) is no language of the graph's
+    symbols: it is said apart, or the line reads as a fourth language.
+    """
+    named = [f"{m.title} ({', '.join(m.extensions)})" for m in MANIFESTS if m.names_code]
+    code = named[0] if len(named) == 1 else f"{', '.join(named[:-1])} and {named[-1]}"
+    data = "".join(
+        f"; {m.title} files ({', '.join(m.extensions)}) contribute data-key declarations only"
+        + (
+            " when data keys are enabled (`cgis_ingest(data_keys=True)`, CLI `--data-keys`)"
+            if m.data_keys_only
+            else ""
+        )
+        for m in MANIFESTS
+        if not m.names_code
+    )
+    return f"{code} only{data}."
 
 
 def _caveats() -> str:
@@ -40,6 +66,7 @@ When to use which tool:
 - Where is the symbol named X: cgis_find_symbol.
 - Coupling, drift, reachability of a guard: cgis_metrics, cgis_drift, \
 cgis_audit_reachability.
+- Before review or merge, what else a diff may have broken: cgis_diff_check.
 
 First run: if a tool answers "Database not found", build the graph with \
 cgis_ingest(project_path=<source root>) — the source root, not the repository root, so \
@@ -66,7 +93,8 @@ follow it before answering; naming the gap is not enough.
 - cgis_analyze_impact and cgis_trace_flow leave out test code (counted) and cap the \
 answer at max_nodes, nearest first; a cut is reported. Ask for output_format="text" to \
 read an answer — an indented tree, a fifth the size of json; use json to compute with it.
+- cgis_diff_check: {DIFF_CHECK_NOISE}
 
-Coverage: {_coverage()} only. Other languages are not in the graph — read those \
+Coverage: {_coverage()} Other languages are not in the graph — read those \
 files, and say which part of the answer the graph could not see.{_caveats()}
 """

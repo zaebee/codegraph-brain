@@ -145,6 +145,14 @@ project_domains:
     hygiene_baseline:
       unresolved_ratio: 0.26 # measured 0.242 at step 7b (drift 0.285)
 
+  - name: "languages.data"
+    fqn_prefix: "cgis.languages.data"
+    expected_pattern: layered_dag
+    profile: python
+    drift_tolerance: 0.42
+    hygiene_baseline:
+      unresolved_ratio: 0.24 # measured 0.222 at #705 (drift 0.193)
+
   # The pack contract and the model (spec: Core). layered_dag, not the spec's
   # pure_utility — measured 0.215 vs 0.554 at step 6: since steps 1-4 the contract
   # is layered (extractor/index/resolution/project -> models) (ruling G1).
