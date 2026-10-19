@@ -109,6 +109,39 @@ Prompt-ready brief on one FQN: its source, class, direct callers and callees.
 
 ---
 
+## `cgis_diff_check`
+
+What else depends on what a diff changed: subclasses, callers and data keys.
+
+    Call this before review or merge. It reads the lines ``base..head`` changed,
+    finds the graph symbols they fall in (and symbols the diff removed, read from
+    the base text), and lists the classes that extend a changed class and the
+    functions that call a changed or removed function. For each data key the
+    changed lines read, write or declare (``doc["avatar"]``, a mapping field) it
+    lists the key's other readers, writers and declarers, reads of a dotted path
+    a mapping does not declare, and reads of a declaration the diff removed;
+    common keys (``id``, ``name``, or used in many files) are left out. Key items
+    need a graph ingested with data keys on (``cgis_ingest(data_keys=True)`` or
+    ``cgis ingest --data-keys``); on a graph without them the answer says so and
+    lists subclasses and callers only. Sites in test files are counted, not
+    listed. An empty list means no static dependants were found, not that the
+    change is safe: dispatch the graph cannot see is not covered. How to read
+    the list: caller and subclass items are leads to read; data-key items are
+    noisy — measured on one application (owner-api), about a quarter of listed
+    items were worth a look (docs/lab-notes/2026-10-19-data-key-diff-check.md).
+
+| Argument | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `repo_path` | `string` | ✓ | Git repository holding the diff; prefer an absolute path. |
+| `base` | `string` |  | Base revision of the diff, e.g. origin/main or a sha. |
+| `head` | `string` |  | Head revision of the diff. |
+| `db_path` | `string` |  | SQLite graph built by cgis_ingest. A relative path resolves against the MCP server's working directory, not the agent's — prefer an absolute path. |
+| `cap` | `integer` |  | Items listed; the rest are only counted. |
+| `prefix` | `any` |  | The path of the ingested directory inside the repository (e.g. 'src' after cgis_ingest of ./src); empty when the repository root was ingested. Left out, it comes from the root the graph recorded at ingest. |
+| `output_format` | `string` |  | 'text' or 'json'. |
+
+---
+
 ## `cgis_drift`
 
 Report per-domain architectural drift against declared ideal patterns.
@@ -291,11 +324,15 @@ Scan a local directory, extract all symbols, resolve links, and build the graph 
     in unchanged files never point at symbols that no longer exist. Set
     ``full_rebuild=True`` to force a re-scan of every file from scratch.
 
+    Data keys are opt-in (``data_keys=True``): they cost every ingest time and
+    graph size, and make JSON and YAML edits mark the graph stale.
+
 | Argument | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
 | `project_path` | `string` | ✓ | Root directory of the project to scan. A relative path resolves against the MCP server's working directory. |
 | `db_path` | `string` |  | Where to write the graph: must end in .db, .sqlite or .sqlite3, in a directory that already exists, and must not be an existing non-SQLite file. A relative path resolves against the server's working directory. |
 | `full_rebuild` | `boolean` |  | Re-scan every file from scratch instead of the incremental default. |
+| `data_keys` | `any` |  | Extract data keys (Python dict keys, JSON and YAML declarations) for cgis_diff_check. Off by default. Left out, an existing graph keeps the mode it was built in, and a new one takes CGIS_DATA_KEYS=1 from the server's environment. Switching it rebuilds the graph. |
 
 ---
 
