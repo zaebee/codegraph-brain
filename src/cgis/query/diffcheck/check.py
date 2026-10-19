@@ -81,7 +81,7 @@ DATA_KEYS_OFF_NOTE: Final = (
 )
 
 #: What a list with key items says, once: a key item is a lead, and what reaches a reader
-#: is decided by its callers (owner-api#2144: a reader took no dates; its caller passed them).
+#: is decided by its callers (a reader that took no dates was fed them by its caller, #707).
 KEY_ITEMS_HINT: Final = (
     "Key items are leads: before judging a code site that reads or writes a key unaffected, "
     "read its callers (cgis_analyze_impact on the site) - they decide what values reach it."

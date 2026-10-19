@@ -6,7 +6,8 @@ derived from the home directory or from where this checkout lives:
 - ``CGIS_DATA_KEYS_CORPUS``: exported trees, clones and scratch databases
   (default ``~/bench-corpora/data-keys``).
 - ``CGIS_OWNER_API``: the owner-api checkout, read with ``git`` only, never checked out
-  (default: ``owner-api`` beside this checkout).
+  (default: ``owner-api`` beside this repository's main checkout, also when this runs from a
+  linked worktree such as ``.claude/worktrees/<name>``).
 """
 
 import os
@@ -22,8 +23,27 @@ def _from_env(name: str, default: Path) -> Path:
     return Path(value).expanduser() if value else default
 
 
+def checkout_root(root: Path) -> Path:
+    """The main checkout of the repository at `root`: `root` itself, or, for a linked
+    worktree, the checkout whose `.git/worktrees/<name>` its `.git` file points at."""
+    marker = root / ".git"
+    if not marker.is_file():
+        return root
+    # Relative under `git worktree add --relative-paths`: it is relative to the worktree.
+    gitdir = (root / marker.read_text(encoding="utf-8").removeprefix("gitdir:").strip()).resolve()
+    return gitdir.parent.parent.parent if gitdir.parent.name == "worktrees" else root
+
+
 CORPUS = _from_env("CGIS_DATA_KEYS_CORPUS", Path.home() / "bench-corpora" / "data-keys")
-OWNER_API = _from_env("CGIS_OWNER_API", REPO_ROOT.parent / "owner-api")
+
+
+def owner_api() -> Path:
+    """`CGIS_OWNER_API`, else owner-api beside the main checkout; `.git` is read only then."""
+    value = os.environ.get("CGIS_OWNER_API")
+    return Path(value).expanduser() if value else checkout_root(REPO_ROOT).parent / "owner-api"
+
+
+OWNER_API = owner_api()
 
 
 #: A GitHub repository as ``owner/name``: what ``gh --repo`` and ``repos/<repo>/…`` take.

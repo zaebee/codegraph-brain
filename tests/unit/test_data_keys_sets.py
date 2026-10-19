@@ -4,6 +4,7 @@ The rules are pure, so the tests feed them made-up PRs; one test reads the commi
 outputs to check that no development case leaked into the held-out set.
 """
 
+import importlib
 import json
 import sys
 from datetime import UTC, datetime, timedelta
@@ -227,3 +228,42 @@ def test_ingest_pairs_takes_no_interpreter_from_the_command_line() -> None:
     with pytest.raises(SystemExit) as refused:
         ingest_pairs.main(["--main-src", "x", "--python", "/bin/sh"])
     assert refused.value.code == 2  # argparse: unrecognized arguments
+
+
+def test_a_linked_worktree_finds_owner_api_beside_its_main_checkout(tmp_path: Path) -> None:
+    """A worktree under .claude/worktrees/ has no owner-api beside it; the main checkout does."""
+    main = tmp_path / "codegraph-brain"
+    (main / ".git" / "worktrees" / "x").mkdir(parents=True)
+    worktree = main / ".claude" / "worktrees" / "x"
+    worktree.mkdir(parents=True)
+    (worktree / ".git").write_text(f"gitdir: {main / '.git' / 'worktrees' / 'x'}\n")
+    assert locations.checkout_root(worktree) == main
+    assert locations.checkout_root(main) == main
+
+
+def test_a_relative_gitdir_resolves_against_the_worktree(tmp_path: Path) -> None:
+    """`git worktree add --relative-paths` (git 2.48+) writes a gitdir relative to the worktree."""
+    main = tmp_path / "codegraph-brain"
+    (main / ".git" / "worktrees" / "x").mkdir(parents=True)
+    worktree = main / ".claude" / "worktrees" / "x"
+    worktree.mkdir(parents=True)
+    (worktree / ".git").write_text("gitdir: ../../../.git/worktrees/x\n")
+    assert locations.checkout_root(worktree).resolve() == main.resolve()
+
+
+def test_owner_api_defaults_beside_the_main_checkout(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CGIS_OWNER_API", raising=False)
+    reloaded = importlib.reload(locations)
+    expected = reloaded.checkout_root(reloaded.REPO_ROOT).parent / "owner-api"
+    assert expected == reloaded.OWNER_API
+
+
+def test_a_set_owner_api_reads_no_git_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The environment wins without touching `.git` (an unreadable one must not fail import)."""
+    monkeypatch.setenv("CGIS_OWNER_API", "/elsewhere/owner-api")
+
+    def refuse(root: Path) -> Path:
+        raise AssertionError(root)
+
+    monkeypatch.setattr(locations, "checkout_root", refuse)
+    assert locations.owner_api() == Path("/elsewhere/owner-api")

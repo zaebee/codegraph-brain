@@ -403,7 +403,7 @@ def test_a_graph_with_data_keys_lists_key_items_without_the_note(tmp_path: Path)
 
 
 def test_listed_key_items_say_to_read_their_callers(tmp_path: Path) -> None:
-    """owner-api#2144: a reader that took no dates was fed them by its caller."""
+    """#707: a reader that took no dates was fed them by its caller."""
     repo, base, db = _keyed_check(tmp_path, data_keys=True)
     with SQLiteStore(str(db)) as store:
         text = render_text(run_diff_check(store, repo, base, cap=100), base, "HEAD")
