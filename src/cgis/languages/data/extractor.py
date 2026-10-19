@@ -194,7 +194,7 @@ def _json_keys(code: str) -> list[Keys]:
 
     A list or scalar document declares nothing, so it is not read at all.
     """
-    text = code.removeprefix("﻿")
+    text = code.removeprefix("\ufeff")  # a byte order mark
     start = _past_whitespace(text, 0)
     if text[start : start + 1] != "{":
         return []

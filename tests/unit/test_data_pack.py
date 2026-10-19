@@ -246,7 +246,9 @@ def test_an_ingest_resolves_declarations_to_key_nodes(tmp_path: Path) -> None:
 def test_coverage_claims_name_the_data_pack() -> None:
     assert "data" in {m.name for m in MANIFESTS}
     coverage = next(x for x in SERVER_INSTRUCTIONS.splitlines() if x.startswith("Coverage:"))
-    assert "JSON and YAML (.json, .yaml, .yml)" in coverage
+    # Said apart from the code languages since final review #77 (was "Go (.go) and JSON
+    # and YAML (.json, .yaml, .yml) only").
+    assert "JSON and YAML files (.json, .yaml, .yml) contribute data-key declarations" in coverage
     # The instructions say what these files are for: declarations, not code.
     assert re.search(
         r"JSON and YAML files contribute data key declarations only", SERVER_INSTRUCTIONS
@@ -287,3 +289,15 @@ def test_a_data_directory_changes_no_name_classification(tmp_path: Path) -> None
     control = _boundary_namespaces(tmp_path / "without")
     assert control["data.load"] == "EXTERNAL"  # the case the data directory once flipped
     assert _boundary_namespaces(tmp_path / "with") == control
+
+
+def test_a_json_file_with_a_byte_order_mark_declares_its_keys() -> None:
+    _nodes, edges = _parse('\ufeff{"brand": 1}\n', "x.json")
+    assert _declared(edges) == {"|brand": 1}
+
+
+def test_the_extractor_spells_the_byte_order_mark_as_an_escape() -> None:
+    # Final review #76: an invisible U+FEFF in the source reads as an empty string.
+    source = (REPO / "src/cgis/languages/data/extractor.py").read_text(encoding="utf-8")
+    assert "\ufeff" not in source
+    assert 'removeprefix("\\ufeff")' in source
