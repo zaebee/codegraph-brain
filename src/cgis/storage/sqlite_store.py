@@ -1278,15 +1278,17 @@ class SQLiteStore:
         return [str(r) for r in loaded["source_roots"]], None if domains is None else str(domains)
 
     def get_ingest_data_keys(self) -> bool | None:
-        """Whether the graph was ingested with data keys on; None when no options were recorded.
+        """Whether the graph was ingested with data keys on; None when that was never recorded.
 
-        Options recorded before the layer was opt-in carry no `data_keys`: False, the
-        default they are rebuilt in.
+        None also for options recorded before the layer was opt-in, which carry no
+        `data_keys`: such a graph may hold key edges, and reading its silence as
+        "off" made the diff check say keys were off while listing key items.
         """
         loaded = self._state_json(_INGEST_OPTIONS_KEY)
         if not isinstance(loaded, dict):
             return None
-        return loaded.get("data_keys") is True
+        value = loaded.get("data_keys")
+        return value if isinstance(value, bool) else None
 
     def record_python_dependencies(self, roots: list[str]) -> None:
         """Record the declared dependency roots Python references were classified against (#495).

@@ -50,13 +50,20 @@ def keys_match(a: str, b: str) -> bool:
 def data_keys_enabled(explicit: bool | None, recorded: bool | None = None) -> bool:
     """Whether an ingest extracts data keys.
 
-    An explicit flag or parameter wins; then `CGIS_DATA_KEYS`, when set; then the
-    mode the graph was last ingested in (`recorded`, so an incremental run or a
-    refresh keeps it); else off.
+    An explicit flag or parameter wins; then the mode an existing graph was last
+    ingested in (`recorded`, so an incremental run or a refresh keeps it, whatever
+    the environment says); then `CGIS_DATA_KEYS`, which thus decides only for a
+    new store; else off.
     """
     if explicit is not None:
         return explicit
-    env = os.environ.get(DATA_KEYS_ENV, "").strip().lower()
-    if env:
-        return env in _TRUTHY
-    return bool(recorded)
+    if recorded is not None:
+        return recorded
+    return os.environ.get(DATA_KEYS_ENV, "").strip().lower() in _TRUTHY
+
+
+def data_keys_summary(on: bool, switched: bool) -> str:
+    """The line an ingest reports its data-key mode with, and whether it switched it."""
+    state = "on" if on else "off"
+    switch = f" (rebuilt in full: data keys switched {state})" if switched else ""
+    return f"Data keys: {state}{switch}."

@@ -20,6 +20,7 @@ from cgis.api.server_instructions import SERVER_INSTRUCTIONS
 from cgis.api.tool_allowlist import TOOLS_ENV, CgisServer
 from cgis.core.coverage import TraversalCoverage, UnresolvedSite
 from cgis.core.freshness import Freshness, FreshnessState
+from cgis.core.keys import data_keys_summary
 from cgis.core.models import RAW_CALL_PREFIX, Edge, EdgeType, Node, NodeType
 from cgis.languages import extractors, impact_caveat
 from cgis.pipeline import IngestionPipeline, extraction_fingerprint, ingest_data_keys
@@ -472,8 +473,9 @@ def cgis_ingest(
         bool | None,
         Field(
             description="Extract data keys (Python dict keys, JSON and YAML declarations) for "
-            "cgis_diff_check. Off by default. Left out: CGIS_DATA_KEYS=1 in the server's "
-            "environment, else the mode the graph was built in. Switching it rebuilds the graph."
+            "cgis_diff_check. Off by default. Left out, an existing graph keeps the mode it was "
+            "built in, and a new one takes CGIS_DATA_KEYS=1 from the server's environment. "
+            "Switching it rebuilds the graph."
         ),
     ] = None,
 ) -> str:
@@ -506,7 +508,7 @@ def cgis_ingest(
 
     try:
         with SQLiteStore(db_path) as store:
-            keys = ingest_data_keys(store, data_keys)
+            keys, switched = ingest_data_keys(store, data_keys)
             pipeline = IngestionPipeline(extractors([], data_keys=keys), data_keys=keys)
             # A rebuild replaces the stored graph in the transaction that writes the
             # new one: deleted-file nodes and stale hashes go, uplift runs inside
@@ -520,7 +522,9 @@ def cgis_ingest(
     except Exception as exc:
         return f"❌ {exc}"
 
-    mode = "full rebuild" if full_rebuild else "incremental"
+    # A forced rebuild (changed symbols, switched data keys) is no incremental run.
+    rebuilt = full_rebuild or pipeline.rebuilt
+    mode = "full rebuild" if rebuilt else "incremental"
     logger.info(
         "MCP ingest complete",
         mode=mode,
@@ -531,11 +535,12 @@ def cgis_ingest(
     if not nodes:
         # Nothing extracted: a rebuild kept the stored graph, and neither mode
         # records this path as the graph's fresh root.
-        kept = "the stored graph was kept" if full_rebuild else "the graph now holds none"
+        kept = "the stored graph was kept" if rebuilt else "the graph now holds none"
         lines = [f"⚠️ No source files extracted from {project_path} (mode: {mode}); {kept}."]
     else:
         lines = [f"✅ Ingested: {project_path} (mode: {mode})"]
-    if nodes and not full_rebuild and not resolved:
+    lines.append(data_keys_summary(keys, switched))
+    if nodes and not rebuilt and not resolved:
         # Incremental no-op: an empty resolved set means no files changed. Say so
         # explicitly so the stable total below doesn't read as a shrunken graph (#192).
         lines.append("No files changed since the last ingest.")

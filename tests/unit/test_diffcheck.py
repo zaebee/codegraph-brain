@@ -1,5 +1,7 @@
 """The diff check lists the subclasses and callers of what a git range changed."""
 
+import json
+import sqlite3
 import subprocess
 from pathlib import Path
 
@@ -377,3 +379,26 @@ def test_a_graph_with_data_keys_lists_key_items_without_the_note(tmp_path: Path)
     assert report.note == ""
     assert [i for i in report.items if i.kind.startswith("key-")]
     assert "--data-keys" not in render_text(report, base, "HEAD")
+
+
+def test_a_graph_whose_options_predate_the_mode_reads_it_from_its_key_edges(
+    tmp_path: Path,
+) -> None:
+    """Options recorded before data keys were opt-in carry no `data_keys`: not "off"."""
+    repo, base, db = _keyed_check(tmp_path, data_keys=True)
+    with sqlite3.connect(db) as conn:
+        (raw,) = conn.execute(
+            "SELECT value FROM ingest_state WHERE key = 'ingest_options'"
+        ).fetchone()
+        options = json.loads(raw)
+        del options["data_keys"]
+        conn.execute(
+            "UPDATE ingest_state SET value = ? WHERE key = 'ingest_options'",
+            (json.dumps(options),),
+        )
+    with SQLiteStore(str(db)) as store:
+        assert store.get_ingest_data_keys() is None
+        report = run_diff_check(store, repo, base, cap=100)
+    assert report.data_keys is True
+    assert report.note == ""
+    assert [i for i in report.items if i.kind.startswith("key-")]

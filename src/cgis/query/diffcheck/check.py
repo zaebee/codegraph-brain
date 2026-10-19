@@ -75,7 +75,7 @@ class DiffReport:
 #: What a report on a graph without data keys says, once.
 DATA_KEYS_OFF_NOTE: Final = (
     "Data keys are off in this graph, so no key items: re-ingest with --data-keys "
-    "(MCP: cgis_ingest(data_keys=True), or CGIS_DATA_KEYS=1) to list them."
+    "(MCP: cgis_ingest(data_keys=True)) to list them."
 )
 
 

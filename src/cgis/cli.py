@@ -36,6 +36,7 @@ from rich.tree import Tree
 from cgis import __app_name__, __version__, log_to_stderr
 from cgis.core.coverage import TraversalCoverage
 from cgis.core.freshness import FreshnessState
+from cgis.core.keys import data_keys_summary
 from cgis.core.models import (
     RAW_CALL_PREFIX,
     VIRTUAL_FILE_PATH,
@@ -221,8 +222,8 @@ def ingest(
         "--data-keys/--no-data-keys",
         help=(
             "Extract data keys (Python dict keys, JSON and YAML declarations) for the "
-            "diff check. Off by default; CGIS_DATA_KEYS=1 turns it on, and an incremental "
-            "run keeps the mode the graph was built in. Switching it rebuilds the graph."
+            "diff check. Off by default. Left out, an existing graph keeps the mode it was "
+            "built in, and a new one takes CGIS_DATA_KEYS=1. Switching it rebuilds the graph."
         ),
     ),
 ) -> None:
@@ -257,7 +258,7 @@ def ingest(
             # A bad path must not create or touch the database.
             IngestionPipeline.workspace_root(path)
             with SQLiteStore(output) as store:
-                keys = ingest_data_keys(store, data_keys)
+                keys, switched = ingest_data_keys(store, data_keys)
                 pipeline = _pipeline(roots, domains, keys)
                 nodes, raw_edges, resolved_edges = pipeline.run(
                     path, store=store, rebuild=not incremental
@@ -266,7 +267,8 @@ def ingest(
                     store.record_ingest(path, pipeline.observed_mtimes)
                     store.record_ingest_options(roots, domains, data_keys=keys)
         else:
-            pipeline = _pipeline(roots, domains, ingest_data_keys(None, data_keys))
+            keys, switched = ingest_data_keys(None, data_keys)
+            pipeline = _pipeline(roots, domains, keys)
             nodes, raw_edges, resolved_edges = pipeline.run(path)
 
         if not nodes:
@@ -287,9 +289,11 @@ def ingest(
         table.add_row("Edges extracted (raw)", str(len(raw_edges)))
         table.add_row("Edges resolved (clean)", str(len(resolved_edges)))
         if incremental:
-            table.add_row("Mode", "incremental")
+            # A forced rebuild (changed symbols, switched data keys) is no incremental run.
+            table.add_row("Mode", "full rebuild" if pipeline.rebuilt else "incremental")
 
         console.print(table)
+        console.print(data_keys_summary(keys, switched))
         console.print("[bold green]✅ Success![/bold green] Graph data ready.")
 
     except Exception as e:

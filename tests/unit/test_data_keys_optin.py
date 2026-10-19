@@ -56,9 +56,10 @@ def _keys(db: Path) -> tuple[set[str], set[str]]:
     return {n.id for n in nodes if n.type is NodeType.DATA_KEY}, {n.file_path for n in nodes}
 
 
-def _ingest(repo: Path, db: Path, *flags: str) -> None:
+def _ingest(repo: Path, db: Path, *flags: str) -> str:
     result = CliRunner().invoke(app, ["ingest", str(repo), "-o", str(db), *flags])
     assert result.exit_code == 0, result.output
+    return " ".join(result.output.split()).lower()
 
 
 def _edit_py(repo: Path) -> None:
@@ -75,13 +76,14 @@ def _edit_py(repo: Path) -> None:
     [
         (None, None, None, False),
         (None, "1", None, True),
-        (None, "0", True, False),
+        (None, "0", True, True),
+        (None, "1", False, False),
         (None, None, True, True),
         (False, "1", True, False),
         (True, None, False, True),
     ],
 )
-def test_the_mode_is_explicit_then_env_then_recorded_then_off(
+def test_the_mode_is_explicit_then_recorded_then_env_then_off(
     monkeypatch: pytest.MonkeyPatch,
     explicit: bool | None,
     env: str | None,
@@ -208,3 +210,71 @@ def test_the_mcp_ingest_is_off_by_default_and_takes_the_option(tmp_path: Path) -
     assert "key:|cover" in _keys(on)[0]
     with SQLiteStore(str(on)) as store:
         assert store.get_ingest_data_keys() is True
+
+
+# --- an existing graph keeps its mode; the output says which -------------------------
+
+_SWITCHED_ON = "rebuilt in full: data keys switched on"
+
+
+@pytest.mark.parametrize(("built", "env"), [("--no-data-keys", "1"), ("--data-keys", "0")])
+def test_the_env_var_does_not_change_an_existing_graph_from_the_cli(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, built: str, env: str
+) -> None:
+    repo = _repo(tmp_path)
+    db = tmp_path / "g.db"
+    _ingest(repo, db, built)
+    before = _keys(db)
+    monkeypatch.setenv(DATA_KEYS_ENV, env)
+    _edit_py(repo)
+    output = _ingest(repo, db, "-i")
+    assert bool(_keys(db)[0]) is bool(before[0])
+    assert "data keys" in output
+    assert "switched" not in output
+
+
+@pytest.mark.parametrize(("on", "env"), [(False, "1"), (True, "0")])
+def test_the_env_var_does_not_change_an_existing_graph_from_mcp(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, on: bool, env: str
+) -> None:
+    repo = _repo(tmp_path)
+    db = tmp_path / "g.db"
+    cgis_ingest(str(repo), str(db), data_keys=on)
+    monkeypatch.setenv(DATA_KEYS_ENV, env)
+    _edit_py(repo)
+    reply = cgis_ingest(str(repo), str(db)).lower()
+    assert bool(_keys(db)[0]) is on
+    assert f"data keys: {'on' if on else 'off'}" in reply
+    assert "switched" not in reply
+
+
+def test_the_env_var_applies_to_a_new_store_from_mcp(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(DATA_KEYS_ENV, "1")
+    db = tmp_path / "g.db"
+    reply = cgis_ingest(str(_repo(tmp_path)), str(db)).lower()
+    assert "key:|cover" in _keys(db)[0]
+    assert "data keys: on" in reply
+
+
+def test_an_explicit_flag_switches_and_the_cli_says_so(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    db = tmp_path / "g.db"
+    first = _ingest(repo, db, "-i")
+    assert "data keys: off" in first
+    output = _ingest(repo, db, "-i", "--data-keys")
+    assert _SWITCHED_ON in output
+    assert "data keys: on" in output
+    assert "full rebuild" in output
+
+
+def test_an_explicit_param_switches_and_mcp_says_so(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    db = tmp_path / "g.db"
+    assert "data keys: off" in cgis_ingest(str(repo), str(db)).lower()
+    reply = cgis_ingest(str(repo), str(db), data_keys=True).lower()
+    assert _SWITCHED_ON in reply
+    assert "(mode: full rebuild)" in reply
+    assert "data keys: on" in reply
+    assert "no files changed" not in reply

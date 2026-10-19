@@ -158,13 +158,25 @@ def _needs_rebuild(store: "SQLiteStore | None", rebuild: bool) -> bool:
     return True
 
 
-def ingest_data_keys(store: "SQLiteStore | None", explicit: bool | None) -> bool:
-    """The data-key mode an ingest into `store` runs in (`cgis.core.keys.data_keys_enabled`).
+def _replaces_a_graph(store: "SQLiteStore | None", rebuild: bool) -> bool:
+    """Whether a run rebuilds a graph the store already holds: what surfaces call a full rebuild.
 
-    An explicit flag, then `CGIS_DATA_KEYS`, then the mode `store` was last
-    ingested in, then off.
+    A fresh store's first run is a rebuild internally (`_needs_rebuild`), yet no
+    graph was replaced, so it is not reported as one.
     """
-    return data_keys_enabled(explicit, recorded_data_keys(store))
+    return rebuild and store is not None and store.get_node_count() > 0
+
+
+def ingest_data_keys(store: "SQLiteStore | None", explicit: bool | None) -> tuple[bool, bool]:
+    """The data-key mode an ingest into `store` runs in, and whether that switches it.
+
+    An explicit flag, then the mode `store` was last ingested in, then
+    `CGIS_DATA_KEYS` (a new store only), then off (`cgis.core.keys.data_keys_enabled`).
+    A switch rebuilds the graph in full.
+    """
+    recorded = recorded_data_keys(store)
+    on = data_keys_enabled(explicit, recorded)
+    return on, recorded is not None and recorded != on
 
 
 def recorded_data_keys(store: "SQLiteStore | None") -> bool | None:
@@ -195,6 +207,8 @@ class IngestionPipeline:
     #: run read it, keyed relative to the workspace root ("" for the root). Hand
     #: it to `SQLiteStore.record_ingest` so a write landing mid-run reads STALE.
     observed_mtimes: dict[str, float]
+    #: Whether the last `run` rebuilt a stored graph in full, asked or forced.
+    rebuilt: bool
 
     def __init__(
         self,
@@ -218,6 +232,7 @@ class IngestionPipeline:
         self._data_keys = data_keys
         self._excluded = EXCLUDED_DIRS
         self.observed_mtimes = {}
+        self.rebuilt = False
 
     @staticmethod
     def _compute_hash(content: str) -> str:
@@ -264,6 +279,7 @@ class IngestionPipeline:
         intact.
         """
         rebuild = _needs_rebuild(store, rebuild) or _data_keys_switched(store, self._data_keys)
+        self.rebuilt = _replaces_a_graph(store, rebuild)
         all_nodes: list[Node] = []
         all_edges: list[Edge] = []
         # file_path -> new hash, only for files that were re-extracted
