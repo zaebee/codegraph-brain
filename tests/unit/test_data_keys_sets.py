@@ -4,6 +4,7 @@ The rules are pure, so the tests feed them made-up PRs; one test reads the commi
 outputs to check that no development case leaked into the held-out set.
 """
 
+import importlib
 import json
 import sys
 from datetime import UTC, datetime, timedelta
@@ -248,3 +249,21 @@ def test_a_relative_gitdir_resolves_against_the_worktree(tmp_path: Path) -> None
     worktree.mkdir(parents=True)
     (worktree / ".git").write_text("gitdir: ../../../.git/worktrees/x\n")
     assert locations.checkout_root(worktree).resolve() == main.resolve()
+
+
+def test_owner_api_defaults_beside_the_main_checkout(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CGIS_OWNER_API", raising=False)
+    reloaded = importlib.reload(locations)
+    expected = reloaded.checkout_root(reloaded.REPO_ROOT).parent / "owner-api"
+    assert expected == reloaded.OWNER_API
+
+
+def test_a_set_owner_api_reads_no_git_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The environment wins without touching `.git` (an unreadable one must not fail import)."""
+    monkeypatch.setenv("CGIS_OWNER_API", "/elsewhere/owner-api")
+
+    def refuse(root: Path) -> Path:
+        raise AssertionError(root)
+
+    monkeypatch.setattr(locations, "checkout_root", refuse)
+    assert locations.owner_api() == Path("/elsewhere/owner-api")

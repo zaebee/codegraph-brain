@@ -35,7 +35,15 @@ def checkout_root(root: Path) -> Path:
 
 
 CORPUS = _from_env("CGIS_DATA_KEYS_CORPUS", Path.home() / "bench-corpora" / "data-keys")
-OWNER_API = _from_env("CGIS_OWNER_API", checkout_root(REPO_ROOT).parent / "owner-api")
+
+
+def owner_api() -> Path:
+    """`CGIS_OWNER_API`, else owner-api beside the main checkout; `.git` is read only then."""
+    value = os.environ.get("CGIS_OWNER_API")
+    return Path(value).expanduser() if value else checkout_root(REPO_ROOT).parent / "owner-api"
+
+
+OWNER_API = owner_api()
 
 
 #: A GitHub repository as ``owner/name``: what ``gh --repo`` and ``repos/<repo>/…`` take.
