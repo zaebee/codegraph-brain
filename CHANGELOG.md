@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.34.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.33.0...codegraph-brain-v0.34.0) (2026-10-18)
+
+
+### Features
+
+* **python:** function values are calls — CV-1 keywords, CV-2, own invokers ([#632](https://github.com/zaebee/codegraph-brain/issues/632)) ([#701](https://github.com/zaebee/codegraph-brain/issues/701)) ([2ed2598](https://github.com/zaebee/codegraph-brain/commit/2ed259834566bc1e106e5557c26b5f39b4c85171))
+
+
+### Bug Fixes
+
+* **freshness:** a graph built by other cgis extraction code reads STALE ([#618](https://github.com/zaebee/codegraph-brain/issues/618)) ([#700](https://github.com/zaebee/codegraph-brain/issues/700)) ([0ac6946](https://github.com/zaebee/codegraph-brain/commit/0ac69465603eec9ddaf05110ee567630642f9721))
+
+
+### Documentation
+
+* auto-sync architecture graph and MCP reference ([#704](https://github.com/zaebee/codegraph-brain/issues/704)) ([8b030a0](https://github.com/zaebee/codegraph-brain/commit/8b030a020338a32a6bf23f93e44cae95aa2df061))
+* **go:** the caveat says which function values have edges ([#695](https://github.com/zaebee/codegraph-brain/issues/695)) ([#697](https://github.com/zaebee/codegraph-brain/issues/697)) ([878cad8](https://github.com/zaebee/codegraph-brain/commit/878cad801d256d27271bff73de0900daec325f2b))
+
 ## [0.33.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.32.0...codegraph-brain-v0.33.0) (2026-10-18)
 
 
