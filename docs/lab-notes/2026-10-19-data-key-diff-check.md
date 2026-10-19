@@ -175,6 +175,18 @@ I4 and I5 target noise causes the judge found (common-word keys, dotted paths es
 drop rule). How much noise they remove is not known. The noise set was not re-measured: it has been seen, and a re-run on it would measure fixes
 made with its failures in view. A fresh noise draw is the follow-up.
 
+## Shipped off by default
+
+The data-key layer ships opt-in (`cgis ingest --data-keys`, `cgis_ingest(data_keys=True)`
+or `CGIS_DATA_KEYS=1`); the diff check's subclass and caller items stay on for everyone.
+The reason is the per-kind worth shares above against what the layer costs everyone:
+on owner-api callers were worth a look 44 of 57 times and key items 9 of 28, while the
+layer made every ingest 1.076x slower, grew the graph 11.2%, and made every JSON or YAML
+edit mark the graph stale. With it off, the branch's default ingest of the same owner-api
+export matched main: median of 3 clean interleaved pairs 30.6 s against main's 32.0 s
+(0.958x; main ran first in each pair), with byte-identical database size and identical
+node ids and edges (22,557 nodes, 114,014 edges). Whether it stays off is #706's call.
+
 ## Reproduction
 
 - Branch `docs/data-key-layer` at 44c21ea (code at 632d4d1; measurements e53eecb, 44c21ea).
