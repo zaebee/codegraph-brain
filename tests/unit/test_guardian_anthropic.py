@@ -262,3 +262,24 @@ async def test_a_stream_cut_before_it_started_charges_nothing() -> None:
     with pytest.raises(ConnectionError):
         await provider.generate_content("sys", "user")
     assert provider.call_usages == []
+
+
+async def test_a_snapshot_without_usage_never_masks_the_original_error() -> None:
+    """Recording is best effort: the error the caller sees is the dropped stream (#716 review)."""
+    provider, _built, _sent = _provider()
+
+    def factory(**_client_kwargs: object) -> _Client:
+        client = _Client(_message(), {}, [])
+
+        def _stream(**_kw: object) -> _Stream:
+            stream = _Stream(_message(), drop_after_start=True)
+            stream.current_message_snapshot = SimpleNamespace(usage=None)
+            return stream
+
+        client.stream = _stream  # type: ignore[method-assign]
+        return client
+
+    provider._client_factory = factory  # noqa: SLF001
+    with pytest.raises(ConnectionError, match="dropped"):
+        await provider.generate_content("sys", "user")
+    assert provider.call_usages == []

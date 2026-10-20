@@ -147,14 +147,17 @@ class AnthropicProvider(BaseProvider):
         """Charge a stream cut after it started: its input was billed at message_start.
 
         The SDK does not retry mid-stream, so without this a dropped connection
-        would be spend the budget never saw. Nothing to record if the cut came
-        before message_start.
+        would be spending the budget never saw. Nothing to record if the cut came
+        before message_start. Best effort: it runs inside the handler of the
+        error the caller must see, so it never raises over that error.
         """
         try:
             snapshot = stream.current_message_snapshot
         except AssertionError:  # the SDK's guard: no message_start yet, nothing billed
             return
-        self._record(snapshot.usage)
+        usage = getattr(snapshot, "usage", None)
+        if usage is not None:
+            self._record(usage)
 
     def _record(self, usage: "Usage") -> None:
         """Record input (cached parts included) and output (thinking included)."""
