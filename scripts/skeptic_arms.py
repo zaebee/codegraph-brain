@@ -41,6 +41,7 @@ import sys
 import tempfile
 from collections import defaultdict
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -189,8 +190,37 @@ async def judge_one(
     }
 
 
+@dataclass
+class Budget:
+    """A hard spending cap, priced from the tokens each judgement reports (#246).
+
+    Checked after every row, so a run can overshoot by at most one judgement —
+    cents on a small model, and the only honest bound when the next call's cost
+    is not known until it returns. A stop is reported as a stop, never scored:
+    the rows before it cover some passes for some arms, which is half a
+    comparison read as a whole one.
+    """
+
+    cap_usd: float
+    usd_per_mtok_in: float
+    usd_per_mtok_out: float
+    spent_usd: float = 0.0
+    stopped: bool = False
+
+    def charge(self, prompt_tokens: int, completion_tokens: int) -> None:
+        """Add one judgement's cost; mark the run stopped once the cap is reached."""
+        self.spent_usd += (
+            prompt_tokens * self.usd_per_mtok_in + completion_tokens * self.usd_per_mtok_out
+        ) / 1_000_000
+        if self.spent_usd >= self.cap_usd:
+            self.stopped = True
+
+
 async def collect_rows(
-    repo_root: Path, limit: int | None, arm_spec: dict[str, str | None]
+    repo_root: Path,
+    limit: int | None,
+    arm_spec: dict[str, str | None],
+    budget: Budget | None = None,
 ) -> list[dict[str, Any]]:
     """Both arms over every frozen pass; one row per (pass, arm).
 
@@ -228,7 +258,12 @@ async def collect_rows(
             )
             for path in by_pr[pr]:
                 for name, (provider, model) in arms.items():
+                    before = provider.cumulative_usage
                     scored = await judge_one(provider, path, truth, evidence)
+                    after = provider.cumulative_usage
+                    # This row's own spend: the provider's counters are cumulative.
+                    spent_in = after.prompt_tokens - before.prompt_tokens
+                    spent_out = after.completion_tokens - before.completion_tokens
                     rows.append(
                         {
                             "timestamp": datetime.now(UTC).isoformat(),
@@ -237,6 +272,8 @@ async def collect_rows(
                             "arm": name,
                             "skeptic_model": model,
                             "skeptic_effort": provider.effort,
+                            "skeptic_prompt_tokens": spent_in,
+                            "skeptic_completion_tokens": spent_out,
                             "finder_model": models.get(path.stem, "unknown"),
                             "evidence": evidence is not None,
                             **scored,
@@ -246,6 +283,10 @@ async def collect_rows(
                         f"  {path.stem} [{name}] {scored['refuted']}/{scored['findings']} refuted",
                         file=sys.stderr,
                     )
+                    if budget is not None:
+                        budget.charge(spent_in, spent_out)
+                        if budget.stopped:
+                            return rows
 
     return rows
 
@@ -383,12 +424,34 @@ def main() -> int:
     parser.add_argument(
         "--limit", type=int, default=None, help="judge only the first N passes (a smoke run)"
     )
+    parser.add_argument(
+        "--budget-usd", type=float, default=None, help="stop once this much is spent"
+    )
+    parser.add_argument("--usd-per-mtok-in", type=float, default=None)
+    parser.add_argument("--usd-per-mtok-out", type=float, default=None)
     args = parser.parse_args()
-    rows = asyncio.run(collect_rows(args.repo_root, args.limit, parse_arms(args.arms)))
+    prices = (args.budget_usd, args.usd_per_mtok_in, args.usd_per_mtok_out)
+    if any(p is not None for p in prices) and None in prices:
+        parser.error("--budget-usd, --usd-per-mtok-in and --usd-per-mtok-out go together")
+    budget = (
+        Budget(args.budget_usd, args.usd_per_mtok_in, args.usd_per_mtok_out)
+        if args.budget_usd is not None
+        else None
+    )
+    rows = asyncio.run(collect_rows(args.repo_root, args.limit, parse_arms(args.arms), budget))
     args.out.parent.mkdir(parents=True, exist_ok=True)
     # Written before the gate: the rows are evidence either way, and a refused
     # run whose data was discarded cannot be diagnosed.
     args.out.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    if budget is not None:
+        print(f"Spent ${budget.spent_usd:.4f} of ${budget.cap_usd:.2f}.", file=sys.stderr)
+        if budget.stopped:
+            print(
+                f"Stopped at the budget after {len(rows)} rows; rows kept at {args.out}, "
+                f"no comparison printed.",
+                file=sys.stderr,
+            )
+            return 3
     problems = validity_problems(rows)
     if problems:
         for problem in problems:

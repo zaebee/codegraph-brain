@@ -15,6 +15,7 @@ import pytest
 from guardian_stubs import StubProvider
 
 from cgis.guardian.bench import load_ground_truth
+from cgis.guardian.providers.base import ProviderUsage
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"))
 
@@ -242,7 +243,9 @@ class TestTheRunItself:
 
         monkeypatch.setattr(skeptic_arms, "evidence_for_pr", _evidence)
 
-        async def _judge(*_a: object, **_k: object) -> dict[str, Any]:
+        async def _judge(provider: StubProvider, *_a: object, **_k: object) -> dict[str, Any]:
+            # What a real judgement does to the provider's counters.
+            provider._record_usage(ProviderUsage(prompt_tokens=1000, completion_tokens=100))  # noqa: SLF001
             return {"findings": 1, "refuted": 0, "killed_gt": []}
 
         monkeypatch.setattr(skeptic_arms, "judge_one", _judge)
@@ -307,6 +310,72 @@ class TestTheRunItself:
         assert collected == []
 
 
+class TestTheBudget:
+    """Tokens per row, and a hard stop at the cap (#246 pre-registration)."""
+
+    @pytest.mark.asyncio
+    async def test_each_row_carries_the_tokens_its_own_judging_spent(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """A delta, not the provider's running total: the second row must not repeat the first."""
+        TestTheRunItself()._wire(monkeypatch, tmp_path, ["143@a", "143@b"])  # noqa: SLF001
+        rows = await skeptic_arms.collect_rows(
+            REPO_ROOT, None, skeptic_arms.parse_arms(DEFAULT_ARMS)
+        )
+        assert [r["skeptic_prompt_tokens"] for r in rows] == [1000] * 4
+        assert [r["skeptic_completion_tokens"] for r in rows] == [100] * 4
+
+    @pytest.mark.asyncio
+    async def test_the_run_stops_at_the_budget_and_says_so(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Each stubbed row costs 1000 x $1 + 100 x $10 per MTok = $0.002."""
+        TestTheRunItself()._wire(monkeypatch, tmp_path, ["143@a", "143@b", "143@c"])  # noqa: SLF001
+        budget = skeptic_arms.Budget(cap_usd=0.003, usd_per_mtok_in=1.0, usd_per_mtok_out=10.0)
+        rows = await skeptic_arms.collect_rows(
+            REPO_ROOT, None, skeptic_arms.parse_arms(DEFAULT_ARMS), budget
+        )
+        assert len(rows) == 2
+        assert budget.stopped
+        assert budget.spent_usd == pytest.approx(0.004)
+
+    def test_main_exits_3_and_prints_no_comparison_when_the_budget_stopped_it(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A stopped run is a result about the budget, never a partial comparison."""
+
+        async def _rows(
+            _root: Path,
+            _limit: int | None,
+            _arms: dict[str, str | None],
+            budget: skeptic_arms.Budget | None = None,
+        ) -> list[dict[str, Any]]:
+            assert budget is not None
+            budget.stopped = True
+            return [{"arm": "anthropic", "findings": 1, "unruled": 0, "finder_model": "x"}]
+
+        out = tmp_path / "arms.jsonl"
+        monkeypatch.setattr(skeptic_arms, "collect_rows", _rows)
+        argv = ["skeptic_arms.py", "--out", str(out), "--budget-usd", "1"]
+        argv += ["--usd-per-mtok-in", "0.1", "--usd-per-mtok-out", "0.5"]
+        monkeypatch.setattr(sys, "argv", argv)
+        assert skeptic_arms.main() == 3
+        captured = capsys.readouterr()
+        assert "budget" in captured.err
+        assert "(pass, arm) results" not in captured.out
+        assert out.read_text(encoding="utf-8").strip()
+
+    def test_a_cap_without_its_prices_is_refused(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A cap that cannot price a token would never trip."""
+        monkeypatch.setattr(sys, "argv", ["skeptic_arms.py", "--budget-usd", "1"])
+        with pytest.raises(SystemExit) as raised:
+            skeptic_arms.main()
+        assert raised.value.code == 2
+        assert "--usd-per-mtok-in" in capsys.readouterr().err
+
+
 class TestTheValidityGate:
     """The only thing between a broken arm and a confirmed hypothesis."""
 
@@ -346,7 +415,7 @@ class TestTheValidityGate:
         """
 
         async def _rows(
-            _root: Path, _limit: int | None, _arms: dict[str, str | None]
+            _root: Path, _limit: int | None, _arms: dict[str, str | None], _budget: object = None
         ) -> list[dict[str, Any]]:
             return [{"arm": "openrouter", "findings": 10, "unruled": 9, "finder_model": "x"}]
 
@@ -378,7 +447,7 @@ def test_main_writes_the_rows_it_collected(
     }
 
     async def _rows(
-        _root: Path, _limit: int | None, _arms: dict[str, str | None]
+        _root: Path, _limit: int | None, _arms: dict[str, str | None], _budget: object = None
     ) -> list[dict[str, Any]]:
         return [row]
 
