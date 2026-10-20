@@ -310,6 +310,9 @@ class TestTheRunItself:
         assert collected == []
 
 
+_ARMS = skeptic_arms.parse_arms(DEFAULT_ARMS)
+
+
 class TestTheBudget:
     """Tokens per row, and a hard stop at the cap (#246 pre-registration)."""
 
@@ -331,13 +334,35 @@ class TestTheBudget:
     ) -> None:
         """Each stubbed row costs 1000 x $1 + 100 x $10 per MTok = $0.002."""
         TestTheRunItself()._wire(monkeypatch, tmp_path, ["143@a", "143@b", "143@c"])  # noqa: SLF001
-        budget = skeptic_arms.Budget(cap_usd=0.003, usd_per_mtok_in=1.0, usd_per_mtok_out=10.0)
-        rows = await skeptic_arms.collect_rows(
-            REPO_ROOT, None, skeptic_arms.parse_arms(DEFAULT_ARMS), budget
-        )
+        budget = skeptic_arms.Budget(cap_usd=0.003, prices=dict.fromkeys(_ARMS, (1.0, 10.0)))
+        rows = await skeptic_arms.collect_rows(REPO_ROOT, None, _ARMS, budget)
         assert len(rows) == 2
         assert budget.stopped
         assert budget.spent_usd == pytest.approx(0.004)
+
+    @pytest.mark.asyncio
+    async def test_each_arm_is_charged_at_its_own_price(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """One shared price would under-count the dearer arm and let the cap pass."""
+        TestTheRunItself()._wire(monkeypatch, tmp_path, ["143@a"])  # noqa: SLF001
+        budget = skeptic_arms.Budget(
+            cap_usd=1.0, prices={"gemini": (1.0, 10.0), "mistral": (2.0, 20.0)}
+        )
+        await skeptic_arms.collect_rows(REPO_ROOT, None, _ARMS, budget)
+        assert budget.spent_usd == pytest.approx(0.002 + 0.004)
+
+    @pytest.mark.asyncio
+    async def test_reaching_the_cap_on_the_last_row_is_a_complete_run(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Nothing was skipped, so nothing may be reported as stopped."""
+        TestTheRunItself()._wire(monkeypatch, tmp_path, ["143@a"])  # noqa: SLF001
+        budget = skeptic_arms.Budget(cap_usd=0.004, prices=dict.fromkeys(_ARMS, (1.0, 10.0)))
+        rows = await skeptic_arms.collect_rows(REPO_ROOT, None, _ARMS, budget)
+        assert len(rows) == 2
+        assert budget.exhausted
+        assert not budget.stopped
 
     def test_main_exits_3_and_prints_no_comparison_when_the_budget_stopped_it(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -356,24 +381,73 @@ class TestTheBudget:
 
         out = tmp_path / "arms.jsonl"
         monkeypatch.setattr(skeptic_arms, "collect_rows", _rows)
-        argv = ["skeptic_arms.py", "--out", str(out), "--budget-usd", "1"]
-        argv += ["--usd-per-mtok-in", "0.1", "--usd-per-mtok-out", "0.5"]
+        argv = ["skeptic_arms.py", "--out", str(out), "--arms", "anthropic"]
+        argv += ["--budget-usd", "1", "--price", "anthropic=0.1:0.5"]
         monkeypatch.setattr(sys, "argv", argv)
         assert skeptic_arms.main() == 3
         captured = capsys.readouterr()
-        assert "budget" in captured.err
+        assert "Stopped at the budget" in captured.err
         assert "(pass, arm) results" not in captured.out
         assert out.read_text(encoding="utf-8").strip()
 
-    def test_a_cap_without_its_prices_is_refused(
+    def test_a_budget_that_never_trips_still_reaches_the_comparison(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        async def _rows(
+            _root: Path,
+            _limit: int | None,
+            _arms: dict[str, str | None],
+            _budget: object = None,
+        ) -> list[dict[str, Any]]:
+            row = {"finder_model": "mistral-medium-latest", "arm": "anthropic"}
+            return [{**row, "refuted": 1, "findings": 2, "unruled": 0, "killed_gt": []}]
+
+        monkeypatch.setattr(skeptic_arms, "collect_rows", _rows)
+        argv = ["skeptic_arms.py", "--out", str(tmp_path / "a.jsonl"), "--arms", "anthropic"]
+        argv += ["--budget-usd", "1", "--price", "anthropic=0.1:0.5"]
+        monkeypatch.setattr(sys, "argv", argv)
+        assert skeptic_arms.main() == 0
+        captured = capsys.readouterr()
+        assert "(pass, arm) results" in captured.out
+        assert "Spent $0.0000 of $1.00" in captured.err
+
+    def test_the_spend_is_printed_even_when_the_run_crashes(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """A cap that cannot price a token would never trip."""
-        monkeypatch.setattr(sys, "argv", ["skeptic_arms.py", "--budget-usd", "1"])
+        async def _rows(*_a: object) -> list[dict[str, Any]]:
+            _msg = "worktree failed"
+            raise RuntimeError(_msg)
+
+        monkeypatch.setattr(skeptic_arms, "collect_rows", _rows)
+        argv = ["skeptic_arms.py", "--arms", "anthropic"]
+        argv += ["--budget-usd", "1", "--price", "anthropic=0.1:0.5"]
+        monkeypatch.setattr(sys, "argv", argv)
+        with pytest.raises(RuntimeError, match="worktree failed"):
+            skeptic_arms.main()
+        assert "Spent $" in capsys.readouterr().err
+
+    @pytest.mark.parametrize(
+        ("argv", "message"),
+        [
+            (["--budget-usd", "1"], "missing: ['gemini', 'mistral']"),
+            (["--budget-usd", "1", "--price", "gemini=0.1:0.5"], "missing: ['mistral']"),
+            (["--price", "gemini=0.1:0.5"], "only means something with --budget-usd"),
+            (["--budget-usd", "1", "--price", "gemini=0.1"], "expected ARM=IN:OUT"),
+        ],
+    )
+    def test_an_unpriceable_cap_is_refused(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        argv: list[str],
+        message: str,
+    ) -> None:
+        """A cap that cannot price every arm's tokens would not trip on that arm."""
+        monkeypatch.setattr(sys, "argv", ["skeptic_arms.py", *argv])
         with pytest.raises(SystemExit) as raised:
             skeptic_arms.main()
         assert raised.value.code == 2
-        assert "--usd-per-mtok-in" in capsys.readouterr().err
+        assert message in capsys.readouterr().err
 
 
 class TestTheValidityGate:

@@ -192,28 +192,48 @@ async def judge_one(
 
 @dataclass
 class Budget:
-    """A hard spending cap, priced from the tokens each judgement reports (#246).
+    """A hard spending cap, priced per arm from the tokens each row reports (#246).
 
-    Checked after every row, so a run can overshoot by at most one judgement —
-    cents on a small model, and the only honest bound when the next call's cost
-    is not known until it returns. A stop is reported as a stop, never scored:
-    the rows before it cover some passes for some arms, which is half a
-    comparison read as a whole one.
+    Priced per arm because arms are different vendors at different prices: one
+    pair applied to both would under-count the dearer arm and let the cap pass
+    untripped. The cap is only as good as the provider's own usage counts.
+
+    Checked before every row, so a run overshoots by at most one row: every
+    finding of one pass, judged by one arm — up to 28 judgements in the corpus
+    as written. That is the honest bound, since a row's cost is not known until
+    it returns. A run that reaches the cap on its last row has nothing left to
+    skip and is complete. A stop is reported as a stop, never scored: the rows
+    before it cover some passes for some arms, half a comparison read as a whole.
     """
 
     cap_usd: float
-    usd_per_mtok_in: float
-    usd_per_mtok_out: float
+    #: arm -> (USD per million input tokens, USD per million output tokens)
+    prices: dict[str, tuple[float, float]]
     spent_usd: float = 0.0
     stopped: bool = False
 
-    def charge(self, prompt_tokens: int, completion_tokens: int) -> None:
-        """Add one judgement's cost; mark the run stopped once the cap is reached."""
-        self.spent_usd += (
-            prompt_tokens * self.usd_per_mtok_in + completion_tokens * self.usd_per_mtok_out
-        ) / 1_000_000
-        if self.spent_usd >= self.cap_usd:
-            self.stopped = True
+    @property
+    def exhausted(self) -> bool:
+        """Whether the cap has been reached."""
+        return self.spent_usd >= self.cap_usd
+
+    def charge(self, arm: str, prompt_tokens: int, completion_tokens: int) -> None:
+        """Add one row's cost at its own arm's prices."""
+        per_in, per_out = self.prices[arm]
+        self.spent_usd += (prompt_tokens * per_in + completion_tokens * per_out) / 1_000_000
+
+
+def parse_prices(items: list[str]) -> dict[str, tuple[float, float]]:
+    """`["anthropic=0.10:0.50"]` -> {"anthropic": (0.10, 0.50)}; ValueError on a bad item."""
+    prices: dict[str, tuple[float, float]] = {}
+    for item in items:
+        arm, _, pair = item.partition("=")
+        per_in, _, per_out = pair.partition(":")
+        if not arm or not per_in or not per_out:
+            _msg = f"--price {item!r}: expected ARM=IN:OUT, USD per million tokens"
+            raise ValueError(_msg)
+        prices[arm] = (float(per_in), float(per_out))
+    return prices
 
 
 async def collect_rows(
@@ -258,6 +278,9 @@ async def collect_rows(
             )
             for path in by_pr[pr]:
                 for name, (provider, model) in arms.items():
+                    if budget is not None and budget.exhausted:
+                        budget.stopped = True
+                        return rows
                     before = provider.cumulative_usage
                     scored = await judge_one(provider, path, truth, evidence)
                     after = provider.cumulative_usage
@@ -284,9 +307,7 @@ async def collect_rows(
                         file=sys.stderr,
                     )
                     if budget is not None:
-                        budget.charge(spent_in, spent_out)
-                        if budget.stopped:
-                            return rows
+                        budget.charge(name, spent_in, spent_out)
 
     return rows
 
@@ -411,6 +432,27 @@ def report(rows: list[dict[str, Any]]) -> None:
     )
 
 
+def _budget_from_args(
+    parser: argparse.ArgumentParser,
+    cap: float | None,
+    price_items: list[str],
+    arm_spec: dict[str, str | None],
+) -> Budget | None:
+    """The run's Budget, or None; exits via `parser.error` on an unpriceable cap."""
+    try:
+        prices = parse_prices(price_items)
+    except ValueError as exc:
+        parser.error(str(exc))
+    if cap is None:
+        if prices:
+            parser.error("--price only means something with --budget-usd")
+        return None
+    unpriced = sorted(set(arm_spec) - set(prices))
+    if unpriced:
+        parser.error(f"--budget-usd needs a --price for every arm; missing: {unpriced}")
+    return Budget(cap, prices)
+
+
 def main() -> int:
     """Run both arms and write the rows."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -427,31 +469,33 @@ def main() -> int:
     parser.add_argument(
         "--budget-usd", type=float, default=None, help="stop once this much is spent"
     )
-    parser.add_argument("--usd-per-mtok-in", type=float, default=None)
-    parser.add_argument("--usd-per-mtok-out", type=float, default=None)
-    args = parser.parse_args()
-    prices = (args.budget_usd, args.usd_per_mtok_in, args.usd_per_mtok_out)
-    if any(p is not None for p in prices) and None in prices:
-        parser.error("--budget-usd, --usd-per-mtok-in and --usd-per-mtok-out go together")
-    budget = (
-        Budget(args.budget_usd, args.usd_per_mtok_in, args.usd_per_mtok_out)
-        if args.budget_usd is not None
-        else None
+    parser.add_argument(
+        "--price",
+        action="append",
+        default=[],
+        metavar="ARM=IN:OUT",
+        help="an arm's USD per million input:output tokens; one per arm with --budget-usd",
     )
-    rows = asyncio.run(collect_rows(args.repo_root, args.limit, parse_arms(args.arms), budget))
+    args = parser.parse_args()
+    arm_spec = parse_arms(args.arms)
+    budget = _budget_from_args(parser, args.budget_usd, args.price, arm_spec)
+    try:
+        rows = asyncio.run(collect_rows(args.repo_root, args.limit, arm_spec, budget))
+    finally:
+        # Also on a crash: the money was spent either way and must be reconcilable.
+        if budget is not None:
+            print(f"Spent ${budget.spent_usd:.4f} of ${budget.cap_usd:.2f}.", file=sys.stderr)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     # Written before the gate: the rows are evidence either way, and a refused
     # run whose data was discarded cannot be diagnosed.
     args.out.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
-    if budget is not None:
-        print(f"Spent ${budget.spent_usd:.4f} of ${budget.cap_usd:.2f}.", file=sys.stderr)
-        if budget.stopped:
-            print(
-                f"Stopped at the budget after {len(rows)} rows; rows kept at {args.out}, "
-                f"no comparison printed.",
-                file=sys.stderr,
-            )
-            return 3
+    if budget is not None and budget.stopped:
+        print(
+            f"Stopped at the budget after {len(rows)} rows; rows kept at {args.out}, "
+            f"no comparison printed.",
+            file=sys.stderr,
+        )
+        return 3
     problems = validity_problems(rows)
     if problems:
         for problem in problems:
