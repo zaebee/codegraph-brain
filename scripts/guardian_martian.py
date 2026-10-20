@@ -374,12 +374,7 @@ async def review_one(
     # name (#375 Task 1).
     primary = provider.name
     skeptic = build_skeptic_provider(os.environ, primary=primary)
-    if spent is not None:
-        # Live lists, registered before any call, so a review that raises
-        # halfway is still charged for what it made (#716).
-        spent.append((provider.name, provider.call_usages))
-        if skeptic is not None:
-            spent.append((skeptic[0].name, skeptic[0].call_usages))
+    _register_spend(spent, provider, skeptic[0] if skeptic else None)
     active = resolve_active_providers(primary, skeptic[0].name if skeptic else None)
     fingerprint = compute_fingerprint(disk_reader(REPO_ROOT), active)
     # One read for the prompt and the record: the row must describe the sections
@@ -429,6 +424,22 @@ async def review_one(
         skeptic_provider=skeptic[0].name if skeptic else None,
         reviewed_at=datetime.now(UTC).isoformat(),
     )
+
+
+def _register_spend(
+    spent: list[tuple[str, list[ProviderUsage]]] | None,
+    provider: BaseProvider,
+    skeptic: BaseProvider | None,
+) -> None:
+    """Register the providers' live call lists before any call (#716).
+
+    A review that raises halfway is then still charged for what it made.
+    """
+    if spent is None:
+        return
+    spent.append((provider.name, provider.call_usages))
+    if skeptic is not None:
+        spent.append((skeptic.name, skeptic.call_usages))
 
 
 def guardian_version() -> str:
@@ -500,21 +511,10 @@ async def review(args: argparse.Namespace) -> int:
             if _budget_stops(budget):
                 return 3
             label = f"[{index}/{len(pending)}] {row.project} #{row.number}"
-            spent: list[tuple[str, list[ProviderUsage]]] = []
-            try:
-                record = await review_one(row, args, spent=spent)
-            except Exception as exc:
+            record = await _review_charged(row, args, budget, label)
+            if record is None:
                 failures += 1
-                print(
-                    f"{label}: FAILED - {type(exc).__name__}: {exc}"[:300],
-                    file=sys.stderr,
-                    flush=True,
-                )
                 continue
-            finally:
-                if budget is not None:
-                    for name, calls in spent:
-                        budget.charge(name, calls)
             fh.write(record.model_dump_json() + "\n")
             fh.flush()
             visible = len(candidate_findings(record))
@@ -524,6 +524,30 @@ async def review(args: argparse.Namespace) -> int:
                 flush=True,
             )
     return 1 if failures else 0
+
+
+def _print_judge_plan(reviews: Sequence[ReviewRecord], profile: Profile) -> None:
+    """What a judge run would score, for --dry-run."""
+    print(f"{len(reviews)} reviews would be judged under profile {profile}:")
+    for record in reviews:
+        candidates = len(candidate_findings(record))
+        print(f"  {record.project:10} {record.url}  ({candidates} candidates)")
+
+
+async def _review_charged(
+    row: PrPlan, args: argparse.Namespace, budget: Budget | None, label: str
+) -> ReviewRecord | None:
+    """Review one PR, charged whether or not it raises; None (reported) on failure."""
+    spent: list[tuple[str, list[ProviderUsage]]] = []
+    try:
+        return await review_one(row, args, spent=spent)
+    except Exception as exc:
+        print(f"{label}: FAILED - {type(exc).__name__}: {exc}"[:300], file=sys.stderr, flush=True)
+        return None
+    finally:
+        if budget is not None:
+            for name, calls in spent:
+                budget.charge(name, calls)
 
 
 async def _judge_charged(
@@ -732,10 +756,7 @@ async def judge(args: argparse.Namespace) -> int:
         # Deliberately before `build_provider`: a mode that spends nothing must
         # not demand credentials, and the model name is only needed to work out
         # what has already been judged.
-        print(f"{len(reviews)} reviews would be judged under profile {profile}:")
-        for record in reviews:
-            candidates = len(candidate_findings(record))
-            print(f"  {record.project:10} {record.url}  ({candidates} candidates)")
+        _print_judge_plan(reviews, profile)
         return 0
 
     provider, model = build_provider(os.environ)
