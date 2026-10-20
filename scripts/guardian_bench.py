@@ -59,6 +59,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from guardian_replay_skeptic import changed_files, worktree_at  # noqa: E402
 from run_budget import Budget, make_budget  # noqa: E402
+from run_budget import priced_names as run_priced_names  # noqa: E402
 
 _BENCH_DIR = _REPO_ROOT / "benchmarks" / "guardian"
 
@@ -351,27 +352,14 @@ RunOne = Callable[[GroundTruth, int, list[tuple[str, list[ProviderUsage]]]], Awa
 
 
 def priced_names(env: Mapping[str, str], *, record_finder: bool) -> list[str]:
-    """The providers a run will charge, by `name`: the finder, and the skeptic if one runs.
+    """The providers a bench run will charge: the finder, and the skeptic if one runs.
 
-    Built the way `_run_one` builds them, so the check before the run and the
-    charges during it name the same providers. Building one makes no call.
+    The bench runs a skeptic only when GUARDIAN_SKEPTIC is set and the finder is
+    not being recorded — the same condition `_run_one` applies.
     """
-    finder, finder_model = build_provider(env)
-    names = [finder.name]
-    if env.get("GUARDIAN_SKEPTIC") and not record_finder:
-        skeptic = build_skeptic_provider(env, primary=finder.name)
-        if skeptic is not None and skeptic[0].name != finder.name:
-            names.append(skeptic[0].name)
-        elif skeptic is not None and skeptic[1] != finder_model:
-            # Prices are keyed by provider name, so the skeptic would be charged
-            # at the finder's rate — under-counting a dearer model unannounced.
-            _msg = (
-                f"finder {finder_model!r} and skeptic {skeptic[1]!r} share the provider "
-                f"name {finder.name!r}, and one --price cannot price two models; "
-                f"run them in separate invocations"
-            )
-            raise ValueError(_msg)
-    return names
+    return run_priced_names(
+        env, with_skeptic=bool(env.get("GUARDIAN_SKEPTIC")) and not record_finder
+    )
 
 
 async def _run_charged(

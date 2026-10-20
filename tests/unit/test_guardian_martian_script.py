@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scripts"))
 
 import guardian_martian as gm
 from conftest import IDENTITY_FIELDS
+from run_budget import Budget, Price
 
 from cgis.guardian import calibrate as gm_cal
 from cgis.guardian.findings import Finding
@@ -761,7 +762,7 @@ class TestReview:
     def test_dry_run_spends_nothing(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        async def boom(_row: object, _args: object) -> gm.ReviewRecord:
+        async def boom(_row: object, _args: object, **_kw: object) -> gm.ReviewRecord:
             _msg = "review_one must not run under --dry-run"
             raise AssertionError(_msg)
 
@@ -779,7 +780,7 @@ class TestReview:
         )
         asked: list[int] = []
 
-        async def once(row: gm.PrPlan, _args: object) -> gm.ReviewRecord:
+        async def once(row: gm.PrPlan, _args: object, **_kw: object) -> gm.ReviewRecord:
             asked.append(row.number)
             return self._record(row.url)
 
@@ -790,7 +791,7 @@ class TestReview:
     def test_one_failure_does_not_lose_the_rest(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        async def half(row: gm.PrPlan, _args: object) -> gm.ReviewRecord:
+        async def half(row: gm.PrPlan, _args: object, **_kw: object) -> gm.ReviewRecord:
             if row.number == 1:
                 _msg = "provider exploded"
                 raise RuntimeError(_msg)
@@ -809,7 +810,7 @@ class TestReview:
         """A crash on PR 40 must not throw away the 39 already paid for."""
         seen: list[int] = []
 
-        async def peek(row: gm.PrPlan, args: object) -> gm.ReviewRecord:
+        async def peek(row: gm.PrPlan, args: object, **_kw: object) -> gm.ReviewRecord:
             if row.number == 2:
                 seen.append(len(args.out.read_text(encoding="utf-8").splitlines()))  # type: ignore[attr-defined]
             return self._record(row.url)
@@ -817,6 +818,119 @@ class TestReview:
         monkeypatch.setattr(gm, "review_one", peek)
         asyncio.run(gm.review(self._args(tmp_path)))
         assert seen == [1]
+
+
+class TestMartianBudget:
+    """A hard cap on `review` and `judge`, the two subcommands that spend (#246 B)."""
+
+    _FLAT = Price(1.0, 10.0)
+
+    @staticmethod
+    def _charging_review(fail_on: int | None = None):  # noqa: ANN205
+        asked: list[int] = []
+
+        async def review_one(
+            row: gm.PrPlan, _args: object, *, spent: list[tuple[str, list[ProviderUsage]]]
+        ) -> gm.ReviewRecord:
+            provider = _CountingJudge(prompt=1000, completion=100)
+            spent.append((provider.name, provider.call_usages))
+            await provider.generate_content("", "")  # one billed call: $0.002 at _FLAT
+            asked.append(row.number)
+            if row.number == fail_on:
+                _msg = "provider exploded after one call"
+                raise RuntimeError(_msg)
+            return TestReview._record(row.url)  # noqa: SLF001
+
+        return review_one, asked
+
+    def test_review_stops_before_the_next_pr_once_the_cap_is_reached(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        review_one, asked = self._charging_review()
+        monkeypatch.setattr(gm, "review_one", review_one)
+        budget = Budget(cap_usd=0.003, prices={"gemini": self._FLAT})
+        args = TestReview()._args(tmp_path, budget=budget)  # noqa: SLF001
+        TestReview._plan_file(tmp_path, 4)  # noqa: SLF001  # after _args, which writes 2
+        assert asyncio.run(gm.review(args)) == 3
+        assert asked == [1, 2]
+        assert len(args.out.read_text(encoding="utf-8").splitlines()) == 2
+        assert "Stopped at the budget" in capsys.readouterr().err
+
+    def test_a_failed_review_is_still_charged(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        review_one, asked = self._charging_review(fail_on=1)
+        monkeypatch.setattr(gm, "review_one", review_one)
+        budget = Budget(cap_usd=1.0, prices={"gemini": self._FLAT})
+        args = TestReview()._args(tmp_path, budget=budget)  # noqa: SLF001
+        assert asyncio.run(gm.review(args)) == 1
+        assert asked == [1, 2]
+        assert budget.spent_usd == pytest.approx(0.004)
+
+    def test_judge_stops_before_the_next_review_once_the_cap_is_reached(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """One golden x one candidate per review: one judge call, $0.002 at _FLAT."""
+        accounting = TestJudgeTokenAccounting()
+        urls = [f"https://github.com/o/r/pull/{n}" for n in (1, 2, 3)]
+        reviews = tmp_path / "r.jsonl"
+        reviews.write_text(
+            "".join(accounting._record(url).model_dump_json() + "\n" for url in urls),  # noqa: SLF001
+            encoding="utf-8",
+        )
+        prs = [accounting._pr().model_copy(update={"url": url}) for url in urls]  # noqa: SLF001
+        monkeypatch.setattr(gm, "load_corpus", lambda _dir: prs)
+        judge = _CountingJudge(prompt=1000, completion=100)
+        monkeypatch.setattr(gm, "build_provider", lambda _env: (judge, "m"))
+        args = argparse.Namespace(
+            corpus=tmp_path,
+            reviews=reviews,
+            out=tmp_path / "j.jsonl",
+            profile="core",
+            pr=None,
+            concurrency=1,
+            dry_run=False,
+            budget=Budget(cap_usd=0.003, prices={"gemini": self._FLAT}),
+        )
+        assert asyncio.run(gm.judge(args)) == 3
+        assert len(args.out.read_text(encoding="utf-8").splitlines()) == 2
+        assert args.budget.spent_usd == pytest.approx(0.004)
+        assert "Stopped at the budget" in capsys.readouterr().err
+
+    def test_no_budget_changes_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        review_one, asked = self._charging_review()
+        monkeypatch.setattr(gm, "review_one", review_one)
+        assert asyncio.run(gm.review(TestReview()._args(tmp_path))) == 0  # noqa: SLF001
+        assert asked == [1, 2]
+
+
+def test_the_real_review_one_registers_both_providers_before_it_can_fail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The budget tests stub review_one; only this one sees its registration (#716 lesson)."""
+    (tmp_path / "ws" / "o__r" / ".git").mkdir(parents=True)
+    _wire_review(monkeypatch, [])
+    finder = _CountingJudge(prompt=11, completion=1)
+    skeptic = _CountingJudge(prompt=22, completion=2)
+    monkeypatch.setattr(gm, "build_provider", lambda _env: (finder, "f"))
+    monkeypatch.setattr(gm, "build_skeptic_provider", lambda _env, primary: (skeptic, "s"))  # noqa: ARG005
+
+    async def fails_after_calls(**_: object) -> object:
+        await finder.generate_content("", "")
+        await skeptic.generate_content("", "")
+        _msg = "routed review exploded"
+        raise RuntimeError(_msg)
+
+    monkeypatch.setattr(gm, "run_review_routed", fails_after_calls)
+    spent: list[tuple[str, list[ProviderUsage]]] = []
+    review = gm.review_one(
+        _review_row(), argparse.Namespace(workspace=tmp_path / "ws"), spent=spent
+    )
+    with pytest.raises(RuntimeError, match="exploded"):
+        asyncio.run(review)
+    assert [[c.prompt_tokens for c in calls] for _name, calls in spent] == [[11], [22]]
 
 
 class TestDoneUrls:
@@ -2195,3 +2309,44 @@ def _silent_judge() -> BaseProvider:
     annotation, it merely went untouched.
     """
     return _CountingJudge(prompt=0, completion=0)
+
+
+@pytest.mark.parametrize(
+    ("argv", "env", "missing"),
+    [
+        (["judge"], {"GUARDIAN_PROVIDER": "anthropic", "ANTHROPIC_API_KEY": "k"}, ["anthropic"]),
+        # review builds the opposite-provider skeptic unless GUARDIAN_SKEPTIC=off,
+        # so an unpriced implicit skeptic would be spending the cap never counted.
+        (
+            ["review"],
+            {"GUARDIAN_PROVIDER": "anthropic", "ANTHROPIC_API_KEY": "k", "GEMINI_API_KEY": "g"},
+            ["anthropic", "gemini"],
+        ),
+        (
+            ["review"],
+            {
+                "GUARDIAN_PROVIDER": "anthropic",
+                "ANTHROPIC_API_KEY": "k",
+                "GEMINI_API_KEY": "g",
+                "GUARDIAN_SKEPTIC": "off",
+            },
+            ["anthropic"],
+        ),
+    ],
+)
+def test_a_spending_subcommand_refuses_a_cap_it_cannot_price(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    argv: list[str],
+    env: dict[str, str],
+    missing: list[str],
+) -> None:
+    for name in ("GUARDIAN_SKEPTIC", "GUARDIAN_TEMPERATURE", "GUARDIAN_MODEL", "MISTRAL_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(sys, "argv", ["guardian_martian.py", *argv, "--budget-usd", "1"])
+    with pytest.raises(SystemExit) as raised:
+        gm.main()
+    assert raised.value.code == 2
+    assert f"missing: {missing}" in capsys.readouterr().err
