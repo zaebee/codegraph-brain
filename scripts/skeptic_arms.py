@@ -55,7 +55,7 @@ from cgis.guardian.bench import (
     score,
 )
 from cgis.guardian.evidence import Evidence, collect_evidence
-from cgis.guardian.providers.base import BaseProvider
+from cgis.guardian.providers.base import BaseProvider, ProviderUsage
 from cgis.guardian.recording import load_finder_recording
 from cgis.guardian.runner import build_skeptic_provider
 from cgis.guardian.skeptic import apply_judgements, judge_all, visible_findings
@@ -190,6 +190,30 @@ async def judge_one(
     }
 
 
+@dataclass(frozen=True)
+class Price:
+    """One arm's USD per million tokens, with an optional long-prompt tier.
+
+    The tier is decided per request: a call whose prompt exceeds `above` is
+    priced whole at the long rate. Claude Haiku 5.5 bills $0.10/$0.50 up to 100K
+    input tokens and $0.50/$2.50 beyond, so a flat counter would under-price
+    every long call by 5x. Pricing the whole call long errs high if the vendor
+    tiers only the excess — the safe direction for a cap.
+    """
+
+    per_in: float
+    per_out: float
+    above: int | None = None
+    long_in: float = 0.0
+    long_out: float = 0.0
+
+    def cost(self, usage: ProviderUsage) -> float:
+        """The USD cost of one call."""
+        long = self.above is not None and usage.prompt_tokens > self.above
+        per_in, per_out = (self.long_in, self.long_out) if long else (self.per_in, self.per_out)
+        return (usage.prompt_tokens * per_in + usage.completion_tokens * per_out) / 1_000_000
+
+
 @dataclass
 class Budget:
     """A hard spending cap, priced per arm from the tokens each row reports (#246).
@@ -207,8 +231,7 @@ class Budget:
     """
 
     cap_usd: float
-    #: arm -> (USD per million input tokens, USD per million output tokens)
-    prices: dict[str, tuple[float, float]]
+    prices: dict[str, Price]
     spent_usd: float = 0.0
     stopped: bool = False
 
@@ -217,22 +240,43 @@ class Budget:
         """Whether the cap has been reached."""
         return self.spent_usd >= self.cap_usd
 
-    def charge(self, arm: str, prompt_tokens: int, completion_tokens: int) -> None:
-        """Add one row's cost at its own arm's prices."""
-        per_in, per_out = self.prices[arm]
-        self.spent_usd += (prompt_tokens * per_in + completion_tokens * per_out) / 1_000_000
+    def charge(self, arm: str, calls: list[ProviderUsage]) -> None:
+        """Add one row's calls, each at its own arm's price for its own size."""
+        price = self.prices[arm]
+        self.spent_usd += sum(price.cost(call) for call in calls)
 
 
-def parse_prices(items: list[str]) -> dict[str, tuple[float, float]]:
-    """`["anthropic=0.10:0.50"]` -> {"anthropic": (0.10, 0.50)}; ValueError on a bad item."""
-    prices: dict[str, tuple[float, float]] = {}
+_PRICE_FORMAT = (
+    "expected ARM=IN:OUT or ARM=IN:OUT;ABOVE=IN:OUT (USD per million tokens; ABOVE in input tokens)"
+)
+
+
+def _rate_pair(text: str, item: str) -> tuple[float, float]:
+    """`"0.10:0.50"` -> (0.10, 0.50); ValueError naming the whole --price item."""
+    per_in, _, per_out = text.partition(":")
+    try:
+        return float(per_in), float(per_out)
+    except ValueError:
+        _msg = f"--price {item!r}: {_PRICE_FORMAT}"
+        raise ValueError(_msg) from None
+
+
+def parse_prices(items: list[str]) -> dict[str, Price]:
+    """`["anthropic=0.10:0.50;100000=0.50:2.50"]` -> {"anthropic": Price(...)}."""
+    prices: dict[str, Price] = {}
     for item in items:
-        arm, _, pair = item.partition("=")
-        per_in, _, per_out = pair.partition(":")
-        if not arm or not per_in or not per_out:
-            _msg = f"--price {item!r}: expected ARM=IN:OUT, USD per million tokens"
+        arm, _, rest = item.partition("=")
+        short, _, tier = rest.partition(";")
+        above, _, long_rates = tier.partition("=")
+        if not arm or (tier and not above.isdigit()):
+            _msg = f"--price {item!r}: {_PRICE_FORMAT}"
             raise ValueError(_msg)
-        prices[arm] = (float(per_in), float(per_out))
+        per_in, per_out = _rate_pair(short, item)
+        if not tier:
+            prices[arm] = Price(per_in, per_out)
+            continue
+        long_in, long_out = _rate_pair(long_rates, item)
+        prices[arm] = Price(per_in, per_out, int(above), long_in, long_out)
     return prices
 
 
@@ -281,12 +325,12 @@ async def collect_rows(
                     if budget is not None and budget.exhausted:
                         budget.stopped = True
                         return rows
-                    before = provider.cumulative_usage
+                    first_call = len(provider.call_usages)
                     scored = await judge_one(provider, path, truth, evidence)
-                    after = provider.cumulative_usage
-                    # This row's own spend: the provider's counters are cumulative.
-                    spent_in = after.prompt_tokens - before.prompt_tokens
-                    spent_out = after.completion_tokens - before.completion_tokens
+                    # This row's own calls: the provider's record is cumulative.
+                    calls = provider.call_usages[first_call:]
+                    spent_in = sum(c.prompt_tokens for c in calls)
+                    spent_out = sum(c.completion_tokens for c in calls)
                     rows.append(
                         {
                             "timestamp": datetime.now(UTC).isoformat(),
@@ -297,6 +341,10 @@ async def collect_rows(
                             "skeptic_effort": provider.effort,
                             "skeptic_prompt_tokens": spent_in,
                             "skeptic_completion_tokens": spent_out,
+                            # The size that decides a long-prompt price tier.
+                            "skeptic_max_call_prompt_tokens": max(
+                                (c.prompt_tokens for c in calls), default=0
+                            ),
                             "finder_model": models.get(path.stem, "unknown"),
                             "evidence": evidence is not None,
                             **scored,
@@ -307,7 +355,7 @@ async def collect_rows(
                         file=sys.stderr,
                     )
                     if budget is not None:
-                        budget.charge(name, spent_in, spent_out)
+                        budget.charge(name, calls)
 
     return rows
 
@@ -474,7 +522,11 @@ def main() -> int:
         action="append",
         default=[],
         metavar="ARM=IN:OUT",
-        help="an arm's USD per million input:output tokens; one per arm with --budget-usd",
+        help=(
+            "an arm's USD per million input:output tokens, one per arm with --budget-usd; "
+            "add ;ABOVE=IN:OUT for a call whose prompt exceeds ABOVE tokens "
+            "(claude-haiku-5-5: anthropic=0.10:0.50;100000=0.50:2.50)"
+        ),
     )
     args = parser.parse_args()
     arm_spec = parse_arms(args.arms)

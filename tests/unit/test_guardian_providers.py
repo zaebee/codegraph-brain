@@ -134,3 +134,14 @@ def test_gemini_defaults_to_the_shared_timeout() -> None:
     assert provider._timeout_ms == int(  # noqa: SLF001  # white-box: timeout wiring
         DEFAULT_REQUEST_TIMEOUT * 1000
     )
+
+
+def test_every_call_is_kept_for_per_request_pricing() -> None:
+    """A price tier decided per request needs each request, not their sum."""
+    from cgis.guardian.providers.base import ProviderUsage  # noqa: PLC0415
+
+    provider = GeminiProvider(api_key="k")
+    provider._record_usage(ProviderUsage(prompt_tokens=10, completion_tokens=1))  # noqa: SLF001
+    provider._record_usage(ProviderUsage(prompt_tokens=20, completion_tokens=2))  # noqa: SLF001
+    assert [u.prompt_tokens for u in provider.call_usages] == [10, 20]
+    assert provider.cumulative_usage.prompt_tokens == 30

@@ -220,7 +220,11 @@ class TestTheRunItself:
     """Orchestration, with every call stubbed: what runs, how often, and on what."""
 
     def _wire(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, passes: list[str]
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        passes: list[str],
+        prompt_per_call: tuple[int, ...] = (1000,),
     ) -> list[str]:
         """Stub every outside edge; return the list evidence collection appends to."""
         paths = [tmp_path / f"{name}.json" for name in passes]
@@ -245,7 +249,9 @@ class TestTheRunItself:
 
         async def _judge(provider: StubProvider, *_a: object, **_k: object) -> dict[str, Any]:
             # What a real judgement does to the provider's counters.
-            provider._record_usage(ProviderUsage(prompt_tokens=1000, completion_tokens=100))  # noqa: SLF001
+            for prompt in prompt_per_call:
+                usage = ProviderUsage(prompt_tokens=prompt, completion_tokens=100)
+                provider._record_usage(usage)  # noqa: SLF001
             return {"findings": 1, "refuted": 0, "killed_gt": []}
 
         monkeypatch.setattr(skeptic_arms, "judge_one", _judge)
@@ -311,6 +317,7 @@ class TestTheRunItself:
 
 
 _ARMS = skeptic_arms.parse_arms(DEFAULT_ARMS)
+_FLAT = skeptic_arms.Price(1.0, 10.0)
 
 
 class TestTheBudget:
@@ -334,7 +341,7 @@ class TestTheBudget:
     ) -> None:
         """Each stubbed row costs 1000 x $1 + 100 x $10 per MTok = $0.002."""
         TestTheRunItself()._wire(monkeypatch, tmp_path, ["143@a", "143@b", "143@c"])  # noqa: SLF001
-        budget = skeptic_arms.Budget(cap_usd=0.003, prices=dict.fromkeys(_ARMS, (1.0, 10.0)))
+        budget = skeptic_arms.Budget(cap_usd=0.003, prices=dict.fromkeys(_ARMS, _FLAT))
         rows = await skeptic_arms.collect_rows(REPO_ROOT, None, _ARMS, budget)
         assert len(rows) == 2
         assert budget.stopped
@@ -347,7 +354,8 @@ class TestTheBudget:
         """One shared price would under-count the dearer arm and let the cap pass."""
         TestTheRunItself()._wire(monkeypatch, tmp_path, ["143@a"])  # noqa: SLF001
         budget = skeptic_arms.Budget(
-            cap_usd=1.0, prices={"gemini": (1.0, 10.0), "mistral": (2.0, 20.0)}
+            cap_usd=1.0,
+            prices={"gemini": _FLAT, "mistral": skeptic_arms.Price(2.0, 20.0)},
         )
         await skeptic_arms.collect_rows(REPO_ROOT, None, _ARMS, budget)
         assert budget.spent_usd == pytest.approx(0.002 + 0.004)
@@ -358,11 +366,45 @@ class TestTheBudget:
     ) -> None:
         """Nothing was skipped, so nothing may be reported as stopped."""
         TestTheRunItself()._wire(monkeypatch, tmp_path, ["143@a"])  # noqa: SLF001
-        budget = skeptic_arms.Budget(cap_usd=0.004, prices=dict.fromkeys(_ARMS, (1.0, 10.0)))
+        budget = skeptic_arms.Budget(cap_usd=0.004, prices=dict.fromkeys(_ARMS, _FLAT))
         rows = await skeptic_arms.collect_rows(REPO_ROOT, None, _ARMS, budget)
         assert len(rows) == 2
         assert budget.exhausted
         assert not budget.stopped
+
+    @pytest.mark.asyncio
+    async def test_a_call_above_the_threshold_is_priced_whole_at_the_long_rate(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Haiku 5.5 bills a prompt over 100K at 5x; a row total cannot see that, a call can.
+
+        One row makes two calls: 1000 in (short rate) and 150_000 in (long rate).
+        The row's total, 151_000, would be priced short by a flat counter.
+        """
+        TestTheRunItself()._wire(monkeypatch, tmp_path, ["143@a"], (1000, 150_000))  # noqa: SLF001
+        tiered = skeptic_arms.Price(1.0, 10.0, above=100_000, long_in=5.0, long_out=50.0)
+        budget = skeptic_arms.Budget(cap_usd=10.0, prices={"gemini": tiered, "mistral": _FLAT})
+        rows = await skeptic_arms.collect_rows(REPO_ROOT, None, _ARMS, budget)
+        short = (1000 * 1.0 + 100 * 10.0) / 1e6
+        long = (150_000 * 5.0 + 100 * 50.0) / 1e6
+        flat_row = (151_000 * 1.0 + 200 * 10.0) / 1e6
+        assert budget.spent_usd == pytest.approx(short + long + flat_row)
+        assert [r["skeptic_max_call_prompt_tokens"] for r in rows] == [150_000, 150_000]
+
+    @pytest.mark.parametrize(
+        ("item", "expected"),
+        [
+            ("anthropic=0.1:0.5", ("anthropic", skeptic_arms.Price(0.1, 0.5))),
+            (
+                "anthropic=0.1:0.5;100000=0.5:2.5",
+                ("anthropic", skeptic_arms.Price(0.1, 0.5, 100_000, 0.5, 2.5)),
+            ),
+        ],
+    )
+    def test_a_price_parses_with_and_without_a_long_tier(
+        self, item: str, expected: tuple[str, skeptic_arms.Price]
+    ) -> None:
+        assert skeptic_arms.parse_prices([item]) == dict([expected])
 
     def test_main_exits_3_and_prints_no_comparison_when_the_budget_stopped_it(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -433,6 +475,7 @@ class TestTheBudget:
             (["--budget-usd", "1", "--price", "gemini=0.1:0.5"], "missing: ['mistral']"),
             (["--price", "gemini=0.1:0.5"], "only means something with --budget-usd"),
             (["--budget-usd", "1", "--price", "gemini=0.1"], "expected ARM=IN:OUT"),
+            (["--budget-usd", "1", "--price", "gemini=0.1:0.5;x=1:2"], "expected ARM=IN:OUT"),
         ],
     )
     def test_an_unpriceable_cap_is_refused(
