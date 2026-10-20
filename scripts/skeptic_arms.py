@@ -280,6 +280,64 @@ def parse_prices(items: list[str]) -> dict[str, Price]:
     return prices
 
 
+def _passes_by_pr(repo_root: Path, tmp: Path, limit: int | None) -> dict[int, list[Path]]:
+    """The frozen passes that carry findings, sorted, trimmed to `limit`, grouped by PR.
+
+    Passes with no findings cost nothing to judge and contribute nothing to a
+    comparison of judgements, so they are dropped before any worktree is built
+    rather than filtered out of the numbers afterwards.
+    """
+    written = build(BENCH_DIR / "results.jsonl", tmp, BENCH_DIR, repo_root)
+    recordings = [p for p in written if load_finder_recording(p).result.findings]
+    recordings.sort(key=lambda p: p.stem)
+    if limit is not None:
+        recordings = recordings[:limit]
+    by_pr: dict[int, list[Path]] = defaultdict(list)
+    for path in recordings:
+        by_pr[int(path.stem.split("@")[0])].append(path)
+    return by_pr
+
+
+async def _judged_row(
+    arm: tuple[str, BaseProvider, str],
+    path: Path,
+    truth: GroundTruth,
+    evidence: Evidence | None,
+    finder_model: str,
+) -> tuple[dict[str, Any], list[ProviderUsage]]:
+    """One pass under one arm: its row, and the calls the judging made."""
+    name, provider, model = arm
+    first_call = len(provider.call_usages)
+    scored = await judge_one(provider, path, truth, evidence)
+    # This row's own calls: the provider's record is cumulative.
+    calls = provider.call_usages[first_call:]
+    row = {
+        "timestamp": datetime.now(UTC).isoformat(),
+        "pr": truth_pr(path),
+        "pass": path.stem,
+        "arm": name,
+        "skeptic_model": model,
+        "skeptic_effort": provider.effort,
+        "skeptic_prompt_tokens": sum(c.prompt_tokens for c in calls),
+        "skeptic_completion_tokens": sum(c.completion_tokens for c in calls),
+        # The size that decides a long-prompt price tier.
+        "skeptic_max_call_prompt_tokens": max((c.prompt_tokens for c in calls), default=0),
+        "finder_model": finder_model,
+        "evidence": evidence is not None,
+        **scored,
+    }
+    print(
+        f"  {path.stem} [{name}] {scored['refuted']}/{scored['findings']} refuted",
+        file=sys.stderr,
+    )
+    return row, calls
+
+
+def truth_pr(path: Path) -> int:
+    """The PR number a recording's stem names (`143@a` -> 143)."""
+    return int(path.stem.split("@")[0])
+
+
 async def collect_rows(
     repo_root: Path,
     limit: int | None,
@@ -296,21 +354,9 @@ async def collect_rows(
     arms = {name: arm_provider(name, os.environ, model) for name, model in arm_spec.items()}
     models = finder_models(BENCH_DIR / "results.jsonl")
 
+    rows: list[dict[str, Any]] = []
     with tempfile.TemporaryDirectory(prefix="arms-") as tmp:
-        written = build(BENCH_DIR / "results.jsonl", Path(tmp), BENCH_DIR, repo_root)
-        # Passes with no findings cost nothing to judge and contribute nothing to
-        # a comparison of judgements, so they are dropped before any worktree is
-        # built rather than filtered out of the numbers afterwards.
-        recordings = [p for p in written if load_finder_recording(p).result.findings]
-        recordings.sort(key=lambda p: p.stem)
-        if limit is not None:
-            recordings = recordings[:limit]
-
-        by_pr: dict[int, list[Path]] = defaultdict(list)
-        for path in recordings:
-            by_pr[int(path.stem.split("@")[0])].append(path)
-
-        rows: list[dict[str, Any]] = []
+        by_pr = _passes_by_pr(repo_root, Path(tmp), limit)
         for pr in sorted(by_pr):
             truth = load_ground_truth(BENCH_DIR / f"pr-{pr}.yaml")
             sample = load_finder_recording(by_pr[pr][0])
@@ -325,38 +371,13 @@ async def collect_rows(
                     if budget is not None and budget.exhausted:
                         budget.stopped = True
                         return rows
-                    first_call = len(provider.call_usages)
-                    scored = await judge_one(provider, path, truth, evidence)
-                    # This row's own calls: the provider's record is cumulative.
-                    calls = provider.call_usages[first_call:]
-                    spent_in = sum(c.prompt_tokens for c in calls)
-                    spent_out = sum(c.completion_tokens for c in calls)
-                    rows.append(
-                        {
-                            "timestamp": datetime.now(UTC).isoformat(),
-                            "pr": pr,
-                            "pass": path.stem,
-                            "arm": name,
-                            "skeptic_model": model,
-                            "skeptic_effort": provider.effort,
-                            "skeptic_prompt_tokens": spent_in,
-                            "skeptic_completion_tokens": spent_out,
-                            # The size that decides a long-prompt price tier.
-                            "skeptic_max_call_prompt_tokens": max(
-                                (c.prompt_tokens for c in calls), default=0
-                            ),
-                            "finder_model": models.get(path.stem, "unknown"),
-                            "evidence": evidence is not None,
-                            **scored,
-                        }
+                    finder = models.get(path.stem, "unknown")
+                    row, calls = await _judged_row(
+                        (name, provider, model), path, truth, evidence, finder
                     )
-                    print(
-                        f"  {path.stem} [{name}] {scored['refuted']}/{scored['findings']} refuted",
-                        file=sys.stderr,
-                    )
+                    rows.append(row)
                     if budget is not None:
                         budget.charge(name, calls)
-
     return rows
 
 
