@@ -20,6 +20,7 @@ from cgis.guardian.providers.base import ProviderUsage
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"))
 
 import skeptic_arms
+from run_budget import Budget, Price, parse_prices
 from skeptic_arms import (
     DEFAULT_ARMS,
     NoArmError,
@@ -317,7 +318,7 @@ class TestTheRunItself:
 
 
 _ARMS = skeptic_arms.parse_arms(DEFAULT_ARMS)
-_FLAT = skeptic_arms.Price(1.0, 10.0)
+_FLAT = Price(1.0, 10.0)
 
 
 class TestTheBudget:
@@ -341,7 +342,7 @@ class TestTheBudget:
     ) -> None:
         """Each stubbed row costs 1000 x $1 + 100 x $10 per MTok = $0.002."""
         TestTheRunItself()._wire(monkeypatch, tmp_path, ["143@a", "143@b", "143@c"])  # noqa: SLF001
-        budget = skeptic_arms.Budget(cap_usd=0.003, prices=dict.fromkeys(_ARMS, _FLAT))
+        budget = Budget(cap_usd=0.003, prices=dict.fromkeys(_ARMS, _FLAT))
         rows = await skeptic_arms.collect_rows(REPO_ROOT, None, _ARMS, budget)
         assert len(rows) == 2
         assert budget.stopped
@@ -353,9 +354,9 @@ class TestTheBudget:
     ) -> None:
         """One shared price would under-count the dearer arm and let the cap pass."""
         TestTheRunItself()._wire(monkeypatch, tmp_path, ["143@a"])  # noqa: SLF001
-        budget = skeptic_arms.Budget(
+        budget = Budget(
             cap_usd=1.0,
-            prices={"gemini": _FLAT, "mistral": skeptic_arms.Price(2.0, 20.0)},
+            prices={"gemini": _FLAT, "mistral": Price(2.0, 20.0)},
         )
         await skeptic_arms.collect_rows(REPO_ROOT, None, _ARMS, budget)
         assert budget.spent_usd == pytest.approx(0.002 + 0.004)
@@ -366,7 +367,7 @@ class TestTheBudget:
     ) -> None:
         """Nothing was skipped, so nothing may be reported as stopped."""
         TestTheRunItself()._wire(monkeypatch, tmp_path, ["143@a"])  # noqa: SLF001
-        budget = skeptic_arms.Budget(cap_usd=0.004, prices=dict.fromkeys(_ARMS, _FLAT))
+        budget = Budget(cap_usd=0.004, prices=dict.fromkeys(_ARMS, _FLAT))
         rows = await skeptic_arms.collect_rows(REPO_ROOT, None, _ARMS, budget)
         assert len(rows) == 2
         assert budget.exhausted
@@ -382,8 +383,8 @@ class TestTheBudget:
         The row's total, 151_000, would be priced short by a flat counter.
         """
         TestTheRunItself()._wire(monkeypatch, tmp_path, ["143@a"], (1000, 150_000))  # noqa: SLF001
-        tiered = skeptic_arms.Price(1.0, 10.0, above=100_000, long_in=5.0, long_out=50.0)
-        budget = skeptic_arms.Budget(cap_usd=10.0, prices={"gemini": tiered, "mistral": _FLAT})
+        tiered = Price(1.0, 10.0, above=100_000, long_in=5.0, long_out=50.0)
+        budget = Budget(cap_usd=10.0, prices={"gemini": tiered, "mistral": _FLAT})
         rows = await skeptic_arms.collect_rows(REPO_ROOT, None, _ARMS, budget)
         short = (1000 * 1.0 + 100 * 10.0) / 1e6
         long = (150_000 * 5.0 + 100 * 50.0) / 1e6
@@ -394,17 +395,17 @@ class TestTheBudget:
     @pytest.mark.parametrize(
         ("item", "expected"),
         [
-            ("anthropic=0.1:0.5", ("anthropic", skeptic_arms.Price(0.1, 0.5))),
+            ("anthropic=0.1:0.5", ("anthropic", Price(0.1, 0.5))),
             (
                 "anthropic=0.1:0.5;100000=0.5:2.5",
-                ("anthropic", skeptic_arms.Price(0.1, 0.5, 100_000, 0.5, 2.5)),
+                ("anthropic", Price(0.1, 0.5, 100_000, 0.5, 2.5)),
             ),
         ],
     )
     def test_a_price_parses_with_and_without_a_long_tier(
-        self, item: str, expected: tuple[str, skeptic_arms.Price]
+        self, item: str, expected: tuple[str, Price]
     ) -> None:
-        assert skeptic_arms.parse_prices([item]) == dict([expected])
+        assert parse_prices([item]) == dict([expected])
 
     def test_main_exits_3_and_prints_no_comparison_when_the_budget_stopped_it(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -415,7 +416,7 @@ class TestTheBudget:
             _root: Path,
             _limit: int | None,
             _arms: dict[str, str | None],
-            budget: skeptic_arms.Budget | None = None,
+            budget: Budget | None = None,
         ) -> list[dict[str, Any]]:
             assert budget is not None
             budget.stopped = True

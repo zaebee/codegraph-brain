@@ -15,6 +15,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -36,7 +37,7 @@ from cgis.guardian.chunked import run_review_routed
 from cgis.guardian.collector import ContextCollector, parse_features
 from cgis.guardian.evidence import Evidence, collect_evidence
 from cgis.guardian.findings import ReviewResult
-from cgis.guardian.providers.base import BaseProvider
+from cgis.guardian.providers.base import BaseProvider, ProviderUsage
 from cgis.guardian.review_fingerprint import (
     compute_fingerprint,
     disk_reader,
@@ -57,6 +58,7 @@ _REPO_ROOT = Path(__file__).parent.parent.absolute()
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from guardian_replay_skeptic import changed_files, worktree_at  # noqa: E402
+from run_budget import Budget, make_budget  # noqa: E402
 
 _BENCH_DIR = _REPO_ROOT / "benchmarks" / "guardian"
 
@@ -105,6 +107,7 @@ async def _run_one(
     results_path: Path,
     record_finder: Path | None = None,
     replay_finder: Path | None = None,
+    spent: list[tuple[str, list[ProviderUsage]]] | None = None,
 ) -> None:
     """Replay one PR once: worktree → ingest → review → score → JSONL line.
 
@@ -129,6 +132,12 @@ async def _run_one(
         else None
     )
     features = parse_features(os.environ.get("GUARDIAN_FEATURES", ""))
+    if spent is not None:
+        # Live lists, registered before any call: if the run raises halfway,
+        # the calls already made are still there for the budget to charge.
+        spent.append((provider.name, provider.call_usages))
+        if skeptic is not None:
+            spent.append((skeptic[0].name, skeptic[0].call_usages))
 
     if replay_finder is not None:
         recording = load_finder_recording(replay_finder)
@@ -337,7 +346,69 @@ async def _score_and_record(
     )
 
 
-async def main() -> None:
+#: One replay of one PR: (truth, run index, the list the run registers its providers' calls in).
+RunOne = Callable[[GroundTruth, int, list[tuple[str, list[ProviderUsage]]]], Awaitable[None]]
+
+
+def priced_names(env: Mapping[str, str], *, record_finder: bool) -> list[str]:
+    """The providers a run will charge, by `name`: the finder, and the skeptic if one runs.
+
+    Built the way `_run_one` builds them, so the check before the run and the
+    charges during it name the same providers. Building one makes no call.
+    """
+    names = [build_provider(env)[0].name]
+    if env.get("GUARDIAN_SKEPTIC") and not record_finder:
+        skeptic = build_skeptic_provider(env, primary=names[0])
+        if skeptic is not None and skeptic[0].name not in names:
+            names.append(skeptic[0].name)
+    return names
+
+
+async def run_all(
+    truths: list[GroundTruth],
+    runs: int,
+    run_one: RunOne,
+    results_path: Path,
+    budget: Budget | None,
+) -> int:
+    """Every (PR, run), each failure isolated; 3 if the budget stopped it, else 0.
+
+    The budget is checked before each run, so the overshoot is at most one run,
+    and a run that fails is still charged for the calls it made.
+    """
+    failures = 0
+    for truth in truths:
+        for run_idx in range(runs):
+            if budget is not None and budget.exhausted:
+                budget.stopped = True
+                log.warning("Stopped at the budget.", spent_usd=round(budget.spent_usd, 4))
+                return 3
+            spent: list[tuple[str, list[ProviderUsage]]] = []
+            try:
+                await run_one(truth, run_idx, spent)
+            except Exception as exc:  # isolate per-PR failures (spec §7)
+                failures += 1
+                log.error("PR replay failed.", pr=truth.pr, run=run_idx, error=str(exc))  # noqa: TRY400
+                await asyncio.to_thread(
+                    _append_jsonl,
+                    results_path,
+                    {
+                        "timestamp": datetime.now(UTC).isoformat(),
+                        "pr": truth.pr,
+                        "run": run_idx,
+                        "error": str(exc),
+                    },
+                )
+            finally:
+                if budget is not None:
+                    for name, calls in spent:
+                        budget.charge(name, calls)
+    if failures:
+        log.warning("Some replays failed.", failures=failures)
+    return 0
+
+
+async def main() -> int:
     """Run the benchmark over selected PRs, isolating per-PR failures."""
     parser = argparse.ArgumentParser(description="Replay guardian on past PRs and score.")
     parser.add_argument(
@@ -361,6 +432,19 @@ async def main() -> None:
         default=None,
         help="Judge a recorded finder pass instead of running the finder.",
     )
+    parser.add_argument(
+        "--budget-usd", type=float, default=None, help="stop before the next run once spent"
+    )
+    parser.add_argument(
+        "--price",
+        action="append",
+        default=[],
+        metavar="NAME=IN:OUT",
+        help=(
+            "a provider's USD per million input:output tokens, one per provider the run "
+            "charges; add ;ABOVE=IN:OUT for a call whose prompt exceeds ABOVE tokens"
+        ),
+    )
     args = parser.parse_args()
     if args.record_finder and args.replay_finder:
         sys.exit("--record-finder and --replay-finder are mutually exclusive.")
@@ -374,34 +458,37 @@ async def main() -> None:
     if not truths:
         sys.exit("No ground-truth files selected.")
 
-    failures = 0
-    for truth in truths:
-        for run_idx in range(args.runs):
-            try:
-                await _run_one(
-                    truth,
-                    run_idx,
-                    args.results,
-                    record_finder=args.record_finder,
-                    replay_finder=args.replay_finder,
-                )
-            except Exception as exc:  # isolate per-PR failures (spec §7)
-                failures += 1
-                log.error("PR replay failed.", pr=truth.pr, run=run_idx, error=str(exc))  # noqa: TRY400
-                await asyncio.to_thread(
-                    _append_jsonl,
-                    args.results,
-                    {
-                        "timestamp": datetime.now(UTC).isoformat(),
-                        "pr": truth.pr,
-                        "run": run_idx,
-                        "error": str(exc),
-                    },
-                )
-    if failures:
-        log.warning("Some replays failed.", failures=failures)
+    try:
+        budget = make_budget(
+            args.budget_usd,
+            args.price,
+            priced_names(os.environ, record_finder=args.record_finder is not None)
+            if args.budget_usd is not None
+            else [],
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
+
+    async def run_one(
+        truth: GroundTruth, run_idx: int, spent: list[tuple[str, list[ProviderUsage]]]
+    ) -> None:
+        await _run_one(
+            truth,
+            run_idx,
+            args.results,
+            record_finder=args.record_finder,
+            replay_finder=args.replay_finder,
+            spent=spent,
+        )
+
+    try:
+        return await run_all(truths, args.runs, run_one, args.results, budget)
+    finally:
+        # Also on a crash: the money was spent either way and must be reconcilable.
+        if budget is not None:
+            print(f"Spent ${budget.spent_usd:.4f} of ${budget.cap_usd:.2f}.", file=sys.stderr)
 
 
 if __name__ == "__main__":
     cgis.log_to_stderr()  # stdout is the script's output (#619)
-    asyncio.run(main())
+    raise SystemExit(asyncio.run(main()))

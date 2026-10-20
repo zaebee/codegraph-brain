@@ -48,6 +48,22 @@ def _message(
     )
 
 
+class _Stream:
+    """Stands in for the SDK's message stream manager: an async context manager."""
+
+    def __init__(self, reply: SimpleNamespace) -> None:
+        self._reply = reply
+
+    async def __aenter__(self) -> "_Stream":
+        return self
+
+    async def __aexit__(self, *_exc: object) -> None:
+        return None
+
+    async def get_final_message(self) -> SimpleNamespace:
+        return self._reply
+
+
 class _Client:
     """Stands in for AsyncAnthropic; records how it was built and what it was sent."""
 
@@ -60,9 +76,9 @@ class _Client:
         self.closed = False
         built["client"] = self
 
-    async def create(self, **kwargs: object) -> SimpleNamespace:
+    def stream(self, **kwargs: object) -> "_Stream":
         self._sent.append(kwargs)
-        return self._reply
+        return _Stream(self._reply)
 
     async def close(self) -> None:
         self.closed = True
@@ -165,3 +181,13 @@ def test_a_provider_without_effort_states_none() -> None:
     from cgis.guardian.providers.mistral import MistralProvider  # noqa: PLC0415
 
     assert MistralProvider(api_key="k").effort is None
+
+
+async def test_the_reply_is_streamed_with_room_for_medium_effort_thinking() -> None:
+    """Step 0 of #246 measured 14,902 output tokens at medium on one fixture, near 16K.
+
+    32K needs streaming: a non-streamed reply that long can outlast one request's timeout.
+    """
+    provider, _built, sent = _provider()
+    await provider.generate_content("sys", "user")
+    assert sent[0]["max_tokens"] == mod.DEFAULT_MAX_TOKENS == 32000

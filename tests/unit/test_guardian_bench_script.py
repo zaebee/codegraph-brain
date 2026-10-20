@@ -193,3 +193,93 @@ async def test_a_row_survives_a_fingerprint_that_cannot_be_taken(tmp_path: Path)
     assert "matched" in row
     assert "precision" in row
     assert "error" not in row
+
+
+# --- budget (#246 B) -------------------------------------------------------
+
+from run_budget import Budget, Price, make_budget  # noqa: E402
+
+from cgis.guardian.providers.base import ProviderUsage  # noqa: E402
+
+_FLAT = Price(1.0, 10.0)
+_TRUTH = GroundTruth(pr=1, base="a", head="b", findings=[])
+
+
+def _spending_run(calls_per_run: int, *, fail: bool = False):  # noqa: ANN202
+    """A `run_one` stand-in that records `calls_per_run` calls of 1000 in / 100 out."""
+    ran: list[int] = []
+
+    async def run_one(
+        _truth: GroundTruth, run_idx: int, spent: list[tuple[str, list[ProviderUsage]]]
+    ) -> None:
+        provider = StubProvider([])
+        spent.append((provider.name, provider.call_usages))
+        for _ in range(calls_per_run):
+            provider._record_usage(ProviderUsage(prompt_tokens=1000, completion_tokens=100))  # noqa: SLF001
+        ran.append(run_idx)
+        if fail:
+            _msg = "ingest failed"
+            raise RuntimeError(_msg)
+
+    return run_one, ran
+
+
+async def test_every_run_is_charged_and_the_next_one_waits_for_the_cap(tmp_path: Path) -> None:
+    """Each stubbed run costs $0.002; a $0.003 cap allows two of five, then stops."""
+    run_one, ran = _spending_run(1)
+    budget = Budget(cap_usd=0.003, prices={"gemini": _FLAT})
+    code = await gb.run_all([_TRUTH], 5, run_one, tmp_path / "r.jsonl", budget)
+    assert code == 3
+    assert ran == [0, 1]
+    assert budget.stopped
+    assert budget.spent_usd == pytest.approx(0.004)
+
+
+async def test_a_failed_run_is_still_charged(tmp_path: Path) -> None:
+    """The money was spent before the exception; the cap must see it."""
+    run_one, ran = _spending_run(2, fail=True)
+    budget = Budget(cap_usd=1.0, prices={"gemini": _FLAT})
+    code = await gb.run_all([_TRUTH], 2, run_one, tmp_path / "r.jsonl", budget)
+    assert code == 0
+    assert ran == [0, 1]
+    assert budget.spent_usd == pytest.approx(0.008)
+    rows = [json.loads(line) for line in (tmp_path / "r.jsonl").read_text().splitlines()]
+    assert [r["error"] for r in rows] == ["ingest failed", "ingest failed"]
+
+
+async def test_reaching_the_cap_on_the_last_run_is_a_complete_run(tmp_path: Path) -> None:
+    run_one, ran = _spending_run(1)
+    budget = Budget(cap_usd=0.004, prices={"gemini": _FLAT})
+    assert await gb.run_all([_TRUTH], 2, run_one, tmp_path / "r.jsonl", budget) == 0
+    assert ran == [0, 1]
+    assert not budget.stopped
+
+
+async def test_no_budget_runs_everything(tmp_path: Path) -> None:
+    run_one, ran = _spending_run(1)
+    assert await gb.run_all([_TRUTH], 3, run_one, tmp_path / "r.jsonl", None) == 0
+    assert ran == [0, 1, 2]
+
+
+@pytest.mark.parametrize(
+    ("cap", "items", "names", "message"),
+    [
+        (1.0, [], ["anthropic"], "missing: ['anthropic']"),
+        (None, ["gemini=0.3:2.5"], ["gemini"], "only means something with --budget-usd"),
+        (1.0, ["gemini=0.3"], ["gemini"], "expected ARM=IN:OUT"),
+    ],
+)
+def test_an_unpriceable_cap_is_refused(
+    cap: float | None, items: list[str], names: list[str], message: str
+) -> None:
+    with pytest.raises(ValueError, match=message.replace("[", r"\[").replace("]", r"\]")):
+        make_budget(cap, items, names)
+
+
+def test_the_providers_a_run_will_charge_are_named_from_the_environment() -> None:
+    env = {"GUARDIAN_PROVIDER": "anthropic", "ANTHROPIC_API_KEY": "k", "GUARDIAN_SKEPTIC": "off"}
+    assert gb.priced_names(env, record_finder=False) == ["anthropic"]
+    env = {**env, "GUARDIAN_SKEPTIC": "gemini", "GEMINI_API_KEY": "g"}
+    assert gb.priced_names(env, record_finder=False) == ["anthropic", "gemini"]
+    # A recorded finder pass skips the skeptic, so it is never charged.
+    assert gb.priced_names(env, record_finder=True) == ["anthropic"]

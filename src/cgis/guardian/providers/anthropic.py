@@ -43,10 +43,11 @@ DEFAULT_EFFORT: Final = "low"
 
 EFFORTS: Final = frozenset({"low", "medium", "high", "xhigh", "max"})
 
-#: Completion budget, thinking included. The finder's replies measured on the
-#: Martian slice average about 4,000 tokens, and a reply cut short is raised,
-#: not returned, so the cost of a budget too low is a failed call.
-DEFAULT_MAX_TOKENS: Final = 16000
+#: Completion budget, thinking included. Step 0 of #246 measured 14,902 output
+#: tokens for one finder pass at effort medium, near the old 16,000; a reply cut
+#: short is raised, not returned, so a budget too low is a failed paid call.
+#: Replies are streamed, so a long one is not bounded by one request's timeout.
+DEFAULT_MAX_TOKENS: Final = 32000
 
 
 class AnthropicReplyError(RuntimeError):
@@ -131,7 +132,8 @@ class AnthropicProvider(BaseProvider):
             api_key=self._api_key, timeout=self._timeout, max_retries=MAX_ATTEMPTS - 1
         )
         try:
-            message = await client.messages.create(**request)
+            async with client.messages.stream(**request) as stream:
+                message = await stream.get_final_message()
         finally:
             await client.close()
         self._record(message.usage)
