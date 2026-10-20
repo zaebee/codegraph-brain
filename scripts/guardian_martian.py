@@ -398,6 +398,8 @@ async def review_one(row: PrPlan, args: argparse.Namespace) -> ReviewRecord:
         temperature_source=sampling_source,
         features=sorted(features),
         features_source=features_source,
+        finder_effort=provider.effort,
+        skeptic_effort=skeptic[0].effort if skeptic else None,
         findings=routed.result.findings,
         prompt_tokens=provider.cumulative_usage.prompt_tokens,
         completion_tokens=provider.cumulative_usage.completion_tokens,

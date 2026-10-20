@@ -86,7 +86,8 @@ class BaseProvider(abc.ABC):
             return
         _msg = (
             f"{cls.__name__} must declare `name: ClassVar[str]` — one of the "
-            'GUARDIAN_PROVIDER values: "gemini", "mistral", "ollama", "openrouter". Add '
+            'GUARDIAN_PROVIDER values: "gemini", "mistral", "ollama", "openrouter", '
+            '"anthropic". Add '
             f'`name: ClassVar[str] = "..."` as the first line of '
             f"{cls.__name__}'s class body."
         )
@@ -102,6 +103,15 @@ class BaseProvider(abc.ABC):
         """
         self.last_usage: ProviderUsage = ProviderUsage()
         self.cumulative_usage: ProviderUsage = ProviderUsage()
+
+    @property
+    def effort(self) -> str | None:
+        """How hard the model is asked to think, for the record; None where there is no such knob.
+
+        Recorded beside the model because it changes the reviewer's output and
+        the review fingerprint digests code only.
+        """
+        return None
 
     def _record_usage(self, usage: ProviderUsage) -> None:
         """Record one call's token usage: set last_usage, add to cumulative."""

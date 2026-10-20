@@ -166,3 +166,21 @@ def test_the_committed_corpus_is_all_legacy_and_stays_that_way() -> None:
 
 if __name__ == "__main__":  # pragma: no cover
     sys.exit(pytest.main([__file__]))
+
+
+def test_a_new_record_always_states_both_efforts() -> None:
+    """Every production `ReviewRecord(...)` passes `finder_effort` and `skeptic_effort`.
+
+    Effort changes what an anthropic model does as much as temperature changes a
+    sampled one, and the fingerprint digests code only — so a run at `low` and a
+    run at `medium` would otherwise be identical rows. Same ratchet as the
+    temperature source above: a site added tomorrow is covered without editing this.
+    """
+    sites = _review_record_call_sites()
+    assert len(sites) >= 1
+    missing = [
+        f"{path}:{line}"
+        for path, line, kwargs in sites
+        if not {"finder_effort", "skeptic_effort"} <= kwargs
+    ]
+    assert not missing, f"these ReviewRecord constructions do not state the efforts: {missing}"

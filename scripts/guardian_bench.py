@@ -319,6 +319,9 @@ async def _score_and_record(
         ),
         "chunks": chunks,
         "skeptic_model": skeptic[1] if skeptic else None,
+        # Recorded for the same reason as the models: it changes the output (#713).
+        "finder_effort": provider.effort,
+        "skeptic_effort": skeptic[0].effort if skeptic else None,
         "skeptic_status": result.skeptic_status,
         "skeptic_judged": result.skeptic_judged,
         "skeptic_total": result.skeptic_total,

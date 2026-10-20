@@ -395,6 +395,13 @@ class ReviewRecord(BaseModel, frozen=True):
     #: `test_a_new_record_always_states_its_features_source` makes new records
     #: state it; the pair's consistency is enforced below.
     features_source: FeaturesSource | None = None
+    #: The effort each pass ran at, from its provider (#713). Effort changes an
+    #: anthropic model's output the way temperature changes a sampled one, and
+    #: the fingerprint digests code only, so without these a run at `low` and
+    #: one at `medium` are the same row. None — the provider has no effort
+    #: setting, or the row predates the field.
+    finder_effort: str | None = None
+    skeptic_effort: str | None = None
     findings: list[Finding]
     prompt_tokens: int
     completion_tokens: int

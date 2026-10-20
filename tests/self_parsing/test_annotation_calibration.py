@@ -90,7 +90,13 @@ _GraphData = tuple[SQLiteStore, list[Node], list[Edge]]
 # 32dab04 held 1150 annotation references (Task 3's _keys.py and profile signatures),
 # and Task 4 adds 17, every one in the new src/cgis/languages/data/ modules. Annotation
 # band re-centred on the branch; names unchanged (326, within 320±25).
-_EXPECTED_ANNOTATION_REFERENCES = 1167
+#
+# Re-measured 2026-10-20 on the anthropic-provider branch (fresh ingest, the fixture's pipeline):
+# main 5017ee0 held 1225 annotation references — +58 of ordinary churn since the last
+# centring — and the branch adds 3, the SDK types AsyncAnthropic, Message and Usage in
+# src/cgis/guardian/providers/anthropic.py. Annotation band re-centred on the branch at
+# the user's decision; tolerance unchanged.
+_EXPECTED_ANNOTATION_REFERENCES = 1228
 _EXPECTED_NAME_REFERENCES = 320
 _TOLERANCE = 60  # ~10% of the annotation band: ordinary code churn, not a lost source
 _NAME_REF_TOLERANCE = 25  # the name-reference band is smaller, so its band is too

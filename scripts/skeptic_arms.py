@@ -236,6 +236,7 @@ async def collect_rows(
                             "pass": path.stem,
                             "arm": name,
                             "skeptic_model": model,
+                            "skeptic_effort": provider.effort,
                             "finder_model": models.get(path.stem, "unknown"),
                             "evidence": evidence is not None,
                             **scored,
@@ -257,6 +258,7 @@ async def collect_rows(
 _VENDOR_MARKERS: dict[str, tuple[str, ...]] = {
     "gemini": ("gemini",),
     "mistral": ("mistral", "codestral", "ministral", "magistral"),
+    "anthropic": ("claude",),
 }
 
 #: A model this table does not recognise. **Not** a third vendor — a refusal to

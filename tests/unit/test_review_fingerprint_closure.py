@@ -74,6 +74,15 @@ def test_both_roles_are_active_when_they_differ() -> None:
     assert "src/cgis/guardian/providers/ollama.py" not in closure
 
 
+def test_the_anthropic_provider_joins_the_closure_only_when_active() -> None:
+    """Imported at the top of runner.py like the others, so only its name prunes it (#713)."""
+    anthropic = "src/cgis/guardian/providers/anthropic.py"
+    assert anthropic not in walk_closure(disk_reader, frozenset({"mistral"}))
+    closure = walk_closure(disk_reader, frozenset({"mistral", "anthropic"}))
+    assert anthropic in closure
+    assert "src/cgis/guardian/providers/mistral.py" in closure
+
+
 def test_resolve_active_providers_is_the_union() -> None:
     """The shared helper both scripts call, so they cannot drift apart (#375).
 
@@ -87,8 +96,8 @@ def test_resolve_active_providers_is_the_union() -> None:
 
 def test_unknown_provider_is_refused() -> None:
     """A provider that maps to no module would silently narrow the closure."""
-    active = frozenset({"anthropic"})
-    with pytest.raises(UnknownProviderError, match="anthropic"):
+    active = frozenset({"cohere"})
+    with pytest.raises(UnknownProviderError, match="cohere"):
         walk_closure(disk_reader, active)
 
 

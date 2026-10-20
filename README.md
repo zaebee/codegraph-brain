@@ -136,7 +136,7 @@ The details — and a pipeline graph CGIS regenerates from its own source on eve
 **Guardian** is CGIS's built-in LLM reviewer — it reviews pull requests using the *graph* as context, not just the diff text. It runs in CI and posts inline comments anchored to the exact line.
 
 *   **Two-stage, recall-first:** a **finder** surfaces every plausible defect (optimised for recall), then a separate **skeptic** pass filters false positives — closer to how human reviewers work, and far more reliable than a single precision-gated prompt.
-*   **Local *or* cloud, no lock-in:** point it at **Ollama** (`qwen2.5-coder`, `llama3.1`, `granite-code`, …) for free local inference, or at **Mistral / Gemini** in the cloud. You can even mix them — a strong cloud finder with a free local *cross-model* skeptic.
+*   **Local *or* cloud, no lock-in:** point it at **Ollama** (`qwen2.5-coder`, `llama3.1`, `granite-code`, …) for free local inference, or at **Mistral / Gemini / Claude** in the cloud. You can even mix them — a strong cloud finder with a free local *cross-model* skeptic.
 *   **Graph-aware context:** the reviewer sees impact graphs, architectural drift, and project ontology — so it catches structural and convention defects a flat-diff reviewer can't.
 *   **Deterministic anchoring:** every inline comment is positioned by a verbatim quote from the diff, not the model's (often wrong) line guess.
 *   **Dogfooded & measured:** Guardian reviews CGIS's *own* pull requests, and a benchmark harness scores it against curated ground truth — so prompt changes are validated, not guessed.
@@ -145,6 +145,12 @@ The details — and a pipeline graph CGIS regenerates from its own source on eve
 # Build the graph, then review a PR with a local model (no API key)
 cgis ingest ./src --output graph.db
 GUARDIAN_PROVIDER=ollama GUARDIAN_MODEL=qwen2.5-coder:14b \
+  uv run python scripts/guardian_review.py --pr 123 --db graph.db --inline
+
+# Or a Claude skeptic over a Mistral finder: Claude Haiku 5.5 unless GUARDIAN_SKEPTIC_MODEL names
+# another, at GUARDIAN_ANTHROPIC_EFFORT=low unless set (low|medium|high|xhigh|max). Claude models
+# reject a sampling temperature, so GUARDIAN_TEMPERATURE must be unset.
+GUARDIAN_SKEPTIC=anthropic ANTHROPIC_API_KEY=... MISTRAL_API_KEY=... \
   uv run python scripts/guardian_review.py --pr 123 --db graph.db --inline
 ```
 
