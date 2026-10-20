@@ -87,8 +87,8 @@ def test_resolve_active_providers_is_the_union() -> None:
 
 def test_unknown_provider_is_refused() -> None:
     """A provider that maps to no module would silently narrow the closure."""
-    active = frozenset({"anthropic"})
-    with pytest.raises(UnknownProviderError, match="anthropic"):
+    active = frozenset({"cohere"})
+    with pytest.raises(UnknownProviderError, match="cohere"):
         walk_closure(disk_reader, active)
 
 

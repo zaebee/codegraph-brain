@@ -24,7 +24,7 @@ We do not collect, transmit, store or have access to: your source code, the grap
 
 The `codegraph-brain` package also contains **Guardian**, a code reviewer that sends diffs and graph context to a large language model. **Guardian is not part of the Claude Code plugin**: the plugin neither ships nor invokes it, and it does nothing unless you configure it and run it deliberately, normally in CI.
 
-If you choose to use Guardian, you select the model provider yourself — Google Gemini, Mistral, Cohere, or a local Ollama instance — and supply your own credentials. In that case the code being reviewed is sent to whichever provider you chose, under **that provider's** privacy policy and terms, not this one. Choosing Ollama keeps it local. We never see that traffic and never receive a copy.
+If you choose to use Guardian, you select the model provider yourself — Google Gemini, Mistral, Anthropic (Claude), OpenRouter, Cohere, or a local Ollama instance — and supply your own credentials. In that case the code being reviewed is sent to whichever provider you chose, under **that provider's** privacy policy and terms, not this one. Choosing Ollama keeps it local. We never see that traffic and never receive a copy.
 
 Credentials for those providers are read from your environment and used only to call the provider they belong to. They are not logged, stored or transmitted anywhere else.
 

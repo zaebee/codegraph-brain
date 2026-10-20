@@ -155,7 +155,7 @@ def walk_closure(read: ReadFile, active_providers: frozenset[str]) -> list[str]:
     """
     known = frozenset(
         name
-        for name in ("gemini", "mistral", "ollama", "openrouter")
+        for name in ("gemini", "mistral", "ollama", "openrouter", "anthropic")
         if _module_path(f"{_PROVIDER_PACKAGE}.{name}", read) is not None
     )
     unknown = active_providers - known

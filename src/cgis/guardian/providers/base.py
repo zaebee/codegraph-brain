@@ -86,7 +86,8 @@ class BaseProvider(abc.ABC):
             return
         _msg = (
             f"{cls.__name__} must declare `name: ClassVar[str]` — one of the "
-            'GUARDIAN_PROVIDER values: "gemini", "mistral", "ollama", "openrouter". Add '
+            'GUARDIAN_PROVIDER values: "gemini", "mistral", "ollama", "openrouter", '
+            '"anthropic". Add '
             f'`name: ClassVar[str] = "..."` as the first line of '
             f"{cls.__name__}'s class body."
         )

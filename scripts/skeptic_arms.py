@@ -257,6 +257,7 @@ async def collect_rows(
 _VENDOR_MARKERS: dict[str, tuple[str, ...]] = {
     "gemini": ("gemini",),
     "mistral": ("mistral", "codestral", "ministral", "magistral"),
+    "anthropic": ("claude",),
 }
 
 #: A model this table does not recognise. **Not** a third vendor — a refusal to

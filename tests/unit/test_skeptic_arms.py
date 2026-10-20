@@ -133,6 +133,7 @@ class TestTheVendorSplit:
             ("codestral-latest", "mistral"),
             ("ministral-8b-latest", "mistral"),
             ("Gemini-2.5-Flash", "gemini"),
+            ("claude-haiku-5-5", "anthropic"),
             ("gpt-5", "unknown"),
             ("", "unknown"),
         ],

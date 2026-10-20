@@ -69,6 +69,7 @@ analytics = [
 guardian = [
     "google-genai>=0.8.0",
     "mistralai>=1.0.0",
+    "anthropic>=1.0.0",
     "cohere>=5.0.0",
     "ollama>=0.3.0",
 ]
@@ -78,6 +79,8 @@ all = [
 
 [dependency-groups]
 dev = [
+    # Also in the guardian extra: the provider tests exercise the SDK's own schema transform.
+    "anthropic>=1.0.0",
     "duckdb>=1.1.0",
     "interrogate>=1.7.0",
     "ipdb>=0.13.13",

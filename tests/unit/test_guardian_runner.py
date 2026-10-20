@@ -89,7 +89,7 @@ def test_build_provider_explicit_gemini_requires_its_key() -> None:
 def test_build_provider_rejects_unknown_provider() -> None:
     """A typo in GUARDIAN_PROVIDER fails loudly, not with the generic key error."""
     with pytest.raises(RuntimeError, match="Unknown GUARDIAN_PROVIDER"):
-        build_provider({"GUARDIAN_PROVIDER": "anthropic", "GEMINI_API_KEY": "g"})
+        build_provider({"GUARDIAN_PROVIDER": "cohere", "GEMINI_API_KEY": "g"})
 
 
 def test_build_provider_explicit_gemini_with_key() -> None:
@@ -204,9 +204,9 @@ def test_build_provider_unknown_lists_every_provider_there_is() -> None:
     openrouter arrived (#246), which is the failure mode the derivation closes.
     """
     with pytest.raises(RuntimeError) as raised:
-        build_provider({"GUARDIAN_PROVIDER": "anthropic", "GEMINI_API_KEY": "g"})
+        build_provider({"GUARDIAN_PROVIDER": "cohere", "GEMINI_API_KEY": "g"})
     message = str(raised.value)
-    for name in ("mistral", "gemini", "ollama", "openrouter"):
+    for name in ("mistral", "gemini", "ollama", "openrouter", "anthropic"):
         assert name in message
 
 
@@ -824,3 +824,68 @@ def test_build_skeptic_openrouter_builds() -> None:
     assert built is not None
     assert built[0].name == "openrouter"
     assert built[1] == "vendor/m:free"
+
+
+def test_build_provider_anthropic_requires_a_key() -> None:
+    with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY must be set"):
+        build_provider({"GUARDIAN_PROVIDER": "anthropic"})
+
+
+def test_build_provider_anthropic_defaults_to_the_cheap_model_at_low_effort() -> None:
+    provider, model = build_provider({"GUARDIAN_PROVIDER": "anthropic", "ANTHROPIC_API_KEY": "k"})
+    assert provider.name == "anthropic"
+    assert model == "claude-haiku-5-5"
+    assert provider._effort == "low"  # noqa: SLF001  # white-box: effort wiring
+
+
+def test_build_provider_anthropic_reads_the_effort() -> None:
+    env = {
+        "GUARDIAN_PROVIDER": "anthropic",
+        "ANTHROPIC_API_KEY": "k",
+        "GUARDIAN_MODEL": "claude-sonnet-5-5",
+        "GUARDIAN_ANTHROPIC_EFFORT": "medium",
+    }
+    provider, model = build_provider(env)
+    assert model == "claude-sonnet-5-5"
+    assert provider._effort == "medium"  # noqa: SLF001  # white-box: effort wiring
+
+
+def test_build_provider_anthropic_refuses_a_temperature() -> None:
+    """Current Claude models answer a sampling value with a 400.
+
+    Refused at build time rather than dropped: a run that registered a
+    temperature and silently ran without one would record a setting it never had.
+    """
+    env = {
+        "GUARDIAN_PROVIDER": "anthropic",
+        "ANTHROPIC_API_KEY": "k",
+        "GUARDIAN_TEMPERATURE": "0.7",
+    }
+    with pytest.raises(RuntimeError, match="GUARDIAN_TEMPERATURE"):
+        build_provider(env)
+
+
+def test_anthropic_is_never_autodetected_from_its_key() -> None:
+    """ANTHROPIC_API_KEY is set in many shells for other tools; it must not start spending."""
+    with pytest.raises(RuntimeError, match="Set MISTRAL_API_KEY or GEMINI_API_KEY"):
+        build_provider({"ANTHROPIC_API_KEY": "k"})
+
+
+def test_build_skeptic_anthropic_degrades_without_a_key() -> None:
+    assert build_skeptic_provider({"GUARDIAN_SKEPTIC": "anthropic"}, primary="mistral") is None
+
+
+def test_build_skeptic_anthropic_builds_with_the_default_model() -> None:
+    built = build_skeptic_provider(
+        {"GUARDIAN_SKEPTIC": "anthropic", "ANTHROPIC_API_KEY": "k"}, primary="mistral"
+    )
+    assert built is not None
+    assert built[0].name == "anthropic"
+    assert built[1] == "claude-haiku-5-5"
+
+
+def test_build_skeptic_anthropic_with_a_temperature_stops_the_run() -> None:
+    """Not a quiet degrade: reviews without their skeptic read as a lenient skeptic (#246)."""
+    env = {"GUARDIAN_SKEPTIC": "anthropic", "ANTHROPIC_API_KEY": "k", "GUARDIAN_TEMPERATURE": "0.7"}
+    with pytest.raises(RuntimeError, match="GUARDIAN_TEMPERATURE"):
+        build_skeptic_provider(env, primary="mistral")

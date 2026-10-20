@@ -167,7 +167,7 @@ class UnknownVendorStub(StubProvider):
     return a confident wrong digest (#375).
     """
 
-    name: ClassVar[str] = "anthropic"
+    name: ClassVar[str] = "cohere"
 
 
 @pytest.mark.asyncio
@@ -188,7 +188,7 @@ async def test_a_row_survives_a_fingerprint_that_cannot_be_taken(tmp_path: Path)
     row = await _record(tmp_path / "results.jsonl", skeptic=None, provider=UnknownVendorStub([]))
     assert row["review_fingerprint"] is None
     assert row["review_fingerprint_source"] is None
-    assert row["finder_provider"] == "anthropic"
+    assert row["finder_provider"] == "cohere"
     # The measurement itself is intact — this is the row the recall corpus needs.
     assert "matched" in row
     assert "precision" in row

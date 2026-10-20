@@ -15,6 +15,11 @@ from cgis.guardian.diff_index import diff_line_content
 from cgis.guardian.findings import ReviewResult
 from cgis.guardian.github_poster import post_inline_review
 from cgis.guardian.metrics import SkepticRecord, record_review
+from cgis.guardian.providers.anthropic import (
+    DEFAULT_ANTHROPIC_MODEL,
+    DEFAULT_EFFORT,
+    AnthropicProvider,
+)
 from cgis.guardian.providers.base import BaseProvider, ProviderUsage
 from cgis.guardian.providers.gemini import GeminiProvider
 from cgis.guardian.providers.mistral import MistralProvider
@@ -227,6 +232,35 @@ def _build_openrouter(
     )
 
 
+def _anthropic(env: Mapping[str, str], model: str) -> AnthropicProvider:
+    """An AnthropicProvider on ANTHROPIC_API_KEY, refusing a set GUARDIAN_TEMPERATURE.
+
+    Refused rather than dropped: current Claude models answer a sampling value
+    with a 400, and a run that registered a temperature and quietly ran without
+    one would record a setting it never had. Depth is GUARDIAN_ANTHROPIC_EFFORT.
+    """
+    key = env.get("ANTHROPIC_API_KEY")
+    if not key:
+        _msg = "ANTHROPIC_API_KEY must be set for an anthropic finder or skeptic"
+        raise RuntimeError(_msg)
+    if temperature(env) is not None:
+        _msg = (
+            "GUARDIAN_TEMPERATURE is set, and Claude models reject a sampling value. "
+            "Unset it; set GUARDIAN_ANTHROPIC_EFFORT to change how hard the model thinks."
+        )
+        raise RuntimeError(_msg)
+    effort = (env.get("GUARDIAN_ANTHROPIC_EFFORT") or "").strip() or DEFAULT_EFFORT
+    return AnthropicProvider(api_key=key, model_name=model, effort=effort)
+
+
+def _build_anthropic(
+    env: Mapping[str, str], model_override: str | None
+) -> tuple[BaseProvider, str]:
+    """Construct an AnthropicProvider; never auto-selected, so a stray key spends nothing."""
+    model = model_override or DEFAULT_ANTHROPIC_MODEL
+    return _anthropic(env, model), model
+
+
 def _build_ollama(env: Mapping[str, str], model_override: str | None) -> tuple[BaseProvider, str]:
     """Construct an OllamaProvider; GUARDIAN_MODEL names the model (no API key)."""
     if not model_override:
@@ -289,6 +323,7 @@ def build_provider(env: Mapping[str, str]) -> tuple[BaseProvider, str]:
         "gemini": _build_gemini,
         "ollama": _build_ollama,
         "openrouter": _build_openrouter,
+        "anthropic": _build_anthropic,
     }
     builder = builders.get(provider_name)
     if builder is None:
@@ -363,6 +398,25 @@ def _skeptic_mistral(
     return MistralProvider(api_key=key, model_name=model, temperature=temperature(env)), model
 
 
+def _skeptic_anthropic(
+    env: Mapping[str, str], model_override: str | None
+) -> tuple[BaseProvider, str] | None:
+    """An anthropic skeptic; a missing key disables it, a set temperature raises.
+
+    The two are treated differently on purpose. A missing key is the ordinary
+    "no skeptic configured" case every provider degrades on. A set temperature
+    is a run registered with one setting for both passes — the Mistral finder
+    runs of #342 used 0.7 — and a skeptic that dropped out over it would leave
+    reviews that read as "the skeptic refuted nothing", the very result #246
+    measures. That has to stop the run, not warn.
+    """
+    if not env.get("ANTHROPIC_API_KEY"):
+        log.warning("Skeptic disabled: ANTHROPIC_API_KEY not set.")
+        return None
+    model = model_override or DEFAULT_ANTHROPIC_MODEL
+    return _anthropic(env, model), model
+
+
 def _skeptic_gemini(
     env: Mapping[str, str], model_override: str | None
 ) -> tuple[BaseProvider, str] | None:
@@ -387,6 +441,7 @@ _SKEPTIC_BUILDERS: dict[
     "openrouter": _skeptic_openrouter,
     "mistral": _skeptic_mistral,
     "gemini": _skeptic_gemini,
+    "anthropic": _skeptic_anthropic,
 }
 
 
@@ -396,7 +451,7 @@ def build_skeptic_provider(
     """Return (skeptic_provider, model) or None for single-pass (spec §5.5).
 
     Default skeptic = the provider opposite to the primary; GUARDIAN_SKEPTIC
-    overrides ('gemini'|'mistral'|'ollama'|'openrouter'|'off');
+    overrides ('gemini'|'mistral'|'ollama'|'openrouter'|'anthropic'|'off');
     GUARDIAN_SKEPTIC_MODEL overrides the model, enabling
     same-provider/different-model pairs (incl. two distinct local Ollama models —
     a cross-model skeptic with no API cost). A missing API key / model degrades
