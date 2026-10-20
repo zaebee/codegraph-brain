@@ -523,7 +523,6 @@ async def review(args: argparse.Namespace) -> int:
                 f"{record.prompt_tokens}+{record.completion_tokens} tok, {record.duration_s}s",
                 flush=True,
             )
-    _report_spend(budget)
     return 1 if failures else 0
 
 
@@ -558,7 +557,6 @@ def _budget_stops(budget: Budget | None) -> bool:
     if budget is None or not budget.exhausted:
         return False
     budget.stopped = True
-    _report_spend(budget)
     print(
         "Stopped at the budget; the rows so far are not a complete run.",
         file=sys.stderr,
@@ -785,7 +783,6 @@ async def judge(args: argparse.Namespace) -> int:
         f"\njudge spend: {spent_prompt} prompt + {spent_completion} completion "
         f"= {spent_prompt + spent_completion} tokens over {len(pending)} reviews"
     )
-    _report_spend(budget)
     return 1 if failures else 0
 
 
@@ -1240,12 +1237,16 @@ def main() -> int:
         return union(args)
     if args.command in ("judge", "review") and not args.dry_run:
         _budget_or_exit(parser, args)
-    if args.command == "judge":
-        return asyncio.run(judge(args))
+    if args.command in ("judge", "review"):
+        spend = judge if args.command == "judge" else review
+        try:
+            return asyncio.run(spend(args))
+        finally:
+            # Here rather than in the loops: a Ctrl-C or a cancellation escapes
+            # them, and an aborted paid run is the one most in need of its bill.
+            _report_spend(getattr(args, "budget", None))
     if args.command == "prepare":
         return prepare(args)
-    if args.command == "review":
-        return asyncio.run(review(args))
     return plan(args)
 
 

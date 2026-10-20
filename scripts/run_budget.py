@@ -1,7 +1,8 @@
 """A hard spending cap for paid guardian bench runs, priced per provider per call (#246).
 
-Used by `scripts/skeptic_arms.py` and `scripts/guardian_bench.py`, so a cap
-means the same thing in both. Prices are keyed by the name the run uses for a
+Used by `scripts/skeptic_arms.py`, `scripts/guardian_bench.py` and
+`scripts/guardian_martian.py`, so a cap means the same thing in all three.
+Prices are keyed by the name the run uses for a
 provider (an arm, or a provider's `name`), and charged per call from
 `BaseProvider.call_usages`, because a vendor price can depend on one request's
 size and a sum cannot say which request crossed the line.

@@ -2350,3 +2350,85 @@ def test_a_spending_subcommand_refuses_a_cap_it_cannot_price(
         gm.main()
     assert raised.value.code == 2
     assert f"missing: {missing}" in capsys.readouterr().err
+
+
+def test_a_judged_review_that_raises_after_a_billed_call_is_still_charged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#717 review: moving the charge out of `finally` passed every other test."""
+    accounting = TestJudgeTokenAccounting()
+    reviews = tmp_path / "r.jsonl"
+    reviews.write_text(accounting._record().model_dump_json() + "\n", encoding="utf-8")  # noqa: SLF001
+    monkeypatch.setattr(gm, "load_corpus", lambda _dir: [accounting._pr()])  # noqa: SLF001
+    judge = _CountingJudge(prompt=1000, completion=100)
+    monkeypatch.setattr(gm, "build_provider", lambda _env: (judge, "m"))
+
+    async def billed_then_raises(
+        _record: object, _pr: object, provider: BaseProvider, *_a: object
+    ) -> object:
+        await provider.generate_content("", "")
+        _msg = "judge reply unparseable"
+        raise RuntimeError(_msg)
+
+    monkeypatch.setattr(gm, "judge_one", billed_then_raises)
+    budget = Budget(cap_usd=1.0, prices={"gemini": Price(1.0, 10.0)})
+    args = argparse.Namespace(
+        corpus=tmp_path,
+        reviews=reviews,
+        out=tmp_path / "j.jsonl",
+        profile="core",
+        pr=None,
+        concurrency=1,
+        dry_run=False,
+        budget=budget,
+    )
+    assert asyncio.run(gm.judge(args)) == 1
+    assert budget.spent_usd == pytest.approx(0.002)
+
+
+def _main_env(monkeypatch: pytest.MonkeyPatch, **env: str) -> None:
+    for name in (
+        "GUARDIAN_SKEPTIC",
+        "GUARDIAN_TEMPERATURE",
+        "GUARDIAN_MODEL",
+        "GUARDIAN_PROVIDER",
+        "MISTRAL_API_KEY",
+        "GEMINI_API_KEY",
+        "ANTHROPIC_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+
+
+def test_an_aborted_paid_run_still_prints_its_spend(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Ctrl-C escapes the loops' `except Exception`; the bill must still be stated."""
+    _main_env(
+        monkeypatch, GUARDIAN_PROVIDER="anthropic", ANTHROPIC_API_KEY="k", GUARDIAN_SKEPTIC="off"
+    )
+
+    async def interrupted(_args: object) -> int:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(gm, "review", interrupted)
+    argv = ["guardian_martian.py", "review", "--budget-usd", "1", "--price", "anthropic=0.1:0.5"]
+    monkeypatch.setattr(sys, "argv", argv)
+    with pytest.raises(KeyboardInterrupt):
+        gm.main()
+    assert "Spent $0.0000 of $1.00." in capsys.readouterr().err
+
+
+def test_a_dry_run_with_a_budget_asks_for_no_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pricing builds providers, which needs keys; a mode that spends nothing must not."""
+    _main_env(monkeypatch)
+
+    async def dry(_args: object) -> int:
+        return 0
+
+    monkeypatch.setattr(gm, "review", dry)
+    monkeypatch.setattr(
+        sys, "argv", ["guardian_martian.py", "review", "--dry-run", "--budget-usd", "1"]
+    )
+    assert gm.main() == 0
