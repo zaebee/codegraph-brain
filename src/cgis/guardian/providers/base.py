@@ -100,9 +100,13 @@ class BaseProvider(abc.ABC):
         every call this provider instance has made (a chunked review makes
         N finder calls — and even a single-pass review makes 2 on a parse
         retry, whose first call last_usage used to silently drop).
+        call_usages keeps every call: a vendor price that depends on one
+        request's size (Haiku 5.5 bills a prompt over 100K at 5x) cannot be
+        applied to a sum.
         """
         self.last_usage: ProviderUsage = ProviderUsage()
         self.cumulative_usage: ProviderUsage = ProviderUsage()
+        self.call_usages: list[ProviderUsage] = []
 
     @property
     def effort(self) -> str | None:
@@ -114,8 +118,9 @@ class BaseProvider(abc.ABC):
         return None
 
     def _record_usage(self, usage: ProviderUsage) -> None:
-        """Record one call's token usage: set last_usage, add to cumulative."""
+        """Record one call's token usage: set last_usage, keep it, add to cumulative."""
         self.last_usage = usage
+        self.call_usages.append(usage)
         self.cumulative_usage = ProviderUsage(
             prompt_tokens=self.cumulative_usage.prompt_tokens + usage.prompt_tokens,
             completion_tokens=self.cumulative_usage.completion_tokens + usage.completion_tokens,

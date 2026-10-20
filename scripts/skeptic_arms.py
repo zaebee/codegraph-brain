@@ -41,6 +41,7 @@ import sys
 import tempfile
 from collections import defaultdict
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -54,7 +55,7 @@ from cgis.guardian.bench import (
     score,
 )
 from cgis.guardian.evidence import Evidence, collect_evidence
-from cgis.guardian.providers.base import BaseProvider
+from cgis.guardian.providers.base import BaseProvider, ProviderUsage
 from cgis.guardian.recording import load_finder_recording
 from cgis.guardian.runner import build_skeptic_provider
 from cgis.guardian.skeptic import apply_judgements, judge_all, visible_findings
@@ -189,8 +190,195 @@ async def judge_one(
     }
 
 
+@dataclass(frozen=True)
+class Price:
+    """One arm's USD per million tokens, with an optional long-prompt tier.
+
+    The tier is decided per request: a call whose prompt exceeds `above` is
+    priced whole at the long rate. Claude Haiku 5.5 bills $0.10/$0.50 up to 100K
+    input tokens and $0.50/$2.50 beyond, so a flat counter would under-price
+    every long call by 5x. Pricing the whole call long errs high if the vendor
+    tiers only the excess — the safe direction for a cap.
+    """
+
+    per_in: float
+    per_out: float
+    above: int | None = None
+    long_in: float = 0.0
+    long_out: float = 0.0
+
+    def cost(self, usage: ProviderUsage) -> float:
+        """The USD cost of one call."""
+        long = self.above is not None and usage.prompt_tokens > self.above
+        per_in, per_out = (self.long_in, self.long_out) if long else (self.per_in, self.per_out)
+        return (usage.prompt_tokens * per_in + usage.completion_tokens * per_out) / 1_000_000
+
+
+@dataclass
+class Budget:
+    """A hard spending cap, priced per arm from the tokens each row reports (#246).
+
+    Priced per arm because arms are different vendors at different prices: one
+    pair applied to both would under-count the dearer arm and let the cap pass
+    untripped. The cap is only as good as the provider's own usage counts.
+
+    Checked before every row, so a run overshoots by at most one row: every
+    finding of one pass, judged by one arm — up to 28 judgements in the corpus
+    as written. That is the honest bound, since a row's cost is not known until
+    it returns. A run that reaches the cap on its last row has nothing left to
+    skip and is complete. A stop is reported as a stop, never scored: the rows
+    before it cover some passes for some arms, half a comparison read as a whole.
+    """
+
+    cap_usd: float
+    prices: dict[str, Price]
+    spent_usd: float = 0.0
+    stopped: bool = False
+
+    @property
+    def exhausted(self) -> bool:
+        """Whether the cap has been reached."""
+        return self.spent_usd >= self.cap_usd
+
+    def charge(self, arm: str, calls: list[ProviderUsage]) -> None:
+        """Add one row's calls, each at its own arm's price for its own size."""
+        price = self.prices[arm]
+        self.spent_usd += sum(price.cost(call) for call in calls)
+
+
+_PRICE_FORMAT = (
+    "expected ARM=IN:OUT or ARM=IN:OUT;ABOVE=IN:OUT (USD per million tokens; ABOVE in input tokens)"
+)
+
+
+def _rate_pair(text: str, item: str) -> tuple[float, float]:
+    """`"0.10:0.50"` -> (0.10, 0.50); ValueError naming the whole --price item."""
+    per_in, _, per_out = text.partition(":")
+    try:
+        return float(per_in), float(per_out)
+    except ValueError:
+        _msg = f"--price {item!r}: {_PRICE_FORMAT}"
+        raise ValueError(_msg) from None
+
+
+def parse_prices(items: list[str]) -> dict[str, Price]:
+    """`["anthropic=0.10:0.50;100000=0.50:2.50"]` -> {"anthropic": Price(...)}."""
+    prices: dict[str, Price] = {}
+    for item in items:
+        arm, _, rest = item.partition("=")
+        short, _, tier = rest.partition(";")
+        above, _, long_rates = tier.partition("=")
+        if not arm or (tier and not above.isdigit()):
+            _msg = f"--price {item!r}: {_PRICE_FORMAT}"
+            raise ValueError(_msg)
+        per_in, per_out = _rate_pair(short, item)
+        if not tier:
+            prices[arm] = Price(per_in, per_out)
+            continue
+        long_in, long_out = _rate_pair(long_rates, item)
+        prices[arm] = Price(per_in, per_out, int(above), long_in, long_out)
+    return prices
+
+
+def _passes_by_pr(repo_root: Path, tmp: Path, limit: int | None) -> dict[int, list[Path]]:
+    """The frozen passes that carry findings, sorted, trimmed to `limit`, grouped by PR.
+
+    Passes with no findings cost nothing to judge and contribute nothing to a
+    comparison of judgements, so they are dropped before any worktree is built
+    rather than filtered out of the numbers afterwards.
+    """
+    written = build(BENCH_DIR / "results.jsonl", tmp, BENCH_DIR, repo_root)
+    recordings = [p for p in written if load_finder_recording(p).result.findings]
+    recordings.sort(key=lambda p: p.stem)
+    if limit is not None:
+        recordings = recordings[:limit]
+    by_pr: dict[int, list[Path]] = defaultdict(list)
+    for path in recordings:
+        by_pr[int(path.stem.split("@")[0])].append(path)
+    return by_pr
+
+
+async def _judged_row(
+    arm: tuple[str, BaseProvider, str],
+    path: Path,
+    truth: GroundTruth,
+    evidence: Evidence | None,
+    finder_model: str,
+) -> tuple[dict[str, Any], list[ProviderUsage]]:
+    """One pass under one arm: its row, and the calls the judging made."""
+    name, provider, model = arm
+    first_call = len(provider.call_usages)
+    scored = await judge_one(provider, path, truth, evidence)
+    # This row's own calls: the provider's record is cumulative.
+    calls = provider.call_usages[first_call:]
+    row = {
+        "timestamp": datetime.now(UTC).isoformat(),
+        "pr": _pr_of(path),
+        "pass": path.stem,
+        "arm": name,
+        "skeptic_model": model,
+        "skeptic_effort": provider.effort,
+        "skeptic_prompt_tokens": sum(c.prompt_tokens for c in calls),
+        "skeptic_completion_tokens": sum(c.completion_tokens for c in calls),
+        # The size that decides a long-prompt price tier.
+        "skeptic_max_call_prompt_tokens": max((c.prompt_tokens for c in calls), default=0),
+        "finder_model": finder_model,
+        "evidence": evidence is not None,
+        **scored,
+    }
+    print(
+        f"  {path.stem} [{name}] {scored['refuted']}/{scored['findings']} refuted",
+        file=sys.stderr,
+    )
+    return row, calls
+
+
+@dataclass(frozen=True)
+class _PrContext:
+    """What every pass of one PR is judged against."""
+
+    truth: GroundTruth
+    evidence: Evidence | None
+    finder_models: dict[str, str]
+
+
+async def _judge_passes(
+    paths: list[Path],
+    arms: dict[str, tuple[BaseProvider, str]],
+    context: _PrContext,
+    rows: list[dict[str, Any]],
+    budget: Budget | None,
+) -> bool:
+    """Judge one PR's passes under every arm, appending rows; False once the budget stops it.
+
+    The budget is checked before each row, so a run reaching the cap on its
+    last row is complete rather than stopped.
+    """
+    for path in paths:
+        for name, (provider, model) in arms.items():
+            if budget is not None and budget.exhausted:
+                budget.stopped = True
+                return False
+            finder = context.finder_models.get(path.stem, "unknown")
+            row, calls = await _judged_row(
+                (name, provider, model), path, context.truth, context.evidence, finder
+            )
+            rows.append(row)
+            if budget is not None:
+                budget.charge(name, calls)
+    return True
+
+
+def _pr_of(path: Path) -> int:
+    """The PR number a recording's stem names (`143@a` -> 143)."""
+    return int(path.stem.split("@")[0])
+
+
 async def collect_rows(
-    repo_root: Path, limit: int | None, arm_spec: dict[str, str | None]
+    repo_root: Path,
+    limit: int | None,
+    arm_spec: dict[str, str | None],
+    budget: Budget | None = None,
 ) -> list[dict[str, Any]]:
     """Both arms over every frozen pass; one row per (pass, arm).
 
@@ -202,21 +390,9 @@ async def collect_rows(
     arms = {name: arm_provider(name, os.environ, model) for name, model in arm_spec.items()}
     models = finder_models(BENCH_DIR / "results.jsonl")
 
+    rows: list[dict[str, Any]] = []
     with tempfile.TemporaryDirectory(prefix="arms-") as tmp:
-        written = build(BENCH_DIR / "results.jsonl", Path(tmp), BENCH_DIR, repo_root)
-        # Passes with no findings cost nothing to judge and contribute nothing to
-        # a comparison of judgements, so they are dropped before any worktree is
-        # built rather than filtered out of the numbers afterwards.
-        recordings = [p for p in written if load_finder_recording(p).result.findings]
-        recordings.sort(key=lambda p: p.stem)
-        if limit is not None:
-            recordings = recordings[:limit]
-
-        by_pr: dict[int, list[Path]] = defaultdict(list)
-        for path in recordings:
-            by_pr[int(path.stem.split("@")[0])].append(path)
-
-        rows: list[dict[str, Any]] = []
+        by_pr = _passes_by_pr(repo_root, Path(tmp), limit)
         for pr in sorted(by_pr):
             truth = load_ground_truth(BENCH_DIR / f"pr-{pr}.yaml")
             sample = load_finder_recording(by_pr[pr][0])
@@ -226,27 +402,9 @@ async def collect_rows(
                 f"evidence {'collected' if evidence else 'unavailable'}",
                 file=sys.stderr,
             )
-            for path in by_pr[pr]:
-                for name, (provider, model) in arms.items():
-                    scored = await judge_one(provider, path, truth, evidence)
-                    rows.append(
-                        {
-                            "timestamp": datetime.now(UTC).isoformat(),
-                            "pr": pr,
-                            "pass": path.stem,
-                            "arm": name,
-                            "skeptic_model": model,
-                            "skeptic_effort": provider.effort,
-                            "finder_model": models.get(path.stem, "unknown"),
-                            "evidence": evidence is not None,
-                            **scored,
-                        }
-                    )
-                    print(
-                        f"  {path.stem} [{name}] {scored['refuted']}/{scored['findings']} refuted",
-                        file=sys.stderr,
-                    )
-
+            context = _PrContext(truth, evidence, models)
+            if not await _judge_passes(by_pr[pr], arms, context, rows, budget):
+                break
     return rows
 
 
@@ -370,6 +528,27 @@ def report(rows: list[dict[str, Any]]) -> None:
     )
 
 
+def _budget_from_args(
+    parser: argparse.ArgumentParser,
+    cap: float | None,
+    price_items: list[str],
+    arm_spec: dict[str, str | None],
+) -> Budget | None:
+    """The run's Budget, or None; exits via `parser.error` on an unpriceable cap."""
+    try:
+        prices = parse_prices(price_items)
+    except ValueError as exc:
+        parser.error(str(exc))
+    if cap is None:
+        if prices:
+            parser.error("--price only means something with --budget-usd")
+        return None
+    unpriced = sorted(set(arm_spec) - set(prices))
+    if unpriced:
+        parser.error(f"--budget-usd needs a --price for every arm; missing: {unpriced}")
+    return Budget(cap, prices)
+
+
 def main() -> int:
     """Run both arms and write the rows."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -383,12 +562,40 @@ def main() -> int:
     parser.add_argument(
         "--limit", type=int, default=None, help="judge only the first N passes (a smoke run)"
     )
+    parser.add_argument(
+        "--budget-usd", type=float, default=None, help="stop once this much is spent"
+    )
+    parser.add_argument(
+        "--price",
+        action="append",
+        default=[],
+        metavar="ARM=IN:OUT",
+        help=(
+            "an arm's USD per million input:output tokens, one per arm with --budget-usd; "
+            "add ;ABOVE=IN:OUT for a call whose prompt exceeds ABOVE tokens "
+            "(claude-haiku-5-5: anthropic=0.10:0.50;100000=0.50:2.50)"
+        ),
+    )
     args = parser.parse_args()
-    rows = asyncio.run(collect_rows(args.repo_root, args.limit, parse_arms(args.arms)))
+    arm_spec = parse_arms(args.arms)
+    budget = _budget_from_args(parser, args.budget_usd, args.price, arm_spec)
+    try:
+        rows = asyncio.run(collect_rows(args.repo_root, args.limit, arm_spec, budget))
+    finally:
+        # Also on a crash: the money was spent either way and must be reconcilable.
+        if budget is not None:
+            print(f"Spent ${budget.spent_usd:.4f} of ${budget.cap_usd:.2f}.", file=sys.stderr)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     # Written before the gate: the rows are evidence either way, and a refused
     # run whose data was discarded cannot be diagnosed.
     args.out.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    if budget is not None and budget.stopped:
+        print(
+            f"Stopped at the budget after {len(rows)} rows; rows kept at {args.out}, "
+            f"no comparison printed.",
+            file=sys.stderr,
+        )
+        return 3
     problems = validity_problems(rows)
     if problems:
         for problem in problems:
