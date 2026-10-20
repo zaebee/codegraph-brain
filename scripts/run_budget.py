@@ -7,6 +7,7 @@ provider (an arm, or a provider's `name`), and charged per call from
 size and a sum cannot say which request crossed the line.
 """
 
+import math
 from collections.abc import Iterable
 from dataclasses import dataclass
 
@@ -112,6 +113,16 @@ def make_budget(cap: float | None, price_items: list[str], names: Iterable[str])
     nothing, so both are refused rather than run.
     """
     prices = parse_prices(price_items)
+    for name, price in prices.items():
+        rates = (price.per_in, price.per_out, price.long_in, price.long_out)
+        if not all(math.isfinite(r) and r >= 0 for r in rates):
+            # A negative price pays the cap back; nan never compares to anything.
+            _msg = f"--price {name}: rates must be non-negative, finite numbers"
+            raise ValueError(_msg)
+    if cap is not None and not (math.isfinite(cap) and cap > 0):
+        # nan >= cap is always False, so a nan cap would never trip.
+        _msg = f"--budget-usd {cap}: must be a positive, finite number"
+        raise ValueError(_msg)
     if cap is None:
         if prices:
             _msg = "--price only means something with --budget-usd"

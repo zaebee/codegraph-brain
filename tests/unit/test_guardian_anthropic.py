@@ -49,18 +49,38 @@ def _message(
 
 
 class _Stream:
-    """Stands in for the SDK's message stream manager: an async context manager."""
+    """Stands in for the SDK's message stream manager: an async context manager.
 
-    def __init__(self, reply: SimpleNamespace) -> None:
+    `drop_after_start` raises as a connection cut after message_start would,
+    with the input usage already in the snapshot, as the real SDK keeps it.
+    """
+
+    def __init__(self, reply: SimpleNamespace, *, drop_after_start: bool = False) -> None:
         self._reply = reply
+        self._drop = drop_after_start
+        self.entered = False
+        self.final_read = False
+        self.current_message_snapshot = SimpleNamespace(
+            usage=SimpleNamespace(
+                input_tokens=100,
+                cache_creation_input_tokens=20,
+                cache_read_input_tokens=5,
+                output_tokens=3,
+            )
+        )
 
     async def __aenter__(self) -> "_Stream":
+        self.entered = True
         return self
 
     async def __aexit__(self, *_exc: object) -> None:
         return None
 
     async def get_final_message(self) -> SimpleNamespace:
+        if self._drop:
+            _msg = "connection dropped mid-stream"
+            raise ConnectionError(_msg)
+        self.final_read = True
         return self._reply
 
 
@@ -74,11 +94,13 @@ class _Client:
         self._sent = sent
         self.messages = self
         self.closed = False
+        self.drop = False
         built["client"] = self
 
     def stream(self, **kwargs: object) -> "_Stream":
         self._sent.append(kwargs)
-        return _Stream(self._reply)
+        self.last_stream = _Stream(self._reply, drop_after_start=self.drop)
+        return self.last_stream
 
     async def close(self) -> None:
         self.closed = True
@@ -191,3 +213,52 @@ async def test_the_reply_is_streamed_with_room_for_medium_effort_thinking() -> N
     provider, _built, sent = _provider()
     await provider.generate_content("sys", "user")
     assert sent[0]["max_tokens"] == mod.DEFAULT_MAX_TOKENS == 32000
+
+
+async def test_the_message_is_the_streams_final_message() -> None:
+    provider, built, _sent = _provider()
+    await provider.generate_content("sys", "user")
+    stream = built["client"].last_stream
+    assert stream.entered
+    assert stream.final_read
+
+
+async def test_a_stream_cut_after_it_started_is_still_charged() -> None:
+    """The input was billed once message_start arrived; the budget must see it (#716 review)."""
+    provider, _built, _sent = _provider()
+    built_client: dict[str, Any] = {}
+
+    def dropping_factory(**_client_kwargs: object) -> _Client:
+        client = _Client(_message(), built_client, [])
+        client.drop = True
+        return client
+
+    provider._client_factory = dropping_factory  # noqa: SLF001
+    with pytest.raises(ConnectionError):
+        await provider.generate_content("sys", "user")
+    assert [u.prompt_tokens for u in provider.call_usages] == [125]
+    assert built_client["client"].closed
+
+
+async def test_a_stream_cut_before_it_started_charges_nothing() -> None:
+    """Before message_start the SDK's snapshot asserts; nothing was billed, nothing recorded."""
+    provider, _built, _sent = _provider()
+
+    class _Unstarted(_Stream):
+        @property
+        def current_message_snapshot(self) -> SimpleNamespace:  # type: ignore[override]
+            raise AssertionError
+
+        @current_message_snapshot.setter
+        def current_message_snapshot(self, _value: object) -> None:
+            return None
+
+    def factory(**_client_kwargs: object) -> _Client:
+        client = _Client(_message(), {}, [])
+        client.stream = lambda **_kw: _Unstarted(_message(), drop_after_start=True)  # type: ignore[method-assign]
+        return client
+
+    provider._client_factory = factory  # noqa: SLF001
+    with pytest.raises(ConnectionError):
+        await provider.generate_content("sys", "user")
+    assert provider.call_usages == []

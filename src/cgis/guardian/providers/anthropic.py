@@ -133,11 +133,28 @@ class AnthropicProvider(BaseProvider):
         )
         try:
             async with client.messages.stream(**request) as stream:
-                message = await stream.get_final_message()
+                try:
+                    message = await stream.get_final_message()
+                except Exception:
+                    self._record_partial(stream)
+                    raise
         finally:
             await client.close()
         self._record(message.usage)
         return self._text(message)
+
+    def _record_partial(self, stream: Any) -> None:  # noqa: ANN401  # the SDK's stream
+        """Charge a stream cut after it started: its input was billed at message_start.
+
+        The SDK does not retry mid-stream, so without this a dropped connection
+        would be spend the budget never saw. Nothing to record if the cut came
+        before message_start.
+        """
+        try:
+            snapshot = stream.current_message_snapshot
+        except AssertionError:  # the SDK's guard: no message_start yet, nothing billed
+            return
+        self._record(snapshot.usage)
 
     def _record(self, usage: "Usage") -> None:
         """Record input (cached parts included) and output (thinking included)."""

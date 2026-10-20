@@ -356,11 +356,21 @@ def priced_names(env: Mapping[str, str], *, record_finder: bool) -> list[str]:
     Built the way `_run_one` builds them, so the check before the run and the
     charges during it name the same providers. Building one makes no call.
     """
-    names = [build_provider(env)[0].name]
+    finder, finder_model = build_provider(env)
+    names = [finder.name]
     if env.get("GUARDIAN_SKEPTIC") and not record_finder:
-        skeptic = build_skeptic_provider(env, primary=names[0])
-        if skeptic is not None and skeptic[0].name not in names:
+        skeptic = build_skeptic_provider(env, primary=finder.name)
+        if skeptic is not None and skeptic[0].name != finder.name:
             names.append(skeptic[0].name)
+        elif skeptic is not None and skeptic[1] != finder_model:
+            # Prices are keyed by provider name, so the skeptic would be charged
+            # at the finder's rate — under-counting a dearer model unannounced.
+            _msg = (
+                f"finder {finder_model!r} and skeptic {skeptic[1]!r} share the provider "
+                f"name {finder.name!r}, and one --price cannot price two models; "
+                f"run them in separate invocations"
+            )
+            raise ValueError(_msg)
     return names
 
 
@@ -381,6 +391,8 @@ async def run_all(
         for run_idx in range(runs):
             if budget is not None and budget.exhausted:
                 budget.stopped = True
+                if failures:
+                    log.warning("Some replays failed.", failures=failures)
                 log.warning("Stopped at the budget.", spent_usd=round(budget.spent_usd, 4))
                 return 3
             spent: list[tuple[str, list[ProviderUsage]]] = []
@@ -459,13 +471,12 @@ async def main() -> int:
         sys.exit("No ground-truth files selected.")
 
     try:
-        budget = make_budget(
-            args.budget_usd,
-            args.price,
+        names = (
             priced_names(os.environ, record_finder=args.record_finder is not None)
             if args.budget_usd is not None
-            else [],
+            else []
         )
+        budget = make_budget(args.budget_usd, args.price, names)
     except ValueError as exc:
         parser.error(str(exc))
 
@@ -487,6 +498,12 @@ async def main() -> int:
         # Also on a crash: the money was spent either way and must be reconcilable.
         if budget is not None:
             print(f"Spent ${budget.spent_usd:.4f} of ${budget.cap_usd:.2f}.", file=sys.stderr)
+            if budget.stopped:
+                print(
+                    f"Stopped at the budget; rows so far are in {args.results}, "
+                    f"and they are not a complete run.",
+                    file=sys.stderr,
+                )
 
 
 if __name__ == "__main__":
