@@ -1,19 +1,21 @@
 """A hard spending cap for paid guardian bench runs, priced per provider per call (#246).
 
-Used by `scripts/skeptic_arms.py` and `scripts/guardian_bench.py`, so a cap
-means the same thing in both. Prices are keyed by the name the run uses for a
+Used by `scripts/skeptic_arms.py`, `scripts/guardian_bench.py` and
+`scripts/guardian_martian.py`, so a cap means the same thing in all three.
+Prices are keyed by the name the run uses for a
 provider (an arm, or a provider's `name`), and charged per call from
 `BaseProvider.call_usages`, because a vendor price can depend on one request's
 size and a sum cannot say which request crossed the line.
 """
 
 import math
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 from cgis.guardian.providers.base import ProviderUsage
+from cgis.guardian.runner import build_provider, build_skeptic_provider
 
-__all__ = ["Budget", "Price", "make_budget", "parse_prices"]
+__all__ = ["Budget", "Price", "make_budget", "parse_prices", "priced_names"]
 
 
 @dataclass(frozen=True)
@@ -133,3 +135,31 @@ def make_budget(cap: float | None, price_items: list[str], names: Iterable[str])
         _msg = f"--budget-usd needs a --price for every provider it charges; missing: {unpriced}"
         raise ValueError(_msg)
     return Budget(cap, prices)
+
+
+def priced_names(env: Mapping[str, str], *, with_skeptic: bool) -> list[str]:
+    """The providers a run will charge, by `name`: the finder, and the skeptic if `with_skeptic`.
+
+    Built from the environment the way the runs build them, so the check before
+    a run and the charges during it name the same providers. Building one makes
+    no call. Refuses a skeptic on the finder's provider under another model:
+    prices are keyed by provider name, so it would be charged at the finder's
+    rate — under-counting a dearer model unannounced.
+    """
+    finder, finder_model = build_provider(env)
+    names = [finder.name]
+    if not with_skeptic:
+        return names
+    skeptic = build_skeptic_provider(env, primary=finder.name)
+    if skeptic is None:
+        return names
+    if skeptic[0].name != finder.name:
+        names.append(skeptic[0].name)
+    elif skeptic[1] != finder_model:
+        _msg = (
+            f"finder {finder_model!r} and skeptic {skeptic[1]!r} share the provider "
+            f"name {finder.name!r}, and one --price cannot price two models; "
+            f"run them in separate invocations"
+        )
+        raise ValueError(_msg)
+    return names

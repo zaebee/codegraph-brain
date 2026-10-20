@@ -70,7 +70,7 @@ from cgis.guardian.martian import (
     scorable,
     score_slice,
 )
-from cgis.guardian.providers.base import BaseProvider
+from cgis.guardian.providers.base import BaseProvider, ProviderUsage
 from cgis.guardian.review_fingerprint import (
     compute_fingerprint,
     disk_reader,
@@ -83,6 +83,10 @@ from cgis.guardian.runner import (
 )
 from cgis.languages import is_supported, pack_for_path
 from cgis.storage.sqlite_store import SQLiteStore
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from run_budget import Budget, make_budget, priced_names
 
 CORPUS_DIR = Path("benchmarks/martian")
 
@@ -319,7 +323,12 @@ def require_alignment(db_path: Path, changed_files: Sequence[str]) -> str:
     return f"ingested, graph knows {found}/{checked} changed files"
 
 
-async def review_one(row: PrPlan, args: argparse.Namespace) -> ReviewRecord:
+async def review_one(
+    row: PrPlan,
+    args: argparse.Namespace,
+    *,
+    spent: list[tuple[str, list[ProviderUsage]]] | None = None,
+) -> ReviewRecord:
     """Review one prepared PR and return its record. Costs finder + skeptic calls.
 
     `--no-graph` runs the ablation arm: the same PR, the same checkout, the same
@@ -365,6 +374,7 @@ async def review_one(row: PrPlan, args: argparse.Namespace) -> ReviewRecord:
     # name (#375 Task 1).
     primary = provider.name
     skeptic = build_skeptic_provider(os.environ, primary=primary)
+    _register_spend(spent, provider, skeptic[0] if skeptic else None)
     active = resolve_active_providers(primary, skeptic[0].name if skeptic else None)
     fingerprint = compute_fingerprint(disk_reader(REPO_ROOT), active)
     # One read for the prompt and the record: the row must describe the sections
@@ -414,6 +424,22 @@ async def review_one(row: PrPlan, args: argparse.Namespace) -> ReviewRecord:
         skeptic_provider=skeptic[0].name if skeptic else None,
         reviewed_at=datetime.now(UTC).isoformat(),
     )
+
+
+def _register_spend(
+    spent: list[tuple[str, list[ProviderUsage]]] | None,
+    provider: BaseProvider,
+    skeptic: BaseProvider | None,
+) -> None:
+    """Register the providers' live call lists before any call (#716).
+
+    A review that raises halfway is then still charged for what it made.
+    """
+    if spent is None:
+        return
+    spent.append((provider.name, provider.call_usages))
+    if skeptic is not None:
+        spent.append((skeptic.name, skeptic.call_usages))
 
 
 def guardian_version() -> str:
@@ -479,18 +505,15 @@ async def review(args: argparse.Namespace) -> int:
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     failures = 0
+    budget: Budget | None = getattr(args, "budget", None)
     with args.out.open("a", encoding="utf-8") as fh:
         for index, row in enumerate(pending, 1):
+            if _budget_stops(budget):
+                return 3
             label = f"[{index}/{len(pending)}] {row.project} #{row.number}"
-            try:
-                record = await review_one(row, args)
-            except Exception as exc:
+            record = await _review_charged(row, args, budget, label)
+            if record is None:
                 failures += 1
-                print(
-                    f"{label}: FAILED - {type(exc).__name__}: {exc}"[:300],
-                    file=sys.stderr,
-                    flush=True,
-                )
                 continue
             fh.write(record.model_dump_json() + "\n")
             fh.flush()
@@ -501,6 +524,75 @@ async def review(args: argparse.Namespace) -> int:
                 flush=True,
             )
     return 1 if failures else 0
+
+
+def _print_judge_plan(reviews: Sequence[ReviewRecord], profile: Profile) -> None:
+    """What a judge run would score, for --dry-run."""
+    print(f"{len(reviews)} reviews would be judged under profile {profile}:")
+    for record in reviews:
+        candidates = len(candidate_findings(record))
+        print(f"  {record.project:10} {record.url}  ({candidates} candidates)")
+
+
+async def _review_charged(
+    row: PrPlan, args: argparse.Namespace, budget: Budget | None, label: str
+) -> ReviewRecord | None:
+    """Review one PR, charged whether or not it raises; None (reported) on failure."""
+    spent: list[tuple[str, list[ProviderUsage]]] = []
+    try:
+        return await review_one(row, args, spent=spent)
+    except Exception as exc:
+        print(f"{label}: FAILED - {type(exc).__name__}: {exc}"[:300], file=sys.stderr, flush=True)
+        return None
+    finally:
+        if budget is not None:
+            for name, calls in spent:
+                budget.charge(name, calls)
+
+
+async def _judge_charged(
+    item: tuple[ReviewRecord, BenchPr],
+    judge_with: tuple[BaseProvider, str],
+    profile: Profile,
+    concurrency: int,
+    budget: Budget | None,
+    label: str,
+) -> JudgedReview | None:
+    """Judge one review, charged whether or not it raises; None (reported) on failure."""
+    record, pr = item
+    provider, model = judge_with
+    first_call = len(provider.call_usages) if budget is not None else 0
+    try:
+        return await judge_one(record, pr, provider, model, profile, concurrency)
+    except Exception as exc:
+        print(f"{label}: FAILED - {type(exc).__name__}: {exc}"[:250], file=sys.stderr)
+        return None
+    finally:
+        if budget is not None:
+            budget.charge(provider.name, provider.call_usages[first_call:])
+
+
+def _budget_stops(budget: Budget | None) -> bool:
+    """True, with the stop reported, if the cap is reached before the next unit of work.
+
+    Checked before each review or judged review, so a run overshoots by at most
+    one. A stop is never a result: the rows so far cover part of the slice.
+    """
+    if budget is None or not budget.exhausted:
+        return False
+    budget.stopped = True
+    print(
+        "Stopped at the budget; the rows so far are not a complete run.",
+        file=sys.stderr,
+        flush=True,
+    )
+    return True
+
+
+def _report_spend(budget: Budget | None) -> None:
+    """The spend line, so a run can be reconciled against its bill."""
+    if budget is not None:
+        print(f"Spent ${budget.spent_usd:.4f} of ${budget.cap_usd:.2f}.", file=sys.stderr)
 
 
 def load_reviews(path: Path) -> list[ReviewRecord]:
@@ -664,10 +756,7 @@ async def judge(args: argparse.Namespace) -> int:
         # Deliberately before `build_provider`: a mode that spends nothing must
         # not demand credentials, and the model name is only needed to work out
         # what has already been judged.
-        print(f"{len(reviews)} reviews would be judged under profile {profile}:")
-        for record in reviews:
-            candidates = len(candidate_findings(record))
-            print(f"  {record.project:10} {record.url}  ({candidates} candidates)")
+        _print_judge_plan(reviews, profile)
         return 0
 
     provider, model = build_provider(os.environ)
@@ -683,9 +772,12 @@ async def judge(args: argparse.Namespace) -> int:
     failures = 0
     spent_prompt = 0
     spent_completion = 0
+    budget: Budget | None = getattr(args, "budget", None)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("a", encoding="utf-8") as fh:
         for index, record in enumerate(pending, 1):
+            if _budget_stops(budget):
+                return 3
             label = f"[{index}/{len(pending)}] {record.project} {record.url.rsplit('/', 1)[-1]}"
             pr = corpus.get(record.url)
             if pr is None:
@@ -695,11 +787,11 @@ async def judge(args: argparse.Namespace) -> int:
                 failures += 1
                 print(f"{label}: FAILED - not in the corpus: {record.url}", file=sys.stderr)
                 continue
-            try:
-                judged = await judge_one(record, pr, provider, model, profile, concurrency)
-            except Exception as exc:
+            judged = await _judge_charged(
+                (record, pr), (provider, model), profile, concurrency, budget, label
+            )
+            if judged is None:
                 failures += 1
-                print(f"{label}: FAILED - {type(exc).__name__}: {exc}"[:250], file=sys.stderr)
                 continue
             spent_prompt += judged.judge_prompt_tokens
             spent_completion += judged.judge_completion_tokens
@@ -1047,6 +1139,41 @@ def prepare(args: argparse.Namespace) -> int:
     return 1 if failures else 0
 
 
+def _add_budget_flags(parser: argparse.ArgumentParser) -> None:
+    """--budget-usd and --price on a subcommand that spends (#246 B)."""
+    parser.add_argument(
+        "--budget-usd", type=float, default=None, help="stop before the next unit once spent"
+    )
+    parser.add_argument(
+        "--price",
+        action="append",
+        default=[],
+        metavar="NAME=IN:OUT",
+        help=(
+            "a provider's USD per million input:output tokens, one per provider the "
+            "run charges; add ;ABOVE=IN:OUT for a call whose prompt exceeds ABOVE tokens"
+        ),
+    )
+
+
+def _budget_or_exit(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    """Set `args.budget`, or exit through `parser.error` on a cap that cannot price.
+
+    `review` builds a skeptic unless GUARDIAN_SKEPTIC=off, so it is priced too;
+    `judge` charges only the judge, built by `build_provider`.
+    """
+    if args.budget_usd is None:
+        names: list[str] = []
+    elif args.command == "review":
+        names = priced_names(os.environ, with_skeptic=True)
+    else:
+        names = priced_names(os.environ, with_skeptic=False)
+    try:
+        args.budget = make_budget(args.budget_usd, args.price, names)
+    except ValueError as exc:
+        parser.error(str(exc))
+
+
 def main() -> int:
     """Parse arguments and dispatch."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -1082,6 +1209,7 @@ def main() -> int:
         help="ablation arm: withhold the graph from PRs that have one",
     )
     rev.add_argument("--dry-run", action="store_true", help="print what would be reviewed")
+    _add_budget_flags(rev)
 
     jud = sub.add_parser("judge", help="score recorded reviews semantically (COSTS MONEY)")
     jud.add_argument("--corpus", type=Path, default=CORPUS_DIR)
@@ -1096,6 +1224,7 @@ def main() -> int:
         help="parallel judge calls; use 1 on Mistral, which 429s hard above it",
     )
     jud.add_argument("--dry-run", action="store_true")
+    _add_budget_flags(jud)
 
     rep = sub.add_parser("report", help="print G4/G5/G6 from the judged records")
     rep.add_argument("--judged", type=Path, default=JUDGED_FILE)
@@ -1127,12 +1256,18 @@ def main() -> int:
         return report(args)
     if args.command == "union":
         return union(args)
-    if args.command == "judge":
-        return asyncio.run(judge(args))
+    if args.command in ("judge", "review") and not args.dry_run:
+        _budget_or_exit(parser, args)
+    if args.command in ("judge", "review"):
+        spend = judge if args.command == "judge" else review
+        try:
+            return asyncio.run(spend(args))
+        finally:
+            # Here rather than in the loops: a Ctrl-C or a cancellation escapes
+            # them, and an aborted paid run is the one most in need of its bill.
+            _report_spend(getattr(args, "budget", None))
     if args.command == "prepare":
         return prepare(args)
-    if args.command == "review":
-        return asyncio.run(review(args))
     return plan(args)
 
 
