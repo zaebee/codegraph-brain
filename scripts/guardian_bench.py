@@ -374,6 +374,42 @@ def priced_names(env: Mapping[str, str], *, record_finder: bool) -> list[str]:
     return names
 
 
+async def _run_charged(
+    run_one: RunOne,
+    truth: GroundTruth,
+    run_idx: int,
+    results_path: Path,
+    budget: Budget | None,
+) -> bool:
+    """One (PR, run), charged whether or not it raises; True if it failed.
+
+    A failure is isolated (spec §7): logged, written as an error row, and the
+    loop goes on. The charge is in `finally` because the calls were billed
+    either way.
+    """
+    spent: list[tuple[str, list[ProviderUsage]]] = []
+    try:
+        await run_one(truth, run_idx, spent)
+    except Exception as exc:  # isolate per-PR failures (spec §7)
+        log.error("PR replay failed.", pr=truth.pr, run=run_idx, error=str(exc))  # noqa: TRY400
+        await asyncio.to_thread(
+            _append_jsonl,
+            results_path,
+            {
+                "timestamp": datetime.now(UTC).isoformat(),
+                "pr": truth.pr,
+                "run": run_idx,
+                "error": str(exc),
+            },
+        )
+        return True
+    finally:
+        if budget is not None:
+            for name, calls in spent:
+                budget.charge(name, calls)
+    return False
+
+
 async def run_all(
     truths: list[GroundTruth],
     runs: int,
@@ -387,37 +423,18 @@ async def run_all(
     and a run that fails is still charged for the calls it made.
     """
     failures = 0
-    for truth in truths:
-        for run_idx in range(runs):
-            if budget is not None and budget.exhausted:
-                budget.stopped = True
-                if failures:
-                    log.warning("Some replays failed.", failures=failures)
-                log.warning("Stopped at the budget.", spent_usd=round(budget.spent_usd, 4))
-                return 3
-            spent: list[tuple[str, list[ProviderUsage]]] = []
-            try:
-                await run_one(truth, run_idx, spent)
-            except Exception as exc:  # isolate per-PR failures (spec §7)
-                failures += 1
-                log.error("PR replay failed.", pr=truth.pr, run=run_idx, error=str(exc))  # noqa: TRY400
-                await asyncio.to_thread(
-                    _append_jsonl,
-                    results_path,
-                    {
-                        "timestamp": datetime.now(UTC).isoformat(),
-                        "pr": truth.pr,
-                        "run": run_idx,
-                        "error": str(exc),
-                    },
-                )
-            finally:
-                if budget is not None:
-                    for name, calls in spent:
-                        budget.charge(name, calls)
+    code = 0
+    for truth, run_idx in ((t, i) for t in truths for i in range(runs)):
+        if budget is not None and budget.exhausted:
+            budget.stopped = True
+            code = 3
+            break
+        failures += await _run_charged(run_one, truth, run_idx, results_path, budget)
     if failures:
         log.warning("Some replays failed.", failures=failures)
-    return 0
+    if code == 3 and budget is not None:
+        log.warning("Stopped at the budget.", spent_usd=round(budget.spent_usd, 4))
+    return code
 
 
 async def main() -> int:

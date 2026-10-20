@@ -202,7 +202,6 @@ from run_budget import Budget, Price, make_budget  # noqa: E402
 from cgis.guardian.providers.base import ProviderUsage  # noqa: E402
 
 _FLAT = Price(1.0, 10.0)
-_TRUTH = GroundTruth(pr=1, base="a", head="b", findings=[])
 
 
 def _spending_run(calls_per_run: int, *, fail: bool = False):  # noqa: ANN202
