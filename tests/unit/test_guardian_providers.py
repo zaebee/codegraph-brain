@@ -1,5 +1,7 @@
 """Unit tests for provider retry semantics and timeout wiring (#275)."""
 
+import sys
+from types import ModuleType, SimpleNamespace
 from typing import ClassVar
 
 import httpx
@@ -134,6 +136,72 @@ def test_gemini_defaults_to_the_shared_timeout() -> None:
     assert provider._timeout_ms == int(  # noqa: SLF001  # white-box: timeout wiring
         DEFAULT_REQUEST_TIMEOUT * 1000
     )
+
+
+def _install_fake_genai(monkeypatch: pytest.MonkeyPatch, meta: object) -> None:
+    """Put a stand-in `google.genai` in sys.modules; its one reply carries `meta` as usage.
+
+    A fake module rather than the SDK: CI installs no guardian extra, and these
+    tests are about what the provider does with the usage it is handed.
+    """
+
+    class _Models:
+        async def generate_content(self, **_kwargs: object) -> object:
+            return SimpleNamespace(text='{"ok": true}', usage_metadata=meta)
+
+    class _Aio:
+        models = _Models()
+
+        async def aclose(self) -> None:
+            return None
+
+    class _Client:
+        def __init__(self, **_kwargs: object) -> None:
+            self.aio = _Aio()
+
+        def close(self) -> None:
+            return None
+
+    types = ModuleType("google.genai.types")
+    types.HttpOptions = lambda **_kw: None  # type: ignore[attr-defined]
+    types.GenerateContentConfig = lambda **_kw: None  # type: ignore[attr-defined]
+    genai = ModuleType("google.genai")
+    genai.Client = _Client  # type: ignore[attr-defined]
+    genai.types = types  # type: ignore[attr-defined]
+    google = ModuleType("google")
+    google.genai = genai  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "google", google)
+    monkeypatch.setitem(sys.modules, "google.genai", genai)
+    monkeypatch.setitem(sys.modules, "google.genai.types", types)
+
+
+async def test_gemini_bills_thinking_as_completion(monkeypatch: pytest.MonkeyPatch) -> None:
+    """gemini-2.5 thinks by default and bills it at the output rate (#714 review).
+
+    Recording only `candidates_token_count` under-reported every gemini pass,
+    and a budget priced from it would let a gemini arm overspend its cap.
+    """
+    meta = SimpleNamespace(
+        prompt_token_count=100, candidates_token_count=40, thoughts_token_count=60
+    )
+    _install_fake_genai(monkeypatch, meta)
+    provider = GeminiProvider(api_key="k")
+    await provider.generate_content("sys", "user")
+    assert provider.last_usage.prompt_tokens == 100
+    assert provider.last_usage.completion_tokens == 100
+
+
+async def test_gemini_without_thinking_counts_candidates_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The SDK reports `thoughts_token_count=None` when the model did not think."""
+    meta = SimpleNamespace(
+        prompt_token_count=100, candidates_token_count=40, thoughts_token_count=None
+    )
+    _install_fake_genai(monkeypatch, meta)
+    provider = GeminiProvider(api_key="k")
+    await provider.generate_content("sys", "user")
+    assert provider.last_usage.completion_tokens == 40
 
 
 def test_every_call_is_kept_for_per_request_pricing() -> None:
