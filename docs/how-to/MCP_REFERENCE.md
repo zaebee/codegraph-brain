@@ -129,6 +129,8 @@ What else depends on what a diff changed: subclasses, callers and data keys.
     the list: caller and subclass items are leads to read; data-key items are
     noisy — measured on one application (owner-api), about a quarter of listed
     items were worth a look (docs/lab-notes/2026-10-19-data-key-diff-check.md).
+    Before judging a code site that reads or writes a key unaffected, read its
+    callers (cgis_analyze_impact): they decide what values reach it.
 
 | Argument | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
