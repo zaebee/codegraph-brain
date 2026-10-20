@@ -313,7 +313,7 @@ async def _judged_row(
     calls = provider.call_usages[first_call:]
     row = {
         "timestamp": datetime.now(UTC).isoformat(),
-        "pr": truth_pr(path),
+        "pr": _pr_of(path),
         "pass": path.stem,
         "arm": name,
         "skeptic_model": model,
@@ -333,7 +333,43 @@ async def _judged_row(
     return row, calls
 
 
-def truth_pr(path: Path) -> int:
+@dataclass(frozen=True)
+class _PrContext:
+    """What every pass of one PR is judged against."""
+
+    truth: GroundTruth
+    evidence: Evidence | None
+    finder_models: dict[str, str]
+
+
+async def _judge_passes(
+    paths: list[Path],
+    arms: dict[str, tuple[BaseProvider, str]],
+    context: _PrContext,
+    rows: list[dict[str, Any]],
+    budget: Budget | None,
+) -> bool:
+    """Judge one PR's passes under every arm, appending rows; False once the budget stops it.
+
+    The budget is checked before each row, so a run reaching the cap on its
+    last row is complete rather than stopped.
+    """
+    for path in paths:
+        for name, (provider, model) in arms.items():
+            if budget is not None and budget.exhausted:
+                budget.stopped = True
+                return False
+            finder = context.finder_models.get(path.stem, "unknown")
+            row, calls = await _judged_row(
+                (name, provider, model), path, context.truth, context.evidence, finder
+            )
+            rows.append(row)
+            if budget is not None:
+                budget.charge(name, calls)
+    return True
+
+
+def _pr_of(path: Path) -> int:
     """The PR number a recording's stem names (`143@a` -> 143)."""
     return int(path.stem.split("@")[0])
 
@@ -366,18 +402,9 @@ async def collect_rows(
                 f"evidence {'collected' if evidence else 'unavailable'}",
                 file=sys.stderr,
             )
-            for path in by_pr[pr]:
-                for name, (provider, model) in arms.items():
-                    if budget is not None and budget.exhausted:
-                        budget.stopped = True
-                        return rows
-                    finder = models.get(path.stem, "unknown")
-                    row, calls = await _judged_row(
-                        (name, provider, model), path, truth, evidence, finder
-                    )
-                    rows.append(row)
-                    if budget is not None:
-                        budget.charge(name, calls)
+            context = _PrContext(truth, evidence, models)
+            if not await _judge_passes(by_pr[pr], arms, context, rows, budget):
+                break
     return rows
 
 
