@@ -43,10 +43,11 @@ DEFAULT_EFFORT: Final = "low"
 
 EFFORTS: Final = frozenset({"low", "medium", "high", "xhigh", "max"})
 
-#: Completion budget, thinking included. The finder's replies measured on the
-#: Martian slice average about 4,000 tokens, and a reply cut short is raised,
-#: not returned, so the cost of a budget too low is a failed call.
-DEFAULT_MAX_TOKENS: Final = 16000
+#: Completion budget, thinking included. Step 0 of #246 measured 14,902 output
+#: tokens for one finder pass at effort medium, near the old 16,000; a reply cut
+#: short is raised, not returned, so a budget too low is a failed paid call.
+#: Replies are streamed, so a long one is not bounded by one request's timeout.
+DEFAULT_MAX_TOKENS: Final = 32000
 
 
 class AnthropicReplyError(RuntimeError):
@@ -131,11 +132,32 @@ class AnthropicProvider(BaseProvider):
             api_key=self._api_key, timeout=self._timeout, max_retries=MAX_ATTEMPTS - 1
         )
         try:
-            message = await client.messages.create(**request)
+            async with client.messages.stream(**request) as stream:
+                try:
+                    message = await stream.get_final_message()
+                except Exception:
+                    self._record_partial(stream)
+                    raise
         finally:
             await client.close()
         self._record(message.usage)
         return self._text(message)
+
+    def _record_partial(self, stream: Any) -> None:  # noqa: ANN401  # the SDK's stream
+        """Charge a stream cut after it started: its input was billed at message_start.
+
+        The SDK does not retry mid-stream, so without this a dropped connection
+        would be spending the budget never saw. Nothing to record if the cut came
+        before message_start. Best effort: it runs inside the handler of the
+        error the caller must see, so it never raises over that error.
+        """
+        try:
+            snapshot = stream.current_message_snapshot
+        except AssertionError:  # the SDK's guard: no message_start yet, nothing billed
+            return
+        usage = getattr(snapshot, "usage", None)
+        if usage is not None:
+            self._record(usage)
 
     def _record(self, usage: "Usage") -> None:
         """Record input (cached parts included) and output (thinking included)."""

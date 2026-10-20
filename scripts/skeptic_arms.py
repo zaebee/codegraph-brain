@@ -64,6 +64,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from guardian_replay_skeptic import changed_files, worktree_at
 from recordings_from_corpus import build, is_frozen_pass, row_key
+from run_budget import Budget, make_budget
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BENCH_DIR = REPO_ROOT / "benchmarks" / "guardian"
@@ -188,96 +189,6 @@ async def judge_one(
         # killed it" (#270), and only the second is this experiment's doing.
         "killed_gt": killed_ground_truth(judged, truth),
     }
-
-
-@dataclass(frozen=True)
-class Price:
-    """One arm's USD per million tokens, with an optional long-prompt tier.
-
-    The tier is decided per request: a call whose prompt exceeds `above` is
-    priced whole at the long rate. Claude Haiku 5.5 bills $0.10/$0.50 up to 100K
-    input tokens and $0.50/$2.50 beyond, so a flat counter would under-price
-    every long call by 5x. Pricing the whole call long errs high if the vendor
-    tiers only the excess — the safe direction for a cap.
-    """
-
-    per_in: float
-    per_out: float
-    above: int | None = None
-    long_in: float = 0.0
-    long_out: float = 0.0
-
-    def cost(self, usage: ProviderUsage) -> float:
-        """The USD cost of one call."""
-        long = self.above is not None and usage.prompt_tokens > self.above
-        per_in, per_out = (self.long_in, self.long_out) if long else (self.per_in, self.per_out)
-        return (usage.prompt_tokens * per_in + usage.completion_tokens * per_out) / 1_000_000
-
-
-@dataclass
-class Budget:
-    """A hard spending cap, priced per arm from the tokens each row reports (#246).
-
-    Priced per arm because arms are different vendors at different prices: one
-    pair applied to both would under-count the dearer arm and let the cap pass
-    untripped. The cap is only as good as the provider's own usage counts.
-
-    Checked before every row, so a run overshoots by at most one row: every
-    finding of one pass, judged by one arm — up to 28 judgements in the corpus
-    as written. That is the honest bound, since a row's cost is not known until
-    it returns. A run that reaches the cap on its last row has nothing left to
-    skip and is complete. A stop is reported as a stop, never scored: the rows
-    before it cover some passes for some arms, half a comparison read as a whole.
-    """
-
-    cap_usd: float
-    prices: dict[str, Price]
-    spent_usd: float = 0.0
-    stopped: bool = False
-
-    @property
-    def exhausted(self) -> bool:
-        """Whether the cap has been reached."""
-        return self.spent_usd >= self.cap_usd
-
-    def charge(self, arm: str, calls: list[ProviderUsage]) -> None:
-        """Add one row's calls, each at its own arm's price for its own size."""
-        price = self.prices[arm]
-        self.spent_usd += sum(price.cost(call) for call in calls)
-
-
-_PRICE_FORMAT = (
-    "expected ARM=IN:OUT or ARM=IN:OUT;ABOVE=IN:OUT (USD per million tokens; ABOVE in input tokens)"
-)
-
-
-def _rate_pair(text: str, item: str) -> tuple[float, float]:
-    """`"0.10:0.50"` -> (0.10, 0.50); ValueError naming the whole --price item."""
-    per_in, _, per_out = text.partition(":")
-    try:
-        return float(per_in), float(per_out)
-    except ValueError:
-        _msg = f"--price {item!r}: {_PRICE_FORMAT}"
-        raise ValueError(_msg) from None
-
-
-def parse_prices(items: list[str]) -> dict[str, Price]:
-    """`["anthropic=0.10:0.50;100000=0.50:2.50"]` -> {"anthropic": Price(...)}."""
-    prices: dict[str, Price] = {}
-    for item in items:
-        arm, _, rest = item.partition("=")
-        short, _, tier = rest.partition(";")
-        above, _, long_rates = tier.partition("=")
-        if not arm or (tier and not above.isdigit()):
-            _msg = f"--price {item!r}: {_PRICE_FORMAT}"
-            raise ValueError(_msg)
-        per_in, per_out = _rate_pair(short, item)
-        if not tier:
-            prices[arm] = Price(per_in, per_out)
-            continue
-        long_in, long_out = _rate_pair(long_rates, item)
-        prices[arm] = Price(per_in, per_out, int(above), long_in, long_out)
-    return prices
 
 
 def _passes_by_pr(repo_root: Path, tmp: Path, limit: int | None) -> dict[int, list[Path]]:
@@ -528,27 +439,6 @@ def report(rows: list[dict[str, Any]]) -> None:
     )
 
 
-def _budget_from_args(
-    parser: argparse.ArgumentParser,
-    cap: float | None,
-    price_items: list[str],
-    arm_spec: dict[str, str | None],
-) -> Budget | None:
-    """The run's Budget, or None; exits via `parser.error` on an unpriceable cap."""
-    try:
-        prices = parse_prices(price_items)
-    except ValueError as exc:
-        parser.error(str(exc))
-    if cap is None:
-        if prices:
-            parser.error("--price only means something with --budget-usd")
-        return None
-    unpriced = sorted(set(arm_spec) - set(prices))
-    if unpriced:
-        parser.error(f"--budget-usd needs a --price for every arm; missing: {unpriced}")
-    return Budget(cap, prices)
-
-
 def main() -> int:
     """Run both arms and write the rows."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -578,7 +468,10 @@ def main() -> int:
     )
     args = parser.parse_args()
     arm_spec = parse_arms(args.arms)
-    budget = _budget_from_args(parser, args.budget_usd, args.price, arm_spec)
+    try:
+        budget = make_budget(args.budget_usd, args.price, arm_spec)
+    except ValueError as exc:
+        parser.error(str(exc))
     try:
         rows = asyncio.run(collect_rows(args.repo_root, args.limit, arm_spec, budget))
     finally:
