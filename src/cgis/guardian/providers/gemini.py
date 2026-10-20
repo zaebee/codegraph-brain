@@ -7,6 +7,11 @@ from pydantic import BaseModel
 from cgis.guardian.providers.base import DEFAULT_REQUEST_TIMEOUT, BaseProvider, ProviderUsage
 
 
+def _count(meta: object, field: str) -> int:
+    """A token count from usage metadata; the SDK gives None, not 0, for a field it lacks."""
+    return int(getattr(meta, field, 0) or 0)
+
+
 class GeminiProvider(BaseProvider):
     """Google Gemini provider. Requires: uv sync --group guardian"""
 
@@ -54,10 +59,14 @@ class GeminiProvider(BaseProvider):
             )
             meta = getattr(response, "usage_metadata", None)
             if meta is not None:
+                # Thinking is billed at the output rate and reported apart from
+                # the answer; gemini-2.5 thinks by default and this provider sets
+                # no thinking config, so leaving it out under-reported every pass.
                 self._record_usage(
                     ProviderUsage(
-                        prompt_tokens=getattr(meta, "prompt_token_count", 0),
-                        completion_tokens=getattr(meta, "candidates_token_count", 0),
+                        prompt_tokens=_count(meta, "prompt_token_count"),
+                        completion_tokens=_count(meta, "candidates_token_count")
+                        + _count(meta, "thoughts_token_count"),
                     )
                 )
             return str(response.text)
