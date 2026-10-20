@@ -147,7 +147,9 @@ cgis ingest ./src --output graph.db
 GUARDIAN_PROVIDER=ollama GUARDIAN_MODEL=qwen2.5-coder:14b \
   uv run python scripts/guardian_review.py --pr 123 --db graph.db --inline
 
-# Or a Claude skeptic over a Mistral finder (Claude Haiku 5.5 unless GUARDIAN_SKEPTIC_MODEL names another)
+# Or a Claude skeptic over a Mistral finder: Claude Haiku 5.5 unless GUARDIAN_SKEPTIC_MODEL names
+# another, at GUARDIAN_ANTHROPIC_EFFORT=low unless set (low|medium|high|xhigh|max). Claude models
+# reject a sampling temperature, so GUARDIAN_TEMPERATURE must be unset.
 GUARDIAN_SKEPTIC=anthropic ANTHROPIC_API_KEY=... MISTRAL_API_KEY=... \
   uv run python scripts/guardian_review.py --pr 123 --db graph.db --inline
 ```

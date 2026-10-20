@@ -154,3 +154,14 @@ def test_an_unknown_effort_is_refused_at_construction() -> None:
 
 def test_the_default_model_is_the_cheap_one() -> None:
     assert mod.DEFAULT_ANTHROPIC_MODEL == "claude-haiku-5-5"
+
+
+def test_the_provider_states_its_effort_for_the_record() -> None:
+    provider, _built, _sent = _provider(effort="medium")
+    assert provider.effort == "medium"
+
+
+def test_a_provider_without_effort_states_none() -> None:
+    from cgis.guardian.providers.mistral import MistralProvider  # noqa: PLC0415
+
+    assert MistralProvider(api_key="k").effort is None

@@ -17,7 +17,7 @@ with a 400; depth is set with `effort` instead, and the provider sends it on
 every call so a run can state what it ran on.
 """
 
-from typing import TYPE_CHECKING, Any, ClassVar, Final
+from typing import TYPE_CHECKING, Any, ClassVar, Final, override
 
 from pydantic import BaseModel
 
@@ -104,6 +104,12 @@ class AnthropicProvider(BaseProvider):
         self._max_tokens = max_tokens
         self._effort = effort
         self._client_factory = client_factory
+
+    @property
+    @override
+    def effort(self) -> str:
+        """The effort sent on every call."""
+        return self._effort
 
     async def _create(
         self, system_prompt: str, user_prompt: str, fmt: dict[str, Any] | None

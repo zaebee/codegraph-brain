@@ -236,6 +236,7 @@ async def collect_rows(
                             "pass": path.stem,
                             "arm": name,
                             "skeptic_model": model,
+                            "skeptic_effort": provider.effort,
                             "finder_model": models.get(path.stem, "unknown"),
                             "evidence": evidence is not None,
                             **scored,

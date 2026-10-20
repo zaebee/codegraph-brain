@@ -104,6 +104,15 @@ class BaseProvider(abc.ABC):
         self.last_usage: ProviderUsage = ProviderUsage()
         self.cumulative_usage: ProviderUsage = ProviderUsage()
 
+    @property
+    def effort(self) -> str | None:
+        """How hard the model is asked to think, for the record; None where there is no such knob.
+
+        Recorded beside the model because it changes the reviewer's output and
+        the review fingerprint digests code only.
+        """
+        return None
+
     def _record_usage(self, usage: ProviderUsage) -> None:
         """Record one call's token usage: set last_usage, add to cumulative."""
         self.last_usage = usage

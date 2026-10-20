@@ -613,6 +613,7 @@ class TestGraphProvenance:
 class _StubProvider:
     name = "gemini"
     cumulative_usage = SimpleNamespace(prompt_tokens=0, completion_tokens=0)
+    effort = None
 
 
 def _wire_review(monkeypatch: pytest.MonkeyPatch, rebuilt: list[str]) -> None:
@@ -871,6 +872,7 @@ class TestReviewOne:
         class _Provider:
             name = "gemini"
             cumulative_usage = _Usage()
+            effort = None
 
         class _Result:
             findings: ClassVar[list[object]] = []
@@ -961,6 +963,7 @@ class TestResumeRobustness:
 
         class _Mistral(MistralProvider):
             cumulative_usage = SimpleNamespace(prompt_tokens=0, completion_tokens=0)
+            effort = None
 
             def __init__(self) -> None:
                 pass
