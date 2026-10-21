@@ -199,3 +199,9 @@ def test_resume_accepts_the_same_judges_in_another_order(
     assert label_gt_matches.main() == 0
     assert load_labels(out).judges == ("claude-a", "claude-b")
     assert "0 of 0 pairs labelled by every judge" in capsys.readouterr().err
+
+
+def test_main_refuses_an_empty_judge_list(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["x", "--judges", " , ", "--out", str(tmp_path / "l.json")])
+    with pytest.raises(SystemExit):
+        label_gt_matches.main()

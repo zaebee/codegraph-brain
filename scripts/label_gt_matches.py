@@ -128,6 +128,8 @@ def main() -> int:
     parser.add_argument("--concurrency", type=int, default=DEFAULT_JUDGE_CONCURRENCY)
     args = parser.parse_args()
     names = [n.strip() for n in args.judges.split(",") if n.strip()]
+    if not names:
+        parser.error("--judges names no model")
     try:
         budget = make_budget(args.budget_usd, args.price, names)
     except ValueError as exc:
