@@ -65,6 +65,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from guardian_replay_skeptic import changed_files, worktree_at
 from recordings_from_corpus import build, is_frozen_pass, row_key
 from run_budget import Budget, make_budget
+from semantic_match import Labels, load_labels, semantic_counts
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BENCH_DIR = REPO_ROOT / "benchmarks" / "guardian"
@@ -166,8 +167,15 @@ async def judge_one(
     recording_path: Path,
     truth: GroundTruth,
     evidence: Evidence | None,
+    labels: Labels | None = None,
 ) -> dict[str, Any]:
-    """One recording under one arm, scored the way `guardian_bench` scores a run."""
+    """One recording under one arm, scored the way `guardian_bench` scores a run.
+
+    With `labels` (#246 E) the row also carries the semantic score: noise and
+    killed ground truth from judge-labelled matches instead of file-level
+    crediting. Every finding's verdict is kept either way, so a row can be
+    re-scored later without paying the skeptic again.
+    """
     recording = load_finder_recording(recording_path)
     findings = recording.result.findings
     judgements = await judge_all(provider, findings, recording.diff, evidence=evidence)
@@ -175,7 +183,28 @@ async def judge_one(
     visible = visible_findings(judged)
     matches = match_findings(visible, truth)
     bench_score = score(matches, truth)
+    shown = {id(f) for f in visible}
+    semantic: dict[str, Any] = {}
+    if labels is not None:
+        noise, matched, killed = semantic_counts(
+            judged,
+            [i for i, f in enumerate(judged) if id(f) in shown],
+            labels.accepts(recording_path.stem, "all"),
+            truth,
+        )
+        semantic = {
+            "noise_semantic": noise,
+            "matched_semantic": matched,
+            "killed_gt_semantic": killed,
+        }
     return {
+        "verdicts": [
+            None
+            if j is None
+            else {"verdict": j.verdict, "impact_score": j.impact_score, "rationale": j.rationale}
+            for j in judgements
+        ],
+        **semantic,
         "findings": len(findings),
         "refuted": sum(1 for f in judged if f.verdict == "refuted"),
         "uncertain": sum(1 for f in judged if f.verdict == "uncertain"),
@@ -215,11 +244,12 @@ async def _judged_row(
     truth: GroundTruth,
     evidence: Evidence | None,
     finder_model: str,
+    labels: Labels | None = None,
 ) -> tuple[dict[str, Any], list[ProviderUsage]]:
     """One pass under one arm: its row, and the calls the judging made."""
     name, provider, model = arm
     first_call = len(provider.call_usages)
-    scored = await judge_one(provider, path, truth, evidence)
+    scored = await judge_one(provider, path, truth, evidence, labels)
     # This row's own calls: the provider's record is cumulative.
     calls = provider.call_usages[first_call:]
     row = {
@@ -251,6 +281,7 @@ class _PrContext:
     truth: GroundTruth
     evidence: Evidence | None
     finder_models: dict[str, str]
+    labels: Labels | None = None
 
 
 async def _judge_passes(
@@ -272,7 +303,12 @@ async def _judge_passes(
                 return False
             finder = context.finder_models.get(path.stem, "unknown")
             row, calls = await _judged_row(
-                (name, provider, model), path, context.truth, context.evidence, finder
+                (name, provider, model),
+                path,
+                context.truth,
+                context.evidence,
+                finder,
+                context.labels,
             )
             rows.append(row)
             if budget is not None:
@@ -290,8 +326,11 @@ async def collect_rows(
     limit: int | None,
     arm_spec: dict[str, str | None],
     budget: Budget | None = None,
+    labels: Labels | None = None,
 ) -> list[dict[str, Any]]:
     """Both arms over every frozen pass; one row per (pass, arm).
+
+    `labels` adds the semantic score to every row (#246 E).
 
     Returns the rows rather than writing them. The write is the caller's, and
     synchronous: a blocking file write inside the event loop is the same defect
@@ -313,7 +352,7 @@ async def collect_rows(
                 f"evidence {'collected' if evidence else 'unavailable'}",
                 file=sys.stderr,
             )
-            context = _PrContext(truth, evidence, models)
+            context = _PrContext(truth, evidence, models, labels)
             if not await _judge_passes(by_pr[pr], arms, context, rows, budget):
                 break
     return rows
@@ -466,14 +505,21 @@ def main() -> int:
             "(claude-haiku-5-5: anthropic=0.10:0.50;100000=0.50:2.50)"
         ),
     )
+    parser.add_argument(
+        "--labels",
+        type=Path,
+        default=None,
+        help="judge-labelled matches (label_gt_matches.py): also score each row semantically",
+    )
     args = parser.parse_args()
     arm_spec = parse_arms(args.arms)
+    labels = load_labels(args.labels) if args.labels else None
     try:
         budget = make_budget(args.budget_usd, args.price, arm_spec)
     except ValueError as exc:
         parser.error(str(exc))
     try:
-        rows = asyncio.run(collect_rows(args.repo_root, args.limit, arm_spec, budget))
+        rows = asyncio.run(collect_rows(args.repo_root, args.limit, arm_spec, budget, labels))
     finally:
         # Also on a crash: the money was spent either way and must be reconcilable.
         if budget is not None:
