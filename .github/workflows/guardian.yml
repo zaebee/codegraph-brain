@@ -81,10 +81,14 @@ jobs:
       - name: Run Guardian Review
         id: guardian
         env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           GUARDIAN_PROVIDER: ${{ vars.GUARDIAN_PROVIDER }}
           GUARDIAN_MODEL: ${{ vars.GUARDIAN_MODEL }}
+          # Thinking depth for an anthropic finder or skeptic; unset = the
+          # provider's default ("low"). #246 J measured the finder at "medium".
+          GUARDIAN_ANTHROPIC_EFFORT: ${{ vars.GUARDIAN_ANTHROPIC_EFFORT }}
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GUARDIAN_FEATURES: ${{ vars.GUARDIAN_FEATURES }}
