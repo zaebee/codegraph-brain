@@ -54,7 +54,7 @@ from cgis.guardian.findings import Finding
 from cgis.guardian.providers.base import BaseProvider
 from cgis.guardian.recording import load_finder_recording
 from cgis.guardian.runner import build_provider, build_skeptic_provider
-from cgis.guardian.skeptic import FindingJudgement, judge_all
+from cgis.guardian.skeptic import Judgement, judge_all
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -166,7 +166,7 @@ def worktree_at(ref: str, repo_root: Path) -> Iterator[Path]:
             )
 
 
-def flips(baseline: Sequence[str], replayed: Sequence[FindingJudgement | None]) -> Counter[str]:
+def flips(baseline: Sequence[str], replayed: Sequence[Judgement | None]) -> Counter[str]:
     """Counts of `baseline -> replayed`, positionally paired.
 
     Positional because `judge_all` returns one entry per finding in order and
@@ -184,7 +184,7 @@ def flips(baseline: Sequence[str], replayed: Sequence[FindingJudgement | None]) 
     )
 
 
-def cites_a_checker(judgement: FindingJudgement | None) -> bool:
+def cites_a_checker(judgement: Judgement | None) -> bool:
     """Whether the rationale points at the evidence rather than at the diff.
 
     This is the attributable half. A flip whose reason is "the quoted code does
@@ -256,7 +256,7 @@ def write_rows(
     out: Path,
     findings: Sequence[Finding],
     baseline: Sequence[str],
-    judgements: Sequence[FindingJudgement | None],
+    judgements: Sequence[Judgement | None],
 ) -> None:
     """One JSON line per finding: what was claimed, what was ruled, and why.
 

@@ -41,19 +41,28 @@ class FindingJudgement(BaseModel, frozen=True):
     rationale: str
 
 
+#: A ruling that may also say "the argument is wrong, the code is not" (#246 F).
+#:
+#: Experiment E read the recorded rationales of every finding a skeptic hid that
+#: really matched ground truth: most stated a failure path that cannot happen,
+#: while the code they pointed at held a different real defect. 'refuted' hid the
+#: pointer with the argument; 'misdirected' keeps the finding, down-ranked like
+#: 'uncertain', with the skeptic naming the defect worth the look.
+#:
+#: A separate model rather than a fourth value on `FindingJudgement`, which is the
+#: production schema and must stay byte-identical until the experiment passes.
+#: Its docstring is FindingJudgement's, word for word, on purpose: providers send
+#: a model's docstring as the schema description, so commentary here would reach
+#: the skeptic and make the flagged arm differ by more than its prompt section
+#: (review of #724).
 class MisdirectedAwareJudgement(BaseModel, frozen=True):
-    """A ruling that may also say "the argument is wrong, the code is not" (#246 F).
+    """One skeptic ruling on one finding, on two orthogonal axes (#246 spec §3.1).
 
-    Experiment E read the recorded rationales of every finding a skeptic hid that
-    really matched ground truth: most stated a failure path that cannot happen,
-    while the code they pointed at held a different real defect — a guarded empty
-    case beside an unguarded all-zero one. 'refuted' hid the pointer with the
-    argument. 'misdirected' keeps the finding, down-ranked like 'uncertain', with
-    the skeptic naming the defect worth the look.
-
-    A separate model rather than a fourth value on `FindingJudgement`: that model
-    is the production skeptic's schema, and the experiment must leave production
-    byte-identical until it passes.
+    ``verdict`` answers "is this claim true" and only an explicit 'refuted'
+    drops the finding. ``impact_score`` answers "does it matter" and only hides
+    below a threshold. There is no index: a judgement belongs to the call that
+    produced it, which is why the batch API's index-mapping failure modes
+    (out-of-range, duplicate) cannot occur here.
     """
 
     verdict: Literal["confirmed", "refuted", "uncertain", "misdirected"]

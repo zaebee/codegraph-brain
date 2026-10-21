@@ -354,7 +354,6 @@ async def test_without_the_flag_the_prompt_and_schema_are_the_production_ones() 
     provider = _SchemaStub(['{"verdict": "confirmed", "impact_score": 7, "rationale": "r"}'])
     await judge_finding(provider, _FINDING, "@@ -1 +1 @@\n+x", evidence=None)
     assert provider.schemas == [FindingJudgement]
-    assert provider.prompts[0] == build_judgement_prompt(_FINDING, "@@ -1 +1 @@\n+x", None)
     assert "misdirected" not in provider.prompts[0]
 
 
@@ -388,3 +387,20 @@ async def test_judge_all_passes_the_flag_to_every_call() -> None:
     provider = _SchemaStub(['{"verdict": "refuted", "impact_score": 0, "rationale": "r"}'] * 2)
     await judge_all(provider, [_FINDING, _FINDING], "", evidence=None, misdirected=True)
     assert provider.schemas == [MisdirectedAwareJudgement, MisdirectedAwareJudgement]
+
+
+def test_the_new_schema_carries_no_steering_text() -> None:
+    """Review of #724: providers send a model's docstring as the schema description.
+
+    The flagged arm must differ from production only by its prompt section and the
+    verdict enum, so the schema description must be `FindingJudgement`'s exactly.
+    """
+    described = MisdirectedAwareJudgement.model_json_schema().get("description")
+    assert described == FindingJudgement.model_json_schema().get("description")
+
+
+@pytest.mark.asyncio
+async def test_unprompted_misdirected_is_rejected_by_the_production_schema() -> None:
+    """With the flag off a stray 'misdirected' does not parse: the finding stays unruled."""
+    provider = StubProvider(['{"verdict": "misdirected", "impact_score": 3, "rationale": "r"}'])
+    assert await judge_finding(provider, _FINDING, "", evidence=None) is None

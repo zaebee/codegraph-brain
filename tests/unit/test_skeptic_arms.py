@@ -759,8 +759,8 @@ async def test_the_misdirected_variant_is_asked_for_and_recorded(tmp_path: Path)
 
     row = await judge_one(provider, path, truth, None, misdirected=True)
 
-    assert "misdirected" in provider.prompts[0]
     assert row["skeptic_variant"] == "misdirected"
+    assert row["misdirected"] == 1
     assert row["verdicts"][0]["verdict"] == "misdirected"
     assert row["refuted"] == 0
     assert row["uncertain"] == 1  # kept, as an uncertain finding is

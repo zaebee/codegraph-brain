@@ -65,7 +65,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from guardian_replay_skeptic import changed_files, worktree_at
 from recordings_from_corpus import build, is_frozen_pass, row_key
 from run_budget import Budget, make_budget
-from semantic_match import Labels, candidate_pairs, load_labels, semantic_counts
+from semantic_match import Labels, Rule, candidate_pairs, load_labels, semantic_counts
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BENCH_DIR = REPO_ROOT / "benchmarks" / "guardian"
@@ -80,6 +80,9 @@ BENCH_DIR = REPO_ROOT / "benchmarks" / "guardian"
 #: is built, so a single value would hand one arm the other's model — one arm
 #: running something that does not exist, reported as a difference between
 #: vendors.
+#: Both acceptance rules, scored on every labelled row (#246 E).
+_RULES: tuple[Rule, ...] = ("all", "any")
+
 DEFAULT_ARMS = "gemini,mistral"
 
 
@@ -211,7 +214,7 @@ async def judge_one(
                             strict=True,
                         )
                     )
-                    for rule in ("all", "any")
+                    for rule in _RULES
                 },
             }
         }
@@ -230,6 +233,8 @@ async def judge_one(
         "refuted": sum(1 for f in judged if f.verdict == "refuted"),
         "uncertain": sum(1 for f in judged if f.verdict == "uncertain"),
         "confirmed": sum(1 for f in judged if f.verdict == "confirmed"),
+        # Counted inside "uncertain" above, where the merge puts them (#246 F).
+        "misdirected": sum(1 for j in judgements if j is not None and j.verdict == "misdirected"),
         "unruled": sum(1 for j in judgements if j is None),
         "recall": bench_score.recall,
         "precision": bench_score.precision,
