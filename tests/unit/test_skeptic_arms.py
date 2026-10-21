@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"
 
 import skeptic_arms
 from run_budget import Budget, Price, parse_prices
+from semantic_match import Labels
 from skeptic_arms import (
     DEFAULT_ARMS,
     NoArmError,
@@ -417,6 +418,7 @@ class TestTheBudget:
             _limit: int | None,
             _arms: dict[str, str | None],
             budget: Budget | None = None,
+            _labels: object = None,
         ) -> list[dict[str, Any]]:
             assert budget is not None
             budget.stopped = True
@@ -441,6 +443,7 @@ class TestTheBudget:
             _limit: int | None,
             _arms: dict[str, str | None],
             _budget: object = None,
+            _labels: object = None,
         ) -> list[dict[str, Any]]:
             row = {"finder_model": "mistral-medium-latest", "arm": "anthropic"}
             return [{**row, "refuted": 1, "findings": 2, "unruled": 0, "killed_gt": []}]
@@ -533,7 +536,11 @@ class TestTheValidityGate:
         """
 
         async def _rows(
-            _root: Path, _limit: int | None, _arms: dict[str, str | None], _budget: object = None
+            _root: Path,
+            _limit: int | None,
+            _arms: dict[str, str | None],
+            _budget: object = None,
+            _labels: object = None,
         ) -> list[dict[str, Any]]:
             return [{"arm": "openrouter", "findings": 10, "unruled": 9, "finder_model": "x"}]
 
@@ -565,7 +572,11 @@ def test_main_writes_the_rows_it_collected(
     }
 
     async def _rows(
-        _root: Path, _limit: int | None, _arms: dict[str, str | None], _budget: object = None
+        _root: Path,
+        _limit: int | None,
+        _arms: dict[str, str | None],
+        _budget: object = None,
+        _labels: object = None,
     ) -> list[dict[str, Any]]:
         return [row]
 
@@ -644,3 +655,81 @@ def test_an_unattributed_finder_is_never_reported_as_cross(
     assert row_line.split()[:3] == ["unknown", "gemini", "unknown"]
     assert "gpt-5" in out
     assert "_VENDOR_MARKERS" in out
+
+
+@pytest.mark.asyncio
+async def test_judge_one_records_each_verdict_and_scores_semantically(tmp_path: Path) -> None:
+    """#246 E: per-finding verdicts are kept, and labels replace file-level crediting."""
+    recording = json.loads(
+        (BENCH_DIR / "experiments" / "401-evidence" / "pr-399-recording.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    findings = recording["result"]["findings"][:2]
+    for finding in findings:
+        finding.pop("verdict", None)
+        finding.pop("skeptic_note", None)
+        finding["file"] = "src/cgis/query/drift.py"
+    path = tmp_path / "143@x.json"
+    path.write_text(
+        json.dumps({"result": {"findings": findings, "summary": ""}, "diff": recording["diff"]}),
+        encoding="utf-8",
+    )
+    truth = load_ground_truth(BENCH_DIR / "pr-143.yaml")
+    in_file = [e.id for e in truth.findings if e.file == "src/cgis/query/drift.py"]
+    gt = in_file[0]
+    # Finding 0 is the real match by both judges; finding 1 sits in the same file and
+    # only j2 calls it a match, so the two rules disagree on it. Every other same-file
+    # pair is labelled "no" by both, so the labels cover the pass.
+    no = {"j1": False, "j2": False}
+    verdicts = {("143@x", i, g): dict(no) for i in (0, 1) for g in in_file}
+    verdicts[("143@x", 0, gt)] = {"j1": True, "j2": True}
+    verdicts[("143@x", 1, gt)] = {"j1": False, "j2": True}
+    labels = Labels(judges=("j1", "j2"), verdicts=verdicts)
+    provider = StubProvider(
+        [
+            '{"verdict": "refuted", "impact_score": 0, "rationale": "misreads"}',
+            '{"verdict": "confirmed", "impact_score": 6, "rationale": "ok"}',
+        ]
+    )
+
+    row = await judge_one(provider, path, truth, None, labels)
+
+    assert [v["verdict"] for v in row["verdicts"]] == ["refuted", "confirmed"]
+    assert row["verdicts"][0]["rationale"] == "misreads"
+    semantic = row["semantic"]
+    assert semantic["judges"] == ["j1", "j2"]
+    assert semantic["unlabelled_pairs"] == 0
+    # Under "all" only finding 0 matched, and it was refuted: killed.
+    assert semantic["all"] == {"noise": 1, "matched": [], "killed_gt": [gt]}
+    # Under "any" finding 1 also matches, survives, and keeps the entry alive.
+    assert semantic["any"] == {"noise": 0, "matched": [gt], "killed_gt": []}
+
+
+@pytest.mark.asyncio
+async def test_a_pair_the_labels_never_covered_is_counted_not_scored_as_no(
+    tmp_path: Path,
+) -> None:
+    """Review of #723: a stopped or foreign labels file must not read as "no match"."""
+    recording = json.loads(
+        (BENCH_DIR / "experiments" / "401-evidence" / "pr-399-recording.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    findings = recording["result"]["findings"][:1]
+    findings[0]["file"] = "src/cgis/query/drift.py"
+    path = tmp_path / "143@y.json"
+    path.write_text(
+        json.dumps({"result": {"findings": findings, "summary": ""}, "diff": recording["diff"]}),
+        encoding="utf-8",
+    )
+    truth = load_ground_truth(BENCH_DIR / "pr-143.yaml")
+    in_file = [e.id for e in truth.findings if e.file == "src/cgis/query/drift.py"]
+    labels = Labels(judges=("j1",), verdicts={("143@y", 0, in_file[0]): {"j1": None}})
+    provider = StubProvider(['{"verdict": "confirmed", "impact_score": 6, "rationale": "ok"}'])
+
+    row = await judge_one(provider, path, truth, None, labels)
+
+    assert row["semantic"]["unlabelled_pairs"] == len(in_file)  # one failed, the rest absent
+    problems = skeptic_arms.validity_problems([{**row, "arm": "anthropic"}])
+    assert any("unlabelled" in p for p in problems)
