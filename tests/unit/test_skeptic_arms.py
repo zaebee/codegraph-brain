@@ -418,8 +418,7 @@ class TestTheBudget:
             _limit: int | None,
             _arms: dict[str, str | None],
             budget: Budget | None = None,
-            _labels: object = None,
-            _misdirected: object = False,
+            **_kw: object,
         ) -> list[dict[str, Any]]:
             assert budget is not None
             budget.stopped = True
@@ -443,9 +442,7 @@ class TestTheBudget:
             _root: Path,
             _limit: int | None,
             _arms: dict[str, str | None],
-            _budget: object = None,
-            _labels: object = None,
-            _misdirected: object = False,
+            **_kw: object,
         ) -> list[dict[str, Any]]:
             row = {"finder_model": "mistral-medium-latest", "arm": "anthropic"}
             return [{**row, "refuted": 1, "findings": 2, "unruled": 0, "killed_gt": []}]
@@ -462,7 +459,7 @@ class TestTheBudget:
     def test_the_spend_is_printed_even_when_the_run_crashes(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        async def _rows(*_a: object) -> list[dict[str, Any]]:
+        async def _rows(*_a: object, **_k: object) -> list[dict[str, Any]]:
             _msg = "worktree failed"
             raise RuntimeError(_msg)
 
@@ -541,9 +538,7 @@ class TestTheValidityGate:
             _root: Path,
             _limit: int | None,
             _arms: dict[str, str | None],
-            _budget: object = None,
-            _labels: object = None,
-            _misdirected: object = False,
+            **_kw: object,
         ) -> list[dict[str, Any]]:
             return [{"arm": "openrouter", "findings": 10, "unruled": 9, "finder_model": "x"}]
 
@@ -578,9 +573,7 @@ def test_main_writes_the_rows_it_collected(
         _root: Path,
         _limit: int | None,
         _arms: dict[str, str | None],
-        _budget: object = None,
-        _labels: object = None,
-        _misdirected: object = False,
+        **_kw: object,
     ) -> list[dict[str, Any]]:
         return [row]
 

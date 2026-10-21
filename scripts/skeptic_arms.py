@@ -276,7 +276,9 @@ async def _judged_row(
     """One pass under one arm: its row, and the calls the judging made."""
     name, provider, model = arm
     first_call = len(provider.call_usages)
-    scored = await judge_one(provider, path, truth, evidence, labels, misdirected=misdirected)
+    scored = await judge_one(
+        provider, path, truth, evidence, labels=labels, misdirected=misdirected
+    )
     # This row's own calls: the provider's record is cumulative.
     calls = provider.call_usages[first_call:]
     row = {
@@ -336,8 +338,8 @@ async def _judge_passes(
                 context.truth,
                 context.evidence,
                 finder,
-                context.labels,
-                context.misdirected,
+                labels=context.labels,
+                misdirected=context.misdirected,
             )
             rows.append(row)
             if budget is not None:
@@ -382,7 +384,7 @@ async def collect_rows(
                 f"evidence {'collected' if evidence else 'unavailable'}",
                 file=sys.stderr,
             )
-            context = _PrContext(truth, evidence, models, labels, misdirected)
+            context = _PrContext(truth, evidence, models, labels=labels, misdirected=misdirected)
             if not await _judge_passes(by_pr[pr], arms, context, rows, budget):
                 break
     return rows
@@ -567,7 +569,14 @@ def main() -> int:
         parser.error(str(exc))
     try:
         rows = asyncio.run(
-            collect_rows(args.repo_root, args.limit, arm_spec, budget, labels, args.misdirected)
+            collect_rows(
+                args.repo_root,
+                args.limit,
+                arm_spec,
+                budget=budget,
+                labels=labels,
+                misdirected=args.misdirected,
+            )
         )
     finally:
         # Also on a crash: the money was spent either way and must be reconcilable.
