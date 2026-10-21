@@ -24,6 +24,7 @@ import tempfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+import cgis
 from cgis.guardian.bench import GroundTruth, load_ground_truth
 from cgis.guardian.calibrate import (
     DEFAULT_JUDGE_CONCURRENCY,
@@ -39,7 +40,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from run_budget import Budget, make_budget
 from semantic_match import Labels, candidate_pairs, dump_labels, load_labels
-from skeptic_arms import BENCH_DIR, REPO_ROOT, NoArmError, _passes_by_pr, arm_provider
+from skeptic_arms import (
+    BENCH_DIR,
+    REPO_ROOT,
+    UNKNOWN_VENDOR,
+    NoArmError,
+    _passes_by_pr,
+    _vendor,
+    arm_provider,
+)
 
 #: (pass stem, the pass's findings, its PR's ground truth)
 Pass = tuple[str, Sequence[Finding], GroundTruth]
@@ -108,7 +117,11 @@ def corpus_passes(tmp: Path) -> list[Pass]:
 def main() -> int:
     """Label the corpus with each judge and write the result; 3 when the budget stopped it."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--judges", required=True, help="comma-separated anthropic model ids")
+    parser.add_argument(
+        "--judges",
+        required=True,
+        help="comma-separated judge model ids; each is built for its own vendor",
+    )
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--budget-usd", type=float, default=None)
     parser.add_argument("--price", action="append", default=[], metavar="MODEL=IN:OUT")
@@ -119,14 +132,18 @@ def main() -> int:
         budget = make_budget(args.budget_usd, args.price, names)
     except ValueError as exc:
         parser.error(str(exc))
+    unknown = [name for name in names if _vendor(name) == UNKNOWN_VENDOR]
+    if unknown:
+        parser.error(f"cannot tell the vendor of {unknown}; name a gemini, mistral or claude model")
     try:
-        judges = {name: arm_provider("anthropic", os.environ, name)[0] for name in names}
+        judges = {name: arm_provider(_vendor(name), os.environ, name)[0] for name in names}
     except NoArmError as exc:
         parser.error(str(exc))
     labels = (
         load_labels(args.out) if args.out.exists() else Labels(judges=tuple(names), verdicts={})
     )
-    if labels.judges != tuple(names):
+    # A set: resuming with the same judges in another order is the same labelling.
+    if set(labels.judges) != set(names):
         parser.error(f"{args.out} was labelled by {list(labels.judges)}, not {names}")
     with tempfile.TemporaryDirectory(prefix="labels-") as tmp:
         passes = corpus_passes(Path(tmp))
@@ -134,8 +151,12 @@ def main() -> int:
             finished = asyncio.run(label(passes, judges, labels, budget, args.concurrency))
         finally:
             write(labels, args.out)
+    expected = sum(len(candidate_pairs(findings, truth)) for _, findings, truth in passes)
+    short = sum(labels.missing(stem, candidate_pairs(f, t)) for stem, f, t in passes)
     print(
-        f"{len(labels.verdicts)} pairs, {labels.unlabelled()} with a failed call", file=sys.stderr
+        f"{expected - short} of {expected} pairs labelled by every judge; "
+        f"{short} missing or failed",
+        file=sys.stderr,
     )
     if budget is not None:
         print(f"Spent ${budget.spent_usd:.4f} of ${budget.cap_usd:.2f}.", file=sys.stderr)
@@ -143,4 +164,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    cgis.log_to_stderr()  # stdout is the script's output (#619)
     sys.exit(main())

@@ -140,17 +140,19 @@ def test_main_writes_what_it_has_when_labelling_crashes(
     out = tmp_path / "l.json"
 
     async def _boom(_passes: object, _judges: object, labels: Labels, *_a: object) -> bool:
-        labels.verdicts[("1@a", 0, "g1")] = {"m1": True}
+        labels.verdicts[("1@a", 0, "g1")] = {"claude-m1": True}
         _msg = "network"
         raise RuntimeError(_msg)
 
-    monkeypatch.setattr(label_gt_matches, "arm_provider", lambda *_a: (StubProvider([]), "m1"))
+    monkeypatch.setattr(
+        label_gt_matches, "arm_provider", lambda *_a: (StubProvider([]), "claude-m1")
+    )
     monkeypatch.setattr(label_gt_matches, "corpus_passes", lambda _t: [])
     monkeypatch.setattr(label_gt_matches, "label", _boom)
-    monkeypatch.setattr(sys, "argv", ["x", "--judges", "m1", "--out", str(out)])
+    monkeypatch.setattr(sys, "argv", ["x", "--judges", "claude-m1", "--out", str(out)])
     with pytest.raises(RuntimeError):
         label_gt_matches.main()
-    assert load_labels(out).verdicts == {("1@a", 0, "g1"): {"m1": True}}
+    assert load_labels(out).verdicts == {("1@a", 0, "g1"): {"claude-m1": True}}
 
 
 def test_main_reports_a_missing_key_as_a_usage_error(
@@ -164,3 +166,36 @@ def test_main_reports_a_missing_key_as_a_usage_error(
     monkeypatch.setattr(sys, "argv", ["x", "--judges", "m1", "--out", str(tmp_path / "l.json")])
     with pytest.raises(SystemExit):
         label_gt_matches.main()
+
+
+def test_each_judge_is_built_for_its_own_vendor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Gemini review of #723: the provider follows the model, not a hardcoded vendor."""
+    built: list[tuple[str, str]] = []
+
+    def _arm(vendor: str, _env: object, model: str) -> tuple[StubProvider, str]:
+        built.append((vendor, model))
+        return StubProvider([]), model
+
+    monkeypatch.setattr(label_gt_matches, "arm_provider", _arm)
+    monkeypatch.setattr(label_gt_matches, "corpus_passes", lambda _t: [])
+    out = tmp_path / "l.json"
+    monkeypatch.setattr(
+        sys, "argv", ["x", "--judges", "claude-haiku-5-5,gemini-2.5-flash", "--out", str(out)]
+    )
+    assert label_gt_matches.main() == 0
+    assert built == [("anthropic", "claude-haiku-5-5"), ("gemini", "gemini-2.5-flash")]
+
+
+def test_resume_accepts_the_same_judges_in_another_order(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    out = tmp_path / "l.json"
+    label_gt_matches.write(Labels(judges=("claude-a", "claude-b"), verdicts={}), out)
+    monkeypatch.setattr(label_gt_matches, "arm_provider", lambda *_a: (StubProvider([]), "m"))
+    monkeypatch.setattr(label_gt_matches, "corpus_passes", lambda _t: [])
+    monkeypatch.setattr(sys, "argv", ["x", "--judges", "claude-b,claude-a", "--out", str(out)])
+    assert label_gt_matches.main() == 0
+    assert load_labels(out).judges == ("claude-a", "claude-b")
+    assert "0 of 0 pairs labelled by every judge" in capsys.readouterr().err
