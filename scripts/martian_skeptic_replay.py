@@ -39,7 +39,7 @@ from cgis.guardian.skeptic import apply_judgements, judge_all, visible_findings
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from guardian_martian import judgeable, load_reviews
-from run_budget import make_budget
+from run_budget import Budget, make_budget
 from skeptic_arms import UNKNOWN_VENDOR, NoArmError, _vendor, arm_provider
 
 
@@ -194,14 +194,92 @@ def _done(out: Path) -> set[tuple[str, ...]]:
     return keys
 
 
+def _scorable(
+    record: ReviewRecord, grids: dict[tuple[str, str], JudgeGrid], workspace: Path
+) -> tuple[list[Finding], JudgeGrid, str] | str:
+    """The review's candidates, its grid and its diff, or why it cannot be scored."""
+    findings = candidate_findings(record)
+    grid = grids.get((record.url, record.arm))
+    if grid is None or grid.project != record.project or grid.n_candidates != len(findings):
+        return "no clean grid for its candidates"
+    try:
+        return findings, grid, pr_diff(record, workspace)
+    except subprocess.CalledProcessError as exc:
+        return f"no diff ({exc})"
+
+
+@dataclass
+class _Pass:
+    """One (model, variant, rep) pass: what it is, where it writes, what it has done."""
+
+    args: argparse.Namespace
+    provider: BaseProvider
+    model: str
+    budget: Budget | None
+    done: set[tuple[str, ...]]
+    written: int = 0
+    skipped: int = 0
+
+    @property
+    def variant(self) -> str:
+        """The skeptic prompt this pass runs."""
+        return "misdirected" if self.args.misdirected else "base"
+
+    def key(self, record: ReviewRecord, source: str) -> tuple[str, ...]:
+        """The resume key of one review under this pass."""
+        effort = str(self.provider.effort)
+        return (
+            record.url,
+            record.arm,
+            source,
+            self.variant,
+            self.model,
+            effort,
+            str(self.args.rep),
+        )
+
+    async def row(
+        self, record: ReviewRecord, source: str, scorable: tuple[list[Finding], JudgeGrid, str]
+    ) -> dict[str, Any]:
+        """Judge one review and build its row, charging the budget for its calls."""
+        findings, grid, diff = scorable
+        first = len(self.provider.call_usages)
+        scored = await replay_one(
+            self.provider,
+            findings,
+            diff,
+            grid.decisions,
+            grid.n_goldens,
+            misdirected=self.args.misdirected,
+        )
+        calls = self.provider.call_usages[first:]
+        if self.budget is not None:
+            self.budget.charge(self.model, calls)
+        return {
+            "timestamp": datetime.now(UTC).isoformat(),
+            "url": record.url,
+            "project": record.project,
+            "arm": record.arm,
+            "source": source,
+            "finder_model": record.finder_model,
+            "skeptic_model": self.model,
+            "skeptic_effort": self.provider.effort,
+            "variant": self.variant,
+            "rep": self.args.rep,
+            "skeptic_prompt_tokens": sum(c.prompt_tokens for c in calls),
+            "skeptic_completion_tokens": sum(c.completion_tokens for c in calls),
+            **scored,
+        }
+
+
 async def _run(
     args: argparse.Namespace, provider: BaseProvider, model: str
 ) -> tuple[int, int, bool]:
     """Every pair's reviews under one (model, variant, rep): (written, skipped, budget-stopped)."""
-    budget = make_budget(args.budget_usd, args.price, [model])
-    variant = "misdirected" if args.misdirected else "base"
-    done = _done(args.out)
-    written = skipped = 0
+    run = _Pass(
+        args, provider, model, make_budget(args.budget_usd, args.price, [model]), _done(args.out)
+    )
+    stopped = False
     with args.out.open("a", encoding="utf-8") as fh:
         for spec in args.pair:
             reviews_path, judged_path = (Path(p) for p in spec.split(":", 1))
@@ -211,77 +289,31 @@ async def _run(
             # it could score (review of #726) — reading every line paired a stale
             # duplicate with the newest row's grid and counted the PR twice.
             for record in judgeable(load_reviews(reviews_path)):
-                key = (
-                    record.url,
-                    record.arm,
-                    source,
-                    variant,
-                    model,
-                    str(provider.effort),
-                    str(args.rep),
-                )
-                if key in done:
+                key = run.key(record, source)
+                if key in run.done:
                     continue
-                findings = candidate_findings(record)
-                grid = grids.get((record.url, record.arm))
-                if (
-                    grid is None
-                    or grid.project != record.project
-                    or grid.n_candidates != len(findings)
-                ):
-                    skipped += 1
-                    print(f"  skip {record.url}: no clean grid for its candidates", file=sys.stderr)
+                scorable = _scorable(record, grids, args.workspace)
+                if isinstance(scorable, str):
+                    run.skipped += 1
+                    print(f"  skip {record.url}: {scorable}", file=sys.stderr)
                     continue
-                try:
-                    diff = pr_diff(record, args.workspace)
-                except subprocess.CalledProcessError as exc:
-                    skipped += 1
-                    print(f"  skip {record.url}: no diff ({exc})", file=sys.stderr)
-                    continue
-                if budget is not None and budget.exhausted:
-                    budget.stopped = True
-                    print(
-                        f"Spent ${budget.spent_usd:.4f} of ${budget.cap_usd:.2f}.", file=sys.stderr
-                    )
-                    return written, skipped, True
-                first = len(provider.call_usages)
-                scored = await replay_one(
-                    provider,
-                    findings,
-                    diff,
-                    grid.decisions,
-                    grid.n_goldens,
-                    misdirected=args.misdirected,
-                )
-                calls = provider.call_usages[first:]
-                if budget is not None:
-                    budget.charge(model, calls)
-                row = {
-                    "timestamp": datetime.now(UTC).isoformat(),
-                    "url": record.url,
-                    "project": record.project,
-                    "arm": record.arm,
-                    "source": source,
-                    "finder_model": record.finder_model,
-                    "skeptic_model": model,
-                    "skeptic_effort": provider.effort,
-                    "variant": variant,
-                    "rep": args.rep,
-                    "skeptic_prompt_tokens": sum(c.prompt_tokens for c in calls),
-                    "skeptic_completion_tokens": sum(c.completion_tokens for c in calls),
-                    **scored,
-                }
+                if run.budget is not None and run.budget.exhausted:
+                    run.budget.stopped = stopped = True
+                    break
+                row = await run.row(record, source, scorable)
                 fh.write(json.dumps(row) + "\n")
                 fh.flush()
-                done.add(key)
-                written += 1
+                run.done.add(key)
+                run.written += 1
                 print(
-                    f"  {record.url} [{variant} r{args.rep}] killed {scored['killed']}",
+                    f"  {record.url} [{run.variant} r{args.rep}] killed {row['killed']}",
                     file=sys.stderr,
                 )
-    if budget is not None:
-        print(f"Spent ${budget.spent_usd:.4f} of ${budget.cap_usd:.2f}.", file=sys.stderr)
-    return written, skipped, False
+            if stopped:
+                break
+    if run.budget is not None:
+        print(f"Spent ${run.budget.spent_usd:.4f} of ${run.budget.cap_usd:.2f}.", file=sys.stderr)
+    return run.written, run.skipped, stopped
 
 
 def main() -> int:
