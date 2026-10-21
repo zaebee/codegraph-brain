@@ -96,8 +96,15 @@ _GraphData = tuple[SQLiteStore, list[Node], list[Edge]]
 # centring — and the branch adds 3, the SDK types AsyncAnthropic, Message and Usage in
 # src/cgis/guardian/providers/anthropic.py. Annotation band re-centred on the branch at
 # the user's decision; tolerance unchanged.
+#
+# Re-measured 2026-10-21 on the context-requests branch (fresh ingest, the fixture's
+# pipeline): main 8a9c2ab held 343 name references, 2 under the old ceiling of 345,
+# and the branch adds 6 — the request models and helpers in
+# src/cgis/guardian/context_requests.py, cgis/query/context/lookup.py and their use in
+# src/cgis/guardian/chunked.py. Name band re-centred on 349 at the user's decision;
+# tolerance unchanged.
 _EXPECTED_ANNOTATION_REFERENCES = 1228
-_EXPECTED_NAME_REFERENCES = 320
+_EXPECTED_NAME_REFERENCES = 349
 _TOLERANCE = 60  # ~10% of the annotation band: ordinary code churn, not a lost source
 _NAME_REF_TOLERANCE = 25  # the name-reference band is smaller, so its band is too
 

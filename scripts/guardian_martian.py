@@ -417,6 +417,7 @@ async def review_one(
         skeptic_completion_tokens=skeptic[0].cumulative_usage.completion_tokens if skeptic else 0,
         duration_s=round(time.monotonic() - started, 2),
         parse_failed=routed.result.parse_failed,
+        context_requests=routed.requests,
         guardian_sha=guardian_version(),
         review_fingerprint=fingerprint,
         review_fingerprint_source="measured",
