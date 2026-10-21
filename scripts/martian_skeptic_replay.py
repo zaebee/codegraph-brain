@@ -27,7 +27,7 @@ from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 import cgis
 from cgis.guardian.calibrate import assign_from_grid
@@ -121,8 +121,14 @@ def load_grids(path: Path) -> dict[tuple[str, str], JudgeGrid]:
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
-        row = json.loads(line)
-        judges.add(str(row["judge_model"]))
+        try:
+            row = json.loads(line)
+            judges.add(str(row["judge_model"]))
+        except (json.JSONDecodeError, KeyError, TypeError):
+            # As guardian_martian treats its own judged files: a torn or foreign
+            # line is skipped and said, and its review then counts as unscorable.
+            print(f"Skipping unreadable judged row in {path}: {line[:80]!r}", file=sys.stderr)
+            continue
         key = (str(row["url"]), str(row.get("arm", "graph")))
         decisions = row["decisions"]
         if any(d is None for d in decisions) or len(decisions) != (
@@ -173,12 +179,18 @@ async def replay_one(
 
 
 def _done(out: Path) -> set[tuple[str, ...]]:
-    """Keys already recorded, so a rerun resumes rather than pays twice."""
+    """Keys already recorded, so a rerun resumes rather than pays twice.
+
+    A torn line — the run was killed mid-write — is skipped, so its review is
+    simply redone.
+    """
     if not out.exists():
         return set()
     keys: set[tuple[str, ...]] = set()
     for line in out.read_text(encoding="utf-8").splitlines():
-        if line.strip():
+        if not line.strip():
+            continue
+        try:
             r = json.loads(line)
             keys.add(
                 (
@@ -191,6 +203,8 @@ def _done(out: Path) -> set[tuple[str, ...]]:
                     str(r["rep"]),
                 )
             )
+        except (json.JSONDecodeError, KeyError, TypeError):
+            print(f"Skipping unreadable output row in {out}: {line[:80]!r}", file=sys.stderr)
     return keys
 
 
@@ -204,7 +218,7 @@ def _scorable(
         return "no clean grid for its candidates"
     try:
         return findings, grid, pr_diff(record, workspace)
-    except subprocess.CalledProcessError as exc:
+    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
         return f"no diff ({exc})"
 
 
@@ -237,6 +251,36 @@ class _Pass:
             effort,
             str(self.args.rep),
         )
+
+    async def one(
+        self,
+        record: ReviewRecord,
+        source: str,
+        grids: dict[tuple[str, str], JudgeGrid],
+        fh: TextIO,
+    ) -> bool:
+        """Replay one review, unless done or unscorable; False once the budget stops the pass."""
+        key = self.key(record, source)
+        if key in self.done:
+            return True
+        scorable = _scorable(record, grids, self.args.workspace)
+        if isinstance(scorable, str):
+            self.skipped += 1
+            print(f"  skip {record.url}: {scorable}", file=sys.stderr)
+            return True
+        if self.budget is not None and self.budget.exhausted:
+            self.budget.stopped = True
+            return False
+        row = await self.row(record, source, scorable)
+        fh.write(json.dumps(row) + "\n")
+        fh.flush()
+        self.done.add(key)
+        self.written += 1
+        print(
+            f"  {record.url} [{self.variant} r{self.args.rep}] killed {row['killed']}",
+            file=sys.stderr,
+        )
+        return True
 
     async def row(
         self, record: ReviewRecord, source: str, scorable: tuple[list[Finding], JudgeGrid, str]
@@ -276,41 +320,23 @@ async def _run(
     args: argparse.Namespace, provider: BaseProvider, model: str
 ) -> tuple[int, int, bool]:
     """Every pair's reviews under one (model, variant, rep): (written, skipped, budget-stopped)."""
-    run = _Pass(
-        args, provider, model, make_budget(args.budget_usd, args.price, [model]), _done(args.out)
-    )
-    stopped = False
+    budget = make_budget(args.budget_usd, args.price, [model])
+    run = _Pass(args, provider, model, budget, _done(args.out))
     with args.out.open("a", encoding="utf-8") as fh:
-        for spec in args.pair:
-            reviews_path, judged_path = (Path(p) for p in spec.split(":", 1))
+        for reviews_path, judged_path in args.pairs:
             grids = load_grids(judged_path)
             source = str(reviews_path.resolve())
             # As the judge reads them: the last row per (url, arm), and only rows
             # it could score (review of #726) — reading every line paired a stale
             # duplicate with the newest row's grid and counted the PR twice.
             for record in judgeable(load_reviews(reviews_path)):
-                key = run.key(record, source)
-                if key in run.done:
-                    continue
-                scorable = _scorable(record, grids, args.workspace)
-                if isinstance(scorable, str):
-                    run.skipped += 1
-                    print(f"  skip {record.url}: {scorable}", file=sys.stderr)
-                    continue
-                if run.budget is not None and run.budget.exhausted:
-                    run.budget.stopped = stopped = True
-                    break
-                row = await run.row(record, source, scorable)
-                fh.write(json.dumps(row) + "\n")
-                fh.flush()
-                run.done.add(key)
-                run.written += 1
-                print(
-                    f"  {record.url} [{run.variant} r{args.rep}] killed {row['killed']}",
-                    file=sys.stderr,
-                )
-            if stopped:
-                break
+                if not await run.one(record, source, grids, fh):
+                    return _finish(run, stopped=True)
+    return _finish(run, stopped=False)
+
+
+def _finish(run: "_Pass", *, stopped: bool) -> tuple[int, int, bool]:
+    """Report the spend and return the pass's counts."""
     if run.budget is not None:
         print(f"Spent ${run.budget.spent_usd:.4f} of ${run.budget.cap_usd:.2f}.", file=sys.stderr)
     return run.written, run.skipped, stopped
@@ -332,6 +358,12 @@ def main() -> int:
     parser.add_argument("--budget-usd", type=float, default=None)
     parser.add_argument("--price", action="append", default=[], metavar="MODEL=IN:OUT")
     args = parser.parse_args()
+    args.pairs = []
+    for spec in args.pair:
+        reviews, sep, judged = spec.partition(":")
+        if not sep or not Path(reviews).is_file() or not Path(judged).is_file():
+            parser.error(f"--pair {spec!r}: needs REVIEWS.jsonl:JUDGED.jsonl, both existing files")
+        args.pairs.append((Path(reviews), Path(judged)))
     if _vendor(args.model) == UNKNOWN_VENDOR:
         parser.error(f"cannot tell the vendor of {args.model!r}")
     try:

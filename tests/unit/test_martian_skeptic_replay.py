@@ -284,3 +284,61 @@ def test_a_diff_that_cannot_be_made_skips_the_review(
     monkeypatch.setattr(msr, "arm_provider", lambda *_a: (stub, "claude-haiku-5-5"))
     assert msr.main() == 0
     assert stub.prompts == []
+
+
+def test_an_unreadable_judged_line_is_skipped_with_a_warning(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "j.jsonl"
+    path.write_text(json.dumps(_jrow("u", [1])) + "\n{not json\n", encoding="utf-8")
+    assert set(msr.load_grids(path)) == {("u", "graph")}
+    assert "unreadable" in capsys.readouterr().err
+
+
+def test_a_torn_last_output_line_does_not_stop_a_resume(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    out = _main_args(tmp_path, monkeypatch, [])
+    stub = StubProvider(['{"verdict": "confirmed", "impact_score": 5, "rationale": "r"}'] * 2)
+    monkeypatch.setattr(msr, "arm_provider", lambda *_a: (stub, "claude-haiku-5-5"))
+    assert msr.main() == 0
+    out.write_text(out.read_text().splitlines()[0] + '\n{"url": "torn', encoding="utf-8")
+    stub2 = StubProvider(['{"verdict": "confirmed", "impact_score": 5, "rationale": "r"}'])
+    monkeypatch.setattr(msr, "arm_provider", lambda *_a: (stub2, "claude-haiku-5-5"))
+    assert msr.main() == 0
+    assert len(stub2.prompts) == 1  # only the review whose row was torn is redone
+
+
+def test_a_bad_pair_is_a_usage_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    stub = StubProvider([])
+    monkeypatch.setattr(msr, "arm_provider", lambda *_a: (stub, "claude-haiku-5-5"))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "x",
+            "--pair",
+            str(tmp_path / "missing.jsonl"),
+            "--model",
+            "claude-haiku-5-5",
+            "--out",
+            str(tmp_path / "o.jsonl"),
+        ],
+    )
+    with pytest.raises(SystemExit) as stop:
+        msr.main()
+    assert stop.value.code == 2  # argparse's usage error, not a crash
+
+
+def test_a_missing_git_skips_the_review(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _main_args(tmp_path, monkeypatch, [])
+
+    def _no_git(_r: object, _w: object) -> str:
+        _msg = "git"
+        raise FileNotFoundError(_msg)
+
+    monkeypatch.setattr(msr, "pr_diff", _no_git)
+    stub = StubProvider([])
+    monkeypatch.setattr(msr, "arm_provider", lambda *_a: (stub, "claude-haiku-5-5"))
+    assert msr.main() == 0
+    assert stub.prompts == []
