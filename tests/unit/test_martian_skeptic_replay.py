@@ -1,6 +1,7 @@
 """Replaying a skeptic over frozen Martian reviews, scored on their judge grids (#246 G)."""
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -93,16 +94,58 @@ async def test_the_misdirected_flag_reaches_the_skeptic() -> None:
     assert row["killed"] == 0  # kept visible
 
 
-def test_pairs_need_a_clean_grid_of_the_right_size(tmp_path: Path) -> None:
-    """A judged row whose grid has a failed pair, or a different candidate count, is skipped."""
-    judged = tmp_path / "j.jsonl"
-    rows = [
-        {"url": "u1", "decisions": [1, 0], "n_goldens": 1, "n_candidates": 2},
-        {"url": "u2", "decisions": [1, None], "n_goldens": 1, "n_candidates": 2},
-    ]
-    judged.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
-    grids = msr.load_grids(judged)
-    assert set(grids) == {"u1"}
+def _jrow(
+    url: str, decisions: list[int | None], arm: str = "graph", **kw: object
+) -> dict[str, object]:
+    n_c = kw.pop("n_candidates", len(decisions))
+    return {
+        "url": url,
+        "arm": arm,
+        "project": "p",
+        "judge_model": kw.pop("judge_model", "j"),
+        "decisions": decisions,
+        "n_goldens": 1,
+        "n_candidates": n_c,
+    }
+
+
+def _write(path: Path, rows: list[dict[str, object]]) -> Path:
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    return path
+
+
+def test_grids_are_keyed_by_url_and_arm(tmp_path: Path) -> None:
+    """Review of #726: a graph and an ablated row for one PR must not overwrite each other."""
+    grids = msr.load_grids(
+        _write(tmp_path / "j.jsonl", [_jrow("u", [1, 0]), _jrow("u", [0, 1], arm="ablated")])
+    )
+    assert grids[("u", "graph")].decisions == [1, 0]
+    assert grids[("u", "ablated")].decisions == [0, 1]
+
+
+def test_a_later_failed_row_drops_only_its_own_arm(tmp_path: Path) -> None:
+    rows = [_jrow("u", [1, 0]), _jrow("u", [1, 0], arm="ablated"), _jrow("u", [1, None])]
+    grids = msr.load_grids(_write(tmp_path / "j.jsonl", rows))
+    assert set(grids) == {("u", "ablated")}
+
+
+def test_a_later_clean_row_replaces_a_failed_one(tmp_path: Path) -> None:
+    grids = msr.load_grids(
+        _write(tmp_path / "j.jsonl", [_jrow("u", [1, None]), _jrow("u", [0, 1])])
+    )
+    assert grids[("u", "graph")].decisions == [0, 1]
+
+
+def test_a_misfit_later_row_does_not_leave_a_stale_grid(tmp_path: Path) -> None:
+    rows = [_jrow("u", [1, 0]), _jrow("u", [1, 0, 1], n_candidates=2)]
+    assert msr.load_grids(_write(tmp_path / "j.jsonl", rows)) == {}
+
+
+def test_one_judge_per_file(tmp_path: Path) -> None:
+    rows = [_jrow("u1", [1]), _jrow("u2", [1], judge_model="other")]
+    path = _write(tmp_path / "j.jsonl", rows)
+    with pytest.raises(ValueError, match="judge"):
+        msr.load_grids(path)
 
 
 def _review(url: str, findings: list[Finding]) -> dict[str, object]:
@@ -133,9 +176,7 @@ def _main_args(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, extra: list[str]
     judged = tmp_path / "judged.jsonl"
     rows = [_review(f"https://github.com/o/r/pull/{n}", [_finding("a.py")]) for n in (1, 2)]
     reviews.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
-    grid_rows = [
-        {"url": r["url"], "decisions": [1], "n_goldens": 1, "n_candidates": 1} for r in rows
-    ]
+    grid_rows = [_jrow(str(r["url"]), [1]) for r in rows]
     judged.write_text("".join(json.dumps(r) + "\n" for r in grid_rows), encoding="utf-8")
     out = tmp_path / "out.jsonl"
     monkeypatch.setattr(msr, "pr_diff", lambda _r, _w: "")
@@ -183,3 +224,63 @@ def test_main_exits_3_when_the_budget_stops_it(
     monkeypatch.setattr(msr, "arm_provider", lambda *_a: (stub, "claude-haiku-5-5"))
     assert msr.main() == 3
     assert len(out.read_text().splitlines()) == 1  # $0.10 on the first review, past $0.05
+
+
+def test_columns_follow_candidate_findings_not_all_findings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review of #726: a refuted finding is not a judge column; the next finding takes its place."""
+    refuted = _finding("a.py").model_copy(update={"verdict": "refuted"})
+    real = _finding("b.py").model_copy(update={"title": "the real one"})
+    reviews = _write(
+        tmp_path / "r.jsonl", [_review("https://github.com/o/r/pull/1", [refuted, real])]
+    )
+    judged = _write(tmp_path / "j.jsonl", [_jrow("https://github.com/o/r/pull/1", [1])])
+    out = tmp_path / "out.jsonl"
+    stub = StubProvider(['{"verdict": "refuted", "impact_score": 0, "rationale": "r"}'])
+    monkeypatch.setattr(msr, "pr_diff", lambda _r, _w: "")
+    monkeypatch.setattr(msr, "arm_provider", lambda *_a: (stub, "claude-haiku-5-5"))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["x", "--pair", f"{reviews}:{judged}", "--model", "claude-haiku-5-5", "--out", str(out)],
+    )
+    assert msr.main() == 0
+    [row] = [json.loads(line) for line in out.read_text().splitlines()]
+    assert row["n_candidates"] == 1
+    assert "the real one" in stub.prompts[0]
+    assert row["killed"] == 1
+
+
+def test_a_grid_for_another_candidate_count_is_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reviews = _write(
+        tmp_path / "r.jsonl", [_review("https://github.com/o/r/pull/1", [_finding("a.py")])]
+    )
+    judged = _write(tmp_path / "j.jsonl", [_jrow("https://github.com/o/r/pull/1", [1, 0])])
+    out = tmp_path / "out.jsonl"
+    monkeypatch.setattr(msr, "pr_diff", lambda _r, _w: "")
+    monkeypatch.setattr(msr, "arm_provider", lambda *_a: (StubProvider([]), "claude-haiku-5-5"))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["x", "--pair", f"{reviews}:{judged}", "--model", "claude-haiku-5-5", "--out", str(out)],
+    )
+    assert msr.main() == 0
+    assert not out.exists() or out.read_text() == ""
+
+
+def test_a_diff_that_cannot_be_made_skips_the_review(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _main_args(tmp_path, monkeypatch, [])
+
+    def _no_diff(_r: object, _w: object) -> str:
+        raise subprocess.CalledProcessError(128, "git")
+
+    monkeypatch.setattr(msr, "pr_diff", _no_diff)
+    stub = StubProvider([])
+    monkeypatch.setattr(msr, "arm_provider", lambda *_a: (stub, "claude-haiku-5-5"))
+    assert msr.main() == 0
+    assert stub.prompts == []

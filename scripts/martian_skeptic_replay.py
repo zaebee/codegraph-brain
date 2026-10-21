@@ -38,11 +38,19 @@ from cgis.guardian.skeptic import apply_judgements, judge_all, visible_findings
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from guardian_martian import judgeable, load_reviews
 from run_budget import make_budget
 from skeptic_arms import UNKNOWN_VENDOR, NoArmError, _vendor, arm_provider
 
-#: (golden count, row-major golden x candidate grid)
-Grid = tuple[int, list[int]]
+
+@dataclass(frozen=True)
+class JudgeGrid:
+    """One judged review's grid, with what it was judged as — the checks a pairing must pass."""
+
+    project: str
+    n_goldens: int
+    n_candidates: int
+    decisions: list[int]
 
 
 @dataclass(frozen=True)
@@ -99,20 +107,38 @@ def pr_diff(record: ReviewRecord, workspace: Path) -> str:
     return result.stdout
 
 
-def load_grids(path: Path) -> dict[str, Grid]:
-    """url → (goldens, grid) for every fully ruled judged row; the last row of a url wins."""
-    grids: dict[str, Grid] = {}
+def load_grids(path: Path) -> dict[tuple[str, str], JudgeGrid]:
+    """(url, arm) → grid for every fully ruled judged row; the last row of a key wins.
+
+    Keyed as the judge keys its own rows (review of #726): by url alone, a graph
+    and an ablated row of one PR overwrote each other, and a failed row for one
+    arm dropped the other's grid. A later row that failed or does not fit
+    removes the key rather than leaving an older grid standing, and a file
+    holding several judges is refused — its grids would not be one measurement.
+    """
+    grids: dict[tuple[str, str], JudgeGrid] = {}
+    judges: set[str] = set()
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
         row = json.loads(line)
+        judges.add(str(row["judge_model"]))
+        key = (str(row["url"]), str(row.get("arm", "graph")))
         decisions = row["decisions"]
-        if any(d is None for d in decisions):
-            grids.pop(row["url"], None)
+        if any(d is None for d in decisions) or len(decisions) != (
+            row["n_goldens"] * row["n_candidates"]
+        ):
+            grids.pop(key, None)
             continue
-        if len(decisions) != row["n_goldens"] * row["n_candidates"]:
-            continue
-        grids[row["url"]] = (row["n_goldens"], [int(d) for d in decisions])
+        grids[key] = JudgeGrid(
+            project=str(row["project"]),
+            n_goldens=int(row["n_goldens"]),
+            n_candidates=int(row["n_candidates"]),
+            decisions=[int(d) for d in decisions],
+        )
+    if len(judges) > 1:
+        _msg = f"{path} holds grids from several judges: {sorted(judges)}"
+        raise ValueError(_msg)
     return grids
 
 
@@ -157,10 +183,11 @@ def _done(out: Path) -> set[tuple[str, ...]]:
             keys.add(
                 (
                     r["url"],
+                    r["arm"],
                     r["source"],
                     r["variant"],
                     r["skeptic_model"],
-                    r["skeptic_effort"],
+                    str(r["skeptic_effort"]),
                     str(r["rep"]),
                 )
             )
@@ -179,23 +206,37 @@ async def _run(
         for spec in args.pair:
             reviews_path, judged_path = (Path(p) for p in spec.split(":", 1))
             grids = load_grids(judged_path)
-            for line in reviews_path.read_text(encoding="utf-8").splitlines():
-                record = ReviewRecord.model_validate_json(line)
+            source = str(reviews_path.resolve())
+            # As the judge reads them: the last row per (url, arm), and only rows
+            # it could score (review of #726) — reading every line paired a stale
+            # duplicate with the newest row's grid and counted the PR twice.
+            for record in judgeable(load_reviews(reviews_path)):
                 key = (
                     record.url,
-                    reviews_path.stem,
+                    record.arm,
+                    source,
                     variant,
                     model,
-                    provider.effort,
+                    str(provider.effort),
                     str(args.rep),
                 )
                 if key in done:
                     continue
                 findings = candidate_findings(record)
-                grid = grids.get(record.url)
-                if grid is None or len(grid[1]) != grid[0] * len(findings):
+                grid = grids.get((record.url, record.arm))
+                if (
+                    grid is None
+                    or grid.project != record.project
+                    or grid.n_candidates != len(findings)
+                ):
                     skipped += 1
                     print(f"  skip {record.url}: no clean grid for its candidates", file=sys.stderr)
+                    continue
+                try:
+                    diff = pr_diff(record, args.workspace)
+                except subprocess.CalledProcessError as exc:
+                    skipped += 1
+                    print(f"  skip {record.url}: no diff ({exc})", file=sys.stderr)
                     continue
                 if budget is not None and budget.exhausted:
                     budget.stopped = True
@@ -207,9 +248,9 @@ async def _run(
                 scored = await replay_one(
                     provider,
                     findings,
-                    pr_diff(record, args.workspace),
-                    grid[1],
-                    grid[0],
+                    diff,
+                    grid.decisions,
+                    grid.n_goldens,
                     misdirected=args.misdirected,
                 )
                 calls = provider.call_usages[first:]
@@ -219,7 +260,8 @@ async def _run(
                     "timestamp": datetime.now(UTC).isoformat(),
                     "url": record.url,
                     "project": record.project,
-                    "source": reviews_path.stem,
+                    "arm": record.arm,
+                    "source": source,
                     "finder_model": record.finder_model,
                     "skeptic_model": model,
                     "skeptic_effort": provider.effort,
@@ -231,6 +273,7 @@ async def _run(
                 }
                 fh.write(json.dumps(row) + "\n")
                 fh.flush()
+                done.add(key)
                 written += 1
                 print(
                     f"  {record.url} [{variant} r{args.rep}] killed {scored['killed']}",
