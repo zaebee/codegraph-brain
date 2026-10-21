@@ -126,7 +126,14 @@ class GuardianReviewer:
     async def run_review(self) -> ReviewResult:
         """Run the review; optionally judge each finding with the skeptic pass (#246 §3.4)."""
         context = self.context_collector.collect_all()
-        result = await self._finder_pass(context)
+        return await self.judge(await self._finder_pass(context), context)
+
+    async def judge(self, result: ReviewResult, context: dict[str, str]) -> ReviewResult:
+        """The skeptic pass over a finder result; unchanged when there is no skeptic.
+
+        Split from `run_review` so the two-pass finder (#246 C) judges its pass-2
+        result through the same code a one-pass review uses.
+        """
         # Not gated on `parse_failed` any more. It used to imply an empty finding
         # list, so skipping the skeptic was free; since #248 a failed parse can
         # still yield salvaged findings, and shipping those unjudged would trade

@@ -628,7 +628,9 @@ def _wire_review(monkeypatch: pytest.MonkeyPatch, rebuilt: list[str]) -> None:
     monkeypatch.setattr(gm, "ContextCollector", lambda **_: object())
 
     async def fake_routed(**_: object) -> object:
-        return SimpleNamespace(result=SimpleNamespace(findings=[], parse_failed=False))
+        return SimpleNamespace(
+            result=SimpleNamespace(findings=[], parse_failed=False), requests=None
+        )
 
     monkeypatch.setattr(gm, "run_review_routed", fake_routed)
 
@@ -994,6 +996,7 @@ class TestReviewOne:
 
         class _Routed:
             result = _Result()
+            requests = None
 
         def fake_collector(**kwargs: object) -> object:
             captured.update(kwargs)
@@ -1083,7 +1086,9 @@ class TestResumeRobustness:
                 pass
 
         async def fake_routed(**_: object) -> object:
-            return SimpleNamespace(result=SimpleNamespace(findings=[], parse_failed=False))
+            return SimpleNamespace(
+                result=SimpleNamespace(findings=[], parse_failed=False), requests=None
+            )
 
         def spy(_env: object, primary: str) -> None:
             seen["primary"] = primary
@@ -1650,7 +1655,9 @@ class TestAblationArm:
             return object()
 
         async def routed(**_: object) -> object:
-            return SimpleNamespace(result=SimpleNamespace(findings=[], parse_failed=False))
+            return SimpleNamespace(
+                result=SimpleNamespace(findings=[], parse_failed=False), requests=None
+            )
 
         monkeypatch.setattr(gm, "pr_refs", lambda _url: ("b", "h"))
         monkeypatch.setattr(gm, "_git", lambda *a, **k: "sha\n")  # noqa: ARG005

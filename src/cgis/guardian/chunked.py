@@ -3,19 +3,36 @@
 Slice 2 of #154 (spec: 2026-06-11-guardian-chunked-review-design.md). The
 finder LGTMs large PRs (attention dilution); each chunk gets a small,
 complete world instead — its own diff, full files, and impact graph.
+
+`run_review_routed` is also where the other review shapes branch off: per-axis
+fan-out (#331) and the two-pass finder that requests its own context (#246 C,
+whose data and graph answers live in `context_requests`).
 """
 
 import os
+from pathlib import Path
 
 import structlog
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from cgis.guardian.axes import run_axis_review
 from cgis.guardian.chunker import Chunk, build_chunks, split_diff_by_file
 from cgis.guardian.collector import ContextCollector
+from cgis.guardian.context_requests import (
+    REQUEST_SUFFIX,
+    UNPARSED,
+    ContextRequest,
+    ContextRequests,
+    RequestOutcome,
+    RequestPass,
+    answer_requests,
+    parse_requests,
+    retry_prompt,
+)
 from cgis.guardian.core import GuardianReviewer, finder_pass
 from cgis.guardian.evidence import evidence_for
-from cgis.guardian.findings import Finding, ReviewResult, dedup_findings
+from cgis.guardian.findings import Finding, ReviewResult, dedup_findings, extract_json
+from cgis.guardian.prompts import PromptBuilder
 from cgis.guardian.providers.base import BaseProvider
 from cgis.guardian.skeptic import (
     apply_judgements,
@@ -34,6 +51,8 @@ class RoutedReview(BaseModel, frozen=True):
 
     result: ReviewResult
     chunk_count: int | None = None
+    #: Pass 1 of a two-pass review (#246 C); None on every other path.
+    requests: RequestPass | None = None
 
 
 def _cap_chunks(chunks: list[Chunk]) -> list[Chunk]:
@@ -207,6 +226,64 @@ async def run_chunked_review(
     )
 
 
+async def request_pass(
+    provider: BaseProvider, context: dict[str, str]
+) -> list[ContextRequest] | None:
+    """Pass 1: the finder's requests, or None when the reply never parsed (one retry)."""
+    system_prompt = PromptBuilder.build_system_prompt()
+    user_prompt = PromptBuilder.build_user_prompt(context) + REQUEST_SUFFIX
+    raw = await provider.generate_structured(system_prompt, user_prompt, ContextRequests)
+    try:
+        return parse_requests(extract_json(raw))
+    except ValidationError as exc:
+        log.warning("Context requests failed validation; retrying once.", validation_error=str(exc))
+        retry = retry_prompt(user_prompt, exc)
+    raw = await provider.generate_structured(system_prompt, retry, ContextRequests)
+    try:
+        return parse_requests(extract_json(raw))
+    except ValidationError:
+        log.warning("Context requests failed twice; the review is marked parse_failed.")
+        return None
+
+
+async def run_requested_review(
+    provider: BaseProvider,
+    collector: ContextCollector,
+    skeptic_provider: BaseProvider | None,
+) -> tuple[ReviewResult, RequestPass]:
+    """Both passes, then the skeptic exactly as a one-pass review would run it.
+
+    A pass-1 parse failure still runs pass 2 but marks the result parse_failed:
+    the benchmark excludes such a review, which is what was pre-registered,
+    instead of letting it pass as a one-pass review inside the two-pass arm.
+    """
+    context = collector.collect_all()
+    before = provider.cumulative_usage
+    requests = await request_pass(provider, context)
+    after = provider.cumulative_usage
+    outcomes: list[RequestOutcome] = []
+    if requests is None:
+        text = UNPARSED
+    else:
+        db = collector.graph.db_path if collector.graph.has_db() else None
+        root = str(Path(collector.source.project_root) / collector.graph.source_root)
+        text, outcomes = answer_requests(db, requests, source_root=root)
+    reviewer = GuardianReviewer(
+        provider=provider, context_collector=collector, skeptic_provider=skeptic_provider
+    )
+    second = {**context, "requested_context": text}
+    result = await reviewer.judge(await finder_pass(provider, second), second)
+    if requests is None:
+        result = result.model_copy(update={"parse_failed": True})
+    record = RequestPass(
+        parsed=requests is not None,
+        outcomes=outcomes,
+        prompt_tokens=after.prompt_tokens - before.prompt_tokens,
+        completion_tokens=after.completion_tokens - before.completion_tokens,
+    )
+    return result, record
+
+
 async def run_review_routed(
     *,
     provider: BaseProvider,
@@ -219,6 +296,15 @@ async def run_review_routed(
     degrade to all-isolated chunks = one API call per file with zero
     connectivity benefit — strictly worse than the status quo.
     """
+    if "context_requests" in collector.features:
+        # Its own path, and alone: combined with chunks or axes, a difference in
+        # the measurement could not be told apart from the other mechanism's.
+        clash = collector.features & {"axes", "axes_paired", "chunked"}
+        if clash:
+            _msg = f"context_requests cannot be combined with {sorted(clash)}"
+            raise ValueError(_msg)
+        result, requests = await run_requested_review(provider, collector, skeptic_provider)
+        return RoutedReview(result=result, chunk_count=None, requests=requests)
     if collector.features & {"axes", "axes_paired"}:
         # Per-axis fan-out (#331) is checked first: it needs no graph DB, and
         # combining it with chunked would multiply calls by axes x chunks while

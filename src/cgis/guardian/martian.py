@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from cgis.guardian.calibrate import JudgePair, assign_from_grid
 from cgis.guardian.collector import FeaturesSource
+from cgis.guardian.context_requests import RequestPass
 from cgis.guardian.findings import Finding
 from cgis.guardian.runner import TemperatureSource
 from cgis.languages import is_supported
@@ -413,6 +414,9 @@ class ReviewRecord(BaseModel, frozen=True):
     skeptic_completion_tokens: int = 0
     duration_s: float
     parse_failed: bool
+    #: Pass 1 of a two-pass review (#246 C): what the finder asked for and got.
+    #: None for every one-pass review, including all rows recorded before it.
+    context_requests: RequestPass | None = None
     guardian_sha: str
     #: What this reviewer *is*, as opposed to which commit it was cut from.
     #: `guardian_sha` stays above as provenance, because it moves on every

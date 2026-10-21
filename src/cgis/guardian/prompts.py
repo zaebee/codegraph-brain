@@ -138,6 +138,17 @@ observe-only — do NOT flag it.
 {drift}
 """
 
+        requested = context.get("requested_context", "")
+        requested_section = ""
+        if requested:
+            requested_section = f"""
+### 7. CONTEXT YOU REQUESTED (from graph.db)
+The symbols you asked to read before this review, as the code graph answers them.
+An "unresolved" entry means the graph had no such symbol, not that it is safe.
+
+{requested}
+"""
+
         contributing_section = ""
         if contributing:
             contributing_section = f"""### 1. ENGINEERING STANDARDS (from CONTRIBUTING.md)
@@ -170,7 +181,7 @@ observe-only — do NOT flag it.
 
 {contributing_section}{ontology_section}### 3. CHANGES TO REVIEW (git diff)
 {diff}
-{graph_section}{full_files_section}{drift_section}
+{graph_section}{full_files_section}{drift_section}{requested_section}
 ---
 ### HUNTING RULES — read before writing a single finding:
 
