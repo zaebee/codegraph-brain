@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.35.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.34.0...codegraph-brain-v0.35.0) (2026-10-21)
+
+
+### Features
+
+* **diff-check:** key items tell the reader to check the site's callers ([#710](https://github.com/zaebee/codegraph-brain/issues/710)) ([9906f1c](https://github.com/zaebee/codegraph-brain/commit/9906f1ce4a44920f4c6ffcdde187b8ef5b9d7722))
+* **guardian-bench:** a hard budget, and room for medium-effort finders ([#716](https://github.com/zaebee/codegraph-brain/issues/716)) ([aabea46](https://github.com/zaebee/codegraph-brain/commit/aabea468b958ab8f680f12000a500cbcf806154d))
+* **guardian-martian:** a hard budget on review and judge ([#717](https://github.com/zaebee/codegraph-brain/issues/717)) ([29efe6b](https://github.com/zaebee/codegraph-brain/commit/29efe6b194ce17670a49110bc74e37fca137f973))
+* **guardian:** a two-pass finder that requests its own graph context ([#720](https://github.com/zaebee/codegraph-brain/issues/720)) ([4e254f8](https://github.com/zaebee/codegraph-brain/commit/4e254f80d740df59b528603eef74f539e611d04a))
+* **guardian:** anthropic provider for the finder and the skeptic ([#713](https://github.com/zaebee/codegraph-brain/issues/713)) ([bcc3878](https://github.com/zaebee/codegraph-brain/commit/bcc3878cf7b320e8e078ff20a1e47c4948144c1a))
+* **query:** cgis diff-check lists what a diff may break, data keys included ([#705](https://github.com/zaebee/codegraph-brain/issues/705)) ([a6f41e2](https://github.com/zaebee/codegraph-brain/commit/a6f41e2e6dfc704881795b648094cc489cf554ad))
+* **skeptic-arms:** score skeptic arms on judge-labelled ground-truth matches ([#723](https://github.com/zaebee/codegraph-brain/issues/723)) ([d653107](https://github.com/zaebee/codegraph-brain/commit/d6531074a71f2a0ef3e8ea1008040b3a419c6540))
+* **skeptic-arms:** tokens per row and a hard budget stop ([#714](https://github.com/zaebee/codegraph-brain/issues/714)) ([e6f35b1](https://github.com/zaebee/codegraph-brain/commit/e6f35b164e3b26b5efaaffa76a287310a4007435))
+
+
+### Bug Fixes
+
+* **data-keys:** find owner-api beside the main checkout from a worktree ([#712](https://github.com/zaebee/codegraph-brain/issues/712)) ([5017ee0](https://github.com/zaebee/codegraph-brain/commit/5017ee0b61e07fd786cec92ad9ed67db97fd1a62))
+* **guardian:** count gemini thinking tokens as completion ([#715](https://github.com/zaebee/codegraph-brain/issues/715)) ([8f142fb](https://github.com/zaebee/codegraph-brain/commit/8f142fb807bf9fe3a0e2c6b23d62314911062160))
+
+
+### Documentation
+
+* auto-sync architecture graph and MCP reference ([#708](https://github.com/zaebee/codegraph-brain/issues/708)) ([7306a2e](https://github.com/zaebee/codegraph-brain/commit/7306a2ef184b9a789289c4ff3475cabef544057f))
+* auto-sync architecture graph and MCP reference ([#711](https://github.com/zaebee/codegraph-brain/issues/711)) ([8bc1890](https://github.com/zaebee/codegraph-brain/commit/8bc1890139c8f1de0bd4d3b72d31bba0c7f28249))
+
 ## [0.34.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.33.0...codegraph-brain-v0.34.0) (2026-10-18)
 
 
