@@ -65,7 +65,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from guardian_replay_skeptic import changed_files, worktree_at
 from recordings_from_corpus import build, is_frozen_pass, row_key
 from run_budget import Budget, make_budget
-from semantic_match import Labels, load_labels, semantic_counts
+from semantic_match import Labels, candidate_pairs, load_labels, semantic_counts
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BENCH_DIR = REPO_ROOT / "benchmarks" / "guardian"
@@ -173,8 +173,10 @@ async def judge_one(
 
     With `labels` (#246 E) the row also carries the semantic score: noise and
     killed ground truth from judge-labelled matches instead of file-level
-    crediting. Every finding's verdict is kept either way, so a row can be
-    re-scored later without paying the skeptic again.
+    crediting, under both acceptance rules ("all" judges, "any" judge), with the
+    judges named and the pairs the labels did not cover counted. Every finding's
+    verdict is kept either way, so a row can be re-scored later without paying
+    the skeptic again.
     """
     recording = load_finder_recording(recording_path)
     findings = recording.result.findings
@@ -186,16 +188,28 @@ async def judge_one(
     shown = {id(f) for f in visible}
     semantic: dict[str, Any] = {}
     if labels is not None:
-        noise, matched, killed = semantic_counts(
-            judged,
-            [i for i, f in enumerate(judged) if id(f) in shown],
-            labels.accepts(recording_path.stem, "all"),
-            truth,
-        )
+        visible_idx = [i for i, f in enumerate(judged) if id(f) in shown]
+        pairs = candidate_pairs(judged, truth)
         semantic = {
-            "noise_semantic": noise,
-            "matched_semantic": matched,
-            "killed_gt_semantic": killed,
+            "semantic": {
+                "judges": list(labels.judges),
+                "unlabelled_pairs": labels.missing(recording_path.stem, pairs),
+                **{
+                    rule: dict(
+                        zip(
+                            ("noise", "matched", "killed_gt"),
+                            semantic_counts(
+                                judged,
+                                visible_idx,
+                                labels.accepts(recording_path.stem, rule),
+                                truth,
+                            ),
+                            strict=True,
+                        )
+                    )
+                    for rule in ("all", "any")
+                },
+            }
         }
     return {
         "verdicts": [
@@ -402,19 +416,31 @@ class ArmTooQuietError(RuntimeError):
 
 
 def validity_problems(rows: list[dict[str, Any]]) -> list[str]:
-    """Arms whose unruled share is too high to interpret, with the numbers."""
+    """Arms whose numbers cannot be read: too many findings unruled, or labels short of the corpus.
+
+    A semantic score over labels that do not cover every pair would read the gap
+    as "no match" (review of #723), so any unlabelled pair makes the run unreadable.
+    """
     totals: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+    unlabelled = 0
     for row in rows:
         seen = totals[str(row["arm"])]
         seen[0] += int(row.get("unruled") or 0)
         seen[1] += int(row["findings"])
-    return [
+        unlabelled += int((row.get("semantic") or {}).get("unlabelled_pairs") or 0)
+    problems = [
         f"arm {arm!r} left {unruled} of {findings} findings unruled "
         f"({unruled / findings:.0%} > {MAX_UNRULED_RATE:.0%}); its numbers cannot be read as "
         f"leniency because they may be silence."
         for arm, (unruled, findings) in sorted(totals.items())
         if findings and unruled / findings > MAX_UNRULED_RATE
     ]
+    if unlabelled:
+        problems.append(
+            f"{unlabelled} same-file pairs are unlabelled in --labels; the semantic score "
+            f"would count them as no match. Finish the labelling first."
+        )
+    return problems
 
 
 def _vendor(model: str) -> str:

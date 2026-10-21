@@ -39,7 +39,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from run_budget import Budget, make_budget
 from semantic_match import Labels, candidate_pairs, dump_labels, load_labels
-from skeptic_arms import BENCH_DIR, REPO_ROOT, _passes_by_pr, arm_provider
+from skeptic_arms import BENCH_DIR, REPO_ROOT, NoArmError, _passes_by_pr, arm_provider
 
 #: (pass stem, the pass's findings, its PR's ground truth)
 Pass = tuple[str, Sequence[Finding], GroundTruth]
@@ -119,7 +119,10 @@ def main() -> int:
         budget = make_budget(args.budget_usd, args.price, names)
     except ValueError as exc:
         parser.error(str(exc))
-    judges = {name: arm_provider("anthropic", os.environ, name)[0] for name in names}
+    try:
+        judges = {name: arm_provider("anthropic", os.environ, name)[0] for name in names}
+    except NoArmError as exc:
+        parser.error(str(exc))
     labels = (
         load_labels(args.out) if args.out.exists() else Labels(judges=tuple(names), verdicts={})
     )

@@ -45,6 +45,26 @@ class Labels:
     judges: tuple[str, ...]
     verdicts: dict[PairKey, dict[str, bool | None]]
 
+    def __post_init__(self) -> None:
+        """Refuse labels with no judge: "all" of no votes is true and would accept every pair."""
+        if not self.judges:
+            _msg = "labels need at least one judge"
+            raise ValueError(_msg)
+
+    def missing(self, pass_stem: str, pairs: Sequence[tuple[int, str]]) -> int:
+        """How many of `pairs` lack a verdict from some judge — never asked, or a failed call.
+
+        Scored, such a pair would read as "no match", which is the direction a
+        skeptic experiment wants; so the caller counts it instead (review of #723).
+        """
+        return sum(
+            1
+            for index, gt_id in pairs
+            if any(
+                self.verdicts.get((pass_stem, index, gt_id), {}).get(j) is None for j in self.judges
+            )
+        )
+
     def accepts(self, pass_stem: str, rule: Rule) -> dict[int, set[str]]:
         """Finding index → the entries it matches, for one pass, under `rule`."""
         if rule not in ("all", "any"):

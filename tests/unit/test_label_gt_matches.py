@@ -13,7 +13,8 @@ from cgis.guardian.findings import Finding
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"))
 
 import label_gt_matches
-from semantic_match import Labels
+from run_budget import make_budget
+from semantic_match import Labels, load_labels
 
 _YES = '{"reasoning": "r", "match": true, "confidence": 0.9}'
 _NO = '{"reasoning": "r", "match": false, "confidence": 0.9}'
@@ -102,3 +103,64 @@ def test_written_labels_name_their_judges(tmp_path: Path) -> None:
     out = tmp_path / "l.json"
     label_gt_matches.write(labels, out)
     assert json.loads(out.read_text())["judges"] == ["j1"]
+
+
+class _Metered(StubProvider):
+    """A stub judge that bills every call: 1,000 in, 100 out."""
+
+    async def generate_structured(self, system_prompt: str, user_prompt: str, schema: type) -> str:  # type: ignore[override]
+        """Record one call's usage, then answer as the stub does."""
+        from cgis.guardian.providers.base import ProviderUsage  # noqa: PLC0415
+
+        self._record_usage(ProviderUsage(prompt_tokens=1_000, completion_tokens=100))
+        return await super().generate_structured(system_prompt, user_prompt, schema)
+
+
+@pytest.mark.asyncio
+async def test_the_budget_charges_each_judge_its_own_calls_and_stops() -> None:
+    judges = {"j1": _Metered([_YES, _YES]), "j2": _Metered([_NO, _NO])}
+    budget = make_budget(0.001, ["j1=1:10", "j2=1:10"], judges)
+    assert budget is not None
+    labels = Labels(judges=("j1", "j2"), verdicts={})
+    passes = [("1@a", [_finding("a.py"), _finding("a.py")], _truth())]
+
+    finished = await label_gt_matches.label(passes, judges, labels, budget, concurrency=1)
+
+    # Unit j1 costs 2 * (1000 * 1 + 100 * 10) / 1e6 = $0.004, past the $0.001 cap,
+    # so j2 is never asked and the run reports a stop.
+    assert finished is False
+    assert budget.stopped is True
+    assert budget.spent_usd == pytest.approx(0.004)
+    assert judges["j2"].prompts == []
+
+
+def test_main_writes_what_it_has_when_labelling_crashes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    out = tmp_path / "l.json"
+
+    async def _boom(_passes: object, _judges: object, labels: Labels, *_a: object) -> bool:
+        labels.verdicts[("1@a", 0, "g1")] = {"m1": True}
+        _msg = "network"
+        raise RuntimeError(_msg)
+
+    monkeypatch.setattr(label_gt_matches, "arm_provider", lambda *_a: (StubProvider([]), "m1"))
+    monkeypatch.setattr(label_gt_matches, "corpus_passes", lambda _t: [])
+    monkeypatch.setattr(label_gt_matches, "label", _boom)
+    monkeypatch.setattr(sys, "argv", ["x", "--judges", "m1", "--out", str(out)])
+    with pytest.raises(RuntimeError):
+        label_gt_matches.main()
+    assert load_labels(out).verdicts == {("1@a", 0, "g1"): {"m1": True}}
+
+
+def test_main_reports_a_missing_key_as_a_usage_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _no_key(*_a: object) -> object:
+        _msg = "no key"
+        raise label_gt_matches.NoArmError(_msg)
+
+    monkeypatch.setattr(label_gt_matches, "arm_provider", _no_key)
+    monkeypatch.setattr(sys, "argv", ["x", "--judges", "m1", "--out", str(tmp_path / "l.json")])
+    with pytest.raises(SystemExit):
+        label_gt_matches.main()

@@ -144,3 +144,14 @@ def test_an_unknown_rule_is_refused() -> None:
     labels = Labels(judges=("j",), verdicts={})
     with pytest.raises(ValueError, match="rule"):
         labels.accepts("p", "most")  # type: ignore[arg-type]
+
+
+def test_labels_need_a_judge() -> None:
+    """With no judges, "all" of nothing is true and every pair would be accepted."""
+    with pytest.raises(ValueError, match="judge"):
+        Labels(judges=(), verdicts={})
+
+
+def test_missing_counts_absent_and_failed_pairs() -> None:
+    labels = Labels(judges=("j1", "j2"), verdicts={("p", 0, "g1"): {"j1": True, "j2": None}})
+    assert labels.missing("p", [(0, "g1"), (1, "g1")]) == 2
