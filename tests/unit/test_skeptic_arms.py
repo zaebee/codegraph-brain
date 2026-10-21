@@ -418,7 +418,7 @@ class TestTheBudget:
             _limit: int | None,
             _arms: dict[str, str | None],
             budget: Budget | None = None,
-            _labels: object = None,
+            **_kw: object,
         ) -> list[dict[str, Any]]:
             assert budget is not None
             budget.stopped = True
@@ -442,8 +442,7 @@ class TestTheBudget:
             _root: Path,
             _limit: int | None,
             _arms: dict[str, str | None],
-            _budget: object = None,
-            _labels: object = None,
+            **_kw: object,
         ) -> list[dict[str, Any]]:
             row = {"finder_model": "mistral-medium-latest", "arm": "anthropic"}
             return [{**row, "refuted": 1, "findings": 2, "unruled": 0, "killed_gt": []}]
@@ -460,7 +459,7 @@ class TestTheBudget:
     def test_the_spend_is_printed_even_when_the_run_crashes(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        async def _rows(*_a: object) -> list[dict[str, Any]]:
+        async def _rows(*_a: object, **_k: object) -> list[dict[str, Any]]:
             _msg = "worktree failed"
             raise RuntimeError(_msg)
 
@@ -539,8 +538,7 @@ class TestTheValidityGate:
             _root: Path,
             _limit: int | None,
             _arms: dict[str, str | None],
-            _budget: object = None,
-            _labels: object = None,
+            **_kw: object,
         ) -> list[dict[str, Any]]:
             return [{"arm": "openrouter", "findings": 10, "unruled": 9, "finder_model": "x"}]
 
@@ -575,8 +573,7 @@ def test_main_writes_the_rows_it_collected(
         _root: Path,
         _limit: int | None,
         _arms: dict[str, str | None],
-        _budget: object = None,
-        _labels: object = None,
+        **_kw: object,
     ) -> list[dict[str, Any]]:
         return [row]
 
@@ -733,3 +730,30 @@ async def test_a_pair_the_labels_never_covered_is_counted_not_scored_as_no(
     assert row["semantic"]["unlabelled_pairs"] == len(in_file)  # one failed, the rest absent
     problems = skeptic_arms.validity_problems([{**row, "arm": "anthropic"}])
     assert any("unlabelled" in p for p in problems)
+
+
+@pytest.mark.asyncio
+async def test_the_misdirected_variant_is_asked_for_and_recorded(tmp_path: Path) -> None:
+    """#246 F: the flag reaches the skeptic, and each row says which variant judged it."""
+    recording = json.loads(
+        (BENCH_DIR / "experiments" / "401-evidence" / "pr-399-recording.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    findings = recording["result"]["findings"][:1]
+    findings[0].pop("verdict", None)
+    path = tmp_path / "143@z.json"
+    path.write_text(
+        json.dumps({"result": {"findings": findings, "summary": ""}, "diff": recording["diff"]}),
+        encoding="utf-8",
+    )
+    truth = load_ground_truth(BENCH_DIR / "pr-143.yaml")
+    provider = StubProvider(['{"verdict": "misdirected", "impact_score": 4, "rationale": "r"}'])
+
+    row = await judge_one(provider, path, truth, None, misdirected=True)
+
+    assert row["skeptic_variant"] == "misdirected"
+    assert row["misdirected"] == 1
+    assert row["verdicts"][0]["verdict"] == "misdirected"
+    assert row["refuted"] == 0
+    assert row["uncertain"] == 1  # kept, as an uncertain finding is

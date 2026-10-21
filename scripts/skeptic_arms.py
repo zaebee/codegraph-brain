@@ -65,7 +65,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from guardian_replay_skeptic import changed_files, worktree_at
 from recordings_from_corpus import build, is_frozen_pass, row_key
 from run_budget import Budget, make_budget
-from semantic_match import Labels, candidate_pairs, load_labels, semantic_counts
+from semantic_match import Labels, Rule, candidate_pairs, load_labels, semantic_counts
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BENCH_DIR = REPO_ROOT / "benchmarks" / "guardian"
@@ -80,6 +80,9 @@ BENCH_DIR = REPO_ROOT / "benchmarks" / "guardian"
 #: is built, so a single value would hand one arm the other's model — one arm
 #: running something that does not exist, reported as a difference between
 #: vendors.
+#: Both acceptance rules, scored on every labelled row (#246 E).
+_RULES: tuple[Rule, ...] = ("all", "any")
+
 DEFAULT_ARMS = "gemini,mistral"
 
 
@@ -168,6 +171,8 @@ async def judge_one(
     truth: GroundTruth,
     evidence: Evidence | None,
     labels: Labels | None = None,
+    *,
+    misdirected: bool = False,
 ) -> dict[str, Any]:
     """One recording under one arm, scored the way `guardian_bench` scores a run.
 
@@ -180,7 +185,9 @@ async def judge_one(
     """
     recording = load_finder_recording(recording_path)
     findings = recording.result.findings
-    judgements = await judge_all(provider, findings, recording.diff, evidence=evidence)
+    judgements = await judge_all(
+        provider, findings, recording.diff, evidence=evidence, misdirected=misdirected
+    )
     judged = apply_judgements(findings, judgements)
     visible = visible_findings(judged)
     matches = match_findings(visible, truth)
@@ -207,11 +214,14 @@ async def judge_one(
                             strict=True,
                         )
                     )
-                    for rule in ("all", "any")
+                    for rule in _RULES
                 },
             }
         }
     return {
+        # Which skeptic prompt judged the row (#246 F): the production one, or the
+        # one offering 'misdirected'. Raw verdicts below keep 'misdirected' as said.
+        "skeptic_variant": "misdirected" if misdirected else "base",
         "verdicts": [
             None
             if j is None
@@ -223,6 +233,8 @@ async def judge_one(
         "refuted": sum(1 for f in judged if f.verdict == "refuted"),
         "uncertain": sum(1 for f in judged if f.verdict == "uncertain"),
         "confirmed": sum(1 for f in judged if f.verdict == "confirmed"),
+        # Counted inside "uncertain" above, where the merge puts them (#246 F).
+        "misdirected": sum(1 for j in judgements if j is not None and j.verdict == "misdirected"),
         "unruled": sum(1 for j in judgements if j is None),
         "recall": bench_score.recall,
         "precision": bench_score.precision,
@@ -259,11 +271,14 @@ async def _judged_row(
     evidence: Evidence | None,
     finder_model: str,
     labels: Labels | None = None,
+    misdirected: bool = False,
 ) -> tuple[dict[str, Any], list[ProviderUsage]]:
     """One pass under one arm: its row, and the calls the judging made."""
     name, provider, model = arm
     first_call = len(provider.call_usages)
-    scored = await judge_one(provider, path, truth, evidence, labels)
+    scored = await judge_one(
+        provider, path, truth, evidence, labels=labels, misdirected=misdirected
+    )
     # This row's own calls: the provider's record is cumulative.
     calls = provider.call_usages[first_call:]
     row = {
@@ -296,6 +311,7 @@ class _PrContext:
     evidence: Evidence | None
     finder_models: dict[str, str]
     labels: Labels | None = None
+    misdirected: bool = False
 
 
 async def _judge_passes(
@@ -322,7 +338,8 @@ async def _judge_passes(
                 context.truth,
                 context.evidence,
                 finder,
-                context.labels,
+                labels=context.labels,
+                misdirected=context.misdirected,
             )
             rows.append(row)
             if budget is not None:
@@ -341,6 +358,7 @@ async def collect_rows(
     arm_spec: dict[str, str | None],
     budget: Budget | None = None,
     labels: Labels | None = None,
+    misdirected: bool = False,
 ) -> list[dict[str, Any]]:
     """Both arms over every frozen pass; one row per (pass, arm).
 
@@ -366,7 +384,7 @@ async def collect_rows(
                 f"evidence {'collected' if evidence else 'unavailable'}",
                 file=sys.stderr,
             )
-            context = _PrContext(truth, evidence, models, labels)
+            context = _PrContext(truth, evidence, models, labels=labels, misdirected=misdirected)
             if not await _judge_passes(by_pr[pr], arms, context, rows, budget):
                 break
     return rows
@@ -537,6 +555,11 @@ def main() -> int:
         default=None,
         help="judge-labelled matches (label_gt_matches.py): also score each row semantically",
     )
+    parser.add_argument(
+        "--misdirected",
+        action="store_true",
+        help="offer the skeptic the fourth verdict, 'misdirected' (#246 F); off = production",
+    )
     args = parser.parse_args()
     arm_spec = parse_arms(args.arms)
     labels = load_labels(args.labels) if args.labels else None
@@ -545,7 +568,16 @@ def main() -> int:
     except ValueError as exc:
         parser.error(str(exc))
     try:
-        rows = asyncio.run(collect_rows(args.repo_root, args.limit, arm_spec, budget, labels))
+        rows = asyncio.run(
+            collect_rows(
+                args.repo_root,
+                args.limit,
+                arm_spec,
+                budget=budget,
+                labels=labels,
+                misdirected=args.misdirected,
+            )
+        )
     finally:
         # Also on a crash: the money was spent either way and must be reconcilable.
         if budget is not None:

@@ -13,6 +13,7 @@ from cgis.guardian.providers.base import BaseProvider
 from cgis.guardian.skeptic import (
     SKEPTIC_SYSTEM_PROMPT,
     FindingJudgement,
+    MisdirectedAwareJudgement,
     apply_judgements,
     build_judgement_prompt,
     judge_all,
@@ -325,3 +326,81 @@ class TestEvidenceInTheJudgementPrompt:
     def test_the_existing_refutation_bar_is_not_restated_lower(self) -> None:
         """The system prompt still governs; evidence adds a means, not a lower bar."""
         assert "ONLY when you can point to concrete evidence" in SKEPTIC_SYSTEM_PROMPT
+
+
+# ---------------------------------------------------------------------------
+# The fourth verdict, behind a flag (#246 experiment F)
+# ---------------------------------------------------------------------------
+
+
+class _SchemaStub(StubProvider):
+    """A stub that also records the schema each call was constrained to."""
+
+    def __init__(self, responses: list[str]) -> None:
+        """Store canned responses and start an empty schema log."""
+        super().__init__(responses)
+        self.schemas: list[type[BaseModel]] = []
+
+    async def generate_structured(
+        self, system_prompt: str, user_prompt: str, schema: type[BaseModel]
+    ) -> str:
+        """Record the schema, then answer as the stub does."""
+        self.schemas.append(schema)
+        return await super().generate_structured(system_prompt, user_prompt, schema)
+
+
+@pytest.mark.asyncio
+async def test_without_the_flag_the_prompt_and_schema_are_the_production_ones() -> None:
+    provider = _SchemaStub(['{"verdict": "confirmed", "impact_score": 7, "rationale": "r"}'])
+    await judge_finding(provider, _FINDING, "@@ -1 +1 @@\n+x", evidence=None)
+    assert provider.schemas == [FindingJudgement]
+    assert "misdirected" not in provider.prompts[0]
+
+
+@pytest.mark.asyncio
+async def test_with_the_flag_misdirected_is_offered_and_parsed() -> None:
+    provider = _SchemaStub(
+        ['{"verdict": "misdirected", "impact_score": 5, "rationale": "zero weights, not empty"}']
+    )
+    judgement = await judge_finding(
+        provider, _FINDING, "@@ -1 +1 @@\n+x", evidence=None, misdirected=True
+    )
+    assert judgement is not None
+    assert judgement.verdict == "misdirected"
+    assert provider.schemas == [MisdirectedAwareJudgement]
+    assert "'misdirected'" in provider.prompts[0]
+
+
+def test_a_misdirected_finding_stays_visible_down_ranked_with_its_redirect() -> None:
+    judgement = MisdirectedAwareJudgement(
+        verdict="misdirected", impact_score=5, rationale="zero weights, not empty constraints"
+    )
+    [merged] = apply_judgements([_FINDING], [judgement])
+    assert merged.verdict == "uncertain"  # Finding's own verdict set is unchanged
+    assert merged.confidence == round(_FINDING.confidence * 0.9)
+    assert merged.skeptic_note == "misdirected: zero weights, not empty constraints"
+    assert visible_findings([merged]) == [merged]
+
+
+@pytest.mark.asyncio
+async def test_judge_all_passes_the_flag_to_every_call() -> None:
+    provider = _SchemaStub(['{"verdict": "refuted", "impact_score": 0, "rationale": "r"}'] * 2)
+    await judge_all(provider, [_FINDING, _FINDING], "", evidence=None, misdirected=True)
+    assert provider.schemas == [MisdirectedAwareJudgement, MisdirectedAwareJudgement]
+
+
+def test_the_new_schema_carries_no_steering_text() -> None:
+    """Review of #724: providers send a model's docstring as the schema description.
+
+    The flagged arm must differ from production only by its prompt section and the
+    verdict enum, so the schema description must be `FindingJudgement`'s exactly.
+    """
+    described = MisdirectedAwareJudgement.model_json_schema().get("description")
+    assert described == FindingJudgement.model_json_schema().get("description")
+
+
+@pytest.mark.asyncio
+async def test_unprompted_misdirected_is_rejected_by_the_production_schema() -> None:
+    """With the flag off a stray 'misdirected' does not parse: the finding stays unruled."""
+    provider = StubProvider(['{"verdict": "misdirected", "impact_score": 3, "rationale": "r"}'])
+    assert await judge_finding(provider, _FINDING, "", evidence=None) is None

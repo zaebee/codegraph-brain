@@ -8,7 +8,7 @@ failure.
 """
 
 import asyncio
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from typing import Literal
 
 import structlog
@@ -39,6 +39,38 @@ class FindingJudgement(BaseModel, frozen=True):
     verdict: Literal["confirmed", "refuted", "uncertain"]
     impact_score: int = Field(ge=0, le=10)
     rationale: str
+
+
+#: A ruling that may also say "the argument is wrong, the code is not" (#246 F).
+#:
+#: Experiment E read the recorded rationales of every finding a skeptic hid that
+#: really matched ground truth: most stated a failure path that cannot happen,
+#: while the code they pointed at held a different real defect. 'refuted' hid the
+#: pointer with the argument; 'misdirected' keeps the finding, down-ranked like
+#: 'uncertain', with the skeptic naming the defect worth the look.
+#:
+#: A separate model rather than a fourth value on `FindingJudgement`, which is the
+#: production schema and must stay byte-identical until the experiment passes.
+#: Its docstring is FindingJudgement's, word for word, on purpose: providers send
+#: a model's docstring as the schema description, so commentary here would reach
+#: the skeptic and make the flagged arm differ by more than its prompt section
+#: (review of #724).
+class MisdirectedAwareJudgement(BaseModel, frozen=True):
+    """One skeptic ruling on one finding, on two orthogonal axes (#246 spec §3.1).
+
+    ``verdict`` answers "is this claim true" and only an explicit 'refuted'
+    drops the finding. ``impact_score`` answers "does it matter" and only hides
+    below a threshold. There is no index: a judgement belongs to the call that
+    produced it, which is why the batch API's index-mapping failure modes
+    (out-of-range, duplicate) cannot occur here.
+    """
+
+    verdict: Literal["confirmed", "refuted", "uncertain", "misdirected"]
+    impact_score: int = Field(ge=0, le=10)
+    rationale: str
+
+
+Judgement = FindingJudgement | MisdirectedAwareJudgement
 
 
 # Confirm-by-default stance. The original refute-by-default wording over-killed
@@ -77,7 +109,9 @@ A true finding can score 0. Scoring is NOT a second chance to refute: judge
 truth and importance independently."""
 
 
-def build_judgement_prompt(finding: Finding, hunks: str, evidence: Evidence | None) -> str:
+def build_judgement_prompt(
+    finding: Finding, hunks: str, evidence: Evidence | None, *, misdirected: bool = False
+) -> str:
     """Assemble the user prompt judging ONE finding against its own file's hunks.
 
     The finder's ``confidence`` and ``severity`` are deliberately omitted: both
@@ -85,6 +119,7 @@ def build_judgement_prompt(finding: Finding, hunks: str, evidence: Evidence | No
     them anchors the judge on the claim it is meant to check (#246 §3.3).
     """
     location = f"{finding.file}:{finding.line}" if finding.line is not None else finding.file
+    verdicts = "confirmed|refuted|uncertain" + ("|misdirected" if misdirected else "")
     return f"""Another reviewer claims this diff contains a defect.
 
 ### THE CLAIM
@@ -101,12 +136,27 @@ Proposed fix: {finding.fix}
 Verify the quoted code against the hunks above. If the claim depends on code
 that is NOT in these hunks, you cannot check it: that is grounds for
 'uncertain', never for 'refuted'.
-{_evidence_section(evidence)}{IMPACT_RUBRIC}
+{_evidence_section(evidence)}{_MISDIRECTED_SECTION if misdirected else ""}{IMPACT_RUBRIC}
 
 ### OUTPUT FORMAT
 Return ONLY a JSON object:
-{{"verdict": "confirmed|refuted|uncertain", "impact_score": 0, "rationale": "one sentence"}}"""
+{{"verdict": "{verdicts}", "impact_score": 0, "rationale": "one sentence"}}"""
 
+
+#: The fourth verdict, offered only under the experiment's flag (#246 F).
+#:
+#: Named as a verdict with its own criterion, not as a restriction on 'refuted':
+#: #407 measured that telling a model what not to do hardened the claim, while
+#: naming the verdict a case takes moved it.
+_MISDIRECTED_SECTION = """
+### WHEN THE ARGUMENT IS WRONG BUT THE CODE IS SUSPECT
+If the claimed failure cannot happen as stated — the path is guarded, or the
+claim misreads the code — but the code it points at plausibly holds a different
+real defect (another input, another value, a nearby path through the same
+operation), answer 'misdirected' and name that other defect in the rationale.
+Answer 'refuted' only when the code the finding points at is sound on every path
+you can see in the hunks.
+"""
 
 #: What the skeptic is told when nothing was run (#407).
 #:
@@ -190,8 +240,13 @@ DEFAULT_SKEPTIC_CONCURRENCY = 3
 
 
 async def judge_finding(
-    provider: BaseProvider, finding: Finding, hunks: str, *, evidence: Evidence | None
-) -> FindingJudgement | None:
+    provider: BaseProvider,
+    finding: Finding,
+    hunks: str,
+    *,
+    evidence: Evidence | None,
+    misdirected: bool = False,
+) -> Judgement | None:
     """Judge one finding; None means this call failed (#246 §3.2).
 
     `evidence` is keyword-only with no default, matching `judge_all`. It had a
@@ -205,13 +260,14 @@ async def judge_finding(
     collapses to None so the caller keeps the finding unruled and visible. A
     skeptic that cannot answer must never be able to silence a finding.
     """
+    schema: type[Judgement] = MisdirectedAwareJudgement if misdirected else FindingJudgement
     try:
         raw = await provider.generate_structured(
             SKEPTIC_SYSTEM_PROMPT,
-            build_judgement_prompt(finding, hunks, evidence),
-            FindingJudgement,
+            build_judgement_prompt(finding, hunks, evidence, misdirected=misdirected),
+            schema,
         )
-        return FindingJudgement.model_validate_json(extract_json(raw))
+        return schema.model_validate_json(extract_json(raw))
     except Exception as exc:
         # The reason is logged, not just the fact. Containing the error per
         # finding is deliberate (#246 §3.4) — one bad response must not cost the
@@ -247,7 +303,8 @@ async def judge_all(
     concurrency: int = DEFAULT_SKEPTIC_CONCURRENCY,
     *,
     evidence: Evidence | None,
-) -> list[FindingJudgement | None]:
+    misdirected: bool = False,
+) -> list[Judgement | None]:
     """Judge every finding concurrently, each against its own file's hunks.
 
     Returns one entry per finding, positionally aligned, with None where that
@@ -264,36 +321,45 @@ async def judge_all(
     blocks = split_diff_by_file(diff)
     semaphore = asyncio.Semaphore(max(1, concurrency))
 
-    async def _one(finding: Finding) -> FindingJudgement | None:
+    async def _one(finding: Finding) -> Judgement | None:
         async with semaphore:
             return await judge_finding(
-                provider, finding, blocks.get(finding.file, ""), evidence=evidence
+                provider,
+                finding,
+                blocks.get(finding.file, ""),
+                evidence=evidence,
+                misdirected=misdirected,
             )
 
     return list(await asyncio.gather(*(_one(f) for f in findings)))
 
 
 def apply_judgements(
-    findings: list[Finding], judgements: list[FindingJudgement | None]
+    findings: list[Finding], judgements: Sequence[Judgement | None]
 ) -> list[Finding]:
     """Merge per-finding judgements into new frozen copies, positionally (#246 §3.2).
 
     ``judgements[i]`` rules on ``findings[i]``; a ``None`` means that call failed
     and the finding stays unruled — absence of a judgement is not a refutation.
     'uncertain' discounts confidence x0.9 as a ranking signal only, identical to
-    the batch merge it replaces.
+    the batch merge it replaces. 'misdirected' (#246 F) is kept the same way and
+    recorded as 'uncertain', since `Finding`'s verdict set is production's; the
+    note says it was misdirected and names the defect the skeptic redirected to.
     """
     merged: list[Finding] = []
     for finding, judgement in zip(findings, judgements, strict=True):
         if judgement is None:
             merged.append(finding)
             continue
+        redirected = judgement.verdict == "misdirected"
         update: dict[str, object] = {
-            "verdict": judgement.verdict,
-            "skeptic_note": judgement.rationale,
+            "verdict": "uncertain" if redirected else judgement.verdict,
+            "skeptic_note": f"misdirected: {judgement.rationale}"
+            if redirected
+            else judgement.rationale,
             "impact_score": judgement.impact_score,
         }
-        if judgement.verdict == "uncertain":
+        if judgement.verdict in ("uncertain", "misdirected"):
             update["confidence"] = round(finding.confidence * _UNCERTAIN_MULTIPLIER)
         merged.append(finding.model_copy(update=update))
     return merged
