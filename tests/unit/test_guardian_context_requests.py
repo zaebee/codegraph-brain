@@ -117,6 +117,14 @@ def test_unknown_symbol_is_said_not_dropped(tmp_path: Path) -> None:
     assert "unresolved" in text
 
 
+def test_a_directory_is_not_a_graph(tmp_path: Path) -> None:
+    text, outcomes = answer_requests(
+        tmp_path, [ContextRequest(symbol="helper", kind="context")], source_root=""
+    )
+    assert "No graph is available" in text
+    assert outcomes[0].resolved is None
+
+
 def test_requests_beyond_the_limit_are_ignored(tmp_path: Path) -> None:
     db = _project(tmp_path)
     many = [ContextRequest(symbol="helper", kind="context")] * (MAX_REQUESTS + 3)

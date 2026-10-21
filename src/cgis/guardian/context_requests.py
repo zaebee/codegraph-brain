@@ -117,7 +117,7 @@ def answer_requests(
     `cgis_context`. With no graph every request is reported unresolved.
     """
     taken = requests[:MAX_REQUESTS]
-    if db_path is None or not db_path.exists():
+    if db_path is None or not db_path.is_file():
         return _NO_GRAPH, [
             RequestOutcome(symbol=r.symbol, kind=r.kind, resolved=None, chars=0) for r in taken
         ]
