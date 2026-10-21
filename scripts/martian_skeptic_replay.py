@@ -150,7 +150,7 @@ def _done(out: Path) -> set[tuple[str, ...]]:
     """Keys already recorded, so a rerun resumes rather than pays twice."""
     if not out.exists():
         return set()
-    keys = set()
+    keys: set[tuple[str, ...]] = set()
     for line in out.read_text(encoding="utf-8").splitlines():
         if line.strip():
             r = json.loads(line)
