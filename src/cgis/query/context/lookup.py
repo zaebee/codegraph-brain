@@ -4,15 +4,17 @@ For a caller that holds a path, not a store — the guardian's two-pass finder,
 which names symbols it wants to read. Each lookup resolves like `cgis_context`
 (exact, then unique suffix) and comes back as one of two kinds: `context`, the
 symbol's brief from `build_context`, or `callers`, its upstream as an indented
-tree. A name that does not resolve is answered, not dropped, so the caller can
-tell "the graph has nothing" from "the lookup was lost".
+tree under the defaults of `cgis_analyze_impact`: behavioural edges only, no
+tests (counted), no external nodes, a file as a dead end. A name that does not
+resolve is answered, not dropped, so the caller can tell "the graph has nothing"
+from "the lookup was lost".
 """
 
 from collections.abc import Sequence
 from typing import Literal, NamedTuple
 
 from cgis.query.context.context_service import build_context
-from cgis.query.engine import QueryEngine
+from cgis.query.engine import BEHAVIORAL_EDGE_TYPES, QueryEngine, TraversalResult, agent_screen
 from cgis.query.fqn import resolve_fqn
 from cgis.query.render.text import graph_to_text
 from cgis.storage.sqlite_store import SQLiteStore
@@ -46,15 +48,38 @@ def _answer(store: SQLiteStore, symbol: str, kind: LookupKind, source_root: str)
             res.resolved, build_context(store, res.resolved, depth=1, source_root=source_root)
         )
     result = QueryEngine(store).get_impact_result(
-        res.resolved, max_depth=_CALLERS_DEPTH, with_coverage=False, max_nodes=_CALLERS_MAX_NODES
+        res.resolved,
+        max_depth=_CALLERS_DEPTH,
+        allowed_edge_types=BEHAVIORAL_EDGE_TYPES,
+        show_external=False,
+        with_coverage=False,
+        screen=agent_screen(store, res.resolved, include_tests=False, show_external=False),
+        max_nodes=_CALLERS_MAX_NODES,
     )
+    notes = _callers_notes(result)
     if len(result.nodes) <= 1:
         return SymbolAnswer(
-            res.resolved, "no static callers found (dispatch through a framework is invisible)"
+            res.resolved,
+            notes + "no static callers found (dispatch through a framework is invisible)",
         )
     return SymbolAnswer(
-        res.resolved, graph_to_text(res.resolved, result.nodes, result.edges, downstream=False)
+        res.resolved,
+        notes + graph_to_text(res.resolved, result.nodes, result.edges, downstream=False),
     )
+
+
+def _callers_notes(result: TraversalResult) -> str:
+    """What the walk left out, above the answer — as `cgis_analyze_impact` says it."""
+    notes = ""
+    if result.excluded:
+        notes += f"({result.excluded} test caller(s) left out)\n"
+    if result.truncation:
+        cut = result.truncation
+        notes += (
+            f"(truncated at depth {cut.depth}: {cut.omitted} node(s) at that depth did not fit "
+            f"the {_CALLERS_MAX_NODES}-node budget)\n"
+        )
+    return notes
 
 
 def answer_lookups(
