@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.36.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.35.0...codegraph-brain-v0.36.0) (2026-10-22)
+
+
+### Features
+
+* **guardian:** a flagged fourth skeptic verdict, "misdirected" ([#724](https://github.com/zaebee/codegraph-brain/issues/724)) ([f2a69b7](https://github.com/zaebee/codegraph-brain/commit/f2a69b73df62c2d3c65ee96bc9140d2619c53106))
+* **guardian:** give the finder diff-check's dependants as leads (flagged) ([#736](https://github.com/zaebee/codegraph-brain/issues/736)) ([f7546cc](https://github.com/zaebee/codegraph-brain/commit/f7546cc88177051436e38ff59e79c4325fa0cfe9))
+* **scripts:** replay a skeptic over frozen Martian reviews on their judge grids ([#726](https://github.com/zaebee/codegraph-brain/issues/726)) ([95d26d3](https://github.com/zaebee/codegraph-brain/commit/95d26d3e6115020e92de20d09b8a4c0844b7f2d6))
+
+
+### Bug Fixes
+
+* **guardian:** review the PR as data, never run its code beside the keys ([#731](https://github.com/zaebee/codegraph-brain/issues/731)) ([113ff81](https://github.com/zaebee/codegraph-brain/commit/113ff81d7ec9525cd7efd54883f193549b36c8cd))
+
 ## [0.35.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.34.0...codegraph-brain-v0.35.0) (2026-10-21)
 
 
