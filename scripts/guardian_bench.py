@@ -146,9 +146,11 @@ async def _run_one(
         # hardcode None on the reasoning that a recording is not a checkout —
         # true, and beside the point: the commit is named by the fixture, so a
         # worktree gets one, which is exactly what `guardian_replay_skeptic`
-        # does. Production runs with GUARDIAN_EVIDENCE=1, so judging without it
-        # measured a configuration nobody runs and quietly attributed the
-        # difference to whatever else the arm changed (#246).
+        # does. Production ran with GUARDIAN_EVIDENCE=1 at the time, so judging
+        # without it measured a configuration nobody ran and quietly attributed
+        # the difference to whatever else the arm changed (#246). Since #730
+        # guardian.yml runs no evidence pass (the reviewed checkout is the PR);
+        # the bench keeps collecting it so its numbers stay comparable.
         evidence = await asyncio.to_thread(
             _evidence_at_head, truth.head, recording.diff, _REPO_ROOT
         )

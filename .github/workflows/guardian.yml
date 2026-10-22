@@ -86,6 +86,9 @@ jobs:
       - name: Build code graph
         run: uv run --frozen cgis ingest pr/src --output graph.db
 
+      # Fetches anonymously: the root checkout keeps no credentials (#730).
+      # Fine while this repository is public; on a private one this restore
+      # fails into `|| true` and save-metrics would overwrite the history.
       - name: Restore metrics from data branch
         run: |
           git fetch origin data/guardian-metrics 2>/dev/null && \

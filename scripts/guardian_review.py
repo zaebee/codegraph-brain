@@ -40,13 +40,14 @@ def reviewed_root(requested: Path | None, project_root: Path, env: Mapping[str, 
     `uv run mypy/ruff` inside it, which executes code and config the PR's author
     controls while the job holds provider keys, so that combination is refused.
     """
+    this_repository = project_root.resolve()
     if requested is None:
-        return project_root
+        return this_repository
     root = requested.resolve()
     if not root.is_dir():
         _msg = f"--repo-root is not a directory: {requested}"
         raise ValueError(_msg)
-    if root != project_root.resolve() and (env.get(EVIDENCE_FLAG) or "").strip() == "1":
+    if root != this_repository and (env.get(EVIDENCE_FLAG) or "").strip() == "1":
         _msg = (
             f"{EVIDENCE_FLAG}=1 runs the reviewed checkout's own toolchain, and {requested} "
             f"is not this repository; unset it for a --repo-root review (#730)."

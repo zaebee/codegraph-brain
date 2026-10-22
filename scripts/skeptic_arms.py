@@ -23,12 +23,13 @@ each skeptic separates two hypotheses the issue conflates:
 The original single-orientation design cannot tell those apart.
 
 **Evidence is collected, not skipped.** `guardian_bench`'s replay path hardcodes
-`evidence=None`, which would measure a configuration production does not run
-(`GUARDIAN_EVIDENCE=1`). Here it is collected once per PR in a worktree at the
-fixture head — the same mechanism `guardian_replay_skeptic` uses. Four of the six
-fixtures touch Python and yield evidence, covering 96 of 135 findings; the other
-two touch none, so their findings are judged with `evidence=None` because that is
-also what production would do for them.
+`evidence=None`, which would have measured a configuration production did not
+run (`GUARDIAN_EVIDENCE=1`; production has run without it since #730). Here it
+is collected once per PR in a worktree at the fixture head — the same mechanism
+`guardian_replay_skeptic` uses. Four of the six fixtures touch Python and yield
+evidence, covering 96 of 135 findings; the other two touch none, so their
+findings are judged with `evidence=None` because that is also what production
+would do for them.
 
 No finder call is made. The cost is one skeptic call per finding per arm.
 """

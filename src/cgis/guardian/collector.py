@@ -67,6 +67,24 @@ def features_setting(env: Mapping[str, str]) -> tuple[frozenset[str], FeaturesSo
     return parse_features(raw), "env"
 
 
+def contained(root: Path, relative_path: str) -> Path | None:
+    """`root / relative_path` when it resolves inside `root`, else None.
+
+    The reviewed checkout is a PR, and a PR is data its author controls (#730).
+    A symlink or a `..` is data that reads somewhere else: a CONTRIBUTING.md
+    linked to /proc/self/environ would put the job's provider keys in the
+    prompt, and from there in a public review comment. `cgis ingest` refuses
+    such links the same way. A link that stays inside the checkout is allowed.
+    """
+    path = root / relative_path
+    try:
+        if path.resolve().is_relative_to(root.resolve()):
+            return path
+    except (OSError, RuntimeError):  # a loop of links
+        return None
+    return None
+
+
 class SourceCollector:
     """What the PR changed and what its files say: git and the working tree."""
 
@@ -140,8 +158,8 @@ class SourceCollector:
         so a path that resolves to a directory degrades to "" instead of raising
         IsADirectoryError on read.
         """
-        file_path = self.project_root / relative_path
-        if not file_path.is_file():
+        file_path = contained(self.project_root, relative_path)
+        if file_path is None or not file_path.is_file():
             return ""
         return file_path.read_text(encoding="utf-8")
 
@@ -156,7 +174,10 @@ class SourceCollector:
         sized: list[tuple[int, str, str]] = []
         omitted: list[str] = []
         for rel_path in changed:
-            path = self.project_root / rel_path
+            path = contained(self.project_root, rel_path)
+            if path is None:
+                omitted.append(f"file omitted: links outside the checkout ({rel_path})")
+                continue
             if not path.exists():  # deleted in this PR — nothing to show at HEAD
                 continue
             text = path.read_text(encoding="utf-8")
@@ -187,8 +208,9 @@ class GraphContextCollector:
         """Set the graph DB, the ingest root its FQNs are relative to, and the project root.
 
         source_root must match the ingest root used to build the graph DB (CI
-        runs `cgis ingest ./src`): changed-file paths are stripped of it before
-        lookup. project_root locates docs/ontology/patterns.yaml for drift.
+        runs `cgis ingest pr/src` with project_root `pr`): changed-file paths
+        are stripped of it before lookup. project_root locates
+        docs/ontology/patterns.yaml for drift.
         """
         self.project_root = project_root
         self.db_path = db_path
@@ -243,8 +265,8 @@ class GraphContextCollector:
         """
         if not self.has_db():
             return ""
-        patterns = self.project_root / "docs" / "ontology" / "patterns.yaml"
-        if not patterns.exists():
+        patterns = contained(self.project_root, "docs/ontology/patterns.yaml")
+        if patterns is None or not patterns.exists():
             return ""
         try:
             scorer = DriftScorer(str(patterns))

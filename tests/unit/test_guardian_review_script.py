@@ -73,8 +73,9 @@ async def test_evidence_on_a_foreign_checkout_is_refused(
     """The evidence pass runs `uv run mypy/ruff` inside the reviewed checkout.
 
     With `--repo-root` that checkout is the PR — code its author controls — and
-    the job holds provider keys (#730). Refused loudly, not skipped quietly: a
-    silent skip would leave the repository variable claiming evidence is on.
+    the job holds provider keys (#730). Refused loudly, not skipped quietly:
+    whoever passes the flag with a foreign checkout learns it cannot work.
+    guardian.yml itself does not pass it, and says why.
     """
     _argv(monkeypatch, "--repo-root", str(tmp_path))
     monkeypatch.setenv("GUARDIAN_EVIDENCE", "1")

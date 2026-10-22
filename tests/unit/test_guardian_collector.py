@@ -527,3 +527,51 @@ def test_chunked_path_keeps_ts_files(tmp_path: Path) -> None:
     assert "app.handler" in context["graph_context"]
     assert "```ts\n" in context["full_files"]
     assert "README.md" not in context["full_files"]
+
+
+# A PR is data (#730), and a symlink is data that reads somewhere else: one
+# pointing at /proc/self/environ would put the job's provider keys in the prompt,
+# and from there in a public review comment. Reads stay inside the checkout.
+
+
+def _outside_secret(tmp_path: Path) -> tuple[Path, Path]:
+    """(the reviewed checkout, a file outside it holding a fake secret)."""
+    root = tmp_path / "pr"
+    root.mkdir()
+    secret = tmp_path / "environ"
+    secret.write_text("FAKE_API_KEY=sk-LEAKME\n")
+    return root, secret
+
+
+def test_read_file_refuses_a_symlink_out_of_the_checkout(tmp_path: Path) -> None:
+    """CONTRIBUTING.md is read on every review, so a link there needs no feature flag."""
+    root, secret = _outside_secret(tmp_path)
+    (root / "CONTRIBUTING.md").symlink_to(secret)
+    collector = ContextCollector(project_root=root)
+    assert collector.source.read_file("CONTRIBUTING.md") == ""
+
+
+def test_read_file_refuses_a_parent_path(tmp_path: Path) -> None:
+    """The relative path is the caller's, but `..` must not climb out either."""
+    root, _secret = _outside_secret(tmp_path)
+    collector = ContextCollector(project_root=root)
+    assert collector.source.read_file("../environ") == ""
+
+
+def test_read_file_follows_a_link_that_stays_inside(tmp_path: Path) -> None:
+    """A repository may link one of its own files to another; that is not an escape."""
+    root, _secret = _outside_secret(tmp_path)
+    (root / "docs.md").write_text("standards\n")
+    (root / "CONTRIBUTING.md").symlink_to(root / "docs.md")
+    collector = ContextCollector(project_root=root)
+    assert collector.source.read_file("CONTRIBUTING.md") == "standards\n"
+
+
+def test_collect_full_files_refuses_a_symlink_out_of_the_checkout(tmp_path: Path) -> None:
+    """A changed source file that links out is left out, not read."""
+    root, secret = _outside_secret(tmp_path)
+    (root / "leak.py").symlink_to(secret)
+    collector = ContextCollector(project_root=root, features=frozenset({"full_files"}))
+    with patch.object(collector.source, "get_changed_source_files", return_value=["leak.py"]):
+        result = collector.source.collect_full_files()
+    assert "sk-LEAKME" not in result

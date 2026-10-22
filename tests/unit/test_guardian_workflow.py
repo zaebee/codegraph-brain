@@ -4,9 +4,10 @@
 reviews may come from anyone. The job used to check the PR out at the root and
 run its lockfile, its scripts and its checkers there. These tests pin the shape
 that closes that: trusted tooling at the root, the PR in its own directory, and
-no step that holds a secret running anything from inside it.
+nothing running from inside it but one fixed `git fetch`.
 """
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -15,13 +16,34 @@ import yaml
 
 WORKFLOW = Path(__file__).parent.parent.parent / ".github" / "workflows" / "guardian.yml"
 PR_DIR = "pr"
+#: The only command allowed to run inside the PR checkout.
+PR_FETCH = 'git fetch origin "$BASE_BRANCH"'
+#: The only two ways a command may name the PR checkout: parse it, review it.
+ALLOWED_MENTIONS = (f"cgis ingest {PR_DIR}/src ", f"--repo-root {PR_DIR} ")
+#: Ways a command could reach into the PR checkout, after the allowed mentions are removed.
+FORBIDDEN_MENTIONS = (
+    re.compile(rf"(?<![\w$-]){PR_DIR}/"),
+    re.compile(rf"--(?:directory|project|repo-root)[ =]+{PR_DIR}\b"),
+    re.compile(rf"\bcd\s+{PR_DIR}\b"),
+)
 
 
 @pytest.fixture(scope="module")
-def steps() -> list[dict[str, Any]]:
+def workflow() -> dict[Any, Any]:
+    """The parsed workflow file."""
+    result: dict[Any, Any] = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    return result
+
+
+@pytest.fixture(scope="module")
+def steps(workflow: dict[Any, Any]) -> list[dict[str, Any]]:
     """The steps of the `review` job."""
-    jobs = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["jobs"]
-    result: list[dict[str, Any]] = jobs["review"]["steps"]
+    result: list[dict[str, Any]] = workflow["jobs"]["review"]["steps"]
+    return result
+
+
+def _with(step: dict[str, Any]) -> dict[str, Any]:
+    result: dict[str, Any] = step.get("with") or {}
     return result
 
 
@@ -35,40 +57,58 @@ def _holds_secret(step: dict[str, Any]) -> bool:
 
 def test_the_pr_is_checked_out_into_its_own_directory(steps: list[dict[str, Any]]) -> None:
     """A PR checkout at the root would put its scripts and lockfile where the job runs them."""
-    pr = [s for s in _checkouts(steps) if "refs/pull/" in str(s["with"].get("ref", ""))]
+    pr = [s for s in _checkouts(steps) if "refs/pull/" in str(_with(s).get("ref", ""))]
     assert len(pr) == 1
-    assert pr[0]["with"].get("path") == PR_DIR
-    assert pr[0]["with"].get("persist-credentials") is False
+    assert _with(pr[0]).get("path") == PR_DIR
+    assert _with(pr[0]).get("persist-credentials") is False
 
 
 def test_the_root_checkout_is_the_default_branch(steps: list[dict[str, Any]]) -> None:
     """The tooling that runs must come from reviewed, merged code."""
-    root = [s for s in _checkouts(steps) if not s.get("with", {}).get("path")]
+    root = [s for s in _checkouts(steps) if not _with(s).get("path")]
     assert len(root) == 1
-    assert root[0]["with"]["ref"] == "${{ github.event.repository.default_branch }}"
+    assert _with(root[0]).get("ref") == "${{ github.event.repository.default_branch }}"
 
 
-def test_no_step_runs_inside_the_pr_checkout_except_git(steps: list[dict[str, Any]]) -> None:
-    """Only git may run in pr/: uv, python or a checker there executes the PR's own config."""
+def test_only_the_base_fetch_runs_inside_the_pr_checkout(steps: list[dict[str, Any]]) -> None:
+    """Exactly one fixed git command runs in pr/; `git fetch … && uv sync` must not pass."""
+    inside = [s for s in steps if s.get("working-directory") == PR_DIR]
+    assert [str(s["run"]).strip() for s in inside] == [PR_FETCH]
+    assert not any(_holds_secret(s) for s in inside)
+
+
+def test_no_command_reaches_into_the_pr_checkout(steps: list[dict[str, Any]]) -> None:
+    """`uv sync --directory pr` or `python pr/scripts/…` at the root: the same leak, respelt."""
     for step in steps:
-        if step.get("working-directory") == PR_DIR:
-            assert str(step["run"]).strip().startswith("git fetch "), step["name"]
-            assert not _holds_secret(step), step["name"]
+        run = str(step.get("run", "")) + " "
+        for allowed in ALLOWED_MENTIONS:
+            run = run.replace(allowed, " ")
+        for pattern in FORBIDDEN_MENTIONS:
+            assert not pattern.search(run), (step.get("name"), pattern.pattern)
 
 
-def test_the_review_reads_the_pr_checkout_and_runs_without_evidence(
-    steps: list[dict[str, Any]],
-) -> None:
-    """The step with the keys reviews pr/ via --repo-root and never enables the evidence pass."""
+def test_the_review_runs_this_repositorys_script_on_the_pr(steps: list[dict[str, Any]]) -> None:
+    """The step with the keys runs scripts/ from the root and reviews pr/ through --repo-root."""
     review = [s for s in steps if _holds_secret(s)]
     assert [s["name"] for s in review] == ["Run Guardian Review"]
-    assert f"--repo-root {PR_DIR}" in review[0]["run"]
-    assert "GUARDIAN_EVIDENCE" not in review[0]["env"]
+    run = str(review[0]["run"]) + " "
+    assert "uv run --frozen python scripts/guardian_review.py" in run
+    assert f"--repo-root {PR_DIR} " in run
     assert "working-directory" not in review[0]
 
 
 def test_the_graph_is_built_from_the_pr_sources(steps: list[dict[str, Any]]) -> None:
-    """The graph must describe the code under review, which now lives in pr/."""
+    """The graph must describe the code under review, parsed by the root's cgis."""
     ingest = [s for s in steps if "cgis ingest" in str(s.get("run", ""))]
     assert len(ingest) == 1
-    assert f" {PR_DIR}/src " in ingest[0]["run"]
+    assert str(ingest[0]["run"]).startswith(f"uv run --frozen cgis ingest {PR_DIR}/src ")
+    assert "working-directory" not in ingest[0]
+
+
+def test_the_evidence_flag_reaches_no_level_of_the_review_job(
+    workflow: dict[Any, Any], steps: list[dict[str, Any]]
+) -> None:
+    """Evidence runs the PR's own checkers; not at step, job or workflow level."""
+    levels = [workflow.get("env") or {}, workflow["jobs"]["review"].get("env") or {}]
+    levels += [s.get("env") or {} for s in steps]
+    assert not any("GUARDIAN_EVIDENCE" in env for env in levels)
