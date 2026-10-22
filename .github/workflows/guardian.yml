@@ -100,10 +100,13 @@ jobs:
 
       # Post as the codegraph-brain GitHub App when it is configured (#734):
       # set vars.GUARDIAN_APP_CLIENT_ID and secrets.GUARDIAN_APP_PRIVATE_KEY.
-      # Without them this step is skipped and posting uses GITHUB_TOKEN, as
-      # before. The app's key reaches every repository the app is installed
-      # on, so the token is narrowed to this one and to pull-requests: write.
-      # Minted after every step that touches pr/, so no PR step sees it.
+      # With the variable unset this step is skipped and posting uses
+      # GITHUB_TOKEN, as before. With it set, a missing key, a wrong key or an
+      # app not installed here fails the job before any LLM call: no silent
+      # fallback to another identity. The app's key reaches every repository
+      # the app is installed on, so the token is narrowed to this one and to
+      # pull-requests: write, and only the two posting steps read it. It lives
+      # one hour, which bounds how long the review may run before it posts.
       - name: Mint GitHub App token
         id: app-token
         if: vars.GUARDIAN_APP_CLIENT_ID != ''

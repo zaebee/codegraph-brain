@@ -175,13 +175,21 @@ def test_the_review_posts_with_the_app_token_or_falls_back(steps: list[dict[str,
     assert _with(comment).get("token") == APP_TOKEN
 
 
+def test_only_the_posting_steps_reference_the_app_token(steps: list[dict[str, Any]]) -> None:
+    """Where the token is minted matters less than who can read it: the two posting steps only."""
+    holders = [s.get("name") for s in steps if "steps.app-token" in yaml.safe_dump(s)]
+    assert holders == ["Run Guardian Review", "Post review as PR comment"]
+
+
 def test_the_app_token_is_minted_after_every_pr_step(steps: list[dict[str, Any]]) -> None:
-    """Nothing that touches the PR checkout runs while a token exists."""
+    """Nothing that checks out or runs in the PR checkout comes after the token exists."""
     names = [s.get("name") for s in steps]
     minted = names.index(_app_token_step(steps).get("name"))
     last_pr = max(
         i
         for i, s in enumerate(steps)
-        if _in_pr(s.get("working-directory")) or "refs/pull/" in str(_with(s).get("ref", ""))
+        if _in_pr(s.get("working-directory"))
+        or "refs/pull/" in str(_with(s).get("ref", ""))
+        or f"{PR_DIR}/" in str(s.get("run", ""))
     )
     assert minted > last_pr
