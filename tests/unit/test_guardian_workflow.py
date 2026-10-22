@@ -16,13 +16,20 @@ from typing import Any
 import pytest
 import yaml
 
-WORKFLOW = Path(__file__).parent.parent.parent / ".github" / "workflows" / "guardian.yml"
+WORKFLOWS = Path(__file__).parent.parent.parent / ".github" / "workflows"
+#: The review job itself, reusable by any repository (#739).
+WORKFLOW = WORKFLOWS / "guardian-reusable.yml"
+#: This repository's caller of it.
+CALLER = WORKFLOWS / "guardian.yml"
 PR_DIR = "pr"
 #: The only command allowed to run inside the PR checkout.
-PR_FETCH = 'git fetch origin "$BASE_BRANCH"'
+PR_FETCH = (
+    'git -c "http.extraheader=AUTHORIZATION: basic '
+    '$(printf \'x-access-token:%s\' "$FETCH_TOKEN" | base64 -w0)" fetch origin "$BASE_BRANCH"'
+)
 #: The only two ways a command may name the PR checkout: parse it, review it.
 ALLOWED_MENTIONS = (
-    re.compile(rf"cgis ingest {PR_DIR}/src(?=\s)"),
+    re.compile(rf'cgis ingest "{PR_DIR}/\$SOURCE_ROOT"(?=\s)'),
     re.compile(rf"--repo-root[ =]{PR_DIR}(?=\s)"),
 )
 #: Ways a command could reach into the PR checkout, after the allowed mentions are removed.
@@ -76,11 +83,14 @@ def test_the_pr_is_checked_out_into_its_own_directory(steps: list[dict[str, Any]
     assert _with(pr[0]).get("persist-credentials") is False
 
 
-def test_the_root_checkout_is_the_default_branch(steps: list[dict[str, Any]]) -> None:
+def test_the_root_checkout_is_codegraph_brain_at_the_tooling_ref(
+    steps: list[dict[str, Any]],
+) -> None:
     """The tooling that runs must come from reviewed, merged code."""
     root = [s for s in _checkouts(steps) if not _with(s).get("path")]
     assert len(root) == 1
-    assert _with(root[0]).get("ref") == "${{ github.event.repository.default_branch }}"
+    assert _with(root[0]).get("repository") == "zaebee/codegraph-brain"
+    assert _with(root[0]).get("ref") == "${{ inputs.tooling_ref }}"
 
 
 def test_only_the_base_fetch_runs_inside_the_pr_checkout(steps: list[dict[str, Any]]) -> None:
@@ -123,7 +133,8 @@ def test_the_graph_is_built_from_the_pr_sources(steps: list[dict[str, Any]]) -> 
     ingest = [s for s in steps if "cgis ingest" in str(s.get("run", ""))]
     assert len(ingest) == 1
     commands = [line for line in str(ingest[0]["run"]).splitlines() if "cgis ingest" in line]
-    assert [c.startswith(f"uv run --frozen cgis ingest {PR_DIR}/src ") for c in commands] == [True]
+    expected = f'uv run --frozen cgis ingest "{PR_DIR}/$SOURCE_ROOT" '
+    assert [c.startswith(expected) for c in commands] == [True]
     assert "working-directory" not in ingest[0]
 
 
@@ -148,6 +159,7 @@ def test_data_keys_follow_the_diff_check_feature(
     fake.chmod(0o755)
     env = {**os.environ, "PATH": f"{tmp_path}:{os.environ.get('PATH', '')}"}
     env["GUARDIAN_FEATURES"] = features
+    env["SOURCE_ROOT"] = "src"
     done = subprocess.run(
         ["bash", "-c", str(ingest["run"])], env=env, capture_output=True, text=True, check=True
     )
@@ -227,3 +239,37 @@ def test_the_app_token_is_minted_after_every_pr_step(steps: list[dict[str, Any]]
 def test_the_review_job_ends_before_the_app_token_expires(workflow: dict[Any, Any]) -> None:
     """An installation token lives 60 minutes; a longer job would post with an expired one."""
     assert workflow["jobs"]["review"]["timeout-minutes"] < 60
+
+
+# The caller (#739): this repository's guardian.yml hands the review to the
+# reusable workflow and keeps its own metrics jobs.
+
+
+@pytest.fixture(scope="module")
+def caller() -> dict[Any, Any]:
+    """The parsed guardian.yml."""
+    result: dict[Any, Any] = yaml.safe_load(CALLER.read_text(encoding="utf-8"))
+    return result
+
+
+def test_the_caller_hands_the_review_to_the_reusable_workflow(caller: dict[Any, Any]) -> None:
+    """At the commit the event ran on, with this repository's sources and its metrics."""
+    review = caller["jobs"]["review"]
+    assert review["uses"] == "./.github/workflows/guardian-reusable.yml"
+    assert review["with"]["tooling_ref"] == "${{ github.sha }}"
+    assert review["with"]["source_root"] == "src"
+    assert review["with"]["save_metrics"] is True
+    assert review["secrets"] == "inherit"
+    assert "/guardian review" in review["if"]
+    assert review["permissions"] == {
+        "contents": "read",
+        "pull-requests": "write",
+        "issues": "write",
+    }
+
+
+def test_the_reusable_workflow_is_only_callable(workflow: dict[Any, Any]) -> None:
+    """No trigger of its own: a comment reaches it only through a caller's `if`."""
+    triggers = workflow.get("on") or workflow.get(True)
+    assert set(triggers) == {"workflow_call"}
+    assert workflow["permissions"] == {}

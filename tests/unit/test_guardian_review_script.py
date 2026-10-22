@@ -136,3 +136,39 @@ async def test_the_review_reads_the_repo_root_and_fingerprints_this_repository(
         await gr.main()
     assert seen["root"] == expected_root
     assert seen["fingerprint_reader"] == this_repository
+
+
+@pytest.mark.asyncio
+async def test_the_source_root_reaches_the_collector(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Another repository's sources live elsewhere (`backend/app`), and lookups follow."""
+    seen: dict[str, object] = {}
+
+    class _Provider:
+        name = "stub"
+
+    def _collector(**kwargs: object) -> None:
+        seen.update(kwargs)
+        raise _CollectedError
+
+    _argv(monkeypatch, "--repo-root", str(tmp_path), "--source-root", "backend/app")
+    monkeypatch.setenv("GUARDIAN_SKEPTIC", "off")
+    monkeypatch.setattr(gr, "build_provider", lambda _env: (_Provider(), "stub-model"))
+    monkeypatch.setattr(gr, "build_skeptic_provider", lambda _env, **_kw: None)
+    monkeypatch.setattr(gr, "disk_reader", lambda root: root)
+    monkeypatch.setattr(gr, "compute_fingerprint", lambda _r, _a: "fp")
+    monkeypatch.setattr(gr, "ContextCollector", _collector)
+    with pytest.raises(_CollectedError):
+        await gr.main()
+    assert seen["source_root"] == "backend/app"
+
+
+@pytest.mark.asyncio
+async def test_a_source_root_that_climbs_out_is_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A workflow input: `..` or an absolute path is refused before any spend (#739)."""
+    _argv(monkeypatch, "--repo-root", str(tmp_path), "--source-root", "../elsewhere")
+    with pytest.raises(ValueError, match="--source-root"):
+        await gr.main()
