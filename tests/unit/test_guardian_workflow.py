@@ -131,3 +131,69 @@ def test_the_evidence_flag_reaches_no_level_of_the_review_job(
     levels = [workflow.get("env") or {}, workflow["jobs"]["review"].get("env") or {}]
     levels += [s.get("env") or {} for s in steps]
     assert not any("GUARDIAN_EVIDENCE" in env for env in levels)
+
+
+# Reviews post as the codegraph-brain GitHub App when it is configured (#734).
+# Its private key is stronger than GITHUB_TOKEN — it reaches every repository
+# the app is installed on — so the token minted from it is narrowed to this
+# repository and to the one permission posting needs.
+APP_TOKEN_ACTION = "actions/create-github-app-token@"
+APP_TOKEN = "${{ steps.app-token.outputs.token || github.token }}"
+
+
+def _app_token_step(steps: list[dict[str, Any]]) -> dict[str, Any]:
+    minted = [s for s in steps if str(s.get("uses", "")).startswith(APP_TOKEN_ACTION)]
+    assert len(minted) == 1
+    return minted[0]
+
+
+def test_the_app_token_is_minted_only_when_configured(steps: list[dict[str, Any]]) -> None:
+    """Without the app's client id the step is skipped and posting falls back to GITHUB_TOKEN."""
+    step = _app_token_step(steps)
+    assert step.get("id") == "app-token"
+    assert step.get("if") == "vars.GUARDIAN_APP_CLIENT_ID != ''"
+    assert re.fullmatch(r"actions/create-github-app-token@[0-9a-f]{40}", step["uses"])
+    assert _with(step)["client-id"] == "${{ vars.GUARDIAN_APP_CLIENT_ID }}"
+    assert _with(step)["private-key"] == "${{ secrets.GUARDIAN_APP_PRIVATE_KEY }}"
+
+
+def test_the_app_token_reaches_this_repository_and_pull_requests_only(
+    steps: list[dict[str, Any]],
+) -> None:
+    """Scope and permissions are named, not inherited from whatever the app was granted."""
+    granted = _with(_app_token_step(steps))
+    assert granted["repositories"] == "${{ github.event.repository.name }}"
+    permissions = {k: v for k, v in granted.items() if k.startswith("permission-")}
+    assert permissions == {"permission-pull-requests": "write"}
+
+
+def test_the_review_posts_with_the_app_token_or_falls_back(steps: list[dict[str, Any]]) -> None:
+    """Both posting paths — inline review and fallback comment — use the same token."""
+    review = next(s for s in steps if s.get("name") == "Run Guardian Review")
+    assert review["env"]["GH_TOKEN"] == APP_TOKEN
+    comment = next(s for s in steps if s.get("name") == "Post review as PR comment")
+    assert _with(comment).get("token") == APP_TOKEN
+
+
+def test_only_the_posting_steps_reference_the_app_token(steps: list[dict[str, Any]]) -> None:
+    """Where the token is minted matters less than who can read it: the two posting steps only."""
+    holders = [s.get("name") for s in steps if "steps.app-token" in yaml.safe_dump(s)]
+    assert holders == ["Run Guardian Review", "Post review as PR comment"]
+
+
+def test_the_app_token_is_minted_after_every_pr_step(steps: list[dict[str, Any]]) -> None:
+    """Nothing that checks out or runs in the PR checkout comes after the token exists."""
+    minted = steps.index(_app_token_step(steps))
+    last_pr = max(
+        i
+        for i, s in enumerate(steps)
+        if _in_pr(s.get("working-directory"))
+        or "refs/pull/" in str(_with(s).get("ref", ""))
+        or f"{PR_DIR}/" in str(s.get("run", ""))
+    )
+    assert minted > last_pr
+
+
+def test_the_review_job_ends_before_the_app_token_expires(workflow: dict[Any, Any]) -> None:
+    """An installation token lives 60 minutes; a longer job would post with an expired one."""
+    assert workflow["jobs"]["review"]["timeout-minutes"] < 60
