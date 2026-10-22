@@ -73,6 +73,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # Anonymous, like the checkout above it: fine for this public repository.
+      # A copy of this job for a private one must pass a token here, or the
+      # fetch fails the job.
       - name: Fetch base branch for diff
         working-directory: pr
         run: git fetch origin "$BASE_BRANCH"

@@ -575,3 +575,14 @@ def test_collect_full_files_refuses_a_symlink_out_of_the_checkout(tmp_path: Path
     with patch.object(collector.source, "get_changed_source_files", return_value=["leak.py"]):
         result = collector.source.collect_full_files()
     assert "sk-LEAKME" not in result
+
+
+def test_collect_drift_refuses_a_symlinked_patterns_file(tmp_db: Path, tmp_path: Path) -> None:
+    """patterns.yaml is read from the reviewed checkout too; a link out is never opened."""
+    root, secret = _outside_secret(tmp_path)
+    (root / "docs" / "ontology").mkdir(parents=True)
+    (root / "docs" / "ontology" / "patterns.yaml").symlink_to(secret)
+    collector = ContextCollector(project_root=root, db_path=tmp_db, features=frozenset({"drift"}))
+    with patch("cgis.guardian.collector.DriftScorer") as scorer:
+        assert collector.graph.collect_drift() == ""
+    scorer.assert_not_called()
