@@ -586,3 +586,21 @@ def test_collect_drift_refuses_a_symlinked_patterns_file(tmp_db: Path, tmp_path:
     with patch("cgis.guardian.collector.DriftScorer") as scorer:
         assert collector.graph.collect_drift() == ""
     scorer.assert_not_called()
+
+
+def test_collect_full_files_skips_a_changed_path_that_is_a_directory(tmp_path: Path) -> None:
+    """A PR can make a changed `.py` path a directory (or a link to one); the review goes on."""
+    (tmp_path / "pkg.py").mkdir()
+    collector = ContextCollector(project_root=tmp_path, features=frozenset({"full_files"}))
+    with patch.object(collector.source, "get_changed_source_files", return_value=["pkg.py"]):
+        assert collector.source.collect_full_files() == ""
+
+
+def test_reads_survive_bytes_that_are_not_utf8(tmp_path: Path) -> None:
+    """Undecodable bytes in a PR file are replaced, not raised: one file must not end a review."""
+    (tmp_path / "CONTRIBUTING.md").write_bytes(b"rules \xff\n")
+    (tmp_path / "bad.py").write_bytes(b"x = '\xff'\n")
+    collector = ContextCollector(project_root=tmp_path, features=frozenset({"full_files"}))
+    assert collector.source.read_file("CONTRIBUTING.md").startswith("rules ")
+    with patch.object(collector.source, "get_changed_source_files", return_value=["bad.py"]):
+        assert "#### `bad.py`" in collector.source.collect_full_files()

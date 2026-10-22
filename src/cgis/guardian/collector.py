@@ -149,19 +149,20 @@ class SourceCollector:
         return [p for p in result.stdout.splitlines() if is_supported(p)]
 
     def read_file(self, relative_path: str) -> str:
-        """Reads a file from the project root; returns "" when it does not exist.
+        """Reads a file from the project root; "" when it is missing or resolves outside it.
 
         An empty string (not an error marker) lets the prompt builder omit the
         corresponding section entirely — a repo without CONTRIBUTING.md or
         docs/ontology/ should review cleanly, not get "Error: File ..." injected
         as if it were the standards/ontology text. `is_file()` (not `exists()`)
         so a path that resolves to a directory degrades to "" instead of raising
-        IsADirectoryError on read.
+        IsADirectoryError on read. Undecodable bytes are replaced: the file is the
+        PR's, and one bad byte must not end the review.
         """
         file_path = contained(self.project_root, relative_path)
         if file_path is None or not file_path.is_file():
             return ""
-        return file_path.read_text(encoding="utf-8")
+        return file_path.read_text(encoding="utf-8", errors="replace")
 
     def collect_full_files(self, files: list[str] | None = None) -> str:
         """Full HEAD text of given (default: changed) source files, smallest-first.
@@ -178,9 +179,9 @@ class SourceCollector:
             if path is None:
                 omitted.append(f"file omitted: links outside the checkout ({rel_path})")
                 continue
-            if not path.exists():  # deleted in this PR — nothing to show at HEAD
+            if not path.is_file():  # deleted in this PR, or not a file — nothing to show
                 continue
-            text = path.read_text(encoding="utf-8")
+            text = path.read_text(encoding="utf-8", errors="replace")
             if len(text.splitlines()) > _MAX_FILE_LINES:
                 omitted.append(f"file omitted: too large ({rel_path})")
                 continue

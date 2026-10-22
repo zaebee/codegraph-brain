@@ -28,8 +28,7 @@ run (`GUARDIAN_EVIDENCE=1`; production has run without it since #730). Here it
 is collected once per PR in a worktree at the fixture head — the same mechanism
 `guardian_replay_skeptic` uses. Four of the six fixtures touch Python and yield
 evidence, covering 96 of 135 findings; the other two touch none, so their
-findings are judged with `evidence=None` because that is also what production
-would do for them.
+findings are judged with `evidence=None`, as production judged such PRs then.
 
 No finder call is made. The cost is one skeptic call per finding per arm.
 """
