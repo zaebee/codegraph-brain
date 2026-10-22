@@ -7,7 +7,9 @@ that closes that: trusted tooling at the root, the PR in its own directory, and
 nothing running from inside it but one fixed `git fetch`.
 """
 
+import os
 import re
+import subprocess
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -120,8 +122,36 @@ def test_the_graph_is_built_from_the_pr_sources(steps: list[dict[str, Any]]) -> 
     """The graph must describe the code under review, parsed by the root's cgis."""
     ingest = [s for s in steps if "cgis ingest" in str(s.get("run", ""))]
     assert len(ingest) == 1
-    assert str(ingest[0]["run"]).startswith(f"uv run --frozen cgis ingest {PR_DIR}/src ")
+    commands = [line for line in str(ingest[0]["run"]).splitlines() if "cgis ingest" in line]
+    assert [c.startswith(f"uv run --frozen cgis ingest {PR_DIR}/src ") for c in commands] == [True]
     assert "working-directory" not in ingest[0]
+
+
+@pytest.mark.parametrize(
+    ("features", "data_keys"),
+    [
+        ("", False),
+        ("full_files", False),
+        ("diff_check", True),
+        ("full_files, diff_check", True),
+        ("full_files,\tdiff_check\n", True),
+        ("diff_checks", False),
+    ],
+)
+def test_data_keys_follow_the_diff_check_feature(
+    steps: list[dict[str, Any]], tmp_path: Path, features: str, data_keys: bool
+) -> None:
+    """The ingest step's own shell decides --data-keys; run it with a stand-in `uv`."""
+    ingest = next(s for s in steps if "cgis ingest" in str(s.get("run", "")))
+    fake = tmp_path / "uv"
+    fake.write_text('#!/bin/sh\necho "$@"\n')
+    fake.chmod(0o755)
+    env = {**os.environ, "PATH": f"{tmp_path}:{os.environ.get('PATH', '')}"}
+    env["GUARDIAN_FEATURES"] = features
+    done = subprocess.run(
+        ["bash", "-c", str(ingest["run"])], env=env, capture_output=True, text=True, check=True
+    )
+    assert ("--data-keys" in done.stdout.split()) is data_keys
 
 
 def test_the_evidence_flag_reaches_no_level_of_the_review_job(

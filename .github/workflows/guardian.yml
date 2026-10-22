@@ -89,8 +89,18 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen --extra guardian
 
+      # diff_check (#733) reads data keys, which the graph has only when
+      # ingested with --data-keys; without the feature the graph is as before.
       - name: Build code graph
-        run: uv run --frozen cgis ingest pr/src --output graph.db
+        env:
+          GUARDIAN_FEATURES: ${{ vars.GUARDIAN_FEATURES }}
+        run: |
+          flags=""
+          # Same reading as parse_features: comma-separated, any whitespace ignored.
+          case ",$(printf '%s' "$GUARDIAN_FEATURES" | tr -d '[:space:]')," in
+            *,diff_check,*) flags="--data-keys" ;;
+          esac
+          uv run --frozen cgis ingest pr/src --output graph.db $flags
 
       # Fetches anonymously: the root checkout keeps no credentials (#730).
       # Fine while this repository is public; on a private one this restore
