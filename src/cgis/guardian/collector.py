@@ -67,6 +67,24 @@ def features_setting(env: Mapping[str, str]) -> tuple[frozenset[str], FeaturesSo
     return parse_features(raw), "env"
 
 
+def contained(root: Path, relative_path: str) -> Path | None:
+    """`root / relative_path`, resolved, when it lies inside `root`; else None.
+
+    The reviewed checkout is a PR, and a PR is data its author controls (#730).
+    A symlink or a `..` is data that reads somewhere else: a CONTRIBUTING.md
+    linked to /proc/self/environ would put the job's provider keys in the
+    prompt, and from there in a public review comment. `cgis ingest` refuses
+    such links the same way. A link that stays inside the checkout is allowed.
+    """
+    try:
+        resolved = (root / relative_path).resolve()
+        if resolved.is_relative_to(root.resolve()):
+            return resolved
+    except (OSError, RuntimeError, ValueError):  # a loop of links, or a null byte
+        return None
+    return None
+
+
 class SourceCollector:
     """What the PR changed and what its files say: git and the working tree."""
 
@@ -131,19 +149,20 @@ class SourceCollector:
         return [p for p in result.stdout.splitlines() if is_supported(p)]
 
     def read_file(self, relative_path: str) -> str:
-        """Reads a file from the project root; returns "" when it does not exist.
+        """Reads a file from the project root; "" when it is missing or resolves outside it.
 
         An empty string (not an error marker) lets the prompt builder omit the
         corresponding section entirely — a repo without CONTRIBUTING.md or
         docs/ontology/ should review cleanly, not get "Error: File ..." injected
         as if it were the standards/ontology text. `is_file()` (not `exists()`)
         so a path that resolves to a directory degrades to "" instead of raising
-        IsADirectoryError on read.
+        IsADirectoryError on read. Undecodable bytes are replaced: the file is the
+        PR's, and one bad byte must not end the review.
         """
-        file_path = self.project_root / relative_path
-        if not file_path.is_file():
+        file_path = contained(self.project_root, relative_path)
+        if file_path is None or not file_path.is_file():
             return ""
-        return file_path.read_text(encoding="utf-8")
+        return file_path.read_text(encoding="utf-8", errors="replace")
 
     def collect_full_files(self, files: list[str] | None = None) -> str:
         """Full HEAD text of given (default: changed) source files, smallest-first.
@@ -156,10 +175,13 @@ class SourceCollector:
         sized: list[tuple[int, str, str]] = []
         omitted: list[str] = []
         for rel_path in changed:
-            path = self.project_root / rel_path
-            if not path.exists():  # deleted in this PR — nothing to show at HEAD
+            path = contained(self.project_root, rel_path)
+            if path is None:
+                omitted.append(f"file omitted: links outside the checkout ({rel_path})")
                 continue
-            text = path.read_text(encoding="utf-8")
+            if not path.is_file():  # deleted in this PR, or not a file — nothing to show
+                continue
+            text = path.read_text(encoding="utf-8", errors="replace")
             if len(text.splitlines()) > _MAX_FILE_LINES:
                 omitted.append(f"file omitted: too large ({rel_path})")
                 continue
@@ -187,8 +209,9 @@ class GraphContextCollector:
         """Set the graph DB, the ingest root its FQNs are relative to, and the project root.
 
         source_root must match the ingest root used to build the graph DB (CI
-        runs `cgis ingest ./src`): changed-file paths are stripped of it before
-        lookup. project_root locates docs/ontology/patterns.yaml for drift.
+        runs `cgis ingest pr/src` with project_root `pr`): changed-file paths
+        are stripped of it before lookup. project_root locates
+        docs/ontology/patterns.yaml for drift.
         """
         self.project_root = project_root
         self.db_path = db_path
@@ -243,8 +266,8 @@ class GraphContextCollector:
         """
         if not self.has_db():
             return ""
-        patterns = self.project_root / "docs" / "ontology" / "patterns.yaml"
-        if not patterns.exists():
+        patterns = contained(self.project_root, "docs/ontology/patterns.yaml")
+        if patterns is None or not patterns.exists():
             return ""
         try:
             scorer = DriftScorer(str(patterns))

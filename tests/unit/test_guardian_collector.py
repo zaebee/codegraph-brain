@@ -8,7 +8,7 @@ import pytest
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
 from cgis.guardian.chunker import Chunk
-from cgis.guardian.collector import ContextCollector, parse_features
+from cgis.guardian.collector import ContextCollector, contained, parse_features
 from cgis.languages import extractors
 from cgis.pipeline import IngestionPipeline
 from cgis.storage.sqlite_store import SQLiteStore
@@ -527,3 +527,93 @@ def test_chunked_path_keeps_ts_files(tmp_path: Path) -> None:
     assert "app.handler" in context["graph_context"]
     assert "```ts\n" in context["full_files"]
     assert "README.md" not in context["full_files"]
+
+
+# A PR is data (#730), and a symlink is data that reads somewhere else: one
+# pointing at /proc/self/environ would put the job's provider keys in the prompt,
+# and from there in a public review comment. Reads stay inside the checkout.
+
+
+def _outside_secret(tmp_path: Path) -> tuple[Path, Path]:
+    """(the reviewed checkout, a file outside it holding a fake secret)."""
+    root = tmp_path / "pr"
+    root.mkdir()
+    secret = tmp_path / "environ"
+    secret.write_text("FAKE_API_KEY=sk-LEAKME\n")
+    return root, secret
+
+
+def test_read_file_refuses_a_symlink_out_of_the_checkout(tmp_path: Path) -> None:
+    """CONTRIBUTING.md is read on every review, so a link there needs no feature flag."""
+    root, secret = _outside_secret(tmp_path)
+    (root / "CONTRIBUTING.md").symlink_to(secret)
+    collector = ContextCollector(project_root=root)
+    assert collector.source.read_file("CONTRIBUTING.md") == ""
+
+
+def test_read_file_refuses_a_parent_path(tmp_path: Path) -> None:
+    """The relative path is the caller's, but `..` must not climb out either."""
+    root, _secret = _outside_secret(tmp_path)
+    collector = ContextCollector(project_root=root)
+    assert collector.source.read_file("../environ") == ""
+
+
+def test_read_file_follows_a_link_that_stays_inside(tmp_path: Path) -> None:
+    """A repository may link one of its own files to another; that is not an escape."""
+    root, _secret = _outside_secret(tmp_path)
+    (root / "docs.md").write_text("standards\n")
+    (root / "CONTRIBUTING.md").symlink_to(root / "docs.md")
+    collector = ContextCollector(project_root=root)
+    assert collector.source.read_file("CONTRIBUTING.md") == "standards\n"
+
+
+def test_collect_full_files_refuses_a_symlink_out_of_the_checkout(tmp_path: Path) -> None:
+    """A changed source file that links out is left out, not read."""
+    root, secret = _outside_secret(tmp_path)
+    (root / "leak.py").symlink_to(secret)
+    collector = ContextCollector(project_root=root, features=frozenset({"full_files"}))
+    with patch.object(collector.source, "get_changed_source_files", return_value=["leak.py"]):
+        result = collector.source.collect_full_files()
+    assert "sk-LEAKME" not in result
+
+
+def test_collect_drift_refuses_a_symlinked_patterns_file(tmp_db: Path, tmp_path: Path) -> None:
+    """patterns.yaml is read from the reviewed checkout too; a link out is never opened."""
+    root, secret = _outside_secret(tmp_path)
+    (root / "docs" / "ontology").mkdir(parents=True)
+    (root / "docs" / "ontology" / "patterns.yaml").symlink_to(secret)
+    collector = ContextCollector(project_root=root, db_path=tmp_db, features=frozenset({"drift"}))
+    with patch("cgis.guardian.collector.DriftScorer") as scorer:
+        assert collector.graph.collect_drift() == ""
+    scorer.assert_not_called()
+
+
+def test_collect_full_files_skips_a_changed_path_that_is_a_directory(tmp_path: Path) -> None:
+    """A PR can make a changed `.py` path a directory (or a link to one); the review goes on."""
+    (tmp_path / "pkg.py").mkdir()
+    collector = ContextCollector(project_root=tmp_path, features=frozenset({"full_files"}))
+    with patch.object(collector.source, "get_changed_source_files", return_value=["pkg.py"]):
+        assert collector.source.collect_full_files() == ""
+
+
+def test_reads_survive_bytes_that_are_not_utf8(tmp_path: Path) -> None:
+    """Undecodable bytes in a PR file are replaced, not raised: one file must not end a review."""
+    (tmp_path / "CONTRIBUTING.md").write_bytes(b"rules \xff\n")
+    (tmp_path / "bad.py").write_bytes(b"x = '\xff'\n")
+    collector = ContextCollector(project_root=tmp_path, features=frozenset({"full_files"}))
+    assert collector.source.read_file("CONTRIBUTING.md").startswith("rules ")
+    with patch.object(collector.source, "get_changed_source_files", return_value=["bad.py"]):
+        assert "#### `bad.py`" in collector.source.collect_full_files()
+
+
+def test_read_file_refuses_a_path_with_a_null_byte(tmp_path: Path) -> None:
+    """A path the OS cannot even name reads as absent, not as a crash."""
+    collector = ContextCollector(project_root=tmp_path)
+    assert collector.source.read_file("CONTRIBUTING\0.md") == ""
+
+
+def test_contained_returns_the_resolved_path(tmp_path: Path) -> None:
+    """What is read is the path that was checked, not a spelling that resolves again later."""
+    (tmp_path / "real.md").write_text("x\n")
+    (tmp_path / "alias.md").symlink_to(tmp_path / "real.md")
+    assert contained(tmp_path, "alias.md") == (tmp_path / "real.md").resolve()

@@ -3,12 +3,14 @@
 import argparse
 import asyncio
 import os
+from collections.abc import Mapping
 from pathlib import Path
 
 import structlog
 
 import cgis
 from cgis.guardian.collector import ContextCollector, parse_features
+from cgis.guardian.evidence import EVIDENCE_FLAG
 from cgis.guardian.metrics import reject_metrics_path
 from cgis.guardian.review_fingerprint import (
     compute_fingerprint,
@@ -29,6 +31,29 @@ def _append_github_output(path: str, posted_inline: bool) -> None:
     """Blocking append of the posted_inline workflow output (called via asyncio.to_thread)."""
     with Path(path).open("a", encoding="utf-8") as fh:
         fh.write(f"posted_inline={'true' if posted_inline else 'false'}\n")
+
+
+def reviewed_root(requested: Path | None, project_root: Path, env: Mapping[str, str]) -> Path:
+    """The checkout to review: `--repo-root`, or this repository when it is not given.
+
+    A foreign checkout is data only (#730): the evidence pass would run
+    `uv run mypy/ruff` inside it, which executes code and config the PR's author
+    controls while the job holds provider keys, so that combination is refused.
+    """
+    this_repository = project_root.resolve()
+    if requested is None:
+        return this_repository
+    root = requested.resolve()
+    if not root.is_dir():
+        _msg = f"--repo-root is not a directory: {requested}"
+        raise ValueError(_msg)
+    if root != this_repository and (env.get(EVIDENCE_FLAG) or "").strip() == "1":
+        _msg = (
+            f"{EVIDENCE_FLAG}=1 runs the reviewed checkout's own toolchain, and {requested} "
+            f"is not this repository; unset it for a --repo-root review (#730)."
+        )
+        raise ValueError(_msg)
+    return root
 
 
 async def main() -> None:
@@ -70,6 +95,15 @@ async def main() -> None:
         help="Write the finder pass (findings + diff) to this .json for offline re-scoring.",
     )
     parser.add_argument(
+        "--repo-root",
+        type=Path,
+        default=None,
+        help=(
+            "The checkout to review (default: this repository). guardian.yml passes the PR "
+            "checkout here, so the PR is read and parsed but none of its code runs (#730)."
+        ),
+    )
+    parser.add_argument(
         "--inline",
         action="store_true",
         help="Post findings as an inline GitHub review; fall back to the report file on failure.",
@@ -85,6 +119,9 @@ async def main() -> None:
         _msg = f"Refusing metrics path '{args.metrics}': {refusal}."
         raise ValueError(_msg)
 
+    project_root = Path(__file__).parent.parent.absolute()
+    repo_root = reviewed_root(args.repo_root, project_root, os.environ)
+
     provider, model = build_provider(os.environ)
     # Was an isinstance sniff that returned "gemini" for an Ollama provider,
     # which then picked the wrong default skeptic. The provider knows its own
@@ -93,14 +130,13 @@ async def main() -> None:
     skeptic = build_skeptic_provider(os.environ, primary=primary)
     features = parse_features(os.environ.get("GUARDIAN_FEATURES", ""))
     inline_repo = os.environ.get("GITHUB_REPOSITORY") if args.inline else None
-    project_root = Path(__file__).parent.parent.absolute()
     # Computed here rather than inside runner.py: nothing in the review closure
     # may import the fingerprint module, or the hasher enters its own hashed set
     # (#375 §4.2). project_root is this repository, not the reviewed checkout.
     active = resolve_active_providers(provider.name, skeptic[0].name if skeptic else None)
     review_fingerprint = compute_fingerprint(disk_reader(project_root), active)
     collector = ContextCollector(
-        project_root=project_root, db_path=args.db, base_branch=args.base_branch, features=features
+        project_root=repo_root, db_path=args.db, base_branch=args.base_branch, features=features
     )
     log.info("Running guardian review...", model=model)
     report, posted_inline = await run_guardian(
