@@ -113,8 +113,15 @@ jobs:
           if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
             echo "Invalid PR number: $PR_NUMBER" && exit 1
           fi
-          case "$SOURCE_ROOT" in
-            /*|*..*|*\\*) echo "source_root must stay inside the repository: $SOURCE_ROOT" && exit 1 ;;
+          # The same rule as guardian_review.py: `..` only as a path component,
+          # no absolute path, drive, backslash or whitespace.
+          case "$SOURCE_ROOT" in /*) SOURCE_ROOT_BAD=1 ;; esac
+          case "/$SOURCE_ROOT/" in
+            */../*|*\\*|*:*|*[[:space:]]*) SOURCE_ROOT_BAD=1 ;;
+          esac
+          case "${SOURCE_ROOT_BAD:-}" in
+            1)
+              echo "source_root must be a plain path inside the repository: '$SOURCE_ROOT'" && exit 1 ;;
           esac
           echo "PR_NUMBER=$PR_NUMBER" >> $GITHUB_ENV
           BASE_BRANCH=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json baseRefName --jq '.baseRefName')
@@ -161,7 +168,7 @@ jobs:
         env:
           FETCH_TOKEN: ${{ github.token }}
         run: |
-          cred=$(printf 'x-access-token:%s' "$FETCH_TOKEN" | base64 -w0)
+          cred=$(printf 'x-access-token:%s' "$FETCH_TOKEN" | base64 | tr -d '\n')
           echo "::add-mask::$cred"
           GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.https://github.com/.extraheader \
             GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $cred" git fetch origin "$BASE_BRANCH"

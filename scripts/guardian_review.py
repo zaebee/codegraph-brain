@@ -4,7 +4,7 @@ import argparse
 import asyncio
 import os
 from collections.abc import Mapping
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 import structlog
 
@@ -63,10 +63,18 @@ def relative_source_root(raw: str) -> str:
     checkout (#731), so this is about failing loudly on a wrong value rather
     than reviewing with no graph context.
     """
-    path = PurePosixPath(raw.strip() or ".")
-    # A backslash has no use in a repository path, and on another platform it
-    # would be a separator that `..` hides behind.
-    if path.is_absolute() or ".." in path.parts or "\\" in raw:
+    path = PurePosixPath(raw or ".")
+    # A backslash or a drive has no use in a repository path, and on another
+    # platform each hides an escape. Whitespace is refused rather than stripped:
+    # the workflow passes the raw value to the ingest, which does not strip it.
+    if (
+        path.is_absolute()
+        or PureWindowsPath(raw).is_absolute()
+        or PureWindowsPath(raw).drive
+        or ".." in path.parts
+        or "\\" in raw
+        or any(c.isspace() for c in raw)
+    ):
         _msg = f"--source-root must be a path inside the checkout: {raw!r}"
         raise ValueError(_msg)
     return "" if str(path) == "." else str(path)

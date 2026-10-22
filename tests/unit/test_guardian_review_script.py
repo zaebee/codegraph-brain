@@ -183,3 +183,32 @@ async def test_an_absolute_source_root_is_refused(
     _argv(monkeypatch, "--repo-root", str(tmp_path), "--source-root", "/etc")
     with pytest.raises(ValueError, match="--source-root"):
         await gr.main()
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("src", "src"),
+        ("src/", "src"),
+        ("./src", "src"),
+        (".", ""),
+        ("", ""),
+        ("my..pkg", "my..pkg"),
+    ],
+)
+def test_source_root_normalises_to_what_the_graph_strips(raw: str, expected: str) -> None:
+    """The value the collector strips from changed paths; `..` only counts as a component."""
+    assert gr.relative_source_root(raw) == expected
+
+
+@pytest.mark.parametrize("bad", [" src", "src ", "s rc", "C:/absolute"])
+def test_source_root_refuses_whitespace_and_drive_paths(bad: str) -> None:
+    """Whitespace is refused, not stripped: the workflow's ingest would not strip it."""
+    with pytest.raises(ValueError, match="--source-root"):
+        gr.relative_source_root(bad)
+
+
+def test_the_real_collector_takes_the_source_root(tmp_path: Path) -> None:
+    """The keyword the script passes is one ContextCollector accepts, not only a stub's."""
+    collector = gr.ContextCollector(project_root=tmp_path, source_root="backend/app")
+    assert collector.graph.source_root == "backend/app"

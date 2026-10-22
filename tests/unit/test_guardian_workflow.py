@@ -26,7 +26,7 @@ PR_DIR = "pr"
 #: The only commands allowed to run inside the PR checkout: build and mask the
 #: credential, then one fixed fetch that reads it from git's environment config.
 PR_FETCH = [
-    "cred=$(printf 'x-access-token:%s' \"$FETCH_TOKEN\" | base64 -w0)",
+    "cred=$(printf 'x-access-token:%s' \"$FETCH_TOKEN\" | base64 | tr -d '\\n')",
     'echo "::add-mask::$cred"',
     "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.https://github.com/.extraheader \\",
     'GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $cred" git fetch origin "$BASE_BRANCH"',
@@ -312,6 +312,11 @@ def test_cross_org_callers_can_pass_the_secrets(workflow: dict[Any, Any]) -> Non
         ("issue_comment", "../elsewhere", False),
         ("issue_comment", "/abs", False),
         ("issue_comment", "..\\elsewhere", False),
+        ("issue_comment", "my..pkg", True),
+        ("issue_comment", "a/..", False),
+        ("issue_comment", " src", False),
+        ("issue_comment", "", True),
+        ("issue_comment", "./src", True),
         ("pull_request", "src", False),
     ],
 )
