@@ -209,8 +209,10 @@ jobs:
       # app not installed here fails the job before any LLM call: no silent
       # fallback to another identity. The app's key reaches every repository
       # the app is installed on, so the token is narrowed to this one and to
-      # pull-requests: write, and only the two posting steps read it. It lives
-      # one hour; the job's timeout-minutes keeps the review inside that.
+      # pull-requests: write. Two steps read it, both of which post: "Run
+      # Guardian Review", which posts the inline review itself, and the fallback
+      # comment. Both run only this repository's tooling, never PR code. It
+      # lives one hour; the job's timeout-minutes keeps the review inside that.
       - name: Mint GitHub App token
         id: app-token
         if: vars.GUARDIAN_APP_CLIENT_ID != ''
