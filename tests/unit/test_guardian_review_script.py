@@ -172,3 +172,13 @@ async def test_a_source_root_that_climbs_out_is_refused(
     _argv(monkeypatch, "--repo-root", str(tmp_path), "--source-root", "../elsewhere")
     with pytest.raises(ValueError, match="--source-root"):
         await gr.main()
+
+
+@pytest.mark.asyncio
+async def test_an_absolute_source_root_is_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An absolute path would point the graph lookups outside the checkout."""
+    _argv(monkeypatch, "--repo-root", str(tmp_path), "--source-root", "/etc")
+    with pytest.raises(ValueError, match="--source-root"):
+        await gr.main()

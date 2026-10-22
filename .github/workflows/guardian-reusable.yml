@@ -10,13 +10,21 @@ name: Guardian Review (reusable)
 #         pr_number: ${{ github.event.issue.number }}
 #         tooling_ref: <the same sha>
 #         source_root: src
-#       secrets: inherit
+#       secrets:
+#         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+#         GUARDIAN_APP_PRIVATE_KEY: ${{ secrets.GUARDIAN_APP_PRIVATE_KEY }}
 #       permissions: {contents: read, pull-requests: write, issues: write}
 #
-# Secrets and variables are the caller's (repository or organisation):
-# ANTHROPIC_API_KEY / GEMINI_API_KEY / MISTRAL_API_KEY, GUARDIAN_APP_PRIVATE_KEY,
-# and vars GUARDIAN_PROVIDER, GUARDIAN_MODEL, GUARDIAN_ANTHROPIC_EFFORT,
-# GUARDIAN_FEATURES, GUARDIAN_SKEPTIC, GUARDIAN_SKEPTIC_MODEL, GUARDIAN_APP_CLIENT_ID.
+# `secrets: inherit` reaches a called workflow only within one organisation or
+# enterprise; any other caller passes the secrets declared below by name.
+# Variables are always the caller's: GUARDIAN_PROVIDER, GUARDIAN_MODEL,
+# GUARDIAN_ANTHROPIC_EFFORT, GUARDIAN_FEATURES, GUARDIAN_SKEPTIC,
+# GUARDIAN_SKEPTIC_MODEL, GUARDIAN_APP_CLIENT_ID.
+#
+# The caller's Actions policy must allow this workflow and the actions it uses
+# (actions/*, astral-sh/setup-uv, peter-evans/create-or-update-comment).
+# Pin `uses:` and `tooling_ref` to the SAME commit SHA, never a tag: the
+# tooling runs on the caller's runner, and a tag can move.
 
 on:
   workflow_call:
@@ -40,9 +48,20 @@ on:
         type: string
         default: '["ubuntu-latest"]'
       save_metrics:
-        description: Restore guardian_metrics.jsonl from the caller's data/guardian-metrics branch.
+        description: >-
+          Restore guardian_metrics.jsonl from codegraph-brain's own data/guardian-metrics
+          branch. For codegraph-brain's caller only; any other caller leaves it false.
         type: boolean
         default: false
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: false
+      GEMINI_API_KEY:
+        required: false
+      MISTRAL_API_KEY:
+        required: false
+      GUARDIAN_APP_PRIVATE_KEY:
+        required: false
 
 permissions: {}
 
@@ -83,10 +102,14 @@ jobs:
 
       - name: Validate inputs and get base branch
         env:
+          EVENT_NAME: ${{ github.event_name }}
           PR_NUMBER: ${{ inputs.pr_number }}
           SOURCE_ROOT: ${{ inputs.source_root }}
           GH_TOKEN: ${{ github.token }}
         run: |
+          if [ "$EVENT_NAME" != issue_comment ]; then
+            echo "Call this on issue_comment (a /guardian review comment), not $EVENT_NAME" && exit 1
+          fi
           if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
             echo "Invalid PR number: $PR_NUMBER" && exit 1
           fi
@@ -109,6 +132,15 @@ jobs:
           ref: ${{ inputs.tooling_ref }}
           persist-credentials: false
 
+      # tooling_ref must name the commit the caller's `uses:` does: the steps
+      # here and the scripts they run then agree. An older checkout fails here,
+      # before any spend, instead of on an unknown flag.
+      - name: Check the tooling matches this workflow
+        run: |
+          grep -q -- '"--source-root"' scripts/guardian_review.py || {
+            echo "tooling_ref predates this workflow: pin uses: and tooling_ref to the same SHA" && exit 1
+          }
+
       - name: Checkout PR branch as data
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
         with:
@@ -119,14 +151,20 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # The caller's GITHUB_TOKEN, passed for this one command and never stored
-      # in pr/.git/config: a private repository needs it, a public one ignores it.
+      # The caller's GITHUB_TOKEN, passed for this one command through git's
+      # environment config (not argv, which other processes on a self-hosted
+      # runner can read) and never stored in pr/.git/config. Masked as
+      # actions/checkout masks it. A private repository needs it; a public one
+      # ignores it.
       - name: Fetch base branch for diff
         working-directory: pr
         env:
           FETCH_TOKEN: ${{ github.token }}
         run: |
-          git -c "http.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$FETCH_TOKEN" | base64 -w0)" fetch origin "$BASE_BRANCH"
+          cred=$(printf 'x-access-token:%s' "$FETCH_TOKEN" | base64 -w0)
+          echo "::add-mask::$cred"
+          GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.https://github.com/.extraheader \
+            GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $cred" git fetch origin "$BASE_BRANCH"
 
       - name: Install uv
         uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39  # v3
