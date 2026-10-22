@@ -131,7 +131,7 @@ class SourceCollector:
                 check=True,
                 cwd=self.project_root,
             )
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, OSError):  # OSError: no git at all
             return None
         return result.stdout.strip() or None
 

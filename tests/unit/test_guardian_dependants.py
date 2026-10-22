@@ -182,3 +182,10 @@ def test_the_section_is_bounded_in_characters(tmp_path: Path) -> None:
     assert len(text) <= 6_100
     assert text.endswith("(cut for length)")
     assert "(src/m.py:1)" in text
+
+
+def test_no_git_means_no_merge_base(tmp_path: Path) -> None:
+    """A runner without git costs the section, not the review."""
+    collector = ContextCollector(project_root=tmp_path, base_ref="main")
+    with patch("cgis.guardian.collector.subprocess.run", side_effect=FileNotFoundError("git")):
+        assert collector.source.merge_base() is None

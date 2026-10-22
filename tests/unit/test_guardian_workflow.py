@@ -7,6 +7,7 @@ that closes that: trusted tooling at the root, the PR in its own directory, and
 nothing running from inside it but one fixed `git fetch`.
 """
 
+import os
 import re
 import subprocess
 from pathlib import Path, PurePosixPath
@@ -145,7 +146,8 @@ def test_data_keys_follow_the_diff_check_feature(
     fake = tmp_path / "uv"
     fake.write_text('#!/bin/sh\necho "$@"\n')
     fake.chmod(0o755)
-    env = {"PATH": f"{tmp_path}:/usr/bin:/bin", "GUARDIAN_FEATURES": features}
+    env = {**os.environ, "PATH": f"{tmp_path}:{os.environ.get('PATH', '')}"}
+    env["GUARDIAN_FEATURES"] = features
     done = subprocess.run(
         ["bash", "-c", str(ingest["run"])], env=env, capture_output=True, text=True, check=True
     )
