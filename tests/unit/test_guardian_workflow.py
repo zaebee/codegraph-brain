@@ -183,8 +183,7 @@ def test_only_the_posting_steps_reference_the_app_token(steps: list[dict[str, An
 
 def test_the_app_token_is_minted_after_every_pr_step(steps: list[dict[str, Any]]) -> None:
     """Nothing that checks out or runs in the PR checkout comes after the token exists."""
-    names = [s.get("name") for s in steps]
-    minted = names.index(_app_token_step(steps).get("name"))
+    minted = steps.index(_app_token_step(steps))
     last_pr = max(
         i
         for i, s in enumerate(steps)
