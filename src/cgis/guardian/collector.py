@@ -245,7 +245,7 @@ class GraphContextCollector:
         """Set the graph DB, the ingest root its FQNs are relative to, and the project root.
 
         source_root must match the ingest root used to build the graph DB (CI
-        runs `cgis ingest pr/src` with project_root `pr`): changed-file paths
+        runs `cgis ingest pr/<source_root>` with project_root `pr`): changed-file paths
         are stripped of it before lookup. project_root locates
         docs/ontology/patterns.yaml for drift.
         """

@@ -136,3 +136,79 @@ async def test_the_review_reads_the_repo_root_and_fingerprints_this_repository(
         await gr.main()
     assert seen["root"] == expected_root
     assert seen["fingerprint_reader"] == this_repository
+
+
+@pytest.mark.asyncio
+async def test_the_source_root_reaches_the_collector(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Another repository's sources live elsewhere (`backend/app`), and lookups follow."""
+    seen: dict[str, object] = {}
+
+    class _Provider:
+        name = "stub"
+
+    def _collector(**kwargs: object) -> None:
+        seen.update(kwargs)
+        raise _CollectedError
+
+    _argv(monkeypatch, "--repo-root", str(tmp_path), "--source-root", "backend/app")
+    monkeypatch.setenv("GUARDIAN_SKEPTIC", "off")
+    monkeypatch.setattr(gr, "build_provider", lambda _env: (_Provider(), "stub-model"))
+    monkeypatch.setattr(gr, "build_skeptic_provider", lambda _env, **_kw: None)
+    monkeypatch.setattr(gr, "disk_reader", lambda root: root)
+    monkeypatch.setattr(gr, "compute_fingerprint", lambda _r, _a: "fp")
+    monkeypatch.setattr(gr, "ContextCollector", _collector)
+    with pytest.raises(_CollectedError):
+        await gr.main()
+    assert seen["source_root"] == "backend/app"
+
+
+@pytest.mark.parametrize("bad", ["../elsewhere", "..\\elsewhere", "C:\\absolute", "a/../.."])
+@pytest.mark.asyncio
+async def test_a_source_root_that_climbs_out_is_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, bad: str
+) -> None:
+    """A workflow input: `..`, a backslash or an absolute path is refused before any spend."""
+    _argv(monkeypatch, "--repo-root", str(tmp_path), "--source-root", bad)
+    with pytest.raises(ValueError, match="--source-root"):
+        await gr.main()
+
+
+@pytest.mark.asyncio
+async def test_an_absolute_source_root_is_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An absolute path would point the graph lookups outside the checkout."""
+    _argv(monkeypatch, "--repo-root", str(tmp_path), "--source-root", "/etc")
+    with pytest.raises(ValueError, match="--source-root"):
+        await gr.main()
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("src", "src"),
+        ("src/", "src"),
+        ("./src", "src"),
+        (".", ""),
+        ("", ""),
+        ("my..pkg", "my..pkg"),
+    ],
+)
+def test_source_root_normalises_to_what_the_graph_strips(raw: str, expected: str) -> None:
+    """The value the collector strips from changed paths; `..` only counts as a component."""
+    assert gr.relative_source_root(raw) == expected
+
+
+@pytest.mark.parametrize("bad", [" src", "src ", "s rc", "C:/absolute"])
+def test_source_root_refuses_whitespace_and_drive_paths(bad: str) -> None:
+    """Whitespace is refused, not stripped: the workflow's ingest would not strip it."""
+    with pytest.raises(ValueError, match="--source-root"):
+        gr.relative_source_root(bad)
+
+
+def test_the_real_collector_takes_the_source_root(tmp_path: Path) -> None:
+    """The keyword the script passes is one ContextCollector accepts, not only a stub's."""
+    collector = gr.ContextCollector(project_root=tmp_path, source_root="backend/app")
+    assert collector.graph.source_root == "backend/app"

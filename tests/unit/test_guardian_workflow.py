@@ -16,13 +16,24 @@ from typing import Any
 import pytest
 import yaml
 
-WORKFLOW = Path(__file__).parent.parent.parent / ".github" / "workflows" / "guardian.yml"
+WORKFLOWS = Path(__file__).parent.parent.parent / ".github" / "workflows"
+#: The review job itself, reusable by any repository (#739).
+WORKFLOW = WORKFLOWS / "guardian-reusable.yml"
+#: This repository's caller of it.
+CALLER = WORKFLOWS / "guardian.yml"
 PR_DIR = "pr"
 #: The only command allowed to run inside the PR checkout.
-PR_FETCH = 'git fetch origin "$BASE_BRANCH"'
+#: The only commands allowed to run inside the PR checkout: build and mask the
+#: credential, then one fixed fetch that reads it from git's environment config.
+PR_FETCH = [
+    "cred=$(printf 'x-access-token:%s' \"$FETCH_TOKEN\" | base64 | tr -d '\\n')",
+    'echo "::add-mask::$cred"',
+    "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.https://github.com/.extraheader \\",
+    'GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $cred" git fetch origin "$BASE_BRANCH"',
+]
 #: The only two ways a command may name the PR checkout: parse it, review it.
 ALLOWED_MENTIONS = (
-    re.compile(rf"cgis ingest {PR_DIR}/src(?=\s)"),
+    re.compile(rf'cgis ingest "{PR_DIR}/\$SOURCE_ROOT"(?=\s)'),
     re.compile(rf"--repo-root[ =]{PR_DIR}(?=\s)"),
 )
 #: Ways a command could reach into the PR checkout, after the allowed mentions are removed.
@@ -76,18 +87,24 @@ def test_the_pr_is_checked_out_into_its_own_directory(steps: list[dict[str, Any]
     assert _with(pr[0]).get("persist-credentials") is False
 
 
-def test_the_root_checkout_is_the_default_branch(steps: list[dict[str, Any]]) -> None:
+def test_the_root_checkout_is_codegraph_brain_at_the_tooling_ref(
+    steps: list[dict[str, Any]],
+) -> None:
     """The tooling that runs must come from reviewed, merged code."""
     root = [s for s in _checkouts(steps) if not _with(s).get("path")]
     assert len(root) == 1
-    assert _with(root[0]).get("ref") == "${{ github.event.repository.default_branch }}"
+    assert _with(root[0]).get("repository") == "zaebee/codegraph-brain"
+    assert _with(root[0]).get("ref") == "${{ inputs.tooling_ref }}"
 
 
 def test_only_the_base_fetch_runs_inside_the_pr_checkout(steps: list[dict[str, Any]]) -> None:
     """Exactly one fixed git command runs in pr/; `git fetch … && uv sync` must not pass."""
     inside = [s for s in steps if _in_pr(s.get("working-directory"))]
-    assert [str(s.get("run", "")).strip() for s in inside] == [PR_FETCH]
-    assert not any(_holds_secret(s) for s in inside)
+    assert [
+        [line.strip() for line in str(s.get("run", "")).strip().splitlines()] for s in inside
+    ] == [PR_FETCH]
+    # The one credential there is the caller's GITHUB_TOKEN, for that fetch; no provider key.
+    assert [s.get("env") for s in inside] == [{"FETCH_TOKEN": "${{ github.token }}"}]
 
 
 def test_no_action_runs_from_or_inside_the_pr_checkout(steps: list[dict[str, Any]]) -> None:
@@ -123,7 +140,8 @@ def test_the_graph_is_built_from_the_pr_sources(steps: list[dict[str, Any]]) -> 
     ingest = [s for s in steps if "cgis ingest" in str(s.get("run", ""))]
     assert len(ingest) == 1
     commands = [line for line in str(ingest[0]["run"]).splitlines() if "cgis ingest" in line]
-    assert [c.startswith(f"uv run --frozen cgis ingest {PR_DIR}/src ") for c in commands] == [True]
+    expected = f'uv run --frozen cgis ingest "{PR_DIR}/$SOURCE_ROOT" '
+    assert [c.startswith(expected) for c in commands] == [True]
     assert "working-directory" not in ingest[0]
 
 
@@ -148,6 +166,7 @@ def test_data_keys_follow_the_diff_check_feature(
     fake.chmod(0o755)
     env = {**os.environ, "PATH": f"{tmp_path}:{os.environ.get('PATH', '')}"}
     env["GUARDIAN_FEATURES"] = features
+    env["SOURCE_ROOT"] = "src"
     done = subprocess.run(
         ["bash", "-c", str(ingest["run"])], env=env, capture_output=True, text=True, check=True
     )
@@ -192,6 +211,7 @@ def test_the_app_token_reaches_this_repository_and_pull_requests_only(
 ) -> None:
     """Scope and permissions are named, not inherited from whatever the app was granted."""
     granted = _with(_app_token_step(steps))
+    assert granted["owner"] == "${{ github.repository_owner }}"
     assert granted["repositories"] == "${{ github.event.repository.name }}"
     permissions = {k: v for k, v in granted.items() if k.startswith("permission-")}
     assert permissions == {"permission-pull-requests": "write"}
@@ -227,3 +247,94 @@ def test_the_app_token_is_minted_after_every_pr_step(steps: list[dict[str, Any]]
 def test_the_review_job_ends_before_the_app_token_expires(workflow: dict[Any, Any]) -> None:
     """An installation token lives 60 minutes; a longer job would post with an expired one."""
     assert workflow["jobs"]["review"]["timeout-minutes"] < 60
+
+
+# The caller (#739): this repository's guardian.yml hands the review to the
+# reusable workflow and keeps its own metrics jobs.
+
+
+@pytest.fixture(scope="module")
+def caller() -> dict[Any, Any]:
+    """The parsed guardian.yml."""
+    result: dict[Any, Any] = yaml.safe_load(CALLER.read_text(encoding="utf-8"))
+    return result
+
+
+def test_the_caller_hands_the_review_to_the_reusable_workflow(caller: dict[Any, Any]) -> None:
+    """At the commit the event ran on, with this repository's sources and its metrics."""
+    review = caller["jobs"]["review"]
+    assert review["uses"] == "./.github/workflows/guardian-reusable.yml"
+    assert review["with"]["tooling_ref"] == "${{ github.sha }}"
+    assert review["with"]["source_root"] == "src"
+    assert review["with"]["save_metrics"] is True
+    assert review["secrets"] == "inherit"
+    assert " ".join(review["if"].split()) == (
+        "github.event.issue.pull_request != null && github.event.comment.body == '/guardian review'"
+    )
+    assert review["permissions"] == {
+        "contents": "read",
+        "pull-requests": "write",
+        "issues": "write",
+    }
+
+
+def test_the_reusable_workflow_is_only_callable(workflow: dict[Any, Any]) -> None:
+    """No trigger of its own: a comment reaches it only through a caller's `if`."""
+    triggers = workflow.get("on") or workflow.get(True)
+    assert set(triggers) == {"workflow_call"}
+    assert workflow["permissions"] == {}
+
+
+def test_metrics_are_restored_only_when_asked(steps: list[dict[str, Any]]) -> None:
+    """The restore reads codegraph-brain's own branch; other callers never get it."""
+    restore = next(s for s in steps if s.get("name") == "Restore metrics from data branch")
+    assert restore.get("if") == "inputs.save_metrics"
+
+
+def test_cross_org_callers_can_pass_the_secrets(workflow: dict[Any, Any]) -> None:
+    """`secrets: inherit` stops at the organisation; the rest must be declared to be passable."""
+    trigger = (workflow.get("on") or workflow.get(True))["workflow_call"]
+    declared = trigger["secrets"]
+    assert set(declared) == {
+        "ANTHROPIC_API_KEY",
+        "GEMINI_API_KEY",
+        "MISTRAL_API_KEY",
+        "GUARDIAN_APP_PRIVATE_KEY",
+    }
+    assert all(v == {"required": False} for v in declared.values())
+
+
+@pytest.mark.parametrize(
+    ("event", "source_root", "ok"),
+    [
+        ("issue_comment", "src", True),
+        ("issue_comment", "backend/app", True),
+        ("issue_comment", "../elsewhere", False),
+        ("issue_comment", "/abs", False),
+        ("issue_comment", "..\\elsewhere", False),
+        ("issue_comment", "my..pkg", True),
+        ("issue_comment", "a/..", False),
+        ("issue_comment", " src", False),
+        ("issue_comment", "", True),
+        ("issue_comment", "./src", True),
+        ("pull_request", "src", False),
+    ],
+)
+def test_the_inputs_are_checked_by_the_steps_own_shell(
+    steps: list[dict[str, Any]], tmp_path: Path, event: str, source_root: str, ok: bool
+) -> None:
+    """Run the validation step itself, with a stand-in `gh`, as the ingest test does."""
+    validate = next(s for s in steps if s.get("name") == "Validate inputs and get base branch")
+    fake = tmp_path / "gh"
+    fake.write_text("#!/bin/sh\necho main\n")
+    fake.chmod(0o755)
+    out = tmp_path / "github_env"
+    env = {**os.environ, "PATH": f"{tmp_path}:{os.environ.get('PATH', '')}"}
+    env |= {"EVENT_NAME": event, "PR_NUMBER": "7", "SOURCE_ROOT": source_root}
+    env |= {"GITHUB_ENV": str(out), "GITHUB_REPOSITORY": "o/r"}
+    done = subprocess.run(
+        ["bash", "-c", str(validate["run"])], env=env, capture_output=True, text=True, check=False
+    )
+    assert (done.returncode == 0) is ok
+    if ok:
+        assert "BASE_BRANCH=main" in out.read_text()

@@ -4,7 +4,7 @@ import argparse
 import asyncio
 import os
 from collections.abc import Mapping
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 import structlog
 
@@ -56,6 +56,30 @@ def reviewed_root(requested: Path | None, project_root: Path, env: Mapping[str, 
     return root
 
 
+def relative_source_root(raw: str) -> str:
+    """`--source-root` as a plain relative path; `..` or an absolute path is refused.
+
+    It arrives from a workflow input (#739). Reads are already confined to the
+    checkout (#731), so this is about failing loudly on a wrong value rather
+    than reviewing with no graph context.
+    """
+    path = PurePosixPath(raw or ".")
+    # A backslash or a drive has no use in a repository path, and on another
+    # platform each hides an escape. Whitespace is refused rather than stripped:
+    # the workflow passes the raw value to the ingest, which does not strip it.
+    if (
+        path.is_absolute()
+        or PureWindowsPath(raw).is_absolute()
+        or PureWindowsPath(raw).drive
+        or ".." in path.parts
+        or "\\" in raw
+        or any(c.isspace() for c in raw)
+    ):
+        _msg = f"--source-root must be a path inside the checkout: {raw!r}"
+        raise ValueError(_msg)
+    return "" if str(path) == "." else str(path)
+
+
 async def main() -> None:
     """Run Guardian review and write the result to stdout or a file."""
     parser = argparse.ArgumentParser(description="Run CGIS Guardian AI code review.")
@@ -104,6 +128,14 @@ async def main() -> None:
         ),
     )
     parser.add_argument(
+        "--source-root",
+        default="src",
+        help=(
+            "The ingest root inside --repo-root that graph.db was built from (default: src); "
+            "changed-file paths are stripped of it before graph lookups (#739)."
+        ),
+    )
+    parser.add_argument(
         "--inline",
         action="store_true",
         help="Post findings as an inline GitHub review; fall back to the report file on failure.",
@@ -121,6 +153,7 @@ async def main() -> None:
 
     project_root = Path(__file__).parent.parent.absolute()
     repo_root = reviewed_root(args.repo_root, project_root, os.environ)
+    source_root = relative_source_root(args.source_root)
 
     provider, model = build_provider(os.environ)
     # Was an isinstance sniff that returned "gemini" for an Ollama provider,
@@ -136,7 +169,11 @@ async def main() -> None:
     active = resolve_active_providers(provider.name, skeptic[0].name if skeptic else None)
     review_fingerprint = compute_fingerprint(disk_reader(project_root), active)
     collector = ContextCollector(
-        project_root=repo_root, db_path=args.db, base_branch=args.base_branch, features=features
+        project_root=repo_root,
+        db_path=args.db,
+        base_branch=args.base_branch,
+        source_root=source_root,
+        features=features,
     )
     log.info("Running guardian review...", model=model)
     report, posted_inline = await run_guardian(
