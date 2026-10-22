@@ -149,6 +149,19 @@ An "unresolved" entry means the graph had no such symbol, not that it is safe.
 {requested}
 """
 
+        dependants = context.get("dependants", "")
+        dependants_section = ""
+        if dependants:
+            dependants_section = f"""
+### 8. CODE OUTSIDE THIS DIFF THAT DEPENDS ON IT (cgis diff-check)
+Callers, subclasses and other readers or writers of the data keys this diff
+changed. These are leads, not findings: most are unaffected. Raise one only when
+you can name what breaks at that site because of a specific line in section 3,
+and anchor the finding on that line of the diff.
+
+{dependants}
+"""
+
         contributing_section = ""
         if contributing:
             contributing_section = f"""### 1. ENGINEERING STANDARDS (from CONTRIBUTING.md)
@@ -181,7 +194,7 @@ An "unresolved" entry means the graph had no such symbol, not that it is safe.
 
 {contributing_section}{ontology_section}### 3. CHANGES TO REVIEW (git diff)
 {diff}
-{graph_section}{full_files_section}{drift_section}{requested_section}
+{graph_section}{full_files_section}{drift_section}{requested_section}{dependants_section}
 ---
 ### HUNTING RULES — read before writing a single finding:
 

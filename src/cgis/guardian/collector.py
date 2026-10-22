@@ -15,6 +15,7 @@ import structlog
 
 from cgis.guardian.chunker import Chunk
 from cgis.languages import is_supported, pack_for_path
+from cgis.query.diffcheck import DiffError, check_database, render_text
 from cgis.query.drift.drift import DriftScorer
 from cgis.query.drift.fingerprint import FingerprintExtractor
 from cgis.query.drift.quotient import build_quotient, quotient_call_tally
@@ -25,8 +26,20 @@ from cgis.storage.sqlite_store import SQLiteStore
 log = structlog.getLogger(__name__)
 
 VALID_FEATURES = frozenset(
-    {"full_files", "flow", "drift", "chunked", "axes", "axes_paired", "context_requests"}
+    {
+        "full_files",
+        "flow",
+        "drift",
+        "chunked",
+        "axes",
+        "axes_paired",
+        "context_requests",
+        "diff_check",
+    }
 )
+
+#: Leads shown to the finder by the `diff_check` feature (#733), ranked by diff-check.
+DEPENDANTS_CAP = 15
 
 _MAX_FILE_LINES = 1200
 _MAX_TOTAL_CHARS = 120_000
@@ -99,6 +112,26 @@ class SourceCollector:
         self.base_branch = base_branch
         self.base_ref = base_ref
         self._diff_cache: str | None = None
+
+    def merge_base(self) -> str | None:
+        """The commit the PR branched from, or None when git cannot name it.
+
+        diff-check reads `base..head`; against a moved base branch that would also
+        list what the base gained since, so the range starts where the PR did —
+        the same commits `git diff base...HEAD` shows the finder.
+        """
+        base = self.base_ref or f"origin/{self.base_branch}"
+        try:
+            result = subprocess.run(
+                ["git", "merge-base", "--end-of-options", base, "HEAD"],
+                capture_output=True,
+                text=True,
+                check=True,
+                cwd=self.project_root,
+            )
+        except subprocess.CalledProcessError:
+            return None
+        return result.stdout.strip() or None
 
     def _diff_range(self) -> str:
         """Return the git range argument for diff commands."""
@@ -258,6 +291,28 @@ class GraphContextCollector:
         stats["with_graph"] = len(sections)
         return sections, stats
 
+    def collect_dependants(self, repo: Path, base: str | None) -> str:
+        """diff-check's list of code outside the diff that depends on it (#733).
+
+        Leads, not findings: callers, subclasses and the other readers and
+        writers of changed data keys, capped at DEPENDANTS_CAP. Any failure —
+        no graph, no merge base, a range git cannot read — costs the section,
+        never the review.
+        """
+        if not self.has_db() or base is None:
+            return ""
+        try:
+            report = check_database(str(self.db_path), repo, base, "HEAD", DEPENDANTS_CAP)
+        except DiffError:
+            log.warning("Dependants section skipped: git could not read the range.")
+            return ""
+        except Exception:
+            log.warning("Dependants section skipped.", exc_info=True)
+            return ""
+        if not report.items:
+            return ""
+        return render_text(report, base[:12], "HEAD")
+
     def collect_drift(self) -> str:
         """Compact per-domain drift table + quotient k=1 lines (spec §4.3).
 
@@ -378,6 +433,12 @@ class ContextCollector:
             drift = self.graph.collect_drift()
             if drift:
                 context["drift"] = drift
+        if "diff_check" in self.features:
+            dependants = self.graph.collect_dependants(
+                self.source.project_root, self.source.merge_base()
+            )
+            if dependants:
+                context["dependants"] = dependants
         return context
 
     def collect_for_chunk(self, chunk: Chunk) -> dict[str, str]:
