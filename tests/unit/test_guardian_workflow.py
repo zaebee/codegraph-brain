@@ -133,6 +133,7 @@ def test_the_graph_is_built_from_the_pr_sources(steps: list[dict[str, Any]]) -> 
         ("full_files", False),
         ("diff_check", True),
         ("full_files, diff_check", True),
+        ("full_files,\tdiff_check\n", True),
         ("diff_checks", False),
     ],
 )

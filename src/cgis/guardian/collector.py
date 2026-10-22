@@ -15,7 +15,7 @@ import structlog
 
 from cgis.guardian.chunker import Chunk
 from cgis.languages import is_supported, pack_for_path
-from cgis.query.diffcheck import DiffError, check_database, render_text
+from cgis.query.diffcheck import DiffError, DiffReport, check_database
 from cgis.query.drift.drift import DriftScorer
 from cgis.query.drift.fingerprint import FingerprintExtractor
 from cgis.query.drift.quotient import build_quotient, quotient_call_tally
@@ -40,6 +40,8 @@ VALID_FEATURES = frozenset(
 
 #: Leads shown to the finder by the `diff_check` feature (#733), ranked by diff-check.
 DEPENDANTS_CAP = 15
+#: The section's size bound: a key path can be long, and fifteen of them are not free.
+_DEPENDANTS_MAX_CHARS = 6_000
 
 _MAX_FILE_LINES = 1200
 _MAX_TOTAL_CHARS = 120_000
@@ -297,21 +299,45 @@ class GraphContextCollector:
         Leads, not findings: callers, subclasses and the other readers and
         writers of changed data keys, capped at DEPENDANTS_CAP. Any failure —
         no graph, no merge base, a range git cannot read — costs the section,
-        never the review.
+        never the review. Not carried by chunked mode (`collect_for_chunk`).
         """
         if not self.has_db() or base is None:
             return ""
         try:
-            report = check_database(str(self.db_path), repo, base, "HEAD", DEPENDANTS_CAP)
+            report = check_database(
+                str(self.db_path), repo, base, "HEAD", DEPENDANTS_CAP, prefix=self.source_root
+            )
         except DiffError:
             log.warning("Dependants section skipped: git could not read the range.")
             return ""
         except Exception:
             log.warning("Dependants section skipped.", exc_info=True)
             return ""
+        return self.render_dependants(report)
+
+    def render_dependants(self, report: DiffReport) -> str:
+        """The leads as the finder reads them: repo paths, as in the diff; no operator hints.
+
+        diff-check's own text names MCP tools and re-ingest commands for an agent
+        at a terminal; here they would be instructions the finder cannot follow.
+        """
         if not report.items:
             return ""
-        return render_text(report, base[:12], "HEAD")
+        root = self.source_root.strip("/")
+        lines = [
+            f"{len(report.changed_symbols)} symbol(s) and {len(report.changed_keys)} data key(s) "
+            "changed; what else depends on them:"
+        ]
+        for item in report.items:
+            path = f"{root}/{item.file}" if root else item.file
+            where = f"{path}:{item.line}" if item.line else path
+            lines.append(f"- [{item.kind}] {item.site} ({where}): {item.reason}")
+        if report.hidden:
+            lines.append(f"- ... and {report.hidden} more, not shown")
+        text = "\n".join(lines)
+        if len(text) > _DEPENDANTS_MAX_CHARS:
+            text = text[:_DEPENDANTS_MAX_CHARS].rsplit("\n", 1)[0] + "\n- ... (cut for length)"
+        return text
 
     def collect_drift(self) -> str:
         """Compact per-domain drift table + quotient k=1 lines (spec §4.3).

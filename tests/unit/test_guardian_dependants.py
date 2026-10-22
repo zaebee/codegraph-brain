@@ -10,6 +10,7 @@ from cgis.guardian.collector import ContextCollector, parse_features
 from cgis.guardian.prompts import PromptBuilder
 from cgis.languages import extractors
 from cgis.pipeline import IngestionPipeline
+from cgis.query.diffcheck import DiffItem, DiffReport
 from cgis.storage.sqlite_store import SQLiteStore
 
 CALLEE = "def total(items):\n    return sum(items)\n"
@@ -131,3 +132,53 @@ def test_a_change_nothing_depends_on_adds_no_section(
     head = _git(repo, "rev-parse", "HEAD")
     graph = _collector(repo, head, db, "diff_check").graph
     assert graph.collect_dependants(repo, head) == ""
+
+
+@pytest.fixture
+def ci_shaped(tmp_path: Path) -> Path:
+    """The CI layout: `pr/` cloned from an origin, sources under `src/`, main moved on."""
+    up = tmp_path / "up"
+    up.mkdir()
+    _git(up, "init", "-q", "-b", "main")
+    (up / "src").mkdir()
+    _commit(up, {"src/calc.py": CALLEE, "src/report.py": CALLER}, "base")
+    pr = tmp_path / "pr"
+    _git(tmp_path, "clone", "-q", str(up), str(pr))
+    _git(pr, "checkout", "-q", "-b", "feature")
+    _commit(pr, {"src/calc.py": CALLEE.replace("sum(items)", "sum(items) or None")}, "edit")
+    _commit(up, {"src/later.py": "def later():\n    return 1\n"}, "main moves on")
+    _git(pr, "fetch", "-q", "origin", "main")
+    return pr
+
+
+def test_the_ci_shape_lists_the_caller_from_the_merge_base(ci_shaped: Path, tmp_path: Path) -> None:
+    """`cgis ingest pr/src`, no base_ref: the range starts where the PR did, paths are repo paths.
+
+    Diffing against the moved tip instead would count main's own new symbol as
+    changed by this PR.
+    """
+    db = tmp_path / "ci.db"
+    store = SQLiteStore(str(db))
+    store.connect()
+    with store:
+        IngestionPipeline(extractors([], data_keys=True), data_keys=True).run(
+            str(ci_shaped / "src"), store=store, rebuild=True
+        )
+    collector = ContextCollector(
+        project_root=ci_shaped, db_path=db, features=frozenset({"diff_check"})
+    )
+    dependants = collector.collect_all()["dependants"]
+    assert "1 symbol(s)" in dependants
+    assert "report.report (src/report.py:" in dependants
+    assert "cgis_" not in dependants  # operator hints are not the finder's business
+
+
+def test_the_section_is_bounded_in_characters(tmp_path: Path) -> None:
+    """Fifteen long key paths must not crowd out the diff."""
+    long = DiffItem("key-reader", "key:|x", "m.f", "m.py", 1, "reads " + "a." * 400, 1.0)
+    report = DiffReport([long] * 15, 0, 0, ["m.f"], ["key:|x"])
+    graph = ContextCollector(project_root=tmp_path, source_root="src").graph
+    text = graph.render_dependants(report)
+    assert len(text) <= 6_100
+    assert text.endswith("(cut for length)")
+    assert "(src/m.py:1)" in text

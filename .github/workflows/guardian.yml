@@ -96,7 +96,10 @@ jobs:
           GUARDIAN_FEATURES: ${{ vars.GUARDIAN_FEATURES }}
         run: |
           flags=""
-          case ",${GUARDIAN_FEATURES// /}," in *,diff_check,*) flags="--data-keys" ;; esac
+          # Same reading as parse_features: comma-separated, any whitespace ignored.
+          case ",$(printf '%s' "$GUARDIAN_FEATURES" | tr -d '[:space:]')," in
+            *,diff_check,*) flags="--data-keys" ;;
+          esac
           uv run --frozen cgis ingest pr/src --output graph.db $flags
 
       # Fetches anonymously: the root checkout keeps no credentials (#730).
