@@ -311,6 +311,7 @@ def test_cross_org_callers_can_pass_the_secrets(workflow: dict[Any, Any]) -> Non
         ("issue_comment", "backend/app", True),
         ("issue_comment", "../elsewhere", False),
         ("issue_comment", "/abs", False),
+        ("issue_comment", "..\\elsewhere", False),
         ("pull_request", "src", False),
     ],
 )

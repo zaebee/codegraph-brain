@@ -164,12 +164,13 @@ async def test_the_source_root_reaches_the_collector(
     assert seen["source_root"] == "backend/app"
 
 
+@pytest.mark.parametrize("bad", ["../elsewhere", "..\\elsewhere", "C:\\absolute", "a/../.."])
 @pytest.mark.asyncio
 async def test_a_source_root_that_climbs_out_is_refused(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, bad: str
 ) -> None:
-    """A workflow input: `..` or an absolute path is refused before any spend (#739)."""
-    _argv(monkeypatch, "--repo-root", str(tmp_path), "--source-root", "../elsewhere")
+    """A workflow input: `..`, a backslash or an absolute path is refused before any spend."""
+    _argv(monkeypatch, "--repo-root", str(tmp_path), "--source-root", bad)
     with pytest.raises(ValueError, match="--source-root"):
         await gr.main()
 

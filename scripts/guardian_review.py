@@ -64,7 +64,9 @@ def relative_source_root(raw: str) -> str:
     than reviewing with no graph context.
     """
     path = PurePosixPath(raw.strip() or ".")
-    if path.is_absolute() or ".." in path.parts:
+    # A backslash has no use in a repository path, and on another platform it
+    # would be a separator that `..` hides behind.
+    if path.is_absolute() or ".." in path.parts or "\\" in raw:
         _msg = f"--source-root must be a path inside the checkout: {raw!r}"
         raise ValueError(_msg)
     return "" if str(path) == "." else str(path)
