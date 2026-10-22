@@ -53,14 +53,28 @@ jobs:
           BASE_BRANCH=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json baseRefName --jq '.baseRefName')
           echo "BASE_BRANCH=$BASE_BRANCH" >> $GITHUB_ENV
 
-      - name: Checkout PR branch
+      # The PR is data, never code (#730). Everything that runs — uv sync, the
+      # guardian scripts, cgis itself — comes from the default branch checked
+      # out here; the PR lands in pr/ and is only diffed, read and parsed.
+      # This step and the next keep the job's provider keys out of reach of
+      # whoever wrote the PR.
+      - name: Checkout trusted tooling (default branch)
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Checkout PR branch as data
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
         with:
           # PR_NUMBER validated as digits-only in previous step
           ref: refs/pull/${{ env.PR_NUMBER }}/head
+          path: pr
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Fetch base branch for diff
+        working-directory: pr
         run: git fetch origin "$BASE_BRANCH"
 
       - name: Install uv
@@ -70,7 +84,7 @@ jobs:
         run: uv sync --frozen --extra guardian
 
       - name: Build code graph
-        run: uv run --frozen cgis ingest ./src --output graph.db
+        run: uv run --frozen cgis ingest pr/src --output graph.db
 
       - name: Restore metrics from data branch
         run: |
@@ -94,12 +108,10 @@ jobs:
           GUARDIAN_FEATURES: ${{ vars.GUARDIAN_FEATURES }}
           GUARDIAN_SKEPTIC: ${{ vars.GUARDIAN_SKEPTIC }}
           GUARDIAN_SKEPTIC_MODEL: ${{ vars.GUARDIAN_SKEPTIC_MODEL }}
-          # Static-evidence pass for the skeptic (#401). Wired but not set:
-          # the repository variable is deliberately absent, so enabling it is a
-          # decision made in repo settings rather than a code change nobody
-          # reviews. An unset variable expands to "", which the flag reads as
-          # off — only the literal "1" enables it.
-          GUARDIAN_EVIDENCE: ${{ vars.GUARDIAN_EVIDENCE }}
+          # GUARDIAN_EVIDENCE (#401) is deliberately not passed: the evidence
+          # pass runs `uv run mypy/ruff` inside the reviewed checkout, which is
+          # the PR, while this step holds the provider keys (#730).
+          # guardian_review.py refuses that combination with --repo-root.
         run: |
           uv run --frozen python scripts/guardian_review.py \
             --output guardian_report.md \
@@ -108,6 +120,7 @@ jobs:
             --metrics guardian_metrics.jsonl \
             --record-finder guardian_finder.json \
             --inline \
+            --repo-root pr \
             --base-branch "$BASE_BRANCH"
 
       - name: Upload metrics artifact

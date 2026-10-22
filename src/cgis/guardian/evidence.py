@@ -10,12 +10,14 @@ settles it; nothing could run one.
 This module runs that command. It does not lower the bar; it makes the bar
 reachable.
 
-Scope, stated rather than implied: the verbs are Python-only. `guardian.yml` and
-`guardian_bench` review this repository, where `uv` and the checkers are
-installed; `guardian_martian` reviews five foreign repositories whose toolchains
-are not ours, and there this returns None and the skeptic behaves exactly as it
-does today. `collect_evidence` is the seam a TypeScript implementation would
-extend, not replace.
+Scope, stated rather than implied: the verbs are Python-only. `guardian_bench`
+reviews this repository, where `uv` and the checkers are installed;
+`guardian_martian` reviews five foreign repositories whose toolchains are not
+ours, and there this returns None and the skeptic behaves exactly as it does
+today. `guardian.yml` never runs it: there the reviewed checkout is the PR, and
+running its checkers would run its author's code beside the provider keys
+(#730), so `guardian_review.py --repo-root` refuses the flag. `collect_evidence`
+is the seam a TypeScript implementation would extend, not replace.
 
 Every failure is absence, never a verdict. A missing toolchain, a crashing
 checker, a timeout and a path outside the repository all produce None. Reporting
