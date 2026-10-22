@@ -2,6 +2,7 @@
 
 import subprocess
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -105,3 +106,28 @@ def test_no_leads_no_section() -> None:
     """Without the key the prompt is byte-identical to today's."""
     prompt = PromptBuilder.build_user_prompt({"diff": "+x"})
     assert "DEPENDS ON IT" not in prompt
+
+
+def test_a_base_git_cannot_diff_drops_the_section(changed_callee: tuple[Path, str, Path]) -> None:
+    """A merge base that resolves but cannot be diffed is DiffError, logged and dropped."""
+    repo, _base, db = changed_callee
+    graph = _collector(repo, "HEAD", db, "diff_check").graph
+    assert graph.collect_dependants(repo, "0" * 40) == ""
+
+
+def test_an_unexpected_error_drops_the_section(changed_callee: tuple[Path, str, Path]) -> None:
+    """Whatever diff-check raises, the review goes on without the section."""
+    repo, base, db = changed_callee
+    graph = _collector(repo, base, db, "diff_check").graph
+    with patch("cgis.guardian.collector.check_database", side_effect=RuntimeError("boom")):
+        assert graph.collect_dependants(repo, base) == ""
+
+
+def test_a_change_nothing_depends_on_adds_no_section(
+    changed_callee: tuple[Path, str, Path],
+) -> None:
+    """An empty list is not a section: the finder would read 'nothing outside tests' as a claim."""
+    repo, _base, db = changed_callee
+    head = _git(repo, "rev-parse", "HEAD")
+    graph = _collector(repo, head, db, "diff_check").graph
+    assert graph.collect_dependants(repo, head) == ""
