@@ -84,10 +84,13 @@ def test_without_a_graph_nothing_is_added(changed_callee: tuple[Path, str, Path]
     assert "dependants" not in _collector(repo, base, None, "diff_check").collect_all()
 
 
-def test_a_range_git_cannot_read_degrades_to_nothing(
+def test_an_unknown_base_ref_degrades_to_nothing(
     changed_callee: tuple[Path, str, Path],
 ) -> None:
-    """A failing diff-check costs the section, never the review."""
+    """No merge base for the ref: the section is dropped before diff-check runs.
+
+    The DiffError path itself is test_a_base_git_cannot_diff_drops_the_section.
+    """
     repo, _base, db = changed_callee
     context = _collector(repo, "no-such-ref", db, "diff_check").collect_all()
     assert "dependants" not in context
@@ -189,3 +192,11 @@ def test_no_git_means_no_merge_base(tmp_path: Path) -> None:
     collector = ContextCollector(project_root=tmp_path, base_ref="main")
     with patch("cgis.guardian.collector.subprocess.run", side_effect=FileNotFoundError("git")):
         assert collector.source.merge_base() is None
+
+
+def test_the_leads_are_fenced_as_data() -> None:
+    """Names come from the PR's code; the block must read as data, not as prompt text."""
+    prompt = PromptBuilder.build_user_prompt(
+        {"diff": "+x", "dependants": "- [caller] a.b (a.py:1)"}
+    )
+    assert "```text\n- [caller] a.b (a.py:1)\n```" in prompt

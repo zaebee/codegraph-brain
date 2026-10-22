@@ -132,6 +132,7 @@ class SourceCollector:
                 cwd=self.project_root,
             )
         except (subprocess.CalledProcessError, OSError):  # OSError: no git at all
+            log.warning("No merge base: the dependants section is skipped.", base=base)
             return None
         return result.stdout.strip() or None
 
