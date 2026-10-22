@@ -192,3 +192,8 @@ def test_the_app_token_is_minted_after_every_pr_step(steps: list[dict[str, Any]]
         or f"{PR_DIR}/" in str(s.get("run", ""))
     )
     assert minted > last_pr
+
+
+def test_the_review_job_ends_before_the_app_token_expires(workflow: dict[Any, Any]) -> None:
+    """An installation token lives 60 minutes; a longer job would post with an expired one."""
+    assert workflow["jobs"]["review"]["timeout-minutes"] < 60

@@ -13,6 +13,9 @@ jobs:
       github.event.issue.pull_request != null &&
       github.event.comment.body == '/guardian review'
     runs-on: ubuntu-latest
+    # Below the app token's one-hour lifetime (#734): a review cannot outlive
+    # the token it posts with.
+    timeout-minutes: 45
     permissions:
       contents: read
       pull-requests: write
@@ -106,7 +109,7 @@ jobs:
       # fallback to another identity. The app's key reaches every repository
       # the app is installed on, so the token is narrowed to this one and to
       # pull-requests: write, and only the two posting steps read it. It lives
-      # one hour, which bounds how long the review may run before it posts.
+      # one hour; the job's timeout-minutes keeps the review inside that.
       - name: Mint GitHub App token
         id: app-token
         if: vars.GUARDIAN_APP_CLIENT_ID != ''
