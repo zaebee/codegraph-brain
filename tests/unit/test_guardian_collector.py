@@ -8,7 +8,7 @@ import pytest
 
 from cgis.core.models import Edge, EdgeType, Node, NodeNamespace, NodeType
 from cgis.guardian.chunker import Chunk
-from cgis.guardian.collector import ContextCollector, parse_features
+from cgis.guardian.collector import ContextCollector, contained, parse_features
 from cgis.languages import extractors
 from cgis.pipeline import IngestionPipeline
 from cgis.storage.sqlite_store import SQLiteStore
@@ -604,3 +604,16 @@ def test_reads_survive_bytes_that_are_not_utf8(tmp_path: Path) -> None:
     assert collector.source.read_file("CONTRIBUTING.md").startswith("rules ")
     with patch.object(collector.source, "get_changed_source_files", return_value=["bad.py"]):
         assert "#### `bad.py`" in collector.source.collect_full_files()
+
+
+def test_read_file_refuses_a_path_with_a_null_byte(tmp_path: Path) -> None:
+    """A path the OS cannot even name reads as absent, not as a crash."""
+    collector = ContextCollector(project_root=tmp_path)
+    assert collector.source.read_file("CONTRIBUTING\0.md") == ""
+
+
+def test_contained_returns_the_resolved_path(tmp_path: Path) -> None:
+    """What is read is the path that was checked, not a spelling that resolves again later."""
+    (tmp_path / "real.md").write_text("x\n")
+    (tmp_path / "alias.md").symlink_to(tmp_path / "real.md")
+    assert contained(tmp_path, "alias.md") == (tmp_path / "real.md").resolve()

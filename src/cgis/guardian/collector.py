@@ -68,7 +68,7 @@ def features_setting(env: Mapping[str, str]) -> tuple[frozenset[str], FeaturesSo
 
 
 def contained(root: Path, relative_path: str) -> Path | None:
-    """`root / relative_path` when it resolves inside `root`, else None.
+    """`root / relative_path`, resolved, when it lies inside `root`; else None.
 
     The reviewed checkout is a PR, and a PR is data its author controls (#730).
     A symlink or a `..` is data that reads somewhere else: a CONTRIBUTING.md
@@ -76,11 +76,11 @@ def contained(root: Path, relative_path: str) -> Path | None:
     prompt, and from there in a public review comment. `cgis ingest` refuses
     such links the same way. A link that stays inside the checkout is allowed.
     """
-    path = root / relative_path
     try:
-        if path.resolve().is_relative_to(root.resolve()):
-            return path
-    except (OSError, RuntimeError):  # a loop of links
+        resolved = (root / relative_path).resolve()
+        if resolved.is_relative_to(root.resolve()):
+            return resolved
+    except (OSError, RuntimeError, ValueError):  # a loop of links, or a null byte
         return None
     return None
 
