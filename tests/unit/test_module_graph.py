@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from cgis.api import mcp_server
 from cgis.api.mcp_server import cgis_module_graph
 from cgis.cli import app
 from cgis.languages import extractors
@@ -242,3 +243,79 @@ def test_mcp_tool_answers_in_both_formats(db: str) -> None:
     payload = json.loads(cgis_module_graph(prefix="pkg", db_path=db, output_format="json"))
     assert ("pkg.core", "pkg.effects") in {(e["source"], e["target"]) for e in payload["edges"]}
     assert "No modules under" in cgis_module_graph(prefix="nope", db_path=db)
+
+
+def test_reduction_keeps_the_only_way_into_a_cycle() -> None:
+    """Two parallel edges into one cycle are not each other's justification."""
+    edges = [
+        ModuleEdge("x", "a1", "imports"),
+        ModuleEdge("x", "a2", "imports"),
+        ModuleEdge("a1", "a2", "imports"),
+        ModuleEdge("a2", "a1", "imports"),
+    ]
+    kept = {(e.source, e.target) for e in transitive_reduction(edges)}
+    assert kept & {("x", "a1"), ("x", "a2")}
+
+
+def test_reduction_keeps_the_link_between_two_cycles() -> None:
+    """Two cycles joined by two edges stay joined."""
+    edges = [
+        ModuleEdge("a1", "a2", "imports"),
+        ModuleEdge("a2", "a1", "imports"),
+        ModuleEdge("b1", "b2", "imports"),
+        ModuleEdge("b2", "b1", "imports"),
+        ModuleEdge("a1", "b1", "imports"),
+        ModuleEdge("a2", "b2", "imports"),
+    ]
+    kept = {(e.source, e.target) for e in transitive_reduction(edges)}
+    assert kept & {("a1", "b1"), ("a2", "b2")}
+
+
+def test_reduction_drops_a_cycle_shortcut_implied_through_another_component() -> None:
+    """x -> c is implied by x -> {a1, a2} -> c, however the cycle is entered."""
+    edges = [
+        ModuleEdge("x", "a1", "imports"),
+        ModuleEdge("a1", "a2", "imports"),
+        ModuleEdge("a2", "a1", "imports"),
+        ModuleEdge("a2", "c", "imports"),
+        ModuleEdge("x", "c", "imports"),
+    ]
+    kept = {(e.source, e.target) for e in transitive_reduction(edges)}
+    assert ("x", "c") not in kept
+    assert {("x", "a1"), ("a2", "c")} <= kept
+
+
+def test_repeated_or_empty_layers(db: str) -> None:
+    """A layer named twice is one layer; no layer at all is an error."""
+    twice = module_graph(db, "pkg", layers=("imports", "imports"))
+    once = module_graph(db, "pkg", layers=("imports",))
+    assert twice.edges == once.edges
+    with pytest.raises(ValueError, match="layer"):
+        module_graph(db, "pkg", layers=())
+
+
+def test_expand_draws_no_edge_to_an_init_only_imported_through(tmp_path: Path) -> None:
+    """`from pkg.sub import a` depends on pkg.sub.a, not on the empty pkg/sub/__init__."""
+    root = tmp_path / "repo"
+    for rel, text in {
+        "pkg/__init__.py": "",
+        "pkg/b.py": "from pkg.sub import a\n\n\ndef f():\n    return a.X\n",
+        "pkg/sub/__init__.py": "",
+        "pkg/sub/a.py": "X = 1\n",
+    }.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(text)
+    db_path = str(tmp_path / "g.db")
+    store = SQLiteStore(db_path)
+    store.connect()
+    with store:
+        IngestionPipeline(extractors([])).run(str(root), store=store, rebuild=True)
+    pairs = _pairs(module_graph(db_path, "pkg", layers=("imports",), expand=True), "imports")
+    assert ("pkg.b", "pkg.sub.a") in pairs
+    assert ("pkg.b", "pkg.sub") not in pairs
+
+
+def test_mcp_mermaid_carries_the_freshness_note(db: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A diagram from a stale graph says so above it, as the other diagram tools do."""
+    monkeypatch.setattr(mcp_server, "_freshness_note", lambda _db: "STALE NOTE\n")
+    assert cgis_module_graph(prefix="pkg", db_path=db).startswith("STALE NOTE\n```mermaid")

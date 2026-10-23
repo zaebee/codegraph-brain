@@ -974,7 +974,7 @@ def cgis_module_graph(
         return f"No modules under '{prefix}'. Check the prefix with cgis_find_symbol."
     if output_format == "json":
         return json.dumps(_with_freshness(db_path, graph_to_dict(graph)), indent=2)
-    return render_mermaid(graph)
+    return _freshness_note(db_path) + render_mermaid(graph)
 
 
 @mcp.tool()

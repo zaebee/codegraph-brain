@@ -4,7 +4,10 @@ Nodes are the package's direct children (each sub-package one node) or, with
 ``expand``, every file below it. Edges are module-to-module dependencies by
 kind: ``imports``, ``extends`` and ``calls``. A symbol-level edge counts for the
 file that holds each end. Test files are left out by default, type-only imports
-always (as the cycle tools do, #499). Each kind is transitively reduced on its
+always (as the cycle tools do, #499). In Go a FILE node is one file of a
+package and an import names one of the package's files, so ``expand`` there
+shows files, not packages; the collapsed view and the outside table do not
+depend on which file. Each kind is transitively reduced on its
 own, so the picture shows the direct layering rather than every implied edge;
 dependencies on code outside the package are summarised per module, not drawn.
 """
@@ -69,36 +72,57 @@ def _under(fqn: str, prefix: str) -> bool:
     return fqn == prefix or fqn.startswith(prefix + ".")
 
 
+def _reach(succ: dict[str, set[str]], start: str) -> set[str]:
+    """Every node reachable from ``start`` by one step or more."""
+    stack, seen = list(succ.get(start, ())), set(succ.get(start, ()))
+    while stack:
+        for nxt in succ.get(stack.pop(), ()):
+            if nxt not in seen:
+                seen.add(nxt)
+                stack.append(nxt)
+    return seen
+
+
 def transitive_reduction(edges: Iterable[ModuleEdge]) -> list[ModuleEdge]:
     """Drop each edge implied by a longer path, keeping every edge of a cycle.
 
-    ``u -> v`` stays when ``u`` is reachable from ``v`` (the edge is part of a
-    cycle, and dropping it could make the cycle vanish from the picture) or when
-    ``v`` is unreachable from ``u`` once the edge itself is removed. Input order
-    is preserved.
+    Reduced on the condensation, each strongly connected component one node.
+    Every edge inside a component stays: dropping one could make a cycle
+    vanish from the picture. The edges joining two components, however many
+    module pairs carry them, go together or stay together: they go only when
+    the target component is reachable from the source component through a
+    third. Input order is preserved.
     """
     edge_list = list(edges)
     succ: dict[str, set[str]] = {}
     for e in edge_list:
         succ.setdefault(e.source, set()).add(e.target)
+        succ.setdefault(e.target, set())
+    reach = {n: _reach(succ, n) for n in succ}
+    comp = {n: frozenset({n} | {m for m in reach[n] if n in reach[m]}) for n in succ}
+    cdag: dict[frozenset[str], set[frozenset[str]]] = {}
+    for e in edge_list:
+        if comp[e.source] != comp[e.target]:
+            cdag.setdefault(comp[e.source], set()).add(comp[e.target])
 
-    def reaches(start: str, goal: str, without: tuple[str, str] | None = None) -> bool:
-        stack, seen = [start], {start}
+    def implied(a: frozenset[str], b: frozenset[str]) -> bool:
+        """Is component ``b`` reachable from ``a`` through some third component."""
+        stack = [c for c in cdag.get(a, ()) if c != b]
+        seen = set(stack)
         while stack:
-            node = stack.pop()
-            for nxt in succ.get(node, ()):
-                if (node, nxt) == without or nxt in seen:
-                    continue
-                if nxt == goal:
+            current = stack.pop()
+            for nxt in cdag.get(current, ()):
+                if nxt == b:
                     return True
-                seen.add(nxt)
-                stack.append(nxt)
+                if nxt not in seen:
+                    seen.add(nxt)
+                    stack.append(nxt)
         return False
 
     return [
         e
         for e in edge_list
-        if reaches(e.target, e.source) or not reaches(e.source, e.target, (e.source, e.target))
+        if comp[e.source] == comp[e.target] or not implied(comp[e.source], comp[e.target])
     ]
 
 
@@ -127,6 +151,76 @@ def _outside_package(file_id: str, packages: set[str]) -> str:
     return file_id.rsplit(".", 1)[0]
 
 
+def _checked_layers(layers: Sequence[str]) -> list[str]:
+    """The layers asked for, each once, in order; an empty or unknown one is an error."""
+    unique = list(dict.fromkeys(layers))
+    if not unique:
+        msg = f"no layer given; choose from {list(KINDS)}"
+        raise ValueError(msg)
+    unknown = [layer for layer in unique if layer not in KINDS]
+    if unknown:
+        msg = f"unknown layer(s) {unknown}; choose from {list(KINDS)}"
+        raise ValueError(msg)
+    return unique
+
+
+def _imported_through(edges: Sequence[Edge], holder: dict[str, str]) -> dict[str, set[str]]:
+    """Per file, the files whose names it imports (IMPORTS_SYMBOL), for the expand view.
+
+    `from pkg.sub import mod` records IMPORTS to pkg.sub as well as IMPORTS_SYMBOL
+    to pkg.sub.mod. Drawn per module, the first would put an edge on every
+    package __init__ its submodules are imported through.
+    """
+    through: dict[str, set[str]] = {}
+    for e in edges:
+        if e.type == EdgeType.IMPORTS_SYMBOL:
+            src_file, dst_file = holder.get(e.source), holder.get(e.target)
+            if src_file is not None and dst_file is not None:
+                through.setdefault(src_file, set()).add(dst_file)
+    return through
+
+
+@dataclass(frozen=True)
+class _Scope:
+    """What decides whether an edge belongs to the picture, and where it lands."""
+
+    prefix: str
+    expand: bool
+    holder: dict[str, str]
+    skipped: set[str]
+    packages: set[str]
+    inside: set[str]
+    members: set[str]
+    through: dict[str, set[str]]
+
+
+def _ends(e: Edge, scope: _Scope) -> tuple[str, str] | None:
+    """The source member and the target file of an edge the picture uses, or None."""
+    src_file, dst_file = scope.holder.get(e.source), scope.holder.get(e.target)
+    if src_file not in scope.inside or dst_file is None or dst_file in scope.skipped:
+        return None
+    if e.type == EdgeType.IMPORTS and any(
+        f.startswith(dst_file + ".") for f in scope.through.get(src_file, ())
+    ):
+        return None
+    return _group(src_file, scope.prefix, scope.expand), dst_file
+
+
+def _reduced(
+    found: Iterable[ModuleEdge], layers: list[str], reduce: bool
+) -> tuple[list[ModuleEdge], dict[str, int]]:
+    """Each layer reduced on its own, and how many edges each lost."""
+    all_edges = list(found)
+    kept: list[ModuleEdge] = []
+    dropped: dict[str, int] = {}
+    for layer in layers:
+        layer_edges = [e for e in all_edges if e.kind == layer]
+        reduced = transitive_reduction(layer_edges) if reduce else layer_edges
+        dropped[layer] = len(layer_edges) - len(reduced)
+        kept.extend(reduced)
+    return sorted(kept, key=lambda e: (e.kind, e.source, e.target)), dropped
+
+
 def build_module_graph(
     nodes: Sequence[Node],
     edges: Sequence[Edge],
@@ -138,54 +232,46 @@ def build_module_graph(
     expand: bool = False,
 ) -> ModuleGraph:
     """The module graph of ``prefix`` from an already-loaded node and edge list."""
-    unknown = [layer for layer in layers if layer not in KINDS]
-    if unknown:
-        msg = f"unknown layer(s) {unknown}; choose from {list(KINDS)}"
-        raise ValueError(msg)
+    chosen = _checked_layers(layers)
     holder, tests, packages = _file_index(nodes)
+    skipped = tests if exclude_tests else set()
     inside = sorted(
-        f
-        for f in set(holder.values())
-        if _under(f, prefix) and f != prefix and not (exclude_tests and f in tests)
+        f for f in set(holder.values()) if _under(f, prefix) and f != prefix and f not in skipped
     )
     members = sorted({_group(f, prefix, expand) for f in inside})
-    subpackages = (
-        [] if expand else [m for m in members if any(f.startswith(m + ".") for f in inside)]
+    scope = _Scope(
+        prefix=prefix,
+        expand=expand,
+        holder=holder,
+        skipped=skipped,
+        packages=packages,
+        inside=set(inside),
+        members=set(members),
+        through=_imported_through(edges, holder) if expand else {},
     )
-    member_set = set(members)
-    wanted = {edge_type: layer for layer in layers for edge_type in KINDS[layer]}
-    inside_set = set(inside)
-    found: dict[tuple[str, str, str], None] = {}
+    wanted = {edge_type: layer for layer in chosen for edge_type in KINDS[layer]}
+    found: dict[ModuleEdge, None] = {}
     outside: dict[str, set[str]] = {}
     for e in edges:
         kind = wanted.get(e.type)
-        if kind is None or e.type_only:
+        ends = None if kind is None or e.type_only else _ends(e, scope)
+        if kind is None or ends is None:
             continue
-        src_file, dst_file = holder.get(e.source), holder.get(e.target)
-        if src_file is None or dst_file is None or src_file not in inside_set:
-            continue
-        src = _group(src_file, prefix, expand)
-        if _under(dst_file, prefix):
-            if exclude_tests and dst_file in tests:
-                continue
-            dst = _group(dst_file, prefix, expand)
-            if dst in member_set and dst != src:
-                found[(src, dst, kind)] = None
-        else:
+        src, dst_file = ends
+        if not _under(dst_file, prefix):
             outside.setdefault(src, set()).add(_outside_package(dst_file, packages))
-    all_edges = [ModuleEdge(s, t, k) for s, t, k in found]
-    kept: list[ModuleEdge] = []
-    dropped: dict[str, int] = {}
-    for layer in layers:
-        layer_edges = [e for e in all_edges if e.kind == layer]
-        reduced = transitive_reduction(layer_edges) if reduce else layer_edges
-        dropped[layer] = len(layer_edges) - len(reduced)
-        kept.extend(reduced)
+            continue
+        dst = _group(dst_file, prefix, expand)
+        if dst in scope.members and dst != src:
+            found[ModuleEdge(src, dst, kind)] = None
+    kept, dropped = _reduced(found, chosen, reduce)
     return ModuleGraph(
         prefix=prefix,
         nodes=members,
-        subpackages=subpackages,
-        edges=sorted(kept, key=lambda e: (e.kind, e.source, e.target)),
+        subpackages=[]
+        if expand
+        else [m for m in members if any(f.startswith(m + ".") for f in inside)],
+        edges=kept,
         dropped=dropped,
         outside={m: sorted(pkgs) for m, pkgs in sorted(outside.items())},
     )

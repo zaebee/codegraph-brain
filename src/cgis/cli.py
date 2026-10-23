@@ -2048,7 +2048,7 @@ def module_graph_cmd(
         graph = module_graph(
             db, package, layer, reduce=not no_reduce, exclude_tests=not with_tests, expand=expand
         )
-    except ValueError as exc:
+    except ValueError as exc:  # an unknown or missing --layer, the only ValueError raised
         raise typer.BadParameter(str(exc), param_hint="--layer") from exc
     if not graph.nodes:
         typer.echo(f"No modules under '{prefix}'.", err=True)
