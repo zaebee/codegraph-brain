@@ -9,7 +9,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Annotated, Any, NamedTuple
+from typing import Annotated, Any, Literal, NamedTuple
 
 import structlog
 from pydantic import Field
@@ -24,6 +24,7 @@ from cgis.core.keys import data_keys_summary
 from cgis.core.models import RAW_CALL_PREFIX, Edge, EdgeType, Node, NodeType
 from cgis.languages import extractors, impact_caveat
 from cgis.pipeline import IngestionPipeline, extraction_fingerprint, ingest_data_keys
+from cgis.query.analysis.module_graph import graph_to_dict, module_graph, render_mermaid
 from cgis.query.analysis.overview import DEFAULT_DEPTH, DEFAULT_LIMIT, build_overview
 from cgis.query.analysis.suggest_service import report_to_dict, suggest_packages
 from cgis.query.context.audit import audit_reachability
@@ -917,6 +918,65 @@ def cgis_suggest_packages(
     except Exception as exc:
         return f"❌ Error during suggest-packages: {exc}"
     return json.dumps(_with_freshness(db_path, report_to_dict(report)), indent=2)
+
+
+@mcp.tool()
+@refreshes_graph
+def cgis_module_graph(
+    prefix: Annotated[
+        str,
+        Field(
+            description="FQN prefix of the package as the graph names it, e.g. cgis.query "
+            "(cgis_find_symbol shows it), matched on whole dot-segments. A directory above "
+            "the ingest root, such as src., is dropped."
+        ),
+    ],
+    db_path: DbPath = _DEFAULT_DB,
+    layers: Annotated[
+        tuple[Literal["imports", "extends", "calls"], ...],
+        Field(description="Edge kinds to draw. Calls make the picture much denser."),
+    ] = ("imports", "extends"),
+    reduce: Annotated[
+        bool,
+        Field(description="Drop each edge implied by a longer path, per kind; cycles stay."),
+    ] = True,
+    exclude_tests: Annotated[bool, Field(description="Leave test modules out.")] = True,
+    expand: Annotated[
+        bool,
+        Field(description="Every module below the package instead of one node per sub-package."),
+    ] = False,
+    output_format: Annotated[
+        Literal["mermaid", "json"],
+        Field(description="mermaid: a diagram plus a table of outside dependencies; json: data."),
+    ] = "mermaid",
+) -> str:
+    """How one package is built inside: its modules and the dependencies between them.
+
+    Nodes are the package's direct children, each sub-package one node (``expand``
+    lists every module instead). Edges are imports ``-->``, inheritance ``==>``
+    and calls ``-.->``, each kind transitively reduced so the direct layering
+    shows; an edge that closes a cycle is never dropped. Dependencies on code
+    outside the package are summarised per module under the diagram, not drawn.
+    Test modules and type-only imports are left out. The json form is
+    ``{prefix, nodes, subpackages, edges:[{source,target,kind}], dropped, outside}``.
+    Run ``cgis_ingest`` first.
+    """
+    if not prefix.strip():
+        return "❌ Give the package's prefix, e.g. cgis.query."
+    if not Path(db_path).exists():
+        return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
+    try:
+        package = effective_prefixes(db_path, [prefix.strip()])[0]
+        graph = module_graph(
+            db_path, package, layers, reduce=reduce, exclude_tests=exclude_tests, expand=expand
+        )
+    except Exception as exc:
+        return f"❌ Error during module-graph: {exc}"
+    if not graph.nodes:
+        return f"No modules under '{prefix}'. Check the prefix with cgis_find_symbol."
+    if output_format == "json":
+        return json.dumps(_with_freshness(db_path, graph_to_dict(graph)), indent=2)
+    return _freshness_note(db_path) + render_mermaid(graph)
 
 
 @mcp.tool()

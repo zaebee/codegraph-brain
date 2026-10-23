@@ -52,6 +52,13 @@ from cgis.pipeline import IngestionPipeline, extraction_fingerprint, ingest_data
 from cgis.query.analysis.analyzer import AnalyzerEngine
 from cgis.query.analysis.anomaly import AnomalyType, ArchitecturalAnomaly
 from cgis.query.analysis.health import HealthScorer
+from cgis.query.analysis.module_graph import (
+    DEFAULT_LAYERS,
+    checked_layers,
+    graph_to_dict,
+    module_graph,
+    render_mermaid,
+)
 from cgis.query.analysis.overview import DEFAULT_DEPTH, DEFAULT_LIMIT, build_overview
 from cgis.query.analysis.suggest_service import SuggestReport, report_to_dict, suggest_packages
 from cgis.query.context.audit import NoAuditSourcesError, ReachabilityAudit, audit_reachability
@@ -1998,6 +2005,63 @@ def suggest_packages_cmd(
         typer.echo(_json.dumps(report_to_dict(report), indent=2))
         return
     _render_suggest(report)
+
+
+@app.command(name="module-graph")
+def module_graph_cmd(
+    prefix: str = typer.Argument(
+        ...,
+        help="FQN prefix of the package as the graph names it (e.g. cgis.query).",
+    ),
+    db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
+    layer: list[str] = typer.Option(
+        DEFAULT_LAYERS,
+        "--layer",
+        "-l",
+        help="Edge kind to draw, repeatable: imports, extends, calls.",
+    ),
+    no_reduce: bool = typer.Option(
+        False, "--no-reduce", help="Keep edges implied by a longer path."
+    ),
+    with_tests: bool = typer.Option(False, "--with-tests", help="Include test modules."),
+    expand: bool = typer.Option(
+        False, "--expand", help="Every module below the package, not one node per sub-package."
+    ),
+    output_format: str = typer.Option("mermaid", "--format", "-f", help="mermaid or json"),
+) -> None:
+    """Draw how one package is built inside: its modules and their dependencies.
+
+    Imports -->, inheritance ==>, calls -.->; each kind transitively reduced, cycles
+    kept. Outside dependencies are listed per module under the diagram. Run
+    `ingest` first.
+    """
+    if output_format not in ("mermaid", "json"):
+        message = "use mermaid or json"
+        raise typer.BadParameter(message, param_hint="--format")
+    if not prefix.strip():
+        console.print("[bold red]❌ Give the package's prefix, e.g. cgis.query.[/bold red]")
+        raise typer.Exit(code=1)
+    try:
+        layers = checked_layers(layer)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--layer") from exc
+    if not Path(db).is_file():
+        console.print(
+            f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
+        )
+        raise typer.Exit(code=1)
+    _warn_if_not_fresh(db)
+    package = effective_prefixes(db, [prefix.strip()])[0]
+    graph = module_graph(
+        db, package, layers, reduce=not no_reduce, exclude_tests=not with_tests, expand=expand
+    )
+    if not graph.nodes:
+        typer.echo(f"No modules under '{prefix}'.", err=True)
+        raise typer.Exit(code=1)
+    if output_format == "json":
+        typer.echo(_json.dumps(graph_to_dict(graph), indent=2))
+    else:
+        typer.echo(render_mermaid(graph))
 
 
 def _render_fractal(reports: list[FractalReport]) -> None:

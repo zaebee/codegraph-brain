@@ -80,8 +80,9 @@ def test_the_instructions_name_only_tools_that_exist() -> None:
 
 def test_every_tool_is_listed_without_an_allowlist() -> None:
     listed = _listed(mcp)
-    assert len(listed) == 16
+    assert len(listed) == 17
     assert "cgis_diff_check" in listed
+    assert "cgis_module_graph" in listed
 
 
 @pytest.mark.parametrize("raw", [None, "", " , "])

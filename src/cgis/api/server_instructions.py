@@ -65,6 +65,7 @@ When to use which tool:
 - What calls X / is changing or renaming X safe: cgis_analyze_impact.
 - What does X end up calling: cgis_trace_flow.
 - How a module or class is laid out: cgis_get_structure.
+- How one package is built inside, module by module: cgis_module_graph.
 - One symbol with its source and neighbours, before editing it: cgis_context.
 - Where is the symbol named X: cgis_find_symbol.
 - Coupling, drift, reachability of a guard: cgis_metrics, cgis_drift, \
