@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.37.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.36.0...codegraph-brain-v0.37.0) (2026-10-23)
+
+
+### Features
+
+* module graph of one package, as Mermaid or JSON ([#743](https://github.com/zaebee/codegraph-brain/issues/743)) ([0ea24a4](https://github.com/zaebee/codegraph-brain/commit/0ea24a4b9fc26043ceff0a8d58c397fa579b3804))
+
+
+### Documentation
+
+* auto-sync architecture graph and MCP reference ([#744](https://github.com/zaebee/codegraph-brain/issues/744)) ([26fa968](https://github.com/zaebee/codegraph-brain/commit/26fa968e102425544cf1ae7d2505a59f2f46199b))
+
 ## [0.36.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.35.0...codegraph-brain-v0.36.0) (2026-10-22)
 
 
