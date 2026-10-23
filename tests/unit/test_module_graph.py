@@ -343,7 +343,7 @@ def test_mermaid_ids_stay_distinct_when_names_flatten_alike() -> None:
     ids = [line.split("[")[0].strip() for line in lines if '["' in line]
     assert len(set(ids)) == 2
     edge = next(line for line in lines if "-->" in line).split(" --> ")
-    assert {edge[0].strip(), edge[1].strip()} == set(ids)
+    assert set(ids) == {edge[0].strip(), edge[1].strip()}
 
 
 def test_cli_reports_a_bad_layer_before_touching_the_graph(tmp_path: Path) -> None:
