@@ -72,9 +72,10 @@ def _under(fqn: str, prefix: str) -> bool:
     return fqn == prefix or fqn.startswith(prefix + ".")
 
 
-def _reach[N: Hashable](succ: Mapping[N, set[N]], start: N) -> set[N]:
-    """Every node reachable from ``start`` by one step or more."""
-    stack, seen = list(succ.get(start, ())), set(succ.get(start, ()))
+def _reach[N: Hashable](succ: Mapping[N, set[N]], starts: Iterable[N]) -> set[N]:
+    """``starts`` and every node reachable from them, in one walk."""
+    stack = list(starts)
+    seen = set(stack)
     while stack:
         for nxt in succ.get(stack.pop(), ()):
             if nxt not in seen:
@@ -91,7 +92,7 @@ def _condense(
     for e in edges:
         succ.setdefault(e.source, set()).add(e.target)
         succ.setdefault(e.target, set())
-    reach = {n: _reach(succ, n) for n in succ}
+    reach = {n: _reach(succ, succ[n]) for n in succ}
     comp = {n: frozenset({n} | {m for m in reach[n] if n in reach[m]}) for n in succ}
     dag: dict[frozenset[str], set[frozenset[str]]] = {}
     for e in edges:
@@ -104,7 +105,7 @@ def _implied(
     dag: dict[frozenset[str], set[frozenset[str]]], a: frozenset[str], b: frozenset[str]
 ) -> bool:
     """Is component ``b`` reachable from ``a`` through some third component."""
-    return any(b in _reach(dag, c) for c in dag.get(a, ()) if c != b)
+    return b in _reach(dag, [c for c in dag.get(a, ()) if c != b])
 
 
 def transitive_reduction(edges: Iterable[ModuleEdge]) -> list[ModuleEdge]:
