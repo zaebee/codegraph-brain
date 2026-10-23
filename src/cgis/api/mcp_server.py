@@ -958,7 +958,11 @@ def cgis_module_graph(
     shows; an edge that closes a cycle is never dropped. Dependencies on code
     outside the package are summarised per module under the diagram, not drawn.
     Test modules and type-only imports are left out. The json form is
-    ``{prefix, nodes, subpackages, edges:[{source,target,kind}], dropped, outside}``.
+    ``{prefix, nodes, subpackages, edges:[{source,target,kind}], dropped, covered, outside}``;
+    ``covered`` counts the imports not drawn because a drawn ``==>`` joins the
+    same pair: that arrow then also stands for the import, so read an import
+    closure over imports and extends together. An import that closes an import
+    cycle is always drawn.
     Run ``cgis_ingest`` first.
     """
     if not prefix.strip():
