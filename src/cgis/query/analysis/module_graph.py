@@ -57,8 +57,8 @@ class ModuleGraph:
     """A package's module graph.
 
     ``dropped`` counts, per kind, the edges the transitive reduction removed;
-    ``covered`` the imports left out because an inheritance edge joins the same
-    pair (inheritance implies the import, so only ``==>`` is drawn);
+    ``covered`` the imports left out because a drawn inheritance edge joins the
+    same pair, so that ``==>`` also stands for the import;
     ``outside`` maps a module to the packages outside ``prefix`` it depends on.
     """
 
@@ -216,14 +216,26 @@ def _ends(e: Edge, scope: _Scope) -> tuple[str, str] | None:
     return _group(src_file, scope.prefix, scope.expand), dst_file
 
 
-def _uncovered(kept: list[ModuleEdge], found: Iterable[ModuleEdge]) -> tuple[list[ModuleEdge], int]:
-    """``kept`` without the imports an inheritance edge of the same pair implies.
+def _uncovered(kept: list[ModuleEdge]) -> tuple[list[ModuleEdge], int]:
+    """``kept`` without the imports that an inheritance arrow on screen stands for.
 
-    Applied after the reduction, so which imports are implied by a longer path
-    is decided over all of them, as without the extends layer.
+    An import of a pair is left out when the same pair has a kept ``==>``,
+    which then stands for the import too. It stays when that inheritance edge
+    was itself reduced away (nothing would be drawn on the pair), and when it
+    closes an import cycle (the cycle must stay readable as imports). Applied
+    after the reduction, so which imports are implied by a longer path is
+    decided over all of them.
     """
-    extends = {(e.source, e.target) for e in found if e.kind == "extends"}
-    shown = [e for e in kept if e.kind != "imports" or (e.source, e.target) not in extends]
+    extends = {(e.source, e.target) for e in kept if e.kind == "extends"}
+    imports = [e for e in kept if e.kind == "imports"]
+    comp, _ = _condense(imports)
+    shown = [
+        e
+        for e in kept
+        if e.kind != "imports"
+        or (e.source, e.target) not in extends
+        or comp[e.source] == comp[e.target]
+    ]
     return shown, len(kept) - len(shown)
 
 
@@ -294,7 +306,7 @@ def build_module_graph(
     )
     found, outside = _collect(edges, scope, chosen)
     kept, dropped = _reduced(found, chosen, reduce)
-    kept, covered = _uncovered(kept, found)
+    kept, covered = _uncovered(kept)
     return ModuleGraph(
         prefix=prefix,
         nodes=members,
@@ -385,7 +397,7 @@ def render_mermaid(graph: ModuleGraph) -> str:
     lines.append(
         f"Edges: {kinds}."
         + (f" Implied edges dropped: {removed}." if removed else "")
-        + (f" Imports drawn as their inheritance: {graph.covered}." if graph.covered else "")
+        + (f" Imports drawn as the ==> of the same pair: {graph.covered}." if graph.covered else "")
     )
     if graph.outside:
         lines += ["", f"| module | reaches outside `{graph.prefix}` |", "|---|---|"]

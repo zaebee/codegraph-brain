@@ -384,7 +384,7 @@ def test_inheritance_covers_the_import_of_the_same_pair(db: str) -> None:
     assert ("pkg.core", "pkg.effects") not in _pairs(graph, "imports")
     # core, creation, service and sub each import what they extend
     assert graph.covered == 4
-    assert "Imports drawn as their inheritance: 4." in render_mermaid(graph)
+    assert "Imports drawn as the ==> of the same pair: 4." in render_mermaid(graph)
     assert graph_to_dict(graph)["covered"] == 4
 
 
@@ -392,4 +392,54 @@ def test_imports_alone_keep_every_import(db: str) -> None:
     """Without the extends layer nothing covers an import."""
     graph = module_graph(db, "pkg", layers=("imports",))
     assert ("pkg.core", "pkg.effects") in _pairs(graph, "imports")
+    assert graph.covered == 0
+
+
+def _graph_of(tmp_path: Path, files: dict[str, str]) -> str:
+    root = tmp_path / "repo"
+    for rel, text in files.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(text)
+    db_path = str(tmp_path / "g.db")
+    store = SQLiteStore(db_path)
+    store.connect()
+    with store:
+        IngestionPipeline(extractors([])).run(str(root), store=store, rebuild=True)
+    return db_path
+
+
+def test_an_import_is_hidden_only_behind_an_inheritance_arrow_on_screen(tmp_path: Path) -> None:
+    """a extends b only through c, so a ==> b is reduced away; its import a --> b must stay."""
+    db_path = _graph_of(
+        tmp_path,
+        {
+            "pkg/__init__.py": "from pkg.b import B\n",
+            "pkg/b.py": "class B:\n    pass\n",
+            "pkg/c.py": "import pkg\n\n\nclass C(pkg.B):\n    pass\n",
+            "pkg/a.py": (
+                "from pkg.b import B\nfrom pkg.c import C\n\n\n"
+                "class A1(C):\n    pass\n\n\nclass A2(B):\n    pass\n"
+            ),
+        },
+    )
+    graph = module_graph(db_path, "pkg")
+    assert ("pkg.a", "pkg.b") not in _pairs(graph, "extends")
+    assert ("pkg.a", "pkg.b") in _pairs(graph, "imports")
+    assert ("pkg.a", "pkg.c") in _pairs(graph, "extends")
+    assert graph.covered == 1
+
+
+def test_an_import_that_closes_a_cycle_is_never_covered(tmp_path: Path) -> None:
+    """a imports and extends b, b imports a: the import cycle stays an import cycle."""
+    db_path = _graph_of(
+        tmp_path,
+        {
+            "pkg/__init__.py": "",
+            "pkg/b.py": "from pkg import a\n\n\nclass B:\n    def f(self):\n        return a\n",
+            "pkg/a.py": "from pkg.b import B\n\n\nclass A(B):\n    pass\n",
+        },
+    )
+    graph = module_graph(db_path, "pkg")
+    assert {("pkg.a", "pkg.b"), ("pkg.b", "pkg.a")} <= _pairs(graph, "imports")
+    assert ("pkg.a", "pkg.b") in _pairs(graph, "extends")
     assert graph.covered == 0
