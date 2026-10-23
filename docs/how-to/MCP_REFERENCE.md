@@ -407,6 +407,31 @@ Whole-graph architectural metrics — coupling bottlenecks, God classes, PageRan
 
 ---
 
+## `cgis_module_graph`
+
+How one package is built inside: its modules and the dependencies between them.
+
+    Nodes are the package's direct children, each sub-package one node (``expand``
+    lists every module instead). Edges are imports ``-->``, inheritance ``==>``
+    and calls ``-.->``, each kind transitively reduced so the direct layering
+    shows; an edge that closes a cycle is never dropped. Dependencies on code
+    outside the package are summarised per module under the diagram, not drawn.
+    Test modules and type-only imports are left out. The json form is
+    ``{prefix, nodes, subpackages, edges:[{source,target,kind}], dropped, outside}``.
+    Run ``cgis_ingest`` first.
+
+| Argument | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `prefix` | `string` | ✓ | FQN prefix of the package as the graph names it, e.g. cgis.query (cgis_find_symbol shows it), matched on whole dot-segments. A directory above the ingest root, such as src., is dropped. |
+| `db_path` | `string` |  | SQLite graph built by cgis_ingest. A relative path resolves against the MCP server's working directory, not the agent's — prefer an absolute path. |
+| `layers` | `array` |  | Edge kinds to draw. Calls make the picture much denser. |
+| `reduce` | `boolean` |  | Drop each edge implied by a longer path, per kind; cycles stay. |
+| `exclude_tests` | `boolean` |  | Leave test modules out. |
+| `expand` | `boolean` |  | Every module below the package instead of one node per sub-package. |
+| `output_format` | `string` |  | mermaid: a diagram plus a table of outside dependencies; json: data. |
+
+---
+
 ## `cgis_overview`
 
 Where to start in a graph you know nothing about: sizes and a package map.
