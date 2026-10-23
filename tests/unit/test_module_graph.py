@@ -343,7 +343,7 @@ def test_mermaid_ids_stay_distinct_when_names_flatten_alike() -> None:
     ids = [line.split("[")[0].strip() for line in lines if '["' in line]
     assert len(set(ids)) == 2
     edge = next(line for line in lines if "-->" in line).split(" --> ")
-    assert {edge[0].strip(), edge[1].strip()} == set(ids)
+    assert set(ids) == {edge[0].strip(), edge[1].strip()}
 
 
 def test_cli_reports_a_bad_layer_before_touching_the_graph(tmp_path: Path) -> None:
@@ -352,3 +352,23 @@ def test_cli_reports_a_bad_layer_before_touching_the_graph(tmp_path: Path) -> No
         app, ["module-graph", "pkg", "--db", str(tmp_path / "none.db"), "-l", "vibes"]
     )
     assert result.exit_code == 2
+
+
+def test_type_only_imports_are_not_dependencies(tmp_path: Path) -> None:
+    """An import under `if TYPE_CHECKING:` breaks no cycle and draws no edge (#499)."""
+    root = tmp_path / "repo"
+    for rel, text in {
+        "pkg/__init__.py": "",
+        "pkg/a.py": (
+            "from typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    from pkg.b import B\n"
+        ),
+        "pkg/b.py": "class B:\n    pass\n",
+    }.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(text)
+    db_path = str(tmp_path / "g.db")
+    store = SQLiteStore(db_path)
+    store.connect()
+    with store:
+        IngestionPipeline(extractors([])).run(str(root), store=store, rebuild=True)
+    assert module_graph(db_path, "pkg", layers=("imports",)).edges == []

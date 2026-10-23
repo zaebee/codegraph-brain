@@ -23,7 +23,7 @@ from cgis.core.models import EdgeType, NodeType
 from cgis.storage.sqlite_store import SQLiteStore
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Hashable, Iterable, Mapping, Sequence
 
     from cgis.core.models import Edge, Node
 
@@ -72,15 +72,40 @@ def _under(fqn: str, prefix: str) -> bool:
     return fqn == prefix or fqn.startswith(prefix + ".")
 
 
-def _reach(succ: dict[str, set[str]], start: str) -> set[str]:
-    """Every node reachable from ``start`` by one step or more."""
-    stack, seen = list(succ.get(start, ())), set(succ.get(start, ()))
+def _reach[N: Hashable](succ: Mapping[N, set[N]], starts: Iterable[N]) -> set[N]:
+    """``starts`` and every node reachable from them, in one walk."""
+    stack = list(starts)
+    seen = set(stack)
     while stack:
         for nxt in succ.get(stack.pop(), ()):
             if nxt not in seen:
                 seen.add(nxt)
                 stack.append(nxt)
     return seen
+
+
+def _condense(
+    edges: list[ModuleEdge],
+) -> tuple[dict[str, frozenset[str]], dict[frozenset[str], set[frozenset[str]]]]:
+    """Each node's strongly connected component, and the DAG between components."""
+    succ: dict[str, set[str]] = {}
+    for e in edges:
+        succ.setdefault(e.source, set()).add(e.target)
+        succ.setdefault(e.target, set())
+    reach = {n: _reach(succ, succ[n]) for n in succ}
+    comp = {n: frozenset({n} | {m for m in reach[n] if n in reach[m]}) for n in succ}
+    dag: dict[frozenset[str], set[frozenset[str]]] = {}
+    for e in edges:
+        if comp[e.source] != comp[e.target]:
+            dag.setdefault(comp[e.source], set()).add(comp[e.target])
+    return comp, dag
+
+
+def _implied(
+    dag: dict[frozenset[str], set[frozenset[str]]], a: frozenset[str], b: frozenset[str]
+) -> bool:
+    """Is component ``b`` reachable from ``a`` through some third component."""
+    return b in _reach(dag, [c for c in dag.get(a, ()) if c != b])
 
 
 def transitive_reduction(edges: Iterable[ModuleEdge]) -> list[ModuleEdge]:
@@ -94,35 +119,11 @@ def transitive_reduction(edges: Iterable[ModuleEdge]) -> list[ModuleEdge]:
     third. Input order is preserved.
     """
     edge_list = list(edges)
-    succ: dict[str, set[str]] = {}
-    for e in edge_list:
-        succ.setdefault(e.source, set()).add(e.target)
-        succ.setdefault(e.target, set())
-    reach = {n: _reach(succ, n) for n in succ}
-    comp = {n: frozenset({n} | {m for m in reach[n] if n in reach[m]}) for n in succ}
-    cdag: dict[frozenset[str], set[frozenset[str]]] = {}
-    for e in edge_list:
-        if comp[e.source] != comp[e.target]:
-            cdag.setdefault(comp[e.source], set()).add(comp[e.target])
-
-    def implied(a: frozenset[str], b: frozenset[str]) -> bool:
-        """Is component ``b`` reachable from ``a`` through some third component."""
-        stack = [c for c in cdag.get(a, ()) if c != b]
-        seen = set(stack)
-        while stack:
-            current = stack.pop()
-            for nxt in cdag.get(current, ()):
-                if nxt == b:
-                    return True
-                if nxt not in seen:
-                    seen.add(nxt)
-                    stack.append(nxt)
-        return False
-
+    comp, dag = _condense(edge_list)
     return [
         e
         for e in edge_list
-        if comp[e.source] == comp[e.target] or not implied(comp[e.source], comp[e.target])
+        if comp[e.source] == comp[e.target] or not _implied(dag, comp[e.source], comp[e.target])
     ]
 
 
@@ -227,6 +228,28 @@ def _reduced(
     return sorted(kept, key=lambda e: (e.kind, e.source, e.target)), dropped
 
 
+def _collect(
+    edges: Sequence[Edge], scope: _Scope, layers: list[str]
+) -> tuple[list[ModuleEdge], dict[str, set[str]]]:
+    """The member-to-member edges of ``layers``, and per member the packages outside it reaches."""
+    wanted = {edge_type: layer for layer in layers for edge_type in KINDS[layer]}
+    found: dict[ModuleEdge, None] = {}
+    outside: dict[str, set[str]] = {}
+    for e in edges:
+        kind = wanted.get(e.type)
+        ends = None if kind is None or e.type_only else _ends(e, scope)
+        if kind is None or ends is None:
+            continue
+        src, dst_file = ends
+        if not _under(dst_file, scope.prefix):
+            outside.setdefault(src, set()).add(_outside_package(dst_file, scope.packages))
+            continue
+        dst = _group(dst_file, scope.prefix, scope.expand)
+        if dst in scope.members and dst != src:
+            found[ModuleEdge(src, dst, kind)] = None
+    return list(found), outside
+
+
 def build_module_graph(
     nodes: Sequence[Node],
     edges: Sequence[Edge],
@@ -255,21 +278,7 @@ def build_module_graph(
         members=set(members),
         through=_imported_through(edges, holder) if expand else {},
     )
-    wanted = {edge_type: layer for layer in chosen for edge_type in KINDS[layer]}
-    found: dict[ModuleEdge, None] = {}
-    outside: dict[str, set[str]] = {}
-    for e in edges:
-        kind = wanted.get(e.type)
-        ends = None if kind is None or e.type_only else _ends(e, scope)
-        if kind is None or ends is None:
-            continue
-        src, dst_file = ends
-        if not _under(dst_file, prefix):
-            outside.setdefault(src, set()).add(_outside_package(dst_file, packages))
-            continue
-        dst = _group(dst_file, prefix, expand)
-        if dst in scope.members and dst != src:
-            found[ModuleEdge(src, dst, kind)] = None
+    found, outside = _collect(edges, scope, chosen)
     kept, dropped = _reduced(found, chosen, reduce)
     return ModuleGraph(
         prefix=prefix,
