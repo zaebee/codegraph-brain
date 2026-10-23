@@ -157,7 +157,7 @@ def _outside_package(file_id: str, packages: set[str]) -> str:
     return file_id.rsplit(".", 1)[0]
 
 
-def _checked_layers(layers: Sequence[str]) -> list[str]:
+def checked_layers(layers: Sequence[str]) -> list[str]:
     """The layers asked for, each once, in order; an empty or unknown one is an error."""
     unique = list(dict.fromkeys(layers))
     if not unique:
@@ -238,7 +238,7 @@ def build_module_graph(
     expand: bool = False,
 ) -> ModuleGraph:
     """The module graph of ``prefix`` from an already-loaded node and edge list."""
-    chosen = _checked_layers(layers)
+    chosen = checked_layers(layers)
     holder, tests, packages = _file_index(nodes)
     skipped = tests if exclude_tests else set()
     inside = sorted(
@@ -319,8 +319,22 @@ def _short(name: str, prefix: str) -> str:
     return name[len(prefix) + 1 :] if name.startswith(prefix + ".") else name
 
 
-def _node_id(name: str, prefix: str) -> str:
-    return "m_" + (_NON_ID.sub("_", _short(name, prefix)).strip("_") or "root")
+def _node_ids(names: Iterable[str], prefix: str) -> dict[str, str]:
+    """A Mermaid id per name, ``m_`` + the name folded to ``[A-Za-z0-9_]``, made unique.
+
+    Folding is not injective (``a.b`` and ``a_b`` both give ``a_b``); a later
+    name that collides gets ``_2``, ``_3``…, in sorted order, so ids are stable.
+    """
+    ids: dict[str, str] = {}
+    used: set[str] = set()
+    for name in sorted(set(names)):
+        base = "m_" + (_NON_ID.sub("_", _short(name, prefix)).strip("_") or "root")
+        slug, n = base, 2
+        while slug in used:
+            slug, n = f"{base}_{n}", n + 1
+        used.add(slug)
+        ids[name] = slug
+    return ids
 
 
 def render_mermaid(graph: ModuleGraph) -> str:
@@ -330,15 +344,15 @@ def render_mermaid(graph: ModuleGraph) -> str:
     ``m_`` prefix, so a module named ``end`` or ``graph`` is not a keyword.
     """
     lines = ["```mermaid", "flowchart TD"]
+    ids = _node_ids(
+        [*graph.nodes, *(e.source for e in graph.edges), *(e.target for e in graph.edges)],
+        graph.prefix,
+    )
     for name in graph.nodes:
         label = _short(name, graph.prefix)
-        if name in graph.subpackages:
-            lines.append(f'    {_node_id(name, graph.prefix)}[["{label}/"]]')
-        else:
-            lines.append(f'    {_node_id(name, graph.prefix)}["{label}"]')
-    for e in graph.edges:
-        src, dst = _node_id(e.source, graph.prefix), _node_id(e.target, graph.prefix)
-        lines.append(f"    {src} {_ARROWS[e.kind]} {dst}")
+        shape = f'[["{label}/"]]' if name in graph.subpackages else f'["{label}"]'
+        lines.append(f"    {ids[name]}{shape}")
+    lines.extend(f"    {ids[e.source]} {_ARROWS[e.kind]} {ids[e.target]}" for e in graph.edges)
     lines.append("```")
     kinds = ", ".join(f"{k} {_ARROWS[k]}" for k in graph.dropped)
     removed = ", ".join(f"{k} {n}" for k, n in graph.dropped.items() if n)

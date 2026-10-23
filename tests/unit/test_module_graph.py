@@ -327,3 +327,28 @@ def test_a_blank_prefix_is_refused_by_both_surfaces(db: str) -> None:
     result = CliRunner().invoke(app, ["module-graph", " ", "--db", db])
     assert result.exit_code == 1
     assert "prefix" in result.output.lower()
+
+
+def test_mermaid_ids_stay_distinct_when_names_flatten_alike() -> None:
+    """pkg.a.b and pkg.a_b both read as a_b once punctuation is folded; they must not merge."""
+    graph = ModuleGraph(
+        prefix="pkg",
+        nodes=["pkg.a.b", "pkg.a_b"],
+        subpackages=[],
+        edges=[ModuleEdge("pkg.a.b", "pkg.a_b", "imports")],
+        dropped={"imports": 0},
+        outside={},
+    )
+    lines = render_mermaid(graph).splitlines()
+    ids = [line.split("[")[0].strip() for line in lines if '["' in line]
+    assert len(set(ids)) == 2
+    edge = next(line for line in lines if "-->" in line).split(" --> ")
+    assert {edge[0].strip(), edge[1].strip()} == set(ids)
+
+
+def test_cli_reports_a_bad_layer_before_touching_the_graph(tmp_path: Path) -> None:
+    """The layer check runs first: a bad --layer is a usage error even with no database."""
+    result = CliRunner().invoke(
+        app, ["module-graph", "pkg", "--db", str(tmp_path / "none.db"), "-l", "vibes"]
+    )
+    assert result.exit_code == 2

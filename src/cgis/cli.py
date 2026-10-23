@@ -54,6 +54,7 @@ from cgis.query.analysis.anomaly import AnomalyType, ArchitecturalAnomaly
 from cgis.query.analysis.health import HealthScorer
 from cgis.query.analysis.module_graph import (
     DEFAULT_LAYERS,
+    checked_layers,
     graph_to_dict,
     module_graph,
     render_mermaid,
@@ -2040,19 +2041,20 @@ def module_graph_cmd(
     if not prefix.strip():
         console.print("[bold red]❌ Give the package's prefix, e.g. cgis.query.[/bold red]")
         raise typer.Exit(code=1)
+    try:
+        layers = checked_layers(layer)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--layer") from exc
     if not Path(db).is_file():
         console.print(
             f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."
         )
         raise typer.Exit(code=1)
     _warn_if_not_fresh(db)
-    try:
-        package = effective_prefixes(db, [prefix.strip()])[0]
-        graph = module_graph(
-            db, package, layer, reduce=not no_reduce, exclude_tests=not with_tests, expand=expand
-        )
-    except ValueError as exc:  # an unknown or missing --layer, the only ValueError raised
-        raise typer.BadParameter(str(exc), param_hint="--layer") from exc
+    package = effective_prefixes(db, [prefix.strip()])[0]
+    graph = module_graph(
+        db, package, layers, reduce=not no_reduce, exclude_tests=not with_tests, expand=expand
+    )
     if not graph.nodes:
         typer.echo(f"No modules under '{prefix}'.", err=True)
         raise typer.Exit(code=1)
