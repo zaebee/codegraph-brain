@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.38.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.37.0...codegraph-brain-v0.38.0) (2026-10-23)
+
+
+### Features
+
+* **module-graph:** draw inheritance alone where a pair both imports and extends ([#749](https://github.com/zaebee/codegraph-brain/issues/749)) ([020a24a](https://github.com/zaebee/codegraph-brain/commit/020a24afde35ea3b485153a913148af2e78d8a22))
+
+
+### Documentation
+
+* auto-sync architecture graph and MCP reference ([#750](https://github.com/zaebee/codegraph-brain/issues/750)) ([4a0628a](https://github.com/zaebee/codegraph-brain/commit/4a0628a9d999cec5def4b9f9207e27a6cd625db2))
+
 ## [0.37.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.36.0...codegraph-brain-v0.37.0) (2026-10-23)
 
 
