@@ -14,6 +14,7 @@ from cgis.pipeline import IngestionPipeline
 from cgis.query.analysis.module_graph import (
     ModuleEdge,
     ModuleGraph,
+    graph_to_dict,
     module_graph,
     render_mermaid,
     transitive_reduction,
@@ -217,8 +218,10 @@ def test_cli_prints_a_mermaid_diagram(db: str) -> None:
     result = CliRunner().invoke(app, ["module-graph", "pkg", "--db", db])
     assert result.exit_code == 0, result.output
     assert "flowchart TD" in result.stdout
-    assert "m_creation --> m_core" in result.stdout
-    assert "m_creation --> m_effects" not in result.stdout
+    assert "m_cyc1 --> m_cyc2" in result.stdout
+    assert "m_creation ==> m_core" in result.stdout
+    assert "m_creation --> m_core" not in result.stdout  # drawn as its inheritance
+    assert "m_creation --> m_effects" not in result.stdout  # implied
 
 
 def test_cli_json_with_calls_and_an_unknown_layer(db: str) -> None:
@@ -372,3 +375,21 @@ def test_type_only_imports_are_not_dependencies(tmp_path: Path) -> None:
     with store:
         IngestionPipeline(extractors([])).run(str(root), store=store, rebuild=True)
     assert module_graph(db_path, "pkg", layers=("imports",)).edges == []
+
+
+def test_inheritance_covers_the_import_of_the_same_pair(db: str) -> None:
+    """core imports and extends effects: one ==>, no --> beside it, and the count says so."""
+    graph = module_graph(db, "pkg")
+    assert ("pkg.core", "pkg.effects") in _pairs(graph, "extends")
+    assert ("pkg.core", "pkg.effects") not in _pairs(graph, "imports")
+    # core, creation, service and sub each import what they extend
+    assert graph.covered == 4
+    assert "Imports drawn as their inheritance: 4." in render_mermaid(graph)
+    assert graph_to_dict(graph)["covered"] == 4
+
+
+def test_imports_alone_keep_every_import(db: str) -> None:
+    """Without the extends layer nothing covers an import."""
+    graph = module_graph(db, "pkg", layers=("imports",))
+    assert ("pkg.core", "pkg.effects") in _pairs(graph, "imports")
+    assert graph.covered == 0
