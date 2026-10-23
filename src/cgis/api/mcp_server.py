@@ -933,9 +933,9 @@ def cgis_module_graph(
     ],
     db_path: DbPath = _DEFAULT_DB,
     layers: Annotated[
-        list[Literal["imports", "extends", "calls"]],
+        tuple[Literal["imports", "extends", "calls"], ...],
         Field(description="Edge kinds to draw. Calls make the picture much denser."),
-    ] = ["imports", "extends"],  # noqa: B006 - a JSON-schema default, never mutated
+    ] = ("imports", "extends"),
     reduce: Annotated[
         bool,
         Field(description="Drop each edge implied by a longer path, per kind; cycles stay."),
@@ -961,6 +961,8 @@ def cgis_module_graph(
     ``{prefix, nodes, subpackages, edges:[{source,target,kind}], dropped, outside}``.
     Run ``cgis_ingest`` first.
     """
+    if not prefix.strip():
+        return "❌ Give the package's prefix, e.g. cgis.query."
     if not Path(db_path).exists():
         return f"❌ Database not found at: {db_path}. Run cgis_ingest first."
     try:

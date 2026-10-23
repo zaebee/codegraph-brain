@@ -2014,7 +2014,7 @@ def module_graph_cmd(
     ),
     db: str = typer.Option(_DEFAULT_DB, "--db", "-d", help=_DEFAULT_DB_HELP),
     layer: list[str] = typer.Option(
-        list(DEFAULT_LAYERS),
+        DEFAULT_LAYERS,
         "--layer",
         "-l",
         help="Edge kind to draw, repeatable: imports, extends, calls.",
@@ -2037,6 +2037,9 @@ def module_graph_cmd(
     if output_format not in ("mermaid", "json"):
         message = "use mermaid or json"
         raise typer.BadParameter(message, param_hint="--format")
+    if not prefix.strip():
+        console.print("[bold red]❌ Give the package's prefix, e.g. cgis.query.[/bold red]")
+        raise typer.Exit(code=1)
     if not Path(db).is_file():
         console.print(
             f"[bold red]❌ Database not found:[/bold red] {escape(db)}. Run `ingest` first."

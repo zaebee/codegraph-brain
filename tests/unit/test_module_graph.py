@@ -319,3 +319,11 @@ def test_mcp_mermaid_carries_the_freshness_note(db: str, monkeypatch: pytest.Mon
     """A diagram from a stale graph says so above it, as the other diagram tools do."""
     monkeypatch.setattr(mcp_server, "_freshness_note", lambda _db: "STALE NOTE\n")
     assert cgis_module_graph(prefix="pkg", db_path=db).startswith("STALE NOTE\n```mermaid")
+
+
+def test_a_blank_prefix_is_refused_by_both_surfaces(db: str) -> None:
+    """A blank prefix is a usage error, not an empty picture."""
+    assert cgis_module_graph(prefix="  ", db_path=db).startswith("❌")
+    result = CliRunner().invoke(app, ["module-graph", " ", "--db", db])
+    assert result.exit_code == 1
+    assert "prefix" in result.output.lower()

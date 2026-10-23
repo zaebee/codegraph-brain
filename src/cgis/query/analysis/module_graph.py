@@ -128,9 +128,15 @@ def transitive_reduction(edges: Iterable[ModuleEdge]) -> list[ModuleEdge]:
 
 def _file_index(nodes: Sequence[Node]) -> tuple[dict[str, str], set[str], set[str]]:
     """Per node id, the id of the file that holds it; the test files; the package files."""
-    by_path = {n.file_path: n.id for n in nodes if n.type in _FILE_TYPES and n.file_path}
+    by_path: dict[str, str] = {}
+    tests: set[str] = set()
+    for n in nodes:
+        if n.type in _FILE_TYPES:
+            if n.file_path:
+                by_path[n.file_path] = n.id
+            if n.is_test:
+                tests.add(n.id)
     holder = {n.id: by_path[n.file_path] for n in nodes if n.file_path in by_path}
-    tests = {n.id for n in nodes if n.type in _FILE_TYPES and n.is_test}
     ids = set(by_path.values())
     # A file is a package when another file's id continues its own.
     packages = {f.rsplit(".", 1)[0] for f in ids if "." in f} & ids
