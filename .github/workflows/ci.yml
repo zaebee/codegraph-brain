@@ -68,8 +68,17 @@ jobs:
         # it from the coverage metric — it just reports all of it as uncovered.
         # That alone put new-code coverage at 37.8% on a PR whose script was
         # covered at 99% locally.
+        #
+        # `-n auto --dist worksteal`: ~4 400 tests with no single slow one (the
+        # slowest is 8.6 s), so they split well across the runner's four cores.
+        # Measured on a 4-core machine: 154 s serial, 78 s at `-n 4 --dist
+        # worksteal` with these coverage flags, identical results. `worksteal`
+        # beats the default count-based split (48 s against 88 s without
+        # coverage): it hands a worker the next test when it goes idle instead
+        # of dealing a fixed share up front. pytest-cov combines the workers'
+        # data and writes the same XML.
         run: >
-          uv run --frozen pytest --cov=cgis --cov=scripts
+          uv run --frozen pytest -n auto --dist worksteal --cov=cgis --cov=scripts
           --cov-report=term-missing --cov-report=xml
 
       - name: Test-count floor
