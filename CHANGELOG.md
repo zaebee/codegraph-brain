@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.39.2](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.39.1...codegraph-brain-v0.39.2) (2026-10-31)
+
+
+### Bug Fixes
+
+* **deps:** bump filelock past the lock-symlink advisory ([#770](https://github.com/zaebee/codegraph-brain/issues/770)) ([4ed3561](https://github.com/zaebee/codegraph-brain/commit/4ed35617970887cc0ab2fe0cd3bf49e88ddb4f51))
+* **deps:** bump happy-dom past the high-severity advisory ([#766](https://github.com/zaebee/codegraph-brain/issues/766)) ([b9f6464](https://github.com/zaebee/codegraph-brain/commit/b9f64641d8a79f059194e362366266e4e7a11ebb))
+
 ## [0.39.1](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.39.0...codegraph-brain-v0.39.1) (2026-10-31)
 
 
