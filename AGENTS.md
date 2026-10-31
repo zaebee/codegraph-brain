@@ -111,3 +111,8 @@ tests/self_parsing/   ← (empty) intended to validate the engine by parsing its
 ```
 
 The self-parsing test (feeding `src/cgis/` to the ingestion pipeline and asserting the resulting graph matches actual structure) is the canonical correctness validation described in the blueprint.
+
+<!-- entire-agent:begin -->
+Read .entire/agent-guide.md for this repository's workflow, source inspection, and verification guidance.
+@.entire/agent-guide.md
+<!-- entire-agent:end -->
