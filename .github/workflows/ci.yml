@@ -110,8 +110,9 @@ jobs:
             "" | *[!0-9A-Za-z.+-]* )
               echo "Refusing unexpected project version: '$version'" >&2
               exit 1 ;;
+            * )
+              echo "value=$version" >> "$GITHUB_OUTPUT" ;;
           esac
-          echo "value=$version" >> "$GITHUB_OUTPUT"
 
       - name: SonarQube Cloud scan
         # Inert until SONAR_TOKEN exists, so this can land before the migration.
