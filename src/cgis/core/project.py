@@ -36,3 +36,22 @@ class ProjectReader(Protocol):
     def facts(self) -> ProjectFacts:
         """What the walk's configs say, once it is done."""
         ...
+
+
+def resolves_inside(path: Path, root: Path) -> bool:
+    """Whether `path`, with symlinks resolved, is still inside `root`.
+
+    `IngestionPipeline` skips a source file whose resolved target lies outside the
+    ingest root, but a project reader opens configs of its own: a PR can commit a
+    `tsconfig.json`, a `package.json` or a `go.mod` as a symlink and have the
+    ingest read a file the checkout does not hold (#732). This is the one
+    containment a reader asks of a path the walk passed; a config above the root is
+    a different case (#555) and is not judged by it.
+
+    A path that cannot be resolved — a symlink loop — reads as outside: refusing
+    the file is the safe answer.
+    """
+    try:
+        return path.resolve().is_relative_to(root.resolve())
+    except (OSError, RuntimeError):
+        return False
