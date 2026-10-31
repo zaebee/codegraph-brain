@@ -106,13 +106,15 @@ including return types; use `model_copy(update={...})` for immutable model
 updates.
 
 The CI gate is an **error budget**: `.github/pyrefly-baseline.json` records the
-type errors the tree has today, and the check fails only when *new* ones appear.
-Fixing an error means pruning the baseline (`uv run pyrefly check --baseline
-.github/pyrefly-baseline.json --prune-baseline`); code that moves means
-re-recording it with `--update-baseline` on the same command. Never use
-`--update-baseline` to launder an error you just introduced. The set does not
-depend on installed extras: the optional provider SDKs are typed as `Any` in
-`[tool.pyrefly]`, so a `guardian`-extra venv sees the same six errors CI does.
+individual type errors the tree has today, and the check fails when an error
+appears that the baseline does not contain — it is a set, not a count, so
+fixing one and adding another still fails. Fixing one means pruning the
+baseline (`uv run pyrefly check --baseline .github/pyrefly-baseline.json
+--prune-baseline`); code that moves means re-recording it with `--update-baseline`
+on the same command. Never use `--update-baseline` to launder an error you just
+introduced. The set does not depend on installed extras: the optional provider
+SDKs are typed as `Any` in `[tool.pyrefly]`, so a `guardian`-extra venv reports
+the same errors CI does.
 
 ## Test Layout
 

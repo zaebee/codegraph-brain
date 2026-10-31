@@ -339,8 +339,8 @@ class TestALauncherFailureIsNotAVerdict:
     labelled as the type checker's opinion.
     """
 
-    def _result(self, code: int, err: str = "") -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(args=["x"], returncode=code, stdout="", stderr=err)
+    def _result(self, code: int, err: str = "", out: str = "") -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args=["x"], returncode=code, stdout=out, stderr=err)
 
     def test_a_failure_to_spawn_yields_no_evidence(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -351,6 +351,26 @@ class TestALauncherFailureIsNotAVerdict:
             subprocess,
             "run",
             lambda *_a, **_k: self._result(2, "error: Failed to spawn: `pyrefly`"),
+        )
+        assert collect_evidence(repo, ("a.py",)) is None
+
+    def test_an_exit_1_failure_with_an_empty_stdout_is_not_a_verdict(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Measured on pyrefly: its fatal errors exit 1 without findings.
+
+        A broken `[tool.pyrefly]` config and a vanished path both exit 1 with
+        the reason on stderr and nothing on stdout, while a real type error puts
+        its diagnostics on stdout. Without this rule a checker that could not
+        run would reach the skeptic labelled as its findings — the failure this
+        whole module exists to prevent.
+        """
+        repo = _python_repo(tmp_path)
+        (repo / "a.py").write_text("x = 1\n", encoding="utf-8")
+        monkeypatch.setattr(
+            subprocess,
+            "run",
+            lambda *_a, **_k: self._result(1, "Fatal configuration error"),
         )
         assert collect_evidence(repo, ("a.py",)) is None
 
@@ -369,7 +389,7 @@ class TestALauncherFailureIsNotAVerdict:
         monkeypatch.setattr(
             subprocess,
             "run",
-            lambda *_a, **_k: self._result(1, "a.py:1: error: Incompatible types"),
+            lambda *_a, **_k: self._result(1, out="a.py:1: error: Incompatible types"),
         )
         evidence = collect_evidence(repo, ("a.py",))
         assert evidence is not None

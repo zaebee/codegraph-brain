@@ -114,16 +114,20 @@ def _python_files_inside(project_root: Path, changed_files: tuple[str, ...]) -> 
 #: assumed, because the whole point is to tell a verdict from a non-verdict:
 #:
 #:     0  clean                      pyrefly clean / ruff "All checks passed!"
-#:     1  ran, and reported findings  pyrefly type error / ruff F401
+#:     1  ran, and reported findings  pyrefly type error / ruff F401 — findings
+#:                                   go to stdout, and that is what tells this
+#:                                   apart from the exit-1 failure below
 #:     2  could not run              `uv run` failing to spawn the tool, a bad
-#:                                   flag. Measured: pyrefly exits 1 for a path
-#:                                   that does not exist, so `_python_files_inside`
-#:                                   hands it only files it has stat'ed.
+#:                                   flag
 #:
-#: Classified by code rather than by matching "error:" in stderr. A substring
-#: rule cannot tell a checker's own fatal message from a checker legitimately
-#: printing the word — the same defect #375 found in a `git show` reader, where a
-#: missing commit and an absent path were indistinguishable by message.
+#: Classified by code and stream rather than by matching "error:" in stderr. A
+#: substring rule cannot tell a checker's own fatal message from a checker
+#: legitimately printing the word — the same defect #375 found in a `git show`
+#: reader, where a missing commit and an absent path were indistinguishable by
+#: message. One stream rule remains: an exit-1 run with nothing on stdout
+#: produced no findings and is a failure. Measured on pyrefly: a broken
+#: `[tool.pyrefly]` config and a vanished path both exit 1 with stderr-only
+#: text, while a real type error exits 1 with its diagnostics on stdout.
 _COULD_NOT_RUN = 2
 
 
@@ -150,7 +154,9 @@ def _run(command: list[str], project_root: Path, timeout: float) -> str | None:
         )
     except (OSError, subprocess.SubprocessError):
         return None
-    if result.returncode >= _COULD_NOT_RUN:
+    if result.returncode >= _COULD_NOT_RUN or (
+        result.returncode == 1 and not result.stdout.strip()
+    ):
         return None
     return f"{result.stdout}{result.stderr}"
 

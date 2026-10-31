@@ -230,33 +230,34 @@ markers = [
 # by running the file. Counting it made every new line there "uncovered" (#622).
 exclude_also = ['if __name__ == "__main__":']
 
-# Type checking is pyrefly, not mypy (2026-10-31): it checks this tree in ~2 s
-# against mypy's ~14 s, and CI gates on a committed error budget — the baseline
-# below — so the count can only shrink. Same scope as the mypy command it
-# replaces (`mypy src`): src only, not tests, fixtures or benchmark scripts.
+# Type checking is pyrefly, scoped to `src` — the scope the previous `mypy src`
+# command had, so tests, fixtures and benchmark scripts are not checked. CI
+# gates on the committed error budget (`.github/pyrefly-baseline.json`) rather
+# than on a clean tree.
 [tool.pyrefly]
 python-version = "3.12.0"
 preset = "legacy"
 project-includes = ["src"]
-# Optional provider SDKs are replaced with `Any` rather than typed. CI installs
-# only `--group dev`, so mypy never saw their types either — and a developer
-# with the `guardian` extra installed must not get a different error set, or the
-# committed baseline would mean different things in different environments.
+# Optional provider SDKs are replaced with `Any` rather than typed: CI installs
+# only `--group dev`, and a developer with the `guardian` extra installed must
+# not get a different error set, or the committed baseline would mean different
+# things in different environments.
 replace-imports-with-any = [
     "google.*",
     "mistralai.*",
     "ollama.*",
     "cohere.*",
 ]
+# `duckdb` is an optional extra: a bare install does not have it, and the import
+# would otherwise read as an error rather than as a missing extra.
 ignore-missing-imports = [
-    "pydantic.*",
     "duckdb.*",
 ]
 check-unannotated-defs = true
 infer-return-types = "never"
 
-# The strictness the mypy config asked for, as pyrefly's per-error levels
-# (`pyrefly init` derived these from `[tool.mypy] strict = true`).
+# Strictness equivalents of the previous `strict = true` mypy configuration,
+# expressed as pyrefly's per-error levels.
 [tool.pyrefly.errors]
 implicit-any = "error"
 method-assign = "error"

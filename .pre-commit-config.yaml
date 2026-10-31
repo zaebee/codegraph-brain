@@ -17,10 +17,9 @@ repos:
         pass_filenames: false
         files: ^tests/.*\.py$
 
-      # The type gate, prefigured: pyrefly replaced mypy on 2026-10-31. It runs
-      # the whole `src` project (scope set in pyproject, ~2 s) against the
-      # committed error budget, so `pass_filenames: false` — a staged-files
-      # view cannot see the rest of the tree the baseline was measured over.
+      # The type gate: pyrefly against the committed error budget. It runs the
+      # whole `src` project (scope set in pyproject), so `pass_filenames: false`
+      # — a staged-files view cannot see the tree the baseline was measured over.
       - id: pyrefly-budget
         name: pyrefly (type errors must not exceed the baseline)
         entry: uv run --frozen pyrefly check --baseline .github/pyrefly-baseline.json
@@ -34,5 +33,3 @@ repos:
       - id: ruff
         args: [--fix]
       - id: ruff-format
-
-
