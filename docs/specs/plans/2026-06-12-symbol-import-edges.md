@@ -486,3 +486,10 @@ git add -A -- src/ tests/ && git diff --cached --quiet || git commit -m "chore: 
 - [ ] No `raw_import:` in any output (unit no-leak + self-graph no-leak both green)
 - [ ] Self-parse pin proves the mechanism on cgis itself
 - [ ] PR body: `Closes #161`, link spec, include drift table + honest §5 scoping note (test_routes.py-via-router → slice 3)
+
+<!-- START_CGIS_RELATED -->
+**Related:** [symbol-import-edges](../2026-06-11-symbol-import-edges-design.md)
+
+**Code:** [`src/cgis/core/`](../../../src/cgis/core/) · [`src/cgis/resolver/`](../../../src/cgis/resolver/) · [`tests/unit/test_ontology_compliance.py`](../../../tests/unit/test_ontology_compliance.py) · [`tests/unit/test_python_extractor.py`](../../../tests/unit/test_python_extractor.py) · [`tests/unit/test_resolver.py`](../../../tests/unit/test_resolver.py)
+
+<!-- END_CGIS_RELATED -->

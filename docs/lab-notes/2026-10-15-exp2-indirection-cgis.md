@@ -276,3 +276,8 @@ ratios as an indirection effect at all.
   mechanically (decorator, refresh path, `getattr` fan-out) failed at their boundaries, where
   per-path reading did not. Gold for agent benchmarks needs its own validation step: score it against
   several independent agent runs, and adjudicate every disagreement, before freezing it.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [exp1-radius-indirection](2026-10-15-exp1-radius-indirection.md) · [exp3-does-cgis-help](2026-10-15-exp3-does-cgis-help.md)
+
+<!-- END_CGIS_RELATED -->

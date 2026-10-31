@@ -210,3 +210,10 @@ test module today, which is why the missing timeout went unnoticed:
 - Changing prompts, context assembly, or the finder/skeptic logic.
 - Cohere, which is declared in the guardian dependency group but has no provider
   module.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [guardian-timeout-retry](2026-07-30-guardian-timeout-retry-plan.md) · [chunk-source-filter](2026-07-30-chunk-source-filter-design.md) · [guardian-precision-bench](2026-07-30-guardian-precision-bench-design.md) · [chunk-source-filter](2026-07-30-chunk-source-filter-plan.md) · [guardian-precision-bench](2026-07-30-guardian-precision-bench-plan.md)
+
+**Code:** [`src/cgis/guardian/`](../../src/cgis/guardian/) · [`tests/unit/test_guardian_providers.py`](../../tests/unit/test_guardian_providers.py)
+
+<!-- END_CGIS_RELATED -->

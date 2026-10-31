@@ -685,3 +685,10 @@ State in the description, because a reviewer cannot see it from the diff:
 2. **`unresolved_ratio` goes up, and that is the fix.** The remaining placeholders were being counted as resolved; they are now counted honestly. A reviewer seeing a metric worsen deserves to be told it is the point.
 3. **The collision**: four placeholder nodes were shared by several classes at baseline — name them.
 4. **What this does not do**: `self.a.b.c()` is untouched (D8); the two `self_types` shapes in the spec's Risks are untouched; #415 remains blocked on #416 and #417.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [annotation-graph](../2026-09-05-annotation-graph-design.md) · [annotation-graph-pr1](2026-09-05-annotation-graph-pr1.md) · [guardian-chunker](2026-06-11-guardian-chunker.md)
+
+**Code:** [`src/cgis/core/`](../../../src/cgis/core/) · [`src/cgis/query/`](../../../src/cgis/query/) · [`src/cgis/resolver/`](../../../src/cgis/resolver/) · [`tests/self_parsing/test_architecture.py`](../../../tests/self_parsing/test_architecture.py) · [`tests/unit/test_resolver.py`](../../../tests/unit/test_resolver.py)
+
+<!-- END_CGIS_RELATED -->

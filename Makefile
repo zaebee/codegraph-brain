@@ -1,5 +1,5 @@
 .PHONY: format lint type-check pytest doc-coverage coverage coverage-html check \
-        ui-dev ui-build ui-test ui-lint ui-format ui-preview ui-analyze ui-check \
+        docs-links ui-dev ui-build ui-test ui-lint ui-format ui-preview ui-analyze ui-check \
         all-checks
 
 # ── Python ────────────────────────────────────────────────────────────────────
@@ -18,6 +18,11 @@ pytest:
 
 doc-coverage:
 	uv run interrogate src
+
+# Regenerate the Related/Code blocks and docs/INDEX.md. Idempotent; CI runs the
+# same script on every push to main, so a local run only saves a later commit.
+docs-links:
+	uv run python scripts/generate_doc_links.py
 
 # Line coverage. `--cov=scripts` is not optional and not cosmetic: sonar.sources
 # is `src,scripts`, so SonarCloud counts every executable line under scripts/ as

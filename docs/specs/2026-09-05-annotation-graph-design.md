@@ -620,3 +620,10 @@ against the design as originally written.
   unguarded. It does not affect the orphan query — D10's rule covers a class
   *named* in a decorator through the same `import_map` gate — but it is the
   remaining hole in "a call outside a function is still a call".
+
+<!-- START_CGIS_RELATED -->
+**Related:** [annotation-graph-pr2](plans/2026-09-05-annotation-graph-pr2.md) · [annotation-graph-pr1](plans/2026-09-05-annotation-graph-pr1.md)
+
+**Code:** [`tests/unit/test_name_load_positions.py`](../../tests/unit/test_name_load_positions.py)
+
+<!-- END_CGIS_RELATED -->

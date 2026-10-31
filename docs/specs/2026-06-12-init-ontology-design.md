@@ -204,3 +204,10 @@ table shows name / fqn_prefix / pattern-or-hygiene / tolerance. Node counts
 remain visible in the per-domain comments (`# below min_nodes (N nodes)`)
 and in any subsequent `cgis drift` run. Review finding M5, accepted as a
 display simplification.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [init-ontology](plans/2026-06-12-init-ontology.md) · [gate-semantics](2026-06-12-gate-semantics-design.md) · [drift-empty-domains](2026-06-12-drift-empty-domains-design.md) · [PATTERNS_AND_TRIADS](../architecture/PATTERNS_AND_TRIADS.md) · [tangle-anti-pattern](2026-06-13-tangle-anti-pattern-design.md)
+
+**Code:** [`src/cgis/query/`](../../src/cgis/query/)
+
+<!-- END_CGIS_RELATED -->

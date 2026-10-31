@@ -1426,3 +1426,10 @@ rather than attempted.
 - Contamination: the 50 PRs are public and predate current model cutoffs.
   Martian acknowledge this for the offline track and built the online track in
   response. Our number inherits the same caveat and must state it.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [guardian-skeptic-scoring](2026-07-29-guardian-skeptic-scoring-design.md) · [GUARDIAN_LOCAL_BENCH](../GUARDIAN_LOCAL_BENCH.md) · [finder-bug-class-taxonomy](2026-07-31-finder-bug-class-taxonomy.md) · [aura-autoevolution-poc](2026-08-01-aura-autoevolution-poc.md)
+
+**Code:** [`scripts/guardian_calibrate.py`](../../scripts/guardian_calibrate.py) · [`scripts/guardian_martian.py`](../../scripts/guardian_martian.py)
+
+<!-- END_CGIS_RELATED -->

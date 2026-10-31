@@ -1281,3 +1281,10 @@ git commit -m "fix(scripts): gen_ideal_graph skips hygiene-only domains"
 2. `make format && make lint && make type-check && make pytest && make doc-coverage` — all green.
 3. `docs/ontology/patterns_ui.yaml` does not exist; `grep -rn patterns_ui` over `src/ tests/ scripts/ docs/ontology/` returns nothing.
 4. Self-drift ratchets: Python tolerances byte-identical to PR #141 values; UI tolerances 0.15 with measured 0.00.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [motif-basis-part-b](2026-06-10-motif-basis-part-b.md) · [pattern-alphabet-motif-basis](../2026-06-09-pattern-alphabet-motif-basis-design.md) · [language-packs](../../plans/2026-10-14-language-packs.md) · [domain-pattern-fingerprint](../2026-06-09-domain-pattern-fingerprint-design.md) · [fingerprint-drift](2026-06-09-fingerprint-drift.md)
+
+**Code:** [`src/cgis/query/`](../../../src/cgis/query/) · [`tests/unit/test_drift.py`](../../../tests/unit/test_drift.py) · [`tests/unit/test_patterns_yaml.py`](../../../tests/unit/test_patterns_yaml.py) · [`tests/self_parsing/test_drift.py`](../../../tests/self_parsing/test_drift.py) · [`scripts/gen_ideal_graph.py`](../../../scripts/gen_ideal_graph.py)
+
+<!-- END_CGIS_RELATED -->

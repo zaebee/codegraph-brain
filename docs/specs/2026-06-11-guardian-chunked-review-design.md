@@ -263,3 +263,10 @@ Model selection via existing `GUARDIAN_MODEL` env.
 - Bin-packing of small chunks; per-chunk drift section; ensemble runs (#155).
 - Prod config change: `GUARDIAN_FEATURES=chunked` repo var is set ONLY after
   the phase-1 gate passes and the PR is merged.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [guardian-chunked-review](plans/2026-06-11-guardian-chunked-review.md) · [chunked-review-negative-result](../lab-notes/2026-06-11-chunked-review-negative-result.md)
+
+**Code:** [`src/cgis/guardian/`](../../src/cgis/guardian/)
+
+<!-- END_CGIS_RELATED -->

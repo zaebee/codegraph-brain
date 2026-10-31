@@ -127,7 +127,7 @@ graph LR
     F --> G
 ```
 
-The details — and a pipeline graph CGIS regenerates from its own source on every change — are in [HOW_IT_WORKS.md](https://github.com/zaebee/codegraph-brain/blob/main/docs/architecture/HOW_IT_WORKS.md).
+The details — and a pipeline graph CGIS regenerates from its own source on every change — are in [HOW_IT_WORKS.md](https://github.com/zaebee/codegraph-brain/blob/main/docs/architecture/HOW_IT_WORKS.md), and the full map of every document with its generated cross-references to the code is in [docs/INDEX.md](https://github.com/zaebee/codegraph-brain/blob/main/docs/INDEX.md).
 
 ---
 

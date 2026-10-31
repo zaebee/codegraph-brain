@@ -213,3 +213,10 @@ node ids and edges (22,557 nodes, 114,014 edges). Whether it stays off is #706's
   Held-out labels: `heldout-labels.json`, `heldout-v2-labels.json`. Every ruling and
   maintainer decision is in the controller ledger (`.superpowers/sdd/2026-10-18-data-key-layer/progress.md`,
   local and gitignored), under "Task 6"; the decisions also go in the PR body.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [data-key-layer](../specs/2026-10-18-data-key-layer-design.md) · [data-key-layer](../plans/2026-10-18-data-key-layer.md)
+
+**Code:** [`scripts/data_keys/mine_heldout.py`](../../scripts/data_keys/mine_heldout.py) · [`scripts/data_keys/mine_blame.py`](../../scripts/data_keys/mine_blame.py) · [`scripts/data_keys/draw_noise.py`](../../scripts/data_keys/draw_noise.py) · [`scripts/data_keys/evaluate.py`](../../scripts/data_keys/evaluate.py) · [`scripts/data_keys/noise_run.py`](../../scripts/data_keys/noise_run.py)
+
+<!-- END_CGIS_RELATED -->

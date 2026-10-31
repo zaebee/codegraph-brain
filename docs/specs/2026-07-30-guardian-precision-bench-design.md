@@ -215,3 +215,10 @@ Benchmark data:
 - Recording skeptic verdicts (see "What this does not give").
 - #277 chunk routing — untouched. Recording happens in `run_guardian`, above
   the routing decision, so both paths are covered without either being touched.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [guardian-precision-bench](2026-07-30-guardian-precision-bench-plan.md) · [chunk-source-filter](2026-07-30-chunk-source-filter-design.md) · [guardian-timeout-retry](2026-07-30-guardian-timeout-retry-design.md) · [chunk-source-filter](2026-07-30-chunk-source-filter-plan.md) · [guardian-timeout-retry](2026-07-30-guardian-timeout-retry-plan.md)
+
+**Code:** [`src/cgis/guardian/`](../../src/cgis/guardian/) · [`scripts/guardian_review.py`](../../scripts/guardian_review.py) · [`.github/workflows/guardian.yml`](../../.github/workflows/guardian.yml)
+
+<!-- END_CGIS_RELATED -->

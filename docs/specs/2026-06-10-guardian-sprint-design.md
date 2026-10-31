@@ -478,3 +478,10 @@ mocked SDK clients.
 A step that fails its benchmark gate does not advance to the next; we tune or
 drop the feature flag instead. The flags make "drop" a one-line config
 change, not a revert.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [guardian-context-skeptic-inline](plans/2026-06-10-guardian-context-skeptic-inline.md) · [guardian-skeptic-scoring](2026-07-29-guardian-skeptic-scoring-design.md) · [language-packs](2026-10-14-language-packs-design.md) · [GUARDIAN_LOCAL_BENCH](../GUARDIAN_LOCAL_BENCH.md) · [gate-semantics](2026-06-12-gate-semantics-design.md)
+
+**Code:** [`src/cgis/guardian/`](../../src/cgis/guardian/) · [`.github/workflows/guardian.yml`](../../.github/workflows/guardian.yml) · [`scripts/guardian_review.py`](../../scripts/guardian_review.py) · [`scripts/guardian_bench.py`](../../scripts/guardian_bench.py)
+
+<!-- END_CGIS_RELATED -->

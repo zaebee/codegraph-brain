@@ -543,3 +543,10 @@ change requires a consumer to move.
 
 The concrete requests that shaped §3.1 and §3.3 came from that side during
 design, along with the 108-review measurement in §1.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [review-fingerprint](plans/2026-08-14-review-fingerprint.md) · [SELF_PORTRAIT](../architecture/SELF_PORTRAIT.md) · [language-packs-step1](../plans/2026-10-14-language-packs-step1.md) · [language-packs](../plans/2026-10-14-language-packs.md) · [suggest-packages](plans/2026-06-13-suggest-packages.md)
+
+**Code:** [`src/cgis/guardian/`](../../src/cgis/guardian/) · [`src/cgis/query/`](../../src/cgis/query/) · [`src/cgis/storage/`](../../src/cgis/storage/) · [`scripts/guardian_martian.py`](../../scripts/guardian_martian.py) · [`src/cgis/__init__.py`](../../src/cgis/__init__.py)
+
+<!-- END_CGIS_RELATED -->

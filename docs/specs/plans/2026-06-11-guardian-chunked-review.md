@@ -1220,3 +1220,10 @@ large-PR mean recall by ≥ 0.05 with noise ≤ 1.5.
 
 **Task 12 — Prod flag:** set repo var `GUARDIAN_FEATURES=chunked` ONLY after
 the phase-1 gate passes and the PR is merged. Update memory.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [guardian-chunked-review](../2026-06-11-guardian-chunked-review-design.md) · [guardian-context-skeptic-inline](2026-06-10-guardian-context-skeptic-inline.md)
+
+**Code:** [`src/cgis/guardian/`](../../../src/cgis/guardian/) · [`scripts/guardian_bench.py`](../../../scripts/guardian_bench.py) · [`tests/unit/test_guardian_chunked.py`](../../../tests/unit/test_guardian_chunked.py) · [`tests/unit/test_guardian_core.py`](../../../tests/unit/test_guardian_core.py) · [`tests/unit/test_guardian_collector.py`](../../../tests/unit/test_guardian_collector.py)
+
+<!-- END_CGIS_RELATED -->

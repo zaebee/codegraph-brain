@@ -150,3 +150,10 @@ Slice 2 wires chunks into the finder loop behind `GUARDIAN_FEATURES=chunked`
 (per-chunk prompts, dedup, one skeptic pass) and runs the benchmark gate.
 Slice 3 adds the quotient "architecture chunk". Forced splitting and one-hop
 expansion stay parked until the bench demands them.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [guardian-chunker](plans/2026-06-11-guardian-chunker.md)
+
+**Code:** [`src/cgis/guardian/`](../../src/cgis/guardian/) · [`tests/unit/test_guardian_chunker.py`](../../tests/unit/test_guardian_chunker.py)
+
+<!-- END_CGIS_RELATED -->

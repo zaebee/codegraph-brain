@@ -631,3 +631,10 @@ git commit -m "docs(ontology): document the empty-domain gate and --profile inte
 - [ ] `git diff main -- docs/ontology/patterns.yaml` touches ONLY the header comment
 - [ ] Live repro outputs captured for the PR description
 - [ ] PR body: `Closes #178`, link spec + Amendment 1, note the CLI behavior change (mixed-yaml runs need `--profile`)
+
+<!-- START_CGIS_RELATED -->
+**Related:** [drift-empty-domains](../2026-06-12-drift-empty-domains-design.md) · [gate-semantics](../2026-06-12-gate-semantics-design.md) · [init-ontology](../2026-06-12-init-ontology-design.md) · [init-ontology](2026-06-12-init-ontology.md)
+
+**Code:** [`src/cgis/api/`](../../../src/cgis/api/) · [`src/cgis/query/`](../../../src/cgis/query/) · [`tests/unit/test_fingerprint.py`](../../../tests/unit/test_fingerprint.py) · [`tests/unit/test_drift.py`](../../../tests/unit/test_drift.py) · [`tests/unit/test_drift_service.py`](../../../tests/unit/test_drift_service.py)
+
+<!-- END_CGIS_RELATED -->

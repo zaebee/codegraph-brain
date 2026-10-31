@@ -266,3 +266,10 @@ Superseding §2.1/§2.4/§2.5 details:
 - `RAW_DEP_PREFIX` remains in `engine.py` (#161 contract).
 
 Metric-hardening against passthrough re-exports in general is tracked in #182.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [resolver-split](plans/2026-06-11-resolver-split.md) · [symbol-import-edges](2026-06-11-symbol-import-edges-design.md) · [suggest-packages](2026-06-13-suggest-packages-design.md)
+
+**Code:** [`src/cgis/resolver/`](../../src/cgis/resolver/) · [`tests/self_parsing/test_architecture.py`](../../tests/self_parsing/test_architecture.py) · [`tests/unit/test_resolver.py`](../../tests/unit/test_resolver.py) · [`tests/unit/test_resolver_indices.py`](../../tests/unit/test_resolver_indices.py)
+
+<!-- END_CGIS_RELATED -->

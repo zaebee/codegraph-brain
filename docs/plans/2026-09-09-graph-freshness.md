@@ -843,3 +843,10 @@ git commit -m "docs(spec): record the measured freshness probe cost (#175)"
 **Placeholders:** none. Task 3 step 5 and Task 5 step 4 describe mechanical repetition across an enumerated list of functions rather than pasting twelve near-identical diffs; the helper's code and the exact transformation are given.
 
 **Type consistency:** `Freshness`/`FreshnessState` are defined in Task 1 and used unchanged in Tasks 2, 4, 5. `record_ingest(root: str) -> None` and `get_ingest_state() -> tuple[str, float] | None` are defined in Task 1 and consumed in Tasks 2 and 3. `freshness(root=None) -> Freshness` is defined in Task 2 and consumed in Tasks 3, 4, 5. `get_tracked_source_files() -> set[str]` is introduced and used inside Task 2 only.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [graph-freshness](../specs/2026-09-09-graph-freshness-design.md)
+
+**Code:** [`src/cgis/api/`](../../src/cgis/api/) · [`src/cgis/core/`](../../src/cgis/core/) · [`src/cgis/storage/`](../../src/cgis/storage/) · [`tests/unit/test_freshness.py`](../../tests/unit/test_freshness.py) · [`tests/unit/test_sqlite_store.py`](../../tests/unit/test_sqlite_store.py)
+
+<!-- END_CGIS_RELATED -->

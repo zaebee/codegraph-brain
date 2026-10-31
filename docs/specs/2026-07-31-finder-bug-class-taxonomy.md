@@ -454,3 +454,10 @@ walks the axes in sequence** — separation of attention without a second call a
 all. Failing that, keep two calls and attack the residual noise from the skeptic
 side, which is currently tuned for single-prompt volume rather than for a merged
 union.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [aura-autoevolution-poc](2026-08-01-aura-autoevolution-poc.md) · [guardian-skeptic-scoring](2026-07-29-guardian-skeptic-scoring-design.md) · [guardian-precision-bench](2026-07-30-guardian-precision-bench-design.md) · [guardian-code-review-bench](2026-08-11-guardian-code-review-bench.md)
+
+**Code:** [`scripts/guardian_bench.py`](../../scripts/guardian_bench.py)
+
+<!-- END_CGIS_RELATED -->

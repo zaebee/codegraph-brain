@@ -259,3 +259,8 @@ the baseline fails loudly.
   `hygiene_baseline` too — noted there).
 - #177 fit-quality reporting; quotient rebind (#146).
 - Changing `HealthScorer`'s global cycle enrichment or its consumers.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [gate-semantics](plans/2026-06-12-gate-semantics.md) · [drift-empty-domains](2026-06-12-drift-empty-domains-design.md) · [init-ontology](2026-06-12-init-ontology-design.md) · [PATTERNS_AND_TRIADS](../architecture/PATTERNS_AND_TRIADS.md) · [init-ontology](plans/2026-06-12-init-ontology.md)
+
+<!-- END_CGIS_RELATED -->

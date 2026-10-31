@@ -164,3 +164,10 @@ Unit (`tests/unit/test_guardian_chunker.py` and `test_guardian_chunked.py`):
   collector, and `results.jsonl` records the features string, so the two arms are
   distinguishable with no new code.
 - Enabling chunking by size or by default.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [chunk-source-filter](2026-07-30-chunk-source-filter-plan.md) · [guardian-precision-bench](2026-07-30-guardian-precision-bench-design.md) · [guardian-timeout-retry](2026-07-30-guardian-timeout-retry-design.md) · [guardian-precision-bench](2026-07-30-guardian-precision-bench-plan.md)
+
+**Code:** [`tests/unit/test_guardian_chunker.py`](../../tests/unit/test_guardian_chunker.py)
+
+<!-- END_CGIS_RELATED -->

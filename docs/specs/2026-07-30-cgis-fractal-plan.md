@@ -1180,3 +1180,10 @@ git commit -m "docs(specs): record the self-parsing fractal slope (#186)"
 - Spec acceptance criteria 1 and 2 are covered by tests
   (`tests/self_parsing/test_fractal.py`, `test_verdict_survives_truncating_the_ladder`);
   criterion 3 was satisfied before implementation and is recorded in the spec.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [cgis-fractal](2026-07-30-cgis-fractal-design.md) · [language-packs-step1](../plans/2026-10-14-language-packs-step1.md) · [language-packs](../plans/2026-10-14-language-packs.md) · [mcp-drift-validate-fqn](plans/2026-06-11-mcp-drift-validate-fqn.md) · [init-ontology](plans/2026-06-12-init-ontology.md)
+
+**Code:** [`src/cgis/api/`](../../src/cgis/api/) · [`src/cgis/core/`](../../src/cgis/core/) · [`src/cgis/query/`](../../src/cgis/query/) · [`src/cgis/storage/`](../../src/cgis/storage/) · [`scripts/probe_tier_ladder.py`](../../scripts/probe_tier_ladder.py)
+
+<!-- END_CGIS_RELATED -->

@@ -250,3 +250,8 @@ the largest answers. G1's "radius" effect cannot be separated from answer size i
    indirect.
 4. Exp2's design follows from these limits: hold radius **and answer size** fixed, vary indirection in
    matched pairs, and derive gold path-sensitively for dynamic dispatch.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [exp2-indirection-cgis](2026-10-15-exp2-indirection-cgis.md) · [exp3-does-cgis-help](2026-10-15-exp3-does-cgis-help.md)
+
+<!-- END_CGIS_RELATED -->

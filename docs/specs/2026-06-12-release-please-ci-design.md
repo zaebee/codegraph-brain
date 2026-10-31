@@ -91,3 +91,10 @@ Config-only change; no unit tests. Verification:
 - Workflow YAML parses (e.g. `actionlint` or GitHub's own validation on push).
 - After merge to `main`, confirm release-please opens a Release PR bumping `0.1.0 → 0.1.1`
   (under variant A both `fix` and `feat` are patch bumps, so the first release is a patch).
+
+<!-- START_CGIS_RELATED -->
+**Related:** [release-please-ci](plans/2026-06-12-release-please-ci.md)
+
+**Code:** [`.github/workflows/release-please.yml`](../../.github/workflows/release-please.yml)
+
+<!-- END_CGIS_RELATED -->

@@ -133,3 +133,10 @@ Three cases:
   close per call.
 - Any change to Mistral or Ollama.
 - Retry, timeout or review behaviour.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [genai-client-close](2026-07-30-genai-client-close-plan.md)
+
+**Code:** [`tests/unit/test_guardian_core.py`](../../tests/unit/test_guardian_core.py)
+
+<!-- END_CGIS_RELATED -->
