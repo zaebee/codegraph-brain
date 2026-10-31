@@ -8,8 +8,14 @@ name: UI
 # Path-filtered so Python-only changes do not pay for a bun install, and the
 # workflow file itself is in the filter so an edit to it runs it.
 on:
+  # Trunk only, for the reason ci.yml gives: listing the PR branch patterns
+  # here too made every push to a PR branch start this workflow twice on one
+  # SHA (a push run and a pull_request run), putting two identical "UI
+  # Verification" checks on the PR — seen on #766, 18s and 22s. The
+  # `pull_request` run below covers a PR into main; `dev` stays because a
+  # pull_request event only covers PRs into `main`.
   push:
-    branches: [ main, dev, "feat/**", "fix/**", "docs/**" ]
+    branches: [ main, dev ]
     paths: [ "ui/**", ".github/workflows/ui.yml" ]
   pull_request:
     branches: [ main ]
