@@ -12,7 +12,7 @@ from typing import override
 import structlog
 
 from cgis.core.extractor import BaseExtractor
-from cgis.core.project import ProjectFacts, ProjectReader
+from cgis.core.project import ProjectFacts, ProjectReader, resolves_inside
 from cgis.languages.typescript.npm import NpmDependencies
 from cgis.languages.typescript.tsconfig import TSCONFIG, TsconfigPaths
 from cgis.languages.typescript.workspaces import (
@@ -61,15 +61,24 @@ class TypeScriptProjectReader(ProjectReader):
 
     @override
     def note(self, path: Path) -> bool:
-        """`package.json` feeds packages and npm names; `tsconfig.json` feeds aliases."""
+        """`package.json` feeds packages and npm names; `tsconfig.json` feeds aliases.
+
+        A config the walk passed that resolves outside the root is claimed but never
+        read: a PR can commit one as a symlink, and the ingest must not read a file
+        the checkout does not hold (#732). `WorkspacePackages` and `TsconfigPaths`
+        contain themselves where they can; this is the walk's one gate.
+        """
+        if path.name not in (PACKAGE_MANIFEST, TSCONFIG):
+            return False
+        if not resolves_inside(path, self._root):
+            logger.warning("Config outside the ingest root, skipping", path=str(path))
+            return True
         if path.name == PACKAGE_MANIFEST:
             self._packages.note(path)
             self._npm.note(path)
             return True
-        if path.name == TSCONFIG:
-            self._tsconfigs.note(path)
-            return True
-        return False
+        self._tsconfigs.note(path)
+        return True
 
     @override
     def note_above(self, directories: list[Path], bounded: bool) -> None:

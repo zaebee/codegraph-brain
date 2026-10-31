@@ -9,6 +9,7 @@ import pytest
 
 import cgis.resolver.indices as indices
 from cgis.core.models import Node
+from cgis.core.project import resolves_inside
 from cgis.import_names import ImportNameCollector, ImportNames
 from cgis.languages import extractors, project_readers
 from cgis.languages.data import DataProjectReader
@@ -69,6 +70,72 @@ def test_the_typescript_reader_takes_only_its_files(tmp_path: Path) -> None:
     assert reader.note(tmp_path / "package.json") is True
     assert reader.note(tmp_path / "tsconfig.json") is True
     assert reader.note(tmp_path / "pyproject.toml") is False
+
+
+def test_the_typescript_reader_claims_a_config_outside_the_root_but_does_not_read_it(
+    tmp_path: Path,
+) -> None:
+    """A PR-committed symlink must not make the ingest read a file the checkout lacks (#732)."""
+    outside = tmp_path / "outside.json"
+    outside.write_text(
+        json.dumps({"name": "@evil/ui", "dependencies": {"evil-dep": "^1"}}), encoding="utf-8"
+    )
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "package.json").symlink_to(outside)
+
+    reader = TypeScriptProjectReader(root, extractors([]))
+    assert reader.note(root / "package.json") is True  # our config, just not a readable one
+    facts = reader.facts()
+    assert facts.npm_dependencies == []
+    assert facts.workspace_packages == {}
+
+
+def test_containment_is_decided_on_the_resolved_path(tmp_path: Path) -> None:
+    """The pipeline's rule (#731) as a helper: a link pointing out of the root is not read."""
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "inside.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "outside.json").write_text("{}", encoding="utf-8")
+    (root / "link-inside.json").symlink_to(root / "inside.json")
+    (root / "link-outside.json").symlink_to(tmp_path / "outside.json")
+
+    assert resolves_inside(root / "inside.json", root) is True
+    assert resolves_inside(root / "link-inside.json", root) is True
+    assert resolves_inside(root / "link-outside.json", root) is False
+
+
+def test_the_walk_reads_no_config_that_resolves_outside_the_root(tmp_path: Path) -> None:
+    """All three config sources at once: `package.json`, `tsconfig.json` and `go.mod` (#732).
+
+    `IngestionPipeline` notes every walked file before it checks containment, so the
+    readers are the gate: one walk, three links out, and no fact from any of them.
+    """
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "package.json").write_text(
+        json.dumps({"name": "@evil/ui", "dependencies": {"evil-dep": "^1"}}), encoding="utf-8"
+    )
+    (outside / "tsconfig.json").write_text(
+        json.dumps({"compilerOptions": {"baseUrl": ".", "paths": {"@evil/*": ["src/*"]}}}),
+        encoding="utf-8",
+    )
+    (outside / "go.mod").write_text("module evil.example/app\n", encoding="utf-8")
+    root = tmp_path / "repo"
+    (root / ".git").mkdir(parents=True)
+    configs = ("package.json", "tsconfig.json", "go.mod")
+    for name in configs:
+        (root / name).symlink_to(outside / name)
+
+    collector = ImportNameCollector(root, extractors([]))
+    for name in configs:
+        collector.note(root / name)
+    names = collector.collect()
+
+    assert names.npm_dependencies == []
+    assert names.workspace_packages == {}
+    assert names.path_aliases == {}
+    assert names.extra == {}  # no go_module: the module was never read
 
 
 def test_two_packs_claiming_one_key_fail() -> None:
