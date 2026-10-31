@@ -264,3 +264,10 @@ of magnitude rather than pinning a value that ordinary refactors would break.
 - Any gate, threshold in `patterns.yaml`, or `hygiene_baseline` wiring.
 - Cross-language comparison — the ladder is defined over `CONTAINS` / `DECLARES`,
   which any extractor emits, but only Python is validated here.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [cgis-fractal](2026-07-30-cgis-fractal-plan.md)
+
+**Code:** [`src/cgis/api/`](../../src/cgis/api/) · [`src/cgis/query/`](../../src/cgis/query/) · [`src/cgis/query/drift/fractal.py`](../../src/cgis/query/drift/fractal.py) · [`src/cgis/api/mcp_server.py`](../../src/cgis/api/mcp_server.py) · [`scripts/probe_tier_ladder.py`](../../scripts/probe_tier_ladder.py)
+
+<!-- END_CGIS_RELATED -->

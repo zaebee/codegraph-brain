@@ -838,3 +838,8 @@ scores an empty test suite higher than a tested one. Reconciles with #305 —
 cgis stays a measurement tool, and one of its two proposed gates has now been
 falsified by measurement rather than argument, which is the outcome that
 discipline is for.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [finder-bug-class-taxonomy](2026-07-31-finder-bug-class-taxonomy.md) · [PATTERNS_AND_TRIADS](../architecture/PATTERNS_AND_TRIADS.md) · [init-ontology](2026-06-12-init-ontology-design.md) · [tangle-anti-pattern](2026-06-13-tangle-anti-pattern-design.md) · [guardian-skeptic-scoring](2026-07-29-guardian-skeptic-scoring-design.md)
+
+<!-- END_CGIS_RELATED -->

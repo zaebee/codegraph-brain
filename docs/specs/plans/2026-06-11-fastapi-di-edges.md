@@ -975,3 +975,10 @@ git commit -m "chore: formatting/lint fallout for DI edges (#161)" || echo "noth
 ## Out of scope (do NOT implement)
 
 Symbol-level import edges (slice 2), class-body DI aliases, argless `Depends()` semantics, `Security` scopes, configurable DI-name lists, indexing non-DI module assignments. See spec §6.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [fastapi-di-edges](../2026-06-11-fastapi-di-edges-design.md) · [suggest-packages](2026-06-13-suggest-packages.md) · [suggest-packages](../2026-06-13-suggest-packages-design.md) · [language-packs](../../plans/2026-10-14-language-packs.md) · [fingerprint-drift](2026-06-09-fingerprint-drift.md)
+
+**Code:** [`src/cgis/core/`](../../../src/cgis/core/) · [`src/cgis/resolver/`](../../../src/cgis/resolver/) · [`src/cgis/storage/`](../../../src/cgis/storage/) · [`src/cgis/core/models.py`](../../../src/cgis/core/models.py) · [`src/cgis/resolver/engine.py`](../../../src/cgis/resolver/engine.py)
+
+<!-- END_CGIS_RELATED -->

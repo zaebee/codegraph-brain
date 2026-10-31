@@ -699,3 +699,10 @@ Comment `/guardian review` on a PR and confirm the run completes and its metrics
 entry carries a plausible `duration_s`. This is acceptance criterion 2 in the
 spec and cannot be checked from the branch, since no provider key is available
 locally.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [guardian-timeout-retry](2026-07-30-guardian-timeout-retry-design.md) · [guardian-precision-bench](2026-07-30-guardian-precision-bench-design.md) · [guardian-precision-bench](2026-07-30-guardian-precision-bench-plan.md)
+
+**Code:** [`src/cgis/guardian/`](../../src/cgis/guardian/) · [`src/cgis/guardian/providers/base.py`](../../src/cgis/guardian/providers/base.py) · [`tests/unit/test_guardian_providers.py`](../../tests/unit/test_guardian_providers.py) · [`src/cgis/guardian/providers/mistral.py`](../../src/cgis/guardian/providers/mistral.py) · [`src/cgis/guardian/providers/gemini.py`](../../src/cgis/guardian/providers/gemini.py)
+
+<!-- END_CGIS_RELATED -->

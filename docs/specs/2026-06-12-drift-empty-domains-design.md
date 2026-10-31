@@ -247,3 +247,10 @@ Superseding §2.1/§2.2 details:
   edges). A domain with edges but too few nodes for triples still carries
   v1 signal (chain_len, fan-out) and is correctly NOT no_signal.
 - Every existing hand-built fixture passes unchanged.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [drift-empty-domains](plans/2026-06-12-drift-empty-domains.md) · [gate-semantics](2026-06-12-gate-semantics-design.md) · [init-ontology](2026-06-12-init-ontology-design.md) · [gate-semantics](plans/2026-06-12-gate-semantics.md) · [init-ontology](plans/2026-06-12-init-ontology.md)
+
+**Code:** [`src/cgis/query/`](../../src/cgis/query/) · [`tests/self_parsing/test_drift.py`](../../tests/self_parsing/test_drift.py) · [`tests/unit/test_drift.py`](../../tests/unit/test_drift.py) · [`tests/unit/test_drift_service.py`](../../tests/unit/test_drift_service.py)
+
+<!-- END_CGIS_RELATED -->

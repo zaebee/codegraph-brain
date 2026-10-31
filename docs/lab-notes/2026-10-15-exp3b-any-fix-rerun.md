@@ -78,3 +78,8 @@ test callers. Here the line would have read `1 of 17 calls unresolved … self.c
 (b) Name each remaining call's caller and file:line; the store already holds `source`, `file_path`
 and `line_number`. This is a design diagnosis from three transcripts, not a demonstrated cause.
 The test is a probe of the same size after the change.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [exp3c-coverage-sites](2026-10-15-exp3c-coverage-sites.md)
+
+<!-- END_CGIS_RELATED -->

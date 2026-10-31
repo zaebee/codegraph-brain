@@ -188,3 +188,10 @@ built on `021*`, cannot yet name.
 - `docs/specs/2026-06-09-pattern-alphabet-motif-basis-design.md` — why a motif basis
 - `docs/architecture/ONTOLOGY.md` — the L1–L3 node/edge type schema
 - issue **#186** — recursive-quotient / fractality; macro-scale alphabet gaps
+
+<!-- START_CGIS_RELATED -->
+**Related:** [gate-semantics](../specs/2026-06-12-gate-semantics-design.md) · [init-ontology](../specs/2026-06-12-init-ontology-design.md) · [tangle-anti-pattern](../specs/2026-06-13-tangle-anti-pattern-design.md) · [MCP_REFERENCE](../how-to/MCP_REFERENCE.md) · [drift-empty-domains](../specs/2026-06-12-drift-empty-domains-design.md)
+
+**Code:** [`src/cgis/query/`](../../src/cgis/query/)
+
+<!-- END_CGIS_RELATED -->

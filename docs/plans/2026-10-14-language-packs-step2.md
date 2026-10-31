@@ -771,3 +771,10 @@ Expected: `identical` three times. The dump includes `ingest_state`, which is ex
   - the reviewer's deferred minors.
 
   Then check the Gemini comments, Guardian comments and Sonar results, and reply in every thread.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [language-packs-step1](2026-10-14-language-packs-step1.md)
+
+**Code:** [`src/cgis/core/`](../../src/cgis/core/) · [`src/cgis/languages/`](../../src/cgis/languages/) · [`src/cgis/storage/`](../../src/cgis/storage/) · [`tests/fixtures/graph_identity/snapshot.json`](../../tests/fixtures/graph_identity/snapshot.json) · [`tests/unit/test_configs_above_root.py`](../../tests/unit/test_configs_above_root.py)
+
+<!-- END_CGIS_RELATED -->

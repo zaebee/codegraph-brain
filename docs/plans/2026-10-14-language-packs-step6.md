@@ -268,3 +268,10 @@ def test_core_has_a_domain() -> None:
   - the plane quotients observe-only;
   - the per-pack domains;
   - links #596–#602 and the follow-ups #603 and #604.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [language-packs-step1](2026-10-14-language-packs-step1.md) · [language-packs-step5](2026-10-14-language-packs-step5.md) · [language-packs-step4](2026-10-14-language-packs-step4.md) · [language-packs-step3](2026-10-14-language-packs-step3.md) · [language-packs](../specs/2026-10-14-language-packs-design.md)
+
+**Code:** [`src/cgis/core/`](../../src/cgis/core/) · [`src/cgis/languages/`](../../src/cgis/languages/) · [`src/cgis/query/`](../../src/cgis/query/) · [`tests/self_parsing/test_drift.py`](../../tests/self_parsing/test_drift.py) · [`tests/fixtures/graph_identity/snapshot.json`](../../tests/fixtures/graph_identity/snapshot.json)
+
+<!-- END_CGIS_RELATED -->

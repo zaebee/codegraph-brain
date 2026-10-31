@@ -1936,6 +1936,9 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
   Task 5's module; Task 9 imports both Task 5 and Task 7 artifacts; Task 10
   imports Tasks 8–9. Execute in order.
 
+<!-- START_CGIS_RELATED -->
+**Related:** [guardian-sprint](../2026-06-10-guardian-sprint-design.md) · [gate-semantics](../2026-06-12-gate-semantics-design.md) · [language-packs](../2026-10-14-language-packs-design.md) · [guardian-chunked-review](2026-06-11-guardian-chunked-review.md)
 
+**Code:** [`src/cgis/guardian/`](../../../src/cgis/guardian/) · [`src/cgis/query/`](../../../src/cgis/query/) · [`src/cgis/guardian/collector.py`](../../../src/cgis/guardian/collector.py) · [`src/cgis/guardian/prompts.py`](../../../src/cgis/guardian/prompts.py) · [`src/cgis/guardian/skeptic.py`](../../../src/cgis/guardian/skeptic.py)
 
-
+<!-- END_CGIS_RELATED -->

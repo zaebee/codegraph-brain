@@ -1387,3 +1387,10 @@ EOF
 **Type consistency:** `ReadFile` is defined once in Task 2 and consumed by Tasks 3 and 7. `walk_closure(read, active_providers)` keeps that argument order everywhere. `compute_fingerprint(read, active_providers)` matches. `BaseProvider.name` is `ClassVar[str]` in Task 1 and read as `provider.name` in Tasks 5 and 6. `review_fingerprint_source` is the same `Literal["measured", "reconstructed"]` in Tasks 5 and 7.
 
 **Ordering constraint:** Tasks 5 and 7 must land together. `review_fingerprint` is required on `ReviewRecord`, so the corpora fail to load until the backfill has run. Do not merge Task 5 alone.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [review-fingerprint](../2026-08-14-review-fingerprint-design.md) · [SELF_PORTRAIT](../../architecture/SELF_PORTRAIT.md) · [language-packs-step1](../../plans/2026-10-14-language-packs-step1.md) · [language-packs](../../plans/2026-10-14-language-packs.md) · [guardian-chunker](2026-06-11-guardian-chunker.md)
+
+**Code:** [`src/cgis/guardian/`](../../../src/cgis/guardian/) · [`src/cgis/guardian/review_fingerprint.py`](../../../src/cgis/guardian/review_fingerprint.py) · [`src/cgis/guardian/providers/base.py`](../../../src/cgis/guardian/providers/base.py) · [`src/cgis/guardian/providers/gemini.py`](../../../src/cgis/guardian/providers/gemini.py) · [`src/cgis/guardian/providers/mistral.py`](../../../src/cgis/guardian/providers/mistral.py)
+
+<!-- END_CGIS_RELATED -->

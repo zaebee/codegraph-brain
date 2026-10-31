@@ -1738,3 +1738,10 @@ git commit -m "docs(spec): amend layered_dag ideal example — 030T is a layer-s
 - **Removing v1 counting fields from `PatternFingerprint`** — they still feed the CLI fingerprint display and Part C.
 - **Part C (typed codons / ATCG)** — gated on #47.
 - **Null-model z-scores, edge-by-edge ideal diffing** — explicit spec non-goals (§5).
+
+<!-- START_CGIS_RELATED -->
+**Related:** [unified-pattern-alphabet](2026-06-10-unified-pattern-alphabet.md) · [pattern-alphabet-motif-basis](../2026-06-09-pattern-alphabet-motif-basis-design.md) · [language-packs](../../plans/2026-10-14-language-packs.md) · [fingerprint-drift](2026-06-09-fingerprint-drift.md) · [fastapi-di-edges](2026-06-11-fastapi-di-edges.md)
+
+**Code:** [`src/cgis/pipeline/`](../../../src/cgis/pipeline/) · [`src/cgis/query/`](../../../src/cgis/query/) · [`src/cgis/resolver/`](../../../src/cgis/resolver/) · [`src/cgis/storage/`](../../../src/cgis/storage/) · [`src/cgis/cli.py`](../../../src/cgis/cli.py)
+
+<!-- END_CGIS_RELATED -->

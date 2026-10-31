@@ -730,3 +730,10 @@ S=/tmp/claude-1001/-home-zaebee-projects-ownima-codegraph-brain/97c475b5-6bc7-42
   - the reviewer's deferred minors.
 
   Then check the Gemini and Guardian comments and Sonar, and reply in every thread.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [language-packs-step4](2026-10-14-language-packs-step4.md) · [language-packs-step5](2026-10-14-language-packs-step5.md) · [language-packs-step6](2026-10-14-language-packs-step6.md) · [language-packs-step7](2026-10-14-language-packs-step7.md) · [language-packs](2026-10-14-language-packs.md)
+
+**Code:** [`src/cgis/core/`](../../src/cgis/core/) · [`src/cgis/languages/`](../../src/cgis/languages/) · [`src/cgis/resolver/`](../../src/cgis/resolver/) · [`tests/fixtures/graph_identity/snapshot.json`](../../tests/fixtures/graph_identity/snapshot.json) · [`tests/unit/test_resolver_indices.py`](../../tests/unit/test_resolver_indices.py)
+
+<!-- END_CGIS_RELATED -->

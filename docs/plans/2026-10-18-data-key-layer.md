@@ -251,3 +251,10 @@ SQLite store, typer CLI, FastMCP, pytest, strict mypy.
 - [ ] **Step 3:** Run the check on the 30 owner-api and 15 public noise PRs; have an independent agent judge each listed item "worth a look" or not with the PR in front of it; record medians.
 - [ ] **Step 4:** Time the check on five owner-api diffs with a fresh graph (median), and the final ingest-cost pair run (threshold 5 in the spec).
 - [ ] **Step 5:** Write the lab note: thresholds, results, misses with causes, and what the misses argue for (variant B data flow, registry completeness, fakes). Commit and open the PR.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [data-key-layer](../specs/2026-10-18-data-key-layer-design.md) · [data-key-diff-check](../lab-notes/2026-10-19-data-key-diff-check.md) · [language-packs](2026-10-14-language-packs.md) · [language-packs-step1](2026-10-14-language-packs-step1.md) · [language-packs-step7](2026-10-14-language-packs-step7.md)
+
+**Code:** [`src/cgis/api/`](../../src/cgis/api/) · [`src/cgis/core/`](../../src/cgis/core/) · [`src/cgis/languages/`](../../src/cgis/languages/) · [`src/cgis/query/`](../../src/cgis/query/) · [`src/cgis/resolver/`](../../src/cgis/resolver/)
+
+<!-- END_CGIS_RELATED -->

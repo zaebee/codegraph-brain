@@ -217,3 +217,10 @@ git commit -m "fix(guardian): close both Gemini connection pools (#283)"
 - Both new tests pass, and the two pre-existing Gemini tests still pass.
 - The Step 6 check prints `True` twice against the real SDK.
 - `mistral.py` and `ollama.py` are untouched.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [genai-client-close](2026-07-30-genai-client-close-design.md)
+
+**Code:** [`src/cgis/guardian/`](../../src/cgis/guardian/) · [`src/cgis/guardian/providers/gemini.py`](../../src/cgis/guardian/providers/gemini.py) · [`tests/unit/test_guardian_core.py`](../../tests/unit/test_guardian_core.py)
+
+<!-- END_CGIS_RELATED -->

@@ -260,3 +260,8 @@ Node and edge type names (through the ontology clause), the command and tool nam
 the profile data format, the specificity formula and threshold, the JSON output schema,
 how the mining script recognises "repairs an earlier PR" beyond the rule above, and
 which public repository serves the noise check (pinned before the first run).
+
+<!-- START_CGIS_RELATED -->
+**Related:** [data-key-layer](../plans/2026-10-18-data-key-layer.md) · [data-key-diff-check](../lab-notes/2026-10-19-data-key-diff-check.md)
+
+<!-- END_CGIS_RELATED -->

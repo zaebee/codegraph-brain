@@ -146,3 +146,10 @@ only fires on near-mesh and document the gap.
 - `closure-gap` coupling metric (reachability saturation on the
   `[micro ↔ closure(micro)]` spectrum).
 - `cgis_fractal` tool (entropy + collapse-ratio per structural tier, 2D verdict).
+
+<!-- START_CGIS_RELATED -->
+**Related:** [PATTERNS_AND_TRIADS](../architecture/PATTERNS_AND_TRIADS.md) · [init-ontology](2026-06-12-init-ontology-design.md) · [gate-semantics](2026-06-12-gate-semantics-design.md) · [aura-autoevolution-poc](2026-08-01-aura-autoevolution-poc.md)
+
+**Code:** [`src/cgis/api/`](../../src/cgis/api/) · [`src/cgis/query/`](../../src/cgis/query/) · [`src/cgis/api/mcp_server.py`](../../src/cgis/api/mcp_server.py) · [`tests/unit/test_triads.py`](../../tests/unit/test_triads.py) · [`tests/self_parsing/test_drift.py`](../../tests/self_parsing/test_drift.py)
+
+<!-- END_CGIS_RELATED -->

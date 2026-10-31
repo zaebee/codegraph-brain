@@ -155,3 +155,8 @@ edit to the running one.
   the one reliable trigger observed so far.
 - **`Server disconnected` / HTTP 000 mid-run.** Usually the runtime went away.
   An out-of-memory says so explicitly instead.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [guardian-sprint](specs/2026-06-10-guardian-sprint-design.md) · [guardian-skeptic-scoring](specs/2026-07-29-guardian-skeptic-scoring-design.md) · [guardian-code-review-bench](specs/2026-08-11-guardian-code-review-bench.md)
+
+<!-- END_CGIS_RELATED -->

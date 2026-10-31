@@ -676,3 +676,10 @@ git commit -m "test(self): init-ontology round-trip on the cgis self-graph (#174
 - [ ] Round-trip green on fixtures AND self-graph; live smoke outputs captured
 - [ ] Staleness pin test guards the bundled header
 - [ ] PR body: `Closes #174`, spec link, live smoke outputs, note the read-only MCP decision
+
+<!-- START_CGIS_RELATED -->
+**Related:** [init-ontology](../2026-06-12-init-ontology-design.md) · [drift-empty-domains](../2026-06-12-drift-empty-domains-design.md) · [gate-semantics](../2026-06-12-gate-semantics-design.md) · [drift-empty-domains](2026-06-12-drift-empty-domains.md) · [gate-semantics](2026-06-12-gate-semantics.md)
+
+**Code:** [`src/cgis/api/`](../../../src/cgis/api/) · [`src/cgis/query/`](../../../src/cgis/query/) · [`tests/unit/test_ontology_init.py`](../../../tests/unit/test_ontology_init.py) · [`src/cgis/cli.py`](../../../src/cgis/cli.py) · [`tests/unit/test_cli.py`](../../../tests/unit/test_cli.py)
+
+<!-- END_CGIS_RELATED -->

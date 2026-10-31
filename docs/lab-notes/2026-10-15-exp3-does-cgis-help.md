@@ -122,3 +122,8 @@ to this answer.
 kept, so no per-transcript comparison). Forced use is an upper bound, not adoption. The bootstrap is
 over tasks and ignores run-to-run variance. Control precision for dir-extractors is the stored 0.36
 (secondary table only). n=14 primary tasks over two codebases, one of them cgis itself.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [exp2-indirection-cgis](2026-10-15-exp2-indirection-cgis.md) · [exp1-radius-indirection](2026-10-15-exp1-radius-indirection.md)
+
+<!-- END_CGIS_RELATED -->

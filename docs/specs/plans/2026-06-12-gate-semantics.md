@@ -659,3 +659,10 @@ git commit -m "test(drift): httpx/owner-api acceptance shapes; document gate v2 
 - [ ] patterns.yaml: comment-only diff; ratchets untouched
 - [ ] #174 round-trip suite untouched and green
 - [ ] PR body: `Closes #176, closes #170`, spec link, ⚠️ breaking `--max-drift` semantics, drift table before/after statuses
+
+<!-- START_CGIS_RELATED -->
+**Related:** [gate-semantics](../2026-06-12-gate-semantics-design.md) · [drift-empty-domains](../2026-06-12-drift-empty-domains-design.md) · [init-ontology](../2026-06-12-init-ontology-design.md) · [init-ontology](2026-06-12-init-ontology.md)
+
+**Code:** [`src/cgis/api/`](../../../src/cgis/api/) · [`src/cgis/query/`](../../../src/cgis/query/) · [`tests/unit/test_fingerprint.py`](../../../tests/unit/test_fingerprint.py) · [`tests/unit/test_drift.py`](../../../tests/unit/test_drift.py) · [`tests/unit/test_drift_service.py`](../../../tests/unit/test_drift_service.py)
+
+<!-- END_CGIS_RELATED -->

@@ -679,3 +679,10 @@ def _normalized(index: SymbolIndex, type_fqn: str) -> str:
   - deferred minors.
 
   Then check the Gemini and Guardian comments and Sonar, and reply in every thread.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [language-packs-step3](2026-10-14-language-packs-step3.md) · [language-packs-step5](2026-10-14-language-packs-step5.md) · [language-packs-step6](2026-10-14-language-packs-step6.md)
+
+**Code:** [`src/cgis/core/`](../../src/cgis/core/) · [`src/cgis/languages/`](../../src/cgis/languages/) · [`src/cgis/resolver/`](../../src/cgis/resolver/) · [`tests/fixtures/graph_identity/snapshot.json`](../../tests/fixtures/graph_identity/snapshot.json) · [`src/cgis/languages/__init__.py`](../../src/cgis/languages/__init__.py)
+
+<!-- END_CGIS_RELATED -->

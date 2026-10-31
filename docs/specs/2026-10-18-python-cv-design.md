@@ -197,3 +197,10 @@ the fixes.
 3. Python extractor: value forms, CV-1/CV-4 candidates, `invokes`; profile.
 4. Python CV-2.
 5. Audit, docs, PR.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [python-cv](../plans/2026-10-18-python-cv.md)
+
+**Code:** [`src/cgis/core/`](../../src/cgis/core/) · [`plugin/skills/cgis/SKILL.md`](../../plugin/skills/cgis/SKILL.md)
+
+<!-- END_CGIS_RELATED -->

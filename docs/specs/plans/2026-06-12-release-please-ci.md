@@ -164,3 +164,10 @@ After this PR is merged to `main`, release-please runs and should open a **Relea
 titled like `chore(main): release 0.1.1`, containing a bumped `pyproject.toml` version, a new
 `CHANGELOG.md`, and an updated `.release-please-manifest.json`. Merging that Release PR creates
 tag `v0.1.1` and a GitHub Release. No PyPI upload occurs.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [release-please-ci](../2026-06-12-release-please-ci-design.md)
+
+**Code:** [`.github/workflows/release-please.yml`](../../../.github/workflows/release-please.yml)
+
+<!-- END_CGIS_RELATED -->

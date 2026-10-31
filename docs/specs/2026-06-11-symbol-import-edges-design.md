@@ -246,3 +246,10 @@ aliases gain symbol edges (covers the issue's gap-3 example verbatim).
   passthrough detection is a separate effort.
 - Closing #161: this slice completes the issue's gap 3 — the issue closes
   with this PR (gaps 1-2 closed by #166).
+
+<!-- START_CGIS_RELATED -->
+**Related:** [symbol-import-edges](plans/2026-06-12-symbol-import-edges.md) · [resolver-split](2026-06-11-resolver-split-design.md) · [suggest-packages](2026-06-13-suggest-packages-design.md)
+
+**Code:** [`src/cgis/core/`](../../src/cgis/core/) · [`src/cgis/core/models.py`](../../src/cgis/core/models.py) · [`tests/unit/test_python_extractor.py`](../../tests/unit/test_python_extractor.py) · [`tests/unit/test_resolver.py`](../../tests/unit/test_resolver.py) · [`tests/unit/test_import_acceptance.py`](../../tests/unit/test_import_acceptance.py)
+
+<!-- END_CGIS_RELATED -->

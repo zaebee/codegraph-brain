@@ -247,3 +247,8 @@ Three things this spec got wrong were found by building it, each measured:
 - **Retiring `test_sources` and `generated_excluded`.** They can stop doubling as
   freshness probes once a general signal exists, but changing what two shipped
   fields mean is a separate, reviewable diff.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [graph-freshness](../plans/2026-09-09-graph-freshness.md)
+
+<!-- END_CGIS_RELATED -->

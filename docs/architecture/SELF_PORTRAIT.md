@@ -108,3 +108,10 @@ critical node worth guarding (`get_identifier`), one honest store-bypass
 (`metrics` → DuckDB), and a `query/` package whose directory structure — after
 slice 2 — now projects its own dependency graph. Every lens reflects the
 restructure consistently, with no new smells introduced.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [suggest-packages](../specs/plans/2026-06-13-suggest-packages.md) · [language-packs](../plans/2026-10-14-language-packs.md) · [suggest-packages](../specs/2026-06-13-suggest-packages-design.md) · [language-packs-step1](../plans/2026-10-14-language-packs-step1.md) · [language-packs-step7](../plans/2026-10-14-language-packs-step7.md)
+
+**Code:** [`src/cgis/core/`](../../src/cgis/core/) · [`src/cgis/guardian/`](../../src/cgis/guardian/) · [`src/cgis/query/`](../../src/cgis/query/) · [`src/cgis/resolver/`](../../src/cgis/resolver/) · [`src/cgis/storage/`](../../src/cgis/storage/)
+
+<!-- END_CGIS_RELATED -->

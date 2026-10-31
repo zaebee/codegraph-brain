@@ -1649,3 +1649,10 @@ gh pr create \
 " \
   --base main
 ```
+
+<!-- START_CGIS_RELATED -->
+**Related:** [domain-pattern-fingerprint](../2026-06-09-domain-pattern-fingerprint-design.md) · [language-packs](../../plans/2026-10-14-language-packs.md) · [motif-basis-part-b](2026-06-10-motif-basis-part-b.md) · [fastapi-di-edges](2026-06-11-fastapi-di-edges.md) · [SELF_PORTRAIT](../../architecture/SELF_PORTRAIT.md)
+
+**Code:** [`src/cgis/query/`](../../../src/cgis/query/) · [`tests/unit/test_patterns_yaml.py`](../../../tests/unit/test_patterns_yaml.py) · [`tests/unit/test_fingerprint.py`](../../../tests/unit/test_fingerprint.py) · [`tests/unit/test_drift.py`](../../../tests/unit/test_drift.py) · [`src/cgis/cli.py`](../../../src/cgis/cli.py)
+
+<!-- END_CGIS_RELATED -->

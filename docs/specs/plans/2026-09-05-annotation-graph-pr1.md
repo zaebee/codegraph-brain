@@ -1040,3 +1040,10 @@ The description must state, because reviewers cannot see it from the diff:
 4. **What this PR does not do:** no resolution behavior changes. `self_types` is written but nothing reads it until PR2.
 
 Link both issues; the PR closes neither.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [annotation-graph](../2026-09-05-annotation-graph-design.md) · [annotation-graph-pr2](2026-09-05-annotation-graph-pr2.md)
+
+**Code:** [`src/cgis/core/`](../../../src/cgis/core/) · [`src/cgis/resolver/`](../../../src/cgis/resolver/) · [`src/cgis/resolver/symbols.py`](../../../src/cgis/resolver/symbols.py) · [`src/cgis/resolver/engine.py`](../../../src/cgis/resolver/engine.py) · [`tests/unit/test_python_annotations.py`](../../../tests/unit/test_python_annotations.py)
+
+<!-- END_CGIS_RELATED -->

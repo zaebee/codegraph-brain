@@ -910,3 +910,10 @@ git add -A && git diff --cached --quiet || git commit -m "chore: formatting (#11
 - [ ] Drift `resolution` score measured and recorded for the PR description; tolerance untouched
 - [ ] Full gates green
 - [ ] PR body links issue #115 with `Closes #115` and the spec doc
+
+<!-- START_CGIS_RELATED -->
+**Related:** [resolver-split](../2026-06-11-resolver-split-design.md)
+
+**Code:** [`src/cgis/resolver/`](../../../src/cgis/resolver/) · [`src/cgis/resolver/indices.py`](../../../src/cgis/resolver/indices.py) · [`tests/unit/test_resolver_indices.py`](../../../tests/unit/test_resolver_indices.py) · [`src/cgis/resolver/symbols.py`](../../../src/cgis/resolver/symbols.py) · [`tests/unit/test_resolver_symbols.py`](../../../tests/unit/test_resolver_symbols.py)
+
+<!-- END_CGIS_RELATED -->

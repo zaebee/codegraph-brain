@@ -1732,3 +1732,8 @@ git commit -m "feat(guardian): baseline benchmark results (gemini + mistral, N=3
 - **Spec coverage:** §2.1 models → Task 1; §2.2 provider contract → Tasks 2–3; §2.3 parse policy → Task 5; §2.4 prompt → Task 4; §2.5 render + breaking change → Tasks 6–7; §3.1 ground truth → Tasks 8, 10; §3.2 matching → Task 8; §3.3 metrics → Task 8; §3.4 runner incl. shallow-clone guard and per-PR error isolation → Task 9; §3.5 baseline → Task 11. §§4–6 deliberately deferred to the next plan.
 - **Placeholder scan:** one intentional abbreviation flagged inline (Task 7 Step 7 argparse `help=` strings — copy from the current file, explicitly instructed).
 - **Type consistency:** `generate_structured(self, system_prompt, user_prompt, schema: type[BaseModel]) -> str` identical across base/gemini/mistral/fakes; `ReviewResult`/`Finding` field names consistent across findings/render/bench/runner; `score(..., *, total_predictions)` keyword-only everywhere it is called.
+
+<!-- START_CGIS_RELATED -->
+**Code:** [`src/cgis/guardian/`](../../../src/cgis/guardian/) · [`src/cgis/query/`](../../../src/cgis/query/) · [`tests/unit/test_guardian_core.py`](../../../tests/unit/test_guardian_core.py) · [`src/cgis/guardian/findings.py`](../../../src/cgis/guardian/findings.py) · [`src/cgis/guardian/render.py`](../../../src/cgis/guardian/render.py)
+
+<!-- END_CGIS_RELATED -->

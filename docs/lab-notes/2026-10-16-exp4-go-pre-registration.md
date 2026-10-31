@@ -347,3 +347,8 @@ first two, and that is where its recall fell. The graph gaps behind this:
   rows and 0 parse failures, so no figure above depends on this.
 - **The caveat sits on `cgis_analyze_impact` only.** `cgis_trace_flow` and `cgis_context` share the
   function-value blind spot (#668) and carry no caveat. The decision named callers and impact.
+
+<!-- START_CGIS_RELATED -->
+**Code:** [`scripts/agent_ab.py`](../../scripts/agent_ab.py)
+
+<!-- END_CGIS_RELATED -->

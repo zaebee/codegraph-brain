@@ -286,3 +286,8 @@ Pure unit tests, no live LLM, matching the existing guardian test layer:
 - Call-site graph context for the finder: replace Mermaid topology with the
   calling lines and signatures via `cgis context` (#19). Related to the tooling
   Gemini's review advice pointed at, and worth its own issue.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [guardian-skeptic-scoring](plans/2026-07-29-guardian-skeptic-scoring.md) · [guardian-sprint](2026-06-10-guardian-sprint-design.md) · [guardian-code-review-bench](2026-08-11-guardian-code-review-bench.md) · [GUARDIAN_LOCAL_BENCH](../GUARDIAN_LOCAL_BENCH.md) · [finder-bug-class-taxonomy](2026-07-31-finder-bug-class-taxonomy.md)
+
+<!-- END_CGIS_RELATED -->

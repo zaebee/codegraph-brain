@@ -403,3 +403,10 @@ Non-goals (explicitly rejected for now):
 4. ~~§2.4: single `patterns.yaml` vs. split binding files~~ — **resolved:
    single file**. A "thin" secondary file recreates the drift surface this
    spec exists to kill; atomicity of the ontology is a feature. See §2.4.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [unified-pattern-alphabet](plans/2026-06-10-unified-pattern-alphabet.md) · [motif-basis-part-b](plans/2026-06-10-motif-basis-part-b.md)
+
+**Code:** [`tests/self_parsing/test_drift.py`](../../tests/self_parsing/test_drift.py) · [`tests/self_parsing/test_architecture.py`](../../tests/self_parsing/test_architecture.py) · [`scripts/gen_ideal_graph.py`](../../scripts/gen_ideal_graph.py)
+
+<!-- END_CGIS_RELATED -->

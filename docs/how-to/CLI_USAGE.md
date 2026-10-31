@@ -182,3 +182,8 @@ src/cgis/pipeline.py::IngestionPipeline.run  →  cgis.pipeline.IngestionPipelin
 ```
 
 Use `cgis structure` on a module to discover available FQNs before running `trace` or `impact`.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [language-packs-step1](../plans/2026-10-14-language-packs-step1.md) · [language-packs-step7](../plans/2026-10-14-language-packs-step7.md) · [language-packs](../plans/2026-10-14-language-packs.md) · [fingerprint-drift](../specs/plans/2026-06-09-fingerprint-drift.md) · [motif-basis-part-b](../specs/plans/2026-06-10-motif-basis-part-b.md)
+
+<!-- END_CGIS_RELATED -->

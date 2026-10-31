@@ -291,3 +291,8 @@ These are explicitly deferred to future issues:
 - [ ] `gen_ideal_graph.py --from-ontology` produces valid graph.json
 - [ ] mypy strict + ruff clean
 - [ ] docstring coverage ≥ 90%
+
+<!-- START_CGIS_RELATED -->
+**Related:** [fingerprint-drift](plans/2026-06-09-fingerprint-drift.md) · [language-packs](../plans/2026-10-14-language-packs.md) · [motif-basis-part-b](plans/2026-06-10-motif-basis-part-b.md) · [unified-pattern-alphabet](plans/2026-06-10-unified-pattern-alphabet.md) · [fastapi-di-edges](plans/2026-06-11-fastapi-di-edges.md)
+
+<!-- END_CGIS_RELATED -->

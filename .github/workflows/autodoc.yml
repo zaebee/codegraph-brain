@@ -60,6 +60,12 @@ jobs:
       - name: Sync schema docs from source
         run: uv run --frozen python scripts/generate_schema_docs.py
 
+      - name: Regenerate document cross-references
+        # Related/Code blocks and docs/INDEX.md from the documents' own text:
+        # same modules, same issue numbers, same date+slug pairs. Standard
+        # library only, so it runs in this workflow's `uv sync --frozen` env.
+        run: uv run --frozen python scripts/generate_doc_links.py
+
       - name: Open PR with generated docs
         uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676  # v7
         with:

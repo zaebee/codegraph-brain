@@ -114,3 +114,10 @@ shell calls look read-only, so the cause is unknown. Recall was unaffected.
   `cls.` calls and polymorphic dispatch (#637).
 - Whether this holds unforced, and across the exp3 primary set, needs the adoption experiment.
 - The directive is not shown to be useless. This task did not need it.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [exp3b-any-fix-rerun](2026-10-15-exp3b-any-fix-rerun.md)
+
+**Code:** [`src/cgis/api/`](../../src/cgis/api/) · [`src/cgis/api/server_instructions.py`](../../src/cgis/api/server_instructions.py)
+
+<!-- END_CGIS_RELATED -->

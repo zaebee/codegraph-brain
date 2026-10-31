@@ -300,3 +300,10 @@ restructure that resolves this (slice 2) re-baselines the domains anyway.
 slice-1 heuristic (it reproduced the spike's answer on `cgis.query` via an independent run),
 documented here so it is a stated assumption, not a silent one; Louvain / multi-resolution
 refinement is deferred.
+
+<!-- START_CGIS_RELATED -->
+**Related:** [suggest-packages](plans/2026-06-13-suggest-packages.md) · [SELF_PORTRAIT](../architecture/SELF_PORTRAIT.md) · [fastapi-di-edges](2026-06-11-fastapi-di-edges-design.md) · [resolver-split](2026-06-11-resolver-split-design.md) · [symbol-import-edges](2026-06-11-symbol-import-edges-design.md)
+
+**Code:** [`src/cgis/guardian/`](../../src/cgis/guardian/) · [`src/cgis/query/`](../../src/cgis/query/)
+
+<!-- END_CGIS_RELATED -->
