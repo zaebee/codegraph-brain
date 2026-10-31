@@ -103,6 +103,9 @@ def test_containment_is_decided_on_the_resolved_path(tmp_path: Path) -> None:
     assert resolves_inside(root / "inside.json", root) is True
     assert resolves_inside(root / "link-inside.json", root) is True
     assert resolves_inside(root / "link-outside.json", root) is False
+    # A loop cannot be resolved at all; refusing the file is the safe answer.
+    (root / "loop.json").symlink_to(root / "loop.json")
+    assert resolves_inside(root / "loop.json", root) is False
 
 
 def test_the_walk_reads_no_config_that_resolves_outside_the_root(tmp_path: Path) -> None:

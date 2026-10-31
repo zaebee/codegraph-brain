@@ -112,3 +112,14 @@ def test_a_go_mod_symlinked_outside_the_root_is_not_read(tmp_path: Path) -> None
     (root / "go.mod").symlink_to(outside)
 
     assert _reader_over(root).facts().state() == {}
+
+
+def test_a_go_mod_under_an_unresolvable_parent_is_not_read(tmp_path: Path) -> None:
+    """A symlink loop in the tree must refuse the file, not crash the walk (review of #755)."""
+    root = tmp_path / "app"
+    root.mkdir()
+    (root / "loop").symlink_to(root / "loop")
+
+    reader = GoProjectReader(root)
+    assert reader.note(root / "loop" / "go.mod") is True  # named like ours, so claimed
+    assert reader.facts().state() == {}

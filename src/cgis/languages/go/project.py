@@ -115,11 +115,16 @@ class GoProjectReader(ProjectReader):
 
         The root's file is read only when it resolves there: a PR can commit a
         `go.mod` as a symlink, and the ingest must not read a file the checkout does
-        not hold (#732).
+        not hold (#732). An unresolvable path — a symlink loop — is not the root's
+        either: refusing it keeps a malicious tree from crashing the walk.
         """
         if path.name != GO_MOD:
             return False
-        if path.parent.resolve() == self._root.resolve():
+        try:
+            at_root = path.parent.resolve() == self._root.resolve()
+        except (OSError, RuntimeError):
+            at_root = False
+        if at_root:
             if resolves_inside(path, self._root):
                 self._go_mod = path
             else:
