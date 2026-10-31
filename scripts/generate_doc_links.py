@@ -75,9 +75,17 @@ PATH_RE = re.compile(
     r"(?<![\w/])((?:src|scripts|\.github|tests|plugin|ui)/[A-Za-z0-9_./-]+\.[A-Za-z0-9]+)"
 )
 #: `2026-07-30-chunk-source-filter-design.md` -> its date and base slug.
-DATED_NAME_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})-(.+)\.md$")
+DATED_NAME_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})-(.+)\.(?:md|mdx)$")
 #: Suffixes that separate a design document from its plan.
 _ROLE_SUFFIX_RE = re.compile(r"-(?:design|plan|proposal|spec)$")
+
+
+class MalformedMarkersError(ValueError):
+    """A document names one marker without its pair, so a write would duplicate the block."""
+
+    def __init__(self, document: str, detail: str) -> None:
+        super().__init__(f"{document}: {detail}")
+
 
 #: At most this many document links and code links in one block.
 MAX_RELATED = 5
@@ -196,7 +204,8 @@ def tracked_documents(repo: Path) -> list[str]:
             timeout=60,
         ).stdout.splitlines()
     except (OSError, subprocess.CalledProcessError):
-        listed = [p.relative_to(repo).as_posix() for p in sorted((repo / "docs").rglob("*.md"))]
+        found = [*((repo / "docs").rglob("*.md")), *((repo / "docs").rglob("*.mdx"))]
+        listed = [p.relative_to(repo).as_posix() for p in sorted(found)]
     return sorted(
         p
         for p in listed
@@ -317,35 +326,44 @@ def _related_scores(documents: list[str], texts: dict[str, str]) -> dict[str, li
     }
 
 
-def _code_links(repo: Path, document: str, text: str) -> list[tuple[str, str]]:
-    """The code a document points at, as (label, relative link) pairs."""
-    body = _without_fenced_code(text)
-    mentions = {module or path for module, path in MODULE_RE.findall(body)}
-    linkable: list[tuple[str, str]] = []
-    seen: set[str] = set()
+def _module_links(repo: Path, mentions: set[str]) -> list[tuple[str, str]]:
+    """Package links for the modules the text names, as (label, repository path) pairs."""
+    links: list[tuple[str, str]] = []
     for module in sorted(mentions):
-        if len(linkable) >= MAX_CODE:
+        if len(links) >= MAX_CODE:
             break
         if module not in MODULES:
             continue
-        for candidate in (f"src/cgis/{module}/", f"src/cgis/{module}.py"):
-            if (repo / candidate).exists():
-                seen.add(candidate)
-                linkable.append((candidate, candidate))
-                break
+        candidates = (f"src/cgis/{module}/", f"src/cgis/{module}.py")
+        match = next((candidate for candidate in candidates if (repo / candidate).exists()), None)
+        if match:
+            links.append((match, match))
+    return links
+
+
+def _path_links(repo: Path, body: str, seen: set[str]) -> list[tuple[str, str]]:
+    """Links to files the text names, skipping any a package link already covers."""
+    links: list[tuple[str, str]] = []
     for match in PATH_RE.finditer(body):
-        if len(linkable) >= MAX_CODE:
+        if len(seen) >= MAX_CODE:
             break
         candidate = match.group(1).rstrip(".,)")
         if candidate in seen or not (repo / candidate).is_file():
             continue
-        # A package link already covers its files: `src/cgis/query/` answers for
-        # `src/cgis/query/engine.py`, and both would only crowd the block.
         if any(candidate.startswith(directory) for directory in seen if directory.endswith("/")):
             continue
         seen.add(candidate)
-        linkable.append((candidate, candidate))
-    return [(_label, _relative_link(document, target)) for _label, target in linkable]
+        links.append((candidate, candidate))
+    return links
+
+
+def _code_links(repo: Path, document: str, text: str) -> list[tuple[str, str]]:
+    """The code a document points at, as (label, relative link) pairs."""
+    body = _without_fenced_code(text)
+    mentions = {module or path for module, path in MODULE_RE.findall(body)}
+    linkable = _module_links(repo, mentions)
+    linkable.extend(_path_links(repo, body, {path for path, _ in linkable}))
+    return [(label, _relative_link(document, target)) for label, target in linkable]
 
 
 def _relative_link(document: str, target: str) -> str:
@@ -383,15 +401,21 @@ def _label(document: str) -> str:
     return basename.rsplit(".", 1)[0]
 
 
-def _replace_block(text: str, block: str) -> str:
+def _replace_block(text: str, block: str, document: str) -> str:
     """Put `block` between the markers, or strip the markers when there is no block.
 
     When the markers are already there the block stays where it is: a document
     keeps the section it chose, and a run moves nothing but the block's content.
     """
-    start, end = text.find(START_MARKER), text.find(END_MARKER)
-    inside = start != -1 and end > start
-    if inside:
+    has_start = START_MARKER in text
+    has_end = END_MARKER in text
+    if has_start != has_end:
+        marker = START_MARKER if has_start else END_MARKER
+        raise MalformedMarkersError(document, f"{marker} has no pair; fix or remove it")
+    if has_start:
+        start, end = text.find(START_MARKER), text.find(END_MARKER)
+        if end < start:
+            raise MalformedMarkersError(document, f"{END_MARKER} precedes {START_MARKER}")
         if not block:
             before = text[:start].rstrip("\n")
             after = text[end + len(END_MARKER) :].lstrip("\n")
@@ -466,10 +490,12 @@ def build(repo: Path) -> dict[Path, str]:
     related = _related_scores(documents, texts)
     expected: dict[Path, str] = {}
     for document in documents:
-        body = _replace_block(texts[document], "")
+        body = _replace_block(texts[document], "", document)
         if document not in GENERATED_DOCS:
             body = _replace_block(
-                body, _block(repo, document, texts[document], related.get(document, []))
+                body,
+                _block(repo, document, texts[document], related.get(document, [])),
+                document,
             )
         expected[repo / document] = body
     expected[repo / INDEX_PATH] = _index(documents, texts, related)
@@ -535,6 +561,8 @@ def main(argv: list[str] | None = None) -> int:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
     print(f"updated {len(stale)} of {len(expected)} files")
+    for item in broken:
+        print(f"warning: generated link does not resolve: {item}", file=sys.stderr)
     return 0
 
 

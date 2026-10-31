@@ -15,6 +15,8 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "generate_doc_links.py"
 
 if TYPE_CHECKING:
@@ -178,3 +180,21 @@ def test_the_index_names_the_pair_and_the_orphans(tmp_path: Path) -> None:
     assert "(specs/2026-07-30-thing-plan.md)" in index
     assert "## No automatic links" in index
     assert "(specs/lonely.md)" in index
+
+
+def test_mdx_documents_pair_by_date_and_slug(tmp_path: Path) -> None:
+    """`.mdx` is a document too: the date+slug regex must not skip it."""
+    _write(tmp_path, "docs/specs/2026-07-30-thing.mdx", "# Thing\n")
+    _write(tmp_path, "docs/specs/plans/2026-07-30-thing-plan.md", "# Plan\n")
+
+    assert _run(tmp_path)[0] == 0
+
+    mdx = (tmp_path / "docs/specs/2026-07-30-thing.mdx").read_text(encoding="utf-8")
+    assert "(plans/2026-07-30-thing-plan.md)" in mdx
+
+
+def test_an_unpaired_marker_is_an_error(tmp_path: Path) -> None:
+    """A half-removed block would be duplicated by a write, so the run has to stop."""
+    _write(tmp_path, "docs/specs/x.md", f"body\n{START}\n")
+    with pytest.raises(GENERATOR.MalformedMarkersError):
+        _run(tmp_path)
