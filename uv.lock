@@ -341,7 +341,7 @@ requires-dist = [
     { name = "google-genai", marker = "extra == 'guardian'", specifier = ">=0.8.0" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "mcp", extras = ["cli"], specifier = ">=2" },
-    { name = "mistralai", marker = "extra == 'guardian'", specifier = ">=1.0.0" },
+    { name = "mistralai", marker = "extra == 'guardian'", specifier = ">=1.0.0,<3" },
     { name = "ollama", marker = "extra == 'guardian'", specifier = ">=0.3.0" },
     { name = "pydantic", specifier = ">=2.13.4" },
     { name = "pyyaml", specifier = ">=6.0.2" },
