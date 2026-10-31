@@ -1,8 +1,13 @@
 name: Continuous Integration
 
 on:
+  # Trunk only. A feature branch is already verified by its pull_request run;
+  # listing `feat/**`, `fix/**` and `docs/**` here as well made every push to a
+  # PR branch start this workflow twice on one SHA — a push run and a
+  # pull_request run — and put two identical "Python Verification" checks on
+  # the PR. Keep `dev` here: a pull_request event only covers PRs into `main`.
   push:
-    branches: [ main, dev, "feat/**", "fix/**", "docs/**" ]
+    branches: [ main, dev ]
   pull_request:
     branches: [ main ]
 
