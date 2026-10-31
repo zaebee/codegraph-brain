@@ -1,0 +1,291 @@
+{
+  "errors": [
+    {
+      "column": 32,
+      "path": "src/cgis/__init__.py",
+      "name": "implicit-any-lambda",
+      "concise_description": "Type of lambda parameter `_args` is unknown",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `should_return_http_response` with type `Decimal | bool | float | int | str | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `shouldReturnHttpResponse` with type `Decimal | bool | float | int | str | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `temperature` with type `Decimal | bool | bytes | float | int | str | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `top_p` with type `Decimal | bool | bytes | float | int | str | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `topP` with type `Decimal | bool | bytes | float | int | str | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `top_k` with type `Decimal | bool | bytes | float | int | str | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `topK` with type `Decimal | bool | bytes | float | int | str | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `candidate_count` with type `Decimal | bool | bytes | float | int | str | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `candidateCount` with type `Decimal | bool | bytes | float | int | str | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `max_output_tokens` with type `Decimal | bool | bytes | float | int | str | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `maxOutputTokens` with type `Decimal | bool | bytes | float | int | str | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `stop_sequences` with type `Iterable[LaxStr] | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `stopSequences` with type `Iterable[LaxStr] | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `response_logprobs` with type `Decimal | bool | float | int | str | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `responseLogprobs` with type `Decimal | bool | float | int | str | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `logprobs` with type `Decimal | bool | bytes | float | int | str | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `presence_penalty` with type `Decimal | bool | bytes | float | int | str | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `presencePenalty` with type `Decimal | bool | bytes | float | int | str | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `frequency_penalty` with type `Decimal | bool | bytes | float | int | str | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `frequencyPenalty` with type `Decimal | bool | bytes | float | int | str | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `seed` with type `Decimal | bool | bytes | float | int | str | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `response_mime_type` with type `bytearray | bytes | str | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `responseMimeType` with type `bytearray | bytes | str | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `safety_settings` with type `Iterable[Any] | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `safetySettings` with type `Iterable[Any] | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `tools` with type `Iterable[Any] | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `labels` with type `Mapping[str, LaxStr] | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `cached_content` with type `bytearray | bytes | str | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `cachedContent` with type `bytearray | bytes | str | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `response_modalities` with type `Iterable[LaxStr] | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `responseModalities` with type `Iterable[LaxStr] | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `audio_timestamp` with type `Decimal | bool | float | int | str | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `audioTimestamp` with type `Decimal | bool | float | int | str | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `enable_enhanced_civic_answers` with type `Decimal | bool | float | int | str | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 52,
+      "path": "src/cgis/guardian/providers/gemini.py",
+      "name": "bad-argument-type",
+      "concise_description": "Unpacked keyword argument `object` is not assignable to parameter `enableEnhancedCivicAnswers` with type `Decimal | bool | float | int | str | None` in function `google.genai.types.GenerateContentConfig.__init__`",
+      "severity": "error"
+    },
+    {
+      "column": 29,
+      "path": "src/cgis/languages/data/extractor.py",
+      "name": "implicit-any-empty-container",
+      "concise_description": "Cannot infer type of empty container; it will be treated as containing `Any`",
+      "severity": "error"
+    },
+    {
+      "column": 12,
+      "path": "src/cgis/query/analysis/suggest_service.py",
+      "name": "bad-return",
+      "concise_description": "Returned type `dict[str, dict[str, float] | float | int | list[dict[str, Any]] | str | None]` is not assignable to declared return type `dict[str, object]`",
+      "severity": "error"
+    },
+    {
+      "column": 12,
+      "path": "src/cgis/query/diffcheck/check.py",
+      "name": "bad-return",
+      "concise_description": "Returned type `dict[str, bool | int | list[dict[str, Any]] | list[str] | str]` is not assignable to declared return type `dict[str, object]`",
+      "severity": "error"
+    },
+    {
+      "column": 57,
+      "path": "src/cgis/query/drift/ontology_init.py",
+      "name": "implicit-any-empty-container",
+      "concise_description": "Cannot infer type of empty container; it will be treated as containing `Any`",
+      "severity": "error"
+    },
+    {
+      "column": 17,
+      "path": "src/cgis/query/render/metrics.py",
+      "name": "unsupported-operation",
+      "concise_description": "`None` is not subscriptable",
+      "severity": "error"
+    }
+  ]
+}

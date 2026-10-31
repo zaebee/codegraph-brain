@@ -98,7 +98,7 @@ as impact_score 0-10:
 
 - 0-2  true but not actionable: style, taste, "consider X for explicitness",
        or restating something the project's tooling already enforces.
-       If `ruff`, `ruff format` or `mypy --strict` would catch it, score <= 2:
+       If `ruff`, `ruff format` or `pyrefly` would catch it, score <= 2:
        those run as mandatory gates in this repo, so such issues are already
        covered.
 - 3-5  a minor real issue: local clarity or robustness, no behaviour change.

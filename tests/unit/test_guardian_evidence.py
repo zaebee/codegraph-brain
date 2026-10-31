@@ -68,7 +68,7 @@ class TestToolchainDetection:
     def test_a_non_python_change_yields_no_evidence(self, tmp_path: Path) -> None:
         """The verbs are Python-only, and the corpus this guardian reviews is not.
 
-        `mypy` on a `.ts` file reports nothing, and reporting nothing would read
+        `pyrefly` on a `.ts` file reports nothing, and reporting nothing would read
         as "the type checker is content" about a file it never looked at.
         """
         assert collect_evidence(_python_repo(tmp_path), ("src/app.ts", "README.md")) is None
@@ -94,7 +94,7 @@ class TestWhatIsCollected:
         _fake_checker(monkeypatch)
         evidence = collect_evidence(repo, ("a.py",))
         assert evidence is not None
-        assert any("mypy" in c for c in evidence.commands)
+        assert any("pyrefly" in c for c in evidence.commands)
         assert any("ruff" in c for c in evidence.commands)
 
     def test_output_is_truncated_and_says_so(self) -> None:
@@ -105,7 +105,7 @@ class TestWhatIsCollected:
         clean reads as "no errors".
         """
         evidence = Evidence(
-            commands=("mypy --strict a.py",), output="e" * (MAX_EVIDENCE_CHARS + 500)
+            commands=("pyrefly check a.py",), output="e" * (MAX_EVIDENCE_CHARS + 500)
         )
         rendered = evidence.render()
         assert len(rendered) < MAX_EVIDENCE_CHARS + 500
@@ -126,7 +126,7 @@ class TestFailureIsAbsenceNotEvidence:
     ) -> None:
         """Degrade, do not invent.
 
-        If `uv run mypy` cannot start — no lockfile, no network, a broken venv —
+        If `uv run pyrefly` cannot start — no lockfile, no network, a broken venv —
         the honest report is that no evidence exists. Reporting its stderr as
         "what the type checker said" would let an infrastructure failure refute
         a real finding.
@@ -149,7 +149,7 @@ class TestFailureIsAbsenceNotEvidence:
         (repo / "a.py").write_text("x = 1\n", encoding="utf-8")
 
         def slow(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
-            raise subprocess.TimeoutExpired(cmd="mypy", timeout=1)
+            raise subprocess.TimeoutExpired(cmd="pyrefly", timeout=1)
 
         monkeypatch.setattr(subprocess, "run", slow)
         assert collect_evidence(repo, ("a.py",)) is None
@@ -165,7 +165,7 @@ class TestPathsAreConfinedToTheRepository:
         """Not refused loudly — dropped, and if nothing survives there is no evidence.
 
         These arrive from `git diff --name-only` on author-controlled input, and
-        the checkers are handed them as argv. A traversal that reached `mypy`
+        the checkers are handed them as argv. A traversal that reached `pyrefly`
         would report on a file outside the review, and that report would enter
         the prompt as though it were about the diff.
         """
@@ -207,7 +207,7 @@ class TestTheFeatureShipsInert:
         _fake_checker(monkeypatch)
         evidence = await evidence_for(_collector(repo, ("a.py",)), {EVIDENCE_FLAG: "1"})
         assert evidence is not None
-        assert any("mypy" in c for c in evidence.commands)
+        assert any("pyrefly" in c for c in evidence.commands)
 
 
 class _FakeCollector:
@@ -303,7 +303,7 @@ class TestArgvFlagSmuggling:
         """These are legal filenames and legal argv options at the same time.
 
         `git diff --name-only` reports whatever the PR author committed, and the
-        result becomes argv for `mypy` and `ruff`. `--config=evil.py` would make
+        result becomes argv for `pyrefly` and `ruff`. `--config=evil.py` would make
         a checker read configuration from the branch under review rather than
         report on it.
         """
@@ -350,7 +350,7 @@ class TestALauncherFailureIsNotAVerdict:
         monkeypatch.setattr(
             subprocess,
             "run",
-            lambda *_a, **_k: self._result(2, "error: Failed to spawn: `mypy`"),
+            lambda *_a, **_k: self._result(2, "error: Failed to spawn: `pyrefly`"),
         )
         assert collect_evidence(repo, ("a.py",)) is None
 
@@ -405,7 +405,7 @@ def test_the_real_command_line_works_against_this_repository() -> None:
     """One end-to-end run with no mocking, because the rest of this file mocks.
 
     Every other success case fakes `subprocess.run`, which proves the plumbing
-    and nothing about whether `uv run --frozen mypy --strict -- <path>` is a
+    and nothing about whether `uv run --frozen pyrefly check -- <path>` is a
     command these tools accept. A wrong flag would pass all of them and fail
     only in production — and it would fail *quietly*, since a checker that
     cannot run now yields None rather than an error.
@@ -418,6 +418,6 @@ def test_the_real_command_line_works_against_this_repository() -> None:
         "the real checkers produced no evidence — either the command line is "
         "wrong or the toolchain is missing, and both are silent in production"
     )
-    assert any("mypy" in c for c in evidence.commands)
+    assert any("pyrefly" in c for c in evidence.commands)
     assert any("ruff" in c for c in evidence.commands)
     assert " -- " in evidence.commands[0]

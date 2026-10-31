@@ -11,7 +11,7 @@ lint:
 	uv run ruff check . --fix
 
 type-check:
-	uv run mypy src
+	uv run pyrefly check --baseline .github/pyrefly-baseline.json
 
 pytest:
 	uv run pytest

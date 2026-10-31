@@ -123,7 +123,7 @@ def test_judgement_prompt_carries_the_impact_rubric() -> None:
     """The importance axis needs its anchors, including the tooling rule."""
     prompt = build_judgement_prompt(_FINDING, "", evidence=None)
     assert "impact_score 0-10" in prompt
-    assert "mypy --strict" in prompt
+    assert "pyrefly" in prompt
 
 
 @pytest.mark.asyncio

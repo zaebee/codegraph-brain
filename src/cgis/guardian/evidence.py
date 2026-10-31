@@ -113,13 +113,15 @@ def _python_files_inside(project_root: Path, changed_files: tuple[str, ...]) -> 
 #: to doing it and finding something. Measured on the two tools rather than
 #: assumed, because the whole point is to tell a verdict from a non-verdict:
 #:
-#:     0  clean                      mypy ok / ruff "All checks passed!"
-#:     1  ran, and reported findings  mypy type error / ruff F401
-#:     2  could not run              mypy fatal / ruff bad argument /
-#:                                   `uv run` failing to spawn the tool at all
+#:     0  clean                      pyrefly clean / ruff "All checks passed!"
+#:     1  ran, and reported findings  pyrefly type error / ruff F401
+#:     2  could not run              `uv run` failing to spawn the tool, a bad
+#:                                   flag. Measured: pyrefly exits 1 for a path
+#:                                   that does not exist, so `_python_files_inside`
+#:                                   hands it only files it has stat'ed.
 #:
 #: Classified by code rather than by matching "error:" in stderr. A substring
-#: rule cannot tell `mypy: error: Cannot read file` from a checker legitimately
+#: rule cannot tell a checker's own fatal message from a checker legitimately
 #: printing the word — the same defect #375 found in a `git show` reader, where a
 #: missing commit and an absent path were indistinguishable by message.
 _COULD_NOT_RUN = 2
@@ -173,9 +175,9 @@ def collect_evidence(project_root: Path, changed_files: tuple[str, ...]) -> Evid
         return None
 
     # `--` so nothing after it is parsed as an option. Verified rather than
-    # assumed: `mypy --strict -- <path>` treats the next argument as a file.
+    # assumed: `pyrefly check -- <path>` treats the next argument as a file.
     commands = [
-        ["uv", "run", "--frozen", "mypy", "--strict", "--", *files],
+        ["uv", "run", "--frozen", "pyrefly", "check", "--", *files],
         ["uv", "run", "--frozen", "ruff", "check", "--", *files],
     ]
     # One budget shared across the checkers, because that is what the constant

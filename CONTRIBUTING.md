@@ -11,7 +11,8 @@ By contributing, you agree to follow these guidelines.
 We prioritize **Correctness, Type Safety, and Determinism** over speed of delivery.
 
 ### 1. Type Discipline (Mandatory)
-We use `mypy` in **strict mode**.
+We use `pyrefly` with the strictness the old mypy config asked for (`[tool.pyrefly]` in `pyproject.toml`).
+*   **Error budget:** `.github/pyrefly-baseline.json` is the committed set of existing type errors, and CI fails on any new one. Fixing an error means shrinking the budget (`uv run pyrefly check --prune-baseline`); `--update-baseline` re-records errors that moved and is never the way to accept one you added.
 *   **No `Any`:** The use of `Any` is prohibited unless it is technically impossible to avoid (and even then, it must be accompanied by a comment explaining why).
 *   **Full Annotations:** Every function, method, and class attribute must have complete type annotations, including return types.
 *   **Pydantic Models:** Use Pydantic for all shared data structures (anything that crosses module boundaries, is stored, or is returned from public APIs). Use `model_copy(update={...})` for immutable updates. Pure-internal accumulators (local variables, loop state) do not require Pydantic.
@@ -47,7 +48,7 @@ CGIS is a semantic engine. Code without documentation is useless to an agent.
     uv sync
     uv run pre-commit install
     ```
-    Hooks run `ruff format`, `ruff check --fix`, and `mypy` automatically on every `git commit`.
+    Hooks run `ruff format`, `ruff check --fix`, and a `pyrefly` error-budget check automatically on every `git commit`.
 3.  **Development Loop:**
     *   `make format`
     *   `make lint`

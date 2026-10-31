@@ -242,7 +242,7 @@ jobs:
           GUARDIAN_SKEPTIC_MODEL: ${{ vars.GUARDIAN_SKEPTIC_MODEL }}
           SOURCE_ROOT: ${{ inputs.source_root }}
           # GUARDIAN_EVIDENCE (#401) is deliberately not passed: the evidence
-          # pass runs `uv run mypy/ruff` inside the reviewed checkout, which is
+          # pass runs `uv run pyrefly/ruff` inside the reviewed checkout, which is
           # the PR, while this step holds the provider keys (#730).
           # guardian_review.py refuses that combination with --repo-root.
         run: |

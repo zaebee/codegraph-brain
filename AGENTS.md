@@ -21,8 +21,8 @@ make format        # runs: uv run ruff format .
 # Lint (with auto-fix)
 make lint          # runs: uv run ruff check . --fix
 
-# Type check (strict mypy — this is mandatory)
-make type-check    # runs: uv run mypy src
+# Type check (pyrefly against the committed error budget — this is mandatory)
+make type-check    # runs: uv run pyrefly check --baseline .github/pyrefly-baseline.json
 
 # Tests
 make pytest        # runs: uv run pytest
@@ -100,7 +100,16 @@ IngestionPipeline (pipeline/__init__.py)
 
 ## Type Discipline
 
-MyPy runs in strict mode (`strict = true`). All functions need full annotations including return types. The Pydantic plugin is active — use `model_copy(update={...})` for immutable model updates.
+Type checking is `pyrefly` (`[tool.pyrefly]` in `pyproject.toml` carries the
+strictness the mypy config asked for). All functions need full annotations
+including return types; use `model_copy(update={...})` for immutable model
+updates.
+
+The CI gate is an **error budget**: `.github/pyrefly-baseline.json` records the
+type errors the tree has today, and the check fails only when *new* ones appear.
+Fixing an error means pruning the baseline (`uv run pyrefly check
+--prune-baseline`); code that moves means re-recording it (`--update-baseline`).
+Never use `--update-baseline` to launder an error you just introduced.
 
 ## Test Layout
 
