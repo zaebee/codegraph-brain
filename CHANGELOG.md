@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.39.1](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.39.0...codegraph-brain-v0.39.1) (2026-10-31)
+
+
+### Documentation
+
+* archive completed design records and merge the plan locations ([#764](https://github.com/zaebee/codegraph-brain/issues/764)) ([d50b4ec](https://github.com/zaebee/codegraph-brain/commit/d50b4eca69a40a212c28c613eb5a95c57efee07e))
+* auto-sync architecture graph and MCP reference ([#765](https://github.com/zaebee/codegraph-brain/issues/765)) ([764bd00](https://github.com/zaebee/codegraph-brain/commit/764bd0020b03bbffc37342e7ca0f91d941f1dccf))
+* generate links between documents and the code ([#762](https://github.com/zaebee/codegraph-brain/issues/762)) ([a87e0c3](https://github.com/zaebee/codegraph-brain/commit/a87e0c3a6b76a08aebcae077d54e172ad1803ad1))
+
 ## [0.39.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.38.0...codegraph-brain-v0.39.0) (2026-10-31)
 
 
