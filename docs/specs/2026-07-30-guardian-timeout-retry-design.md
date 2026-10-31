@@ -214,6 +214,6 @@ test module today, which is why the missing timeout went unnoticed:
 <!-- START_CGIS_RELATED -->
 **Related:** [guardian-timeout-retry](2026-07-30-guardian-timeout-retry-plan.md) · [chunk-source-filter](2026-07-30-chunk-source-filter-design.md) · [guardian-precision-bench](2026-07-30-guardian-precision-bench-design.md) · [chunk-source-filter](2026-07-30-chunk-source-filter-plan.md) · [guardian-precision-bench](2026-07-30-guardian-precision-bench-plan.md)
 
-**Code:** [`src/cgis/guardian/`](../../src/cgis/guardian/) · [`src/cgis/guardian/providers/base.py`](../../src/cgis/guardian/providers/base.py) · [`src/cgis/guardian/providers/mistral.py`](../../src/cgis/guardian/providers/mistral.py) · [`src/cgis/guardian/providers/gemini.py`](../../src/cgis/guardian/providers/gemini.py) · [`src/cgis/guardian/providers/ollama.py`](../../src/cgis/guardian/providers/ollama.py)
+**Code:** [`src/cgis/guardian/`](../../src/cgis/guardian/) · [`tests/unit/test_guardian_providers.py`](../../tests/unit/test_guardian_providers.py)
 
 <!-- END_CGIS_RELATED -->

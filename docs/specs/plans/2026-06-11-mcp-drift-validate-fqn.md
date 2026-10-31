@@ -1006,6 +1006,6 @@ gh pr create --title "feat(mcp): drift/validate tools + suffix FQN resolution (c
 <!-- START_CGIS_RELATED -->
 **Related:** [mcp-drift-validate-fqn](../2026-06-11-mcp-drift-validate-fqn-design.md) · [language-packs](../../plans/2026-10-14-language-packs.md) · [SELF_PORTRAIT](../../architecture/SELF_PORTRAIT.md) · [language-packs-step1](../../plans/2026-10-14-language-packs-step1.md) · [fingerprint-drift](2026-06-09-fingerprint-drift.md)
 
-**Code:** [`src/cgis/api/`](../../../src/cgis/api/) · [`src/cgis/query/`](../../../src/cgis/query/) · [`src/cgis/resolver/`](../../../src/cgis/resolver/) · [`src/cgis/storage/`](../../../src/cgis/storage/) · [`src/cgis/storage/sqlite_store.py`](../../../src/cgis/storage/sqlite_store.py)
+**Code:** [`src/cgis/api/`](../../../src/cgis/api/) · [`src/cgis/query/`](../../../src/cgis/query/) · [`src/cgis/resolver/`](../../../src/cgis/resolver/) · [`src/cgis/storage/`](../../../src/cgis/storage/) · [`tests/unit/test_sqlite_store.py`](../../../tests/unit/test_sqlite_store.py)
 
 <!-- END_CGIS_RELATED -->

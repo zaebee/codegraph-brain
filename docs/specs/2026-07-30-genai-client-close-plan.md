@@ -221,6 +221,6 @@ git commit -m "fix(guardian): close both Gemini connection pools (#283)"
 <!-- START_CGIS_RELATED -->
 **Related:** [genai-client-close](2026-07-30-genai-client-close-design.md)
 
-**Code:** [`src/cgis/guardian/`](../../src/cgis/guardian/) · [`src/cgis/guardian/providers/gemini.py`](../../src/cgis/guardian/providers/gemini.py) · [`tests/unit/test_guardian_core.py`](../../tests/unit/test_guardian_core.py)
+**Code:** [`src/cgis/guardian/`](../../src/cgis/guardian/) · [`tests/unit/test_guardian_core.py`](../../tests/unit/test_guardian_core.py)
 
 <!-- END_CGIS_RELATED -->

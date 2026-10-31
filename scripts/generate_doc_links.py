@@ -324,6 +324,8 @@ def _code_links(repo: Path, document: str, text: str) -> list[tuple[str, str]]:
     linkable: list[tuple[str, str]] = []
     seen: set[str] = set()
     for module in sorted(mentions):
+        if len(linkable) >= MAX_CODE:
+            break
         if module not in MODULES:
             continue
         for candidate in (f"src/cgis/{module}/", f"src/cgis/{module}.py"):
@@ -332,14 +334,18 @@ def _code_links(repo: Path, document: str, text: str) -> list[tuple[str, str]]:
                 linkable.append((candidate, candidate))
                 break
     for match in PATH_RE.finditer(body):
+        if len(linkable) >= MAX_CODE:
+            break
         candidate = match.group(1).rstrip(".,)")
         if candidate in seen or not (repo / candidate).is_file():
             continue
+        # A package link already covers its files: `src/cgis/query/` answers for
+        # `src/cgis/query/engine.py`, and both would only crowd the block.
+        if any(candidate.startswith(directory) for directory in seen if directory.endswith("/")):
+            continue
         seen.add(candidate)
         linkable.append((candidate, candidate))
-        if len(linkable) >= MAX_CODE:
-            break
-    return [(_label, _relative_link(document, target)) for _label, target in linkable[:MAX_CODE]]
+    return [(_label, _relative_link(document, target)) for _label, target in linkable]
 
 
 def _relative_link(document: str, target: str) -> str:
@@ -378,14 +384,22 @@ def _label(document: str) -> str:
 
 
 def _replace_block(text: str, block: str) -> str:
-    """Put `block` between the markers, or strip the markers when there is no block."""
+    """Put `block` between the markers, or strip the markers when there is no block.
+
+    When the markers are already there the block stays where it is: a document
+    keeps the section it chose, and a run moves nothing but the block's content.
+    """
     start, end = text.find(START_MARKER), text.find(END_MARKER)
     inside = start != -1 and end > start
-    body = text[:start] + text[end + len(END_MARKER) :] if inside else text
-    body = body.rstrip("\n")
+    if inside:
+        if not block:
+            before = text[:start].rstrip("\n")
+            after = text[end + len(END_MARKER) :].lstrip("\n")
+            return before + ("\n\n" + after if after else "\n")
+        return text[:start] + block + text[end + len(END_MARKER) :]
     if not block:
-        return body + "\n"
-    return f"{body}\n\n{block}\n"
+        return text.rstrip("\n") + "\n"
+    return text.rstrip("\n") + f"\n\n{block}\n"
 
 
 def _index(documents: list[str], texts: dict[str, str], related: dict[str, list[str]]) -> str:

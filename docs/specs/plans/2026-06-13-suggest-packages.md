@@ -1239,6 +1239,6 @@ git commit -m "chore(suggest): self-drift re-baseline + lint/type/doc green (#24
 <!-- START_CGIS_RELATED -->
 **Related:** [suggest-packages](../2026-06-13-suggest-packages-design.md) · [SELF_PORTRAIT](../../architecture/SELF_PORTRAIT.md) · [fastapi-di-edges](2026-06-11-fastapi-di-edges.md) · [language-packs-step1](../../plans/2026-10-14-language-packs-step1.md) · [language-packs](../../plans/2026-10-14-language-packs.md)
 
-**Code:** [`src/cgis/api/`](../../../src/cgis/api/) · [`src/cgis/query/`](../../../src/cgis/query/) · [`src/cgis/cli.py`](../../../src/cgis/cli.py) · [`src/cgis/api/mcp_server.py`](../../../src/cgis/api/mcp_server.py) · [`tests/unit/test_cohesion.py`](../../../tests/unit/test_cohesion.py)
+**Code:** [`src/cgis/api/`](../../../src/cgis/api/) · [`src/cgis/query/`](../../../src/cgis/query/) · [`src/cgis/cli.py`](../../../src/cgis/cli.py) · [`tests/unit/test_cohesion.py`](../../../tests/unit/test_cohesion.py) · [`tests/unit/test_suggest_service.py`](../../../tests/unit/test_suggest_service.py)
 
 <!-- END_CGIS_RELATED -->

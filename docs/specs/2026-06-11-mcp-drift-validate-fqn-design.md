@@ -234,6 +234,6 @@ make doc-coverage` (mypy strict, interrogate ≥90%).
 <!-- START_CGIS_RELATED -->
 **Related:** [mcp-drift-validate-fqn](plans/2026-06-11-mcp-drift-validate-fqn.md)
 
-**Code:** [`src/cgis/api/`](../../src/cgis/api/) · [`src/cgis/query/`](../../src/cgis/query/) · [`src/cgis/storage/`](../../src/cgis/storage/) · [`src/cgis/api/mcp_server.py`](../../src/cgis/api/mcp_server.py) · [`src/cgis/query/fqn.py`](../../src/cgis/query/fqn.py)
+**Code:** [`src/cgis/api/`](../../src/cgis/api/) · [`src/cgis/query/`](../../src/cgis/query/) · [`src/cgis/storage/`](../../src/cgis/storage/) · [`tests/unit/test_sqlite_store.py`](../../tests/unit/test_sqlite_store.py) · [`tests/unit/test_fqn.py`](../../tests/unit/test_fqn.py)
 
 <!-- END_CGIS_RELATED -->

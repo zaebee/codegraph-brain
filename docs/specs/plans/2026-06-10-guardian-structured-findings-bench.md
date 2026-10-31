@@ -1734,6 +1734,6 @@ git commit -m "feat(guardian): baseline benchmark results (gemini + mistral, N=3
 - **Type consistency:** `generate_structured(self, system_prompt, user_prompt, schema: type[BaseModel]) -> str` identical across base/gemini/mistral/fakes; `ReviewResult`/`Finding` field names consistent across findings/render/bench/runner; `score(..., *, total_predictions)` keyword-only everywhere it is called.
 
 <!-- START_CGIS_RELATED -->
-**Code:** [`src/cgis/guardian/`](../../../src/cgis/guardian/) · [`src/cgis/query/`](../../../src/cgis/query/) · [`tests/unit/test_guardian_core.py`](../../../tests/unit/test_guardian_core.py) · [`src/cgis/guardian/findings.py`](../../../src/cgis/guardian/findings.py) · [`src/cgis/guardian/render.py`](../../../src/cgis/guardian/render.py)
+**Code:** [`src/cgis/guardian/`](../../../src/cgis/guardian/) · [`src/cgis/query/`](../../../src/cgis/query/) · [`tests/unit/test_guardian_core.py`](../../../tests/unit/test_guardian_core.py) · [`scripts/guardian_review.py`](../../../scripts/guardian_review.py) · [`scripts/guardian_bench.py`](../../../scripts/guardian_bench.py)
 
 <!-- END_CGIS_RELATED -->

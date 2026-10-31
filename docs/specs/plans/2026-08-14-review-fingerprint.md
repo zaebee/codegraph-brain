@@ -1391,6 +1391,6 @@ EOF
 <!-- START_CGIS_RELATED -->
 **Related:** [review-fingerprint](../2026-08-14-review-fingerprint-design.md) · [SELF_PORTRAIT](../../architecture/SELF_PORTRAIT.md) · [language-packs-step1](../../plans/2026-10-14-language-packs-step1.md) · [language-packs](../../plans/2026-10-14-language-packs.md) · [guardian-chunker](2026-06-11-guardian-chunker.md)
 
-**Code:** [`src/cgis/guardian/`](../../../src/cgis/guardian/) · [`src/cgis/guardian/review_fingerprint.py`](../../../src/cgis/guardian/review_fingerprint.py) · [`src/cgis/guardian/providers/base.py`](../../../src/cgis/guardian/providers/base.py) · [`src/cgis/guardian/providers/gemini.py`](../../../src/cgis/guardian/providers/gemini.py) · [`src/cgis/guardian/providers/mistral.py`](../../../src/cgis/guardian/providers/mistral.py)
+**Code:** [`src/cgis/guardian/`](../../../src/cgis/guardian/) · [`scripts/guardian_review.py`](../../../scripts/guardian_review.py) · [`scripts/guardian_martian.py`](../../../scripts/guardian_martian.py) · [`scripts/guardian_bench.py`](../../../scripts/guardian_bench.py) · [`tests/unit/test_guardian_providers_name.py`](../../../tests/unit/test_guardian_providers_name.py)
 
 <!-- END_CGIS_RELATED -->

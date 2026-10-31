@@ -603,6 +603,6 @@ finder artifact, and its step list came from main's workflow.
 <!-- START_CGIS_RELATED -->
 **Related:** [guardian-precision-bench](2026-07-30-guardian-precision-bench-design.md) · [chunk-source-filter](2026-07-30-chunk-source-filter-design.md) · [guardian-timeout-retry](2026-07-30-guardian-timeout-retry-design.md) · [guardian-timeout-retry](2026-07-30-guardian-timeout-retry-plan.md)
 
-**Code:** [`src/cgis/guardian/`](../../src/cgis/guardian/) · [`src/cgis/guardian/recording.py`](../../src/cgis/guardian/recording.py) · [`src/cgis/guardian/bench.py`](../../src/cgis/guardian/bench.py) · [`src/cgis/guardian/runner.py`](../../src/cgis/guardian/runner.py) · [`scripts/guardian_review.py`](../../scripts/guardian_review.py)
+**Code:** [`src/cgis/guardian/`](../../src/cgis/guardian/) · [`scripts/guardian_review.py`](../../scripts/guardian_review.py) · [`.github/workflows/guardian.yml`](../../.github/workflows/guardian.yml) · [`tests/unit/test_guardian_recording.py`](../../tests/unit/test_guardian_recording.py) · [`tests/unit/test_guardian_runner.py`](../../tests/unit/test_guardian_runner.py)
 
 <!-- END_CGIS_RELATED -->

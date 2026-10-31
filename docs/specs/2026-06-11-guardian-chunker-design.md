@@ -154,6 +154,6 @@ expansion stay parked until the bench demands them.
 <!-- START_CGIS_RELATED -->
 **Related:** [guardian-chunker](plans/2026-06-11-guardian-chunker.md)
 
-**Code:** [`src/cgis/guardian/`](../../src/cgis/guardian/) · [`src/cgis/guardian/chunker.py`](../../src/cgis/guardian/chunker.py) · [`src/cgis/guardian/core.py`](../../src/cgis/guardian/core.py) · [`tests/unit/test_guardian_chunker.py`](../../tests/unit/test_guardian_chunker.py)
+**Code:** [`src/cgis/guardian/`](../../src/cgis/guardian/) · [`tests/unit/test_guardian_chunker.py`](../../tests/unit/test_guardian_chunker.py)
 
 <!-- END_CGIS_RELATED -->

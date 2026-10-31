@@ -847,6 +847,6 @@ git commit -m "docs(spec): record the measured freshness probe cost (#175)"
 <!-- START_CGIS_RELATED -->
 **Related:** [graph-freshness](../specs/2026-09-09-graph-freshness-design.md)
 
-**Code:** [`src/cgis/api/`](../../src/cgis/api/) · [`src/cgis/core/`](../../src/cgis/core/) · [`src/cgis/storage/`](../../src/cgis/storage/) · [`src/cgis/core/freshness.py`](../../src/cgis/core/freshness.py) · [`src/cgis/storage/sqlite_store.py`](../../src/cgis/storage/sqlite_store.py)
+**Code:** [`src/cgis/api/`](../../src/cgis/api/) · [`src/cgis/core/`](../../src/cgis/core/) · [`src/cgis/storage/`](../../src/cgis/storage/) · [`tests/unit/test_freshness.py`](../../tests/unit/test_freshness.py) · [`tests/unit/test_sqlite_store.py`](../../tests/unit/test_sqlite_store.py)
 
 <!-- END_CGIS_RELATED -->

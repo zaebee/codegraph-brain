@@ -90,18 +90,22 @@ def test_code_links_point_at_a_real_file_or_package(tmp_path: Path) -> None:
     _write(
         tmp_path,
         "docs/how-to/use.md",
-        "# Use\n\nIt lives in `cgis.query` and `src/cgis/core/paths.py`.\n",
+        "# Use\n\nIt lives in `cgis.query` and `scripts/check_test_count.py`, "
+        "see `src/cgis/query/engine.py`.\n",
     )
     _write(tmp_path, "src/cgis/query/__init__.py", "")
-    _write(tmp_path, "src/cgis/core/paths.py", "")
+    _write(tmp_path, "src/cgis/query/engine.py", "")
+    _write(tmp_path, "scripts/check_test_count.py", "")
 
     assert _run(tmp_path)[0] == 0
 
     body = (tmp_path / "docs/how-to/use.md").read_text(encoding="utf-8")
     assert "**Code:**" in body
     assert "(../../src/cgis/query/)" in body
-    assert "(../../src/cgis/core/paths.py)" in body
-    for relative in ("../../src/cgis/query", "../../src/cgis/core/paths.py"):
+    assert "(../../scripts/check_test_count.py)" in body
+    # The package link already covers its files; a nested path would be noise.
+    assert "(../../src/cgis/query/engine.py)" not in body
+    for relative in ("../../src/cgis/query", "../../scripts/check_test_count.py"):
         assert (tmp_path / "docs/how-to" / relative).resolve().exists()
 
 

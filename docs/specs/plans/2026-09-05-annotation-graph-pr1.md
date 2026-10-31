@@ -1044,6 +1044,6 @@ Link both issues; the PR closes neither.
 <!-- START_CGIS_RELATED -->
 **Related:** [annotation-graph](../2026-09-05-annotation-graph-design.md) · [annotation-graph-pr2](2026-09-05-annotation-graph-pr2.md)
 
-**Code:** [`src/cgis/core/`](../../../src/cgis/core/) · [`src/cgis/resolver/`](../../../src/cgis/resolver/) · [`src/cgis/resolver/symbols.py`](../../../src/cgis/resolver/symbols.py) · [`src/cgis/resolver/engine.py`](../../../src/cgis/resolver/engine.py) · [`tests/unit/test_python_annotations.py`](../../../tests/unit/test_python_annotations.py)
+**Code:** [`src/cgis/core/`](../../../src/cgis/core/) · [`src/cgis/resolver/`](../../../src/cgis/resolver/) · [`tests/unit/test_python_annotations.py`](../../../tests/unit/test_python_annotations.py) · [`tests/unit/test_annotation_edges.py`](../../../tests/unit/test_annotation_edges.py) · [`tests/unit/test_self_types.py`](../../../tests/unit/test_self_types.py)
 
 <!-- END_CGIS_RELATED -->

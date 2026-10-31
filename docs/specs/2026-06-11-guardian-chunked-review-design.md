@@ -267,6 +267,6 @@ Model selection via existing `GUARDIAN_MODEL` env.
 <!-- START_CGIS_RELATED -->
 **Related:** [guardian-chunked-review](plans/2026-06-11-guardian-chunked-review.md) · [chunked-review-negative-result](../lab-notes/2026-06-11-chunked-review-negative-result.md)
 
-**Code:** [`src/cgis/guardian/`](../../src/cgis/guardian/) · [`src/cgis/guardian/chunker.py`](../../src/cgis/guardian/chunker.py) · [`src/cgis/guardian/chunked.py`](../../src/cgis/guardian/chunked.py)
+**Code:** [`src/cgis/guardian/`](../../src/cgis/guardian/)
 
 <!-- END_CGIS_RELATED -->

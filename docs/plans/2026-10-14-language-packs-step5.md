@@ -189,6 +189,6 @@ sqlite3 <db> "select source, target from edges where type='IMPORTS' and source l
 <!-- START_CGIS_RELATED -->
 **Related:** [language-packs-step6](2026-10-14-language-packs-step6.md) · [language-packs-step4](2026-10-14-language-packs-step4.md) · [language-packs-step3](2026-10-14-language-packs-step3.md) · [language-packs-step7](2026-10-14-language-packs-step7.md) · [language-packs](2026-10-14-language-packs.md)
 
-**Code:** [`src/cgis/pipeline/`](../../src/cgis/pipeline/) · [`src/cgis/query/`](../../src/cgis/query/) · [`src/cgis/resolver/`](../../src/cgis/resolver/) · [`src/cgis/storage/`](../../src/cgis/storage/) · [`src/cgis/pipeline/uplift.py`](../../src/cgis/pipeline/uplift.py)
+**Code:** [`src/cgis/pipeline/`](../../src/cgis/pipeline/) · [`src/cgis/query/`](../../src/cgis/query/) · [`src/cgis/resolver/`](../../src/cgis/resolver/) · [`src/cgis/storage/`](../../src/cgis/storage/) · [`tests/fixtures/graph_identity/snapshot.json`](../../tests/fixtures/graph_identity/snapshot.json)
 
 <!-- END_CGIS_RELATED -->

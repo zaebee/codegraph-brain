@@ -292,6 +292,6 @@ include `resolve_owner`.
 <!-- START_CGIS_RELATED -->
 **Related:** [fastapi-di-edges](plans/2026-06-11-fastapi-di-edges.md) · [suggest-packages](2026-06-13-suggest-packages-design.md) · [suggest-packages](plans/2026-06-13-suggest-packages.md)
 
-**Code:** [`src/cgis/core/`](../../src/cgis/core/) · [`src/cgis/resolver/`](../../src/cgis/resolver/) · [`src/cgis/core/models.py`](../../src/cgis/core/models.py) · [`src/cgis/resolver/engine.py`](../../src/cgis/resolver/engine.py) · [`tests/unit/test_python_extractor.py`](../../tests/unit/test_python_extractor.py)
+**Code:** [`src/cgis/core/`](../../src/cgis/core/) · [`src/cgis/resolver/`](../../src/cgis/resolver/) · [`tests/unit/test_python_extractor.py`](../../tests/unit/test_python_extractor.py) · [`tests/unit/test_resolver.py`](../../tests/unit/test_resolver.py)
 
 <!-- END_CGIS_RELATED -->

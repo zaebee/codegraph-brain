@@ -268,6 +268,6 @@ of magnitude rather than pinning a value that ordinary refactors would break.
 <!-- START_CGIS_RELATED -->
 **Related:** [cgis-fractal](2026-07-30-cgis-fractal-plan.md)
 
-**Code:** [`src/cgis/api/`](../../src/cgis/api/) · [`src/cgis/query/`](../../src/cgis/query/) · [`src/cgis/query/drift/fractal.py`](../../src/cgis/query/drift/fractal.py) · [`src/cgis/api/mcp_server.py`](../../src/cgis/api/mcp_server.py) · [`scripts/probe_tier_ladder.py`](../../scripts/probe_tier_ladder.py)
+**Code:** [`src/cgis/api/`](../../src/cgis/api/) · [`src/cgis/query/`](../../src/cgis/query/) · [`scripts/probe_tier_ladder.py`](../../scripts/probe_tier_ladder.py)
 
 <!-- END_CGIS_RELATED -->

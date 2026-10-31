@@ -118,6 +118,6 @@ shell calls look read-only, so the cause is unknown. Recall was unaffected.
 <!-- START_CGIS_RELATED -->
 **Related:** [exp3b-any-fix-rerun](2026-10-15-exp3b-any-fix-rerun.md)
 
-**Code:** [`src/cgis/api/`](../../src/cgis/api/) · [`src/cgis/api/server_instructions.py`](../../src/cgis/api/server_instructions.py)
+**Code:** [`src/cgis/api/`](../../src/cgis/api/)
 
 <!-- END_CGIS_RELATED -->

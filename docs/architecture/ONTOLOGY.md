@@ -132,6 +132,6 @@ domains:
 **Ontology compliance rule:** Any PR that adds a new `NodeType`, `EdgeType`, or modifies `domains.yaml` must update this document and the `_ONTOLOGY_CLASS` mapping in `src/cgis/pipeline/uplift.py`.
 
 <!-- START_CGIS_RELATED -->
-**Code:** [`src/cgis/pipeline/`](../../src/cgis/pipeline/) · [`src/cgis/pipeline/uplift.py`](../../src/cgis/pipeline/uplift.py)
+**Code:** [`src/cgis/pipeline/`](../../src/cgis/pipeline/)
 
 <!-- END_CGIS_RELATED -->

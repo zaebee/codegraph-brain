@@ -490,6 +490,6 @@ git add -A -- src/ tests/ && git diff --cached --quiet || git commit -m "chore: 
 <!-- START_CGIS_RELATED -->
 **Related:** [symbol-import-edges](../2026-06-11-symbol-import-edges-design.md)
 
-**Code:** [`src/cgis/core/`](../../../src/cgis/core/) · [`src/cgis/resolver/`](../../../src/cgis/resolver/) · [`src/cgis/core/models.py`](../../../src/cgis/core/models.py) · [`tests/unit/test_ontology_compliance.py`](../../../tests/unit/test_ontology_compliance.py) · [`tests/unit/test_python_extractor.py`](../../../tests/unit/test_python_extractor.py)
+**Code:** [`src/cgis/core/`](../../../src/cgis/core/) · [`src/cgis/resolver/`](../../../src/cgis/resolver/) · [`tests/unit/test_ontology_compliance.py`](../../../tests/unit/test_ontology_compliance.py) · [`tests/unit/test_python_extractor.py`](../../../tests/unit/test_python_extractor.py) · [`tests/unit/test_resolver.py`](../../../tests/unit/test_resolver.py)
 
 <!-- END_CGIS_RELATED -->

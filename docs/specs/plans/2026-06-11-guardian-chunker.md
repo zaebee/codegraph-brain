@@ -729,6 +729,6 @@ Push branch (`git push origin feat/guardian-chunker` — bare `git push` hits GH
 <!-- START_CGIS_RELATED -->
 **Related:** [guardian-chunker](../2026-06-11-guardian-chunker-design.md) · [SELF_PORTRAIT](../../architecture/SELF_PORTRAIT.md) · [language-packs-step7](../../plans/2026-10-14-language-packs-step7.md) · [language-packs](../../plans/2026-10-14-language-packs.md) · [language-packs-step1](../../plans/2026-10-14-language-packs-step1.md)
 
-**Code:** [`src/cgis/core/`](../../../src/cgis/core/) · [`src/cgis/guardian/`](../../../src/cgis/guardian/) · [`src/cgis/storage/`](../../../src/cgis/storage/) · [`src/cgis/guardian/chunker.py`](../../../src/cgis/guardian/chunker.py) · [`tests/unit/test_guardian_chunker.py`](../../../tests/unit/test_guardian_chunker.py)
+**Code:** [`src/cgis/core/`](../../../src/cgis/core/) · [`src/cgis/guardian/`](../../../src/cgis/guardian/) · [`src/cgis/storage/`](../../../src/cgis/storage/) · [`tests/unit/test_guardian_chunker.py`](../../../tests/unit/test_guardian_chunker.py)
 
 <!-- END_CGIS_RELATED -->

@@ -1239,6 +1239,6 @@ prior gemini benchmark hit the 30 PLN cap.
 <!-- START_CGIS_RELATED -->
 **Related:** [guardian-skeptic-scoring](../2026-07-29-guardian-skeptic-scoring-design.md)
 
-**Code:** [`src/cgis/guardian/`](../../../src/cgis/guardian/) · [`tests/unit/test_guardian_core.py`](../../../tests/unit/test_guardian_core.py) · [`src/cgis/guardian/findings.py`](../../../src/cgis/guardian/findings.py) · [`src/cgis/guardian/core.py`](../../../src/cgis/guardian/core.py) · [`src/cgis/guardian/skeptic.py`](../../../src/cgis/guardian/skeptic.py)
+**Code:** [`src/cgis/guardian/`](../../../src/cgis/guardian/) · [`tests/unit/test_guardian_core.py`](../../../tests/unit/test_guardian_core.py) · [`tests/unit/test_guardian_skeptic.py`](../../../tests/unit/test_guardian_skeptic.py) · [`tests/unit/test_guardian_diff_index.py`](../../../tests/unit/test_guardian_diff_index.py) · [`tests/unit/test_guardian_chunker.py`](../../../tests/unit/test_guardian_chunker.py)
 
 <!-- END_CGIS_RELATED -->

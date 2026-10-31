@@ -219,6 +219,6 @@ Benchmark data:
 <!-- START_CGIS_RELATED -->
 **Related:** [guardian-precision-bench](2026-07-30-guardian-precision-bench-plan.md) · [chunk-source-filter](2026-07-30-chunk-source-filter-design.md) · [guardian-timeout-retry](2026-07-30-guardian-timeout-retry-design.md) · [chunk-source-filter](2026-07-30-chunk-source-filter-plan.md) · [guardian-timeout-retry](2026-07-30-guardian-timeout-retry-plan.md)
 
-**Code:** [`src/cgis/guardian/`](../../src/cgis/guardian/) · [`src/cgis/guardian/recording.py`](../../src/cgis/guardian/recording.py) · [`scripts/guardian_review.py`](../../scripts/guardian_review.py) · [`.github/workflows/guardian.yml`](../../.github/workflows/guardian.yml)
+**Code:** [`src/cgis/guardian/`](../../src/cgis/guardian/) · [`scripts/guardian_review.py`](../../scripts/guardian_review.py) · [`.github/workflows/guardian.yml`](../../.github/workflows/guardian.yml)
 
 <!-- END_CGIS_RELATED -->

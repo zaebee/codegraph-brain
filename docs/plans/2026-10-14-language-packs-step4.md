@@ -683,6 +683,6 @@ def _normalized(index: SymbolIndex, type_fqn: str) -> str:
 <!-- START_CGIS_RELATED -->
 **Related:** [language-packs-step3](2026-10-14-language-packs-step3.md) · [language-packs-step5](2026-10-14-language-packs-step5.md) · [language-packs-step6](2026-10-14-language-packs-step6.md)
 
-**Code:** [`src/cgis/core/`](../../src/cgis/core/) · [`src/cgis/languages/`](../../src/cgis/languages/) · [`src/cgis/resolver/`](../../src/cgis/resolver/) · [`tests/fixtures/graph_identity/snapshot.json`](../../tests/fixtures/graph_identity/snapshot.json) · [`src/cgis/languages/__init__.py`](../../src/cgis/languages/__init__.py)
+**Code:** [`src/cgis/core/`](../../src/cgis/core/) · [`src/cgis/languages/`](../../src/cgis/languages/) · [`src/cgis/resolver/`](../../src/cgis/resolver/) · [`tests/fixtures/graph_identity/snapshot.json`](../../tests/fixtures/graph_identity/snapshot.json) · [`tests/unit/test_languages.py`](../../tests/unit/test_languages.py)
 
 <!-- END_CGIS_RELATED -->

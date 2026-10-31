@@ -979,6 +979,6 @@ Symbol-level import edges (slice 2), class-body DI aliases, argless `Depends()` 
 <!-- START_CGIS_RELATED -->
 **Related:** [fastapi-di-edges](../2026-06-11-fastapi-di-edges-design.md) · [suggest-packages](2026-06-13-suggest-packages.md) · [suggest-packages](../2026-06-13-suggest-packages-design.md) · [language-packs](../../plans/2026-10-14-language-packs.md) · [fingerprint-drift](2026-06-09-fingerprint-drift.md)
 
-**Code:** [`src/cgis/core/`](../../../src/cgis/core/) · [`src/cgis/resolver/`](../../../src/cgis/resolver/) · [`src/cgis/storage/`](../../../src/cgis/storage/) · [`src/cgis/core/models.py`](../../../src/cgis/core/models.py) · [`src/cgis/resolver/engine.py`](../../../src/cgis/resolver/engine.py)
+**Code:** [`src/cgis/core/`](../../../src/cgis/core/) · [`src/cgis/resolver/`](../../../src/cgis/resolver/) · [`src/cgis/storage/`](../../../src/cgis/storage/) · [`tests/unit/test_python_extractor.py`](../../../tests/unit/test_python_extractor.py) · [`tests/unit/test_resolver.py`](../../../tests/unit/test_resolver.py)
 
 <!-- END_CGIS_RELATED -->

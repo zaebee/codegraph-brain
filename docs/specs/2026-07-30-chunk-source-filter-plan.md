@@ -332,6 +332,6 @@ of one where two thirds of the calls review markdown.
 <!-- START_CGIS_RELATED -->
 **Related:** [chunk-source-filter](2026-07-30-chunk-source-filter-design.md) · [guardian-precision-bench](2026-07-30-guardian-precision-bench-design.md) · [guardian-timeout-retry](2026-07-30-guardian-timeout-retry-design.md)
 
-**Code:** [`src/cgis/guardian/`](../../src/cgis/guardian/) · [`src/cgis/guardian/chunked.py`](../../src/cgis/guardian/chunked.py) · [`src/cgis/guardian/chunker.py`](../../src/cgis/guardian/chunker.py) · [`tests/unit/test_guardian_chunker.py`](../../tests/unit/test_guardian_chunker.py) · [`tests/unit/test_guardian_chunked.py`](../../tests/unit/test_guardian_chunked.py)
+**Code:** [`src/cgis/guardian/`](../../src/cgis/guardian/) · [`tests/unit/test_guardian_chunker.py`](../../tests/unit/test_guardian_chunker.py) · [`tests/unit/test_guardian_chunked.py`](../../tests/unit/test_guardian_chunked.py)
 
 <!-- END_CGIS_RELATED -->

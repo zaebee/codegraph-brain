@@ -689,6 +689,6 @@ State in the description, because a reviewer cannot see it from the diff:
 <!-- START_CGIS_RELATED -->
 **Related:** [annotation-graph](../2026-09-05-annotation-graph-design.md) · [annotation-graph-pr1](2026-09-05-annotation-graph-pr1.md) · [guardian-chunker](2026-06-11-guardian-chunker.md)
 
-**Code:** [`src/cgis/core/`](../../../src/cgis/core/) · [`src/cgis/query/`](../../../src/cgis/query/) · [`src/cgis/resolver/`](../../../src/cgis/resolver/) · [`tests/self_parsing/test_architecture.py`](../../../tests/self_parsing/test_architecture.py) · [`src/cgis/query/analysis/analyzer.py`](../../../src/cgis/query/analysis/analyzer.py)
+**Code:** [`src/cgis/core/`](../../../src/cgis/core/) · [`src/cgis/query/`](../../../src/cgis/query/) · [`src/cgis/resolver/`](../../../src/cgis/resolver/) · [`tests/self_parsing/test_architecture.py`](../../../tests/self_parsing/test_architecture.py) · [`tests/unit/test_resolver.py`](../../../tests/unit/test_resolver.py)
 
 <!-- END_CGIS_RELATED -->

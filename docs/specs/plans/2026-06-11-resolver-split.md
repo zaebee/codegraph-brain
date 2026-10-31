@@ -914,6 +914,6 @@ git add -A && git diff --cached --quiet || git commit -m "chore: formatting (#11
 <!-- START_CGIS_RELATED -->
 **Related:** [resolver-split](../2026-06-11-resolver-split-design.md)
 
-**Code:** [`src/cgis/resolver/`](../../../src/cgis/resolver/) · [`src/cgis/resolver/indices.py`](../../../src/cgis/resolver/indices.py) · [`tests/unit/test_resolver_indices.py`](../../../tests/unit/test_resolver_indices.py) · [`src/cgis/resolver/symbols.py`](../../../src/cgis/resolver/symbols.py) · [`tests/unit/test_resolver_symbols.py`](../../../tests/unit/test_resolver_symbols.py)
+**Code:** [`src/cgis/resolver/`](../../../src/cgis/resolver/) · [`tests/unit/test_resolver_indices.py`](../../../tests/unit/test_resolver_indices.py) · [`tests/unit/test_resolver_symbols.py`](../../../tests/unit/test_resolver_symbols.py) · [`tests/unit/test_resolver.py`](../../../tests/unit/test_resolver.py) · [`tests/self_parsing/test_architecture.py`](../../../tests/self_parsing/test_architecture.py)
 
 <!-- END_CGIS_RELATED -->
