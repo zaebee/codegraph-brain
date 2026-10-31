@@ -278,6 +278,6 @@ ratios as an indirection effect at all.
   several independent agent runs, and adjudicate every disagreement, before freezing it.
 
 <!-- START_CGIS_RELATED -->
-**Related:** [exp1-radius-indirection](2026-10-15-exp1-radius-indirection.md) · [exp3-does-cgis-help](2026-10-15-exp3-does-cgis-help.md)
+**Related:** [exp3-does-cgis-help](2026-10-15-exp3-does-cgis-help.md) · [exp1-radius-indirection](2026-10-15-exp1-radius-indirection.md)
 
 <!-- END_CGIS_RELATED -->

@@ -888,7 +888,7 @@ Acceptance:
 - the ontology-compliance tests pass on the Go corpus.
 
 <!-- START_CGIS_RELATED -->
-**Related:** [language-packs](../specs/2026-10-14-language-packs-design.md) · [language-packs-step1](2026-10-14-language-packs-step1.md) · [suggest-packages](../specs/plans/2026-06-13-suggest-packages.md) · [SELF_PORTRAIT](../architecture/SELF_PORTRAIT.md) · [language-packs-step7](2026-10-14-language-packs-step7.md)
+**Related:** [language-packs](../specs/2026-10-14-language-packs-design.md) · [language-packs-step1](2026-10-14-language-packs-step1.md) · [SELF_PORTRAIT](../architecture/SELF_PORTRAIT.md) · [language-packs-step7](2026-10-14-language-packs-step7.md) · [data-key-layer](2026-10-18-data-key-layer.md)
 
 **Code:** [`src/cgis/api/`](../../src/cgis/api/) · [`src/cgis/core/`](../../src/cgis/core/) · [`src/cgis/guardian/`](../../src/cgis/guardian/) · [`src/cgis/languages/`](../../src/cgis/languages/) · [`src/cgis/query/`](../../src/cgis/query/)
 

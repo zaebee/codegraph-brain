@@ -1,6 +1,6 @@
 """Structural tier ladder + entropy slope — the #186 deliverable-3 measurement.
 
-Reproduces the baseline table in docs/specs/2026-07-30-cgis-fractal-design.md.
+Reproduces the baseline table in docs/archive/specs/2026-07-30-cgis-fractal-design.md.
 Rungs are structural and their count is set by the repository, never by a swept
 parameter: symbol -> class -> module -> directory levels trimmed from the LEAF end.
 

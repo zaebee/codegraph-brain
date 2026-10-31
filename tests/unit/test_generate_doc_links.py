@@ -198,3 +198,16 @@ def test_an_unpaired_marker_is_an_error(tmp_path: Path) -> None:
     _write(tmp_path, "docs/specs/x.md", f"body\n{START}\n")
     with pytest.raises(GENERATOR.MalformedMarkersError):
         _run(tmp_path)
+
+
+def test_archived_documents_are_frozen(tmp_path: Path) -> None:
+    """Archived history gets no generated block and no place in the index."""
+    _write(tmp_path, "docs/archive/specs/2026-01-01-old.md", "# Old\n")
+    _write(tmp_path, "docs/specs/new.md", "# New\n")
+
+    assert _run(tmp_path)[0] == 0
+
+    archived = (tmp_path / "docs/archive/specs/2026-01-01-old.md").read_text(encoding="utf-8")
+    index = (tmp_path / "docs/INDEX.md").read_text(encoding="utf-8")
+    assert START not in archived
+    assert "archive/specs" not in index

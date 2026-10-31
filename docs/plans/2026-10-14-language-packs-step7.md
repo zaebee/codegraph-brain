@@ -485,7 +485,7 @@ state == {"go_module": {"path": "example.com/app", "requires": ["github.com/x/y"
 - [ ] **PR** `feat(languages): step 7b — the Go pilot`. Merge on approval.
 
 <!-- START_CGIS_RELATED -->
-**Related:** [language-packs](../specs/2026-10-14-language-packs-design.md) · [language-packs](2026-10-14-language-packs.md) · [language-packs-step1](2026-10-14-language-packs-step1.md) · [SELF_PORTRAIT](../architecture/SELF_PORTRAIT.md) · [fingerprint-drift](../specs/plans/2026-06-09-fingerprint-drift.md)
+**Related:** [language-packs](../specs/2026-10-14-language-packs-design.md) · [language-packs](2026-10-14-language-packs.md) · [language-packs-step1](2026-10-14-language-packs-step1.md) · [SELF_PORTRAIT](../architecture/SELF_PORTRAIT.md) · [HOW_IT_WORKS](../architecture/HOW_IT_WORKS.md)
 
 **Code:** [`src/cgis/core/`](../../src/cgis/core/) · [`src/cgis/guardian/`](../../src/cgis/guardian/) · [`src/cgis/languages/`](../../src/cgis/languages/) · [`src/cgis/pipeline/`](../../src/cgis/pipeline/) · [`src/cgis/query/`](../../src/cgis/query/)
 

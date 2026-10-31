@@ -564,7 +564,7 @@ made there, not worked around in Go.
   more than 5% slower.
 
 <!-- START_CGIS_RELATED -->
-**Related:** [language-packs](../plans/2026-10-14-language-packs.md) · [guardian-sprint](2026-06-10-guardian-sprint-design.md) · [language-packs-step7](../plans/2026-10-14-language-packs-step7.md) · [language-packs-step1](../plans/2026-10-14-language-packs-step1.md) · [language-packs-step6](../plans/2026-10-14-language-packs-step6.md)
+**Related:** [language-packs](../plans/2026-10-14-language-packs.md) · [language-packs-step7](../plans/2026-10-14-language-packs-step7.md) · [language-packs-step1](../plans/2026-10-14-language-packs-step1.md) · [language-packs-step6](../plans/2026-10-14-language-packs-step6.md) · [language-packs-step3](../plans/2026-10-14-language-packs-step3.md)
 
 **Code:** [`src/cgis/core/`](../../src/cgis/core/) · [`src/cgis/languages/`](../../src/cgis/languages/) · [`src/cgis/pipeline/`](../../src/cgis/pipeline/) · [`src/cgis/resolver/`](../../src/cgis/resolver/) · [`scripts/generate_health.py`](../../scripts/generate_health.py)
 

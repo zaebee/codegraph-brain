@@ -50,8 +50,10 @@ GENERATED_DOCS = frozenset(
     }
 )
 
-#: Directories that are not part of the document graph.
-SKIPPED_DIRS = frozenset({"docs/assets", "docs/superpowers"})
+#: Directories that are not part of the document graph. `docs/archive` is frozen
+#: history: a generated block there would only rot, and the index lists living
+#: documents.
+SKIPPED_DIRS = frozenset({"docs/assets", "docs/superpowers", "docs/archive"})
 
 #: The engine's top-level packages, used for the "Code" line.
 MODULES = (
