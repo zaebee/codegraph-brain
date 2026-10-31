@@ -68,7 +68,14 @@ analytics = [
 ]
 guardian = [
     "google-genai>=0.8.0",
-    "mistralai>=1.0.0",
+    # Below 3 on purpose: mistralai 3.x is built on httpx2, whose transport
+    # exceptions are not the `httpx` ones `BaseProvider._retry` catches, and
+    # `MistralProvider` turns the SDK's own connection retries off because it
+    # assumes `_retry` owns them. On 3.x neither layer retries a timeout or a
+    # dropped connection (Entire findings 01M631P013NH / 01M631MMYDWQ on #754).
+    # Lift the cap with the provider's retry handling, as anthropic.py did for
+    # its httpx2 SDK.
+    "mistralai>=1.0.0,<3",
     "anthropic>=1.0.0",
     "cohere>=5.0.0",
     "ollama>=0.3.0",
