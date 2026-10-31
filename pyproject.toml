@@ -238,11 +238,18 @@ exclude_also = ['if __name__ == "__main__":']
 python-version = "3.12.0"
 preset = "legacy"
 project-includes = ["src"]
-ignore-missing-imports = [
-    "pydantic.*",
+# Optional provider SDKs are replaced with `Any` rather than typed. CI installs
+# only `--group dev`, so mypy never saw their types either — and a developer
+# with the `guardian` extra installed must not get a different error set, or the
+# committed baseline would mean different things in different environments.
+replace-imports-with-any = [
     "google.*",
     "mistralai.*",
     "ollama.*",
+    "cohere.*",
+]
+ignore-missing-imports = [
+    "pydantic.*",
     "duckdb.*",
 ]
 check-unannotated-defs = true

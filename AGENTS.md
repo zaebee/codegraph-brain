@@ -107,9 +107,12 @@ updates.
 
 The CI gate is an **error budget**: `.github/pyrefly-baseline.json` records the
 type errors the tree has today, and the check fails only when *new* ones appear.
-Fixing an error means pruning the baseline (`uv run pyrefly check
---prune-baseline`); code that moves means re-recording it (`--update-baseline`).
-Never use `--update-baseline` to launder an error you just introduced.
+Fixing an error means pruning the baseline (`uv run pyrefly check --baseline
+.github/pyrefly-baseline.json --prune-baseline`); code that moves means
+re-recording it with `--update-baseline` on the same command. Never use
+`--update-baseline` to launder an error you just introduced. The set does not
+depend on installed extras: the optional provider SDKs are typed as `Any` in
+`[tool.pyrefly]`, so a `guardian`-extra venv sees the same six errors CI does.
 
 ## Test Layout
 
