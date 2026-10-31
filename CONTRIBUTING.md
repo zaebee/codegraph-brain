@@ -11,7 +11,7 @@ By contributing, you agree to follow these guidelines.
 We prioritize **Correctness, Type Safety, and Determinism** over speed of delivery.
 
 ### 1. Type Discipline (Mandatory)
-We use `pyrefly` with the strictness the old mypy config asked for (`[tool.pyrefly]` in `pyproject.toml`).
+We use `pyrefly` with an approximation of the old mypy `strict` configuration (`[tool.pyrefly]` in `pyproject.toml`).
 *   **Error budget:** `.github/pyrefly-baseline.json` is the committed set of existing type errors, and CI fails on any error it does not contain — a set, not a count, so fixing one and adding another still fails. Fixing an error means shrinking the budget with `uv run pyrefly check --baseline .github/pyrefly-baseline.json --prune-baseline`; `--update-baseline` (same command) re-records errors that moved and is never the way to accept one you added.
 *   **No `Any`:** The use of `Any` is prohibited unless it is technically impossible to avoid (and even then, it must be accompanied by a comment explaining why).
 *   **Full Annotations:** Every function, method, and class attribute must have complete type annotations, including return types.

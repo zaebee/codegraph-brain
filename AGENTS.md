@@ -100,10 +100,10 @@ IngestionPipeline (pipeline/__init__.py)
 
 ## Type Discipline
 
-Type checking is `pyrefly` (`[tool.pyrefly]` in `pyproject.toml` carries the
-strictness the mypy config asked for). All functions need full annotations
-including return types; use `model_copy(update={...})` for immutable model
-updates.
+Type checking is `pyrefly` (`[tool.pyrefly]` in `pyproject.toml` approximates
+the `strict = true` mypy configuration it replaces). All functions need full
+annotations including return types; use `model_copy(update={...})` for
+immutable model updates.
 
 The CI gate is an **error budget**: `.github/pyrefly-baseline.json` records the
 individual type errors the tree has today, and the check fails when an error

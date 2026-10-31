@@ -246,7 +246,6 @@ replace-imports-with-any = [
     "google.*",
     "mistralai.*",
     "ollama.*",
-    "cohere.*",
 ]
 # `duckdb` is an optional extra: a bare install does not have it, and the import
 # would otherwise read as an error rather than as a missing extra.
@@ -256,8 +255,11 @@ ignore-missing-imports = [
 check-unannotated-defs = true
 infer-return-types = "never"
 
-# Strictness equivalents of the previous `strict = true` mypy configuration,
-# expressed as pyrefly's per-error levels.
+# What the previous `strict = true` mypy configuration asked for, as far as
+# pyrefly has a per-error level for it: an approximation, not a one-to-one map.
+# mypy's `warn_unused_ignores` has no counterpart here, and `redundant-cast` is
+# a warning rather than the error mypy strict made it; the rest lean on the
+# `legacy` preset above.
 [tool.pyrefly.errors]
 implicit-any = "error"
 method-assign = "error"
