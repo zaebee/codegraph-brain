@@ -55,8 +55,13 @@ jobs:
       - name: Interrogate (≥90% docstring coverage)
         run: uv run --frozen interrogate -v --fail-under 90 src/cgis
 
-      - name: Mypy (strict)
-        run: uv run --frozen mypy src
+      - name: Pyrefly (error budget)
+        # The gate is the committed baseline — it fails when an error appears
+        # that the baseline does not contain (a set, not a count: fixing one and
+        # adding another still fails). An error that moved is re-recorded with
+        # `--update-baseline`, a fixed one pruned with `--prune-baseline`; both
+        # take `--baseline .github/pyrefly-baseline.json`.
+        run: uv run --frozen pyrefly check --baseline .github/pyrefly-baseline.json
 
       - name: Pytest
         # xml alongside term-missing: the console form is for a human reading the

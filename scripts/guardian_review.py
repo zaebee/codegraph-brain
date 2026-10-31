@@ -37,7 +37,7 @@ def reviewed_root(requested: Path | None, project_root: Path, env: Mapping[str, 
     """The checkout to review: `--repo-root`, or this repository when it is not given.
 
     A foreign checkout is data only (#730): the evidence pass would run
-    `uv run mypy/ruff` inside it, which executes code and config the PR's author
+    `uv run pyrefly/ruff` inside it, which executes code and config the PR's author
     controls while the job holds provider keys, so that combination is refused.
     """
     this_repository = project_root.resolve()

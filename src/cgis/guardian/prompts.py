@@ -90,7 +90,7 @@ class PromptBuilder:
             "You prioritise: (1) Logic correctness — wrong output, crashes, data corruption; "
             "(2) Library boundary contracts — convention mismatches at third-party API calls; "
             "(3) Missing test coverage for real edge cases in the diff; "
-            "(4) Type safety violations that mypy strict would catch; "
+            "(4) Type safety violations that pyrefly would catch; "
             "(5) Ontology compliance — wrong NodeType/EdgeType mappings corrupt the graph. "
             "You still do NOT flag style preferences, naming conventions, or design "
             "disagreements that have no concrete failure scenario. If the code is correct "

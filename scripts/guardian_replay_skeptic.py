@@ -66,7 +66,9 @@ _VERDICTS = frozenset({"confirmed", "refuted", "uncertain"})
 #: on the diff. Deliberately broad — a false positive here only inflates the
 #: attributable count, which is the number under scrutiny, so it is reported
 #: beside the total rather than as a conclusion.
-_CHECKER_MENTION = re.compile(r"mypy|ruff|checker|type check|linter|All checks passed", re.I)
+_CHECKER_MENTION = re.compile(
+    r"mypy|pyrefly|ruff|checker|type check|linter|All checks passed", re.I
+)
 
 
 class NoBaselineError(RuntimeError):

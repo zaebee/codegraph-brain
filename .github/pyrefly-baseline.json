@@ -1,0 +1,46 @@
+{
+  "errors": [
+    {
+      "column": 32,
+      "path": "src/cgis/__init__.py",
+      "name": "implicit-any-lambda",
+      "concise_description": "Type of lambda parameter `_args` is unknown",
+      "severity": "error"
+    },
+    {
+      "column": 29,
+      "path": "src/cgis/languages/data/extractor.py",
+      "name": "implicit-any-empty-container",
+      "concise_description": "Cannot infer type of empty container; it will be treated as containing `Any`",
+      "severity": "error"
+    },
+    {
+      "column": 12,
+      "path": "src/cgis/query/analysis/suggest_service.py",
+      "name": "bad-return",
+      "concise_description": "Returned type `dict[str, dict[str, float] | float | int | list[dict[str, Any]] | str | None]` is not assignable to declared return type `dict[str, object]`",
+      "severity": "error"
+    },
+    {
+      "column": 12,
+      "path": "src/cgis/query/diffcheck/check.py",
+      "name": "bad-return",
+      "concise_description": "Returned type `dict[str, bool | int | list[dict[str, Any]] | list[str] | str]` is not assignable to declared return type `dict[str, object]`",
+      "severity": "error"
+    },
+    {
+      "column": 57,
+      "path": "src/cgis/query/drift/ontology_init.py",
+      "name": "implicit-any-empty-container",
+      "concise_description": "Cannot infer type of empty container; it will be treated as containing `Any`",
+      "severity": "error"
+    },
+    {
+      "column": 17,
+      "path": "src/cgis/query/render/metrics.py",
+      "name": "unsupported-operation",
+      "concise_description": "`None` is not subscriptable",
+      "severity": "error"
+    }
+  ]
+}
