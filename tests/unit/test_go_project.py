@@ -101,3 +101,25 @@ def test_a_go_mod_is_claimed_and_other_files_are_not(tmp_path: Path) -> None:
     reader = GoProjectReader(tmp_path)
     assert reader.note(tmp_path / "go.mod") is True
     assert reader.note(tmp_path / "main.go") is False
+
+
+def test_a_go_mod_symlinked_outside_the_root_is_not_read(tmp_path: Path) -> None:
+    """A PR can commit the root's `go.mod` as a symlink; the ingest reads nothing outside (#732)."""
+    outside = tmp_path / "outside.mod"
+    outside.write_text("module evil.example/app\n", encoding="utf-8")
+    root = tmp_path / "app"
+    root.mkdir()
+    (root / "go.mod").symlink_to(outside)
+
+    assert _reader_over(root).facts().state() == {}
+
+
+def test_a_go_mod_under_an_unresolvable_parent_is_not_read(tmp_path: Path) -> None:
+    """A symlink loop in the tree must refuse the file, not crash the walk (review of #755)."""
+    root = tmp_path / "app"
+    root.mkdir()
+    (root / "loop").symlink_to(root / "loop")
+
+    reader = GoProjectReader(root)
+    assert reader.note(root / "loop" / "go.mod") is True  # named like ours, so claimed
+    assert reader.facts().state() == {}

@@ -11,7 +11,7 @@ from typing import override
 
 import structlog
 
-from cgis.core.project import ProjectFacts, ProjectReader
+from cgis.core.project import ProjectFacts, ProjectReader, resolves_inside
 
 logger = structlog.get_logger(__name__)
 
@@ -111,11 +111,24 @@ class GoProjectReader(ProjectReader):
 
     @override
     def note(self, path: Path) -> bool:
-        """Claim every `go.mod`; only the root's is this module's (a nested one is another)."""
+        """Claim every `go.mod`; only the root's is this module's (a nested one is another).
+
+        The root's file is read only when it resolves there: a PR can commit a
+        `go.mod` as a symlink, and the ingest must not read a file the checkout does
+        not hold (#732). An unresolvable path — a symlink loop — is not the root's
+        either: refusing it keeps a malicious tree from crashing the walk.
+        """
         if path.name != GO_MOD:
             return False
-        if path.parent.resolve() == self._root.resolve():
-            self._go_mod = path
+        try:
+            at_root = path.parent.resolve() == self._root.resolve()
+        except (OSError, RuntimeError):
+            at_root = False
+        if at_root:
+            if resolves_inside(path, self._root):
+                self._go_mod = path
+            else:
+                logger.warning("go.mod outside the ingest root, skipping", path=str(path))
         return True
 
     @override
