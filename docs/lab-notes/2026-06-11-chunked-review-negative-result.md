@@ -3,8 +3,8 @@
 **Date:** 2026-06-11
 **Experiment:** #154 slices 1–2 · **Code:** PR #157 (`6178bae`), PR #159 (`2030eb8`)
 **Verdict:** gate FAILED 3/4 — feature stays behind a flag, off in production
-**Specs:** [`2026-06-11-guardian-chunker-design.md`](../specs/2026-06-11-guardian-chunker-design.md) ·
-[`2026-06-11-guardian-chunked-review-design.md`](../specs/2026-06-11-guardian-chunked-review-design.md)
+**Specs:** [`2026-06-11-guardian-chunker-design.md`](../archive/specs/2026-06-11-guardian-chunker-design.md) ·
+[`2026-06-11-guardian-chunked-review-design.md`](../archive/specs/2026-06-11-guardian-chunked-review-design.md)
 
 The headline: the hypothesis survived contact with reality only partially, and the
 honest negative result is the most valuable artifact.
@@ -130,8 +130,3 @@ the one that cannot be independently re-checked today.
 ## Refs
 
 #154, #155, #160 · PR #157, PR #159
-
-<!-- START_CGIS_RELATED -->
-**Related:** [guardian-chunked-review](../specs/2026-06-11-guardian-chunked-review-design.md)
-
-<!-- END_CGIS_RELATED -->

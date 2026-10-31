@@ -1037,7 +1037,7 @@ The body carries:
 End the body with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`. Then check the Gemini and Guardian comments and the Sonar result, and reply in every thread.
 
 <!-- START_CGIS_RELATED -->
-**Related:** [language-packs-step6](2026-10-14-language-packs-step6.md) · [language-packs](2026-10-14-language-packs.md) · [suggest-packages](../specs/plans/2026-06-13-suggest-packages.md) · [language-packs](../specs/2026-10-14-language-packs-design.md) · [SELF_PORTRAIT](../architecture/SELF_PORTRAIT.md)
+**Related:** [language-packs-step6](2026-10-14-language-packs-step6.md) · [language-packs](2026-10-14-language-packs.md) · [language-packs](../specs/2026-10-14-language-packs-design.md) · [SELF_PORTRAIT](../architecture/SELF_PORTRAIT.md) · [language-packs-step7](2026-10-14-language-packs-step7.md)
 
 **Code:** [`src/cgis/api/`](../../src/cgis/api/) · [`src/cgis/core/`](../../src/cgis/core/) · [`src/cgis/guardian/`](../../src/cgis/guardian/) · [`src/cgis/languages/`](../../src/cgis/languages/) · [`src/cgis/query/`](../../src/cgis/query/)
 

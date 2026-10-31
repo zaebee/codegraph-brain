@@ -125,7 +125,7 @@ JUDGED_FILE = Path("benchmarks/martian-judged.jsonl")
 #: standing in, which is a wrong value that looks entirely right.
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-#: Registered in docs/specs/2026-08-11-guardian-code-review-bench.md, §"Corpus
+#: Registered in docs/archive/specs/2026-08-11-guardian-code-review-bench.md, §"Corpus
 #: reconnaissance". The plan asserts against these rather than reporting
 #: whatever it finds: a population that has drifted from the one the gate was
 #: registered on is the failure mode Phase 1 was retracted for (R1).

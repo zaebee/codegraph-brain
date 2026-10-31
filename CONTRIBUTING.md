@@ -26,6 +26,7 @@ We use `ruff` for both linting and formatting.
 CGIS is a semantic engine. Code without documentation is useless to an agent.
 *   **Docstring Coverage:** We aim for >90% docstring coverage. Use `interrogate` to check your work.
 *   **Ontology Compliance:** Any changes to `NodeType`, `EdgeType`, or the schema in `docs/ontology/` must be clearly documented in your PR. We treat the ontology as a formal contract.
+*   **Layout and archive:** `docs/README.md` says what lives where. A design record is dated (`docs/specs/YYYY-MM-DD-<slug>-design.md`), its plan lives in `docs/plans/`, and a finished record moves unchanged to `docs/archive/`. After editing a living document, run `make docs-links`: it refreshes the generated `Related:`/`Code:` blocks and `docs/INDEX.md`, and CI does the same on every push to `main`.
 
 ---
 

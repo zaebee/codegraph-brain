@@ -51,7 +51,7 @@ RESULTS = BENCH_DIR / "results.jsonl"
 CALIBRATION = BENCH_DIR / "calibration.jsonl"
 
 #: Gate thresholds, pre-registered in
-#: docs/specs/2026-08-11-guardian-code-review-bench.md §"Phase 1".
+#: docs/archive/specs/2026-08-11-guardian-code-review-bench.md §"Phase 1".
 G1_MIN_RHO = 0.6
 G2_MAX_POINTS = 10.0
 G3_MIN_AGREEMENT = 0.8
