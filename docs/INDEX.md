@@ -113,6 +113,7 @@
 - [CASE_STUDY](CASE_STUDY.md)
 - [GUARDIAN_LOCAL_BENCH](GUARDIAN_LOCAL_BENCH.md)
 - [GUARDIAN_REMOTE_OLLAMA](GUARDIAN_REMOTE_OLLAMA.md)
+- [README](README.md)
 - [ONTOLOGY](architecture/ONTOLOGY.md)
 - [AGENT_ONBOARDING](how-to/AGENT_ONBOARDING.md)
 - [chunked-review-negative-result](lab-notes/2026-06-11-chunked-review-negative-result.md)
