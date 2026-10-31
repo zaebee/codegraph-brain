@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.39.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.38.0...codegraph-brain-v0.39.0) (2026-10-31)
+
+
+### Features
+
+* **entire:** enable Entire session tracking ([#753](https://github.com/zaebee/codegraph-brain/issues/753)) ([ae14156](https://github.com/zaebee/codegraph-brain/commit/ae14156706f7909f8773d16c65463457387b7617))
+
+
+### Bug Fixes
+
+* **deps:** bump virtualenv past the two open Dependabot alerts ([#761](https://github.com/zaebee/codegraph-brain/issues/761)) ([21d707d](https://github.com/zaebee/codegraph-brain/commit/21d707d58f7aaea75d423823f551bd6b3c04cbe0))
+* **deps:** cap mistralai below 3 until the provider retries on httpx2 ([#758](https://github.com/zaebee/codegraph-brain/issues/758)) ([0d195b6](https://github.com/zaebee/codegraph-brain/commit/0d195b69ce919a01047087e34f5d77ba3a6d63fb))
+* **ingest:** skip config files whose symlink resolves outside the root ([#755](https://github.com/zaebee/codegraph-brain/issues/755)) ([3c6ae4e](https://github.com/zaebee/codegraph-brain/commit/3c6ae4e82c09180631fea9d83e3ec35ffdd4db6b))
+
 ## [0.38.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.37.0...codegraph-brain-v0.38.0) (2026-10-23)
 
 
