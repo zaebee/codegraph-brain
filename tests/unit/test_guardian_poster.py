@@ -1,7 +1,13 @@
-"""Unit tests for the GitHub inline-review poster (mocked subprocess, spec §6.4)."""
+"""Unit tests for the GitHub inline-review poster (mocked HTTP, spec §6.4)."""
 
+import io
 import json
-from unittest.mock import patch
+import os
+import urllib.error
+import urllib.request
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from cgis.guardian.findings import Finding, ReviewResult
 from cgis.guardian.github_poster import build_review, post_inline_review
@@ -30,6 +36,27 @@ _OUTSIDE = Finding(
 )
 _REFUTED = _IN_DIFF.model_copy(update={"verdict": "refuted", "title": "dead"})
 
+_REVIEW_URL = "https://api.github.com/repos/zaebee/codegraph-brain/pulls/153/reviews"
+
+
+def _post(result: ReviewResult, *, pr: int = 153, footer: str = "") -> urllib.request.Request:
+    """Post through a stand-in for urlopen and return the request it received."""
+    with (
+        patch.dict(os.environ, {"GH_TOKEN": "tok"}),
+        patch("cgis.guardian.github_poster.urllib.request.urlopen") as mock_open,
+    ):
+        mock_open.return_value.__enter__.return_value = MagicMock()
+        post_inline_review(
+            repo="zaebee/codegraph-brain",
+            pr=pr,
+            result=result,
+            diff_index={"src/x.py": {11}},
+            skeptic_model=None,
+            footer=footer,
+        )
+    request: urllib.request.Request = mock_open.call_args.args[0]
+    return request
+
 
 def test_build_review_splits_inline_and_outside() -> None:
     """In-index findings become comments; others go to the body; refuted vanish."""
@@ -56,9 +83,56 @@ def test_build_review_line_none_goes_to_body() -> None:
 
 
 def test_post_inline_review_payload() -> None:
-    """The gh api call posts one COMMENT review with the built payload on stdin."""
+    """One COMMENT review, sent as JSON to the reviews endpoint (#742)."""
+    request = _post(ReviewResult(findings=[_IN_DIFF], summary="s"))
+    assert request.full_url == _REVIEW_URL
+    assert request.get_method() == "POST"
+    payload = json.loads(request.data)
+    assert payload["event"] == "COMMENT"
+    assert payload["comments"][0]["line"] == 11
+
+
+def test_post_inline_review_authenticates_with_the_workflow_token() -> None:
+    """The bearer token and API headers the workflow exports; no gh config is read."""
+    request = _post(ReviewResult(findings=[_IN_DIFF], summary="s"))
+    headers = {key.lower(): value for key, value in request.header_items()}
+    assert headers["authorization"] == "Bearer tok"
+    assert headers["accept"] == "application/vnd.github+json"
+    assert headers["content-type"] == "application/json"
+    assert headers["x-github-api-version"] == "2022-11-28"
+    assert headers["user-agent"]
+
+
+def test_post_inline_review_falls_back_to_the_actions_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """GITHUB_TOKEN is accepted where GH_TOKEN is unset, as gh itself accepts both."""
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    monkeypatch.setenv("GITHUB_TOKEN", "actions")
+    with patch("cgis.guardian.github_poster.urllib.request.urlopen") as mock_open:
+        mock_open.return_value.__enter__.return_value = MagicMock()
+        post_inline_review(
+            repo="zaebee/codegraph-brain",
+            pr=153,
+            result=ReviewResult(findings=[_IN_DIFF], summary="s"),
+            diff_index={"src/x.py": {11}},
+            skeptic_model=None,
+        )
+    request = mock_open.call_args.args[0]
+    assert {key.lower(): value for key, value in request.header_items()}["authorization"] == (
+        "Bearer actions"
+    )
+
+
+def test_post_without_a_token_fails_before_sending(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No token is a configuration error, reported without a network round-trip."""
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     result = ReviewResult(findings=[_IN_DIFF], summary="s")
-    with patch("cgis.guardian.github_poster.subprocess.run") as mock_run:
+    with (
+        patch("cgis.guardian.github_poster.urllib.request.urlopen") as mock_open,
+        pytest.raises(RuntimeError, match="GH_TOKEN"),
+    ):
         post_inline_review(
             repo="zaebee/codegraph-brain",
             pr=153,
@@ -66,12 +140,31 @@ def test_post_inline_review_payload() -> None:
             diff_index={"src/x.py": {11}},
             skeptic_model=None,
         )
-    args, kwargs = mock_run.call_args
-    assert args[0][:3] == ["gh", "api", "repos/zaebee/codegraph-brain/pulls/153/reviews"]
-    payload = json.loads(kwargs["input"])
-    assert payload["event"] == "COMMENT"
-    assert payload["comments"][0]["line"] == 11
-    assert kwargs["check"] is True
+    mock_open.assert_not_called()
+
+
+def test_api_rejection_reports_the_response_body(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A non-2xx carries GitHub's message into the exception the runner logs."""
+    monkeypatch.setenv("GH_TOKEN", "tok")
+    rejected = urllib.error.HTTPError(
+        _REVIEW_URL,
+        422,
+        "Unprocessable Entity",
+        {},
+        io.BytesIO(b'{"message":"line not in diff"}'),
+    )
+    result = ReviewResult(findings=[_IN_DIFF], summary="s")
+    with (
+        patch("cgis.guardian.github_poster.urllib.request.urlopen", side_effect=rejected),
+        pytest.raises(RuntimeError, match="line not in diff"),
+    ):
+        post_inline_review(
+            repo="zaebee/codegraph-brain",
+            pr=153,
+            result=result,
+            diff_index={"src/x.py": {11}},
+            skeptic_model=None,
+        )
 
 
 def test_footer_rides_in_review_body() -> None:
@@ -81,16 +174,8 @@ def test_footer_rides_in_review_body() -> None:
     footer = "\n\n---\n> 🤖 **gemini-2.5-flash** · 1,000 prompt"
     body, _ = build_review(result, diff_index={"src/x.py": {11}}, skeptic_model=None, footer=footer)
     assert body.endswith(footer)
-    with patch("cgis.guardian.github_poster.subprocess.run") as mock_run:
-        post_inline_review(
-            repo="zaebee/codegraph-brain",
-            pr=157,
-            result=result,
-            diff_index={"src/x.py": {11}},
-            skeptic_model=None,
-            footer=footer,
-        )
-    payload = json.loads(mock_run.call_args.kwargs["input"])
+    request = _post(result, pr=157, footer=footer)
+    payload = json.loads(request.data)
     assert payload["body"].endswith(footer)
 
 

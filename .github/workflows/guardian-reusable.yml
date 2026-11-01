@@ -25,6 +25,11 @@ name: Guardian Review (reusable)
 # (actions/*, astral-sh/setup-uv, peter-evans/create-or-update-comment).
 # Pin `uses:` and `tooling_ref` to the SAME commit SHA, never a tag: the
 # tooling runs on the caller's runner, and a tag can move.
+#
+# The pins are current majors and run on node24, so a self-hosted runner must
+# be v2.327.1 or later (GitHub-hosted runners already are). The job needs no
+# GitHub CLI: the reaction and the base-branch lookup are
+# actions/github-script, and the poster talks to the REST API over HTTPS (#742).
 
 on:
   workflow_call:
@@ -79,7 +84,7 @@ jobs:
     steps:
       # Here rather than in each caller, so no caller can forget it.
       - name: Check commenter has write access
-        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea  # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9
         with:
           script: |
             const { data: perm } = await github.rest.repos.getCollaboratorPermissionLevel({
@@ -93,19 +98,23 @@ jobs:
             }
 
       - name: React to trigger comment
-        env:
-          GH_TOKEN: ${{ github.token }}
-          COMMENT_ID: ${{ github.event.comment.id }}
-        run: |
-          gh api repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID/reactions \
-            -X POST -f content=eyes
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9
+        with:
+          # The comment the caller's `if` matched: `context.payload.comment`.
+          # The REST call, not `gh api` — a self-hosted runner need not have gh (#742).
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: 'eyes',
+            });
 
-      - name: Validate inputs and get base branch
+      - name: Validate inputs
         env:
           EVENT_NAME: ${{ github.event_name }}
           PR_NUMBER: ${{ inputs.pr_number }}
           SOURCE_ROOT: ${{ inputs.source_root }}
-          GH_TOKEN: ${{ github.token }}
         run: |
           if [ "$EVENT_NAME" != issue_comment ]; then
             echo "Call this on issue_comment (a /guardian review comment), not $EVENT_NAME" && exit 1
@@ -124,8 +133,20 @@ jobs:
               echo "source_root must be a plain path inside the repository: '$SOURCE_ROOT'" && exit 1 ;;
           esac
           echo "PR_NUMBER=$PR_NUMBER" >> $GITHUB_ENV
-          BASE_BRANCH=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json baseRefName --jq '.baseRefName')
-          echo "BASE_BRANCH=$BASE_BRANCH" >> $GITHUB_ENV
+
+      # Read through the REST API, not `gh pr view`: gh is not on every runner
+      # (#742). PR_NUMBER was validated as digits-only in the step above, so
+      # the number cannot reach the API malformed.
+      - name: Get base branch
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: Number(process.env.PR_NUMBER),
+            });
+            core.exportVariable('BASE_BRANCH', pr.base.ref);
 
       # The PR is data, never code (#730). Everything that runs — uv sync, the
       # guardian scripts, cgis itself — comes from codegraph-brain at
@@ -133,7 +154,7 @@ jobs:
       # read and parsed. This step and the next keep the job's provider keys
       # out of reach of whoever wrote the PR.
       - name: Checkout trusted tooling (codegraph-brain)
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
         with:
           repository: zaebee/codegraph-brain
           ref: ${{ inputs.tooling_ref }}
@@ -149,7 +170,7 @@ jobs:
           }
 
       - name: Checkout PR branch as data
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
         with:
           repository: ${{ github.repository }}
           # PR_NUMBER validated as digits-only in a previous step
@@ -174,7 +195,7 @@ jobs:
             GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $cred" git fetch origin "$BASE_BRANCH"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39  # v3
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
 
       - name: Install dependencies
         run: uv sync --frozen --extra guardian
@@ -216,7 +237,7 @@ jobs:
       - name: Mint GitHub App token
         id: app-token
         if: vars.GUARDIAN_APP_CLIENT_ID != ''
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510  # v3.3.0
         with:
           client-id: ${{ vars.GUARDIAN_APP_CLIENT_ID }}
           private-key: ${{ secrets.GUARDIAN_APP_PRIVATE_KEY }}
@@ -258,14 +279,14 @@ jobs:
             --base-branch "$BASE_BRANCH"
 
       - name: Upload metrics artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
         with:
           name: guardian-metrics-${{ env.PR_NUMBER }}
           path: guardian_metrics.jsonl
           retention-days: 7
 
       - name: Upload finder recording artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
         with:
           name: guardian-finder-${{ env.PR_NUMBER }}
           path: guardian_finder.json
@@ -273,7 +294,7 @@ jobs:
 
       - name: Post review as PR comment
         if: steps.guardian.outputs.posted_inline != 'true'
-        uses: peter-evans/create-or-update-comment@a111a2c3bacd7be7898ee22d0d71d9aec2bb972c  # v4
+        uses: peter-evans/create-or-update-comment@e8674b075228eee787fea43ef493e45ece1004c9  # v5
         with:
           token: ${{ steps.app-token.outputs.token || github.token }}
           issue-number: ${{ env.PR_NUMBER }}
