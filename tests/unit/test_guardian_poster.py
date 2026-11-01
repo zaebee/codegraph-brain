@@ -39,10 +39,12 @@ _REFUTED = _IN_DIFF.model_copy(update={"verdict": "refuted", "title": "dead"})
 _REVIEW_URL = "https://api.github.com/repos/zaebee/codegraph-brain/pulls/153/reviews"
 
 
-def _post(result: ReviewResult, *, pr: int = 153, footer: str = "") -> urllib.request.Request:
+def _post(
+    result: ReviewResult, *, pr: int = 153, footer: str = "", token: str = "tok"
+) -> urllib.request.Request:
     """Post through a stand-in for urlopen and return the request it received."""
     with (
-        patch.dict(os.environ, {"GH_TOKEN": "tok"}),
+        patch.dict(os.environ, {"GH_TOKEN": token}),
         patch("cgis.guardian.github_poster.urllib.request.urlopen") as mock_open,
     ):
         mock_open.return_value.__enter__.return_value = MagicMock()
@@ -101,6 +103,14 @@ def test_post_inline_review_authenticates_with_the_workflow_token() -> None:
     assert headers["content-type"] == "application/json"
     assert headers["x-github-api-version"] == "2022-11-28"
     assert headers["user-agent"]
+
+
+def test_a_token_pasted_with_whitespace_still_authenticates() -> None:
+    """A trailing space or newline from a copy-paste must not become an auth failure."""
+    request = _post(ReviewResult(findings=[_IN_DIFF], summary="s"), token=" tok \n")
+    assert {key.lower(): value for key, value in request.header_items()}["authorization"] == (
+        "Bearer tok"
+    )
 
 
 def test_post_inline_review_falls_back_to_the_actions_token(

@@ -115,9 +115,10 @@ def _token() -> str:
 
     GH_TOKEN is what the reusable workflow exports (the app token when one is
     configured, else the caller's GITHUB_TOKEN); GITHUB_TOKEN is the fallback
-    for a local run of the script.
+    for a local run of the script. Surrounding whitespace is stripped: a token
+    pasted with a trailing space or newline must not become an auth failure.
     """
-    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    token = (os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN") or "").strip()
     if not token:
         _msg = (
             "No GitHub token: set GH_TOKEN (or GITHUB_TOKEN) to post the review. "

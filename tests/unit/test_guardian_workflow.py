@@ -378,17 +378,44 @@ def _names_gh(word: str) -> bool:
     return bool(words) and PurePosixPath(words[0]).name == "gh"
 
 
+def _spawner_aliases(tree: ast.Module) -> tuple[dict[str, str], set[str]]:
+    """How a source names its spawn functions.
+
+    Returns the imported module aliases (`import subprocess as sp`) and the
+    directly imported spawner names (`from subprocess import run as spawn`), so
+    the scan does not depend on how the call is spelled.
+    """
+    modules: dict[str, str] = {}
+    direct: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name in _SPAWNERS:
+                    modules[alias.asname or alias.name] = alias.name
+        elif isinstance(node, ast.ImportFrom) and node.module in _SPAWNERS:
+            for alias in node.names:
+                if alias.name in _SPAWNERS[node.module]:
+                    direct.add(alias.asname or alias.name)
+    return modules, direct
+
+
+def _is_spawner(func: ast.expr, modules: dict[str, str], direct: set[str]) -> bool:
+    """Whether a call target is one of the spawn functions."""
+    if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+        module = modules.get(func.value.id, func.value.id)
+        return func.attr in _SPAWNERS.get(module, set())
+    return isinstance(func, ast.Name) and func.id in direct
+
+
 def _spawns_gh(source: Path) -> list[int]:
     """Line numbers of calls in `source` that spawn `gh`."""
     found: list[int] = []
     tree = ast.parse(source.read_text(encoding="utf-8"))
+    modules, direct = _spawner_aliases(tree)
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
+        if not isinstance(node, ast.Call) or not _is_spawner(node.func, modules, direct):
             continue
-        func = node.func
-        if not isinstance(func, ast.Attribute) or not isinstance(func.value, ast.Name):
-            continue
-        if func.attr not in _SPAWNERS.get(func.value.id, set()) or not node.args:
+        if not node.args:
             continue
         first = node.args[0]
         words: list[str] = []
@@ -403,6 +430,26 @@ def _spawns_gh(source: Path) -> list[int]:
         if any(_names_gh(word) for word in words):
             found.append(node.lineno)
     return found
+
+
+@pytest.mark.parametrize(
+    ("source", "spawned"),
+    [
+        ("import subprocess\nsubprocess.run(['gh', 'api'])", [2]),
+        ("from subprocess import run\nrun(['gh', 'api'])", [2]),
+        ("from subprocess import run as spawn\nspawn(['/usr/bin/gh', 'api'])", [2]),
+        ("import subprocess as sp\nsp.run(['gh'])", [2]),
+        ("from os import system\nsystem('gh pr view')", [2]),
+        ("import subprocess\nsubprocess.run(['git', 'fetch'])", []),
+    ],
+)
+def test_the_gh_scanner_sees_through_import_styles(
+    source: str, spawned: list[int], tmp_path: Path
+) -> None:
+    """A direct import or an alias must not hide a spawn from the scan."""
+    path = tmp_path / "probe.py"
+    path.write_text(source, encoding="utf-8")
+    assert _spawns_gh(path) == spawned
 
 
 @pytest.mark.parametrize("source", GUARDIAN_SOURCES, ids=lambda path: path.name)
