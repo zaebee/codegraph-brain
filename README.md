@@ -142,7 +142,9 @@ The details — and a pipeline graph CGIS regenerates from its own source on eve
 *   **Dogfooded & measured:** Guardian reviews CGIS's *own* pull requests, and a benchmark harness scores it against curated ground truth — so prompt changes are validated, not guessed.
 
 ```bash
-# Build the graph, then review a PR with a local model (no API key)
+# Build the graph, then review a PR with a local model (no API key).
+# --inline posts over HTTPS with GH_TOKEN (or GITHUB_TOKEN); no gh CLI needed.
+# The reusable workflow exports GH_TOKEN for you.
 cgis ingest ./src --output graph.db
 GUARDIAN_PROVIDER=ollama GUARDIAN_MODEL=qwen2.5-coder:14b \
   uv run python scripts/guardian_review.py --pr 123 --db graph.db --inline

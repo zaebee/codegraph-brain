@@ -568,7 +568,7 @@ async def run_guardian(
         try:
             diff_text = collector.source.get_git_diff()
             content = diff_line_content(diff_text)
-            await asyncio.to_thread(  # subprocess `gh api` call — keep the loop responsive
+            await asyncio.to_thread(  # blocking HTTPS call — keep the loop responsive
                 post_inline_review,
                 repo=inline_repo,
                 pr=pr,

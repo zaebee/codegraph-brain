@@ -1,11 +1,23 @@
 """Posts a ReviewResult as one GitHub review with inline comments (spec §6)."""
 
 import json
-import subprocess
+import os
+import urllib.error
+import urllib.request
 
 from cgis.guardian.findings import Finding, ReviewResult
 from cgis.guardian.render import render_inline_comment, render_review_body
 from cgis.guardian.skeptic import visible_findings
+
+#: The REST API the workflow token writes to. A fixed host, not a variable: a
+#: caller-supplied URL would send the token somewhere else.
+_API_ROOT = "https://api.github.com"
+#: Bounded so a stalled connection cannot hold the job past the app token's
+#: lifetime; an inline review is a few kilobytes.
+_TIMEOUT_S = 30
+#: GitHub rejects a request without one (403); urllib's default names only the
+#: library, which says nothing useful in the audit log.
+_USER_AGENT = "codegraph-brain-guardian"
 
 #: Below this length a quote is too generic to substring-match safely — short
 #: keywords/patterns (``)``, ``else:``, ``self.``, ``return``) would collide with
@@ -98,6 +110,24 @@ def build_review(
     return render_review_body(result, outside=outside, threshold=threshold) + footer, comments
 
 
+def _token() -> str:
+    """The GitHub token, read from the environment the way the gh CLI reads it.
+
+    GH_TOKEN is what the reusable workflow exports (the app token when one is
+    configured, else the caller's GITHUB_TOKEN); GITHUB_TOKEN is the fallback
+    for a local run of the script. Surrounding whitespace is stripped: a token
+    pasted with a trailing space or newline must not become an auth failure.
+    """
+    token = (os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN") or "").strip()
+    if not token:
+        _msg = (
+            "No GitHub token: set GH_TOKEN (or GITHUB_TOKEN) to post the review. "
+            "The reusable workflow exports GH_TOKEN for exactly this call."
+        )
+        raise RuntimeError(_msg)
+    return token
+
+
 def post_inline_review(
     *,
     repo: str,
@@ -109,11 +139,13 @@ def post_inline_review(
     diff_content: dict[str, dict[int, str]] | None = None,
     threshold: int = 0,
 ) -> None:
-    """POST one COMMENT review via `gh api` (auto-auth in Actions, spec §6.4).
+    """POST one COMMENT review over plain HTTPS (spec §6.4).
 
     Always event=COMMENT, never REQUEST_CHANGES — guardian is an advisor,
-    not a gate. Raises CalledProcessError on API rejection; the caller
-    decides the fallback (spec §6.5).
+    not a gate. The request needs no GitHub CLI: the token comes from the
+    environment and urllib sends the request, so a self-hosted runner needs
+    neither gh nor its config (#742). Raises RuntimeError on API rejection;
+    the caller decides the fallback (spec §6.5).
     """
     body, comments = build_review(
         result,
@@ -124,10 +156,22 @@ def post_inline_review(
         threshold=threshold,
     )
     payload = {"event": "COMMENT", "body": body, "comments": comments}
-    subprocess.run(
-        ["gh", "api", f"repos/{repo}/pulls/{pr}/reviews", "-X", "POST", "--input", "-"],
-        input=json.dumps(payload),
-        text=True,
-        check=True,
-        capture_output=True,
+    request = urllib.request.Request(
+        f"{_API_ROOT}/repos/{repo}/pulls/{pr}/reviews",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {_token()}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "Content-Type": "application/json",
+            "User-Agent": _USER_AGENT,
+        },
+        method="POST",
     )
+    try:
+        with urllib.request.urlopen(request, timeout=_TIMEOUT_S) as response:
+            response.read()
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")[:1000]
+        _msg = f"GitHub rejected the inline review ({exc.code} {exc.reason}): {detail}"
+        raise RuntimeError(_msg) from exc

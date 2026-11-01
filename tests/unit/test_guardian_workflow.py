@@ -7,6 +7,7 @@ that closes that: trusted tooling at the root, the PR in its own directory, and
 nothing running from inside it but one fixed `git fetch`.
 """
 
+import ast
 import os
 import re
 import subprocess
@@ -323,18 +324,194 @@ def test_cross_org_callers_can_pass_the_secrets(workflow: dict[Any, Any]) -> Non
 def test_the_inputs_are_checked_by_the_steps_own_shell(
     steps: list[dict[str, Any]], tmp_path: Path, event: str, source_root: str, ok: bool
 ) -> None:
-    """Run the validation step itself, with a stand-in `gh`, as the ingest test does."""
-    validate = next(s for s in steps if s.get("name") == "Validate inputs and get base branch")
-    fake = tmp_path / "gh"
-    fake.write_text("#!/bin/sh\necho main\n")
-    fake.chmod(0o755)
+    """Run the validation step itself, as the ingest test does."""
+    validate = next(s for s in steps if s.get("name") == "Validate inputs")
     out = tmp_path / "github_env"
-    env = {**os.environ, "PATH": f"{tmp_path}:{os.environ.get('PATH', '')}"}
-    env |= {"EVENT_NAME": event, "PR_NUMBER": "7", "SOURCE_ROOT": source_root}
+    env = {**os.environ, "EVENT_NAME": event, "PR_NUMBER": "7", "SOURCE_ROOT": source_root}
     env |= {"GITHUB_ENV": str(out), "GITHUB_REPOSITORY": "o/r"}
     done = subprocess.run(
         ["bash", "-c", str(validate["run"])], env=env, capture_output=True, text=True, check=False
     )
     assert (done.returncode == 0) is ok
     if ok:
-        assert "BASE_BRANCH=main" in out.read_text()
+        assert "PR_NUMBER=7" in out.read_text()
+
+
+# The job must not assume the GitHub CLI (#742). A self-hosted runner without
+# `gh` has to reach the same result as a GitHub-hosted one; two steps shelled
+# out to it and one module posted through it. These tests keep both free of it
+# and hold the action pins to the current majors.
+
+#: A `gh` command word in a shell script: start, or after whitespace or a shell
+#: separator, and followed by whitespace or end of line. `$GITHUB_…` has a `$`
+#: before it, and `grep` does not start with `gh`.
+_GH_COMMAND = re.compile(r"(?:^|[\s;|&(`])gh(?=\s|$)", re.M)
+
+#: Guardian library code (what the review job runs) plus the workflow's entry
+#: script. `scripts/guardian_martian.py` is a developer bench tool, not part of
+#: this job, and keeps its own `gh` calls.
+_ROOT = Path(__file__).parent.parent.parent
+GUARDIAN_SOURCES = [
+    *sorted((_ROOT / "src" / "cgis" / "guardian").glob("*.py")),
+    _ROOT / "scripts" / "guardian_review.py",
+]
+
+#: Ways Python can spawn a command; the scanned first argument names it.
+_SPAWNERS = {
+    "os": {"system", "popen"},
+    "subprocess": {
+        "run",
+        "call",
+        "check_call",
+        "check_output",
+        "Popen",
+        "getoutput",
+        "getstatusoutput",
+    },
+    "asyncio": {"create_subprocess_exec", "create_subprocess_shell"},
+}
+
+
+def _names_gh(word: str) -> bool:
+    """Whether a command argument's first word is `gh` (or a path to it)."""
+    words = word.split()
+    return bool(words) and PurePosixPath(words[0]).name == "gh"
+
+
+def _spawner_aliases(tree: ast.Module) -> tuple[dict[str, str], set[str]]:
+    """How a source names its spawn functions.
+
+    Returns the imported module aliases (`import subprocess as sp`) and the
+    directly imported spawner names (`from subprocess import run as spawn`), so
+    the scan does not depend on how the call is spelled.
+    """
+    modules: dict[str, str] = {}
+    direct: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name in _SPAWNERS:
+                    modules[alias.asname or alias.name] = alias.name
+        elif isinstance(node, ast.ImportFrom) and node.module in _SPAWNERS:
+            for alias in node.names:
+                if alias.name in _SPAWNERS[node.module]:
+                    direct.add(alias.asname or alias.name)
+    return modules, direct
+
+
+def _is_spawner(func: ast.expr, modules: dict[str, str], direct: set[str]) -> bool:
+    """Whether a call target is one of the spawn functions."""
+    if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+        module = modules.get(func.value.id, func.value.id)
+        return func.attr in _SPAWNERS.get(module, set())
+    return isinstance(func, ast.Name) and func.id in direct
+
+
+def _spawns_gh(source: Path) -> list[int]:
+    """Line numbers of calls in `source` that spawn `gh`."""
+    found: list[int] = []
+    tree = ast.parse(source.read_text(encoding="utf-8"))
+    modules, direct = _spawner_aliases(tree)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not _is_spawner(node.func, modules, direct):
+            continue
+        if not node.args:
+            continue
+        first = node.args[0]
+        words: list[str] = []
+        if isinstance(first, ast.Constant) and isinstance(first.value, str):
+            words = [first.value]
+        elif isinstance(first, (ast.List, ast.Tuple)):
+            words = [
+                element.value
+                for element in first.elts
+                if isinstance(element, ast.Constant) and isinstance(element.value, str)
+            ]
+        if any(_names_gh(word) for word in words):
+            found.append(node.lineno)
+    return found
+
+
+@pytest.mark.parametrize(
+    ("source", "spawned"),
+    [
+        ("import subprocess\nsubprocess.run(['gh', 'api'])", [2]),
+        ("from subprocess import run\nrun(['gh', 'api'])", [2]),
+        ("from subprocess import run as spawn\nspawn(['/usr/bin/gh', 'api'])", [2]),
+        ("import subprocess as sp\nsp.run(['gh'])", [2]),
+        ("from os import system\nsystem('gh pr view')", [2]),
+        ("import subprocess\nsubprocess.run(['git', 'fetch'])", []),
+    ],
+)
+def test_the_gh_scanner_sees_through_import_styles(
+    source: str, spawned: list[int], tmp_path: Path
+) -> None:
+    """A direct import or an alias must not hide a spawn from the scan."""
+    path = tmp_path / "probe.py"
+    path.write_text(source, encoding="utf-8")
+    assert _spawns_gh(path) == spawned
+
+
+@pytest.mark.parametrize("source", GUARDIAN_SOURCES, ids=lambda path: path.name)
+def test_guardian_code_never_spawns_gh(source: Path) -> None:
+    """The library and the workflow entry script must run without the CLI installed."""
+    assert _spawns_gh(source) == []
+
+
+def test_no_workflow_step_shells_out_to_gh(
+    workflow: dict[Any, Any], caller: dict[Any, Any]
+) -> None:
+    """A `run:` block that calls gh fails on a runner that does not have it."""
+    for name, document in (("guardian-reusable.yml", workflow), ("guardian.yml", caller)):
+        for job in document["jobs"].values():
+            for step in job.get("steps", []):
+                run = str(step.get("run", ""))
+                assert not _GH_COMMAND.search(run), (name, step.get("name"))
+
+
+def test_the_reaction_and_base_branch_go_through_github_script(steps: list[dict[str, Any]]) -> None:
+    """The two steps that used gh now call the REST API from actions/github-script."""
+    reaction = next(s for s in steps if s.get("name") == "React to trigger comment")
+    assert reaction["uses"].startswith("actions/github-script@")
+    assert "createForIssueComment" in reaction["with"]["script"]
+    assert "context.payload.comment.id" in reaction["with"]["script"]
+
+    base = next(s for s in steps if s.get("name") == "Get base branch")
+    assert base["uses"].startswith("actions/github-script@")
+    script = base["with"]["script"]
+    assert "github.rest.pulls.get" in script
+    assert "exportVariable('BASE_BRANCH'" in script
+
+    validate = next(s for s in steps if s.get("name") == "Validate inputs")
+    fetch = next(s for s in steps if s.get("name") == "Fetch base branch for diff")
+    assert steps.index(validate) < steps.index(base) < steps.index(fetch)
+
+
+# The pins below are the current majors at the time of #742 — the previous ones
+# (checkout v4, setup-uv v3, github-script v7, create-or-update-comment v4,
+# upload/download-artifact v4) ran on node20. A bump updates this table with the
+# pin, so the majors cannot silently regress.
+CURRENT_PINS = {
+    "actions/checkout": "3d3c42e5aac5ba805825da76410c181273ba90b1",
+    "astral-sh/setup-uv": "68559e99cc807c1eb7e9238fd43a15bba460eec2",
+    "actions/github-script": "3a2844b7e9c422d3c10d287c895573f7108da1b3",
+    "actions/upload-artifact": "cf430e030ddbb5b0abf93d22962f4752f3646cd9",
+    "actions/download-artifact": "9000827ccba6bdab643e8b6fd33ac0654aef8333",
+    "actions/create-github-app-token": "64ab729a6294000f5aa4a4bc0b73d1f32bc45510",
+    "peter-evans/create-or-update-comment": "e8674b075228eee787fea43ef493e45ece1004c9",
+}
+
+
+def test_the_guardian_action_pins_are_current_majors(
+    workflow: dict[Any, Any], caller: dict[Any, Any]
+) -> None:
+    """Every remote action is SHA-pinned, and pinned to the node24 majors."""
+    for name, document in (("guardian-reusable.yml", workflow), ("guardian.yml", caller)):
+        for job in document["jobs"].values():
+            for step in job.get("steps", []):
+                uses = str(step.get("uses", ""))
+                if not uses or uses.startswith(("./", "docker://")):
+                    continue
+                action, _, sha = uses.partition("@")
+                assert action in CURRENT_PINS, (name, uses)
+                assert sha == CURRENT_PINS[action], (name, uses)
