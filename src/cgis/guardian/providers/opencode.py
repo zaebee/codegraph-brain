@@ -25,13 +25,14 @@ code change. The trailing slash is removed here rather than at every caller,
 because `…/v1/` + `/chat/completions` would otherwise double the separator.
 """
 
+import json
 import uuid
 from typing import Any, ClassVar, Final, override
 
 import httpx
 
 from cgis import __version__
-from cgis.guardian.providers.base import ProviderUsage
+from cgis.guardian.providers.base import RETRYABLE_EXCEPTIONS, ProviderUsage
 from cgis.guardian.providers.openai_compatible import OpenAICompatibleProvider
 
 #: The model this provider exists for: the finder's default, priced at
@@ -60,7 +61,19 @@ DEFAULT_MAX_TOKENS: Final = 8000
 #: gateway, where `raise_for_status` keeps the 4xx message.
 DEFAULT_OPENCODE_EFFORT: Final = "low"
 
+_BAD_REQUEST = 400
 _TOO_MANY_REQUESTS = 429
+
+
+class OpenCodeTransientError(RuntimeError):
+    """A 400 the gateway marks as an upstream failure it could not complete (#779).
+
+    `inference_failed` is not a request-validation error: the same request
+    succeeds on the next attempt when the gateway retries it itself, and it does
+    so only sometimes (the console log shows `attemptCount` 1 on the runs that
+    failed and 2 on one that succeeded). Retried through `_retry`, never
+    returned and never degraded to "no judgement".
+    """
 
 
 class OpenCodeQuotaError(RuntimeError):
@@ -80,6 +93,28 @@ class OpenCodeReplyError(RuntimeError):
     that as an unparseable answer — attributing to the model a loss this file
     can name, and inflating exactly the "unruled" rate a review reads.
     """
+
+
+def _is_transient_upstream_failure(body_text: str) -> bool:
+    """Whether the gateway marked this failure as a transient upstream error.
+
+    The code is a field in the gateway's JSON error, so a JSON body is read as
+    one: a validation message that merely mentions `inference_failed` is not a
+    transient failure and must not be retried. A non-JSON body (a proxy page, an
+    empty error) is the fallback the raw text can still answer, and there a false
+    positive costs only the retries this file already allows — never a verdict.
+    """
+    try:
+        parsed: object = json.loads(body_text)
+    except ValueError:
+        return "inference_failed" in body_text
+    if not isinstance(parsed, dict):
+        return False
+    error = parsed.get("error")
+    candidates: list[object] = [parsed.get("code"), parsed.get("errorCode"), error]
+    if isinstance(error, dict):
+        candidates += [error.get("code"), error.get("type")]
+    return any(candidate == "inference_failed" for candidate in candidates)
 
 
 class OpenCodeProvider(OpenAICompatibleProvider):
@@ -122,6 +157,17 @@ class OpenCodeProvider(OpenAICompatibleProvider):
         """The reasoning depth sent on every call, for the run record (#713)."""
         return self._effort
 
+    @override
+    def _retryable_exceptions(self) -> tuple[type[Exception], ...]:
+        """Retry the gateway's transient 400 beside the transport failures.
+
+        `inference_failed` is an upstream failure, not a request-validation
+        error: the same request succeeds on the next attempt when the gateway
+        retries it itself (#779). Every other 4xx still fails on the first
+        attempt, as the base class documents.
+        """
+        return (*RETRYABLE_EXCEPTIONS, OpenCodeTransientError)
+
     async def _post(self, payload: dict[str, Any]) -> str:
         """One completion call; return the message content.
 
@@ -143,19 +189,8 @@ class OpenCodeProvider(OpenAICompatibleProvider):
             response = await client.post(
                 f"{self._base_url}/chat/completions", headers=headers, json=payload
             )
-        if response.status_code == _TOO_MANY_REQUESTS:
-            # The body is carried, not summarised: it says whether the limit is
-            # per-minute or the account's allowance, and those have different
-            # remedies — wait, or stop. Dropping it would leave the operator
-            # guessing, the same defect as an exception that swallows stderr.
-            _msg = (
-                f"OpenCode returned 429 for {self._model_name}: "
-                f"{response.text.strip()[:400]}. A run that continued would "
-                f"record unanswered findings, which is indistinguishable from a "
-                f"skeptic that refutes nothing."
-            )
-            raise OpenCodeQuotaError(_msg)
-        response.raise_for_status()
+        if response.is_error:
+            self._raise_for_http_error(response)
         body = response.json()
         # An error object with HTTP 200 is how some gateways report an upstream
         # refusal; `body["choices"]` would raise KeyError with nothing in the
@@ -195,6 +230,31 @@ class OpenCodeProvider(OpenAICompatibleProvider):
             )
             raise OpenCodeReplyError(_msg)
         return content
+
+    def _raise_for_http_error(self, response: httpx.Response) -> None:
+        """Raise for an HTTP failure, carrying the gateway's body.
+
+        `429` keeps its own quota error: it must never be swallowed into "the
+        finder had nothing to say". A `400` marked `inference_failed` is a
+        transient upstream failure and is retried; every other error fails at
+        once with the status and body, because dropping the body is what made
+        #779 read as a bare "400 Bad Request".
+        """
+        body_text = response.text.strip()
+        if response.status_code == _TOO_MANY_REQUESTS:
+            _msg = (
+                f"OpenCode returned 429 for {self._model_name}: "
+                f"{body_text[:400]}. A run that continued would record unanswered "
+                f"findings, which is indistinguishable from a skeptic that refutes nothing."
+            )
+            raise OpenCodeQuotaError(_msg)
+        _msg = (
+            f"OpenCode returned HTTP {response.status_code} for {self._model_name}: "
+            f"{body_text[:400] or '(empty body)'}"
+        )
+        if response.status_code == _BAD_REQUEST and _is_transient_upstream_failure(body_text):
+            raise OpenCodeTransientError(_msg)
+        raise RuntimeError(_msg)
 
     @override
     def _payload(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:

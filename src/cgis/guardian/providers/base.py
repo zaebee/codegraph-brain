@@ -130,18 +130,28 @@ class BaseProvider(abc.ABC):
         """Wait between retries. Overridden in tests so they do not actually wait."""
         await asyncio.sleep(seconds)
 
-    async def _retry(self, call: Callable[[], Awaitable[str]]) -> str:
-        """Run call, retrying transient transport failures with exponential backoff.
+    def _retryable_exceptions(self) -> tuple[type[Exception], ...]:
+        """The exception types `_retry` treats as transient.
 
-        Retries only RETRYABLE_EXCEPTIONS: an auth or validation failure must
-        fail on the first attempt rather than burn MAX_ATTEMPTS calls. The final
-        exception propagates unchanged so callers' existing degradation paths
-        still see a real error (#275).
+        A provider whose gateway signals a retryable failure with an HTTP status
+        — opencode-go's 400 `inference_failed` — widens this instead of changing
+        the loop, so the base set stays the transport failures every provider
+        shares and every other 4xx still fails on the first attempt.
+        """
+        return RETRYABLE_EXCEPTIONS
+
+    async def _retry(self, call: Callable[[], Awaitable[str]]) -> str:
+        """Run call, retrying transient failures with exponential backoff.
+
+        Retries only `_retryable_exceptions()`: an auth or validation failure
+        must fail on the first attempt rather than burn MAX_ATTEMPTS calls. The
+        final exception propagates unchanged so callers' existing degradation
+        paths still see a real error (#275).
         """
         for attempt in range(1, MAX_ATTEMPTS + 1):
             try:
                 return await call()
-            except RETRYABLE_EXCEPTIONS as exc:
+            except self._retryable_exceptions() as exc:
                 if attempt == MAX_ATTEMPTS:
                     log.warning(
                         "Provider call failed; retries exhausted.",
