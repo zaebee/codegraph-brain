@@ -248,3 +248,15 @@ class TestTheRequest:
 def test_the_default_model_is_the_cheap_deepseek() -> None:
     """The model the switch is measured on, and the one the catalog prices at 0.15/0.6."""
     assert DEFAULT_OPENCODE_MODEL == "deepseek-v4.1-flash"
+
+
+def test_blank_settings_fall_back_to_their_defaults() -> None:
+    """An empty endpoint, a bare slash or a missing effort must not build a broken URL.
+
+    External callers can pass whitespace or a null where the environment path
+    always supplies a string; the default is safer than an empty host or an
+    AttributeError before the first request.
+    """
+    provider = _provider(base_url=" / ", effort=None)
+    assert provider.effort == DEFAULT_OPENCODE_EFFORT
+    assert provider._base_url == DEFAULT_OPENCODE_BASE_URL  # noqa: SLF001  # white-box: default

@@ -29,10 +29,10 @@ import uuid
 from typing import Any, ClassVar, Final, override
 
 import httpx
-from pydantic import BaseModel
 
 from cgis import __version__
-from cgis.guardian.providers.base import BaseProvider, ProviderUsage
+from cgis.guardian.providers.base import ProviderUsage
+from cgis.guardian.providers.openai_compatible import OpenAICompatibleProvider
 
 #: The model this provider exists for: the finder's default, priced at
 #: 0.15/0.6 per 1M tokens in/out when the switch was measured (#775).
@@ -82,7 +82,7 @@ class OpenCodeReplyError(RuntimeError):
     """
 
 
-class OpenCodeProvider(BaseProvider):
+class OpenCodeProvider(OpenAICompatibleProvider):
     """A DeepSeek model reached through opencode-go's OpenAI-compatible API."""
 
     name: ClassVar[str] = "opencode"
@@ -109,15 +109,11 @@ class OpenCodeProvider(BaseProvider):
         per call would split a run into unrelated sessions. It is injectable so
         a test can assert the header without pinning a random value.
         """
-        super().__init__()
-        base = (base_url or DEFAULT_OPENCODE_BASE_URL).strip().rstrip("/")
-        self._api_key = api_key
-        self._model_name = model_name
-        self._timeout = timeout
-        self._max_tokens = max_tokens
-        self._temperature = temperature
-        self._effort = effort.strip() or DEFAULT_OPENCODE_EFFORT
-        self._base_url = base or DEFAULT_OPENCODE_BASE_URL
+        super().__init__(api_key, model_name, timeout, max_tokens, temperature)
+        self._effort = (effort or "").strip() or DEFAULT_OPENCODE_EFFORT
+        # One expression, so the default cannot be skipped by a whitespace-only
+        # value or a bare "/" and the empty-string fallback is not duplicated.
+        self._base_url = (base_url or "").strip().rstrip("/") or DEFAULT_OPENCODE_BASE_URL
         self._session_id = session_id or uuid.uuid4().hex
 
     @property
@@ -200,42 +196,15 @@ class OpenCodeProvider(BaseProvider):
             raise OpenCodeReplyError(_msg)
         return content
 
+    @override
     def _payload(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
-        """The request body common to both generation modes."""
-        payload: dict[str, Any] = {
-            "model": self._model_name,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            # The field name this gateway documents is `max_tokens`, not the
-            # `max_completion_tokens` spelling some OpenAI deployments use.
-            "max_tokens": self._max_tokens,
-            # Always sent, so a run can state the depth it ran at. The provider
-            # exposes the same value as `effort` for the record.
-            "reasoning_effort": self._effort,
-        }
-        # `is not None`, not truthiness: 0.0 is the one temperature that states
-        # something, and a falsy test would drop exactly that value.
-        if self._temperature is not None:
-            payload["temperature"] = self._temperature
+        """The request body; this gateway takes reasoning as an effort level.
+
+        `reasoning_effort` is always sent, so a run can state the depth it ran
+        at and the same value is exposed through `effort` for the record. The
+        budget field is `max_tokens`, not the `max_completion_tokens` spelling
+        some OpenAI deployments use.
+        """
+        payload = self._shared_payload(system_prompt, user_prompt)
+        payload["reasoning_effort"] = self._effort
         return payload
-
-    async def generate_content(self, system_prompt: str, user_prompt: str) -> str:
-        """Free-text generation."""
-        return await self._retry(lambda: self._post(self._payload(system_prompt, user_prompt)))
-
-    async def generate_structured(
-        self, system_prompt: str, user_prompt: str, schema: type[BaseModel]
-    ) -> str:
-        """Generation asked to conform to `schema`; returns raw JSON text."""
-        payload = self._payload(system_prompt, user_prompt)
-        payload["response_format"] = {
-            "type": "json_schema",
-            "json_schema": {
-                "name": schema.__name__,
-                "strict": True,
-                "schema": schema.model_json_schema(),
-            },
-        }
-        return await self._retry(lambda: self._post(payload))
