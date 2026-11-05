@@ -16,6 +16,7 @@ from cgis.guardian.collector import ContextCollector
 from cgis.guardian.providers.base import BaseProvider, ProviderUsage
 from cgis.guardian.providers.mistral import MistralProvider
 from cgis.guardian.providers.ollama import OllamaProvider
+from cgis.guardian.providers.opencode import DEFAULT_OPENCODE_MODEL, OpenCodeProvider
 from cgis.guardian.recording import load_finder_recording
 from cgis.guardian.runner import (
     DEFAULT_GEMINI_MODEL,
@@ -62,7 +63,7 @@ class _FakeProvider(BaseProvider):
 
 def test_build_provider_requires_a_key() -> None:
     """No API keys in env → RuntimeError with guidance."""
-    with pytest.raises(RuntimeError, match="MISTRAL_API_KEY or GEMINI_API_KEY"):
+    with pytest.raises(RuntimeError, match="OPENCODE_API_KEY"):
         build_provider({})
 
 
@@ -195,6 +196,52 @@ def test_build_provider_ollama_num_ctx_from_env() -> None:
     assert provider._num_ctx == 8192  # noqa: SLF001  # white-box: ctx wiring
 
 
+def test_build_provider_opencode_go_needs_only_its_own_key() -> None:
+    """`opencode-go` must not require ANTHROPIC_API_KEY — that is the point of #775."""
+    provider, model = build_provider({"GUARDIAN_PROVIDER": "opencode-go", "OPENCODE_API_KEY": "k"})
+    assert isinstance(provider, OpenCodeProvider)
+    assert model == DEFAULT_OPENCODE_MODEL
+    assert provider.effort == "low"
+
+
+def test_build_provider_opencode_go_requires_its_key() -> None:
+    with pytest.raises(RuntimeError, match="OPENCODE_API_KEY"):
+        build_provider({"GUARDIAN_PROVIDER": "opencode-go"})
+
+
+def test_build_provider_accepts_the_bare_opencode_alias() -> None:
+    """The provider's own `name` is `opencode`; selecting by it must work too (#775)."""
+    provider, _ = build_provider({"GUARDIAN_PROVIDER": "opencode", "OPENCODE_API_KEY": "k"})
+    assert isinstance(provider, OpenCodeProvider)
+
+
+def test_build_provider_opencode_reads_the_run_settings() -> None:
+    """Model, effort, endpoint and temperature all come from the environment."""
+    provider, model = build_provider(
+        {
+            "GUARDIAN_PROVIDER": "opencode-go",
+            "OPENCODE_API_KEY": "k",
+            "GUARDIAN_MODEL": "deepseek-v4-pro",
+            "GUARDIAN_OPENCODE_EFFORT": "high",
+            "GUARDIAN_OPENCODE_BASE_URL": "https://gateway.example/v1/",
+            "GUARDIAN_TEMPERATURE": "0.2",
+        }
+    )
+    assert isinstance(provider, OpenCodeProvider)
+    assert model == "deepseek-v4-pro"
+    assert provider.effort == "high"
+    assert provider._effort == "high"  # noqa: SLF001  # white-box: env wiring
+    assert provider._base_url == "https://gateway.example/v1"  # noqa: SLF001
+    assert provider._temperature == 0.2  # noqa: SLF001  # white-box: temperature wiring
+
+
+def test_build_provider_autodetects_opencode_go_before_the_other_keys() -> None:
+    """With no GUARDIAN_PROVIDER, the new provider is preferred when its key is present."""
+    provider, model = build_provider({"OPENCODE_API_KEY": "k", "MISTRAL_API_KEY": "m"})
+    assert isinstance(provider, OpenCodeProvider)
+    assert model == DEFAULT_OPENCODE_MODEL
+
+
 def test_build_provider_unknown_lists_every_provider_there_is() -> None:
     """A typo in GUARDIAN_PROVIDER names the valid ones — all of them.
 
@@ -206,7 +253,15 @@ def test_build_provider_unknown_lists_every_provider_there_is() -> None:
     with pytest.raises(RuntimeError) as raised:
         build_provider({"GUARDIAN_PROVIDER": "cohere", "GEMINI_API_KEY": "g"})
     message = str(raised.value)
-    for name in ("mistral", "gemini", "ollama", "openrouter", "anthropic"):
+    for name in (
+        "mistral",
+        "gemini",
+        "ollama",
+        "openrouter",
+        "anthropic",
+        "opencode-go",
+        "opencode",
+    ):
         assert name in message
 
 
@@ -867,7 +922,7 @@ def test_build_provider_anthropic_refuses_a_temperature() -> None:
 
 def test_anthropic_is_never_autodetected_from_its_key() -> None:
     """ANTHROPIC_API_KEY is set in many shells for other tools; it must not start spending."""
-    with pytest.raises(RuntimeError, match="Set MISTRAL_API_KEY or GEMINI_API_KEY"):
+    with pytest.raises(RuntimeError, match="Set OPENCODE_API_KEY, MISTRAL_API_KEY"):
         build_provider({"ANTHROPIC_API_KEY": "k"})
 
 

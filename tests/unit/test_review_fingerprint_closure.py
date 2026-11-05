@@ -83,6 +83,28 @@ def test_the_anthropic_provider_joins_the_closure_only_when_active() -> None:
     assert "src/cgis/guardian/providers/mistral.py" in closure
 
 
+def test_the_opencode_provider_is_known_and_joins_the_closure() -> None:
+    """A provider missing from the hardcoded known set fails every review with it (#775).
+
+    `walk_closure` derives `providers/<name>.py` from the active name, so the
+    hyphenated selector would raise `UnknownProviderError`; the provider's name
+    is `opencode` and that is what gets hashed.
+    """
+    opencode = "src/cgis/guardian/providers/opencode.py"
+    assert opencode not in walk_closure(disk_reader, frozenset({"gemini"}))
+    closure = walk_closure(disk_reader, frozenset({"opencode"}))
+    assert opencode in closure
+    assert "src/cgis/guardian/providers/base.py" in closure
+
+
+def test_the_shared_openai_compatible_helper_joins_the_closure() -> None:
+    """The helper has no provider name, so it is never pruned — both providers read it (#775)."""
+    helper = "src/cgis/guardian/providers/openai_compatible.py"
+    assert helper in walk_closure(disk_reader, frozenset({"openrouter"}))
+    assert helper in walk_closure(disk_reader, frozenset({"opencode"}))
+    assert helper not in walk_closure(disk_reader, frozenset({"gemini"}))
+
+
 def test_resolve_active_providers_is_the_union() -> None:
     """The shared helper both scripts call, so they cannot drift apart (#375).
 

@@ -28,6 +28,12 @@ from cgis.guardian.providers.ollama import (
     DEFAULT_OLLAMA_NUM_PREDICT,
     OllamaProvider,
 )
+from cgis.guardian.providers.opencode import (
+    DEFAULT_OPENCODE_BASE_URL,
+    DEFAULT_OPENCODE_EFFORT,
+    DEFAULT_OPENCODE_MODEL,
+    OpenCodeProvider,
+)
 from cgis.guardian.providers.openrouter import OpenRouterProvider
 from cgis.guardian.recording import save_finder_recording
 from cgis.guardian.render import render_report
@@ -232,6 +238,39 @@ def _build_openrouter(
     )
 
 
+def _opencode_base_url(env: Mapping[str, str]) -> str:
+    """GUARDIAN_OPENCODE_BASE_URL, or the gateway's default when unset or blank.
+
+    Collapses an empty/whitespace-only value to the default at the boundary, so
+    a blank GitHub variable pins nothing rather than producing a URL with no
+    host. A trailing slash is the provider's to remove.
+    """
+    return (env.get("GUARDIAN_OPENCODE_BASE_URL") or "").strip() or DEFAULT_OPENCODE_BASE_URL
+
+
+def _build_opencode(env: Mapping[str, str], model_override: str | None) -> tuple[BaseProvider, str]:
+    """Construct an OpenCodeProvider; OPENCODE_API_KEY is required.
+
+    Unlike OpenRouter there is one default model: the gateway is not a catalog
+    of hundreds, and `deepseek-v4.1-flash` is the measured cheap model this
+    provider exists for. GUARDIAN_MODEL still overrides it.
+    """
+    key = env.get("OPENCODE_API_KEY")
+    if not key:
+        _msg = "OPENCODE_API_KEY must be set when GUARDIAN_PROVIDER=opencode-go"
+        raise RuntimeError(_msg)
+    model = model_override or DEFAULT_OPENCODE_MODEL
+    effort = (env.get("GUARDIAN_OPENCODE_EFFORT") or "").strip() or DEFAULT_OPENCODE_EFFORT
+    provider = OpenCodeProvider(
+        api_key=key,
+        model_name=model,
+        base_url=_opencode_base_url(env),
+        effort=effort,
+        temperature=temperature(env),
+    )
+    return provider, model
+
+
 def _anthropic(env: Mapping[str, str], model: str) -> AnthropicProvider:
     """An AnthropicProvider on ANTHROPIC_API_KEY, refusing a set GUARDIAN_TEMPERATURE.
 
@@ -312,8 +351,9 @@ def _model_from_env(env: Mapping[str, str], key: str) -> str | None:
 def build_provider(env: Mapping[str, str]) -> tuple[BaseProvider, str]:
     """Return (provider, model_name) from GUARDIAN_PROVIDER / available API keys.
 
-    With no explicit GUARDIAN_PROVIDER, auto-select: mistral if its key is set,
-    else gemini if its key is set, else an error.
+    With no explicit GUARDIAN_PROVIDER, auto-select: opencode-go if its key is
+    set, else mistral if its key is set, else gemini if its key is set, else an
+    error.
     """
     model_override = _model_from_env(env, "GUARDIAN_MODEL")
     provider_name = env.get("GUARDIAN_PROVIDER", "").lower() or _autodetect_provider(env)
@@ -324,6 +364,12 @@ def build_provider(env: Mapping[str, str]) -> tuple[BaseProvider, str]:
         "ollama": _build_ollama,
         "openrouter": _build_openrouter,
         "anthropic": _build_anthropic,
+        # The issue's canonical selector is `opencode-go`, but the provider's
+        # own `name` must stay `opencode` — the fingerprint derives its module
+        # path from the name, and a hyphen would name `providers/opencode-go.py`
+        # (#775). Both spellings therefore select it.
+        "opencode-go": _build_opencode,
+        "opencode": _build_opencode,
     }
     builder = builders.get(provider_name)
     if builder is None:
@@ -337,11 +383,13 @@ def build_provider(env: Mapping[str, str]) -> tuple[BaseProvider, str]:
 
 def _autodetect_provider(env: Mapping[str, str]) -> str:
     """Pick a provider from available API keys when GUARDIAN_PROVIDER is unset."""
+    if env.get("OPENCODE_API_KEY"):
+        return "opencode-go"
     if env.get("MISTRAL_API_KEY"):
         return "mistral"
     if env.get("GEMINI_API_KEY"):
         return "gemini"
-    _msg = "Set MISTRAL_API_KEY or GEMINI_API_KEY to run Guardian."
+    _msg = "Set OPENCODE_API_KEY, MISTRAL_API_KEY or GEMINI_API_KEY to run Guardian."
     raise RuntimeError(_msg)
 
 

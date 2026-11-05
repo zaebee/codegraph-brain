@@ -32,7 +32,7 @@ async def test_refuses_a_bad_metrics_path_before_building_a_provider(
     """Ordering is the point, and the exception type is what proves it.
 
     With no API keys in the environment, `build_provider` raises
-    `RuntimeError("Set MISTRAL_API_KEY or GEMINI_API_KEY…")`. So getting a
+    `RuntimeError("Set OPENCODE_API_KEY, MISTRAL_API_KEY or GEMINI_API_KEY…")`. So getting a
     `ValueError` about the metrics path means the check ran *first* — which is
     the whole reason it is duplicated here rather than left to `record_review`,
     which runs after the review is complete and paid for.

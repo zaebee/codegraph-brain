@@ -23,12 +23,13 @@ test. So a 429 raises, loudly, rather than being smoothed into an empty answer.
 
 import json
 import re
-from typing import Any, ClassVar
+from typing import Any, ClassVar, override
 
 import httpx
 from pydantic import BaseModel
 
-from cgis.guardian.providers.base import BaseProvider, ProviderUsage
+from cgis.guardian.providers.base import ProviderUsage
+from cgis.guardian.providers.openai_compatible import OpenAICompatibleProvider
 
 #: OpenAI-compatible completions endpoint.
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -74,7 +75,7 @@ class OpenRouterQuotaError(RuntimeError):
     """
 
 
-class OpenRouterProvider(BaseProvider):
+class OpenRouterProvider(OpenAICompatibleProvider):
     """A chat model reached through OpenRouter's OpenAI-compatible API."""
 
     name: ClassVar[str] = "openrouter"
@@ -88,20 +89,22 @@ class OpenRouterProvider(BaseProvider):
         temperature: float | None = None,
         reasoning: bool = DEFAULT_REASONING,
     ) -> None:
-        """Store the key, model, timeout and generation budget.
+        """Store the key, model, timeout, budget and reasoning switch.
 
         `temperature` is None by default and then not sent at all, leaving the
         model's own value in place — the rule the Mistral and Ollama providers
         already follow, so an unset knob never becomes a value this project
         invented and could not describe afterwards.
         """
-        super().__init__()
-        self._api_key = api_key
-        self._model_name = model_name
-        self._timeout = timeout
-        self._max_tokens = max_tokens
-        self._temperature = temperature
+        super().__init__(api_key, model_name, timeout, max_tokens, temperature)
         self._reasoning = reasoning
+
+    @override
+    def _payload(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
+        """The request body; OpenRouter states reasoning as a boolean switch."""
+        payload = self._shared_payload(system_prompt, user_prompt)
+        payload["reasoning"] = {"enabled": self._reasoning}
+        return payload
 
     async def _post(self, payload: dict[str, Any]) -> str:
         """One completion call; return the message content.
@@ -159,43 +162,6 @@ class OpenRouterProvider(BaseProvider):
             )
             raise RuntimeError(_msg)
         return str(choice["message"].get("content") or "")
-
-    def _payload(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
-        """The request body common to both generation modes."""
-        payload: dict[str, Any] = {
-            "model": self._model_name,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            "max_tokens": self._max_tokens,
-            # Always sent, in both directions, so a run can state what it did.
-            "reasoning": {"enabled": self._reasoning},
-        }
-        # `is not None`, not truthiness: 0.0 is the one temperature that states
-        # something, and a falsy test would drop exactly that value.
-        if self._temperature is not None:
-            payload["temperature"] = self._temperature
-        return payload
-
-    async def generate_content(self, system_prompt: str, user_prompt: str) -> str:
-        """Free-text generation."""
-        return await self._retry(lambda: self._post(self._payload(system_prompt, user_prompt)))
-
-    async def generate_structured(
-        self, system_prompt: str, user_prompt: str, schema: type[BaseModel]
-    ) -> str:
-        """Generation asked to conform to `schema`; returns raw JSON text."""
-        payload = self._payload(system_prompt, user_prompt)
-        payload["response_format"] = {
-            "type": "json_schema",
-            "json_schema": {
-                "name": schema.__name__,
-                "strict": True,
-                "schema": schema.model_json_schema(),
-            },
-        }
-        return await self._retry(lambda: self._post(payload))
 
 
 #: An opening code fence with an optional language tag, and a closing one.

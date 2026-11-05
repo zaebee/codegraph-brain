@@ -10,25 +10,34 @@ from cgis.guardian.providers.base import BaseProvider
 from cgis.guardian.providers.gemini import GeminiProvider
 from cgis.guardian.providers.mistral import MistralProvider
 from cgis.guardian.providers.ollama import OllamaProvider
+from cgis.guardian.providers.opencode import OpenCodeProvider
 
 
 def test_every_provider_names_itself() -> None:
     assert GeminiProvider.name == "gemini"
     assert MistralProvider.name == "mistral"
     assert OllamaProvider.name == "ollama"
+    assert OpenCodeProvider.name == "opencode"
 
 
 def test_names_match_the_runner_vocabulary() -> None:
     """The names are the GUARDIAN_PROVIDER values, not free-form labels.
 
-    `build_provider` dispatches on exactly these three strings, so a provider
-    whose name does not appear there cannot be selected and its module would be
-    pruned out of every fingerprint.
+    `build_provider` dispatches on exactly these strings, so a provider whose
+    name does not appear there cannot be selected and its module would be
+    pruned out of every fingerprint. `opencode` is deliberately hyphen-free:
+    the fingerprint derives `providers/<name>.py` from it (#775).
     """
-    assert {GeminiProvider.name, MistralProvider.name, OllamaProvider.name} == {
+    assert {
+        GeminiProvider.name,
+        MistralProvider.name,
+        OllamaProvider.name,
+        OpenCodeProvider.name,
+    } == {
         "gemini",
         "mistral",
         "ollama",
+        "opencode",
     }
 
 
