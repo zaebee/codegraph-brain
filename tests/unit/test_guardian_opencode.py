@@ -17,6 +17,7 @@ import pytest
 from pydantic import BaseModel
 
 from cgis.guardian.providers import opencode as mod
+from cgis.guardian.providers.base import MAX_ATTEMPTS
 from cgis.guardian.providers.opencode import (
     DEFAULT_MAX_TOKENS,
     DEFAULT_OPENCODE_BASE_URL,
@@ -26,6 +27,7 @@ from cgis.guardian.providers.opencode import (
     OpenCodeProvider,
     OpenCodeQuotaError,
     OpenCodeReplyError,
+    OpenCodeTransientError,
 )
 
 _ENDPOINT = f"{DEFAULT_OPENCODE_BASE_URL}/chat/completions"
@@ -55,14 +57,19 @@ def _reply(
     return httpx.Response(status, json=payload, request=httpx.Request("POST", _ENDPOINT))
 
 
-def _serve(monkeypatch: pytest.MonkeyPatch, response: httpx.Response) -> dict[str, list[Any]]:
-    """Route every POST to `response`; return the URLs, headers, bodies and timeouts sent."""
+def _serve(
+    monkeypatch: pytest.MonkeyPatch,
+    response: httpx.Response | list[httpx.Response],
+) -> dict[str, list[Any]]:
+    """Route POSTs to `response` (or the next of a list); return what was sent."""
     captured: dict[str, list[Any]] = {
         "urls": [],
         "headers": [],
         "bodies": [],
         "timeouts": [],
     }
+    single: httpx.Response | None = response if isinstance(response, httpx.Response) else None
+    queue: list[httpx.Response] = [] if single is not None else list(response)
 
     class _Client:
         def __init__(self, **kw: object) -> None:
@@ -78,10 +85,26 @@ def _serve(monkeypatch: pytest.MonkeyPatch, response: httpx.Response) -> dict[st
             captured["urls"].append(url)
             captured["headers"].append(kwargs["headers"])
             captured["bodies"].append(kwargs["json"])
-            return response
+            if single is not None:
+                return single
+            return queue.pop(0)
 
     monkeypatch.setattr(mod.httpx, "AsyncClient", _Client)
     return captured
+
+
+class _NoSleepProvider(OpenCodeProvider):
+    """A provider that records retry backoff instead of waiting through it."""
+
+    slept: list[float]
+
+    def __init__(self, api_key: str, model_name: str = DEFAULT_OPENCODE_MODEL) -> None:
+        super().__init__(api_key=api_key, model_name=model_name)
+        self.slept = []
+
+    async def _sleep(self, seconds: float) -> None:
+        """Record the backoff interval."""
+        self.slept.append(seconds)
 
 
 def _provider(**overrides: object) -> OpenCodeProvider:
@@ -104,14 +127,65 @@ class TestTheFailuresThatWouldLookLikeSilence:
             await provider.generate_content("s", "u")
 
     @pytest.mark.asyncio
-    async def test_any_other_http_error_is_raised_not_degraded(
+    async def test_any_other_http_error_is_raised_with_its_body_on_the_first_attempt(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """An auth, model or effort mistake fails loudly, with the gateway's message."""
-        _serve(monkeypatch, _reply(status=400, body={"error": {"message": "bad effort"}}))
+        """An auth, model or effort mistake fails loudly, first time, with the gateway's text."""
+        captured = _serve(
+            monkeypatch, _reply(status=400, body={"error": {"message": "bad effort"}})
+        )
         provider = _provider()
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(RuntimeError, match=r"HTTP 400.*bad effort"):
             await provider.generate_content("s", "u")
+        assert len(captured["urls"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_a_server_error_carries_its_status_and_body(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured = _serve(
+            monkeypatch, _reply(status=502, body={"error": {"message": "upstream down"}})
+        )
+        provider = _provider()
+        with pytest.raises(RuntimeError, match=r"HTTP 502.*upstream down"):
+            await provider.generate_content("s", "u")
+        assert len(captured["urls"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_a_transient_inference_failed_400_is_retried_until_it_succeeds(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The gateway marks a transient upstream failure as `400 inference_failed`.
+
+        It retries that itself only sometimes; the console log shows attemptCount
+        1 on the runs that failed and 2 on one that succeeded (#779).
+        """
+        captured = _serve(
+            monkeypatch,
+            [
+                _reply(status=400, body={"error": {"code": "inference_failed"}}),
+                _reply(),
+            ],
+        )
+        provider = _NoSleepProvider(api_key="k", model_name=DEFAULT_OPENCODE_MODEL)
+        content = await provider.generate_content("s", "u")
+        assert content.startswith("{")
+        assert len(captured["urls"]) == 2
+        assert provider.slept == [2.0]
+
+    @pytest.mark.asyncio
+    async def test_a_transient_400_that_never_clears_raises_after_the_attempts(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured = _serve(
+            monkeypatch,
+            [_reply(status=400, body={"error": {"code": "inference_failed"}})] * MAX_ATTEMPTS,
+        )
+        provider = _NoSleepProvider(api_key="k", model_name=DEFAULT_OPENCODE_MODEL)
+        with pytest.raises(OpenCodeTransientError, match="inference_failed"):
+            await provider.generate_content("s", "u")
+        assert len(captured["urls"]) == MAX_ATTEMPTS
+        assert provider.slept == [2.0, 4.0]
 
     @pytest.mark.asyncio
     async def test_hitting_the_token_budget_raises_rather_than_returning_reasoning(

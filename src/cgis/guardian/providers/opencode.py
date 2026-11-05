@@ -31,7 +31,7 @@ from typing import Any, ClassVar, Final, override
 import httpx
 
 from cgis import __version__
-from cgis.guardian.providers.base import ProviderUsage
+from cgis.guardian.providers.base import RETRYABLE_EXCEPTIONS, ProviderUsage
 from cgis.guardian.providers.openai_compatible import OpenAICompatibleProvider
 
 #: The model this provider exists for: the finder's default, priced at
@@ -60,7 +60,19 @@ DEFAULT_MAX_TOKENS: Final = 8000
 #: gateway, where `raise_for_status` keeps the 4xx message.
 DEFAULT_OPENCODE_EFFORT: Final = "low"
 
+_BAD_REQUEST = 400
 _TOO_MANY_REQUESTS = 429
+
+
+class OpenCodeTransientError(RuntimeError):
+    """A 400 the gateway marks as an upstream failure it could not complete (#779).
+
+    `inference_failed` is not a request-validation error: the same request
+    succeeds on the next attempt when the gateway retries it itself, and it does
+    so only sometimes (the console log shows `attemptCount` 1 on the runs that
+    failed and 2 on one that succeeded). Retried through `_retry`, never
+    returned and never degraded to "no judgement".
+    """
 
 
 class OpenCodeQuotaError(RuntimeError):
@@ -122,6 +134,17 @@ class OpenCodeProvider(OpenAICompatibleProvider):
         """The reasoning depth sent on every call, for the run record (#713)."""
         return self._effort
 
+    @override
+    def _retryable_exceptions(self) -> tuple[type[Exception], ...]:
+        """Retry the gateway's transient 400 beside the transport failures.
+
+        `inference_failed` is an upstream failure, not a request-validation
+        error: the same request succeeds on the next attempt when the gateway
+        retries it itself (#779). Every other 4xx still fails on the first
+        attempt, as the base class documents.
+        """
+        return (*RETRYABLE_EXCEPTIONS, OpenCodeTransientError)
+
     async def _post(self, payload: dict[str, Any]) -> str:
         """One completion call; return the message content.
 
@@ -155,7 +178,18 @@ class OpenCodeProvider(OpenAICompatibleProvider):
                 f"skeptic that refutes nothing."
             )
             raise OpenCodeQuotaError(_msg)
-        response.raise_for_status()
+        if response.is_error:
+            # Every other HTTP failure is carried with its body, not reduced to
+            # the status: the gateway states why the upstream call failed, and
+            # dropping it is what made #779 read as a bare "400 Bad Request".
+            body_text = response.text.strip()
+            _msg = (
+                f"OpenCode returned HTTP {response.status_code} for {self._model_name}: "
+                f"{body_text[:400] or '(empty body)'}"
+            )
+            if response.status_code == _BAD_REQUEST and "inference_failed" in body_text:
+                raise OpenCodeTransientError(_msg)
+            raise RuntimeError(_msg)
         body = response.json()
         # An error object with HTTP 200 is how some gateways report an upstream
         # refusal; `body["choices"]` would raise KeyError with nothing in the
