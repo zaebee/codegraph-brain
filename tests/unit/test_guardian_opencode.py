@@ -10,6 +10,7 @@ provider chooses: the endpoint, the budget field, the reasoning depth and the
 session header. The failure tests pin what it refuses to return.
 """
 
+import copy
 from typing import Any
 
 import httpx
@@ -84,7 +85,7 @@ def _serve(
         async def post(self, url: str, **kwargs: object) -> httpx.Response:
             captured["urls"].append(url)
             captured["headers"].append(kwargs["headers"])
-            captured["bodies"].append(kwargs["json"])
+            captured["bodies"].append(copy.deepcopy(kwargs["json"]))
             if single is not None:
                 return single
             return queue.pop(0)

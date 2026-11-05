@@ -332,6 +332,6 @@ class OpenCodeProvider(OpenAICompatibleProvider):
             return await self._retry(lambda: self._post(payload))
         except OpenCodeStructuredOutputUnavailableError:
             self._structured_output_unavailable = True
-            prompt_only = {key: value for key, value in payload.items() if key != "response_format"}
+            payload.pop("response_format", None)
             log.warning("Structured output unavailable upstream; retrying with the prompt only.")
-            return await self._retry(lambda: self._post(prompt_only))
+            return await self._retry(lambda: self._post(payload))
