@@ -10,6 +10,7 @@ provider chooses: the endpoint, the budget field, the reasoning depth and the
 session header. The failure tests pin what it refuses to return.
 """
 
+import copy
 from typing import Any
 
 import httpx
@@ -84,7 +85,7 @@ def _serve(
         async def post(self, url: str, **kwargs: object) -> httpx.Response:
             captured["urls"].append(url)
             captured["headers"].append(kwargs["headers"])
-            captured["bodies"].append(kwargs["json"])
+            captured["bodies"].append(copy.deepcopy(kwargs["json"]))
             if single is not None:
                 return single
             return queue.pop(0)
@@ -221,6 +222,74 @@ class TestTheFailuresThatWouldLookLikeSilence:
         content = await provider.generate_content("s", "u")
         assert content.startswith("{")
         assert provider.slept == [2.0]
+
+    @pytest.mark.asyncio
+    async def test_a_rejected_response_format_falls_back_to_the_prompt(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The gateway may answer `response_format` with "unavailable now" (#781)."""
+        captured = _serve(
+            monkeypatch,
+            [
+                _reply(
+                    status=400,
+                    body={
+                        "error": {
+                            "type": "invalid_request_error",
+                            "message": "This response_format type is unavailable now",
+                        }
+                    },
+                ),
+                _reply(),
+            ],
+        )
+        provider = _provider()
+        content = await provider.generate_structured("s", "u", _Judgement)
+        assert "verdict" in content
+        assert "response_format" in captured["bodies"][0]
+        assert "response_format" not in captured["bodies"][1]
+        assert len(captured["urls"]) == 2
+
+    @pytest.mark.asyncio
+    async def test_the_structured_output_refusal_is_remembered_for_the_rest_of_the_run(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """One 400 per run, not one per chunk: the next call goes prompt-only."""
+        captured = _serve(
+            monkeypatch,
+            [
+                _reply(
+                    status=400,
+                    body={"error": {"message": "This response_format type is unavailable now"}},
+                ),
+                _reply(),
+                _reply(),
+            ],
+        )
+        provider = _provider()
+        await provider.generate_structured("s", "u", _Judgement)
+        await provider.generate_structured("s", "u", _Judgement)
+        assert len(captured["urls"]) == 3
+        assert "response_format" not in captured["bodies"][2]
+
+    @pytest.mark.asyncio
+    async def test_a_failed_fallback_raises_with_its_body(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """If the prompt-only retry fails too, the error is carried, not degraded."""
+        _serve(
+            monkeypatch,
+            [
+                _reply(
+                    status=400,
+                    body={"error": {"message": "This response_format type is unavailable now"}},
+                ),
+                _reply(status=400, body={"error": {"message": "still down"}}),
+            ],
+        )
+        provider = _provider()
+        with pytest.raises(RuntimeError, match="still down"):
+            await provider.generate_structured("s", "u", _Judgement)
 
     @pytest.mark.asyncio
     async def test_hitting_the_token_budget_raises_rather_than_returning_reasoning(

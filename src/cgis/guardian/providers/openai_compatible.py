@@ -68,6 +68,21 @@ class OpenAICompatibleProvider(BaseProvider, ABC):
             payload["temperature"] = self._temperature
         return payload
 
+    def _response_format(self, schema: type[BaseModel]) -> dict[str, Any]:
+        """The `response_format` body that asks for `schema`.
+
+        Built in one place so the base pass and a provider's prompt-only
+        fallback (opencode-go, #781) describe the same schema.
+        """
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": schema.__name__,
+                "strict": True,
+                "schema": schema.model_json_schema(),
+            },
+        }
+
     async def generate_content(self, system_prompt: str, user_prompt: str) -> str:
         """Free-text generation."""
         return await self._retry(lambda: self._post(self._payload(system_prompt, user_prompt)))
@@ -77,12 +92,5 @@ class OpenAICompatibleProvider(BaseProvider, ABC):
     ) -> str:
         """Generation asked to conform to `schema`; returns raw JSON text."""
         payload = self._payload(system_prompt, user_prompt)
-        payload["response_format"] = {
-            "type": "json_schema",
-            "json_schema": {
-                "name": schema.__name__,
-                "strict": True,
-                "schema": schema.model_json_schema(),
-            },
-        }
+        payload["response_format"] = self._response_format(schema)
         return await self._retry(lambda: self._post(payload))

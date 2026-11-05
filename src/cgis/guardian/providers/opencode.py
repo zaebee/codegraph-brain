@@ -30,10 +30,14 @@ import uuid
 from typing import Any, ClassVar, Final, override
 
 import httpx
+import structlog
+from pydantic import BaseModel
 
 from cgis import __version__
 from cgis.guardian.providers.base import RETRYABLE_EXCEPTIONS, ProviderUsage
 from cgis.guardian.providers.openai_compatible import OpenAICompatibleProvider
+
+log = structlog.getLogger(__name__)
 
 #: The model this provider exists for: the finder's default, priced at
 #: 0.15/0.6 per 1M tokens in/out when the switch was measured (#775).
@@ -73,6 +77,16 @@ class OpenCodeTransientError(RuntimeError):
     so only sometimes (the console log shows `attemptCount` 1 on the runs that
     failed and 2 on one that succeeded). Retried through `_retry`, never
     returned and never degraded to "no judgement".
+    """
+
+
+class OpenCodeStructuredOutputUnavailableError(RuntimeError):
+    """The gateway's upstream rejected `response_format` as unavailable (#781).
+
+    Not a bad request to repair and not a transient `inference_failed` to retry
+    unchanged: the same prompt sent without the parameter is answerable, and the
+    caller parses the reply defensively. Raised so `generate_structured` can drop
+    the parameter and continue, never returned and never a verdict.
     """
 
 
@@ -117,6 +131,27 @@ def _is_transient_upstream_failure(body_text: str) -> bool:
     return any(candidate == "inference_failed" for candidate in candidates)
 
 
+def _is_structured_output_unavailable(body_text: str) -> bool:
+    """Whether the gateway rejected `response_format` as unavailable (#781).
+
+    Read from the error message, not from the status: a 400 that says something
+    else is not answerable by dropping the parameter. The wording measured on
+    2026-11-05 is "This response_format type is unavailable now".
+    """
+    try:
+        parsed: object = json.loads(body_text)
+    except ValueError:
+        return False
+    if not isinstance(parsed, dict):
+        return False
+    error = parsed.get("error")
+    message = error.get("message") if isinstance(error, dict) else None
+    if not isinstance(message, str):
+        return False
+    lowered = message.lower()
+    return "response_format" in lowered and "unavailable" in lowered
+
+
 class OpenCodeProvider(OpenAICompatibleProvider):
     """A DeepSeek model reached through opencode-go's OpenAI-compatible API."""
 
@@ -150,6 +185,10 @@ class OpenCodeProvider(OpenAICompatibleProvider):
         # value or a bare "/" and the empty-string fallback is not duplicated.
         self._base_url = (base_url or "").strip().rstrip("/") or DEFAULT_OPENCODE_BASE_URL
         self._session_id = session_id or uuid.uuid4().hex
+        # Set once the gateway reports `response_format` unavailable, so the
+        # remaining calls in this run go prompt-only instead of paying the same
+        # 400 on every chunk (#781). One review is one provider instance.
+        self._structured_output_unavailable = False
 
     @property
     @override
@@ -254,6 +293,8 @@ class OpenCodeProvider(OpenAICompatibleProvider):
         )
         if response.status_code == _BAD_REQUEST and _is_transient_upstream_failure(body_text):
             raise OpenCodeTransientError(_msg)
+        if response.status_code == _BAD_REQUEST and _is_structured_output_unavailable(body_text):
+            raise OpenCodeStructuredOutputUnavailableError(_msg)
         raise RuntimeError(_msg)
 
     @override
@@ -268,3 +309,29 @@ class OpenCodeProvider(OpenAICompatibleProvider):
         payload = self._shared_payload(system_prompt, user_prompt)
         payload["reasoning_effort"] = self._effort
         return payload
+
+    @override
+    async def generate_structured(
+        self, system_prompt: str, user_prompt: str, schema: type[BaseModel]
+    ) -> str:
+        """Generation with `schema`, dropping `response_format` when the gateway refuses it.
+
+        The gateway's upstreams do not all accept the structured-output
+        parameter; one answers `400 invalid_request_error` with "This
+        response_format type is unavailable now" (#781). The prompt still asks
+        for the same JSON and the caller parses defensively, so re-sending
+        without the parameter is a real answer rather than a failed review. The
+        refusal is remembered for the rest of this provider's life: a review
+        makes one call per chunk, and each would otherwise pay the same 400
+        before falling back.
+        """
+        payload = self._payload(system_prompt, user_prompt)
+        if not self._structured_output_unavailable:
+            payload["response_format"] = self._response_format(schema)
+        try:
+            return await self._retry(lambda: self._post(payload))
+        except OpenCodeStructuredOutputUnavailableError:
+            self._structured_output_unavailable = True
+            payload.pop("response_format", None)
+            log.warning("Structured output unavailable upstream; retrying with the prompt only.")
+            return await self._retry(lambda: self._post(payload))
