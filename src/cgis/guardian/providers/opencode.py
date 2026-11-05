@@ -166,30 +166,8 @@ class OpenCodeProvider(OpenAICompatibleProvider):
             response = await client.post(
                 f"{self._base_url}/chat/completions", headers=headers, json=payload
             )
-        if response.status_code == _TOO_MANY_REQUESTS:
-            # The body is carried, not summarised: it says whether the limit is
-            # per-minute or the account's allowance, and those have different
-            # remedies — wait, or stop. Dropping it would leave the operator
-            # guessing, the same defect as an exception that swallows stderr.
-            _msg = (
-                f"OpenCode returned 429 for {self._model_name}: "
-                f"{response.text.strip()[:400]}. A run that continued would "
-                f"record unanswered findings, which is indistinguishable from a "
-                f"skeptic that refutes nothing."
-            )
-            raise OpenCodeQuotaError(_msg)
         if response.is_error:
-            # Every other HTTP failure is carried with its body, not reduced to
-            # the status: the gateway states why the upstream call failed, and
-            # dropping it is what made #779 read as a bare "400 Bad Request".
-            body_text = response.text.strip()
-            _msg = (
-                f"OpenCode returned HTTP {response.status_code} for {self._model_name}: "
-                f"{body_text[:400] or '(empty body)'}"
-            )
-            if response.status_code == _BAD_REQUEST and "inference_failed" in body_text:
-                raise OpenCodeTransientError(_msg)
-            raise RuntimeError(_msg)
+            self._raise_for_http_error(response)
         body = response.json()
         # An error object with HTTP 200 is how some gateways report an upstream
         # refusal; `body["choices"]` would raise KeyError with nothing in the
@@ -229,6 +207,31 @@ class OpenCodeProvider(OpenAICompatibleProvider):
             )
             raise OpenCodeReplyError(_msg)
         return content
+
+    def _raise_for_http_error(self, response: httpx.Response) -> None:
+        """Raise for an HTTP failure, carrying the gateway's body.
+
+        `429` keeps its own quota error: it must never be swallowed into "the
+        finder had nothing to say". A `400` marked `inference_failed` is a
+        transient upstream failure and is retried; every other error fails at
+        once with the status and body, because dropping the body is what made
+        #779 read as a bare "400 Bad Request".
+        """
+        body_text = response.text.strip()
+        if response.status_code == _TOO_MANY_REQUESTS:
+            _msg = (
+                f"OpenCode returned 429 for {self._model_name}: "
+                f"{body_text[:400]}. A run that continued would record unanswered "
+                f"findings, which is indistinguishable from a skeptic that refutes nothing."
+            )
+            raise OpenCodeQuotaError(_msg)
+        _msg = (
+            f"OpenCode returned HTTP {response.status_code} for {self._model_name}: "
+            f"{body_text[:400] or '(empty body)'}"
+        )
+        if response.status_code == _BAD_REQUEST and "inference_failed" in body_text:
+            raise OpenCodeTransientError(_msg)
+        raise RuntimeError(_msg)
 
     @override
     def _payload(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
