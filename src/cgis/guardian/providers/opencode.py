@@ -25,6 +25,7 @@ code change. The trailing slash is removed here rather than at every caller,
 because `…/v1/` + `/chat/completions` would otherwise double the separator.
 """
 
+import json
 import uuid
 from typing import Any, ClassVar, Final, override
 
@@ -92,6 +93,28 @@ class OpenCodeReplyError(RuntimeError):
     that as an unparseable answer — attributing to the model a loss this file
     can name, and inflating exactly the "unruled" rate a review reads.
     """
+
+
+def _is_transient_upstream_failure(body_text: str) -> bool:
+    """Whether the gateway marked this failure as a transient upstream error.
+
+    The code is a field in the gateway's JSON error, so a JSON body is read as
+    one: a validation message that merely mentions `inference_failed` is not a
+    transient failure and must not be retried. A non-JSON body (a proxy page, an
+    empty error) is the fallback the raw text can still answer, and there a false
+    positive costs only the retries this file already allows — never a verdict.
+    """
+    try:
+        parsed: object = json.loads(body_text)
+    except ValueError:
+        return "inference_failed" in body_text
+    if not isinstance(parsed, dict):
+        return False
+    error = parsed.get("error")
+    candidates: list[object] = [parsed.get("code"), parsed.get("errorCode"), error]
+    if isinstance(error, dict):
+        candidates += [error.get("code"), error.get("type")]
+    return any(candidate == "inference_failed" for candidate in candidates)
 
 
 class OpenCodeProvider(OpenAICompatibleProvider):
@@ -229,7 +252,7 @@ class OpenCodeProvider(OpenAICompatibleProvider):
             f"OpenCode returned HTTP {response.status_code} for {self._model_name}: "
             f"{body_text[:400] or '(empty body)'}"
         )
-        if response.status_code == _BAD_REQUEST and "inference_failed" in body_text:
+        if response.status_code == _BAD_REQUEST and _is_transient_upstream_failure(body_text):
             raise OpenCodeTransientError(_msg)
         raise RuntimeError(_msg)
 

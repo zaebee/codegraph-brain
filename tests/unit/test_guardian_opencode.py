@@ -188,6 +188,41 @@ class TestTheFailuresThatWouldLookLikeSilence:
         assert provider.slept == [2.0, 4.0]
 
     @pytest.mark.asyncio
+    async def test_a_mention_of_the_code_is_not_a_gateway_code(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A validation message that merely names `inference_failed` is not retried."""
+        captured = _serve(
+            monkeypatch,
+            _reply(status=400, body={"error": {"message": "previous inference_failed attempt"}}),
+        )
+        provider = _provider()
+        with pytest.raises(RuntimeError, match="previous inference_failed attempt"):
+            await provider.generate_content("s", "u")
+        assert len(captured["urls"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_a_non_json_body_with_the_code_is_still_retried(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A proxy page that carries the code must not turn a transient failure fatal."""
+        _serve(
+            monkeypatch,
+            [
+                httpx.Response(
+                    400,
+                    text="<html>inference_failed</html>",
+                    request=httpx.Request("POST", _ENDPOINT),
+                ),
+                _reply(),
+            ],
+        )
+        provider = _NoSleepProvider(api_key="k", model_name=DEFAULT_OPENCODE_MODEL)
+        content = await provider.generate_content("s", "u")
+        assert content.startswith("{")
+        assert provider.slept == [2.0]
+
+    @pytest.mark.asyncio
     async def test_hitting_the_token_budget_raises_rather_than_returning_reasoning(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
