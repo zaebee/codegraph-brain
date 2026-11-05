@@ -53,6 +53,23 @@ def _in_pr(directory: object) -> bool:
     return parts[:1] == (PR_DIR,)
 
 
+def _last_pr_step(steps: list[dict[str, Any]]) -> int:
+    """Index of the last step that checks out, parses or runs inside the PR checkout."""
+    return max(
+        i
+        for i, s in enumerate(steps)
+        if _in_pr(s.get("working-directory"))
+        or "refs/pull/" in str(_with(s).get("ref", ""))
+        or f"{PR_DIR}/" in str(s.get("run", ""))
+    )
+
+
+#: A `jq` command word in a shell script: start, or after whitespace or a shell
+#: separator, and followed by whitespace or end of line. The sign-in step must
+#: not need it: a self-hosted runner may not have it (#742, #775).
+_JQ_COMMAND = re.compile(r"(?:^|[\s;|&(`])jq(?=\s|$)", re.M)
+
+
 @pytest.fixture(scope="module")
 def workflow() -> dict[Any, Any]:
     """The parsed workflow file."""
@@ -235,14 +252,82 @@ def test_only_the_posting_steps_reference_the_app_token(steps: list[dict[str, An
 def test_the_app_token_is_minted_after_every_pr_step(steps: list[dict[str, Any]]) -> None:
     """Nothing that checks out or runs in the PR checkout comes after the token exists."""
     minted = steps.index(_app_token_step(steps))
-    last_pr = max(
-        i
-        for i, s in enumerate(steps)
-        if _in_pr(s.get("working-directory"))
-        or "refs/pull/" in str(_with(s).get("ref", ""))
-        or f"{PR_DIR}/" in str(s.get("run", ""))
-    )
-    assert minted > last_pr
+    assert minted > _last_pr_step(steps)
+
+
+# OIDC sign-in (#775): opencode-go needs no static key. The job exchanges a
+# short-lived GitHub OIDC token for inference access immediately before the
+# review, and the review step inherits it from GITHUB_ENV.
+
+
+def _oidc_step(steps: list[dict[str, Any]]) -> dict[str, Any]:
+    matches = [s for s in steps if s.get("name") == "Sign in to OpenCode (OIDC)"]
+    assert len(matches) == 1
+    return matches[0]
+
+
+def test_the_review_job_can_request_an_oidc_token(workflow: dict[Any, Any]) -> None:
+    """`id-token: write` is what makes ACTIONS_ID_TOKEN_REQUEST_* exist at all."""
+    assert workflow["jobs"]["review"]["permissions"] == {
+        "contents": "read",
+        "pull-requests": "write",
+        "issues": "write",
+        "id-token": "write",
+    }
+
+
+def test_the_oidc_sign_in_runs_after_every_pr_step_and_before_the_review(
+    steps: list[dict[str, Any]],
+) -> None:
+    """The token is short-lived, so it is minted last — after no PR code can see it."""
+    signed_in = steps.index(_oidc_step(steps))
+    review = steps.index(next(s for s in steps if s.get("name") == "Run Guardian Review"))
+    assert signed_in > _last_pr_step(steps)
+    assert signed_in < review
+
+
+def test_the_oidc_sign_in_exchanges_a_github_token_for_inference(
+    steps: list[dict[str, Any]],
+) -> None:
+    step = _oidc_step(steps)
+    assert step.get("if") == "vars.OPENCODE_CLIENT_ID != ''"
+    assert step["env"] == {
+        "AUDIENCE": "https://opencode.ai/console",
+        "CLIENT_ID": "${{ vars.OPENCODE_CLIENT_ID }}",
+    }
+    run = step["run"]
+    for needle in (
+        "ACTIONS_ID_TOKEN_REQUEST_URL",
+        "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+        "--oauth2-bearer",
+        "audience=$AUDIENCE",
+        "grant_type=urn:ietf:params:oauth:grant-type:token-exchange",
+        "subject_token_type=urn:ietf:params:oauth:token-type:jwt",
+        'client_id="$CLIENT_ID"',
+        'subject_token="$oidc"',
+        "https://opencode.ai/console/auth/oauth/token",
+        "::add-mask::",
+        'echo "OPENCODE_API_KEY=$token" >> "$GITHUB_ENV"',
+    ):
+        assert needle in run
+    # The token is masked before it is exported, and jq is not assumed.
+    assert run.index("::add-mask::") < run.index('>> "$GITHUB_ENV"')
+    assert not _JQ_COMMAND.search(run)
+
+
+def test_the_oidc_sign_in_fails_loudly_instead_of_minting_an_empty_key(
+    steps: list[dict[str, Any]],
+) -> None:
+    """Every failure path runs before the model call; none can leave an empty key."""
+    run = _oidc_step(steps)["run"]
+    for needle in (
+        "GitHub OIDC is unavailable",
+        "failed with HTTP",
+        "carried no value field",
+        "returned no access_token",
+        "empty access_token",
+    ):
+        assert needle in run
 
 
 def test_the_review_job_ends_before_the_app_token_expires(workflow: dict[Any, Any]) -> None:
@@ -276,6 +361,8 @@ def test_the_caller_hands_the_review_to_the_reusable_workflow(caller: dict[Any, 
         "contents": "read",
         "pull-requests": "write",
         "issues": "write",
+        # A called workflow cannot request more than its caller grants (#775).
+        "id-token": "write",
     }
 
 
@@ -303,6 +390,24 @@ def test_cross_org_callers_can_pass_the_secrets(workflow: dict[Any, Any]) -> Non
         "GUARDIAN_APP_PRIVATE_KEY",
     }
     assert all(v == {"required": False} for v in declared.values())
+
+
+def test_the_review_step_does_not_receive_a_static_opencode_key(
+    steps: list[dict[str, Any]],
+) -> None:
+    """The OIDC step writes GITHUB_ENV; a step-level value would override it (#775).
+
+    `ANTHROPIC_API_KEY` stays in the environment because existing callers pass
+    it by name; it is simply not required. `GUARDIAN_ANTHROPIC_EFFORT` is gone:
+    an explicit anthropic pick runs at its provider default.
+    """
+    review = next(s for s in steps if s.get("name") == "Run Guardian Review")
+    env = review["env"]
+    assert "OPENCODE_API_KEY" not in env
+    assert not any("OPENCODE" in str(v) and "secrets." in str(v) for v in env.values())
+    assert env["GUARDIAN_OPENCODE_EFFORT"] == "${{ vars.GUARDIAN_OPENCODE_EFFORT }}"
+    assert env["ANTHROPIC_API_KEY"] == "${{ secrets.ANTHROPIC_API_KEY }}"
+    assert "GUARDIAN_ANTHROPIC_EFFORT" not in env
 
 
 @pytest.mark.parametrize(

@@ -13,13 +13,21 @@ name: Guardian Review (reusable)
 #       secrets:
 #         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 #         GUARDIAN_APP_PRIVATE_KEY: ${{ secrets.GUARDIAN_APP_PRIVATE_KEY }}
-#       permissions: {contents: read, pull-requests: write, issues: write}
+#       permissions: {contents: read, pull-requests: write, issues: write, id-token: write}
 #
 # `secrets: inherit` reaches a called workflow only within one organisation or
 # enterprise; any other caller passes the secrets declared below by name.
 # Variables are always the caller's: GUARDIAN_PROVIDER, GUARDIAN_MODEL,
-# GUARDIAN_ANTHROPIC_EFFORT, GUARDIAN_FEATURES, GUARDIAN_SKEPTIC,
-# GUARDIAN_SKEPTIC_MODEL, GUARDIAN_APP_CLIENT_ID.
+# GUARDIAN_OPENCODE_EFFORT, GUARDIAN_FEATURES, GUARDIAN_SKEPTIC,
+# GUARDIAN_SKEPTIC_MODEL, OPENCODE_CLIENT_ID, GUARDIAN_APP_CLIENT_ID.
+#
+# The opencode-go finder needs no static key: the job exchanges a GitHub OIDC
+# token for a short-lived inference token immediately before the review (#775).
+# The caller grants `id-token: write` and sets its own OPENCODE_CLIENT_ID
+# variable, and OIDC access must be enabled for GitHub Actions in the Opencode
+# console. The workflow declares no OPENCODE_API_KEY secret, and the review
+# step must not set that variable: a step-level value overrides GITHUB_ENV and
+# would discard the minted token.
 #
 # The caller's Actions policy must allow this workflow and the actions it uses
 # (actions/*, astral-sh/setup-uv, peter-evans/create-or-update-comment).
@@ -59,6 +67,9 @@ on:
         type: boolean
         default: false
     secrets:
+      # `ANTHROPIC_API_KEY` stays declared and passed so existing callers keep
+      # working; opencode-go does not require it. There is deliberately no
+      # OPENCODE_API_KEY secret: the token is minted from GitHub OIDC below.
       ANTHROPIC_API_KEY:
         required: false
       GEMINI_API_KEY:
@@ -80,6 +91,9 @@ jobs:
       contents: read
       pull-requests: write
       issues: write
+      # Required to request the OIDC token the OpenCode sign-in exchanges
+      # (#775). A reusable workflow cannot ask for more than the caller grants.
+      id-token: write
 
     steps:
       # Here rather than in each caller, so no caller can forget it.
@@ -245,17 +259,82 @@ jobs:
           repositories: ${{ github.event.repository.name }}
           permission-pull-requests: write
 
+      # Minted immediately before the review and only after every step that
+      # touches the PR checkout, exactly like the App token above (#730, #775):
+      # the token is short-lived and the code it reviews never sees it. The
+      # value goes to GITHUB_ENV, which the review step inherits.
+      - name: Sign in to OpenCode (OIDC)
+        if: vars.OPENCODE_CLIENT_ID != ''
+        env:
+          AUDIENCE: https://opencode.ai/console
+          CLIENT_ID: ${{ vars.OPENCODE_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+          # No jq: a self-hosted runner may not have it, the same reason #742
+          # removed the GitHub CLI dependency. python3 runs the tests, so it
+          # is there.
+          missing=""
+          [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || missing="$missing ACTIONS_ID_TOKEN_REQUEST_URL"
+          [ -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ] || missing="$missing ACTIONS_ID_TOKEN_REQUEST_TOKEN"
+          if [ -n "$missing" ]; then
+            echo "::error::GitHub OIDC is unavailable:$missing. Grant id-token: write to this job and to the caller's job."
+            exit 1
+          fi
+
+          oidc_response=$(curl -sS -w '\n%{http_code}' \
+            --oauth2-bearer "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE")
+          oidc_status=$(printf '%s' "$oidc_response" | tail -n1)
+          oidc_body=$(printf '%s' "$oidc_response" | sed '$d')
+          if [ "$oidc_status" -lt 200 ] || [ "$oidc_status" -ge 300 ]; then
+            # The OIDC response is not printed: it carries a JWT.
+            echo "::error::GitHub OIDC token request failed with HTTP $oidc_status."
+            exit 1
+          fi
+          oidc=$(printf '%s' "$oidc_body" | python3 -c 'import json, sys; print(json.load(sys.stdin)["value"])') || {
+            echo "::error::GitHub OIDC response carried no value field."
+            exit 1
+          }
+
+          token_response=$(curl -sS -w '\n%{http_code}' \
+            https://opencode.ai/console/auth/oauth/token \
+            -d grant_type=urn:ietf:params:oauth:grant-type:token-exchange \
+            -d subject_token_type=urn:ietf:params:oauth:token-type:jwt \
+            -d client_id="$CLIENT_ID" \
+            -d subject_token="$oidc")
+          token_status=$(printf '%s' "$token_response" | tail -n1)
+          token_body=$(printf '%s' "$token_response" | sed '$d')
+          if [ "$token_status" -lt 200 ] || [ "$token_status" -ge 300 ]; then
+            echo "::error::OpenCode token exchange failed with HTTP $token_status: ${token_body:0:400}"
+            exit 1
+          fi
+          token=$(printf '%s' "$token_body" | python3 -c 'import json, sys; print(json.load(sys.stdin)["access_token"])') || {
+            echo "::error::OpenCode token exchange returned no access_token."
+            exit 1
+          }
+          if [ -z "$token" ]; then
+            echo "::error::OpenCode token exchange returned an empty access_token."
+            exit 1
+          fi
+          echo "::add-mask::$token"
+          echo "OPENCODE_API_KEY=$token" >> "$GITHUB_ENV"
+
       - name: Run Guardian Review
         id: guardian
         env:
+          # OPENCODE_API_KEY is deliberately absent: the OIDC step above
+          # writes it to GITHUB_ENV, and a step-level value would override it.
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           GUARDIAN_PROVIDER: ${{ vars.GUARDIAN_PROVIDER }}
           GUARDIAN_MODEL: ${{ vars.GUARDIAN_MODEL }}
-          # Thinking depth for an anthropic finder or skeptic; unset = the
-          # provider's default ("low"). #246 J measured the finder at "medium".
-          GUARDIAN_ANTHROPIC_EFFORT: ${{ vars.GUARDIAN_ANTHROPIC_EFFORT }}
+          # Reasoning depth for an opencode-go finder; unset = the provider's
+          # default ("low"). A bad value fails at the gateway, loudly.
+          GUARDIAN_OPENCODE_EFFORT: ${{ vars.GUARDIAN_OPENCODE_EFFORT }}
+          # Anthropic stays selectable but is no longer the default finder, so
+          # GUARDIAN_ANTHROPIC_EFFORT is deliberately not passed here; an
+          # explicit anthropic pick runs at the provider's own default (#775).
           GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GUARDIAN_FEATURES: ${{ vars.GUARDIAN_FEATURES }}

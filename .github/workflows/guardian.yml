@@ -25,6 +25,9 @@ jobs:
       contents: read
       pull-requests: write
       issues: write
+      # The reusable workflow signs in to OpenCode with GitHub OIDC (#775); a
+      # called workflow cannot ask for more than its caller grants.
+      id-token: write
 
   save-metrics:
     needs: review
