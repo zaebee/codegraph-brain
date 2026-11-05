@@ -163,7 +163,7 @@ GUARDIAN_SKEPTIC=anthropic ANTHROPIC_API_KEY=... MISTRAL_API_KEY=... \
   uv run python scripts/guardian_review.py --pr 123 --db graph.db --inline
 ```
 
-In GitHub Actions, opencode-go needs no static key: the reusable workflow exchanges a short-lived GitHub OIDC token for inference access immediately before the review. Enable OIDC for GitHub Actions in the Opencode console, set the calling repository's `OPENCODE_CLIENT_ID` variable, and grant the review job `id-token: write`. `OPENCODE_API_KEY` is then minted at run time and never stored as a secret.
+In GitHub Actions, opencode-go needs no static key: the reusable workflow exchanges a short-lived GitHub OIDC token for inference access immediately before the review. Enable OIDC for GitHub Actions in the Opencode console, set the calling repository's `OPENCODE_CLIENT_ID` variable, and grant the review job `id-token: write`. `OPENCODE_API_KEY` is then minted at run time and never stored as a secret. Sign-in happens when `GUARDIAN_PROVIDER` is `opencode-go`, `opencode`, or unset (unset means the minted key makes opencode the auto-detected provider); an explicit other provider skips it.
 
 No GPU on hand? **[Benchmark it on a notebook GPU →](https://github.com/zaebee/codegraph-brain/blob/main/docs/GUARDIAN_LOCAL_BENCH.md)** — free end to end, since the fixtures score without an LLM judge. Or **[point Guardian at a remote Ollama →](https://github.com/zaebee/codegraph-brain/blob/main/docs/GUARDIAN_REMOTE_OLLAMA.md)** — over an frp stcp tunnel, no public port, and a guard that refuses a review of a silently truncated prompt.
 

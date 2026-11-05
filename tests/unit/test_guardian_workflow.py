@@ -69,6 +69,10 @@ def _last_pr_step(steps: list[dict[str, Any]]) -> int:
 #: not need it: a self-hosted runner may not have it (#742, #775).
 _JQ_COMMAND = re.compile(r"(?:^|[\s;|&(`])jq(?=\s|$)", re.M)
 
+#: A `python3` command word. The sign-in step must not assume it is on PATH on
+#: a self-hosted runner; uv is installed and the environment synced (#775).
+_PYTHON3_COMMAND = re.compile(r"(?:^|[\s;|&(`])python3(?=\s|$)", re.M)
+
 
 @pytest.fixture(scope="module")
 def workflow() -> dict[Any, Any]:
@@ -294,6 +298,7 @@ def test_the_oidc_sign_in_exchanges_a_github_token_for_inference(
     assert step["env"] == {
         "AUDIENCE": "https://opencode.ai/console",
         "CLIENT_ID": "${{ vars.OPENCODE_CLIENT_ID }}",
+        "GUARDIAN_PROVIDER": "${{ vars.GUARDIAN_PROVIDER }}",
     }
     run = step["run"]
     for needle in (
@@ -310,9 +315,52 @@ def test_the_oidc_sign_in_exchanges_a_github_token_for_inference(
         'echo "OPENCODE_API_KEY=$token" >> "$GITHUB_ENV"',
     ):
         assert needle in run
-    # The token is masked before it is exported, and jq is not assumed.
+    # The token is masked before it is exported, and neither jq nor a PATH
+    # python3 is assumed: uv was installed and its environment synced above.
     assert run.index("::add-mask::") < run.index('>> "$GITHUB_ENV"')
     assert not _JQ_COMMAND.search(run)
+    assert not _PYTHON3_COMMAND.search(run)
+    assert run.count("uv run --frozen python -c") == 2
+
+
+@pytest.mark.parametrize(
+    ("provider", "signs_in"),
+    [
+        ("", True),
+        ("opencode-go", True),
+        ("OPEncode-Go", True),
+        ("opencode", True),
+        ("mistral", False),
+        ("MISTRAL", False),
+        ("anthropic", False),
+    ],
+)
+def test_the_oidc_sign_in_only_runs_when_opencode_is_selected(
+    steps: list[dict[str, Any]], tmp_path: Path, provider: str, signs_in: bool
+) -> None:
+    """Another explicit provider must not depend on OpenCode's availability.
+
+    Empty still signs in on purpose: the minted key then makes autodetection
+    choose opencode. The missing-token branch is reached only for a provider
+    this step owns, so no network is involved here.
+    """
+    run = _oidc_step(steps)["run"]
+    env = {
+        **os.environ,
+        "GUARDIAN_PROVIDER": provider,
+        "GITHUB_ENV": str(tmp_path / "github_env"),
+    }
+    env.pop("ACTIONS_ID_TOKEN_REQUEST_URL", None)
+    env.pop("ACTIONS_ID_TOKEN_REQUEST_TOKEN", None)
+    done = subprocess.run(["bash", "-c", run], env=env, capture_output=True, text=True, check=False)
+    output = done.stdout + done.stderr
+    if signs_in:
+        assert done.returncode != 0
+        assert "GitHub OIDC is unavailable" in output
+    else:
+        assert done.returncode == 0
+        assert f"not the selected provider ({provider.lower()})" in output
+    assert not (tmp_path / "github_env").exists()
 
 
 def test_the_oidc_sign_in_fails_loudly_instead_of_minting_an_empty_key(

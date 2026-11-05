@@ -25,9 +25,13 @@ name: Guardian Review (reusable)
 # token for a short-lived inference token immediately before the review (#775).
 # The caller grants `id-token: write` and sets its own OPENCODE_CLIENT_ID
 # variable, and OIDC access must be enabled for GitHub Actions in the Opencode
-# console. The workflow declares no OPENCODE_API_KEY secret, and the review
-# step must not set that variable: a step-level value overrides GITHUB_ENV and
-# would discard the minted token.
+# console. Sign-in happens only when the normalised GUARDIAN_PROVIDER is
+# `opencode-go`, `opencode` or empty; an empty value still signs in because the
+# minted OPENCODE_API_KEY then makes `_autodetect_provider` pick opencode. An
+# explicit other provider logs that OpenCode is not selected and skips cleanly.
+# The workflow declares no OPENCODE_API_KEY secret, and the review step must
+# not set that variable: a step-level value overrides GITHUB_ENV and would
+# discard the minted token.
 #
 # The caller's Actions policy must allow this workflow and the actions it uses
 # (actions/*, astral-sh/setup-uv, peter-evans/create-or-update-comment).
@@ -268,11 +272,21 @@ jobs:
         env:
           AUDIENCE: https://opencode.ai/console
           CLIENT_ID: ${{ vars.OPENCODE_CLIENT_ID }}
+          GUARDIAN_PROVIDER: ${{ vars.GUARDIAN_PROVIDER }}
         run: |
           set -euo pipefail
+          provider=$(printf '%s' "${GUARDIAN_PROVIDER:-}" | tr '[:upper:]' '[:lower:]')
+          case "$provider" in
+            ""|opencode-go|opencode) ;;
+            *)
+              echo "OpenCode is not the selected provider ($provider); skipping sign-in."
+              exit 0
+              ;;
+          esac
           # No jq: a self-hosted runner may not have it, the same reason #742
-          # removed the GitHub CLI dependency. python3 runs the tests, so it
-          # is there.
+          # removed the GitHub CLI dependency. `uv` is installed and the
+          # environment synced above, so use it rather than assuming `python3`
+          # is on PATH on a self-hosted runner.
           missing=""
           [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || missing="$missing ACTIONS_ID_TOKEN_REQUEST_URL"
           [ -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ] || missing="$missing ACTIONS_ID_TOKEN_REQUEST_TOKEN"
@@ -291,7 +305,7 @@ jobs:
             echo "::error::GitHub OIDC token request failed with HTTP $oidc_status."
             exit 1
           fi
-          oidc=$(printf '%s' "$oidc_body" | python3 -c 'import json, sys; print(json.load(sys.stdin)["value"])') || {
+          oidc=$(printf '%s' "$oidc_body" | uv run --frozen python -c 'import json, sys; print(json.load(sys.stdin)["value"])') || {
             echo "::error::GitHub OIDC response carried no value field."
             exit 1
           }
@@ -308,7 +322,7 @@ jobs:
             echo "::error::OpenCode token exchange failed with HTTP $token_status: ${token_body:0:400}"
             exit 1
           fi
-          token=$(printf '%s' "$token_body" | python3 -c 'import json, sys; print(json.load(sys.stdin)["access_token"])') || {
+          token=$(printf '%s' "$token_body" | uv run --frozen python -c 'import json, sys; print(json.load(sys.stdin)["access_token"])') || {
             echo "::error::OpenCode token exchange returned no access_token."
             exit 1
           }
