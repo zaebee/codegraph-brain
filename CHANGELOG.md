@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.40.0](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.39.2...codegraph-brain-v0.40.0) (2026-11-05)
+
+
+### Features
+
+* **guardian:** add opencode-go DeepSeek provider over GitHub OIDC ([#777](https://github.com/zaebee/codegraph-brain/issues/777)) ([33ec492](https://github.com/zaebee/codegraph-brain/commit/33ec4929415f9813623b50b33dc7618eadbee8d6))
+
+
+### Bug Fixes
+
+* **guardian:** drop the gh dependency and bump node24 action pins ([#773](https://github.com/zaebee/codegraph-brain/issues/773)) ([969f566](https://github.com/zaebee/codegraph-brain/commit/969f566eba34970624ffd81631515d109de7e242))
+* **guardian:** fall back to prompt-only JSON when response_format is unavailable ([#781](https://github.com/zaebee/codegraph-brain/issues/781)) ([#782](https://github.com/zaebee/codegraph-brain/issues/782)) ([5ed805b](https://github.com/zaebee/codegraph-brain/commit/5ed805beec547272ed0e2b330978d807b90e376e))
+* **guardian:** retry the gateway's transient inference_failed 400 ([#779](https://github.com/zaebee/codegraph-brain/issues/779)) ([#780](https://github.com/zaebee/codegraph-brain/issues/780)) ([5310423](https://github.com/zaebee/codegraph-brain/commit/5310423ae4b31b98720c9efc4a83642ad0f958a8))
+
 ## [0.39.2](https://github.com/zaebee/codegraph-brain/compare/codegraph-brain-v0.39.1...codegraph-brain-v0.39.2) (2026-10-31)
 
 
